@@ -38,6 +38,8 @@ func init() {
 	logger.InitTestEnv()
 }
 
+// TestStandaloneWhereEditorMode swaps the package-level log.Logger to capture
+// the advisory the compiler logs, so it must not call t.Parallel().
 func TestStandaloneWhereEditorMode(t *testing.T) {
 	var buf bytes.Buffer
 	oldLogger := log.Logger
