@@ -11835,7 +11835,12 @@ private gcp.project.computeService.vpnGateway @defaults("name") {
 // `localTrafficSelector` and `remoteTrafficSelector` CIDRs, and the
 // `sharedSecretHash`. Resolve the peer via `peerExternalVpnGateway` or
 // `peerGcpVpnGateway`, the owning HA VPN gateway via `vpnGateway`, and
-// the dynamic routing Cloud Router via `router`.
+// the dynamic routing Cloud Router via `router`. The IKE cipher suite is
+// flattened into per-role algorithm lists (`phase1EncryptionAlgorithms`,
+// `phase1IntegrityAlgorithms`, `phase1PrfAlgorithms`, `phase1DhGroups`,
+// `phase2EncryptionAlgorithms`, `phase2IntegrityAlgorithms`, `phase2PfsGroups`),
+// each null when the tunnel leaves that role at the Cloud VPN default, which
+// includes weak options such as `3DES-CBC`, `HMAC-MD5-96`, and `Group-2`.
 private gcp.project.computeService.vpnTunnel @defaults("name status") {
   // Unique identifier
   id string
@@ -11881,6 +11886,56 @@ private gcp.project.computeService.vpnTunnel @defaults("name status") {
   resourceManagerTags map[string]string
   // Server-defined self-link URL for the VPN tunnel
   selfLink string
+  // IKE phase 1 encryption algorithms
+  //
+  // Encryption algorithms the tunnel proposes and accepts for IKE phase 1, in
+  // order, for example `AES-GCM-16-256`, `AES-CBC-256`, or `3DES-CBC`. Null when
+  // the tunnel configures none, in which case Cloud VPN proposes its default
+  // list, which includes `3DES-CBC`.
+  phase1EncryptionAlgorithms []string
+  // IKE phase 1 integrity algorithms
+  //
+  // Integrity algorithms the tunnel proposes and accepts for IKE phase 1, for
+  // example `HMAC-SHA2-256-128`, `HMAC-SHA1-96`, or `HMAC-MD5-96`. Null when the
+  // tunnel configures none, in which case Cloud VPN proposes its default list,
+  // which includes `HMAC-SHA1-96` and `HMAC-MD5-96`.
+  phase1IntegrityAlgorithms []string
+  // IKE phase 1 pseudo-random functions
+  //
+  // Pseudo-random functions (PRF) the tunnel proposes and accepts for IKE phase 1,
+  // for example `PRF-HMAC-SHA2-256`, `PRF-HMAC-SHA1`, or `PRF-HMAC-MD5`. Null when
+  // the tunnel configures none, in which case Cloud VPN proposes its default
+  // list, which includes `PRF-HMAC-SHA1` and `PRF-HMAC-MD5`.
+  phase1PrfAlgorithms []string
+  // IKE phase 1 Diffie-Hellman groups
+  //
+  // Diffie-Hellman groups the tunnel proposes and accepts for IKE phase 1, for
+  // example `Group-14`, `Group-20`, `Group-5`, or `Group-2`. Null when the tunnel
+  // configures none, in which case Cloud VPN proposes its default list, which
+  // includes the 1024-bit and 1536-bit groups `Group-2`, `modp-1024-160`, and
+  // `Group-5`.
+  phase1DhGroups []string
+  // IKE phase 2 encryption algorithms
+  //
+  // Encryption algorithms the tunnel proposes and accepts for the IPsec security
+  // associations negotiated in IKE phase 2, for example `AES-GCM-16-256` or
+  // `AES-CBC-128`. Null when the tunnel configures none, in which case Cloud VPN
+  // proposes its default list.
+  phase2EncryptionAlgorithms []string
+  // IKE phase 2 integrity algorithms
+  //
+  // Integrity algorithms the tunnel proposes and accepts for IKE phase 2, for
+  // example `HMAC-SHA2-256-128` or `HMAC-SHA1-96`. Null when the tunnel
+  // configures none, in which case Cloud VPN proposes its default list, which
+  // includes `HMAC-SHA1-96`.
+  phase2IntegrityAlgorithms []string
+  // IKE phase 2 perfect forward secrecy groups
+  //
+  // Diffie-Hellman groups the tunnel proposes and accepts for perfect forward
+  // secrecy (PFS) in IKE phase 2, for example `Group-14` or `Group-2`. Null when
+  // the tunnel configures none, in which case Cloud VPN proposes its default
+  // list, which includes `Group-2` and `Group-5`.
+  phase2PfsGroups []string
 }
 
 // Google Cloud (GCP) Compute storage pool
