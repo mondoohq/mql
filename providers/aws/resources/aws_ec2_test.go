@@ -4,11 +4,13 @@
 package resources
 
 import (
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/smithy-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/llx"
@@ -184,6 +186,98 @@ func TestImageScanResultArgs(t *testing.T) {
 		assert.Equal(t, day(4), args["inspectorLowFixAvailableSince"].Value)
 		assert.Equal(t, day(5), args["inspectorInformationalFixAvailableSince"].Value)
 	})
+}
+
+func TestImageFindingsArgs(t *testing.T) {
+	const imageKey = "us-east-1/ami-0123456789abcdef0"
+	observed := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	updated := time.Date(2026, 10, 29, 8, 0, 0, 0, time.UTC)
+
+	// Synthetic: every field of a fully populated finding lands on its own key.
+	t.Run("maps every field", func(t *testing.T) {
+		args := imageFindingsArgs(imageKey, []ec2types.ImageFinding{{
+			Title:           aws.String("CVE-2026-0001 - openssl"),
+			SeverityLabel:   ec2types.SeverityLabelCritical,
+			Score:           aws.Float64(9.8),
+			FixAvailable:    aws.Bool(true),
+			Paths:           []string{"/usr/lib64/libssl.so.3"},
+			SnapshotId:      aws.String("snap-0aaaaaaaaaaaaaaaa"),
+			FirstObservedAt: &observed,
+			UpdatedAt:       &updated,
+		}})
+		require.Len(t, args, 1)
+		a := args[0]
+		assert.Equal(t, "CVE-2026-0001 - openssl", a["title"].Value)
+		assert.Equal(t, "critical", a["severity"].Value)
+		assert.Equal(t, 9.8, a["score"].Value)
+		assert.Equal(t, true, a["fixAvailable"].Value)
+		assert.Equal(t, []any{"/usr/lib64/libssl.so.3"}, a["paths"].Value)
+		assert.Equal(t, "snap-0aaaaaaaaaaaaaaaa", a["snapshotId"].Value)
+		assert.Equal(t, &observed, a["firstObservedAt"].Value)
+		assert.Equal(t, &updated, a["updatedAt"].Value)
+		assert.Equal(t,
+			imageKey+"/inspectorFinding/snap-0aaaaaaaaaaaaaaaa|CVE-2026-0001 - openssl|/usr/lib64/libssl.so.3",
+			a["__id"].Value)
+	})
+
+	// Synthetic: absent values stay null instead of a zero score, a false fix
+	// flag or year-1 dates.
+	t.Run("absent values are null, not zero", func(t *testing.T) {
+		args := imageFindingsArgs(imageKey, []ec2types.ImageFinding{{Title: aws.String("t")}})
+		require.Len(t, args, 1)
+		a := args[0]
+		for _, k := range []string{"severity", "score", "fixAvailable", "snapshotId", "firstObservedAt", "updatedAt"} {
+			assert.Nil(t, a[k].Value, k)
+		}
+		assert.Equal(t, []any{}, a["paths"].Value)
+	})
+
+	// Synthetic: the same title in two snapshots, or on different paths, is two findings.
+	t.Run("ids distinguish snapshot and paths", func(t *testing.T) {
+		args := imageFindingsArgs(imageKey, []ec2types.ImageFinding{
+			{Title: aws.String("CVE-2026-0002 - zlib"), SnapshotId: aws.String("snap-1"), Paths: []string{"/a"}},
+			{Title: aws.String("CVE-2026-0002 - zlib"), SnapshotId: aws.String("snap-2"), Paths: []string{"/a"}},
+			{Title: aws.String("CVE-2026-0002 - zlib"), SnapshotId: aws.String("snap-1"), Paths: []string{"/b"}},
+		})
+		ids := map[any]bool{}
+		for _, a := range args {
+			ids[a["__id"].Value] = true
+		}
+		assert.Len(t, ids, 3)
+	})
+
+	// Synthetic: path order from the API does not change the id.
+	t.Run("id ignores path order", func(t *testing.T) {
+		a := imageFindingId(imageKey, ec2types.ImageFinding{Title: aws.String("x"), Paths: []string{"/b", "/a"}})
+		b := imageFindingId(imageKey, ec2types.ImageFinding{Title: aws.String("x"), Paths: []string{"/a", "/b"}})
+		assert.Equal(t, a, b)
+	})
+
+	// Synthetic: two images reporting the same finding keep separate ids.
+	t.Run("id carries the image", func(t *testing.T) {
+		f := ec2types.ImageFinding{Title: aws.String("x"), SnapshotId: aws.String("snap-1")}
+		assert.NotEqual(t,
+			imageFindingId("us-east-1/ami-1", f),
+			imageFindingId("us-west-2/ami-1", f))
+	})
+
+	// Synthetic: an exact repeat is kept as its own finding, not collapsed by the cache.
+	t.Run("exact repeats get distinct ids", func(t *testing.T) {
+		f := ec2types.ImageFinding{Title: aws.String("x"), SnapshotId: aws.String("snap-1")}
+		args := imageFindingsArgs(imageKey, []ec2types.ImageFinding{f, f})
+		require.Len(t, args, 2)
+		assert.NotEqual(t, args[0]["__id"].Value, args[1]["__id"].Value)
+	})
+}
+
+func TestIsSnapshotNotVisible(t *testing.T) {
+	// Measured: aws ec2 describe-snapshots on an unknown id, us-east-1,
+	// 2026-10-30, answers InvalidSnapshot.NotFound.
+	assert.True(t, isSnapshotNotVisible(&smithy.GenericAPIError{Code: "InvalidSnapshot.NotFound"}))
+	// Synthetic: a denial is not an absence.
+	assert.False(t, isSnapshotNotVisible(&smithy.GenericAPIError{Code: "UnauthorizedOperation"}))
+	// Synthetic: a transport error is not an absence.
+	assert.False(t, isSnapshotNotVisible(errors.New("dial tcp: i/o timeout")))
 }
 
 func TestDescribeLaunchTemplatesInputTagFilters(t *testing.T) {

@@ -683,6 +683,7 @@ const (
 	ResourceAwsEc2Networkinterface                                              string = "aws.ec2.networkinterface"
 	ResourceAwsEc2Keypair                                                       string = "aws.ec2.keypair"
 	ResourceAwsEc2Image                                                         string = "aws.ec2.image"
+	ResourceAwsEc2ImageInspectorFinding                                         string = "aws.ec2.image.inspectorFinding"
 	ResourceAwsEc2ImageWatermark                                                string = "aws.ec2.image.watermark"
 	ResourceAwsEc2ImageLaunchPermission                                         string = "aws.ec2.image.launchPermission"
 	ResourceAwsEc2ImageBlockDeviceMapping                                       string = "aws.ec2.image.blockDeviceMapping"
@@ -3748,6 +3749,10 @@ func init() {
 		"aws.ec2.image": {
 			Init:   initAwsEc2Image,
 			Create: createAwsEc2Image,
+		},
+		"aws.ec2.image.inspectorFinding": {
+			// to override args, implement: initAwsEc2ImageInspectorFinding(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsEc2ImageInspectorFinding,
 		},
 		"aws.ec2.image.watermark": {
 			// to override args, implement: initAwsEc2ImageWatermark(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -26624,6 +26629,36 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.ec2.image.inspectorInformationalFixAvailableSince": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEc2Image).GetInspectorInformationalFixAvailableSince()).ToDataRes(types.Time)
+	},
+	"aws.ec2.image.inspectorFindings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2Image).GetInspectorFindings()).ToDataRes(types.Array(types.Resource("aws.ec2.image.inspectorFinding")))
+	},
+	"aws.ec2.image.inspectorFinding.title": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2ImageInspectorFinding).GetTitle()).ToDataRes(types.String)
+	},
+	"aws.ec2.image.inspectorFinding.severity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2ImageInspectorFinding).GetSeverity()).ToDataRes(types.String)
+	},
+	"aws.ec2.image.inspectorFinding.score": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2ImageInspectorFinding).GetScore()).ToDataRes(types.Float)
+	},
+	"aws.ec2.image.inspectorFinding.fixAvailable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2ImageInspectorFinding).GetFixAvailable()).ToDataRes(types.Bool)
+	},
+	"aws.ec2.image.inspectorFinding.paths": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2ImageInspectorFinding).GetPaths()).ToDataRes(types.Array(types.String))
+	},
+	"aws.ec2.image.inspectorFinding.snapshotId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2ImageInspectorFinding).GetSnapshotId()).ToDataRes(types.String)
+	},
+	"aws.ec2.image.inspectorFinding.snapshot": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2ImageInspectorFinding).GetSnapshot()).ToDataRes(types.Resource("aws.ec2.snapshot"))
+	},
+	"aws.ec2.image.inspectorFinding.firstObservedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2ImageInspectorFinding).GetFirstObservedAt()).ToDataRes(types.Time)
+	},
+	"aws.ec2.image.inspectorFinding.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2ImageInspectorFinding).GetUpdatedAt()).ToDataRes(types.Time)
 	},
 	"aws.ec2.image.watermark.watermarkKey": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEc2ImageWatermark).GetWatermarkKey()).ToDataRes(types.String)
@@ -70711,6 +70746,50 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.ec2.image.inspectorInformationalFixAvailableSince": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsEc2Image).InspectorInformationalFixAvailableSince, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.image.inspectorFindings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2Image).InspectorFindings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.image.inspectorFinding.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2ImageInspectorFinding).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.ec2.image.inspectorFinding.title": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2ImageInspectorFinding).Title, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.image.inspectorFinding.severity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2ImageInspectorFinding).Severity, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.image.inspectorFinding.score": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2ImageInspectorFinding).Score, ok = plugin.RawToTValue[float64](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.image.inspectorFinding.fixAvailable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2ImageInspectorFinding).FixAvailable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.image.inspectorFinding.paths": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2ImageInspectorFinding).Paths, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.image.inspectorFinding.snapshotId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2ImageInspectorFinding).SnapshotId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.image.inspectorFinding.snapshot": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2ImageInspectorFinding).Snapshot, ok = plugin.RawToTValue[*mqlAwsEc2Snapshot](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.image.inspectorFinding.firstObservedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2ImageInspectorFinding).FirstObservedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.image.inspectorFinding.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2ImageInspectorFinding).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"aws.ec2.image.watermark.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -170275,6 +170354,7 @@ type mqlAwsEc2Image struct {
 	InspectorMediumFixAvailableSince        plugin.TValue[*time.Time]
 	InspectorLowFixAvailableSince           plugin.TValue[*time.Time]
 	InspectorInformationalFixAvailableSince plugin.TValue[*time.Time]
+	InspectorFindings                       plugin.TValue[[]any]
 }
 
 // createAwsEc2Image creates a new instance of this resource
@@ -170524,6 +170604,118 @@ func (c *mqlAwsEc2Image) GetInspectorLowFixAvailableSince() *plugin.TValue[*time
 
 func (c *mqlAwsEc2Image) GetInspectorInformationalFixAvailableSince() *plugin.TValue[*time.Time] {
 	return &c.InspectorInformationalFixAvailableSince
+}
+
+func (c *mqlAwsEc2Image) GetInspectorFindings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.InspectorFindings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.ec2.image", c.__id, "inspectorFindings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.inspectorFindings()
+	})
+}
+
+// mqlAwsEc2ImageInspectorFinding for the aws.ec2.image.inspectorFinding resource
+type mqlAwsEc2ImageInspectorFinding struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsEc2ImageInspectorFindingInternal
+	Title           plugin.TValue[string]
+	Severity        plugin.TValue[string]
+	Score           plugin.TValue[float64]
+	FixAvailable    plugin.TValue[bool]
+	Paths           plugin.TValue[[]any]
+	SnapshotId      plugin.TValue[string]
+	Snapshot        plugin.TValue[*mqlAwsEc2Snapshot]
+	FirstObservedAt plugin.TValue[*time.Time]
+	UpdatedAt       plugin.TValue[*time.Time]
+}
+
+// createAwsEc2ImageInspectorFinding creates a new instance of this resource
+func createAwsEc2ImageInspectorFinding(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsEc2ImageInspectorFinding{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.ec2.image.inspectorFinding", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsEc2ImageInspectorFinding) MqlName() string {
+	return "aws.ec2.image.inspectorFinding"
+}
+
+func (c *mqlAwsEc2ImageInspectorFinding) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsEc2ImageInspectorFinding) GetTitle() *plugin.TValue[string] {
+	return &c.Title
+}
+
+func (c *mqlAwsEc2ImageInspectorFinding) GetSeverity() *plugin.TValue[string] {
+	return &c.Severity
+}
+
+func (c *mqlAwsEc2ImageInspectorFinding) GetScore() *plugin.TValue[float64] {
+	return &c.Score
+}
+
+func (c *mqlAwsEc2ImageInspectorFinding) GetFixAvailable() *plugin.TValue[bool] {
+	return &c.FixAvailable
+}
+
+func (c *mqlAwsEc2ImageInspectorFinding) GetPaths() *plugin.TValue[[]any] {
+	return &c.Paths
+}
+
+func (c *mqlAwsEc2ImageInspectorFinding) GetSnapshotId() *plugin.TValue[string] {
+	return &c.SnapshotId
+}
+
+func (c *mqlAwsEc2ImageInspectorFinding) GetSnapshot() *plugin.TValue[*mqlAwsEc2Snapshot] {
+	return plugin.GetOrCompute[*mqlAwsEc2Snapshot](&c.Snapshot, func() (*mqlAwsEc2Snapshot, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.ec2.image.inspectorFinding", c.__id, "snapshot")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsEc2Snapshot), nil
+			}
+		}
+
+		return c.snapshot()
+	})
+}
+
+func (c *mqlAwsEc2ImageInspectorFinding) GetFirstObservedAt() *plugin.TValue[*time.Time] {
+	return &c.FirstObservedAt
+}
+
+func (c *mqlAwsEc2ImageInspectorFinding) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
 }
 
 // mqlAwsEc2ImageWatermark for the aws.ec2.image.watermark resource
