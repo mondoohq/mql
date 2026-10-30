@@ -27,6 +27,7 @@ stackit.alb.customRuleGroup.name 13.4.2
 stackit.alb.customRuleGroup.rules 13.4.2
 stackit.alb.customRuleGroup.wafs 13.7.2
 stackit.alb.loadBalancer 13.0.1
+stackit.alb.loadBalancer.accessLogs 14.2.10
 stackit.alb.loadBalancer.allowedSourceRanges 13.7.2
 stackit.alb.loadBalancer.certificates 13.7.2
 stackit.alb.loadBalancer.disableTargetSecurityGroupAssignment 13.0.1
@@ -321,6 +322,7 @@ stackit.kms.wrappingKey.publicKey 13.5.2
 stackit.kms.wrappingKey.purpose 13.5.2
 stackit.kms.wrappingKey.state 13.5.2
 stackit.loadBalancer 13.0.0
+stackit.loadBalancer.accessLogs 14.2.10
 stackit.loadBalancer.allowedSourceRanges 13.7.2
 stackit.loadBalancer.disableTargetSecurityGroupAssignment 13.7.2
 stackit.loadBalancer.ephemeralAddress 13.7.2

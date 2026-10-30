@@ -1166,7 +1166,8 @@ private stackit.loadBalancer @defaults("name status externalAddress") {
   // Load balancer options
   //
   // Keys: `accessControl` ({allowedSourceRanges []string}, the CIDR
-  // allow-list for inbound traffic), `ephemeralAddress` (bool, whether
+  // allow-list for inbound traffic), `accessLogs` (bool, whether
+  // per-request access logs are on), `ephemeralAddress` (bool, whether
   // a managed public IP is attached), `observability` ({logs, metrics},
   // each {credentialsRef, pushUrl} for external log and metric push),
   // and `privateNetworkOnly` (bool, mirrored by the privateNetworkOnly
@@ -1211,6 +1212,13 @@ private stackit.loadBalancer @defaults("name status externalAddress") {
   // balancer rather than binding a reserved address. Null when the
   // options carry no setting.
   ephemeralAddress() bool
+  // Whether per-request access logs are enabled
+  //
+  // From options.accessLogs. The API default is false. The logs are only
+  // viewable when STACKIT Telemetry Hub or STACKIT Observability is set
+  // up for the balancer (see observabilityLogsPushUrl). Null when the
+  // options carry no setting.
+  accessLogs() bool
   // Endpoint the balancer pushes access logs to
   //
   // From options.observability.logs.pushUrl, an egress destination for
@@ -4310,8 +4318,8 @@ private stackit.alb.loadBalancer @defaults("name status externalAddress") {
   //
   // Behavioral settings for the balancer, a dict with keys accessControl
   // (holding allowedSourceRanges, the CIDR allow-list restricting who may
-  // reach the balancer), ephemeralAddress, observability, and
-  // privateNetworkOnly.
+  // reach the balancer), accessLogs, ephemeralAddress, observability,
+  // and privateNetworkOnly.
   options dict
   // Errors reported by the ALB ([{type, description}])
   errors []dict
@@ -4357,6 +4365,13 @@ private stackit.alb.loadBalancer @defaults("name status externalAddress") {
   // balancer rather than binding a reserved address. Null when the
   // options carry no setting.
   ephemeralAddress() bool
+  // Whether per-request access logs are enabled
+  //
+  // From options.accessLogs. The API default is false. The logs are only
+  // viewable when STACKIT Telemetry Hub or STACKIT Observability is set
+  // up for the balancer (see observabilityLogsPushUrl). Null when the
+  // options carry no setting.
+  accessLogs() bool
   // Endpoint the balancer pushes access logs to
   //
   // From options.observability.logs.pushUrl, an egress destination for

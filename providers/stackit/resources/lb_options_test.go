@@ -71,6 +71,48 @@ func TestLbOptionReaders(t *testing.T) {
 	}
 }
 
+// TestLbAccessLogs pins the tri-state reading of options.accessLogs through
+// both SDK option models: an explicit false must read false, and an omitted
+// setting must read null rather than the API default.
+func TestLbAccessLogs(t *testing.T) {
+	// Synthetic: payload shapes follow the SDK's LoadBalancerOptions JSON
+	// tags (loadbalancer v1.17.0, alb v0.20.0); no live balancer showed these.
+	albOptionsDict := func(payload string) any {
+		var opts alb.LoadBalancerOptions
+		if err := json.Unmarshal([]byte(payload), &opts); err != nil {
+			t.Fatalf("decoding alb options: %v", err)
+		}
+		return toDict(opts)
+	}
+	decoders := map[string]func(string) any{
+		"loadbalancer": func(p string) any { return optionsDict(t, p) },
+		"alb":          albOptionsDict,
+	}
+	cases := []struct {
+		name        string
+		payload     string
+		want        bool
+		wantPresent bool
+	}{
+		{"enabled", `{"accessLogs": true}`, true, true},
+		{"explicitly disabled", `{"accessLogs": false, "ephemeralAddress": true}`, false, true},
+		{"absent", `{"ephemeralAddress": true}`, false, false},
+	}
+	for sdk, decode := range decoders {
+		for _, tc := range cases {
+			t.Run(sdk+"/"+tc.name, func(t *testing.T) {
+				v, ok := lbAccessLogs(decode(tc.payload))
+				if ok != tc.wantPresent || v != tc.want {
+					t.Fatalf("accessLogs = (%v, %v), want (%v, %v)", v, ok, tc.want, tc.wantPresent)
+				}
+			})
+		}
+	}
+	if _, ok := lbAccessLogs(nil); ok {
+		t.Fatal("nil options must not report a value")
+	}
+}
+
 // TestPoolHealthCheckTls pins the tri-state reading of the health-check TLS
 // flags: a pool without an HTTP health check, or one whose check omits the
 // tls block, must read null on both rather than a false that asserts the
