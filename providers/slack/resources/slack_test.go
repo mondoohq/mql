@@ -4,6 +4,8 @@
 package resources
 
 import (
+	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -125,5 +127,65 @@ func TestNewTopicAndPurpose(t *testing.T) {
 	}
 	if purpose.LastSet == nil || !purpose.LastSet.Equal(want) {
 		t.Errorf("purpose.LastSet = %v, want %v", purpose.LastSet, want)
+	}
+}
+
+func TestWalkCursor(t *testing.T) {
+	t.Run("follows cursors through empty pages until the cursor is empty", func(t *testing.T) {
+		// Synthetic: admin.slackbot.skills.list documents empty pages that
+		// still carry a cursor.
+		next := map[string]string{"": "c1", "c1": "c2", "c2": ""}
+		var got []string
+		err := walkCursor(func(cursor string) (string, error) {
+			got = append(got, cursor)
+			return next[cursor], nil
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if want := []string{"", "c1", "c2"}; !slices.Equal(got, want) {
+			t.Errorf("cursors = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("stops on a repeated cursor", func(t *testing.T) {
+		// Synthetic: a server that keeps returning the same cursor.
+		calls := 0
+		err := walkCursor(func(cursor string) (string, error) {
+			calls++
+			return "stuck", nil
+		})
+		if err == nil {
+			t.Fatal("expected an error for a repeated cursor")
+		}
+		if calls != 2 {
+			t.Errorf("calls = %d, want 2", calls)
+		}
+	})
+
+	t.Run("returns the page error", func(t *testing.T) {
+		// Synthetic: the second page fails.
+		pageErr := errors.New("page failed")
+		err := walkCursor(func(cursor string) (string, error) {
+			if cursor == "c1" {
+				return "", pageErr
+			}
+			return "c1", nil
+		})
+		if !errors.Is(err, pageErr) {
+			t.Errorf("err = %v, want %v", err, pageErr)
+		}
+	})
+}
+
+func TestUnixTimeData(t *testing.T) {
+	// Synthetic: 0 is what an absent date_* field decodes to.
+	if got := unixTimeData(0); got.Value != nil {
+		t.Errorf("unixTimeData(0) = %v, want null", got.Value)
+	}
+	got := unixTimeData(1700000000)
+	ts, ok := got.Value.(*time.Time)
+	if !ok || !ts.Equal(time.Unix(1700000000, 0)) {
+		t.Errorf("unixTimeData(1700000000) = %v, want %v", got.Value, time.Unix(1700000000, 0))
 	}
 }
