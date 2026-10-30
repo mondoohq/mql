@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1078,6 +1079,7 @@ func (a *mqlAwsBedrockAgentCoreRuntime) endpoints() ([]any, error) {
 			if err != nil {
 				return nil, err
 			}
+			mqlEp.(*mqlAwsBedrockAgentCoreRuntimeEndpoint).parent = a
 			res = append(res, mqlEp)
 		}
 	}
@@ -1086,6 +1088,350 @@ func (a *mqlAwsBedrockAgentCoreRuntime) endpoints() ([]any, error) {
 
 func (a *mqlAwsBedrockAgentCoreRuntimeEndpoint) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+func (a *mqlAwsBedrockAgentCoreRuntimeEndpoint) agentRuntime() (*mqlAwsBedrockAgentCoreRuntime, error) {
+	if a.parent == nil {
+		a.AgentRuntime.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return a.parent, nil
+}
+
+func (a *mqlAwsBedrockAgentCoreRuntime) environmentVariableNames() ([]any, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	if detail == nil {
+		return []any{}, nil
+	}
+	return agentRuntimeEnvironmentVariableNames(detail.EnvironmentVariables), nil
+}
+
+// agentRuntimeEnvironmentVariableNames returns the sorted variable names and
+// drops the values, which may hold plaintext secrets.
+func agentRuntimeEnvironmentVariableNames(env map[string]string) []any {
+	names := make([]string, 0, len(env))
+	for k := range env {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	res := make([]any, len(names))
+	for i, n := range names {
+		res[i] = n
+	}
+	return res
+}
+
+func (a *mqlAwsBedrockAgentCoreRuntime) createdAt() (*time.Time, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	if detail == nil || detail.CreatedAt == nil {
+		a.CreatedAt.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return detail.CreatedAt, nil
+}
+
+func (a *mqlAwsBedrockAgentCoreRuntime) failureReason() (string, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return "", err
+	}
+	if detail == nil || detail.FailureReason == nil || *detail.FailureReason == "" {
+		a.FailureReason.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *detail.FailureReason, nil
+}
+
+// agentRuntimePortRange is one entry of a runtime's allowed ports. A single
+// port is reported as a range whose bounds are equal.
+type agentRuntimePortRange struct {
+	from int64
+	to   int64
+}
+
+// agentRuntimeAllowedPortRanges flattens the port / port-range union into
+// inclusive ranges. Ranges missing a bound and union members this SDK version
+// does not model are skipped.
+func agentRuntimeAllowedPortRanges(ports []bacctypes.AllowedPort) []agentRuntimePortRange {
+	res := []agentRuntimePortRange{}
+	for _, p := range ports {
+		switch v := p.(type) {
+		case *bacctypes.AllowedPortMemberPort:
+			res = append(res, agentRuntimePortRange{from: int64(v.Value), to: int64(v.Value)})
+		case *bacctypes.AllowedPortMemberPortRange:
+			if v.Value.From == nil || v.Value.To == nil {
+				continue
+			}
+			res = append(res, agentRuntimePortRange{from: int64(*v.Value.From), to: int64(*v.Value.To)})
+		}
+	}
+	return res
+}
+
+func (a *mqlAwsBedrockAgentCoreRuntime) allowedPorts() ([]any, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	if detail == nil {
+		return []any{}, nil
+	}
+	res := []any{}
+	for _, pr := range agentRuntimeAllowedPortRanges(detail.AllowedPorts) {
+		mqlPort, err := CreateResource(a.MqlRuntime, ResourceAwsBedrockAgentCoreRuntimeAllowedPort, map[string]*llx.RawData{
+			"__id":     llx.StringData(fmt.Sprintf("%s/allowedPorts/%d-%d", a.Arn.Data, pr.from, pr.to)),
+			"fromPort": llx.IntData(pr.from),
+			"toPort":   llx.IntData(pr.to),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlPort)
+	}
+	return res, nil
+}
+
+func (a *mqlAwsBedrockAgentCoreRuntime) protocolConfig() (*bacctypes.ProtocolConfiguration, error) {
+	detail, err := a.fetchDetail()
+	if err != nil || detail == nil {
+		return nil, err
+	}
+	return detail.ProtocolConfiguration, nil
+}
+
+func (a *mqlAwsBedrockAgentCoreRuntime) serverProtocol() (string, error) {
+	pc, err := a.protocolConfig()
+	if err != nil {
+		return "", err
+	}
+	if pc == nil || pc.ServerProtocol == "" {
+		a.ServerProtocol.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return string(pc.ServerProtocol), nil
+}
+
+func (a *mqlAwsBedrockAgentCoreRuntime) protocolPort() (int64, error) {
+	pc, err := a.protocolConfig()
+	if err != nil {
+		return 0, err
+	}
+	if pc == nil || pc.Port == nil {
+		a.ProtocolPort.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return int64(*pc.Port), nil
+}
+
+func (a *mqlAwsBedrockAgentCoreRuntime) protocolPath() (string, error) {
+	pc, err := a.protocolConfig()
+	if err != nil {
+		return "", err
+	}
+	if pc == nil || pc.Path == nil || *pc.Path == "" {
+		a.ProtocolPath.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *pc.Path, nil
+}
+
+func (a *mqlAwsBedrockAgentCoreRuntime) idleSessionTimeout() (int64, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return 0, err
+	}
+	if detail == nil || detail.LifecycleConfiguration == nil || detail.LifecycleConfiguration.IdleRuntimeSessionTimeout == nil {
+		a.IdleSessionTimeout.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return int64(*detail.LifecycleConfiguration.IdleRuntimeSessionTimeout), nil
+}
+
+func (a *mqlAwsBedrockAgentCoreRuntime) maxLifetime() (int64, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return 0, err
+	}
+	if detail == nil || detail.LifecycleConfiguration == nil || detail.LifecycleConfiguration.MaxLifetime == nil {
+		a.MaxLifetime.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return int64(*detail.LifecycleConfiguration.MaxLifetime), nil
+}
+
+// agentRuntimeArtifactInfo is the container-or-code-package union of a
+// runtime's artifact. Members that do not apply stay nil.
+type agentRuntimeArtifactInfo struct {
+	containerUri   *string
+	codeRuntime    *string
+	codeEntryPoint []string
+	codeBucket     *string
+	codeS3Prefix   *string
+}
+
+func agentRuntimeArtifactOf(artifact bacctypes.AgentRuntimeArtifact) agentRuntimeArtifactInfo {
+	info := agentRuntimeArtifactInfo{}
+	switch v := artifact.(type) {
+	case *bacctypes.AgentRuntimeArtifactMemberContainerConfiguration:
+		if v.Value.ContainerUri != nil && *v.Value.ContainerUri != "" {
+			info.containerUri = v.Value.ContainerUri
+		}
+	case *bacctypes.AgentRuntimeArtifactMemberCodeConfiguration:
+		if v.Value.Runtime != "" {
+			rt := string(v.Value.Runtime)
+			info.codeRuntime = &rt
+		}
+		info.codeEntryPoint = v.Value.EntryPoint
+		if s3, ok := v.Value.Code.(*bacctypes.CodeMemberS3); ok {
+			if s3.Value.Bucket != nil && *s3.Value.Bucket != "" {
+				info.codeBucket = s3.Value.Bucket
+			}
+			if s3.Value.Prefix != nil && *s3.Value.Prefix != "" {
+				info.codeS3Prefix = s3.Value.Prefix
+			}
+		}
+	}
+	return info
+}
+
+func (a *mqlAwsBedrockAgentCoreRuntime) artifact() (agentRuntimeArtifactInfo, error) {
+	detail, err := a.fetchDetail()
+	if err != nil || detail == nil {
+		return agentRuntimeArtifactInfo{}, err
+	}
+	return agentRuntimeArtifactOf(detail.AgentRuntimeArtifact), nil
+}
+
+func (a *mqlAwsBedrockAgentCoreRuntime) containerUri() (string, error) {
+	info, err := a.artifact()
+	if err != nil {
+		return "", err
+	}
+	if info.containerUri == nil {
+		a.ContainerUri.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *info.containerUri, nil
+}
+
+func (a *mqlAwsBedrockAgentCoreRuntime) codeRuntime() (string, error) {
+	info, err := a.artifact()
+	if err != nil {
+		return "", err
+	}
+	if info.codeRuntime == nil {
+		a.CodeRuntime.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *info.codeRuntime, nil
+}
+
+func (a *mqlAwsBedrockAgentCoreRuntime) codeEntryPoint() ([]any, error) {
+	info, err := a.artifact()
+	if err != nil {
+		return nil, err
+	}
+	return convert.SliceAnyToInterface(info.codeEntryPoint), nil
+}
+
+func (a *mqlAwsBedrockAgentCoreRuntime) codeBucket() (*mqlAwsS3Bucket, error) {
+	info, err := a.artifact()
+	if err != nil {
+		return nil, err
+	}
+	if info.codeBucket == nil {
+		a.CodeBucket.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, ResourceAwsS3Bucket, map[string]*llx.RawData{
+		"name": llx.StringDataPtr(info.codeBucket),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsS3Bucket), nil
+}
+
+func (a *mqlAwsBedrockAgentCoreRuntime) codeS3Prefix() (string, error) {
+	info, err := a.artifact()
+	if err != nil {
+		return "", err
+	}
+	if info.codeS3Prefix == nil {
+		a.CodeS3Prefix.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *info.codeS3Prefix, nil
+}
+
+func (a *mqlAwsBedrockAgentCoreRuntime) requiresMmdsV2() (bool, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return false, err
+	}
+	if detail == nil || detail.MetadataConfiguration == nil || detail.MetadataConfiguration.RequireMMDSV2 == nil {
+		a.RequiresMmdsV2.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return *detail.MetadataConfiguration.RequireMMDSV2, nil
+}
+
+func (a *mqlAwsBedrockAgentCoreRuntime) workloadIdentity() (*mqlAwsBedrockAgentCoreWorkloadIdentity, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	if detail == nil || detail.WorkloadIdentityDetails == nil || detail.WorkloadIdentityDetails.WorkloadIdentityArn == nil || *detail.WorkloadIdentityDetails.WorkloadIdentityArn == "" {
+		a.WorkloadIdentity.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "aws.bedrock.agentCore.workloadIdentity",
+		map[string]*llx.RawData{"arn": llx.StringDataPtr(detail.WorkloadIdentityDetails.WorkloadIdentityArn)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsBedrockAgentCoreWorkloadIdentity), nil
+}
+
+func (a *mqlAwsBedrockAgentCoreRuntime) versions() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.BedrockAgentCoreControl(a.cacheRegion)
+	ctx := context.Background()
+	runtimeId := a.Id.Data
+	res := []any{}
+	paginator := bedrockagentcorecontrol.NewListAgentRuntimeVersionsPaginator(svc, &bedrockagentcorecontrol.ListAgentRuntimeVersionsInput{
+		AgentRuntimeId: &runtimeId,
+	})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				return nil, llx.Forbidden(err, llx.WithPermissions("bedrock-agentcore:ListAgentRuntimeVersions"))
+			}
+			return nil, err
+		}
+		for _, v := range page.AgentRuntimes {
+			version := convert.ToValue(v.AgentRuntimeVersion)
+			mqlV, err := CreateResource(a.MqlRuntime, ResourceAwsBedrockAgentCoreRuntimeVersion, map[string]*llx.RawData{
+				"__id":        llx.StringData(a.Arn.Data + "/versions/" + version),
+				"version":     llx.StringData(version),
+				"status":      llx.StringData(string(v.Status)),
+				"description": llx.StringDataPtr(v.Description),
+				"updatedAt":   llx.TimeDataPtr(v.LastUpdatedAt),
+			})
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, mqlV)
+		}
+	}
+	return res, nil
 }
 
 // --- Memory ---
@@ -1665,6 +2011,8 @@ func (a *mqlAwsBedrockAgentCoreWorkloadIdentity) id() (string, error) {
 type mqlAwsBedrockAgentCoreRuntimeEndpointInternal struct {
 	lazyTags
 	agentCorePolicyCache
+	// parent is the runtime whose endpoints() listed this endpoint.
+	parent *mqlAwsBedrockAgentCoreRuntime
 }
 
 type mqlAwsBedrockAgentCoreOauth2CredentialProviderInternal struct {

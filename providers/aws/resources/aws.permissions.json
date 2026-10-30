@@ -1,7 +1,7 @@
 {
   "provider": "aws",
-  "version": "14.5.5",
-  "generated_at": "2026-10-28T11:54:23-07:00",
+  "version": "14.6.1",
+  "generated_at": "2026-10-30T14:59:48-07:00",
   "permissions": [
     "access-analyzer:GetFinding",
     "access-analyzer:ListAnalyzers",
@@ -113,6 +113,7 @@
     "bedrock-agentcore:GetPaymentManager",
     "bedrock-agentcore:GetResourcePolicy",
     "bedrock-agentcore:ListAgentRuntimeEndpoints",
+    "bedrock-agentcore:ListAgentRuntimeVersions",
     "bedrock-agentcore:ListAgentRuntimes",
     "bedrock-agentcore:ListApiKeyCredentialProviders",
     "bedrock-agentcore:ListBrowsers",
@@ -1803,6 +1804,12 @@
       "permission": "bedrock-agentcore:ListAgentRuntimeEndpoints",
       "service": "bedrock-agentcore",
       "action": "ListAgentRuntimeEndpoints",
+      "source_file": "aws_bedrock_agentcore.go"
+    },
+    {
+      "permission": "bedrock-agentcore:ListAgentRuntimeVersions",
+      "service": "bedrock-agentcore",
+      "action": "ListAgentRuntimeVersions",
       "source_file": "aws_bedrock_agentcore.go"
     },
     {
