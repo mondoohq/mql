@@ -21860,6 +21860,42 @@ private aws.ec2.image @defaults("ownerAlias id name") {
   // Null unless the image has at least one informational finding with a fix
   // available.
   inspectorInformationalFixAvailableSince time
+  // Amazon Inspector vulnerability findings for the image
+  //
+  // Each finding carries its title, severity, Amazon Inspector score, whether a
+  // fix is available, and the affected file paths. Empty when Amazon Inspector
+  // has not scanned the image or found nothing. For example,
+  // `aws.ec2.images.all(inspectorFindings.none(severity == "critical" && fixAvailable))`
+  // flags images that carry a fixable critical vulnerability.
+  inspectorFindings() []aws.ec2.image.inspectorFinding
+}
+
+// Amazon Inspector vulnerability finding for an Amazon EC2 image
+private aws.ec2.image.inspectorFinding @defaults("title severity") {
+  // Title of the finding
+  title string
+  // Severity of the finding
+  //
+  // One of informational, low, medium, high, or critical, derived from the
+  // CVSS score.
+  severity string
+  // Amazon Inspector score for the finding
+  score float
+  // Whether Amazon Inspector reports a full or partial fix for the finding
+  fixAvailable bool
+  // File paths in the image affected by the finding (at most 10)
+  paths []string
+  // ID of the image's EBS snapshot in which the finding was detected
+  //
+  // Kept beside snapshot because the snapshot of a shared or public image
+  // usually belongs to another account and cannot be resolved.
+  snapshotId string
+  // EBS snapshot in which the finding was detected, when it is visible to this account
+  snapshot() aws.ec2.snapshot
+  // Date Amazon Inspector first observed the finding
+  firstObservedAt time
+  // Date Amazon Inspector last updated the finding
+  updatedAt time
 }
 
 // Amazon EC2 image provenance watermark

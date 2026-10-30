@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"maps"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -69,6 +70,59 @@ func imageScanResultArgs(sr *ec2types.ScanResults) map[string]*llx.RawData {
 		"inspectorLowFixAvailableSince":           llx.TimeDataPtr(sr.LowFixAvailableSince),
 		"inspectorInformationalFixAvailableSince": llx.TimeDataPtr(sr.InformationalFixAvailableSince),
 	}
+}
+
+// imageFindingId identifies an Amazon Inspector finding of an AMI. A finding
+// carries no id of its own, so the key is built from what distinguishes two
+// findings of one image: the snapshot it was detected in, its title, and the
+// affected paths (sorted, since the API does not promise an order). The
+// caller disambiguates exact repeats.
+func imageFindingId(imageKey string, f ec2types.ImageFinding) string {
+	paths := slices.Clone(f.Paths)
+	sort.Strings(paths)
+	return imageKey + "/inspectorFinding/" + convert.ToValue(f.SnapshotId) + "|" +
+		convert.ToValue(f.Title) + "|" + strings.Join(paths, ",")
+}
+
+// imageFindingArgs maps one Amazon Inspector finding of an AMI. Absent values
+// stay null rather than reading as a zero score or a missing fix.
+func imageFindingArgs(id string, f ec2types.ImageFinding) map[string]*llx.RawData {
+	severity := llx.NilData
+	if f.SeverityLabel != "" {
+		severity = llx.StringData(string(f.SeverityLabel))
+	}
+	paths := make([]any, 0, len(f.Paths))
+	for _, p := range f.Paths {
+		paths = append(paths, p)
+	}
+	return map[string]*llx.RawData{
+		"__id":            llx.StringData(id),
+		"title":           llx.StringDataPtr(f.Title),
+		"severity":        severity,
+		"score":           llx.FloatDataPtr(f.Score),
+		"fixAvailable":    llx.BoolDataPtr(f.FixAvailable),
+		"paths":           llx.ArrayData(paths, types.String),
+		"snapshotId":      llx.StringDataPtr(f.SnapshotId),
+		"firstObservedAt": llx.TimeDataPtr(f.FirstObservedAt),
+		"updatedAt":       llx.TimeDataPtr(f.UpdatedAt),
+	}
+}
+
+// imageFindingsArgs maps every finding of an AMI and keeps their ids distinct:
+// an exact repeat of an earlier finding gets a counter suffix instead of
+// being collapsed onto the first one by the resource cache.
+func imageFindingsArgs(imageKey string, findings []ec2types.ImageFinding) []map[string]*llx.RawData {
+	seen := make(map[string]int, len(findings))
+	res := make([]map[string]*llx.RawData, 0, len(findings))
+	for _, f := range findings {
+		id := imageFindingId(imageKey, f)
+		seen[id]++
+		if n := seen[id]; n > 1 {
+			id = fmt.Sprintf("%s#%d", id, n)
+		}
+		res = append(res, imageFindingArgs(id, f))
+	}
+	return res
 }
 
 func (e *mqlAwsEc2) id() (string, error) {
@@ -2032,6 +2086,89 @@ func (i *mqlAwsEc2Image) launchPermissions() ([]any, error) {
 	return permissions, nil
 }
 
+type mqlAwsEc2ImageInspectorFindingInternal struct {
+	cacheRegion  string
+	cacheOwnerId string
+}
+
+// inspectorFindings lists the Amazon Inspector findings of the AMI. An image
+// Inspector has not scanned has no findings, and GetImageFindings answers an
+// empty list for it, so the call is skipped.
+func (i *mqlAwsEc2Image) inspectorFindings() ([]any, error) {
+	if i.InspectorScannedAt.Data == nil {
+		return []any{}, nil
+	}
+	conn := i.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.Ec2(i.Region.Data)
+	ctx := context.Background()
+
+	var findings []ec2types.ImageFinding
+	paginator := ec2.NewGetImageFindingsPaginator(svc, &ec2.GetImageFindingsInput{
+		ImageId: aws.String(i.Id.Data),
+	})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if !plugin.StructuredErrors() {
+					return nil, nil
+				}
+				return nil, llx.Forbidden(err, llx.WithPermissions("ec2:GetImageFindings"))
+			}
+			return nil, err
+		}
+		findings = append(findings, page.ImageFindings...)
+	}
+
+	imageKey := i.Region.Data + "/" + i.Id.Data
+	res := make([]any, 0, len(findings))
+	for _, args := range imageFindingsArgs(imageKey, findings) {
+		mqlFinding, err := CreateResource(i.MqlRuntime, ResourceAwsEc2ImageInspectorFinding, args)
+		if err != nil {
+			return nil, err
+		}
+		f := mqlFinding.(*mqlAwsEc2ImageInspectorFinding)
+		f.cacheRegion = i.Region.Data
+		f.cacheOwnerId = i.OwnerId.Data
+		res = append(res, f)
+	}
+	return res, nil
+}
+
+// snapshot resolves the EBS snapshot the finding was detected in. The snapshot
+// of a shared or public AMI belongs to the image owner and is usually not
+// visible to this account; the reference is then null and snapshotId still
+// names it.
+func (a *mqlAwsEc2ImageInspectorFinding) snapshot() (*mqlAwsEc2Snapshot, error) {
+	if a.SnapshotId.Data == "" || a.cacheRegion == "" {
+		a.Snapshot.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	ownerId := a.cacheOwnerId
+	if ownerId == "" {
+		ownerId = a.MqlRuntime.Connection.(*connection.AwsConnection).AccountId()
+	}
+	mqlSnap, err := NewResource(a.MqlRuntime, ResourceAwsEc2Snapshot, map[string]*llx.RawData{
+		"arn": llx.StringData(fmt.Sprintf(snapshotArnPattern, a.cacheRegion, ownerId, a.SnapshotId.Data)),
+	})
+	if err != nil {
+		if isSnapshotNotVisible(err) {
+			a.Snapshot.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		return nil, err
+	}
+	return mqlSnap.(*mqlAwsEc2Snapshot), nil
+}
+
+// isSnapshotNotVisible reports whether resolving a snapshot failed because
+// this account cannot see it: EC2 answers InvalidSnapshot.NotFound for a
+// snapshot that does not exist or is owned by another account and not shared.
+func isSnapshotNotVisible(err error) bool {
+	var ae smithy.APIError
+	return errors.As(err, &ae) && ae.ErrorCode() == "InvalidSnapshot.NotFound"
+}
+
 func (a *mqlAwsEc2ImageEbsBlockDevice) kmsKey() (*mqlAwsKmsKey, error) {
 	if a.cacheKmsKeyId == "" {
 		a.KmsKey.State = plugin.StateIsNull | plugin.StateIsSet
@@ -3004,7 +3141,13 @@ func initAwsEc2Snapshot(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 				return nil, nil, err
 			}
 			if len(resp.Snapshots) > 0 {
-				mqlSnap, err := buildSnapshotResource(runtime, parsed.Region, conn.AccountId(), resp.Snapshots[0])
+				// A public or shared snapshot belongs to another account, and
+				// its arn names the owner.
+				ownerId := convert.ToValue(resp.Snapshots[0].OwnerId)
+				if ownerId == "" {
+					ownerId = conn.AccountId()
+				}
+				mqlSnap, err := buildSnapshotResource(runtime, parsed.Region, ownerId, resp.Snapshots[0])
 				if err != nil {
 					return nil, nil, err
 				}
