@@ -1458,6 +1458,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gitlab.project.autoDuoCodeReviewEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGitlabProject).GetAutoDuoCodeReviewEnabled()).ToDataRes(types.Bool)
 	},
+	"gitlab.project.duoSastFalsePositiveDetectionEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabProject).GetDuoSastFalsePositiveDetectionEnabled()).ToDataRes(types.Bool)
+	},
+	"gitlab.project.duoSastVulnerabilityResolutionEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabProject).GetDuoSastVulnerabilityResolutionEnabled()).ToDataRes(types.Bool)
+	},
+	"gitlab.project.duoSecretDetectionFalsePositiveDetectionEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabProject).GetDuoSecretDetectionFalsePositiveDetectionEnabled()).ToDataRes(types.Bool)
+	},
 	"gitlab.project.modelExperimentsAccessLevel": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGitlabProject).GetModelExperimentsAccessLevel()).ToDataRes(types.String)
 	},
@@ -2447,6 +2456,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gitlab.project.pipeline.coverage": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGitlabProjectPipeline).GetCoverage()).ToDataRes(types.String)
+	},
+	"gitlab.project.pipeline.archived": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabProjectPipeline).GetArchived()).ToDataRes(types.Bool)
 	},
 	"gitlab.project.runner.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGitlabProjectRunner).GetId()).ToDataRes(types.Int)
@@ -4825,6 +4837,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGitlabProject).AutoDuoCodeReviewEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"gitlab.project.duoSastFalsePositiveDetectionEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabProject).DuoSastFalsePositiveDetectionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gitlab.project.duoSastVulnerabilityResolutionEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabProject).DuoSastVulnerabilityResolutionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gitlab.project.duoSecretDetectionFalsePositiveDetectionEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabProject).DuoSecretDetectionFalsePositiveDetectionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"gitlab.project.modelExperimentsAccessLevel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGitlabProject).ModelExperimentsAccessLevel, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -6231,6 +6255,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gitlab.project.pipeline.coverage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGitlabProjectPipeline).Coverage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gitlab.project.pipeline.archived": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabProjectPipeline).Archived, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"gitlab.project.runner.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -10301,97 +10329,100 @@ type mqlGitlabProject struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlGitlabProjectInternal
-	Id                                        plugin.TValue[int64]
-	Name                                      plugin.TValue[string]
-	FullName                                  plugin.TValue[string]
-	Path                                      plugin.TValue[string]
-	FullPath                                  plugin.TValue[string]
-	CreatedAt                                 plugin.TValue[*time.Time]
-	Description                               plugin.TValue[string]
-	DefaultBranch                             plugin.TValue[string]
-	Visibility                                plugin.TValue[string]
-	Archived                                  plugin.TValue[bool]
-	Mirror                                    plugin.TValue[bool]
-	WebURL                                    plugin.TValue[string]
-	EmailsEnabled                             plugin.TValue[bool]
-	AllowMergeOnSkippedPipeline               plugin.TValue[bool]
-	OnlyAllowMergeIfPipelineSucceeds          plugin.TValue[bool]
-	OnlyAllowMergeIfAllDiscussionsAreResolved plugin.TValue[bool]
-	IssuesAccessLevel                         plugin.TValue[string]
-	MergeRequestsAccessLevel                  plugin.TValue[string]
-	WikiAccessLevel                           plugin.TValue[string]
-	SnippetsAccessLevel                       plugin.TValue[string]
-	ContainerRegistryAccessLevel              plugin.TValue[string]
-	ServiceDeskEnabled                        plugin.TValue[bool]
-	PackagesEnabled                           plugin.TValue[bool]
-	AutoDevopsEnabled                         plugin.TValue[bool]
-	RequirementsEnabled                       plugin.TValue[bool]
-	RepositoryAccessLevel                     plugin.TValue[string]
-	ForkingAccessLevel                        plugin.TValue[string]
-	SecurityAndComplianceEnabled              plugin.TValue[bool]
-	SecurityAndComplianceAccessLevel          plugin.TValue[string]
-	CiJobTokenScopeEnabled                    plugin.TValue[bool]
-	CiIdTokenSubClaimComponents               plugin.TValue[[]any]
-	CiAllowForkPipelinesToRunInParentProject  plugin.TValue[bool]
-	PublicJobs                                plugin.TValue[bool]
-	PreReceiveSecretDetectionEnabled          plugin.TValue[bool]
-	ComplianceFrameworks                      plugin.TValue[[]any]
-	SharedWithGroups                          plugin.TValue[[]any]
-	MirrorTriggerBuilds                       plugin.TValue[bool]
-	OnlyMirrorProtectedBranches               plugin.TValue[bool]
-	AutoDuoCodeReviewEnabled                  plugin.TValue[bool]
-	ModelExperimentsAccessLevel               plugin.TValue[string]
-	ModelRegistryAccessLevel                  plugin.TValue[string]
-	ApprovalRules                             plugin.TValue[[]any]
-	MergeMethod                               plugin.TValue[string]
-	ApprovalSettings                          plugin.TValue[*mqlGitlabProjectApprovalSetting]
-	ProtectedBranches                         plugin.TValue[[]any]
-	ProjectMembers                            plugin.TValue[[]any]
-	ProjectFiles                              plugin.TValue[[]any]
-	Webhooks                                  plugin.TValue[[]any]
-	BuildsAccessLevel                         plugin.TValue[string]
-	EmptyRepo                                 plugin.TValue[bool]
-	SharedRunnersEnabled                      plugin.TValue[bool]
-	GroupRunnersEnabled                       plugin.TValue[bool]
-	RemoveSourceBranchAfterMerge              plugin.TValue[bool]
-	LfsEnabled                                plugin.TValue[bool]
-	AutocloseReferencedIssues                 plugin.TValue[bool]
-	ForksCount                                plugin.TValue[int64]
-	StarCount                                 plugin.TValue[int64]
-	LastActivityAt                            plugin.TValue[*time.Time]
-	MergeRequests                             plugin.TValue[[]any]
-	Issues                                    plugin.TValue[[]any]
-	Releases                                  plugin.TValue[[]any]
-	Variables                                 plugin.TValue[[]any]
-	Milestones                                plugin.TValue[[]any]
-	Labels                                    plugin.TValue[[]any]
-	Pipelines                                 plugin.TValue[[]any]
-	Runners                                   plugin.TValue[[]any]
-	PushRules                                 plugin.TValue[*mqlGitlabProjectPushRule]
-	AccessTokens                              plugin.TValue[[]any]
-	DeployKeys                                plugin.TValue[[]any]
-	DeployTokens                              plugin.TValue[[]any]
-	SecuritySettings                          plugin.TValue[*mqlGitlabProjectSecuritySetting]
-	Codeowners                                plugin.TValue[*mqlGitlabProjectCodeowners]
-	Vulnerabilities                           plugin.TValue[[]any]
-	VulnerabilityCountsBySeverity             plugin.TValue[map[string]any]
-	ContainerRegistryRepositories             plugin.TValue[[]any]
-	ContainerExpirationPolicy                 plugin.TValue[*mqlGitlabProjectContainerExpirationPolicy]
-	ContainerRegistryProtectionRules          plugin.TValue[[]any]
-	Packages                                  plugin.TValue[[]any]
-	PackageProtectionRules                    plugin.TValue[[]any]
-	AuditEvents                               plugin.TValue[[]any]
-	JobTokenScope                             plugin.TValue[*mqlGitlabProjectJobTokenScope]
-	ProtectedTags                             plugin.TValue[[]any]
-	Integrations                              plugin.TValue[[]any]
-	ProtectedEnvironments                     plugin.TValue[[]any]
-	ForkedFromProject                         plugin.TValue[*mqlGitlabProject]
-	PipelineTriggers                          plugin.TValue[[]any]
-	PipelineSchedules                         plugin.TValue[[]any]
-	SecureFiles                               plugin.TValue[[]any]
-	ClusterAgents                             plugin.TValue[[]any]
-	RemoteMirrors                             plugin.TValue[[]any]
-	AccessRequests                            plugin.TValue[[]any]
+	Id                                              plugin.TValue[int64]
+	Name                                            plugin.TValue[string]
+	FullName                                        plugin.TValue[string]
+	Path                                            plugin.TValue[string]
+	FullPath                                        plugin.TValue[string]
+	CreatedAt                                       plugin.TValue[*time.Time]
+	Description                                     plugin.TValue[string]
+	DefaultBranch                                   plugin.TValue[string]
+	Visibility                                      plugin.TValue[string]
+	Archived                                        plugin.TValue[bool]
+	Mirror                                          plugin.TValue[bool]
+	WebURL                                          plugin.TValue[string]
+	EmailsEnabled                                   plugin.TValue[bool]
+	AllowMergeOnSkippedPipeline                     plugin.TValue[bool]
+	OnlyAllowMergeIfPipelineSucceeds                plugin.TValue[bool]
+	OnlyAllowMergeIfAllDiscussionsAreResolved       plugin.TValue[bool]
+	IssuesAccessLevel                               plugin.TValue[string]
+	MergeRequestsAccessLevel                        plugin.TValue[string]
+	WikiAccessLevel                                 plugin.TValue[string]
+	SnippetsAccessLevel                             plugin.TValue[string]
+	ContainerRegistryAccessLevel                    plugin.TValue[string]
+	ServiceDeskEnabled                              plugin.TValue[bool]
+	PackagesEnabled                                 plugin.TValue[bool]
+	AutoDevopsEnabled                               plugin.TValue[bool]
+	RequirementsEnabled                             plugin.TValue[bool]
+	RepositoryAccessLevel                           plugin.TValue[string]
+	ForkingAccessLevel                              plugin.TValue[string]
+	SecurityAndComplianceEnabled                    plugin.TValue[bool]
+	SecurityAndComplianceAccessLevel                plugin.TValue[string]
+	CiJobTokenScopeEnabled                          plugin.TValue[bool]
+	CiIdTokenSubClaimComponents                     plugin.TValue[[]any]
+	CiAllowForkPipelinesToRunInParentProject        plugin.TValue[bool]
+	PublicJobs                                      plugin.TValue[bool]
+	PreReceiveSecretDetectionEnabled                plugin.TValue[bool]
+	ComplianceFrameworks                            plugin.TValue[[]any]
+	SharedWithGroups                                plugin.TValue[[]any]
+	MirrorTriggerBuilds                             plugin.TValue[bool]
+	OnlyMirrorProtectedBranches                     plugin.TValue[bool]
+	AutoDuoCodeReviewEnabled                        plugin.TValue[bool]
+	DuoSastFalsePositiveDetectionEnabled            plugin.TValue[bool]
+	DuoSastVulnerabilityResolutionEnabled           plugin.TValue[bool]
+	DuoSecretDetectionFalsePositiveDetectionEnabled plugin.TValue[bool]
+	ModelExperimentsAccessLevel                     plugin.TValue[string]
+	ModelRegistryAccessLevel                        plugin.TValue[string]
+	ApprovalRules                                   plugin.TValue[[]any]
+	MergeMethod                                     plugin.TValue[string]
+	ApprovalSettings                                plugin.TValue[*mqlGitlabProjectApprovalSetting]
+	ProtectedBranches                               plugin.TValue[[]any]
+	ProjectMembers                                  plugin.TValue[[]any]
+	ProjectFiles                                    plugin.TValue[[]any]
+	Webhooks                                        plugin.TValue[[]any]
+	BuildsAccessLevel                               plugin.TValue[string]
+	EmptyRepo                                       plugin.TValue[bool]
+	SharedRunnersEnabled                            plugin.TValue[bool]
+	GroupRunnersEnabled                             plugin.TValue[bool]
+	RemoveSourceBranchAfterMerge                    plugin.TValue[bool]
+	LfsEnabled                                      plugin.TValue[bool]
+	AutocloseReferencedIssues                       plugin.TValue[bool]
+	ForksCount                                      plugin.TValue[int64]
+	StarCount                                       plugin.TValue[int64]
+	LastActivityAt                                  plugin.TValue[*time.Time]
+	MergeRequests                                   plugin.TValue[[]any]
+	Issues                                          plugin.TValue[[]any]
+	Releases                                        plugin.TValue[[]any]
+	Variables                                       plugin.TValue[[]any]
+	Milestones                                      plugin.TValue[[]any]
+	Labels                                          plugin.TValue[[]any]
+	Pipelines                                       plugin.TValue[[]any]
+	Runners                                         plugin.TValue[[]any]
+	PushRules                                       plugin.TValue[*mqlGitlabProjectPushRule]
+	AccessTokens                                    plugin.TValue[[]any]
+	DeployKeys                                      plugin.TValue[[]any]
+	DeployTokens                                    plugin.TValue[[]any]
+	SecuritySettings                                plugin.TValue[*mqlGitlabProjectSecuritySetting]
+	Codeowners                                      plugin.TValue[*mqlGitlabProjectCodeowners]
+	Vulnerabilities                                 plugin.TValue[[]any]
+	VulnerabilityCountsBySeverity                   plugin.TValue[map[string]any]
+	ContainerRegistryRepositories                   plugin.TValue[[]any]
+	ContainerExpirationPolicy                       plugin.TValue[*mqlGitlabProjectContainerExpirationPolicy]
+	ContainerRegistryProtectionRules                plugin.TValue[[]any]
+	Packages                                        plugin.TValue[[]any]
+	PackageProtectionRules                          plugin.TValue[[]any]
+	AuditEvents                                     plugin.TValue[[]any]
+	JobTokenScope                                   plugin.TValue[*mqlGitlabProjectJobTokenScope]
+	ProtectedTags                                   plugin.TValue[[]any]
+	Integrations                                    plugin.TValue[[]any]
+	ProtectedEnvironments                           plugin.TValue[[]any]
+	ForkedFromProject                               plugin.TValue[*mqlGitlabProject]
+	PipelineTriggers                                plugin.TValue[[]any]
+	PipelineSchedules                               plugin.TValue[[]any]
+	SecureFiles                                     plugin.TValue[[]any]
+	ClusterAgents                                   plugin.TValue[[]any]
+	RemoteMirrors                                   plugin.TValue[[]any]
+	AccessRequests                                  plugin.TValue[[]any]
 }
 
 // createGitlabProject creates a new instance of this resource
@@ -10589,6 +10620,18 @@ func (c *mqlGitlabProject) GetOnlyMirrorProtectedBranches() *plugin.TValue[bool]
 
 func (c *mqlGitlabProject) GetAutoDuoCodeReviewEnabled() *plugin.TValue[bool] {
 	return &c.AutoDuoCodeReviewEnabled
+}
+
+func (c *mqlGitlabProject) GetDuoSastFalsePositiveDetectionEnabled() *plugin.TValue[bool] {
+	return &c.DuoSastFalsePositiveDetectionEnabled
+}
+
+func (c *mqlGitlabProject) GetDuoSastVulnerabilityResolutionEnabled() *plugin.TValue[bool] {
+	return &c.DuoSastVulnerabilityResolutionEnabled
+}
+
+func (c *mqlGitlabProject) GetDuoSecretDetectionFalsePositiveDetectionEnabled() *plugin.TValue[bool] {
+	return &c.DuoSecretDetectionFalsePositiveDetectionEnabled
 }
 
 func (c *mqlGitlabProject) GetModelExperimentsAccessLevel() *plugin.TValue[string] {
@@ -13612,6 +13655,7 @@ type mqlGitlabProjectPipeline struct {
 	Duration       plugin.TValue[int64]
 	QueuedDuration plugin.TValue[int64]
 	Coverage       plugin.TValue[string]
+	Archived       plugin.TValue[bool]
 }
 
 // createGitlabProjectPipeline creates a new instance of this resource
@@ -13768,6 +13812,12 @@ func (c *mqlGitlabProjectPipeline) GetQueuedDuration() *plugin.TValue[int64] {
 func (c *mqlGitlabProjectPipeline) GetCoverage() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.Coverage, func() (string, error) {
 		return c.coverage()
+	})
+}
+
+func (c *mqlGitlabProjectPipeline) GetArchived() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Archived, func() (bool, error) {
+		return c.archived()
 	})
 }
 

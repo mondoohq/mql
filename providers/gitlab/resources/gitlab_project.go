@@ -95,40 +95,43 @@ func getGitlabProjectArgs(prj *gitlab.Project) map[string]*llx.RawData {
 		"lfsEnabled":                  llx.BoolData(prj.LFSEnabled),
 		"mirror":                      llx.BoolData(prj.Mirror),
 		"name":                        llx.StringData(prj.Name),
-		"onlyAllowMergeIfAllDiscussionsAreResolved": llx.BoolData(prj.OnlyAllowMergeIfAllDiscussionsAreResolved),
-		"onlyAllowMergeIfPipelineSucceeds":          llx.BoolData(prj.OnlyAllowMergeIfPipelineSucceeds),
-		"packagesEnabled":                           llx.BoolData(prj.PackagesEnabled),
-		"path":                                      llx.StringData(prj.Path),
-		"removeSourceBranchAfterMerge":              llx.BoolData(prj.RemoveSourceBranchAfterMerge),
-		"requirementsEnabled":                       llx.BoolData(prj.RequirementsEnabled),
-		"serviceDeskEnabled":                        llx.BoolData(prj.ServiceDeskEnabled),
-		"sharedRunnersEnabled":                      llx.BoolData(prj.SharedRunnersEnabled),
-		"visibility":                                llx.StringData(string(prj.Visibility)),
-		"webURL":                                    llx.StringData(prj.WebURL),
-		"forksCount":                                llx.IntData(prj.ForksCount),
-		"starCount":                                 llx.IntData(prj.StarCount),
-		"lastActivityAt":                            llx.TimeDataPtr(prj.LastActivityAt),
-		"emailsEnabled":                             llx.BoolData(prj.EmailsEnabled),
-		"issuesAccessLevel":                         llx.StringData(string(prj.IssuesAccessLevel)),
-		"mergeRequestsAccessLevel":                  llx.StringData(string(prj.MergeRequestsAccessLevel)),
-		"wikiAccessLevel":                           llx.StringData(string(prj.WikiAccessLevel)),
-		"snippetsAccessLevel":                       llx.StringData(string(prj.SnippetsAccessLevel)),
-		"containerRegistryAccessLevel":              llx.StringData(string(prj.ContainerRegistryAccessLevel)),
-		"buildsAccessLevel":                         llx.StringData(string(prj.BuildsAccessLevel)),
-		"repositoryAccessLevel":                     llx.StringData(string(prj.RepositoryAccessLevel)),
-		"forkingAccessLevel":                        llx.StringData(string(prj.ForkingAccessLevel)),
-		"securityAndComplianceAccessLevel":          llx.StringData(string(prj.SecurityAndComplianceAccessLevel)),
-		"securityAndComplianceEnabled":              llx.BoolData(prj.SecurityAndComplianceEnabled),
-		"ciJobTokenScopeEnabled":                    llx.BoolData(prj.CIJobTokenScopeEnabled),
-		"publicJobs":                                llx.BoolData(prj.PublicJobs),
-		"preReceiveSecretDetectionEnabled":          llx.BoolData(prj.PreReceiveSecretDetectionEnabled),
-		"complianceFrameworks":                      llx.ArrayData(convert.SliceAnyToInterface(prj.ComplianceFrameworks), types.String),
-		"sharedWithGroups":                          llx.ArrayData(projectSharedGroupsToDicts(prj.SharedWithGroups), types.Dict),
-		"mirrorTriggerBuilds":                       llx.BoolData(prj.MirrorTriggerBuilds),
-		"onlyMirrorProtectedBranches":               llx.BoolData(prj.OnlyMirrorProtectedBranches),
-		"autoDuoCodeReviewEnabled":                  llx.BoolData(prj.AutoDuoCodeReviewEnabled),
-		"modelExperimentsAccessLevel":               llx.StringData(string(prj.ModelExperimentsAccessLevel)),
-		"modelRegistryAccessLevel":                  llx.StringData(string(prj.ModelRegistryAccessLevel)),
+		"onlyAllowMergeIfAllDiscussionsAreResolved":       llx.BoolData(prj.OnlyAllowMergeIfAllDiscussionsAreResolved),
+		"onlyAllowMergeIfPipelineSucceeds":                llx.BoolData(prj.OnlyAllowMergeIfPipelineSucceeds),
+		"packagesEnabled":                                 llx.BoolData(prj.PackagesEnabled),
+		"path":                                            llx.StringData(prj.Path),
+		"removeSourceBranchAfterMerge":                    llx.BoolData(prj.RemoveSourceBranchAfterMerge),
+		"requirementsEnabled":                             llx.BoolData(prj.RequirementsEnabled),
+		"serviceDeskEnabled":                              llx.BoolData(prj.ServiceDeskEnabled),
+		"sharedRunnersEnabled":                            llx.BoolData(prj.SharedRunnersEnabled),
+		"visibility":                                      llx.StringData(string(prj.Visibility)),
+		"webURL":                                          llx.StringData(prj.WebURL),
+		"forksCount":                                      llx.IntData(prj.ForksCount),
+		"starCount":                                       llx.IntData(prj.StarCount),
+		"lastActivityAt":                                  llx.TimeDataPtr(prj.LastActivityAt),
+		"emailsEnabled":                                   llx.BoolData(prj.EmailsEnabled),
+		"issuesAccessLevel":                               llx.StringData(string(prj.IssuesAccessLevel)),
+		"mergeRequestsAccessLevel":                        llx.StringData(string(prj.MergeRequestsAccessLevel)),
+		"wikiAccessLevel":                                 llx.StringData(string(prj.WikiAccessLevel)),
+		"snippetsAccessLevel":                             llx.StringData(string(prj.SnippetsAccessLevel)),
+		"containerRegistryAccessLevel":                    llx.StringData(string(prj.ContainerRegistryAccessLevel)),
+		"buildsAccessLevel":                               llx.StringData(string(prj.BuildsAccessLevel)),
+		"repositoryAccessLevel":                           llx.StringData(string(prj.RepositoryAccessLevel)),
+		"forkingAccessLevel":                              llx.StringData(string(prj.ForkingAccessLevel)),
+		"securityAndComplianceAccessLevel":                llx.StringData(string(prj.SecurityAndComplianceAccessLevel)),
+		"securityAndComplianceEnabled":                    llx.BoolData(prj.SecurityAndComplianceEnabled),
+		"ciJobTokenScopeEnabled":                          llx.BoolData(prj.CIJobTokenScopeEnabled),
+		"publicJobs":                                      llx.BoolData(prj.PublicJobs),
+		"preReceiveSecretDetectionEnabled":                llx.BoolData(prj.PreReceiveSecretDetectionEnabled),
+		"complianceFrameworks":                            llx.ArrayData(convert.SliceAnyToInterface(prj.ComplianceFrameworks), types.String),
+		"sharedWithGroups":                                llx.ArrayData(projectSharedGroupsToDicts(prj.SharedWithGroups), types.Dict),
+		"mirrorTriggerBuilds":                             llx.BoolData(prj.MirrorTriggerBuilds),
+		"onlyMirrorProtectedBranches":                     llx.BoolData(prj.OnlyMirrorProtectedBranches),
+		"autoDuoCodeReviewEnabled":                        llx.BoolData(prj.AutoDuoCodeReviewEnabled),
+		"duoSastFalsePositiveDetectionEnabled":            llx.BoolData(prj.DuoSASTFPDetectionEnabled),
+		"duoSastVulnerabilityResolutionEnabled":           llx.BoolData(prj.DuoSASTVRWorkflowEnabled),
+		"duoSecretDetectionFalsePositiveDetectionEnabled": llx.BoolData(prj.DuoSecretDetectionFPEnabled),
+		"modelExperimentsAccessLevel":                     llx.StringData(string(prj.ModelExperimentsAccessLevel)),
+		"modelRegistryAccessLevel":                        llx.StringData(string(prj.ModelRegistryAccessLevel)),
 	}
 }
 
@@ -2179,6 +2182,14 @@ func (p *mqlGitlabProjectPipeline) coverage() (string, error) {
 		return "", err
 	}
 	return d.Coverage, nil
+}
+
+func (p *mqlGitlabProjectPipeline) archived() (bool, error) {
+	d, err := p.loadDetails()
+	if err != nil || d == nil {
+		return false, err
+	}
+	return d.Archived, nil
 }
 
 // newMqlGitlabPipelineFromDetail builds a gitlab.project.pipeline from a full

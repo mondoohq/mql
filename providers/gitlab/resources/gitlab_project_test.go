@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"testing"
@@ -99,4 +100,42 @@ func TestClassifyMemberRolesError(t *testing.T) {
 	err := classifyMemberRolesError(transport, "instance")
 	assert.ErrorIs(t, err, transport)
 	assert.NotErrorIs(t, err, llx.ErrForbidden, "a transport error is not a refusal")
+}
+
+func TestGitlabProjectArgsDuoSecuritySettings(t *testing.T) {
+	decode := func(t *testing.T, payload string) map[string]*llx.RawData {
+		t.Helper()
+		prj := &gitlab.Project{}
+		require.NoError(t, json.Unmarshal([]byte(payload), prj))
+		return getGitlabProjectArgs(prj)
+	}
+	keys := []string{
+		"duoSastFalsePositiveDetectionEnabled",
+		"duoSastVulnerabilityResolutionEnabled",
+		"duoSecretDetectionFalsePositiveDetectionEnabled",
+	}
+
+	// Synthetic: attribute names from the GitLab Projects API response; the
+	// values differ per toggle so a swapped mapping fails. No target showed this.
+	t.Run("each toggle maps to its own field", func(t *testing.T) {
+		args := decode(t, `{"id":1,"duo_sast_fp_detection_enabled":true,"duo_sast_vr_workflow_enabled":false,"duo_secret_detection_fp_enabled":true}`)
+		assert.Equal(t, true, args["duoSastFalsePositiveDetectionEnabled"].Value)
+		assert.Equal(t, false, args["duoSastVulnerabilityResolutionEnabled"].Value)
+		assert.Equal(t, true, args["duoSecretDetectionFalsePositiveDetectionEnabled"].Value)
+
+		args = decode(t, `{"id":1,"duo_sast_fp_detection_enabled":false,"duo_sast_vr_workflow_enabled":true,"duo_secret_detection_fp_enabled":false}`)
+		assert.Equal(t, false, args["duoSastFalsePositiveDetectionEnabled"].Value)
+		assert.Equal(t, true, args["duoSastVulnerabilityResolutionEnabled"].Value)
+		assert.Equal(t, false, args["duoSecretDetectionFalsePositiveDetectionEnabled"].Value)
+	})
+
+	// Synthetic: GitLab omits the attributes when the license lacks GitLab Duo
+	// features; they must read false, not null. No target showed this.
+	t.Run("omitted attributes read false", func(t *testing.T) {
+		args := decode(t, `{"id":1}`)
+		for _, k := range keys {
+			require.Contains(t, args, k)
+			assert.Equal(t, false, args[k].Value, k)
+		}
+	})
 }

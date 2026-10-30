@@ -451,6 +451,9 @@ gitlab.project.deployToken.scopes 11.1.138
 gitlab.project.deployToken.username 11.1.138
 gitlab.project.deployTokens 11.1.138
 gitlab.project.description 9.0.0
+gitlab.project.duoSastFalsePositiveDetectionEnabled 14.1.9
+gitlab.project.duoSastVulnerabilityResolutionEnabled 14.1.9
+gitlab.project.duoSecretDetectionFalsePositiveDetectionEnabled 14.1.9
 gitlab.project.emailsEnabled 13.3.9
 gitlab.project.emptyRepo 11.1.36
 gitlab.project.file 11.1.13
@@ -620,6 +623,7 @@ gitlab.project.packages 13.3.1
 gitlab.project.packagesEnabled 9.0.1
 gitlab.project.path 9.0.0
 gitlab.project.pipeline 11.1.130
+gitlab.project.pipeline.archived 14.1.9
 gitlab.project.pipeline.beforeSha 13.3.9
 gitlab.project.pipeline.committedAt 13.3.9
 gitlab.project.pipeline.coverage 13.3.9
