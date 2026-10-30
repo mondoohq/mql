@@ -19,18 +19,29 @@ import (
 // plaintext ports and its target pools' TLS-bridging posture, computed from
 // the SDK structs cached at build time.
 
-// lbEphemeralAddress reads options.ephemeralAddress, reporting whether the
-// key was present so an absent flag reads null rather than false.
-func lbEphemeralAddress(options any) (bool, bool) {
+// lbOptionBool reads a top-level boolean from the options dict, reporting
+// whether the key was present so an absent flag reads null rather than false.
+func lbOptionBool(options any, key string) (bool, bool) {
 	opts, ok := options.(map[string]any)
 	if !ok {
 		return false, false
 	}
-	v, present := opts["ephemeralAddress"]
+	v, present := opts[key]
 	if !present || v == nil {
 		return false, false
 	}
 	return dictBool(v), true
+}
+
+// lbEphemeralAddress reads options.ephemeralAddress.
+func lbEphemeralAddress(options any) (bool, bool) {
+	return lbOptionBool(options, "ephemeralAddress")
+}
+
+// lbAccessLogs reads options.accessLogs, whether per-request access logs are
+// enabled. The API defaults the setting to false and omits it when unset.
+func lbAccessLogs(options any) (bool, bool) {
+	return lbOptionBool(options, "accessLogs")
 }
 
 // lbObservabilityPushUrl reads options.observability.<kind>.pushUrl, where
@@ -61,6 +72,14 @@ func (r *mqlStackitLoadBalancer) ephemeralAddress() (bool, error) {
 	v, ok := lbEphemeralAddress(r.Options.Data)
 	if !ok {
 		return nullBool(&r.EphemeralAddress)
+	}
+	return v, nil
+}
+
+func (r *mqlStackitLoadBalancer) accessLogs() (bool, error) {
+	v, ok := lbAccessLogs(r.Options.Data)
+	if !ok {
+		return nullBool(&r.AccessLogs)
 	}
 	return v, nil
 }
@@ -119,6 +138,14 @@ func (r *mqlStackitAlbLoadBalancer) ephemeralAddress() (bool, error) {
 	v, ok := lbEphemeralAddress(r.Options.Data)
 	if !ok {
 		return nullBool(&r.EphemeralAddress)
+	}
+	return v, nil
+}
+
+func (r *mqlStackitAlbLoadBalancer) accessLogs() (bool, error) {
+	v, ok := lbAccessLogs(r.Options.Data)
+	if !ok {
+		return nullBool(&r.AccessLogs)
 	}
 	return v, nil
 }

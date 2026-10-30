@@ -1796,6 +1796,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"stackit.loadBalancer.ephemeralAddress": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitLoadBalancer).GetEphemeralAddress()).ToDataRes(types.Bool)
 	},
+	"stackit.loadBalancer.accessLogs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitLoadBalancer).GetAccessLogs()).ToDataRes(types.Bool)
+	},
 	"stackit.loadBalancer.observabilityLogsPushUrl": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitLoadBalancer).GetObservabilityLogsPushUrl()).ToDataRes(types.String)
 	},
@@ -4036,6 +4039,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"stackit.alb.loadBalancer.ephemeralAddress": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitAlbLoadBalancer).GetEphemeralAddress()).ToDataRes(types.Bool)
+	},
+	"stackit.alb.loadBalancer.accessLogs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitAlbLoadBalancer).GetAccessLogs()).ToDataRes(types.Bool)
 	},
 	"stackit.alb.loadBalancer.observabilityLogsPushUrl": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitAlbLoadBalancer).GetObservabilityLogsPushUrl()).ToDataRes(types.String)
@@ -6401,6 +6407,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"stackit.loadBalancer.ephemeralAddress": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlStackitLoadBalancer).EphemeralAddress, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"stackit.loadBalancer.accessLogs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitLoadBalancer).AccessLogs, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"stackit.loadBalancer.observabilityLogsPushUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -9697,6 +9707,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"stackit.alb.loadBalancer.ephemeralAddress": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlStackitAlbLoadBalancer).EphemeralAddress, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"stackit.alb.loadBalancer.accessLogs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitAlbLoadBalancer).AccessLogs, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"stackit.alb.loadBalancer.observabilityLogsPushUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -14872,6 +14886,7 @@ type mqlStackitLoadBalancer struct {
 	Exposure                             plugin.TValue[*mqlStackitNetworkExposure]
 	AllowedSourceRanges                  plugin.TValue[[]any]
 	EphemeralAddress                     plugin.TValue[bool]
+	AccessLogs                           plugin.TValue[bool]
 	ObservabilityLogsPushUrl             plugin.TValue[string]
 	ObservabilityMetricsPushUrl          plugin.TValue[string]
 }
@@ -15050,6 +15065,12 @@ func (c *mqlStackitLoadBalancer) GetAllowedSourceRanges() *plugin.TValue[[]any] 
 func (c *mqlStackitLoadBalancer) GetEphemeralAddress() *plugin.TValue[bool] {
 	return plugin.GetOrCompute[bool](&c.EphemeralAddress, func() (bool, error) {
 		return c.ephemeralAddress()
+	})
+}
+
+func (c *mqlStackitLoadBalancer) GetAccessLogs() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AccessLogs, func() (bool, error) {
+		return c.accessLogs()
 	})
 }
 
@@ -23267,6 +23288,7 @@ type mqlStackitAlbLoadBalancer struct {
 	Wafs                                 plugin.TValue[[]any]
 	AllowedSourceRanges                  plugin.TValue[[]any]
 	EphemeralAddress                     plugin.TValue[bool]
+	AccessLogs                           plugin.TValue[bool]
 	ObservabilityLogsPushUrl             plugin.TValue[string]
 	ObservabilityMetricsPushUrl          plugin.TValue[string]
 	Certificates                         plugin.TValue[[]any]
@@ -23444,6 +23466,12 @@ func (c *mqlStackitAlbLoadBalancer) GetAllowedSourceRanges() *plugin.TValue[[]an
 func (c *mqlStackitAlbLoadBalancer) GetEphemeralAddress() *plugin.TValue[bool] {
 	return plugin.GetOrCompute[bool](&c.EphemeralAddress, func() (bool, error) {
 		return c.ephemeralAddress()
+	})
+}
+
+func (c *mqlStackitAlbLoadBalancer) GetAccessLogs() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AccessLogs, func() (bool, error) {
+		return c.accessLogs()
 	})
 }
 
