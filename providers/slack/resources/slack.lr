@@ -12,14 +12,185 @@ option root = "slack"
 // Slack workspace as seen through the Web API. The `accessLogs` field
 // returns every login event in the workspace access log (login activity,
 // IP, user agent, ISP, geolocation), and `userGroups` returns the user
-// groups defined in the workspace. Pair with `slack.users` for per-user
-// identity, 2FA, and role audits, and `slack.conversations` for channel
-// sharing-and-membership reviews.
+// groups defined in the workspace. On Enterprise Grid, `approvedApps`,
+// `restrictedApps`, and `appRequests` cover app governance (which apps
+// admins allowed or blocked, and which installs wait for a decision),
+// and `slackbotSkills` lists the organization's Slackbot skills. Pair
+// with `slack.users` for per-user identity, 2FA, and role audits, and
+// `slack.conversations` for channel sharing-and-membership reviews.
 slack @root {
   // Slack workspace access log entries (login activity)
   accessLogs() []slack.login
   // User groups defined in the workspace
   userGroups() []slack.userGroup
+  // Apps an admin approved for installation in the workspace
+  //
+  // Requires an Enterprise Grid organization and a user token of an org
+  // admin or owner from an org-wide app installation with the
+  // `admin.apps:read` scope.
+  approvedApps() []slack.appResolution
+  // Apps an admin restricted from installation in the workspace
+  //
+  // Requires an Enterprise Grid organization and a user token of an org
+  // admin or owner from an org-wide app installation with the
+  // `admin.apps:read` scope.
+  restrictedApps() []slack.appResolution
+  // App installation requests waiting for an admin decision
+  //
+  // Requires an Enterprise Grid organization and a user token of an org
+  // admin or owner from an org-wide app installation with the
+  // `admin.apps:read` scope.
+  appRequests() []slack.appRequest
+  // Slackbot skills owned by the Enterprise Grid organization
+  //
+  // Includes invite-only skills, excludes built-in skills and skill sets.
+  // Requires a user token of an org admin or owner from an org-wide app
+  // installation with the `admin.skills:read` scope.
+  slackbotSkills() []slack.slackbotSkill
+}
+
+// Slack app
+//
+// App as described to Enterprise Grid admins: its `id` and `name`, the
+// help, privacy policy, homepage, and Slack Marketplace links, whether
+// Slack Marketplace approved it, whether it is an internal app built by
+// the organization, the developer type, whether it uses granular bot
+// permissions, and whether Socket Mode is enabled.
+slack.app @defaults("id name") {
+  // App ID
+  id string
+  // App name
+  name string
+  // Short description of the app
+  description string
+  // Help page URL
+  helpUrl string
+  // Privacy policy URL
+  privacyPolicyUrl string
+  // App homepage URL
+  homepageUrl string
+  // Slack Marketplace listing URL
+  appDirectoryUrl string
+  // Whether the app is approved for the Slack Marketplace
+  isAppDirectoryApproved bool
+  // Whether the app uses granular bot permissions
+  isGranularBotApp bool
+  // Whether the app was built by the organization for internal use
+  isInternal bool
+  // Developer type
+  //
+  // Who built the app, for example `internal` or `third_party`.
+  developerType string
+  // Whether the app connects to Slack over Socket Mode
+  socketModeEnabled bool
+  // Additional information the developer provides about the app
+  additionalInfo string
+}
+
+// Admin decision on a Slack app
+//
+// Approval or restriction an admin recorded for an app in the workspace.
+// The `status` field says which one (`approved` or `restricted`), `app`
+// describes the app, `scopes` and `sensitiveScopes` list the OAuth
+// scopes the decision covers, and `lastResolvedBy` names the admin who
+// last changed it. The basis for third-party app allow-list and
+// sensitive-scope reviews.
+slack.appResolution @defaults("status") {
+  // Decision on the app: `approved` or `restricted`
+  status string
+  // App the decision applies to
+  app slack.app
+  // Names of the OAuth scopes the decision covers
+  scopes []string
+  // Names of the covered OAuth scopes that Slack marks as sensitive
+  sensitiveScopes []string
+  // When the decision was last changed
+  updated time
+  // User who last approved or restricted the app
+  //
+  // Null when the decision was last changed by an actor that is not a
+  // user (see `lastResolvedByType`).
+  lastResolvedBy() slack.user
+  // Type of actor that last approved or restricted the app, for example `user`
+  lastResolvedByType string
+}
+
+// Slack app installation request
+//
+// Pending request from a workspace member to install an app, selected by
+// `id`. Covers the requested `app`, the member who asked (`requestedBy`),
+// their message, the OAuth scopes requested (with the subset Slack marks
+// as sensitive), whether the requester is a collaborator on the app, the
+// status of any earlier decision on the same app, and when the request
+// was made.
+slack.appRequest @defaults("id") {
+  // Request ID
+  id string
+  // App requested for installation
+  app slack.app
+  // User who requested the installation
+  requestedBy() slack.user
+  // Message the requester sent with the request
+  message string
+  // Names of the OAuth scopes requested
+  scopes []string
+  // Names of the requested OAuth scopes that Slack marks as sensitive
+  sensitiveScopes []string
+  // Whether the requester is a collaborator on the app
+  isUserAppCollaborator bool
+  // Status of the earlier decision on this app
+  //
+  // Null when the app was never approved or restricted before.
+  previousResolutionStatus string
+  // When the request was made
+  created time
+}
+
+// Slackbot skill
+//
+// Skill in the Enterprise Grid organization's Slackbot inventory,
+// selected by `id`. Covers the name, description, category, creator,
+// visibility, whether Slack marks it official, approximate usage and
+// library counts, and the org-wide deployment: `autoEnabledPermissionType`
+// says who gets the skill enabled automatically, and
+// `autoEnabledUserGroups` lists the user groups when the skill is enabled
+// for named groups.
+slack.slackbotSkill @defaults("displayName") {
+  // Skill ID
+  id string
+  // Name of the skill
+  displayName string
+  // What the skill does
+  description string
+  // Skill category
+  //
+  // For example `productivity`, `engineering`, `sales`, `system`, or `other`.
+  category string
+  // User who created the skill
+  createdBy() slack.user
+  // When the skill was created
+  created time
+  // When the skill was last updated
+  //
+  // Null when the skill was never edited.
+  updated time
+  // Visibility of the skill, for example `invite_only`
+  visibility string
+  // Whether Slack marks the skill as official
+  isOfficial bool
+  // Approximate number of times the skill was used
+  usageCount int
+  // Approximate number of skill libraries the skill was added to
+  libraryCount int
+  // Who gets the skill enabled automatically
+  //
+  // One of `everyone`, `named_entities` (the groups in
+  // `autoEnabledUserGroups`), or `no_one`.
+  autoEnabledPermissionType string
+  // User groups that get the skill enabled automatically
+  //
+  // Empty unless `autoEnabledPermissionType` is `named_entities`.
+  autoEnabledUserGroups() []slack.userGroup
 }
 
 // Slack conversations

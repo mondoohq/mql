@@ -95,17 +95,7 @@ func (x *mqlSlackUserGroup) id() (string, error) {
 // not been deleted, and createdBy/updatedBy can be empty for auto-provisioned
 // groups; resolving an empty ID would fail the whole userGroups listing.
 func (s *mqlSlackUserGroup) userRef(id string, field *plugin.TValue[*mqlSlackUser]) (*mqlSlackUser, error) {
-	if id == "" {
-		*field = plugin.TValue[*mqlSlackUser]{State: plugin.StateIsSet | plugin.StateIsNull}
-		return nil, nil
-	}
-	r, err := NewResource(s.MqlRuntime, "slack.user", map[string]*llx.RawData{
-		"id": llx.StringData(id),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return r.(*mqlSlackUser), nil
+	return slackUserRef(s.MqlRuntime, id, field)
 }
 
 func (s *mqlSlackUserGroup) createdBy() (*mqlSlackUser, error) {

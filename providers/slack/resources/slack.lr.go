@@ -17,6 +17,10 @@ import (
 // The MQL type names exposed as public consts for ease of reference.
 const (
 	ResourceSlack               string = "slack"
+	ResourceSlackApp            string = "slack.app"
+	ResourceSlackAppResolution  string = "slack.appResolution"
+	ResourceSlackAppRequest     string = "slack.appRequest"
+	ResourceSlackSlackbotSkill  string = "slack.slackbotSkill"
 	ResourceSlackConversations  string = "slack.conversations"
 	ResourceSlackTeam           string = "slack.team"
 	ResourceSlackUsers          string = "slack.users"
@@ -34,6 +38,22 @@ func init() {
 		"slack": {
 			// to override args, implement: initSlack(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createSlack,
+		},
+		"slack.app": {
+			// to override args, implement: initSlackApp(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createSlackApp,
+		},
+		"slack.appResolution": {
+			// to override args, implement: initSlackAppResolution(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createSlackAppResolution,
+		},
+		"slack.appRequest": {
+			// to override args, implement: initSlackAppRequest(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createSlackAppRequest,
+		},
+		"slack.slackbotSkill": {
+			// to override args, implement: initSlackSlackbotSkill(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createSlackSlackbotSkill,
 		},
 		"slack.conversations": {
 			// to override args, implement: initSlackConversations(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -143,6 +163,144 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"slack.userGroups": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSlack).GetUserGroups()).ToDataRes(types.Array(types.Resource("slack.userGroup")))
+	},
+	"slack.approvedApps": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlack).GetApprovedApps()).ToDataRes(types.Array(types.Resource("slack.appResolution")))
+	},
+	"slack.restrictedApps": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlack).GetRestrictedApps()).ToDataRes(types.Array(types.Resource("slack.appResolution")))
+	},
+	"slack.appRequests": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlack).GetAppRequests()).ToDataRes(types.Array(types.Resource("slack.appRequest")))
+	},
+	"slack.slackbotSkills": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlack).GetSlackbotSkills()).ToDataRes(types.Array(types.Resource("slack.slackbotSkill")))
+	},
+	"slack.app.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackApp).GetId()).ToDataRes(types.String)
+	},
+	"slack.app.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackApp).GetName()).ToDataRes(types.String)
+	},
+	"slack.app.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackApp).GetDescription()).ToDataRes(types.String)
+	},
+	"slack.app.helpUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackApp).GetHelpUrl()).ToDataRes(types.String)
+	},
+	"slack.app.privacyPolicyUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackApp).GetPrivacyPolicyUrl()).ToDataRes(types.String)
+	},
+	"slack.app.homepageUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackApp).GetHomepageUrl()).ToDataRes(types.String)
+	},
+	"slack.app.appDirectoryUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackApp).GetAppDirectoryUrl()).ToDataRes(types.String)
+	},
+	"slack.app.isAppDirectoryApproved": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackApp).GetIsAppDirectoryApproved()).ToDataRes(types.Bool)
+	},
+	"slack.app.isGranularBotApp": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackApp).GetIsGranularBotApp()).ToDataRes(types.Bool)
+	},
+	"slack.app.isInternal": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackApp).GetIsInternal()).ToDataRes(types.Bool)
+	},
+	"slack.app.developerType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackApp).GetDeveloperType()).ToDataRes(types.String)
+	},
+	"slack.app.socketModeEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackApp).GetSocketModeEnabled()).ToDataRes(types.Bool)
+	},
+	"slack.app.additionalInfo": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackApp).GetAdditionalInfo()).ToDataRes(types.String)
+	},
+	"slack.appResolution.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackAppResolution).GetStatus()).ToDataRes(types.String)
+	},
+	"slack.appResolution.app": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackAppResolution).GetApp()).ToDataRes(types.Resource("slack.app"))
+	},
+	"slack.appResolution.scopes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackAppResolution).GetScopes()).ToDataRes(types.Array(types.String))
+	},
+	"slack.appResolution.sensitiveScopes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackAppResolution).GetSensitiveScopes()).ToDataRes(types.Array(types.String))
+	},
+	"slack.appResolution.updated": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackAppResolution).GetUpdated()).ToDataRes(types.Time)
+	},
+	"slack.appResolution.lastResolvedBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackAppResolution).GetLastResolvedBy()).ToDataRes(types.Resource("slack.user"))
+	},
+	"slack.appResolution.lastResolvedByType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackAppResolution).GetLastResolvedByType()).ToDataRes(types.String)
+	},
+	"slack.appRequest.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackAppRequest).GetId()).ToDataRes(types.String)
+	},
+	"slack.appRequest.app": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackAppRequest).GetApp()).ToDataRes(types.Resource("slack.app"))
+	},
+	"slack.appRequest.requestedBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackAppRequest).GetRequestedBy()).ToDataRes(types.Resource("slack.user"))
+	},
+	"slack.appRequest.message": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackAppRequest).GetMessage()).ToDataRes(types.String)
+	},
+	"slack.appRequest.scopes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackAppRequest).GetScopes()).ToDataRes(types.Array(types.String))
+	},
+	"slack.appRequest.sensitiveScopes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackAppRequest).GetSensitiveScopes()).ToDataRes(types.Array(types.String))
+	},
+	"slack.appRequest.isUserAppCollaborator": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackAppRequest).GetIsUserAppCollaborator()).ToDataRes(types.Bool)
+	},
+	"slack.appRequest.previousResolutionStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackAppRequest).GetPreviousResolutionStatus()).ToDataRes(types.String)
+	},
+	"slack.appRequest.created": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackAppRequest).GetCreated()).ToDataRes(types.Time)
+	},
+	"slack.slackbotSkill.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackSlackbotSkill).GetId()).ToDataRes(types.String)
+	},
+	"slack.slackbotSkill.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackSlackbotSkill).GetDisplayName()).ToDataRes(types.String)
+	},
+	"slack.slackbotSkill.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackSlackbotSkill).GetDescription()).ToDataRes(types.String)
+	},
+	"slack.slackbotSkill.category": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackSlackbotSkill).GetCategory()).ToDataRes(types.String)
+	},
+	"slack.slackbotSkill.createdBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackSlackbotSkill).GetCreatedBy()).ToDataRes(types.Resource("slack.user"))
+	},
+	"slack.slackbotSkill.created": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackSlackbotSkill).GetCreated()).ToDataRes(types.Time)
+	},
+	"slack.slackbotSkill.updated": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackSlackbotSkill).GetUpdated()).ToDataRes(types.Time)
+	},
+	"slack.slackbotSkill.visibility": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackSlackbotSkill).GetVisibility()).ToDataRes(types.String)
+	},
+	"slack.slackbotSkill.isOfficial": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackSlackbotSkill).GetIsOfficial()).ToDataRes(types.Bool)
+	},
+	"slack.slackbotSkill.usageCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackSlackbotSkill).GetUsageCount()).ToDataRes(types.Int)
+	},
+	"slack.slackbotSkill.libraryCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackSlackbotSkill).GetLibraryCount()).ToDataRes(types.Int)
+	},
+	"slack.slackbotSkill.autoEnabledPermissionType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackSlackbotSkill).GetAutoEnabledPermissionType()).ToDataRes(types.String)
+	},
+	"slack.slackbotSkill.autoEnabledUserGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackSlackbotSkill).GetAutoEnabledUserGroups()).ToDataRes(types.Array(types.Resource("slack.userGroup")))
 	},
 	"slack.conversations.privateChannels": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSlackConversations).GetPrivateChannels()).ToDataRes(types.Array(types.Resource("slack.conversation")))
@@ -451,6 +609,206 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"slack.userGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlSlack).UserGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"slack.approvedApps": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlack).ApprovedApps, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"slack.restrictedApps": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlack).RestrictedApps, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"slack.appRequests": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlack).AppRequests, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"slack.slackbotSkills": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlack).SlackbotSkills, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"slack.app.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackApp).__id, ok = v.Value.(string)
+		return
+	},
+	"slack.app.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackApp).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"slack.app.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackApp).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"slack.app.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackApp).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"slack.app.helpUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackApp).HelpUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"slack.app.privacyPolicyUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackApp).PrivacyPolicyUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"slack.app.homepageUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackApp).HomepageUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"slack.app.appDirectoryUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackApp).AppDirectoryUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"slack.app.isAppDirectoryApproved": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackApp).IsAppDirectoryApproved, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"slack.app.isGranularBotApp": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackApp).IsGranularBotApp, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"slack.app.isInternal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackApp).IsInternal, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"slack.app.developerType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackApp).DeveloperType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"slack.app.socketModeEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackApp).SocketModeEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"slack.app.additionalInfo": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackApp).AdditionalInfo, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"slack.appResolution.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackAppResolution).__id, ok = v.Value.(string)
+		return
+	},
+	"slack.appResolution.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackAppResolution).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"slack.appResolution.app": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackAppResolution).App, ok = plugin.RawToTValue[*mqlSlackApp](v.Value, v.Error)
+		return
+	},
+	"slack.appResolution.scopes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackAppResolution).Scopes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"slack.appResolution.sensitiveScopes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackAppResolution).SensitiveScopes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"slack.appResolution.updated": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackAppResolution).Updated, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"slack.appResolution.lastResolvedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackAppResolution).LastResolvedBy, ok = plugin.RawToTValue[*mqlSlackUser](v.Value, v.Error)
+		return
+	},
+	"slack.appResolution.lastResolvedByType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackAppResolution).LastResolvedByType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"slack.appRequest.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackAppRequest).__id, ok = v.Value.(string)
+		return
+	},
+	"slack.appRequest.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackAppRequest).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"slack.appRequest.app": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackAppRequest).App, ok = plugin.RawToTValue[*mqlSlackApp](v.Value, v.Error)
+		return
+	},
+	"slack.appRequest.requestedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackAppRequest).RequestedBy, ok = plugin.RawToTValue[*mqlSlackUser](v.Value, v.Error)
+		return
+	},
+	"slack.appRequest.message": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackAppRequest).Message, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"slack.appRequest.scopes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackAppRequest).Scopes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"slack.appRequest.sensitiveScopes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackAppRequest).SensitiveScopes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"slack.appRequest.isUserAppCollaborator": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackAppRequest).IsUserAppCollaborator, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"slack.appRequest.previousResolutionStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackAppRequest).PreviousResolutionStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"slack.appRequest.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackAppRequest).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"slack.slackbotSkill.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackSlackbotSkill).__id, ok = v.Value.(string)
+		return
+	},
+	"slack.slackbotSkill.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackSlackbotSkill).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"slack.slackbotSkill.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackSlackbotSkill).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"slack.slackbotSkill.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackSlackbotSkill).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"slack.slackbotSkill.category": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackSlackbotSkill).Category, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"slack.slackbotSkill.createdBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackSlackbotSkill).CreatedBy, ok = plugin.RawToTValue[*mqlSlackUser](v.Value, v.Error)
+		return
+	},
+	"slack.slackbotSkill.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackSlackbotSkill).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"slack.slackbotSkill.updated": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackSlackbotSkill).Updated, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"slack.slackbotSkill.visibility": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackSlackbotSkill).Visibility, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"slack.slackbotSkill.isOfficial": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackSlackbotSkill).IsOfficial, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"slack.slackbotSkill.usageCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackSlackbotSkill).UsageCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"slack.slackbotSkill.libraryCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackSlackbotSkill).LibraryCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"slack.slackbotSkill.autoEnabledPermissionType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackSlackbotSkill).AutoEnabledPermissionType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"slack.slackbotSkill.autoEnabledUserGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackSlackbotSkill).AutoEnabledUserGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"slack.conversations.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -894,8 +1252,12 @@ type mqlSlack struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlSlackInternal it will be used here
-	AccessLogs plugin.TValue[[]any]
-	UserGroups plugin.TValue[[]any]
+	AccessLogs     plugin.TValue[[]any]
+	UserGroups     plugin.TValue[[]any]
+	ApprovedApps   plugin.TValue[[]any]
+	RestrictedApps plugin.TValue[[]any]
+	AppRequests    plugin.TValue[[]any]
+	SlackbotSkills plugin.TValue[[]any]
 }
 
 // createSlack creates a new instance of this resource
@@ -964,6 +1326,504 @@ func (c *mqlSlack) GetUserGroups() *plugin.TValue[[]any] {
 		}
 
 		return c.userGroups()
+	})
+}
+
+func (c *mqlSlack) GetApprovedApps() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ApprovedApps, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("slack", c.__id, "approvedApps")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.approvedApps()
+	})
+}
+
+func (c *mqlSlack) GetRestrictedApps() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.RestrictedApps, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("slack", c.__id, "restrictedApps")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.restrictedApps()
+	})
+}
+
+func (c *mqlSlack) GetAppRequests() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AppRequests, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("slack", c.__id, "appRequests")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.appRequests()
+	})
+}
+
+func (c *mqlSlack) GetSlackbotSkills() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SlackbotSkills, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("slack", c.__id, "slackbotSkills")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.slackbotSkills()
+	})
+}
+
+// mqlSlackApp for the slack.app resource
+type mqlSlackApp struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlSlackAppInternal it will be used here
+	Id                     plugin.TValue[string]
+	Name                   plugin.TValue[string]
+	Description            plugin.TValue[string]
+	HelpUrl                plugin.TValue[string]
+	PrivacyPolicyUrl       plugin.TValue[string]
+	HomepageUrl            plugin.TValue[string]
+	AppDirectoryUrl        plugin.TValue[string]
+	IsAppDirectoryApproved plugin.TValue[bool]
+	IsGranularBotApp       plugin.TValue[bool]
+	IsInternal             plugin.TValue[bool]
+	DeveloperType          plugin.TValue[string]
+	SocketModeEnabled      plugin.TValue[bool]
+	AdditionalInfo         plugin.TValue[string]
+}
+
+// createSlackApp creates a new instance of this resource
+func createSlackApp(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlSlackApp{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("slack.app", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlSlackApp) MqlName() string {
+	return "slack.app"
+}
+
+func (c *mqlSlackApp) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlSlackApp) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlSlackApp) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlSlackApp) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlSlackApp) GetHelpUrl() *plugin.TValue[string] {
+	return &c.HelpUrl
+}
+
+func (c *mqlSlackApp) GetPrivacyPolicyUrl() *plugin.TValue[string] {
+	return &c.PrivacyPolicyUrl
+}
+
+func (c *mqlSlackApp) GetHomepageUrl() *plugin.TValue[string] {
+	return &c.HomepageUrl
+}
+
+func (c *mqlSlackApp) GetAppDirectoryUrl() *plugin.TValue[string] {
+	return &c.AppDirectoryUrl
+}
+
+func (c *mqlSlackApp) GetIsAppDirectoryApproved() *plugin.TValue[bool] {
+	return &c.IsAppDirectoryApproved
+}
+
+func (c *mqlSlackApp) GetIsGranularBotApp() *plugin.TValue[bool] {
+	return &c.IsGranularBotApp
+}
+
+func (c *mqlSlackApp) GetIsInternal() *plugin.TValue[bool] {
+	return &c.IsInternal
+}
+
+func (c *mqlSlackApp) GetDeveloperType() *plugin.TValue[string] {
+	return &c.DeveloperType
+}
+
+func (c *mqlSlackApp) GetSocketModeEnabled() *plugin.TValue[bool] {
+	return &c.SocketModeEnabled
+}
+
+func (c *mqlSlackApp) GetAdditionalInfo() *plugin.TValue[string] {
+	return &c.AdditionalInfo
+}
+
+// mqlSlackAppResolution for the slack.appResolution resource
+type mqlSlackAppResolution struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlSlackAppResolutionInternal
+	Status             plugin.TValue[string]
+	App                plugin.TValue[*mqlSlackApp]
+	Scopes             plugin.TValue[[]any]
+	SensitiveScopes    plugin.TValue[[]any]
+	Updated            plugin.TValue[*time.Time]
+	LastResolvedBy     plugin.TValue[*mqlSlackUser]
+	LastResolvedByType plugin.TValue[string]
+}
+
+// createSlackAppResolution creates a new instance of this resource
+func createSlackAppResolution(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlSlackAppResolution{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("slack.appResolution", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlSlackAppResolution) MqlName() string {
+	return "slack.appResolution"
+}
+
+func (c *mqlSlackAppResolution) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlSlackAppResolution) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlSlackAppResolution) GetApp() *plugin.TValue[*mqlSlackApp] {
+	return &c.App
+}
+
+func (c *mqlSlackAppResolution) GetScopes() *plugin.TValue[[]any] {
+	return &c.Scopes
+}
+
+func (c *mqlSlackAppResolution) GetSensitiveScopes() *plugin.TValue[[]any] {
+	return &c.SensitiveScopes
+}
+
+func (c *mqlSlackAppResolution) GetUpdated() *plugin.TValue[*time.Time] {
+	return &c.Updated
+}
+
+func (c *mqlSlackAppResolution) GetLastResolvedBy() *plugin.TValue[*mqlSlackUser] {
+	return plugin.GetOrCompute[*mqlSlackUser](&c.LastResolvedBy, func() (*mqlSlackUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("slack.appResolution", c.__id, "lastResolvedBy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlSlackUser), nil
+			}
+		}
+
+		return c.lastResolvedBy()
+	})
+}
+
+func (c *mqlSlackAppResolution) GetLastResolvedByType() *plugin.TValue[string] {
+	return &c.LastResolvedByType
+}
+
+// mqlSlackAppRequest for the slack.appRequest resource
+type mqlSlackAppRequest struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlSlackAppRequestInternal
+	Id                       plugin.TValue[string]
+	App                      plugin.TValue[*mqlSlackApp]
+	RequestedBy              plugin.TValue[*mqlSlackUser]
+	Message                  plugin.TValue[string]
+	Scopes                   plugin.TValue[[]any]
+	SensitiveScopes          plugin.TValue[[]any]
+	IsUserAppCollaborator    plugin.TValue[bool]
+	PreviousResolutionStatus plugin.TValue[string]
+	Created                  plugin.TValue[*time.Time]
+}
+
+// createSlackAppRequest creates a new instance of this resource
+func createSlackAppRequest(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlSlackAppRequest{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("slack.appRequest", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlSlackAppRequest) MqlName() string {
+	return "slack.appRequest"
+}
+
+func (c *mqlSlackAppRequest) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlSlackAppRequest) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlSlackAppRequest) GetApp() *plugin.TValue[*mqlSlackApp] {
+	return &c.App
+}
+
+func (c *mqlSlackAppRequest) GetRequestedBy() *plugin.TValue[*mqlSlackUser] {
+	return plugin.GetOrCompute[*mqlSlackUser](&c.RequestedBy, func() (*mqlSlackUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("slack.appRequest", c.__id, "requestedBy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlSlackUser), nil
+			}
+		}
+
+		return c.requestedBy()
+	})
+}
+
+func (c *mqlSlackAppRequest) GetMessage() *plugin.TValue[string] {
+	return &c.Message
+}
+
+func (c *mqlSlackAppRequest) GetScopes() *plugin.TValue[[]any] {
+	return &c.Scopes
+}
+
+func (c *mqlSlackAppRequest) GetSensitiveScopes() *plugin.TValue[[]any] {
+	return &c.SensitiveScopes
+}
+
+func (c *mqlSlackAppRequest) GetIsUserAppCollaborator() *plugin.TValue[bool] {
+	return &c.IsUserAppCollaborator
+}
+
+func (c *mqlSlackAppRequest) GetPreviousResolutionStatus() *plugin.TValue[string] {
+	return &c.PreviousResolutionStatus
+}
+
+func (c *mqlSlackAppRequest) GetCreated() *plugin.TValue[*time.Time] {
+	return &c.Created
+}
+
+// mqlSlackSlackbotSkill for the slack.slackbotSkill resource
+type mqlSlackSlackbotSkill struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlSlackSlackbotSkillInternal
+	Id                        plugin.TValue[string]
+	DisplayName               plugin.TValue[string]
+	Description               plugin.TValue[string]
+	Category                  plugin.TValue[string]
+	CreatedBy                 plugin.TValue[*mqlSlackUser]
+	Created                   plugin.TValue[*time.Time]
+	Updated                   plugin.TValue[*time.Time]
+	Visibility                plugin.TValue[string]
+	IsOfficial                plugin.TValue[bool]
+	UsageCount                plugin.TValue[int64]
+	LibraryCount              plugin.TValue[int64]
+	AutoEnabledPermissionType plugin.TValue[string]
+	AutoEnabledUserGroups     plugin.TValue[[]any]
+}
+
+// createSlackSlackbotSkill creates a new instance of this resource
+func createSlackSlackbotSkill(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlSlackSlackbotSkill{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("slack.slackbotSkill", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlSlackSlackbotSkill) MqlName() string {
+	return "slack.slackbotSkill"
+}
+
+func (c *mqlSlackSlackbotSkill) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlSlackSlackbotSkill) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlSlackSlackbotSkill) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlSlackSlackbotSkill) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlSlackSlackbotSkill) GetCategory() *plugin.TValue[string] {
+	return &c.Category
+}
+
+func (c *mqlSlackSlackbotSkill) GetCreatedBy() *plugin.TValue[*mqlSlackUser] {
+	return plugin.GetOrCompute[*mqlSlackUser](&c.CreatedBy, func() (*mqlSlackUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("slack.slackbotSkill", c.__id, "createdBy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlSlackUser), nil
+			}
+		}
+
+		return c.createdBy()
+	})
+}
+
+func (c *mqlSlackSlackbotSkill) GetCreated() *plugin.TValue[*time.Time] {
+	return &c.Created
+}
+
+func (c *mqlSlackSlackbotSkill) GetUpdated() *plugin.TValue[*time.Time] {
+	return &c.Updated
+}
+
+func (c *mqlSlackSlackbotSkill) GetVisibility() *plugin.TValue[string] {
+	return &c.Visibility
+}
+
+func (c *mqlSlackSlackbotSkill) GetIsOfficial() *plugin.TValue[bool] {
+	return &c.IsOfficial
+}
+
+func (c *mqlSlackSlackbotSkill) GetUsageCount() *plugin.TValue[int64] {
+	return &c.UsageCount
+}
+
+func (c *mqlSlackSlackbotSkill) GetLibraryCount() *plugin.TValue[int64] {
+	return &c.LibraryCount
+}
+
+func (c *mqlSlackSlackbotSkill) GetAutoEnabledPermissionType() *plugin.TValue[string] {
+	return &c.AutoEnabledPermissionType
+}
+
+func (c *mqlSlackSlackbotSkill) GetAutoEnabledUserGroups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AutoEnabledUserGroups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("slack.slackbotSkill", c.__id, "autoEnabledUserGroups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.autoEnabledUserGroups()
 	})
 }
 
