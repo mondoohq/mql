@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/lightsail"
 	lightsail_types "github.com/aws/aws-sdk-go-v2/service/lightsail/types"
 	"github.com/rs/zerolog/log"
@@ -58,8 +60,11 @@ func (a *mqlAwsLightsail) getInstances(conn *connection.AwsConnection) []*jobpoo
 
 			var pageToken *string
 			for {
+				// The instance and system status checks are only returned
+				// when asked for.
 				resp, err := svc.GetInstances(ctx, &lightsail.GetInstancesInput{
-					PageToken: pageToken,
+					PageToken:           pageToken,
+					IncludeHealthStatus: aws.Bool(true),
 				})
 				if err != nil {
 					if Is400AccessDeniedError(err) {
@@ -103,8 +108,15 @@ func (a *mqlAwsLightsail) getInstances(conn *connection.AwsConnection) []*jobpoo
 						monthlyTransfer = int64(*inst.Networking.MonthlyTransfer.GbPerMonthAllocated)
 					}
 
+					instanceStatus, instanceImpairedSince := lightsailHealthStatus(inst.InstanceStatus)
+					systemStatus, systemImpairedSince := lightsailHealthStatus(inst.SystemStatus)
+
 					mqlInst, err := CreateResource(a.MqlRuntime, "aws.lightsail.instance",
 						map[string]*llx.RawData{
+							"instanceStatus":                     instanceStatus,
+							"instanceStatusImpairedSince":        instanceImpairedSince,
+							"systemStatus":                       systemStatus,
+							"systemStatusImpairedSince":          systemImpairedSince,
 							"__id":                               llx.StringDataPtr(inst.Arn),
 							"name":                               llx.StringDataPtr(inst.Name),
 							"arn":                                llx.StringDataPtr(inst.Arn),
@@ -147,6 +159,41 @@ func (a *mqlAwsLightsail) getInstances(conn *connection.AwsConnection) []*jobpoo
 		tasks = append(tasks, jobpool.NewJob(f))
 	}
 	return tasks
+}
+
+// lightsailHealthStatus returns the overall result of a Lightsail health check
+// and the earliest time one of its checks started failing. Both are null when
+// the check was not reported, and the time is null while no check fails.
+func lightsailHealthStatus(hs *lightsail_types.InstanceHealthStatus) (status *llx.RawData, impairedSince *llx.RawData) {
+	if hs == nil || hs.Status == "" {
+		return llx.NilData, llx.NilData
+	}
+	var earliest *time.Time
+	for _, d := range hs.Details {
+		if d.ImpairedSince == nil {
+			continue
+		}
+		if earliest == nil || d.ImpairedSince.Before(*earliest) {
+			earliest = d.ImpairedSince
+		}
+	}
+	return llx.StringData(string(hs.Status)), llx.TimeDataPtr(earliest)
+}
+
+// lightsailWafArgs flattens a distribution's WAF configuration. Both fields are
+// null when the distribution reports none.
+func lightsailWafArgs(waf *lightsail_types.WafConfig) (enabled *llx.RawData, ruleGroups *llx.RawData) {
+	if waf == nil {
+		return llx.NilData, llx.NilData
+	}
+	names := make([]any, 0, len(waf.WafRules))
+	for _, r := range waf.WafRules {
+		if r.Name == nil {
+			continue
+		}
+		names = append(names, *r.Name)
+	}
+	return llx.BoolDataPtr(waf.IsWafEnabled), llx.ArrayData(names, types.String)
 }
 
 type mqlAwsLightsailInstanceInternal struct {
@@ -905,8 +952,12 @@ func (a *mqlAwsLightsail) distributions() ([]any, error) {
 				alternativeDomainNames[j] = name
 			}
 
+			wafEnabled, wafRuleGroups := lightsailWafArgs(d.Waf)
+
 			mqlDistribution, err := CreateResource(a.MqlRuntime, "aws.lightsail.distribution",
 				map[string]*llx.RawData{
+					"wafEnabled":                      wafEnabled,
+					"wafRuleGroups":                   wafRuleGroups,
 					"__id":                            llx.StringDataPtr(d.Arn),
 					"name":                            llx.StringDataPtr(d.Name),
 					"arn":                             llx.StringDataPtr(d.Arn),

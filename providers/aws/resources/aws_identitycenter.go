@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/identitystore"
 	"github.com/aws/aws-sdk-go-v2/service/ssoadmin"
 	ssotypes "github.com/aws/aws-sdk-go-v2/service/ssoadmin/types"
+	"github.com/aws/smithy-go"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -50,59 +51,104 @@ func (a *mqlAwsIdentitycenter) getInstances(conn *connection.AwsConnection) []*j
 
 	f := func() (jobpool.JobResult, error) {
 		// Identity Center is a global service accessed through a regional endpoint.
-		// Pass empty string to use the default region.
+		// Pass empty string to use the default region; the ALL_REGIONS scope
+		// then also reaches instances whose home region is another one.
 		svc := conn.SsoAdmin("")
 		ctx := context.Background()
 		res := []any{}
 
-		paginator := ssoadmin.NewListInstancesPaginator(svc, &ssoadmin.ListInstancesInput{})
-		for paginator.HasMorePages() {
-			page, err := paginator.NextPage(ctx)
+		instances, err := listIdentitycenterInstances(ctx, svc)
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				log.Warn().Msg("error accessing Identity Center API")
+				return res, nil
+			}
+			if IsServiceNotAvailableInRegionError(err) {
+				log.Warn().Msg("Identity Center is not available")
+				return res, nil
+			}
+			return nil, err
+		}
+
+		for _, instance := range instances {
+			regions := make([]any, 0, len(instance.Regions))
+			for _, r := range instance.Regions {
+				regions = append(regions, map[string]any{
+					"regionName":      convert.ToValue(r.RegionName),
+					"status":          string(r.Status),
+					"isPrimaryRegion": r.IsPrimaryRegion,
+				})
+			}
+
+			mqlInstance, err := CreateResource(a.MqlRuntime, "aws.identitycenter.instance",
+				map[string]*llx.RawData{
+					"__id":            llx.StringDataPtr(instance.InstanceArn),
+					"arn":             llx.StringDataPtr(instance.InstanceArn),
+					"name":            llx.StringDataPtr(instance.Name),
+					"identityStoreId": llx.StringDataPtr(instance.IdentityStoreId),
+					"status":          llx.StringData(string(instance.Status)),
+					"statusReason":    llx.StringDataPtr(instance.StatusReason),
+					"createdAt":       llx.TimeDataPtr(instance.CreatedDate),
+					"ownerAccountId":  llx.StringDataPtr(instance.OwnerAccountId),
+					"primaryRegion":   llx.StringDataPtr(instance.PrimaryRegion),
+					"regions":         llx.ArrayData(regions, types.Dict),
+				})
 			if err != nil {
-				if Is400AccessDeniedError(err) {
-					log.Warn().Msg("error accessing Identity Center API")
-					return res, nil
-				}
-				if IsServiceNotAvailableInRegionError(err) {
-					log.Warn().Msg("Identity Center is not available")
-					return res, nil
-				}
 				return nil, err
 			}
-
-			for _, instance := range page.Instances {
-				regions := make([]any, 0, len(instance.Regions))
-				for _, r := range instance.Regions {
-					regions = append(regions, map[string]any{
-						"regionName":      convert.ToValue(r.RegionName),
-						"status":          string(r.Status),
-						"isPrimaryRegion": r.IsPrimaryRegion,
-					})
-				}
-
-				mqlInstance, err := CreateResource(a.MqlRuntime, "aws.identitycenter.instance",
-					map[string]*llx.RawData{
-						"__id":            llx.StringDataPtr(instance.InstanceArn),
-						"arn":             llx.StringDataPtr(instance.InstanceArn),
-						"name":            llx.StringDataPtr(instance.Name),
-						"identityStoreId": llx.StringDataPtr(instance.IdentityStoreId),
-						"status":          llx.StringData(string(instance.Status)),
-						"statusReason":    llx.StringDataPtr(instance.StatusReason),
-						"createdAt":       llx.TimeDataPtr(instance.CreatedDate),
-						"ownerAccountId":  llx.StringDataPtr(instance.OwnerAccountId),
-						"primaryRegion":   llx.StringDataPtr(instance.PrimaryRegion),
-						"regions":         llx.ArrayData(regions, types.Dict),
-					})
-				if err != nil {
-					return nil, err
-				}
-				res = append(res, mqlInstance)
-			}
+			// Calls about the instance go to its home region: the identity
+			// store and the instance's permission sets are not reachable
+			// through another region's endpoint.
+			mqlInstance.(*mqlAwsIdentitycenterInstance).cacheRegion = convert.ToValue(instance.PrimaryRegion)
+			res = append(res, mqlInstance)
 		}
 		return jobpool.JobResult(res), nil
 	}
 	tasks = append(tasks, jobpool.NewJob(f))
 	return tasks
+}
+
+// listIdentitycenterInstances lists the Identity Center instances the caller
+// owns or that are shared with it, in every region. Without a region scope,
+// ListInstances returns only the instances whose home region is the endpoint's
+// region, so an instance enabled in us-east-1 is missing from a scan whose
+// default region is us-west-2. An endpoint that rejects the parameter as
+// invalid input is asked again without it.
+func listIdentitycenterInstances(ctx context.Context, svc ssoadmin.ListInstancesAPIClient) ([]ssotypes.InstanceMetadata, error) {
+	instances, err := walkIdentitycenterInstances(ctx, svc, ssotypes.RegionScopeAllRegions)
+	if err != nil && isRegionScopeUnsupported(err) {
+		log.Debug().Err(err).Msg("Identity Center endpoint rejected the ALL_REGIONS scope, listing the current region only")
+		return walkIdentitycenterInstances(ctx, svc, "")
+	}
+	return instances, err
+}
+
+func walkIdentitycenterInstances(ctx context.Context, svc ssoadmin.ListInstancesAPIClient, scope ssotypes.RegionScope) ([]ssotypes.InstanceMetadata, error) {
+	var instances []ssotypes.InstanceMetadata
+	paginator := ssoadmin.NewListInstancesPaginator(svc, &ssoadmin.ListInstancesInput{RegionScope: scope})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		instances = append(instances, page.Instances...)
+	}
+	return instances, nil
+}
+
+// isRegionScopeUnsupported reports whether ListInstances refused the request
+// as malformed, which is how an endpoint without RegionScope support answers.
+// Access denials and throttling are not matched.
+func isRegionScopeUnsupported(err error) bool {
+	var apiErr smithy.APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	switch apiErr.ErrorCode() {
+	case "ValidationException", "SerializationException", "InvalidParameterException":
+		return true
+	}
+	return false
 }
 
 func (a *mqlAwsIdentitycenterInstance) id() (string, error) {
@@ -111,7 +157,7 @@ func (a *mqlAwsIdentitycenterInstance) id() (string, error) {
 
 func (a *mqlAwsIdentitycenterInstance) permissionSets() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	svc := conn.SsoAdmin("")
+	svc := conn.SsoAdmin(a.cacheRegion)
 	ctx := context.Background()
 
 	instanceArn := a.Arn.Data
@@ -137,6 +183,7 @@ func (a *mqlAwsIdentitycenterInstance) permissionSets() ([]any, error) {
 			}
 			mqlPsRes := mqlPs.(*mqlAwsIdentitycenterPermissionSet)
 			mqlPsRes.cacheInstanceArn = instanceArn
+			mqlPsRes.cacheRegion = a.cacheRegion
 			res = append(res, mqlPs)
 		}
 	}
@@ -145,9 +192,11 @@ func (a *mqlAwsIdentitycenterInstance) permissionSets() ([]any, error) {
 
 type mqlAwsIdentitycenterPermissionSetInternal struct {
 	cacheInstanceArn string
-	fetched          atomic.Bool
-	lock             sync.Mutex
-	descResp         *ssoadmin.DescribePermissionSetOutput
+	// cacheRegion is the owning instance's home region (empty: default region)
+	cacheRegion string
+	fetched     atomic.Bool
+	lock        sync.Mutex
+	descResp    *ssoadmin.DescribePermissionSetOutput
 
 	managedPoliciesOnce sync.Once
 	managedPoliciesList []ssotypes.AttachedManagedPolicy
@@ -169,7 +218,7 @@ func (a *mqlAwsIdentitycenterPermissionSet) fetchDetail() (*ssoadmin.DescribePer
 	}
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	svc := conn.SsoAdmin("")
+	svc := conn.SsoAdmin(a.cacheRegion)
 	ctx := context.Background()
 
 	instanceArn := a.cacheInstanceArn
@@ -246,7 +295,7 @@ func (a *mqlAwsIdentitycenterPermissionSet) createdAt() (*time.Time, error) {
 
 func (a *mqlAwsIdentitycenterPermissionSet) inlinePolicy() (string, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	svc := conn.SsoAdmin("")
+	svc := conn.SsoAdmin(a.cacheRegion)
 	ctx := context.Background()
 
 	instanceArn := a.cacheInstanceArn
@@ -270,7 +319,7 @@ func (a *mqlAwsIdentitycenterPermissionSet) inlinePolicy() (string, error) {
 func (a *mqlAwsIdentitycenterPermissionSet) listManagedPolicies() ([]ssotypes.AttachedManagedPolicy, error) {
 	a.managedPoliciesOnce.Do(func() {
 		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-		svc := conn.SsoAdmin("")
+		svc := conn.SsoAdmin(a.cacheRegion)
 		ctx := context.Background()
 
 		instanceArn := a.cacheInstanceArn
@@ -331,7 +380,7 @@ func (a *mqlAwsIdentitycenterPermissionSet) awsManagedPolicies() ([]any, error) 
 
 func (a *mqlAwsIdentitycenterPermissionSet) tags() (map[string]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	svc := conn.SsoAdmin("")
+	svc := conn.SsoAdmin(a.cacheRegion)
 	ctx := context.Background()
 
 	instanceArn := a.cacheInstanceArn
@@ -353,7 +402,7 @@ func (a *mqlAwsIdentitycenterPermissionSet) tags() (map[string]any, error) {
 
 func (a *mqlAwsIdentitycenterInstance) accountAssignments() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	svc := conn.SsoAdmin("")
+	svc := conn.SsoAdmin(a.cacheRegion)
 	ctx := context.Background()
 
 	log.Debug().Msg("fetching account assignments requires iterating permission sets, accounts, and assignments (triple-nested pagination) — this may be slow for organizations with many permission sets")
@@ -419,6 +468,7 @@ func (a *mqlAwsIdentitycenterInstance) accountAssignments() ([]any, error) {
 						cast := mqlAssignment.(*mqlAwsIdentitycenterAccountAssignment)
 						cast.cacheInstanceArn = instanceArn
 						cast.cachePermissionSetArn = convert.ToValue(assignment.PermissionSetArn)
+						cast.cacheRegion = a.cacheRegion
 						res = append(res, mqlAssignment)
 					}
 				}
@@ -439,7 +489,7 @@ func ssoTagsToMap(tags []ssotypes.Tag) map[string]any {
 // Permission set customer managed policies
 func (a *mqlAwsIdentitycenterPermissionSet) customerManagedPolicies() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	svc := conn.SsoAdmin("")
+	svc := conn.SsoAdmin(a.cacheRegion)
 	ctx := context.Background()
 
 	instanceArn := a.cacheInstanceArn
@@ -468,7 +518,7 @@ func (a *mqlAwsIdentitycenterPermissionSet) customerManagedPolicies() ([]any, er
 
 func (a *mqlAwsIdentitycenterPermissionSet) permissionsBoundary() (map[string]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	svc := conn.SsoAdmin("")
+	svc := conn.SsoAdmin(a.cacheRegion)
 	ctx := context.Background()
 
 	instanceArn := a.cacheInstanceArn
@@ -496,6 +546,7 @@ func (a *mqlAwsIdentitycenterPermissionSet) permissionsBoundary() (map[string]an
 type mqlAwsIdentitycenterAccountAssignmentInternal struct {
 	cacheInstanceArn      string
 	cachePermissionSetArn string
+	cacheRegion           string
 }
 
 func (a *mqlAwsIdentitycenterAccountAssignment) permissionSet() (*mqlAwsIdentitycenterPermissionSet, error) {
@@ -511,6 +562,7 @@ func (a *mqlAwsIdentitycenterAccountAssignment) permissionSet() (*mqlAwsIdentity
 	cast := mqlPs.(*mqlAwsIdentitycenterPermissionSet)
 	if cast.cacheInstanceArn == "" {
 		cast.cacheInstanceArn = a.cacheInstanceArn
+		cast.cacheRegion = a.cacheRegion
 	}
 	return cast, nil
 }
@@ -523,7 +575,7 @@ func (a *mqlAwsIdentitycenterInstance) groups() ([]any, error) {
 		return nil, nil
 	}
 
-	svc := conn.IdentityStore("")
+	svc := conn.IdentityStore(a.cacheRegion)
 	ctx := context.Background()
 	res := []any{}
 
@@ -584,7 +636,7 @@ func (a *mqlAwsIdentitycenterInstance) users() ([]any, error) {
 		return nil, nil
 	}
 
-	svc := conn.IdentityStore("")
+	svc := conn.IdentityStore(a.cacheRegion)
 	ctx := context.Background()
 	res := []any{}
 
@@ -649,7 +701,7 @@ func (a *mqlAwsIdentitycenterUser) externalIds() ([]any, error) { return nil, ni
 // Identity Center applications (Identity Center–managed and customer-managed)
 func (a *mqlAwsIdentitycenterInstance) applications() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	svc := conn.SsoAdmin("")
+	svc := conn.SsoAdmin(a.cacheRegion)
 	ctx := context.Background()
 
 	instanceArn := a.Arn.Data
@@ -699,6 +751,7 @@ func (a *mqlAwsIdentitycenterInstance) applications() ([]any, error) {
 			}
 			cast := mqlApp.(*mqlAwsIdentitycenterApplication)
 			cast.cacheInstance = a
+			cast.cacheRegion = a.cacheRegion
 			res = append(res, mqlApp)
 		}
 	}
@@ -708,6 +761,7 @@ func (a *mqlAwsIdentitycenterInstance) applications() ([]any, error) {
 type mqlAwsIdentitycenterApplicationInternal struct {
 	lazyTags
 	cacheInstance *mqlAwsIdentitycenterInstance
+	cacheRegion   string
 }
 
 func (a *mqlAwsIdentitycenterApplication) id() (string, error) {
@@ -724,10 +778,11 @@ func (a *mqlAwsIdentitycenterApplication) instance() (*mqlAwsIdentitycenterInsta
 
 // identitycenterTagsForArn reads the tags of an Identity Center resource.
 // instanceArn names the instance the resource belongs to and is left empty when
-// the resource is the instance itself.
-func identitycenterTagsForArn(runtime *plugin.Runtime, instanceArn, resourceArn string) (map[string]any, error) {
+// the resource is the instance itself. region is the instance's home region,
+// empty for the default region.
+func identitycenterTagsForArn(runtime *plugin.Runtime, region, instanceArn, resourceArn string) (map[string]any, error) {
 	conn := runtime.Connection.(*connection.AwsConnection)
-	svc := conn.SsoAdmin("")
+	svc := conn.SsoAdmin(region)
 
 	input := &ssoadmin.ListTagsForResourceInput{ResourceArn: &resourceArn}
 	if instanceArn != "" {
@@ -753,11 +808,14 @@ func identitycenterTagsForArn(runtime *plugin.Runtime, instanceArn, resourceArn 
 
 type mqlAwsIdentitycenterInstanceInternal struct {
 	lazyTags
+	// cacheRegion is the instance's home (primary) region, empty when
+	// ListInstances did not report one; empty selects the default region.
+	cacheRegion string
 }
 
 func (a *mqlAwsIdentitycenterInstance) tags() (map[string]any, error) {
 	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
-		return identitycenterTagsForArn(a.MqlRuntime, "", a.Arn.Data)
+		return identitycenterTagsForArn(a.MqlRuntime, a.cacheRegion, "", a.Arn.Data)
 	})
 }
 
@@ -767,6 +825,6 @@ func (a *mqlAwsIdentitycenterApplication) tags() (map[string]any, error) {
 		if a.cacheInstance != nil {
 			instanceArn = a.cacheInstance.Arn.Data
 		}
-		return identitycenterTagsForArn(a.MqlRuntime, instanceArn, a.Arn.Data)
+		return identitycenterTagsForArn(a.MqlRuntime, a.cacheRegion, instanceArn, a.Arn.Data)
 	})
 }
