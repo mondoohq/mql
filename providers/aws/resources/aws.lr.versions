@@ -3785,6 +3785,13 @@ aws.ec2.image.id 11.15.2
 aws.ec2.image.imageAllowed 11.15.3
 aws.ec2.image.imageType 11.15.3
 aws.ec2.image.imdsSupport 11.15.2
+aws.ec2.image.inspectorCriticalFixAvailableSince 14.6.2
+aws.ec2.image.inspectorHighFixAvailableSince 14.6.2
+aws.ec2.image.inspectorHighestSeverity 14.6.2
+aws.ec2.image.inspectorInformationalFixAvailableSince 14.6.2
+aws.ec2.image.inspectorLowFixAvailableSince 14.6.2
+aws.ec2.image.inspectorMediumFixAvailableSince 14.6.2
+aws.ec2.image.inspectorScannedAt 14.6.2
 aws.ec2.image.lastLaunchedAt 11.15.3
 aws.ec2.image.launchPermission 11.15.2
 aws.ec2.image.launchPermission.group 11.15.2
