@@ -530,6 +530,16 @@ func athenaCatalogHasNoDetail(err error) bool {
 	return strings.Contains(apiErr.ErrorMessage(), "was not found")
 }
 
+// athenaCatalogHasNoTags reports a ListTagsForResource error that means the
+// catalog has no taggable resource behind its ARN. The built-in AwsDataCatalog
+// is listed in every region, but Athena answers ListTagsForResource for its ARN
+// with ResourceNotFoundException "Could not find valid resource from ARN". It
+// carries no tags, so the answer is an empty map rather than an error that
+// fails the whole catalog list.
+func athenaCatalogHasNoTags(err error) bool {
+	return isResourceNotFoundError(err)
+}
+
 func (a *mqlAwsAthenaDataCatalog) fetchDetail() error {
 	if a.fetchedDetail {
 		return nil
@@ -1053,6 +1063,9 @@ func (a *mqlAwsAthenaDataCatalog) tags() (map[string]any, error) {
 		for {
 			resp, err := svc.ListTagsForResource(context.Background(), &athena.ListTagsForResourceInput{ResourceARN: &arn, NextToken: nextToken})
 			if err != nil {
+				if athenaCatalogHasNoTags(err) {
+					return map[string]any{}, nil
+				}
 				if Is400AccessDeniedError(err) {
 					if plugin.StructuredErrors() {
 						return nil, llx.Forbidden(err, llx.WithPermissions("athena:ListTagsForResource"))

@@ -33980,7 +33980,7 @@ private aws.bedrock.batchInferenceJob @defaults("jobName modelId status") {
   // Time the batch inference job ended
   endTime time
   // Failure message when the job failed
-  message string
+  message() string
   // Number of hours after which the batch inference job times out
   timeoutDurationInHours int
   // VPC the batch inference job runs in

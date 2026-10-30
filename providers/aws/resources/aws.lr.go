@@ -214552,7 +214552,9 @@ func (c *mqlAwsBedrockBatchInferenceJob) GetEndTime() *plugin.TValue[*time.Time]
 }
 
 func (c *mqlAwsBedrockBatchInferenceJob) GetMessage() *plugin.TValue[string] {
-	return &c.Message
+	return plugin.GetOrCompute[string](&c.Message, func() (string, error) {
+		return c.message()
+	})
 }
 
 func (c *mqlAwsBedrockBatchInferenceJob) GetTimeoutDurationInHours() *plugin.TValue[int64] {

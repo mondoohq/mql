@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
@@ -2238,7 +2239,6 @@ func (a *mqlAwsBedrock) getBatchInferenceJobs(conn *connection.AwsConnection) []
 							"submitTime":             llx.TimeDataPtr(j.SubmitTime),
 							"lastModifiedTime":       llx.TimeDataPtr(j.LastModifiedTime),
 							"endTime":                llx.TimeDataPtr(j.EndTime),
-							"message":                llx.StringDataPtr(j.Message),
 							"timeoutDurationInHours": llx.IntData(int64(convert.ToValue(j.TimeoutDurationInHours))),
 						})
 					if err != nil {
@@ -2375,6 +2375,54 @@ type mqlAwsBedrockBatchInferenceJobInternal struct {
 	cacheLocations        batchInferenceJobLocations
 	cacheSubnetIds        []string
 	cacheSecurityGroupIds []string
+	detailFetched         atomic.Bool
+	detailLock            sync.Mutex
+	detail                *bedrock.GetModelInvocationJobOutput
+}
+
+// fetchDetail reads the job with GetModelInvocationJob. The list summaries do
+// not carry the failure message, so it is read from the job itself.
+func (a *mqlAwsBedrockBatchInferenceJob) fetchDetail() (*bedrock.GetModelInvocationJobOutput, error) {
+	if a.detailFetched.Load() {
+		return a.detail, nil
+	}
+	a.detailLock.Lock()
+	defer a.detailLock.Unlock()
+	if a.detailFetched.Load() {
+		return a.detail, nil
+	}
+
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.Bedrock(a.Region.Data)
+	jobArn := a.JobArn.Data
+	resp, err := svc.GetModelInvocationJob(context.Background(), &bedrock.GetModelInvocationJobInput{
+		JobIdentifier: &jobArn,
+	})
+	if err != nil {
+		return nil, err
+	}
+	a.detail = resp
+	a.detailFetched.Store(true)
+	return resp, nil
+}
+
+func (a *mqlAwsBedrockBatchInferenceJob) message() (string, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			if plugin.StructuredErrors() {
+				return "", llx.Forbidden(err, llx.WithPermissions("bedrock:GetModelInvocationJob"))
+			}
+			a.Message.State = plugin.StateIsSet | plugin.StateIsNull
+			return "", nil
+		}
+		return "", err
+	}
+	if detail == nil || detail.Message == nil {
+		a.Message.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *detail.Message, nil
 }
 
 // batchInferenceJobLocations holds the S3 locations and output encryption key

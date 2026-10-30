@@ -1,7 +1,7 @@
 {
   "provider": "aws",
   "version": "14.6.1",
-  "generated_at": "2026-10-30T14:59:48-07:00",
+  "generated_at": "2026-10-30T16:06:58-07:00",
   "permissions": [
     "access-analyzer:GetFinding",
     "access-analyzer:ListAnalyzers",
@@ -145,6 +145,7 @@
     "bedrock:GetMarketplaceModelEndpoint",
     "bedrock:GetModelCustomizationJob",
     "bedrock:GetModelImportJob",
+    "bedrock:GetModelInvocationJob",
     "bedrock:GetModelInvocationLoggingConfiguration",
     "bedrock:GetResourcePolicy",
     "bedrock:ListAgentActionGroups",
@@ -2002,6 +2003,12 @@
       "permission": "bedrock:GetModelImportJob",
       "service": "bedrock",
       "action": "GetModelImportJob",
+      "source_file": "aws_bedrock.go"
+    },
+    {
+      "permission": "bedrock:GetModelInvocationJob",
+      "service": "bedrock",
+      "action": "GetModelInvocationJob",
       "source_file": "aws_bedrock.go"
     },
     {
