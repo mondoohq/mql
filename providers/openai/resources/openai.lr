@@ -78,6 +78,8 @@ openai @defaults("organization") @maturity("preview") @root {
   spendAlerts() []openai.spendAlert
   // Certificates uploaded to the organization (requires admin API key)
   certificates() []openai.certificate
+  // Customer-managed encryption keys registered with the organization (requires admin API key)
+  externalKeys() []openai.externalKey
   // Code interpreter containers
   containers() []openai.container
   // Batch jobs submitted to the Batch API
@@ -205,6 +207,101 @@ openai.spendAlert @defaults("thresholdAmount interval") @maturity("preview") {
   notificationRecipients []string
   // Prefix added to the notification subject line, empty when none is set
   notificationSubjectPrefix string
+}
+
+// OpenAI customer-managed encryption key
+//
+// Key configuration registered with the organization that points at a key
+// held in the customer's own AWS KMS, Google Cloud KMS, or Azure Key Vault.
+// The `provider` field names the key service and `purpose` what the key is
+// used for. The location fields that apply to the key service are set:
+// `kmsArn` and `roleArn` for aws, the `kms*` and `workloadIdentity*` fields
+// and `audience` for gcp, and `vaultUri`, `keyName`, `keyVersion`, and
+// `tenantId` for azure. The `projects` field lists the projects bound to
+// the key, and `openai.project.externalKeys` reads the binding from the
+// project side, so projects outside every key can be found. The API
+// returns no key material.
+openai.externalKey @defaults("name provider purpose") @maturity("preview") {
+  // Key configuration identifier
+  id string
+  // Name of the key configuration
+  name string
+  // Key service holding the key
+  //
+  // One of aws, gcp, or azure.
+  provider string
+  // What the key is used for
+  //
+  // One of ekm, for enterprise key management of organization data, or
+  // psp_decryption. Null when the API reports no purpose.
+  purpose string
+  // Identifier of the workspace the key configuration belongs to
+  workspaceId string
+  // Projects bound to this key
+  projects() []openai.project
+  // ARN of the AWS KMS key
+  //
+  // Set when provider is aws.
+  kmsArn string
+  // ARN of the IAM role assumed to reach the AWS KMS key
+  //
+  // Set when provider is aws.
+  roleArn string
+  // Google Cloud project holding the Cloud KMS key
+  //
+  // Set when provider is gcp.
+  kmsProjectId string
+  // Location of the Cloud KMS key ring
+  //
+  // Set when provider is gcp, for example `us-east1` or `global`.
+  kmsKeyLocation string
+  // Name of the Cloud KMS key ring
+  //
+  // Set when provider is gcp.
+  kmsKeyRingName string
+  // Name of the Cloud KMS key
+  //
+  // Set when provider is gcp.
+  kmsKeyName string
+  // Cloud KMS key version
+  //
+  // Set when provider is gcp and the configuration pins a version.
+  kmsKeyVersion string
+  // Audience of the workload identity federation token
+  //
+  // Set when provider is gcp.
+  audience string
+  // Google Cloud project number holding the workload identity pool
+  //
+  // Set when provider is gcp.
+  workloadIdentityProjectNumber string
+  // Workload identity pool used to reach the Cloud KMS key
+  //
+  // Set when provider is gcp.
+  workloadIdentityPoolId string
+  // Workload identity pool provider used to reach the Cloud KMS key
+  //
+  // Set when provider is gcp.
+  workloadIdentityProviderId string
+  // Key Vault URI
+  //
+  // Set when provider is azure, for example
+  // `https://example.vault.azure.net`.
+  vaultUri string
+  // Name of the key within the Key Vault
+  //
+  // Set when provider is azure.
+  keyName string
+  // Version of the Key Vault key
+  //
+  // Set when provider is azure and the configuration pins a version.
+  keyVersion string
+  // Microsoft Entra tenant the Key Vault belongs to
+  //
+  // Set when provider is azure.
+  tenantId string
+  // Timestamp when the key configuration was created
+  createdAt time
 }
 
 // OpenAI model
@@ -615,6 +712,8 @@ openai.project @defaults("id name status") @maturity("preview") {
   spendAlerts() []openai.spendAlert
   // Certificates activated for this project (requires admin API key)
   certificates() []openai.certificate
+  // Customer-managed encryption keys this project is bound to (requires admin API key)
+  externalKeys() []openai.externalKey
 }
 
 // OpenAI project rate limit

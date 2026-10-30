@@ -311,8 +311,9 @@ func costPages(ctx context.Context, client *openai.Client, start int64) reportPa
 	}
 }
 
-// classifyReportError turns a refusal of the usage or cost report into a
-// classified error. Anything else is returned with context and no kind.
+// classifyReportError turns a refusal of an admin read (the usage or cost
+// report, the external key list) into a classified error. Anything else is
+// returned with context and no kind.
 func classifyReportError(err error, report string) error {
 	wrapped := fmt.Errorf("failed to read the %s: %w", report, err)
 	if apiErr, ok := errors.AsType[*openai.Error](err); ok {

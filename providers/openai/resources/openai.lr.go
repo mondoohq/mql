@@ -21,6 +21,7 @@ const (
 	ResourceOpenaiContainer                         string = "openai.container"
 	ResourceOpenaiContainerFile                     string = "openai.container.file"
 	ResourceOpenaiSpendAlert                        string = "openai.spendAlert"
+	ResourceOpenaiExternalKey                       string = "openai.externalKey"
 	ResourceOpenaiModel                             string = "openai.model"
 	ResourceOpenaiBatch                             string = "openai.batch"
 	ResourceOpenaiSkill                             string = "openai.skill"
@@ -76,6 +77,10 @@ func init() {
 		"openai.spendAlert": {
 			// to override args, implement: initOpenaiSpendAlert(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createOpenaiSpendAlert,
+		},
+		"openai.externalKey": {
+			// to override args, implement: initOpenaiExternalKey(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createOpenaiExternalKey,
 		},
 		"openai.model": {
 			Init:   initOpenaiModel,
@@ -334,6 +339,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"openai.certificates": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenai).GetCertificates()).ToDataRes(types.Array(types.Resource("openai.certificate")))
 	},
+	"openai.externalKeys": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenai).GetExternalKeys()).ToDataRes(types.Array(types.Resource("openai.externalKey")))
+	},
 	"openai.containers": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenai).GetContainers()).ToDataRes(types.Array(types.Resource("openai.container")))
 	},
@@ -435,6 +443,72 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"openai.spendAlert.notificationSubjectPrefix": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiSpendAlert).GetNotificationSubjectPrefix()).ToDataRes(types.String)
+	},
+	"openai.externalKey.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiExternalKey).GetId()).ToDataRes(types.String)
+	},
+	"openai.externalKey.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiExternalKey).GetName()).ToDataRes(types.String)
+	},
+	"openai.externalKey.provider": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiExternalKey).GetProvider()).ToDataRes(types.String)
+	},
+	"openai.externalKey.purpose": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiExternalKey).GetPurpose()).ToDataRes(types.String)
+	},
+	"openai.externalKey.workspaceId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiExternalKey).GetWorkspaceId()).ToDataRes(types.String)
+	},
+	"openai.externalKey.projects": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiExternalKey).GetProjects()).ToDataRes(types.Array(types.Resource("openai.project")))
+	},
+	"openai.externalKey.kmsArn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiExternalKey).GetKmsArn()).ToDataRes(types.String)
+	},
+	"openai.externalKey.roleArn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiExternalKey).GetRoleArn()).ToDataRes(types.String)
+	},
+	"openai.externalKey.kmsProjectId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiExternalKey).GetKmsProjectId()).ToDataRes(types.String)
+	},
+	"openai.externalKey.kmsKeyLocation": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiExternalKey).GetKmsKeyLocation()).ToDataRes(types.String)
+	},
+	"openai.externalKey.kmsKeyRingName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiExternalKey).GetKmsKeyRingName()).ToDataRes(types.String)
+	},
+	"openai.externalKey.kmsKeyName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiExternalKey).GetKmsKeyName()).ToDataRes(types.String)
+	},
+	"openai.externalKey.kmsKeyVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiExternalKey).GetKmsKeyVersion()).ToDataRes(types.String)
+	},
+	"openai.externalKey.audience": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiExternalKey).GetAudience()).ToDataRes(types.String)
+	},
+	"openai.externalKey.workloadIdentityProjectNumber": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiExternalKey).GetWorkloadIdentityProjectNumber()).ToDataRes(types.String)
+	},
+	"openai.externalKey.workloadIdentityPoolId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiExternalKey).GetWorkloadIdentityPoolId()).ToDataRes(types.String)
+	},
+	"openai.externalKey.workloadIdentityProviderId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiExternalKey).GetWorkloadIdentityProviderId()).ToDataRes(types.String)
+	},
+	"openai.externalKey.vaultUri": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiExternalKey).GetVaultUri()).ToDataRes(types.String)
+	},
+	"openai.externalKey.keyName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiExternalKey).GetKeyName()).ToDataRes(types.String)
+	},
+	"openai.externalKey.keyVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiExternalKey).GetKeyVersion()).ToDataRes(types.String)
+	},
+	"openai.externalKey.tenantId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiExternalKey).GetTenantId()).ToDataRes(types.String)
+	},
+	"openai.externalKey.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiExternalKey).GetCreatedAt()).ToDataRes(types.Time)
 	},
 	"openai.model.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiModel).GetId()).ToDataRes(types.String)
@@ -744,6 +818,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"openai.project.certificates": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiProject).GetCertificates()).ToDataRes(types.Array(types.Resource("openai.certificate")))
+	},
+	"openai.project.externalKeys": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiProject).GetExternalKeys()).ToDataRes(types.Array(types.Resource("openai.externalKey")))
 	},
 	"openai.project.rateLimit.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiProjectRateLimit).GetId()).ToDataRes(types.String)
@@ -1389,6 +1466,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOpenai).Certificates, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"openai.externalKeys": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenai).ExternalKeys, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"openai.containers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOpenai).Containers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -1539,6 +1620,98 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"openai.spendAlert.notificationSubjectPrefix": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOpenaiSpendAlert).NotificationSubjectPrefix, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.externalKey.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiExternalKey).__id, ok = v.Value.(string)
+		return
+	},
+	"openai.externalKey.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiExternalKey).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.externalKey.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiExternalKey).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.externalKey.provider": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiExternalKey).Provider, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.externalKey.purpose": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiExternalKey).Purpose, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.externalKey.workspaceId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiExternalKey).WorkspaceId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.externalKey.projects": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiExternalKey).Projects, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"openai.externalKey.kmsArn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiExternalKey).KmsArn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.externalKey.roleArn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiExternalKey).RoleArn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.externalKey.kmsProjectId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiExternalKey).KmsProjectId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.externalKey.kmsKeyLocation": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiExternalKey).KmsKeyLocation, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.externalKey.kmsKeyRingName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiExternalKey).KmsKeyRingName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.externalKey.kmsKeyName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiExternalKey).KmsKeyName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.externalKey.kmsKeyVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiExternalKey).KmsKeyVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.externalKey.audience": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiExternalKey).Audience, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.externalKey.workloadIdentityProjectNumber": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiExternalKey).WorkloadIdentityProjectNumber, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.externalKey.workloadIdentityPoolId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiExternalKey).WorkloadIdentityPoolId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.externalKey.workloadIdentityProviderId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiExternalKey).WorkloadIdentityProviderId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.externalKey.vaultUri": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiExternalKey).VaultUri, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.externalKey.keyName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiExternalKey).KeyName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.externalKey.keyVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiExternalKey).KeyVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.externalKey.tenantId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiExternalKey).TenantId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.externalKey.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiExternalKey).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"openai.model.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1991,6 +2164,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"openai.project.certificates": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOpenaiProject).Certificates, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"openai.project.externalKeys": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiProject).ExternalKeys, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"openai.project.rateLimit.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -2844,6 +3021,7 @@ type mqlOpenai struct {
 	SpendLimitEnforcement plugin.TValue[string]
 	SpendAlerts           plugin.TValue[[]any]
 	Certificates          plugin.TValue[[]any]
+	ExternalKeys          plugin.TValue[[]any]
 	Containers            plugin.TValue[[]any]
 	Batches               plugin.TValue[[]any]
 	Skills                plugin.TValue[[]any]
@@ -3168,6 +3346,22 @@ func (c *mqlOpenai) GetCertificates() *plugin.TValue[[]any] {
 		}
 
 		return c.certificates()
+	})
+}
+
+func (c *mqlOpenai) GetExternalKeys() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ExternalKeys, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("openai", c.__id, "externalKeys")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.externalKeys()
 	})
 }
 
@@ -3573,6 +3767,167 @@ func (c *mqlOpenaiSpendAlert) GetNotificationRecipients() *plugin.TValue[[]any] 
 
 func (c *mqlOpenaiSpendAlert) GetNotificationSubjectPrefix() *plugin.TValue[string] {
 	return &c.NotificationSubjectPrefix
+}
+
+// mqlOpenaiExternalKey for the openai.externalKey resource
+type mqlOpenaiExternalKey struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlOpenaiExternalKeyInternal
+	Id                            plugin.TValue[string]
+	Name                          plugin.TValue[string]
+	Provider                      plugin.TValue[string]
+	Purpose                       plugin.TValue[string]
+	WorkspaceId                   plugin.TValue[string]
+	Projects                      plugin.TValue[[]any]
+	KmsArn                        plugin.TValue[string]
+	RoleArn                       plugin.TValue[string]
+	KmsProjectId                  plugin.TValue[string]
+	KmsKeyLocation                plugin.TValue[string]
+	KmsKeyRingName                plugin.TValue[string]
+	KmsKeyName                    plugin.TValue[string]
+	KmsKeyVersion                 plugin.TValue[string]
+	Audience                      plugin.TValue[string]
+	WorkloadIdentityProjectNumber plugin.TValue[string]
+	WorkloadIdentityPoolId        plugin.TValue[string]
+	WorkloadIdentityProviderId    plugin.TValue[string]
+	VaultUri                      plugin.TValue[string]
+	KeyName                       plugin.TValue[string]
+	KeyVersion                    plugin.TValue[string]
+	TenantId                      plugin.TValue[string]
+	CreatedAt                     plugin.TValue[*time.Time]
+}
+
+// createOpenaiExternalKey creates a new instance of this resource
+func createOpenaiExternalKey(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlOpenaiExternalKey{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("openai.externalKey", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlOpenaiExternalKey) MqlName() string {
+	return "openai.externalKey"
+}
+
+func (c *mqlOpenaiExternalKey) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlOpenaiExternalKey) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlOpenaiExternalKey) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlOpenaiExternalKey) GetProvider() *plugin.TValue[string] {
+	return &c.Provider
+}
+
+func (c *mqlOpenaiExternalKey) GetPurpose() *plugin.TValue[string] {
+	return &c.Purpose
+}
+
+func (c *mqlOpenaiExternalKey) GetWorkspaceId() *plugin.TValue[string] {
+	return &c.WorkspaceId
+}
+
+func (c *mqlOpenaiExternalKey) GetProjects() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Projects, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("openai.externalKey", c.__id, "projects")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.projects()
+	})
+}
+
+func (c *mqlOpenaiExternalKey) GetKmsArn() *plugin.TValue[string] {
+	return &c.KmsArn
+}
+
+func (c *mqlOpenaiExternalKey) GetRoleArn() *plugin.TValue[string] {
+	return &c.RoleArn
+}
+
+func (c *mqlOpenaiExternalKey) GetKmsProjectId() *plugin.TValue[string] {
+	return &c.KmsProjectId
+}
+
+func (c *mqlOpenaiExternalKey) GetKmsKeyLocation() *plugin.TValue[string] {
+	return &c.KmsKeyLocation
+}
+
+func (c *mqlOpenaiExternalKey) GetKmsKeyRingName() *plugin.TValue[string] {
+	return &c.KmsKeyRingName
+}
+
+func (c *mqlOpenaiExternalKey) GetKmsKeyName() *plugin.TValue[string] {
+	return &c.KmsKeyName
+}
+
+func (c *mqlOpenaiExternalKey) GetKmsKeyVersion() *plugin.TValue[string] {
+	return &c.KmsKeyVersion
+}
+
+func (c *mqlOpenaiExternalKey) GetAudience() *plugin.TValue[string] {
+	return &c.Audience
+}
+
+func (c *mqlOpenaiExternalKey) GetWorkloadIdentityProjectNumber() *plugin.TValue[string] {
+	return &c.WorkloadIdentityProjectNumber
+}
+
+func (c *mqlOpenaiExternalKey) GetWorkloadIdentityPoolId() *plugin.TValue[string] {
+	return &c.WorkloadIdentityPoolId
+}
+
+func (c *mqlOpenaiExternalKey) GetWorkloadIdentityProviderId() *plugin.TValue[string] {
+	return &c.WorkloadIdentityProviderId
+}
+
+func (c *mqlOpenaiExternalKey) GetVaultUri() *plugin.TValue[string] {
+	return &c.VaultUri
+}
+
+func (c *mqlOpenaiExternalKey) GetKeyName() *plugin.TValue[string] {
+	return &c.KeyName
+}
+
+func (c *mqlOpenaiExternalKey) GetKeyVersion() *plugin.TValue[string] {
+	return &c.KeyVersion
+}
+
+func (c *mqlOpenaiExternalKey) GetTenantId() *plugin.TValue[string] {
+	return &c.TenantId
+}
+
+func (c *mqlOpenaiExternalKey) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
 }
 
 // mqlOpenaiModel for the openai.model resource
@@ -4478,6 +4833,7 @@ type mqlOpenaiProject struct {
 	SpendLimitEnforcement   plugin.TValue[string]
 	SpendAlerts             plugin.TValue[[]any]
 	Certificates            plugin.TValue[[]any]
+	ExternalKeys            plugin.TValue[[]any]
 }
 
 // createOpenaiProject creates a new instance of this resource
@@ -4733,6 +5089,22 @@ func (c *mqlOpenaiProject) GetCertificates() *plugin.TValue[[]any] {
 		}
 
 		return c.certificates()
+	})
+}
+
+func (c *mqlOpenaiProject) GetExternalKeys() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ExternalKeys, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("openai.project", c.__id, "externalKeys")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.externalKeys()
 	})
 }
 
