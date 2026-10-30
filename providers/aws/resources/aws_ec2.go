@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"maps"
 	"regexp"
 	"sort"
 	"strconv"
@@ -46,6 +47,28 @@ func bootMode(v string) string {
 		return "undefined"
 	}
 	return v
+}
+
+// imageScanResultArgs maps the Amazon Inspector results DescribeImages reports
+// for an AMI. Every field is null on an image Inspector has not scanned, and the
+// severity is null on a scanned image without findings.
+func imageScanResultArgs(sr *ec2types.ScanResults) map[string]*llx.RawData {
+	if sr == nil {
+		sr = &ec2types.ScanResults{}
+	}
+	severity := llx.NilData
+	if sr.HighestFindingSeverityLabel != "" {
+		severity = llx.StringData(string(sr.HighestFindingSeverityLabel))
+	}
+	return map[string]*llx.RawData{
+		"inspectorScannedAt":                      llx.TimeDataPtr(sr.FindingScanDate),
+		"inspectorHighestSeverity":                severity,
+		"inspectorCriticalFixAvailableSince":      llx.TimeDataPtr(sr.CriticalFixAvailableSince),
+		"inspectorHighFixAvailableSince":          llx.TimeDataPtr(sr.HighFixAvailableSince),
+		"inspectorMediumFixAvailableSince":        llx.TimeDataPtr(sr.MediumFixAvailableSince),
+		"inspectorLowFixAvailableSince":           llx.TimeDataPtr(sr.LowFixAvailableSince),
+		"inspectorInformationalFixAvailableSince": llx.TimeDataPtr(sr.InformationalFixAvailableSince),
+	}
 }
 
 func (e *mqlAwsEc2) id() (string, error) {
@@ -1070,40 +1093,41 @@ func (a *mqlAwsEc2) getImagesJob(conn *connection.AwsConnection) []*jobpool.Job 
 					if err != nil {
 						return nil, err
 					}
-					mqlImage, err := CreateResource(a.MqlRuntime, ResourceAwsEc2Image,
-						map[string]*llx.RawData{
-							"id":                       llx.StringDataPtr(image.ImageId),
-							"name":                     llx.StringDataPtr(image.Name),
-							"architecture":             llx.StringData(string(image.Architecture)),
-							"ownerId":                  llx.StringDataPtr(image.OwnerId),
-							"ownerAlias":               llx.StringDataPtr(image.ImageOwnerAlias),
-							"createdAt":                llx.TimeDataPtr(createdAt),
-							"deprecatedAt":             llx.TimeDataPtr(deprecatedAt),
-							"enaSupport":               llx.BoolDataPtr(image.EnaSupport),
-							"tpmSupport":               llx.StringData(string(image.TpmSupport)),
-							"imdsSupport":              llx.StringData(imdsSupport(image.ImdsSupport)),
-							"state":                    llx.StringData(string(image.State)),
-							"public":                   llx.BoolDataPtr(image.Public),
-							"rootDeviceType":           llx.StringData(string(image.RootDeviceType)),
-							"virtualizationType":       llx.StringData(string(image.VirtualizationType)),
-							"blockDeviceMappings":      llx.ArrayData(blockDeviceMappings, types.Resource(ResourceAwsEc2ImageBlockDeviceMapping)),
-							"tags":                     llx.MapData(toInterfaceMap(ec2TagsToMap(image.Tags)), types.String),
-							"region":                   llx.StringData(region),
-							"description":              llx.StringDataPtr(image.Description),
-							"imageType":                llx.StringData(string(image.ImageType)),
-							"freeTierEligible":         llx.BoolDataPtr(image.FreeTierEligible),
-							"imageAllowed":             llx.BoolDataPtr(image.ImageAllowed),
-							"deregistrationProtection": llx.StringDataPtr(image.DeregistrationProtection),
-							"lastLaunchedAt":           llx.TimeDataPtr(lastLaunchedAt),
-							"platformDetails":          llx.StringDataPtr(image.PlatformDetails),
-							"bootMode":                 llx.StringData(bootMode(string(image.BootMode))),
-							"rootDeviceName":           llx.StringDataPtr(image.RootDeviceName),
-							"sourceImageId":            llx.StringDataPtr(image.SourceImageId),
-							"sourceImageRegion":        llx.StringDataPtr(image.SourceImageRegion),
-							"sourceInstanceId":         llx.StringDataPtr(image.SourceInstanceId),
-							"productCodes":             llx.ArrayData(imageProductCodes, types.Dict),
-							"watermarks":               llx.ArrayData(watermarks, types.Resource(ResourceAwsEc2ImageWatermark)),
-						})
+					imageArgs := map[string]*llx.RawData{
+						"id":                       llx.StringDataPtr(image.ImageId),
+						"name":                     llx.StringDataPtr(image.Name),
+						"architecture":             llx.StringData(string(image.Architecture)),
+						"ownerId":                  llx.StringDataPtr(image.OwnerId),
+						"ownerAlias":               llx.StringDataPtr(image.ImageOwnerAlias),
+						"createdAt":                llx.TimeDataPtr(createdAt),
+						"deprecatedAt":             llx.TimeDataPtr(deprecatedAt),
+						"enaSupport":               llx.BoolDataPtr(image.EnaSupport),
+						"tpmSupport":               llx.StringData(string(image.TpmSupport)),
+						"imdsSupport":              llx.StringData(imdsSupport(image.ImdsSupport)),
+						"state":                    llx.StringData(string(image.State)),
+						"public":                   llx.BoolDataPtr(image.Public),
+						"rootDeviceType":           llx.StringData(string(image.RootDeviceType)),
+						"virtualizationType":       llx.StringData(string(image.VirtualizationType)),
+						"blockDeviceMappings":      llx.ArrayData(blockDeviceMappings, types.Resource(ResourceAwsEc2ImageBlockDeviceMapping)),
+						"tags":                     llx.MapData(toInterfaceMap(ec2TagsToMap(image.Tags)), types.String),
+						"region":                   llx.StringData(region),
+						"description":              llx.StringDataPtr(image.Description),
+						"imageType":                llx.StringData(string(image.ImageType)),
+						"freeTierEligible":         llx.BoolDataPtr(image.FreeTierEligible),
+						"imageAllowed":             llx.BoolDataPtr(image.ImageAllowed),
+						"deregistrationProtection": llx.StringDataPtr(image.DeregistrationProtection),
+						"lastLaunchedAt":           llx.TimeDataPtr(lastLaunchedAt),
+						"platformDetails":          llx.StringDataPtr(image.PlatformDetails),
+						"bootMode":                 llx.StringData(bootMode(string(image.BootMode))),
+						"rootDeviceName":           llx.StringDataPtr(image.RootDeviceName),
+						"sourceImageId":            llx.StringDataPtr(image.SourceImageId),
+						"sourceImageRegion":        llx.StringDataPtr(image.SourceImageRegion),
+						"sourceInstanceId":         llx.StringDataPtr(image.SourceInstanceId),
+						"productCodes":             llx.ArrayData(imageProductCodes, types.Dict),
+						"watermarks":               llx.ArrayData(watermarks, types.Resource(ResourceAwsEc2ImageWatermark)),
+					}
+					maps.Copy(imageArgs, imageScanResultArgs(image.ScanResults))
+					mqlImage, err := CreateResource(a.MqlRuntime, ResourceAwsEc2Image, imageArgs)
 					if err != nil {
 						return nil, err
 					}
@@ -2133,6 +2157,7 @@ func initAwsEc2Image(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 		args["sourceInstanceId"] = llx.NilData
 		args["productCodes"] = llx.NilData
 		args["watermarks"] = llx.NilData
+		maps.Copy(args, imageScanResultArgs(nil))
 		return args, nil, nil
 	}
 
@@ -2184,6 +2209,7 @@ func initAwsEc2Image(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 		}
 		args["productCodes"] = llx.ArrayData(imageProductCodes, types.Dict)
 		args["watermarks"] = llx.ArrayData(watermarks, types.Resource(ResourceAwsEc2ImageWatermark))
+		maps.Copy(args, imageScanResultArgs(image.ScanResults))
 		if image.CreationDate == nil {
 			args["createdAt"] = llx.NilData
 		} else {

@@ -21824,6 +21824,42 @@ private aws.ec2.image @defaults("ownerAlias id name") {
   productCodes []dict
   // Provenance watermarks recorded on the image
   watermarks []aws.ec2.image.watermark
+  // Date of the most recent Amazon Inspector scan of the image
+  //
+  // Null when Amazon Inspector has not scanned the image. Results of a shared
+  // or public image are visible to every account that can launch it.
+  inspectorScannedAt time
+  // Highest severity among the image's Amazon Inspector findings
+  //
+  // One of informational, low, medium, high, or critical, whether or not a fix
+  // is available. Null when the image has no findings or was not scanned.
+  inspectorHighestSeverity string
+  // Earliest date Amazon Inspector reported a fix for a critical finding on the image
+  //
+  // Null unless the image has at least one critical finding with a fix
+  // available. Compare it with the current time to find images that have
+  // carried a fixable critical vulnerability for too long.
+  inspectorCriticalFixAvailableSince time
+  // Earliest date Amazon Inspector reported a fix for a high severity finding on the image
+  //
+  // Null unless the image has at least one high severity finding with a fix
+  // available.
+  inspectorHighFixAvailableSince time
+  // Earliest date Amazon Inspector reported a fix for a medium severity finding on the image
+  //
+  // Null unless the image has at least one medium severity finding with a fix
+  // available.
+  inspectorMediumFixAvailableSince time
+  // Earliest date Amazon Inspector reported a fix for a low severity finding on the image
+  //
+  // Null unless the image has at least one low severity finding with a fix
+  // available.
+  inspectorLowFixAvailableSince time
+  // Earliest date Amazon Inspector reported a fix for an informational finding on the image
+  //
+  // Null unless the image has at least one informational finding with a fix
+  // available.
+  inspectorInformationalFixAvailableSince time
 }
 
 // Amazon EC2 image provenance watermark

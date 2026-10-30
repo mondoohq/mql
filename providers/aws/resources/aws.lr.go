@@ -26604,6 +26604,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.ec2.image.watermarks": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEc2Image).GetWatermarks()).ToDataRes(types.Array(types.Resource("aws.ec2.image.watermark")))
 	},
+	"aws.ec2.image.inspectorScannedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2Image).GetInspectorScannedAt()).ToDataRes(types.Time)
+	},
+	"aws.ec2.image.inspectorHighestSeverity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2Image).GetInspectorHighestSeverity()).ToDataRes(types.String)
+	},
+	"aws.ec2.image.inspectorCriticalFixAvailableSince": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2Image).GetInspectorCriticalFixAvailableSince()).ToDataRes(types.Time)
+	},
+	"aws.ec2.image.inspectorHighFixAvailableSince": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2Image).GetInspectorHighFixAvailableSince()).ToDataRes(types.Time)
+	},
+	"aws.ec2.image.inspectorMediumFixAvailableSince": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2Image).GetInspectorMediumFixAvailableSince()).ToDataRes(types.Time)
+	},
+	"aws.ec2.image.inspectorLowFixAvailableSince": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2Image).GetInspectorLowFixAvailableSince()).ToDataRes(types.Time)
+	},
+	"aws.ec2.image.inspectorInformationalFixAvailableSince": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2Image).GetInspectorInformationalFixAvailableSince()).ToDataRes(types.Time)
+	},
 	"aws.ec2.image.watermark.watermarkKey": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEc2ImageWatermark).GetWatermarkKey()).ToDataRes(types.String)
 	},
@@ -70662,6 +70683,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.ec2.image.watermarks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsEc2Image).Watermarks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.image.inspectorScannedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2Image).InspectorScannedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.image.inspectorHighestSeverity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2Image).InspectorHighestSeverity, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.image.inspectorCriticalFixAvailableSince": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2Image).InspectorCriticalFixAvailableSince, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.image.inspectorHighFixAvailableSince": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2Image).InspectorHighFixAvailableSince, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.image.inspectorMediumFixAvailableSince": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2Image).InspectorMediumFixAvailableSince, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.image.inspectorLowFixAvailableSince": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2Image).InspectorLowFixAvailableSince, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.image.inspectorInformationalFixAvailableSince": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2Image).InspectorInformationalFixAvailableSince, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"aws.ec2.image.watermark.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -170183,42 +170232,49 @@ type mqlAwsEc2Image struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlAwsEc2ImageInternal it will be used here
-	Id                       plugin.TValue[string]
-	Name                     plugin.TValue[string]
-	Architecture             plugin.TValue[string]
-	OwnerId                  plugin.TValue[string]
-	OwnerAlias               plugin.TValue[string]
-	CreatedAt                plugin.TValue[*time.Time]
-	DeprecatedAt             plugin.TValue[*time.Time]
-	EnaSupport               plugin.TValue[bool]
-	TpmSupport               plugin.TValue[string]
-	ImdsSupport              plugin.TValue[string]
-	State                    plugin.TValue[string]
-	Public                   plugin.TValue[bool]
-	RootDeviceType           plugin.TValue[string]
-	VirtualizationType       plugin.TValue[string]
-	BlockDeviceMappings      plugin.TValue[[]any]
-	Tags                     plugin.TValue[map[string]any]
-	Region                   plugin.TValue[string]
-	LaunchPermissions        plugin.TValue[[]any]
-	SharedWithAccounts       plugin.TValue[[]any]
-	SharedExternally         plugin.TValue[bool]
-	Description              plugin.TValue[string]
-	ImageType                plugin.TValue[string]
-	FreeTierEligible         plugin.TValue[bool]
-	ImageAllowed             plugin.TValue[bool]
-	DeregistrationProtection plugin.TValue[string]
-	LastLaunchedAt           plugin.TValue[*time.Time]
-	PlatformDetails          plugin.TValue[string]
-	BootMode                 plugin.TValue[string]
-	RootDeviceName           plugin.TValue[string]
-	SourceImageId            plugin.TValue[string]
-	SourceImageRegion        plugin.TValue[string]
-	SourceInstanceId         plugin.TValue[string]
-	SourceImage              plugin.TValue[*mqlAwsEc2Image]
-	SourceInstance           plugin.TValue[*mqlAwsEc2Instance]
-	ProductCodes             plugin.TValue[[]any]
-	Watermarks               plugin.TValue[[]any]
+	Id                                      plugin.TValue[string]
+	Name                                    plugin.TValue[string]
+	Architecture                            plugin.TValue[string]
+	OwnerId                                 plugin.TValue[string]
+	OwnerAlias                              plugin.TValue[string]
+	CreatedAt                               plugin.TValue[*time.Time]
+	DeprecatedAt                            plugin.TValue[*time.Time]
+	EnaSupport                              plugin.TValue[bool]
+	TpmSupport                              plugin.TValue[string]
+	ImdsSupport                             plugin.TValue[string]
+	State                                   plugin.TValue[string]
+	Public                                  plugin.TValue[bool]
+	RootDeviceType                          plugin.TValue[string]
+	VirtualizationType                      plugin.TValue[string]
+	BlockDeviceMappings                     plugin.TValue[[]any]
+	Tags                                    plugin.TValue[map[string]any]
+	Region                                  plugin.TValue[string]
+	LaunchPermissions                       plugin.TValue[[]any]
+	SharedWithAccounts                      plugin.TValue[[]any]
+	SharedExternally                        plugin.TValue[bool]
+	Description                             plugin.TValue[string]
+	ImageType                               plugin.TValue[string]
+	FreeTierEligible                        plugin.TValue[bool]
+	ImageAllowed                            plugin.TValue[bool]
+	DeregistrationProtection                plugin.TValue[string]
+	LastLaunchedAt                          plugin.TValue[*time.Time]
+	PlatformDetails                         plugin.TValue[string]
+	BootMode                                plugin.TValue[string]
+	RootDeviceName                          plugin.TValue[string]
+	SourceImageId                           plugin.TValue[string]
+	SourceImageRegion                       plugin.TValue[string]
+	SourceInstanceId                        plugin.TValue[string]
+	SourceImage                             plugin.TValue[*mqlAwsEc2Image]
+	SourceInstance                          plugin.TValue[*mqlAwsEc2Instance]
+	ProductCodes                            plugin.TValue[[]any]
+	Watermarks                              plugin.TValue[[]any]
+	InspectorScannedAt                      plugin.TValue[*time.Time]
+	InspectorHighestSeverity                plugin.TValue[string]
+	InspectorCriticalFixAvailableSince      plugin.TValue[*time.Time]
+	InspectorHighFixAvailableSince          plugin.TValue[*time.Time]
+	InspectorMediumFixAvailableSince        plugin.TValue[*time.Time]
+	InspectorLowFixAvailableSince           plugin.TValue[*time.Time]
+	InspectorInformationalFixAvailableSince plugin.TValue[*time.Time]
 }
 
 // createAwsEc2Image creates a new instance of this resource
@@ -170440,6 +170496,34 @@ func (c *mqlAwsEc2Image) GetProductCodes() *plugin.TValue[[]any] {
 
 func (c *mqlAwsEc2Image) GetWatermarks() *plugin.TValue[[]any] {
 	return &c.Watermarks
+}
+
+func (c *mqlAwsEc2Image) GetInspectorScannedAt() *plugin.TValue[*time.Time] {
+	return &c.InspectorScannedAt
+}
+
+func (c *mqlAwsEc2Image) GetInspectorHighestSeverity() *plugin.TValue[string] {
+	return &c.InspectorHighestSeverity
+}
+
+func (c *mqlAwsEc2Image) GetInspectorCriticalFixAvailableSince() *plugin.TValue[*time.Time] {
+	return &c.InspectorCriticalFixAvailableSince
+}
+
+func (c *mqlAwsEc2Image) GetInspectorHighFixAvailableSince() *plugin.TValue[*time.Time] {
+	return &c.InspectorHighFixAvailableSince
+}
+
+func (c *mqlAwsEc2Image) GetInspectorMediumFixAvailableSince() *plugin.TValue[*time.Time] {
+	return &c.InspectorMediumFixAvailableSince
+}
+
+func (c *mqlAwsEc2Image) GetInspectorLowFixAvailableSince() *plugin.TValue[*time.Time] {
+	return &c.InspectorLowFixAvailableSince
+}
+
+func (c *mqlAwsEc2Image) GetInspectorInformationalFixAvailableSince() *plugin.TValue[*time.Time] {
+	return &c.InspectorInformationalFixAvailableSince
 }
 
 // mqlAwsEc2ImageWatermark for the aws.ec2.image.watermark resource
