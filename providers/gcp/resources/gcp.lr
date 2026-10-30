@@ -122,6 +122,12 @@ gcp.organization @defaults("name") {
   sccEventThreatDetectionCustomModules() []gcp.scc.eventThreatDetectionCustomModule
   // Resource Manager tag keys defined on the organization
   tagKeys() []gcp.organization.tagKey
+  // Resource Manager boundaries defined directly on the organization
+  //
+  // Each boundary groups the organization's descendant projects that match its
+  // tag filter into one administrative perimeter for App Hub and Agent
+  // Registry. Boundaries defined on folders are listed on each folder.
+  boundaries() []gcp.resourcemanager.boundary
   // Assured Workloads environments defined in the organization
   assuredWorkloads() []gcp.organization.assuredWorkload
   // Model Armor floor setting defined on the organization
@@ -1020,6 +1026,11 @@ private gcp.folder @defaults("name") {
   logging() gcp.folder.loggingService
   // Essential Contacts configured at the folder level for security, technical, and other notification categories
   essentialContacts() []gcp.essentialContact
+  // Resource Manager boundaries defined directly on the folder
+  //
+  // Each boundary groups the folder's descendant projects that match its tag
+  // filter into one administrative perimeter for App Hub and Agent Registry.
+  boundaries() []gcp.resourcemanager.boundary
   // Hierarchical firewall policies defined on the folder, which override project rules below it
   firewallPolicies() []gcp.hierarchicalFirewallPolicy
   // IAM deny policies attached to the folder, which block permissions for every project beneath it
@@ -1392,6 +1403,52 @@ private gcp.organization.tagValue @defaults("namespacedName") {
   tagKey() gcp.organization.tagKey
   // IAM policy bindings on the tag value
   iamPolicy() []gcp.resourcemanager.binding
+}
+
+// Google Cloud (GCP) Resource Manager boundary
+//
+// Collection of projects under an organization or folder that App Hub and
+// Agent Registry manage as one administrative perimeter. A project beneath the
+// boundary's parent belongs to it when its effective value for the tag key
+// `tagFilterKey` is `tagFilterValue`, so membership follows project tags.
+// Surfaces the `displayName`, lifecycle `state`, the tag filter with the
+// `tagKey` and `tagValue` it names, and the `managementProject` of the
+// capability config the boundary is associated with. The `name` (e.g.
+// `organizations/123/boundaries/production`) selects the boundary.
+private gcp.resourcemanager.boundary @defaults("name displayName") {
+  // Resource name of the boundary (e.g. organizations/123/boundaries/production or folders/456/boundaries/production)
+  name string
+  // Human-readable display name of the boundary
+  displayName string
+  // Lifecycle state
+  //
+  // One of STATE_UNSPECIFIED, CREATING, or ACTIVE (the boundary is operational
+  // and its management project is fully active).
+  state string
+  // Namespaced name of the tag key the boundary filters projects on (e.g. 123/env)
+  //
+  // Empty when the boundary has no tag filter.
+  tagFilterKey string
+  // Short name of the tag value a project must carry to belong to the boundary (e.g. production)
+  //
+  // Empty when the boundary has no tag filter.
+  tagFilterValue string
+  // Tag key the boundary filters projects on
+  //
+  // Null when the boundary has no tag filter.
+  tagKey() gcp.organization.tagKey
+  // Tag value a project must carry to belong to the boundary
+  //
+  // Null when the boundary has no tag filter.
+  tagValue() gcp.organization.tagValue
+  // Management project of the capability config the boundary is associated with
+  //
+  // Null when the boundary is not associated with a capability config.
+  managementProject() gcp.project
+  // Time the boundary was created
+  createTime time
+  // Time the boundary was last modified
+  updateTime time
 }
 
 // Google Cloud (GCP) Assured Workloads environment

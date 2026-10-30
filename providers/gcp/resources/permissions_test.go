@@ -380,6 +380,7 @@ var validatedGCPOrgLevelPermissions = []string{
 	"iam.googleapis.com/workforcePoolProviders.list",
 	"iam.googleapis.com/workforcePools.list",
 	"orgpolicy.customConstraints.list",
+	"resourcemanager.boundaries.list",
 	"resourcemanager.folders.get",
 	"resourcemanager.folders.getIamPolicy",
 	"resourcemanager.folders.list",

@@ -1597,6 +1597,11 @@ var gcpPermissionOverrides = map[string]map[string]string{
 		// "resourcemanager.effectiveTagBindingCollections.get" (not a real
 		// permission).
 		"EffectiveTagBindingCollections.Get": "storage.buckets.listEffectiveTags",
+		// Looking a tag key or value up by its namespaced name is governed by
+		// the same get permission as looking it up by its resource name; there
+		// is no "getnamespaced" permission.
+		"TagKeys.GetNamespaced":   "resourcemanager.tagKeys.get",
+		"TagValues.GetNamespaced": "resourcemanager.tagValues.get",
 	},
 }
 
@@ -1617,14 +1622,18 @@ var gcpOrgLevelPermissions = map[string]bool{
 	// organization scope (GA, custom-role supported).
 	"iam.googleapis.com/workforcePools.list":         true,
 	"iam.googleapis.com/workforcePoolProviders.list": true,
-	"resourcemanager.folders.get":                    true,
-	"resourcemanager.folders.getIamPolicy":           true,
-	"resourcemanager.folders.list":                   true,
-	"resourcemanager.folders.search":                 true,
-	"resourcemanager.organizations.get":              true,
-	"resourcemanager.organizations.getIamPolicy":     true,
-	"resourcemanager.projects.list":                  true,
-	"resourcemanager.projects.search":                true,
+	// Boundaries are defined on organizations and folders only: the
+	// permission is GA at organization scope and absent from
+	// queryTestablePermissions at project scope (2026-10-30).
+	"resourcemanager.boundaries.list":            true,
+	"resourcemanager.folders.get":                true,
+	"resourcemanager.folders.getIamPolicy":       true,
+	"resourcemanager.folders.list":               true,
+	"resourcemanager.folders.search":             true,
+	"resourcemanager.organizations.get":          true,
+	"resourcemanager.organizations.getIamPolicy": true,
+	"resourcemanager.projects.list":              true,
+	"resourcemanager.projects.search":            true,
 }
 
 // gcpSkipMethods lists method names that match isGCPAPIMethod patterns but are
