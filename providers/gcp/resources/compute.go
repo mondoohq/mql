@@ -4082,7 +4082,7 @@ func (g *mqlGcpProjectComputeService) vpnTunnels() ([]any, error) {
 					tunnelResourceManagerTags = convert.MapToInterfaceMap(t.Params.ResourceManagerTags)
 				}
 
-				mqlTunnel, err := CreateResource(g.MqlRuntime, "gcp.project.computeService.vpnTunnel", map[string]*llx.RawData{
+				args := map[string]*llx.RawData{
 					"id":                           llx.StringData(fmt.Sprintf("%d", t.Id)),
 					"name":                         llx.StringData(t.Name),
 					"description":                  llx.StringData(t.Description),
@@ -4100,7 +4100,11 @@ func (g *mqlGcpProjectComputeService) vpnTunnels() ([]any, error) {
 					"vpnGatewayInterface":          llx.IntData(int64(t.VpnGatewayInterface)),
 					"resourceManagerTags":          llx.MapData(tunnelResourceManagerTags, types.String),
 					"selfLink":                     llx.StringData(t.SelfLink),
-				})
+				}
+				for k, v := range vpnTunnelCipherSuiteArgs(t.CipherSuite) {
+					args[k] = v
+				}
+				mqlTunnel, err := CreateResource(g.MqlRuntime, "gcp.project.computeService.vpnTunnel", args)
 				if err != nil {
 					return err
 				}
@@ -4118,6 +4122,36 @@ func (g *mqlGcpProjectComputeService) vpnTunnels() ([]any, error) {
 		return nil, err
 	}
 	return res, nil
+}
+
+// vpnTunnelCipherSuiteArgs flattens a tunnel's IKE cipher suite into the
+// per-role algorithm fields. A role the tunnel does not configure is null,
+// because Cloud VPN then proposes its default list rather than nothing.
+func vpnTunnelCipherSuiteArgs(cs *compute.VpnTunnelCipherSuite) map[string]*llx.RawData {
+	var p1 compute.VpnTunnelPhase1Algorithms
+	var p2 compute.VpnTunnelPhase2Algorithms
+	if cs != nil && cs.Phase1 != nil {
+		p1 = *cs.Phase1
+	}
+	if cs != nil && cs.Phase2 != nil {
+		p2 = *cs.Phase2
+	}
+	return map[string]*llx.RawData{
+		"phase1EncryptionAlgorithms": cipherListOrNull(p1.Encryption),
+		"phase1IntegrityAlgorithms":  cipherListOrNull(p1.Integrity),
+		"phase1PrfAlgorithms":        cipherListOrNull(p1.Prf),
+		"phase1DhGroups":             cipherListOrNull(p1.Dh),
+		"phase2EncryptionAlgorithms": cipherListOrNull(p2.Encryption),
+		"phase2IntegrityAlgorithms":  cipherListOrNull(p2.Integrity),
+		"phase2PfsGroups":            cipherListOrNull(p2.Pfs),
+	}
+}
+
+func cipherListOrNull(algorithms []string) *llx.RawData {
+	if len(algorithms) == 0 {
+		return llx.NilData
+	}
+	return llx.ArrayData(convert.SliceAnyToInterface(algorithms), types.String)
 }
 
 func (g *mqlGcpProjectComputeServiceStoragePool) id() (string, error) {

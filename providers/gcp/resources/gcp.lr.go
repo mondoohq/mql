@@ -12962,6 +12962,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.computeService.vpnTunnel.selfLink": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceVpnTunnel).GetSelfLink()).ToDataRes(types.String)
 	},
+	"gcp.project.computeService.vpnTunnel.phase1EncryptionAlgorithms": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceVpnTunnel).GetPhase1EncryptionAlgorithms()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.computeService.vpnTunnel.phase1IntegrityAlgorithms": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceVpnTunnel).GetPhase1IntegrityAlgorithms()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.computeService.vpnTunnel.phase1PrfAlgorithms": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceVpnTunnel).GetPhase1PrfAlgorithms()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.computeService.vpnTunnel.phase1DhGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceVpnTunnel).GetPhase1DhGroups()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.computeService.vpnTunnel.phase2EncryptionAlgorithms": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceVpnTunnel).GetPhase2EncryptionAlgorithms()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.computeService.vpnTunnel.phase2IntegrityAlgorithms": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceVpnTunnel).GetPhase2IntegrityAlgorithms()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.computeService.vpnTunnel.phase2PfsGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceVpnTunnel).GetPhase2PfsGroups()).ToDataRes(types.Array(types.String))
+	},
 	"gcp.project.computeService.storagePool.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceStoragePool).GetId()).ToDataRes(types.String)
 	},
@@ -35130,6 +35151,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.computeService.vpnTunnel.selfLink": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectComputeServiceVpnTunnel).SelfLink, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.vpnTunnel.phase1EncryptionAlgorithms": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceVpnTunnel).Phase1EncryptionAlgorithms, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.vpnTunnel.phase1IntegrityAlgorithms": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceVpnTunnel).Phase1IntegrityAlgorithms, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.vpnTunnel.phase1PrfAlgorithms": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceVpnTunnel).Phase1PrfAlgorithms, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.vpnTunnel.phase1DhGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceVpnTunnel).Phase1DhGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.vpnTunnel.phase2EncryptionAlgorithms": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceVpnTunnel).Phase2EncryptionAlgorithms, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.vpnTunnel.phase2IntegrityAlgorithms": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceVpnTunnel).Phase2IntegrityAlgorithms, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.vpnTunnel.phase2PfsGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceVpnTunnel).Phase2PfsGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"gcp.project.computeService.storagePool.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -81745,6 +81794,13 @@ type mqlGcpProjectComputeServiceVpnTunnel struct {
 	VpnGatewayInterface          plugin.TValue[int64]
 	ResourceManagerTags          plugin.TValue[map[string]any]
 	SelfLink                     plugin.TValue[string]
+	Phase1EncryptionAlgorithms   plugin.TValue[[]any]
+	Phase1IntegrityAlgorithms    plugin.TValue[[]any]
+	Phase1PrfAlgorithms          plugin.TValue[[]any]
+	Phase1DhGroups               plugin.TValue[[]any]
+	Phase2EncryptionAlgorithms   plugin.TValue[[]any]
+	Phase2IntegrityAlgorithms    plugin.TValue[[]any]
+	Phase2PfsGroups              plugin.TValue[[]any]
 }
 
 // createGcpProjectComputeServiceVpnTunnel creates a new instance of this resource
@@ -81930,6 +81986,34 @@ func (c *mqlGcpProjectComputeServiceVpnTunnel) GetResourceManagerTags() *plugin.
 
 func (c *mqlGcpProjectComputeServiceVpnTunnel) GetSelfLink() *plugin.TValue[string] {
 	return &c.SelfLink
+}
+
+func (c *mqlGcpProjectComputeServiceVpnTunnel) GetPhase1EncryptionAlgorithms() *plugin.TValue[[]any] {
+	return &c.Phase1EncryptionAlgorithms
+}
+
+func (c *mqlGcpProjectComputeServiceVpnTunnel) GetPhase1IntegrityAlgorithms() *plugin.TValue[[]any] {
+	return &c.Phase1IntegrityAlgorithms
+}
+
+func (c *mqlGcpProjectComputeServiceVpnTunnel) GetPhase1PrfAlgorithms() *plugin.TValue[[]any] {
+	return &c.Phase1PrfAlgorithms
+}
+
+func (c *mqlGcpProjectComputeServiceVpnTunnel) GetPhase1DhGroups() *plugin.TValue[[]any] {
+	return &c.Phase1DhGroups
+}
+
+func (c *mqlGcpProjectComputeServiceVpnTunnel) GetPhase2EncryptionAlgorithms() *plugin.TValue[[]any] {
+	return &c.Phase2EncryptionAlgorithms
+}
+
+func (c *mqlGcpProjectComputeServiceVpnTunnel) GetPhase2IntegrityAlgorithms() *plugin.TValue[[]any] {
+	return &c.Phase2IntegrityAlgorithms
+}
+
+func (c *mqlGcpProjectComputeServiceVpnTunnel) GetPhase2PfsGroups() *plugin.TValue[[]any] {
+	return &c.Phase2PfsGroups
 }
 
 // mqlGcpProjectComputeServiceStoragePool for the gcp.project.computeService.storagePool resource

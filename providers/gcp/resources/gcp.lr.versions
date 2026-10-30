@@ -2846,6 +2846,13 @@ gcp.project.computeService.vpnTunnel.peerExternalGatewayInterface 11.6.6
 gcp.project.computeService.vpnTunnel.peerExternalVpnGateway 13.6.1
 gcp.project.computeService.vpnTunnel.peerGcpVpnGateway 13.6.1
 gcp.project.computeService.vpnTunnel.peerIp 11.6.6
+gcp.project.computeService.vpnTunnel.phase1DhGroups 14.7.2
+gcp.project.computeService.vpnTunnel.phase1EncryptionAlgorithms 14.7.2
+gcp.project.computeService.vpnTunnel.phase1IntegrityAlgorithms 14.7.2
+gcp.project.computeService.vpnTunnel.phase1PrfAlgorithms 14.7.2
+gcp.project.computeService.vpnTunnel.phase2EncryptionAlgorithms 14.7.2
+gcp.project.computeService.vpnTunnel.phase2IntegrityAlgorithms 14.7.2
+gcp.project.computeService.vpnTunnel.phase2PfsGroups 14.7.2
 gcp.project.computeService.vpnTunnel.region 13.16.3
 gcp.project.computeService.vpnTunnel.remoteTrafficSelector 11.6.6
 gcp.project.computeService.vpnTunnel.resourceManagerTags 13.5.0
