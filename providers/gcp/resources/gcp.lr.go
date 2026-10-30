@@ -47,6 +47,7 @@ const (
 	ResourceGcpProjectTagBinding                                                       string = "gcp.project.tagBinding"
 	ResourceGcpOrganizationTagKey                                                      string = "gcp.organization.tagKey"
 	ResourceGcpOrganizationTagValue                                                    string = "gcp.organization.tagValue"
+	ResourceGcpResourcemanagerBoundary                                                 string = "gcp.resourcemanager.boundary"
 	ResourceGcpOrganizationAssuredWorkload                                             string = "gcp.organization.assuredWorkload"
 	ResourceGcpOrganizationAssuredWorkloadViolation                                    string = "gcp.organization.assuredWorkload.violation"
 	ResourceGcpService                                                                 string = "gcp.service"
@@ -691,6 +692,10 @@ func init() {
 		"gcp.organization.tagValue": {
 			Init:   initGcpOrganizationTagValue,
 			Create: createGcpOrganizationTagValue,
+		},
+		"gcp.resourcemanager.boundary": {
+			// to override args, implement: initGcpResourcemanagerBoundary(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpResourcemanagerBoundary,
 		},
 		"gcp.organization.assuredWorkload": {
 			// to override args, implement: initGcpOrganizationAssuredWorkload(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -2934,6 +2939,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.organization.tagKeys": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpOrganization).GetTagKeys()).ToDataRes(types.Array(types.Resource("gcp.organization.tagKey")))
 	},
+	"gcp.organization.boundaries": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganization).GetBoundaries()).ToDataRes(types.Array(types.Resource("gcp.resourcemanager.boundary")))
+	},
 	"gcp.organization.assuredWorkloads": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpOrganization).GetAssuredWorkloads()).ToDataRes(types.Array(types.Resource("gcp.organization.assuredWorkload")))
 	},
@@ -3717,6 +3725,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.folder.essentialContacts": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpFolder).GetEssentialContacts()).ToDataRes(types.Array(types.Resource("gcp.essentialContact")))
 	},
+	"gcp.folder.boundaries": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpFolder).GetBoundaries()).ToDataRes(types.Array(types.Resource("gcp.resourcemanager.boundary")))
+	},
 	"gcp.folder.firewallPolicies": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpFolder).GetFirewallPolicies()).ToDataRes(types.Array(types.Resource("gcp.hierarchicalFirewallPolicy")))
 	},
@@ -4118,6 +4129,36 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.organization.tagValue.iamPolicy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpOrganizationTagValue).GetIamPolicy()).ToDataRes(types.Array(types.Resource("gcp.resourcemanager.binding")))
+	},
+	"gcp.resourcemanager.boundary.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpResourcemanagerBoundary).GetName()).ToDataRes(types.String)
+	},
+	"gcp.resourcemanager.boundary.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpResourcemanagerBoundary).GetDisplayName()).ToDataRes(types.String)
+	},
+	"gcp.resourcemanager.boundary.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpResourcemanagerBoundary).GetState()).ToDataRes(types.String)
+	},
+	"gcp.resourcemanager.boundary.tagFilterKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpResourcemanagerBoundary).GetTagFilterKey()).ToDataRes(types.String)
+	},
+	"gcp.resourcemanager.boundary.tagFilterValue": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpResourcemanagerBoundary).GetTagFilterValue()).ToDataRes(types.String)
+	},
+	"gcp.resourcemanager.boundary.tagKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpResourcemanagerBoundary).GetTagKey()).ToDataRes(types.Resource("gcp.organization.tagKey"))
+	},
+	"gcp.resourcemanager.boundary.tagValue": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpResourcemanagerBoundary).GetTagValue()).ToDataRes(types.Resource("gcp.organization.tagValue"))
+	},
+	"gcp.resourcemanager.boundary.managementProject": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpResourcemanagerBoundary).GetManagementProject()).ToDataRes(types.Resource("gcp.project"))
+	},
+	"gcp.resourcemanager.boundary.createTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpResourcemanagerBoundary).GetCreateTime()).ToDataRes(types.Time)
+	},
+	"gcp.resourcemanager.boundary.updateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpResourcemanagerBoundary).GetUpdateTime()).ToDataRes(types.Time)
 	},
 	"gcp.organization.assuredWorkload.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpOrganizationAssuredWorkload).GetName()).ToDataRes(types.String)
@@ -20543,6 +20584,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpOrganization).TagKeys, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"gcp.organization.boundaries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganization).Boundaries, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"gcp.organization.assuredWorkloads": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpOrganization).AssuredWorkloads, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -21683,6 +21728,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpFolder).EssentialContacts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"gcp.folder.boundaries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpFolder).Boundaries, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"gcp.folder.firewallPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpFolder).FirewallPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -22241,6 +22290,50 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.organization.tagValue.iamPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpOrganizationTagValue).IamPolicy, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.resourcemanager.boundary.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpResourcemanagerBoundary).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.resourcemanager.boundary.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpResourcemanagerBoundary).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.resourcemanager.boundary.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpResourcemanagerBoundary).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.resourcemanager.boundary.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpResourcemanagerBoundary).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.resourcemanager.boundary.tagFilterKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpResourcemanagerBoundary).TagFilterKey, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.resourcemanager.boundary.tagFilterValue": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpResourcemanagerBoundary).TagFilterValue, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.resourcemanager.boundary.tagKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpResourcemanagerBoundary).TagKey, ok = plugin.RawToTValue[*mqlGcpOrganizationTagKey](v.Value, v.Error)
+		return
+	},
+	"gcp.resourcemanager.boundary.tagValue": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpResourcemanagerBoundary).TagValue, ok = plugin.RawToTValue[*mqlGcpOrganizationTagValue](v.Value, v.Error)
+		return
+	},
+	"gcp.resourcemanager.boundary.managementProject": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpResourcemanagerBoundary).ManagementProject, ok = plugin.RawToTValue[*mqlGcpProject](v.Value, v.Error)
+		return
+	},
+	"gcp.resourcemanager.boundary.createTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpResourcemanagerBoundary).CreateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.resourcemanager.boundary.updateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpResourcemanagerBoundary).UpdateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"gcp.organization.assuredWorkload.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -46049,6 +46142,7 @@ type mqlGcpOrganization struct {
 	SccSecurityHealthAnalyticsCustomModules plugin.TValue[[]any]
 	SccEventThreatDetectionCustomModules    plugin.TValue[[]any]
 	TagKeys                                 plugin.TValue[[]any]
+	Boundaries                              plugin.TValue[[]any]
 	AssuredWorkloads                        plugin.TValue[[]any]
 	ModelArmorFloorSetting                  plugin.TValue[*mqlGcpProjectModelArmorServiceFloorSetting]
 }
@@ -46599,6 +46693,22 @@ func (c *mqlGcpOrganization) GetTagKeys() *plugin.TValue[[]any] {
 		}
 
 		return c.tagKeys()
+	})
+}
+
+func (c *mqlGcpOrganization) GetBoundaries() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Boundaries, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.organization", c.__id, "boundaries")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.boundaries()
 	})
 }
 
@@ -49120,6 +49230,7 @@ type mqlGcpFolder struct {
 	AuditConfig                             plugin.TValue[[]any]
 	Logging                                 plugin.TValue[*mqlGcpFolderLoggingService]
 	EssentialContacts                       plugin.TValue[[]any]
+	Boundaries                              plugin.TValue[[]any]
 	FirewallPolicies                        plugin.TValue[[]any]
 	DenyPolicies                            plugin.TValue[[]any]
 	SccSecurityHealthAnalyticsCustomModules plugin.TValue[[]any]
@@ -49353,6 +49464,22 @@ func (c *mqlGcpFolder) GetEssentialContacts() *plugin.TValue[[]any] {
 		}
 
 		return c.essentialContacts()
+	})
+}
+
+func (c *mqlGcpFolder) GetBoundaries() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Boundaries, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.folder", c.__id, "boundaries")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.boundaries()
 	})
 }
 
@@ -51469,6 +51596,136 @@ func (c *mqlGcpOrganizationTagValue) GetIamPolicy() *plugin.TValue[[]any] {
 
 		return c.iamPolicy()
 	})
+}
+
+// mqlGcpResourcemanagerBoundary for the gcp.resourcemanager.boundary resource
+type mqlGcpResourcemanagerBoundary struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlGcpResourcemanagerBoundaryInternal
+	Name              plugin.TValue[string]
+	DisplayName       plugin.TValue[string]
+	State             plugin.TValue[string]
+	TagFilterKey      plugin.TValue[string]
+	TagFilterValue    plugin.TValue[string]
+	TagKey            plugin.TValue[*mqlGcpOrganizationTagKey]
+	TagValue          plugin.TValue[*mqlGcpOrganizationTagValue]
+	ManagementProject plugin.TValue[*mqlGcpProject]
+	CreateTime        plugin.TValue[*time.Time]
+	UpdateTime        plugin.TValue[*time.Time]
+}
+
+// createGcpResourcemanagerBoundary creates a new instance of this resource
+func createGcpResourcemanagerBoundary(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpResourcemanagerBoundary{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.resourcemanager.boundary", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpResourcemanagerBoundary) MqlName() string {
+	return "gcp.resourcemanager.boundary"
+}
+
+func (c *mqlGcpResourcemanagerBoundary) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpResourcemanagerBoundary) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpResourcemanagerBoundary) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlGcpResourcemanagerBoundary) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlGcpResourcemanagerBoundary) GetTagFilterKey() *plugin.TValue[string] {
+	return &c.TagFilterKey
+}
+
+func (c *mqlGcpResourcemanagerBoundary) GetTagFilterValue() *plugin.TValue[string] {
+	return &c.TagFilterValue
+}
+
+func (c *mqlGcpResourcemanagerBoundary) GetTagKey() *plugin.TValue[*mqlGcpOrganizationTagKey] {
+	return plugin.GetOrCompute[*mqlGcpOrganizationTagKey](&c.TagKey, func() (*mqlGcpOrganizationTagKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.resourcemanager.boundary", c.__id, "tagKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpOrganizationTagKey), nil
+			}
+		}
+
+		return c.tagKey()
+	})
+}
+
+func (c *mqlGcpResourcemanagerBoundary) GetTagValue() *plugin.TValue[*mqlGcpOrganizationTagValue] {
+	return plugin.GetOrCompute[*mqlGcpOrganizationTagValue](&c.TagValue, func() (*mqlGcpOrganizationTagValue, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.resourcemanager.boundary", c.__id, "tagValue")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpOrganizationTagValue), nil
+			}
+		}
+
+		return c.tagValue()
+	})
+}
+
+func (c *mqlGcpResourcemanagerBoundary) GetManagementProject() *plugin.TValue[*mqlGcpProject] {
+	return plugin.GetOrCompute[*mqlGcpProject](&c.ManagementProject, func() (*mqlGcpProject, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.resourcemanager.boundary", c.__id, "managementProject")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProject), nil
+			}
+		}
+
+		return c.managementProject()
+	})
+}
+
+func (c *mqlGcpResourcemanagerBoundary) GetCreateTime() *plugin.TValue[*time.Time] {
+	return &c.CreateTime
+}
+
+func (c *mqlGcpResourcemanagerBoundary) GetUpdateTime() *plugin.TValue[*time.Time] {
+	return &c.UpdateTime
 }
 
 // mqlGcpOrganizationAssuredWorkload for the gcp.organization.assuredWorkload resource

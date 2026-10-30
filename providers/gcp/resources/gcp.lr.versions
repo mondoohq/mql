@@ -76,6 +76,7 @@ gcp.essentialContact.validated 9.0.0
 gcp.essentialContact.validationState 9.0.0
 gcp.folder 9.0.0
 gcp.folder.auditConfig 13.16.3
+gcp.folder.boundaries 14.7.2
 gcp.folder.created 9.0.0
 gcp.folder.deleteTime 11.6.6
 gcp.folder.denyPolicies 14.2.1
@@ -227,6 +228,7 @@ gcp.organization.assuredWorkload.violationNotificationsEnabled 14.6.3
 gcp.organization.assuredWorkload.violations 14.6.3
 gcp.organization.assuredWorkloads 14.6.3
 gcp.organization.auditConfig 11.5.1
+gcp.organization.boundaries 14.7.2
 gcp.organization.cloudIdentityGroups 13.15.1
 gcp.organization.created 11.6.6
 gcp.organization.customConstraints 13.15.1
@@ -6213,6 +6215,17 @@ gcp.resourcemanager.binding.id 9.0.0
 gcp.resourcemanager.binding.isPrimitiveRole 13.18.1
 gcp.resourcemanager.binding.members 9.0.0
 gcp.resourcemanager.binding.role 9.0.0
+gcp.resourcemanager.boundary 14.7.2
+gcp.resourcemanager.boundary.createTime 14.7.2
+gcp.resourcemanager.boundary.displayName 14.7.2
+gcp.resourcemanager.boundary.managementProject 14.7.2
+gcp.resourcemanager.boundary.name 14.7.2
+gcp.resourcemanager.boundary.state 14.7.2
+gcp.resourcemanager.boundary.tagFilterKey 14.7.2
+gcp.resourcemanager.boundary.tagFilterValue 14.7.2
+gcp.resourcemanager.boundary.tagKey 14.7.2
+gcp.resourcemanager.boundary.tagValue 14.7.2
+gcp.resourcemanager.boundary.updateTime 14.7.2
 gcp.retryConfig 11.6.6
 gcp.retryConfig.id 11.6.6
 gcp.retryConfig.maxAttempts 11.6.6

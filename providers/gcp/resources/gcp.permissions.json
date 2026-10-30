@@ -1,7 +1,7 @@
 {
   "provider": "gcp",
-  "version": "14.6.2",
-  "generated_at": "2026-10-27T23:04:21+01:00",
+  "version": "14.7.1",
+  "generated_at": "2026-10-30T13:57:03-07:00",
   "permissions": [
     "accessapproval.settings.get",
     "aiplatform.batchPredictionJobs.list",
@@ -2048,6 +2048,13 @@
       "source_file": "redis.go"
     },
     {
+      "permission": "resourcemanager.boundaries.list",
+      "service": "resourcemanager",
+      "action": "Boundaries.List",
+      "source_file": "resourcemanager_boundaries.go",
+      "scope": "org"
+    },
+    {
       "permission": "resourcemanager.folders.get",
       "service": "resourcemanager",
       "action": "Folders.Get",
@@ -2130,6 +2137,12 @@
     {
       "permission": "resourcemanager.tagKeys.get",
       "service": "resourcemanager",
+      "action": "TagKeys.GetNamespaced",
+      "source_file": "resourcemanager_boundaries.go"
+    },
+    {
+      "permission": "resourcemanager.tagKeys.get",
+      "service": "resourcemanager",
       "action": "TagKeys.Get",
       "source_file": "resourcemanager_tags.go"
     },
@@ -2144,6 +2157,12 @@
       "service": "resourcemanager",
       "action": "TagKeys.List",
       "source_file": "resourcemanager_tags.go"
+    },
+    {
+      "permission": "resourcemanager.tagValues.get",
+      "service": "resourcemanager",
+      "action": "TagValues.GetNamespaced",
+      "source_file": "resourcemanager_boundaries.go"
     },
     {
       "permission": "resourcemanager.tagValues.get",
@@ -2350,6 +2369,7 @@
     "iam.googleapis.com/workforcePoolProviders.list",
     "iam.googleapis.com/workforcePools.list",
     "orgpolicy.customConstraints.list",
+    "resourcemanager.boundaries.list",
     "resourcemanager.folders.get",
     "resourcemanager.folders.getIamPolicy",
     "resourcemanager.folders.list",
