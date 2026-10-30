@@ -28,8 +28,8 @@ github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/automation/armautomation v
 github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/automation/armautomation v1.0.0/go.mod h1:pzhyEDGkfhEBu5ZKdeJNUKShlRJPDQoaG5cFiKd78Gw=
 github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/batch/armbatch/v4 v4.0.0 h1:KBRoKIQlg79mFK5LRndDGPrCDGRl2xyFr/vG8afLGys=
 github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/batch/armbatch/v4 v4.0.0/go.mod h1:w+PG/dv/phWHlE3OIKWa4CAITETZ52D8qznRGMbduPA=
-github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cdn/armcdn/v3 v3.0.0 h1:ZA2mGEKTFkB4ba3F4gOjRyC8rVkk54JPR3A0KXQJcsM=
-github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cdn/armcdn/v3 v3.0.0/go.mod h1:AVyu4xpFf0evzrgtF7+UDfZGYuARd0+HnblCNn0gPTY=
+github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cdn/armcdn/v4 v4.0.0 h1:zHYpbNIMx3pZWurL5/BVPA9Y61/QTysH+1YOPv+9O30=
+github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cdn/armcdn/v4 v4.0.0/go.mod h1:8/FqXy2uHAOy83NRDTcH+eU9crV7qXQxhoUmenEFDcs=
 github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices/v3 v3.0.0 h1:bYrZmRrdh61p92AMzz3tdI9e6SDidq4hUPUS/dFRg/8=
 github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices/v3 v3.0.0/go.mod h1:zf/MfKPM8qICo/InKfzHaFYsBp3MzWYL7/rjnrkbySM=
 github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v9 v9.0.0 h1:GhX9IxyAokIUIIYs4v7PjK+tTUM72dpIjtDhB8OkQ9s=
