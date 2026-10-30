@@ -1408,9 +1408,17 @@ func apacheVHosts2Resources(vhosts []apache2.VirtualHost, runtime *plugin.Runtim
 		if err != nil {
 			return nil, err
 		}
+		obj.(*mqlApache2ConfVirtualHost).file = vh.File
 		res[i] = obj
 	}
 	return res, nil
+}
+
+// mqlApache2ConfVirtualHostInternal keeps what websites reads from a virtual
+// host beyond its fields.
+type mqlApache2ConfVirtualHostInternal struct {
+	// file is the configuration file the virtual host is written in.
+	file string
 }
 
 func apacheDirs2Resources(dirs []apache2.Directory, runtime *plugin.Runtime, ownerID string) ([]any, error) {

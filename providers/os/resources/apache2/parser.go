@@ -34,6 +34,7 @@ type VirtualHost struct {
 	SSLCertificateChainFile string         // SSLCertificateChainFile path (deprecated)
 	Redirects               []Redirect     // Redirect / RedirectMatch directives
 	Params                  map[string]any // all directives in this block
+	File                    string         // configuration file the block is written in
 }
 
 // Redirect represents a Redirect or RedirectMatch directive inside a VirtualHost.
@@ -125,6 +126,9 @@ type parseState struct {
 	// a loop across files), which would otherwise recurse until the stack
 	// overflows.
 	visited map[string]bool
+	// file is the path of the configuration file being parsed, empty for
+	// content handed to Parse.
+	file string
 }
 
 func newParseState(fileContent fileContentFunc, globExpand globExpandFunc, vars map[string]string, opts ParseOptions) *parseState {
@@ -426,6 +430,7 @@ func ParseWithGlobOptions(rootPath string, fileContent fileContentFunc, globExpa
 	st := newParseState(fileContent, globExpand, vars, opts)
 	// The root file is seeded as already-visited.
 	st.visited[rootPath] = true
+	st.file = rootPath
 	lines := splitAndClean(strings.Join(opts.PreDirectives, "\n"))
 	lines = append(lines, splitAndClean(content)...)
 	lines = append(lines, splitAndClean(strings.Join(opts.PostDirectives, "\n"))...)
@@ -465,6 +470,7 @@ func (st *parseState) parseLines(cfg *Config, lines []string, depth int) {
 			switch tagLower {
 			case "virtualhost":
 				vh := parseVirtualHost(blockArg, blockLines, st.vars, st.holds)
+				vh.File = st.file
 				cfg.VHosts = append(cfg.VHosts, vh)
 				// VirtualHosts can contain their own <Directory>/<Location>
 				// blocks and Header directives.
@@ -630,7 +636,10 @@ func (st *parseState) expandInclude(cfg *Config, pattern string, optional bool) 
 			}
 			continue
 		}
+		includer := st.file
+		st.file = p
 		st.parseLines(cfg, splitAndClean(content), 0)
+		st.file = includer
 	}
 }
 

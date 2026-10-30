@@ -81,6 +81,7 @@ alias os.base.trae = trae
 alias os.base.vscode = vscode
 alias os.base.vulnmgmt = vulnmgmt
 alias os.base.warp = warp
+alias os.base.websites = websites
 alias os.base.windsurf = windsurf
 alias os.base.winget = winget
 alias os.base.yum = yum
@@ -3556,6 +3557,14 @@ private iis.binding @defaults("protocol bindingInformation port") {
   certificateHash string
   // Certificate store the bound certificate is held in, for example "My"
   certificateStoreName string
+  // Certificate bound to an HTTPS binding
+  //
+  // The certificate whose thumbprint is certificateHash, read from the
+  // machine's certificateStoreName store. Null for a binding with no
+  // certificate, one that takes its certificate from the central certificate
+  // store, or one whose certificate is no longer in the store, as happens
+  // when it is deleted or renewed without the binding being updated.
+  certificate() network.certificate
   // SSL binding flags
   //
   // A bit field. 1 selects the certificate by hostname (SNI) and 2 uses the
@@ -11975,6 +11984,93 @@ ports {
   []port
   // All listening ports
   listening() []port
+}
+
+// Websites this server hosts
+//
+// The sites the web servers on this host are configured to serve, one
+// `website` per host name on each listener, whatever software serves it:
+// nginx, Apache HTTP Server, or IIS. Each web server is read only when it is
+// installed, and a site is listed whether or not its server is running. A web
+// server whose configuration cannot be read is left out, and the sites of the
+// others are still listed. Configuration audits of each web server stay on
+// `nginx.conf`, `apache2.conf`, and `iis`.
+websites {
+  []website
+}
+
+// Host name a web server answers for on one listener
+//
+// One site as its web server is configured to serve it: the `name` it
+// answers for on the `address` and `port` of one listener, and the
+// `certificates` it presents when that listener speaks TLS. A server block
+// or virtual host with several names is one entry per name. A name that more
+// than one web server declares on the same listener is one entry, with each
+// of them in `sources`.
+private website @defaults("name port tls") {
+  // Host name the site answers for, as configured
+  //
+  // Lowercase, and can be a wildcard such as `*.example.com` or, for nginx, a
+  // regular expression starting with `~`. Empty when the configuration names
+  // none: an IIS binding without a host name, an nginx server block named `_`,
+  // or an Apache virtual host without ServerName or ServerAlias whose main
+  // configuration sets no ServerName either.
+  name string
+  // Local address the listener accepts connections on
+  //
+  // `*` for every address, as with `listen 443`, `<VirtualHost *:443>`, or an
+  // IIS binding on all unassigned addresses. Otherwise an IP address, or a
+  // host name when the configuration gives one.
+  address string
+  // TCP port the listener accepts connections on
+  port int
+  // Whether the listener speaks TLS
+  tls bool
+  // Web servers whose configuration declares the site
+  //
+  // One or more of `nginx`, `apache2`, and `iis`.
+  sources []string
+  // Configuration file that declares the site
+  //
+  // The file holding the nginx server block or the Apache virtual host, the
+  // main Apache configuration file for a site the main server answers, or
+  // applicationHost.config for IIS.
+  file() file
+  // Certificates the site presents
+  //
+  // The leaf certificate of each certificate the configuration names for the
+  // site, without the intermediates a chain file holds after it, so the
+  // fingerprints identify this site rather than its issuer. Empty when the
+  // listener does not speak TLS. A certificate file that exists but cannot be
+  // read, for example by a scan without root, is an error.
+  certificates() []network.certificate
+  // Process listening on the port
+  //
+  // Null when no process listens on it, for example while the web server is
+  // stopped, or on a scan that cannot list sockets, such as one of a container
+  // image. For IIS this is the System process, which holds the listeners of
+  // http.sys.
+  process() process
+  // Directory the site serves files from
+  //
+  // nginx's root for `location /` or the server block, Apache's DocumentRoot,
+  // or the physical path of the IIS site's root application. Empty when the
+  // configuration sets none.
+  documentRoot string
+  // Upstream that requests for `/` are forwarded to
+  //
+  // The proxy_pass of nginx's `location /` or Apache's `ProxyPass /`, as
+  // written, which can name an nginx upstream group or an Apache balancer.
+  // Set when this server is the edge in front of another server rather than
+  // the origin of the content. Empty when the site serves `/` itself.
+  proxyTarget string
+  // Whether the site answers for names no other site claims on its listener
+  //
+  // For nginx, the server block marked default_server on the listener, or
+  // else the first one on it. For Apache, the first virtual host on the
+  // address and port, or the main server on a port no virtual host claims.
+  // For IIS, a binding without a host name.
+  isDefault bool
 }
 
 // Windows audit policies

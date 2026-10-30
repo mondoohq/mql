@@ -346,6 +346,8 @@ const (
 	ResourceBinary                                         string = "binary"
 	ResourcePort                                           string = "port"
 	ResourcePorts                                          string = "ports"
+	ResourceWebsites                                       string = "websites"
+	ResourceWebsite                                        string = "website"
 	ResourceAuditpol                                       string = "auditpol"
 	ResourceAuditpolEntry                                  string = "auditpol.entry"
 	ResourceSecpol                                         string = "secpol"
@@ -2160,6 +2162,14 @@ func init() {
 		"ports": {
 			// to override args, implement: initPorts(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createPorts,
+		},
+		"websites": {
+			// to override args, implement: initWebsites(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createWebsites,
+		},
+		"website": {
+			// to override args, implement: initWebsite(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createWebsite,
 		},
 		"auditpol": {
 			// to override args, implement: initAuditpol(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -6308,6 +6318,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"iis.binding.certificateStoreName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIisBinding).GetCertificateStoreName()).ToDataRes(types.String)
+	},
+	"iis.binding.certificate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIisBinding).GetCertificate()).ToDataRes(types.Resource("certificate"))
 	},
 	"iis.binding.sslFlags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIisBinding).GetSslFlags()).ToDataRes(types.Int)
@@ -13109,6 +13122,42 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"ports.list": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPorts).GetList()).ToDataRes(types.Array(types.Resource("port")))
+	},
+	"websites.list": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWebsites).GetList()).ToDataRes(types.Array(types.Resource("website")))
+	},
+	"website.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWebsite).GetName()).ToDataRes(types.String)
+	},
+	"website.address": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWebsite).GetAddress()).ToDataRes(types.String)
+	},
+	"website.port": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWebsite).GetPort()).ToDataRes(types.Int)
+	},
+	"website.tls": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWebsite).GetTls()).ToDataRes(types.Bool)
+	},
+	"website.sources": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWebsite).GetSources()).ToDataRes(types.Array(types.String))
+	},
+	"website.file": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWebsite).GetFile()).ToDataRes(types.Resource("file"))
+	},
+	"website.certificates": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWebsite).GetCertificates()).ToDataRes(types.Array(types.Resource("certificate")))
+	},
+	"website.process": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWebsite).GetProcess()).ToDataRes(types.Resource("process"))
+	},
+	"website.documentRoot": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWebsite).GetDocumentRoot()).ToDataRes(types.String)
+	},
+	"website.proxyTarget": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWebsite).GetProxyTarget()).ToDataRes(types.String)
+	},
+	"website.isDefault": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWebsite).GetIsDefault()).ToDataRes(types.Bool)
 	},
 	"auditpol.list": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAuditpol).GetList()).ToDataRes(types.Array(types.Resource("auditpol.entry")))
@@ -27772,6 +27821,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlIisBinding).CertificateStoreName, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"iis.binding.certificate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIisBinding).Certificate, ok = plugin.RawToTValue[plugin.Resource](v.Value, v.Error)
+		return
+	},
 	"iis.binding.sslFlags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIisBinding).SslFlags, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
@@ -37694,6 +37747,62 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"ports.list": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlPorts).List, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"websites.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWebsites).__id, ok = v.Value.(string)
+		return
+	},
+	"websites.list": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWebsites).List, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"website.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWebsite).__id, ok = v.Value.(string)
+		return
+	},
+	"website.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWebsite).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"website.address": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWebsite).Address, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"website.port": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWebsite).Port, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"website.tls": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWebsite).Tls, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"website.sources": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWebsite).Sources, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"website.file": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWebsite).File, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"website.certificates": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWebsite).Certificates, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"website.process": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWebsite).Process, ok = plugin.RawToTValue[*mqlProcess](v.Value, v.Error)
+		return
+	},
+	"website.documentRoot": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWebsite).DocumentRoot, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"website.proxyTarget": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWebsite).ProxyTarget, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"website.isDefault": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWebsite).IsDefault, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"auditpol.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -62377,7 +62486,7 @@ func (c *mqlApache2ConfModule) GetPath() *plugin.TValue[string] {
 type mqlApache2ConfVirtualHost struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlApache2ConfVirtualHostInternal it will be used here
+	mqlApache2ConfVirtualHostInternal
 	Address                 plugin.TValue[string]
 	ServerName              plugin.TValue[string]
 	ServerAliases           plugin.TValue[[]any]
@@ -63644,7 +63753,7 @@ func (c *mqlNginxConf) GetStreamUpstreams() *plugin.TValue[[]any] {
 type mqlNginxConfServer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlNginxConfServerInternal it will be used here
+	mqlNginxConfServerInternal
 	ServerName             plugin.TValue[string]
 	Listen                 plugin.TValue[string]
 	Listens                plugin.TValue[[]any]
@@ -65462,6 +65571,7 @@ type mqlIisBinding struct {
 	IpAddress            plugin.TValue[string]
 	CertificateHash      plugin.TValue[string]
 	CertificateStoreName plugin.TValue[string]
+	Certificate          plugin.TValue[plugin.Resource]
 	SslFlags             plugin.TValue[int64]
 }
 
@@ -65523,6 +65633,22 @@ func (c *mqlIisBinding) GetCertificateHash() *plugin.TValue[string] {
 
 func (c *mqlIisBinding) GetCertificateStoreName() *plugin.TValue[string] {
 	return &c.CertificateStoreName
+}
+
+func (c *mqlIisBinding) GetCertificate() *plugin.TValue[plugin.Resource] {
+	return plugin.GetOrCompute[plugin.Resource](&c.Certificate, func() (plugin.Resource, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("iis.binding", c.__id, "certificate")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(plugin.Resource), nil
+			}
+		}
+
+		return c.certificate()
+	})
 }
 
 func (c *mqlIisBinding) GetSslFlags() *plugin.TValue[int64] {
@@ -91350,6 +91476,192 @@ func (c *mqlPorts) GetList() *plugin.TValue[[]any] {
 
 		return c.list()
 	})
+}
+
+// mqlWebsites for the websites resource
+type mqlWebsites struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlWebsitesInternal it will be used here
+	List plugin.TValue[[]any]
+}
+
+// createWebsites creates a new instance of this resource
+func createWebsites(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlWebsites{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("websites", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlWebsites) MqlName() string {
+	return "websites"
+}
+
+func (c *mqlWebsites) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlWebsites) GetList() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.List, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("websites", c.__id, "list")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.list()
+	})
+}
+
+// mqlWebsite for the website resource
+type mqlWebsite struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlWebsiteInternal
+	Name         plugin.TValue[string]
+	Address      plugin.TValue[string]
+	Port         plugin.TValue[int64]
+	Tls          plugin.TValue[bool]
+	Sources      plugin.TValue[[]any]
+	File         plugin.TValue[*mqlFile]
+	Certificates plugin.TValue[[]any]
+	Process      plugin.TValue[*mqlProcess]
+	DocumentRoot plugin.TValue[string]
+	ProxyTarget  plugin.TValue[string]
+	IsDefault    plugin.TValue[bool]
+}
+
+// createWebsite creates a new instance of this resource
+func createWebsite(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlWebsite{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("website", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlWebsite) MqlName() string {
+	return "website"
+}
+
+func (c *mqlWebsite) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlWebsite) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlWebsite) GetAddress() *plugin.TValue[string] {
+	return &c.Address
+}
+
+func (c *mqlWebsite) GetPort() *plugin.TValue[int64] {
+	return &c.Port
+}
+
+func (c *mqlWebsite) GetTls() *plugin.TValue[bool] {
+	return &c.Tls
+}
+
+func (c *mqlWebsite) GetSources() *plugin.TValue[[]any] {
+	return &c.Sources
+}
+
+func (c *mqlWebsite) GetFile() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.File, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("website", c.__id, "file")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.file()
+	})
+}
+
+func (c *mqlWebsite) GetCertificates() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Certificates, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("website", c.__id, "certificates")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.certificates()
+	})
+}
+
+func (c *mqlWebsite) GetProcess() *plugin.TValue[*mqlProcess] {
+	return plugin.GetOrCompute[*mqlProcess](&c.Process, func() (*mqlProcess, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("website", c.__id, "process")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlProcess), nil
+			}
+		}
+
+		return c.process()
+	})
+}
+
+func (c *mqlWebsite) GetDocumentRoot() *plugin.TValue[string] {
+	return &c.DocumentRoot
+}
+
+func (c *mqlWebsite) GetProxyTarget() *plugin.TValue[string] {
+	return &c.ProxyTarget
+}
+
+func (c *mqlWebsite) GetIsDefault() *plugin.TValue[bool] {
+	return &c.IsDefault
 }
 
 // mqlAuditpol for the auditpol resource
