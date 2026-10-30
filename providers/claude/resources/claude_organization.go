@@ -100,6 +100,7 @@ func (r *mqlClaudeOrganization) workspaces() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		mqlWs.(*mqlClaudeOrganizationWorkspace).cacheUserProfileID = w.UserProfileID
 		res = append(res, mqlWs)
 	}
 
@@ -336,7 +337,21 @@ func convertRateLimits(runtime *plugin.Runtime, limits []connection.AdminRateLim
 
 // claude.organization.workspace members and rate limits
 
-type mqlClaudeOrganizationWorkspaceInternal struct{}
+type mqlClaudeOrganizationWorkspaceInternal struct {
+	cacheUserProfileID string
+}
+
+func (r *mqlClaudeOrganizationWorkspace) userProfile() (*mqlClaudeUserProfile, error) {
+	profile, ok, err := lookupUserProfile(r.MqlRuntime, r.cacheUserProfileID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		r.UserProfile.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return profile, nil
+}
 
 type mqlClaudeOrganizationWorkspaceMemberInternal struct {
 	cacheUserID      string

@@ -722,6 +722,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"claude.userProfile.enforcementActions": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeUserProfile).GetEnforcementActions()).ToDataRes(types.Array(types.Resource("claude.userProfile.enforcementAction")))
 	},
+	"claude.userProfile.workspaces": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeUserProfile).GetWorkspaces()).ToDataRes(types.Array(types.Resource("claude.organization.workspace")))
+	},
+	"claude.userProfile.externalKeys": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeUserProfile).GetExternalKeys()).ToDataRes(types.Array(types.Resource("claude.organization.externalKey")))
+	},
 	"claude.userProfile.enforcementAction.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeUserProfileEnforcementAction).GetId()).ToDataRes(types.String)
 	},
@@ -865,6 +871,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"claude.organization.workspace.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeOrganizationWorkspace).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"claude.organization.workspace.userProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeOrganizationWorkspace).GetUserProfile()).ToDataRes(types.Resource("claude.userProfile"))
 	},
 	"claude.organization.workspace.members": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeOrganizationWorkspace).GetMembers()).ToDataRes(types.Array(types.Resource("claude.organization.workspace.member")))
@@ -1234,6 +1243,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"claude.organization.externalKey.workspaces": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeOrganizationExternalKey).GetWorkspaces()).ToDataRes(types.Array(types.Resource("claude.organization.workspace")))
+	},
+	"claude.organization.externalKey.userProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeOrganizationExternalKey).GetUserProfile()).ToDataRes(types.Resource("claude.userProfile"))
 	},
 	"claude.organization.externalKey.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeOrganizationExternalKey).GetCreatedAt()).ToDataRes(types.Time)
@@ -2108,6 +2120,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlClaudeUserProfile).EnforcementActions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"claude.userProfile.workspaces": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeUserProfile).Workspaces, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"claude.userProfile.externalKeys": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeUserProfile).ExternalKeys, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"claude.userProfile.enforcementAction.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClaudeUserProfileEnforcementAction).__id, ok = v.Value.(string)
 		return
@@ -2314,6 +2334,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"claude.organization.workspace.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClaudeOrganizationWorkspace).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"claude.organization.workspace.userProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeOrganizationWorkspace).UserProfile, ok = plugin.RawToTValue[*mqlClaudeUserProfile](v.Value, v.Error)
 		return
 	},
 	"claude.organization.workspace.members": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -2854,6 +2878,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"claude.organization.externalKey.workspaces": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClaudeOrganizationExternalKey).Workspaces, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"claude.organization.externalKey.userProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeOrganizationExternalKey).UserProfile, ok = plugin.RawToTValue[*mqlClaudeUserProfile](v.Value, v.Error)
 		return
 	},
 	"claude.organization.externalKey.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -4660,6 +4688,8 @@ type mqlClaudeUserProfile struct {
 	Type                    plugin.TValue[string]
 	EnforcementStatus       plugin.TValue[string]
 	EnforcementActions      plugin.TValue[[]any]
+	Workspaces              plugin.TValue[[]any]
+	ExternalKeys            plugin.TValue[[]any]
 }
 
 // createClaudeUserProfile creates a new instance of this resource
@@ -4736,6 +4766,38 @@ func (c *mqlClaudeUserProfile) GetEnforcementStatus() *plugin.TValue[string] {
 
 func (c *mqlClaudeUserProfile) GetEnforcementActions() *plugin.TValue[[]any] {
 	return &c.EnforcementActions
+}
+
+func (c *mqlClaudeUserProfile) GetWorkspaces() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Workspaces, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("claude.userProfile", c.__id, "workspaces")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.workspaces()
+	})
+}
+
+func (c *mqlClaudeUserProfile) GetExternalKeys() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ExternalKeys, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("claude.userProfile", c.__id, "externalKeys")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.externalKeys()
+	})
 }
 
 // mqlClaudeUserProfileEnforcementAction for the claude.userProfile.enforcementAction resource
@@ -5257,7 +5319,7 @@ func (c *mqlClaudeOrganizationWebhook) GetUpdatedAt() *plugin.TValue[*time.Time]
 type mqlClaudeOrganizationWorkspace struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlClaudeOrganizationWorkspaceInternal it will be used here
+	mqlClaudeOrganizationWorkspaceInternal
 	Id                   plugin.TValue[string]
 	Name                 plugin.TValue[string]
 	DisplayColor         plugin.TValue[string]
@@ -5270,6 +5332,7 @@ type mqlClaudeOrganizationWorkspace struct {
 	ExternalKey          plugin.TValue[*mqlClaudeOrganizationExternalKey]
 	CompartmentId        plugin.TValue[string]
 	Tags                 plugin.TValue[map[string]any]
+	UserProfile          plugin.TValue[*mqlClaudeUserProfile]
 	Members              plugin.TValue[[]any]
 	RateLimits           plugin.TValue[[]any]
 }
@@ -5364,6 +5427,22 @@ func (c *mqlClaudeOrganizationWorkspace) GetCompartmentId() *plugin.TValue[strin
 
 func (c *mqlClaudeOrganizationWorkspace) GetTags() *plugin.TValue[map[string]any] {
 	return &c.Tags
+}
+
+func (c *mqlClaudeOrganizationWorkspace) GetUserProfile() *plugin.TValue[*mqlClaudeUserProfile] {
+	return plugin.GetOrCompute[*mqlClaudeUserProfile](&c.UserProfile, func() (*mqlClaudeUserProfile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("claude.organization.workspace", c.__id, "userProfile")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlClaudeUserProfile), nil
+			}
+		}
+
+		return c.userProfile()
+	})
 }
 
 func (c *mqlClaudeOrganizationWorkspace) GetMembers() *plugin.TValue[[]any] {
@@ -6604,7 +6683,7 @@ func (c *mqlClaudeOrganizationActivity) GetCreatedAt() *plugin.TValue[*time.Time
 type mqlClaudeOrganizationExternalKey struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlClaudeOrganizationExternalKeyInternal it will be used here
+	mqlClaudeOrganizationExternalKeyInternal
 	Id          plugin.TValue[string]
 	DisplayName plugin.TValue[string]
 	Geo         plugin.TValue[string]
@@ -6617,6 +6696,7 @@ type mqlClaudeOrganizationExternalKey struct {
 	ClientId    plugin.TValue[string]
 	Attached    plugin.TValue[bool]
 	Workspaces  plugin.TValue[[]any]
+	UserProfile plugin.TValue[*mqlClaudeUserProfile]
 	CreatedAt   plugin.TValue[*time.Time]
 	UpdatedAt   plugin.TValue[*time.Time]
 }
@@ -6710,6 +6790,22 @@ func (c *mqlClaudeOrganizationExternalKey) GetWorkspaces() *plugin.TValue[[]any]
 		}
 
 		return c.workspaces()
+	})
+}
+
+func (c *mqlClaudeOrganizationExternalKey) GetUserProfile() *plugin.TValue[*mqlClaudeUserProfile] {
+	return plugin.GetOrCompute[*mqlClaudeUserProfile](&c.UserProfile, func() (*mqlClaudeUserProfile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("claude.organization.externalKey", c.__id, "userProfile")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlClaudeUserProfile), nil
+			}
+		}
+
+		return c.userProfile()
 	})
 }
 
