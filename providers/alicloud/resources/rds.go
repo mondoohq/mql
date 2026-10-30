@@ -104,6 +104,48 @@ type mqlAlicloudRdsInstanceInternal struct {
 	tdeLock sync.Mutex
 	tdeDone bool
 	tde     *rdsclient.DescribeDBInstanceTDEResponseBody
+
+	operatorLock sync.Mutex
+	operator     *rdsOperatorPermission
+}
+
+// rdsOperatorPermission is the access an account has granted Alibaba Cloud
+// technical support to one RDS instance, decoded from DescribeOperatorPermission.
+type rdsOperatorPermission struct {
+	privileges []string
+	created    *time.Time
+	expires    *time.Time
+}
+
+// rdsOperatorPermissionFrom decodes a DescribeOperatorPermission response. The
+// API reports the privileges as one comma-separated string such as
+// "Control,Data"; an instance with no grant reports no privileges, which
+// decodes to an empty list and null times.
+func rdsOperatorPermissionFrom(body *rdsclient.DescribeOperatorPermissionResponseBody) *rdsOperatorPermission {
+	res := &rdsOperatorPermission{privileges: []string{}}
+	if body == nil {
+		return res
+	}
+	if body.Privileges != nil {
+		for p := range strings.SplitSeq(*body.Privileges, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				res.privileges = append(res.privileges, p)
+			}
+		}
+	}
+	res.created = parseAlicloudTime(body.CreatedTime)
+	res.expires = parseAlicloudTime(body.ExpiredTime)
+	return res
+}
+
+// active reports whether the grant is in effect at now: it names at least one
+// privilege and has not expired. A grant without an expiry time is in effect,
+// so a check for no standing support access fails on it rather than passing.
+func (p *rdsOperatorPermission) active(now time.Time) bool {
+	if p == nil || len(p.privileges) == 0 {
+		return false
+	}
+	return p.expires == nil || p.expires.After(now)
 }
 
 func (r *mqlAlicloudRds) instances() ([]any, error) {
@@ -369,6 +411,68 @@ func (r *mqlAlicloudRdsInstance) readOnlyStatus() (string, error) {
 		return "", nil
 	}
 	return tea.StringValue(attr.ReadOnlyStatus), nil
+}
+
+// fetchOperatorPermission loads the access granted to Alibaba Cloud technical
+// support with one DescribeOperatorPermission call shared by the four operator
+// fields. A failed call is returned as a classified error and not cached, so an
+// unreadable grant never reads as "no grant".
+func (r *mqlAlicloudRdsInstance) fetchOperatorPermission() (*rdsOperatorPermission, error) {
+	r.operatorLock.Lock()
+	defer r.operatorLock.Unlock()
+	if r.operator != nil {
+		return r.operator, nil
+	}
+
+	conn := r.MqlRuntime.Connection.(*connection.AlicloudConnection)
+	client, err := conn.RdsClient(r.region)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.DescribeOperatorPermission(&rdsclient.DescribeOperatorPermissionRequest{
+		DBInstanceId: new(r.instanceId),
+	})
+	if err != nil {
+		return nil, classifyAlicloudError(err, "rds:DescribeOperatorPermission")
+	}
+	var body *rdsclient.DescribeOperatorPermissionResponseBody
+	if resp != nil {
+		body = resp.Body
+	}
+	r.operator = rdsOperatorPermissionFrom(body)
+	return r.operator, nil
+}
+
+func (r *mqlAlicloudRdsInstance) operatorPrivileges() ([]any, error) {
+	op, err := r.fetchOperatorPermission()
+	if err != nil {
+		return nil, err
+	}
+	return stringsToAny(op.privileges), nil
+}
+
+func (r *mqlAlicloudRdsInstance) operatorPrivilegesCreateTime() (*time.Time, error) {
+	op, err := r.fetchOperatorPermission()
+	if err != nil {
+		return nil, err
+	}
+	return op.created, nil
+}
+
+func (r *mqlAlicloudRdsInstance) operatorPrivilegesExpireTime() (*time.Time, error) {
+	op, err := r.fetchOperatorPermission()
+	if err != nil {
+		return nil, err
+	}
+	return op.expires, nil
+}
+
+func (r *mqlAlicloudRdsInstance) operatorAccessActive() (bool, error) {
+	op, err := r.fetchOperatorPermission()
+	if err != nil {
+		return false, err
+	}
+	return op.active(time.Now()), nil
 }
 
 func (r *mqlAlicloudRdsInstance) dbInstanceStorage() (int64, error) {

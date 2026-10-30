@@ -6,6 +6,7 @@ package resources
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	rdsclient "github.com/alibabacloud-go/rds-20140815/v17/client"
 	"github.com/stretchr/testify/assert"
@@ -135,6 +136,77 @@ func TestRdsRunningParameters(t *testing.T) {
 		})
 		assert.Equal(t, map[string]any{}, got)
 	})
+}
+
+// TestRdsOperatorPermissionFrom covers the decode of the access granted to
+// Alibaba Cloud technical support, from the JSON the API returns, so a
+// mistyped struct tag or a split on the wrong separator cannot report "no
+// grant" on an instance that has one.
+func TestRdsOperatorPermissionFrom(t *testing.T) {
+	decode := func(t *testing.T, body string) *rdsOperatorPermission {
+		var resp rdsclient.DescribeOperatorPermissionResponseBody
+		require.NoError(t, json.Unmarshal([]byte(body), &resp))
+		return rdsOperatorPermissionFrom(&resp)
+	}
+
+	t.Run("grant with both privileges", func(t *testing.T) {
+		// Synthetic: response shape and values from the SDK's documented
+		// example; no live instance with a grant was available.
+		got := decode(t, `{"CreatedTime":"2026-10-12T02:27:04Z","ExpiredTime":"2030-01-01T11:58:17Z","Privileges":"Control,Data","RequestId":"r1"}`)
+		assert.Equal(t, []string{"Control", "Data"}, got.privileges)
+		require.NotNil(t, got.created)
+		require.NotNil(t, got.expires)
+		assert.Equal(t, time.Date(2026, 10, 12, 2, 27, 4, 0, time.UTC), *got.created)
+		assert.Equal(t, time.Date(2030, 1, 1, 11, 58, 17, 0, time.UTC), *got.expires)
+	})
+
+	t.Run("spaces and empty members are dropped", func(t *testing.T) {
+		// Synthetic: separator variants no target showed.
+		got := decode(t, `{"Privileges":" Control , ,Data,"}`)
+		assert.Equal(t, []string{"Control", "Data"}, got.privileges)
+	})
+
+	t.Run("no grant is an empty list and null times", func(t *testing.T) {
+		// Synthetic: an instance with no grant; no target showed this.
+		for _, body := range []string{`{"RequestId":"r1"}`, `{"Privileges":"","CreatedTime":"","ExpiredTime":"","RequestId":"r1"}`} {
+			got := decode(t, body)
+			assert.Equal(t, []string{}, got.privileges)
+			assert.Nil(t, got.created)
+			assert.Nil(t, got.expires)
+		}
+	})
+
+	t.Run("nil body is no grant", func(t *testing.T) {
+		got := rdsOperatorPermissionFrom(nil)
+		assert.Equal(t, []string{}, got.privileges)
+		assert.Nil(t, got.expires)
+	})
+}
+
+// TestRdsOperatorPermissionActive covers the derived "support currently holds
+// access" predicate. A grant without an expiry has to count as active, so a
+// check for no standing access fails on it.
+func TestRdsOperatorPermissionActive(t *testing.T) {
+	// Synthetic: grants built around a fixed instant; no target showed these.
+	now := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
+	past := now.Add(-time.Hour)
+	future := now.Add(time.Hour)
+	for _, tc := range []struct {
+		name string
+		p    *rdsOperatorPermission
+		want bool
+	}{
+		{"nil", nil, false},
+		{"no privileges", &rdsOperatorPermission{privileges: []string{}, expires: &future}, false},
+		{"unexpired grant", &rdsOperatorPermission{privileges: []string{"Control"}, expires: &future}, true},
+		{"expired grant", &rdsOperatorPermission{privileges: []string{"Data"}, expires: &past}, false},
+		{"expires exactly now", &rdsOperatorPermission{privileges: []string{"Data"}, expires: &now}, false},
+		{"grant without expiry is standing", &rdsOperatorPermission{privileges: []string{"Control"}}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, tc.p.active(now))
+		})
+	}
 }
 
 // TestRdsPeerInstance covers how a disaster recovery replica or warm standby is

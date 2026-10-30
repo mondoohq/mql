@@ -1974,6 +1974,10 @@ alicloud.rds.instance.instanceNetworkType 13.0.0
 alicloud.rds.instance.lockMode 13.0.0
 alicloud.rds.instance.lockReason 13.0.0
 alicloud.rds.instance.masterInstance 13.0.0
+alicloud.rds.instance.operatorAccessActive 14.2.8
+alicloud.rds.instance.operatorPrivileges 14.2.8
+alicloud.rds.instance.operatorPrivilegesCreateTime 14.2.8
+alicloud.rds.instance.operatorPrivilegesExpireTime 14.2.8
 alicloud.rds.instance.parameters 13.5.1
 alicloud.rds.instance.payType 13.0.0
 alicloud.rds.instance.port 13.0.0
