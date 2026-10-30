@@ -3370,6 +3370,27 @@ alicloud.rds.instance {
   vectorSupportStatus() string
   // Read-only state of the instance, empty when it reports none
   readOnlyStatus() string
+  // Access to the instance granted to Alibaba Cloud technical support
+  //
+  // The kinds of access the account has granted Alibaba Cloud operations staff,
+  // for example Control (view and change the instance configuration) and Data
+  // (view table schemas, indexes, and SQL statements). Empty when no grant has
+  // been made or it has been revoked.
+  operatorPrivileges() []string
+  // Time the access grant to Alibaba Cloud technical support was made
+  //
+  // Null when there is no grant.
+  operatorPrivilegesCreateTime() time
+  // Time the access grant to Alibaba Cloud technical support expires
+  //
+  // Null when there is no grant or it carries no expiry time.
+  operatorPrivilegesExpireTime() time
+  // Whether Alibaba Cloud technical support currently holds access to the instance
+  //
+  // True when operatorPrivileges is not empty and operatorPrivilegesExpireTime
+  // has not passed. A grant without an expiry time counts as in effect, so a
+  // check for no standing support access fails on it.
+  operatorAccessActive() bool
 }
 
 // ApsaraDB for Redis
