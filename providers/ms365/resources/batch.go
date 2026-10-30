@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	abstractions "github.com/microsoft/kiota-abstractions-go"
@@ -40,12 +39,18 @@ type batchResult[T serialization.Parsable] struct {
 // caps a payload at 20; 19 matches the SDK's own BatchRequestCollection.
 const batchChunkSize = 19
 
-// batchConcurrency is how many $batch calls batchEach keeps in flight. A
-// per-user sub-request can take well over a second, so a field over every
-// member of a large tenant took hours one chunk at a time. Graph throttles
-// per app and tenant, and the SDK's retry handler backs off on 429, so a
-// higher value buys little once the tenant is throttled.
-const batchConcurrency = 4
+// batchMaxConcurrency is the most $batch calls batchEach keeps in flight. A
+// per-user sub-request can take over a second, so a field over every member
+// of a large tenant takes hours one chunk at a time. But Graph throttles per
+// app and tenant: with four calls in flight a tenant's per-user endpoint
+// answered nearly every sub-request with 429, which made the walk far slower
+// than one call at a time. batchEach starts here and drops to one call on the
+// first throttled sub-request (see batchPacer).
+const batchMaxConcurrency = 2
+
+// batchRampUpChunks is how many chunks in a row must come back without a
+// throttled sub-request before batchEach allows one more call in flight.
+const batchRampUpChunks = 50
 
 // batchMaxRetries is how often batchEach resends a sub-request that Graph
 // throttled or could not serve (see batchStatusIsTransient) before recording
@@ -54,19 +59,22 @@ const batchConcurrency = 4
 // would otherwise surface as errors on single users.
 const batchMaxRetries = 5
 
-// batchMaxRetryWait caps the wait before resending throttled sub-requests.
+// batchMaxRetryWait caps how long batchEach pauses after throttling.
 const batchMaxRetryWait = time.Minute
 
-// batchRetryBackoff is the wait before the first resend when Graph sent no
-// Retry-After; it doubles with every attempt. A variable so tests can shorten
-// it.
+// batchRetryBackoff is the pause after a throttled chunk when Graph sent no
+// Retry-After; it doubles while chunks keep coming back throttled. A variable
+// so tests can shorten it.
 var batchRetryBackoff = time.Second
+
+// batchProgressEvery is how many chunks pass between progress log lines.
+const batchProgressEvery = 500
 
 // batchGet issues every request in reqs against the Microsoft Graph $batch
 // endpoint and returns, per caller key, the deserialized response of type T.
 //
 // This collapses an N-call N+1 pattern into ceil(N/19) HTTP round-trips, up
-// to batchConcurrency of them in flight.
+// to batchMaxConcurrency of them in flight.
 //
 // The adapter selects the service root, so v1.0 and beta requests must not be
 // mixed in one call -- pass the matching client's adapter for each.
@@ -99,28 +107,28 @@ func batchGet[T serialization.Parsable](
 }
 
 // batchEach issues one Graph request per key through the $batch endpoint,
-// batchChunkSize keys per call and up to batchConcurrency calls in flight, and
-// passes each successful sub-response to each as its chunk returns.
+// batchChunkSize keys per call, and passes each successful sub-response to
+// each as its chunk returns.
 //
 // It replaces the SDK's BatchRequestCollection for large fetches. That
 // collection builds every request up front and keeps every chunk's response
 // until the last one returns, so a per-user field on a large tenant held
 // gigabytes and the scan was OOM-killed. Here build runs per chunk, and a
-// chunk's raw responses are dropped once each has seen them; a chunk is only
-// sent once an earlier one has been handed over, so at most batchConcurrency
-// responses are held, and memory grows only by what each keeps.
+// chunk's raw responses are dropped once each has seen them; at most
+// batchMaxConcurrency chunks are in flight, so memory grows only by what each
+// keeps.
 //
-// Chunks may complete in any order. each, and every write to errs and
-// statuses, runs on the calling goroutine, so each needs no locking.
+// Chunks may complete in any order. build, each, and every write to errs and
+// statuses run on the calling goroutine, so neither needs locking.
 //
 // A failed sub-request, or an error returned by each, is recorded under its
-// key in errs and does not stop the fetch; statuses holds every sub-response's
+// key in errs and does not stop the fetch; statuses holds every key's last
 // status code. An error from build or from sending a chunk ends the fetch.
 //
-// A sub-request that Graph throttled or could not serve is sent again, after
-// the longest Retry-After the throttled sub-responses asked for (or an
-// exponential backoff), up to batchMaxRetries times; only then is it recorded
-// in errs.
+// A sub-request that Graph throttled or could not serve goes back into the
+// queue and is sent again, up to batchMaxRetries times; only then is it
+// recorded in errs. A throttled chunk also slows the whole fetch down: see
+// batchPacer.
 func batchEach[T serialization.Parsable](
 	ctx context.Context,
 	adapter abstractions.RequestAdapter,
@@ -131,48 +139,6 @@ func batchEach[T serialization.Parsable](
 ) (errs map[string]error, statuses map[string]int32, err error) {
 	errs = map[string]error{}
 	statuses = make(map[string]int32, len(keys))
-	pending := keys
-	for attempt := 0; ; attempt++ {
-		retry, retryAfter, err := batchEachPass(ctx, adapter, pending, build, constructor, each, errs, statuses)
-		if err != nil || len(retry) == 0 {
-			return errs, statuses, err
-		}
-		if attempt == batchMaxRetries {
-			for _, key := range retry {
-				errs[key] = fmt.Errorf("batch request failed with status %d", statuses[key])
-			}
-			return errs, statuses, nil
-		}
-		wait := retryAfter
-		if wait == 0 {
-			wait = batchRetryBackoff << attempt
-		}
-		wait = min(wait, batchMaxRetryWait)
-		log.Debug().Int("keys", len(retry)).Int("attempt", attempt+1).Dur("wait", wait).
-			Msg("ms365> resending throttled batch sub-requests")
-		select {
-		case <-time.After(wait):
-		case <-ctx.Done():
-			return errs, statuses, ctx.Err()
-		}
-		pending = retry
-	}
-}
-
-// batchEachPass sends one $batch call per batchChunkSize keys, up to
-// batchConcurrency at a time, and hands the outcome of every sub-request to
-// handleBatchChunk. It returns the keys to resend and the longest Retry-After
-// their sub-responses asked for.
-func batchEachPass[T serialization.Parsable](
-	ctx context.Context,
-	adapter abstractions.RequestAdapter,
-	keys []string,
-	build func(key string) (*abstractions.RequestInformation, error),
-	constructor serialization.ParsableFactory,
-	each func(key string, val T) error,
-	errs map[string]error,
-	statuses map[string]int32,
-) (retry []string, retryAfter time.Duration, err error) {
 
 	type chunkResult struct {
 		// the SDK assigns each step a generated id; map it back to the caller key
@@ -189,50 +155,67 @@ func batchEachPass[T serialization.Parsable](
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	results := make(chan chunkResult)
-	// a slot is taken before a chunk is sent and freed once it is handed over
-	slots := make(chan struct{}, batchConcurrency)
 
-	go func() {
-		var wg sync.WaitGroup
-		defer func() {
-			wg.Wait()
-			close(results)
-		}()
-		for start := 0; start < len(keys); start += batchChunkSize {
-			select {
-			case slots <- struct{}{}:
-			case <-ctx.Done():
-				return
-			}
-			chunk := keys[start:min(start+batchChunkSize, len(keys))]
+	// keys still to send; throttled keys are appended again
+	queue := append([]string(nil), keys...)
+	next := 0
+	attempts := map[string]int{}
+	pacer := newBatchPacer(batchMaxConcurrency)
+	inFlight := 0
+	var chunks, throttled, pauses int
+	var paused time.Duration
+	start := time.Now()
+
+	for {
+		for err == nil && inFlight < pacer.limit && next < len(queue) && pacer.ready(time.Now()) {
+			chunk := queue[next:min(next+batchChunkSize, len(queue))]
+			next += len(chunk)
 			batch := msgraphgocore.NewBatchRequest(adapter)
 			idToKey := make(map[string]string, len(chunk))
 			for _, key := range chunk {
-				reqInfo, err := build(key)
-				if err != nil {
-					results <- chunkResult{err: transformError(err)}
-					return
+				reqInfo, buildErr := build(key)
+				if buildErr != nil {
+					err = transformError(buildErr)
+					break
 				}
-				item, err := batch.AddBatchRequestStep(*reqInfo)
-				if err != nil {
-					results <- chunkResult{err: err}
-					return
+				item, addErr := batch.AddBatchRequestStep(*reqInfo)
+				if addErr != nil {
+					err = addErr
+					break
 				}
 				idToKey[*item.GetId()] = key
 			}
-			wg.Add(1)
+			if err != nil {
+				cancel()
+				break
+			}
+			inFlight++
 			go func() {
-				defer wg.Done()
-				resp, err := batch.Send(ctx, adapter)
-				if err != nil {
-					err = transformError(err)
+				resp, sendErr := batch.Send(ctx, adapter)
+				if sendErr != nil {
+					sendErr = transformError(sendErr)
 				}
-				results <- chunkResult{idToKey: idToKey, resp: resp, err: err}
+				results <- chunkResult{idToKey: idToKey, resp: resp, err: sendErr}
 			}()
 		}
-	}()
 
-	for res := range results {
+		if inFlight == 0 {
+			if err != nil || next == len(queue) {
+				break
+			}
+			// throttled with nothing in flight: wait out the pause
+			wait := time.Until(pacer.pausedUntil)
+			paused += wait
+			select {
+			case <-time.After(wait):
+			case <-ctx.Done():
+				return errs, statuses, ctx.Err()
+			}
+			continue
+		}
+
+		res := <-results
+		inFlight--
 		if err != nil {
 			// the fetch already failed; drain what is still in flight
 			continue
@@ -242,12 +225,83 @@ func batchEachPass[T serialization.Parsable](
 			cancel()
 			continue
 		}
-		chunkRetry, chunkRetryAfter := handleBatchChunk(res.resp, res.idToKey, constructor, each, errs, statuses)
-		retry = append(retry, chunkRetry...)
-		retryAfter = max(retryAfter, chunkRetryAfter)
-		<-slots
+		retry, retryAfter := handleBatchChunk(res.resp, res.idToKey, constructor, each, errs, statuses)
+		chunks++
+		for _, key := range retry {
+			attempts[key]++
+			if attempts[key] > batchMaxRetries {
+				errs[key] = fmt.Errorf("batch request failed with status %d", statuses[key])
+				continue
+			}
+			queue = append(queue, key)
+		}
+		if len(retry) > 0 {
+			throttled += len(retry)
+			pauses++
+		}
+		pacer.observe(time.Now(), len(retry) > 0, retryAfter)
+		if chunks%batchProgressEvery == 0 {
+			log.Debug().Int("keys", len(keys)).Int("sent", next).Int("queued", len(queue)-next).
+				Int("throttled", throttled).Int("concurrency", pacer.limit).Dur("elapsed", time.Since(start)).
+				Msg("ms365> batch progress")
+		}
 	}
-	return retry, retryAfter, err
+
+	if throttled > 0 || chunks >= batchProgressEvery {
+		log.Debug().Int("keys", len(keys)).Int("chunks", chunks).Int("throttled", throttled).
+			Int("pauses", pauses).Dur("paused", paused).Dur("elapsed", time.Since(start)).
+			Msg("ms365> batch done")
+	}
+	return errs, statuses, err
+}
+
+// batchPacer decides how many $batch calls may be in flight and when the next
+// one may be sent. A chunk with a throttled sub-request drops the limit to one
+// call and pauses sending for the Retry-After Graph asked for, or for a
+// backoff that doubles while chunks keep coming back throttled.
+// batchRampUpChunks clean chunks in a row raise the limit by one, up to max.
+//
+// Resending everything Graph throttled straight away keeps the app throttled:
+// a tenant then let through a few hundred users per ten minutes. Slowing down
+// as soon as Graph pushes back costs a pause instead.
+type batchPacer struct {
+	max, limit  int
+	clean       int // chunks in a row without throttling
+	throttled   int // chunks in a row with throttling
+	pausedUntil time.Time
+}
+
+func newBatchPacer(maxInFlight int) *batchPacer {
+	return &batchPacer{max: maxInFlight, limit: maxInFlight}
+}
+
+// ready reports whether a chunk may be sent at now.
+func (p *batchPacer) ready(now time.Time) bool {
+	return !now.Before(p.pausedUntil)
+}
+
+// observe records a chunk that came back at now; throttled is whether any of
+// its sub-requests were, and retryAfter the longest Retry-After they asked for.
+func (p *batchPacer) observe(now time.Time, throttled bool, retryAfter time.Duration) {
+	if !throttled {
+		p.throttled = 0
+		p.clean++
+		if p.clean >= batchRampUpChunks && p.limit < p.max {
+			p.limit++
+			p.clean = 0
+		}
+		return
+	}
+	p.clean = 0
+	p.limit = 1
+	wait := retryAfter
+	if wait == 0 {
+		wait = batchRetryBackoff << min(p.throttled, 6)
+	}
+	p.throttled++
+	if until := now.Add(min(wait, batchMaxRetryWait)); until.After(p.pausedUntil) {
+		p.pausedUntil = until
+	}
 }
 
 // handleBatchChunk passes each successful sub-response of one $batch call to

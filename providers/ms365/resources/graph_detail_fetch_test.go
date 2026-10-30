@@ -42,6 +42,9 @@ type fakeGraph struct {
 	// throttle answers a $batch step for a path with 429 this many times
 	// before serving its route
 	throttle map[string]int
+	// rateLimit, when set, answers every step of a $batch call with 429
+	// while more than this many calls are in flight
+	rateLimit int
 }
 
 type fakeRoute struct {
@@ -87,6 +90,7 @@ func (f *fakeGraph) serve(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		f.inflight++
 		f.maxInflight = max(f.maxInflight, f.inflight)
+		overLimit := f.rateLimit > 0 && f.inflight > f.rateLimit
 		f.mu.Unlock()
 		defer func() {
 			f.mu.Lock()
@@ -122,8 +126,8 @@ func (f *fakeGraph) serve(w http.ResponseWriter, r *http.Request) {
 			u, err := url.Parse(step.URL)
 			require.NoError(f.t, err)
 			path := strings.TrimPrefix(u.Path, "/v1.0")
-			throttled := f.throttle[path] > 0
-			if throttled {
+			throttled := overLimit || f.throttle[path] > 0
+			if throttled && !overLimit {
 				f.throttle[path]--
 			}
 			f.mu.Unlock()
