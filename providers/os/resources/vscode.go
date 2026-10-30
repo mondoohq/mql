@@ -25,33 +25,43 @@ import (
 //
 //	https://github.com/package-url/purl-spec/blob/main/docs/types/definitions/vscode-extension-definition.md
 //
-// Format: pkg:vscode-extension/<publisher>/<name>@<version>
+// Format: pkg:vscode-extension/<publisher>/<name>@<version>?editor=<editor>
+// The editor qualifier is not part of the purl-spec definition. It records
+// which VS Code based editor the extension is installed in, because forks
+// like Cursor install from their own marketplace, so the same
+// publisher/name@version can be different code in different editors.
+// An empty editor omits the qualifier.
 // Empty publisher / name / version yields an empty string — callers that
 // pass incomplete extension metadata get no PURL rather than a malformed one.
-func newVscodeExtensionPurl(publisher, name, version string) string {
+func newVscodeExtensionPurl(publisher, name, version, editor string) string {
 	if publisher == "" || name == "" {
 		return ""
 	}
-	return packageurl.NewPackageURL("vscode-extension", publisher, name, version, nil, "").String()
+	var qualifiers packageurl.Qualifiers
+	if editor != "" {
+		qualifiers = packageurl.QualifiersFromMap(map[string]string{"editor": editor})
+	}
+	return packageurl.NewPackageURL("vscode-extension", publisher, name, version, qualifiers, "").String()
 }
 
 // vsCodeEditor represents a VS Code-based editor with its extension directory
 type vsCodeEditor struct {
 	dir  string // Extension directory relative to user home
 	name string // Human-readable editor name
+	id   string // Editor identifier used in the PURL editor qualifier
 }
 
 // VS Code extension directories relative to user home (same across platforms)
 var vsCodeEditors = []vsCodeEditor{
-	{".vscode/extensions", "Visual Studio Code"},
-	{".vscode-insiders/extensions", "Visual Studio Code Insiders"},
-	{".vscode-oss/extensions", "VSCodium"},
-	{".cursor/extensions", "Cursor"},
-	{".antigravity/extensions", "Antigravity"},
-	{".windsurf/extensions", "Windsurf"},
-	{".breezell-editor/extensions", "Breezell"},
-	{".positron/extensions", "Positron"},
-	{".kiro/extensions", "Kiro"},
+	{".vscode/extensions", "Visual Studio Code", "vscode"},
+	{".vscode-insiders/extensions", "Visual Studio Code Insiders", "vscode-insiders"},
+	{".vscode-oss/extensions", "VSCodium", "vscodium"},
+	{".cursor/extensions", "Cursor", "cursor"},
+	{".antigravity/extensions", "Antigravity", "antigravity"},
+	{".windsurf/extensions", "Windsurf", "windsurf"},
+	{".breezell-editor/extensions", "Breezell", "breezell"},
+	{".positron/extensions", "Positron", "positron"},
+	{".kiro/extensions", "Kiro", "kiro"},
 }
 
 // validHomePrefixes lists path prefixes where real user home directories live.
@@ -248,7 +258,7 @@ func (c *mqlVscode) extensions() ([]any, error) {
 					"path":          llx.StringData(extPath),
 					"vscodeVersion": llx.StringData(pkgJSON.Engines.VSCode),
 					"categories":    llx.ArrayData(categories, types.String),
-					"purl":          llx.StringData(newVscodeExtensionPurl(pkgJSON.Publisher, pkgJSON.Name, pkgJSON.Version)),
+					"purl":          llx.StringData(newVscodeExtensionPurl(pkgJSON.Publisher, pkgJSON.Name, pkgJSON.Version, editor.id)),
 				})
 				if err != nil {
 					log.Debug().Err(err).Str("extension", identifier).Msg("failed to create VS Code extension resource")
@@ -272,8 +282,19 @@ func (e *mqlVscodeExtension) id() (string, error) {
 // a vscode.extension without going through the enumerator (e.g. tests),
 // returning the empty string keeps the field non-nil rather than panicking.
 func (e *mqlVscodeExtension) purl() (string, error) {
-	e.Purl = plugin.TValue[string]{State: plugin.StateIsSet, Data: newVscodeExtensionPurl(e.Publisher.Data, e.Name.Data, e.Version.Data)}
+	e.Purl = plugin.TValue[string]{State: plugin.StateIsSet, Data: newVscodeExtensionPurl(e.Publisher.Data, e.Name.Data, e.Version.Data, vscodeEditorID(e.Editor.Data))}
 	return e.Purl.Data, nil
+}
+
+// vscodeEditorID returns the PURL editor qualifier for a human-readable
+// editor name, or the empty string for an unknown editor.
+func vscodeEditorID(name string) string {
+	for _, editor := range vsCodeEditors {
+		if editor.name == name {
+			return editor.id
+		}
+	}
+	return ""
 }
 
 // readVSCodePackageJSON reads and parses a VS Code extension package.json file

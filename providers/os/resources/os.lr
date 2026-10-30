@@ -22485,8 +22485,11 @@ private vscode.extension @defaults("editor name version") {
   // Package URL
   //
   // Package URL identifying the extension in the form
-  // pkg:vscode-extension/<publisher>/<name>@<version>, per
+  // pkg:vscode-extension/<publisher>/<name>@<version>?editor=<editor>, per
   // https://github.com/package-url/purl-spec/blob/main/docs/types/definitions/vscode-extension-definition.md
+  // The editor qualifier (e.g. vscode, cursor, windsurf) names the editor the
+  // extension is installed in, since VS Code forks install from their own
+  // marketplaces.
   purl() string
 }
 

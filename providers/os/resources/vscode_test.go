@@ -28,6 +28,7 @@ func TestNewVscodeExtensionPurl(t *testing.T) {
 		publisher string
 		extName   string
 		version   string
+		editor    string
 		want      string
 	}{
 		{
@@ -38,11 +39,20 @@ func TestNewVscodeExtensionPurl(t *testing.T) {
 			want:      "pkg:vscode-extension/RooVeterinaryInc/roo-cline@3.34.7",
 		},
 		{
+			name:      "Claude Code installed in Cursor carries the editor qualifier",
+			publisher: "Anthropic",
+			extName:   "claude-code",
+			version:   "2.1.312",
+			editor:    "cursor",
+			want:      "pkg:vscode-extension/Anthropic/claude-code@2.1.312?editor=cursor",
+		},
+		{
 			name:      "Microsoft Python (well-known prebuilt extension)",
 			publisher: "ms-python",
 			extName:   "python",
 			version:   "2026.6.0",
-			want:      "pkg:vscode-extension/ms-python/python@2026.6.0",
+			editor:    "vscode",
+			want:      "pkg:vscode-extension/ms-python/python@2026.6.0?editor=vscode",
 		},
 		{
 			name:      "version omitted (unknown / dev build)",
@@ -69,10 +79,16 @@ func TestNewVscodeExtensionPurl(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := newVscodeExtensionPurl(tc.publisher, tc.extName, tc.version)
+			got := newVscodeExtensionPurl(tc.publisher, tc.extName, tc.version, tc.editor)
 			assert.Equal(t, tc.want, got)
 		})
 	}
+}
+
+func TestVscodeEditorID(t *testing.T) {
+	assert.Equal(t, "cursor", vscodeEditorID("Cursor"))
+	assert.Equal(t, "vscode", vscodeEditorID("Visual Studio Code"))
+	assert.Equal(t, "", vscodeEditorID("Unknown Editor"))
 }
 
 // Full account enumeration deliberately fails. Extension discovery must only
