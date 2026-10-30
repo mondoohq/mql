@@ -32513,7 +32513,75 @@ private aws.bedrock.agentCore.runtime @defaults("name version status") {
   // Empty when the runtime passes no custom request headers.
   requestHeaderAllowlist() []string
   // Environment variables set in the runtime environment
-  environmentVariables() map[string]string
+  //
+  // Deprecated in favor of environmentVariableNames, which lists the variable names without their values. Values may hold plaintext secrets.
+  environmentVariables() @maturity("deprecated") map[string]string
+  // Names of the environment variables set in the runtime environment
+  //
+  // Names only. Values are not reported because they may hold plaintext secrets such as API keys. Empty when the runtime sets no environment variables.
+  environmentVariableNames() []string
+  // Time the agent runtime was created
+  createdAt() time
+  // Reason the agent runtime last failed to create or update
+  //
+  // Null when the agent runtime has not failed.
+  failureReason() string
+  // Ports reachable through the runtime session URL
+  //
+  // Each entry is a single port or an inclusive port range. Empty when the runtime declares no allowed ports.
+  allowedPorts() []aws.bedrock.agentCore.runtimeAllowedPort
+  // Protocol the agent code serves
+  //
+  // One of MCP, HTTP, A2A, or AGUI. Null when the runtime does not declare a protocol configuration.
+  serverProtocol() string
+  // Port the agent code listens on for the declared protocol
+  //
+  // Null when the runtime uses the default port for its protocol.
+  protocolPort() int
+  // Request path the agent code serves for the declared protocol
+  //
+  // Null when the runtime uses the default path for its protocol.
+  protocolPath() string
+  // Seconds an idle runtime session stays alive before it is terminated
+  //
+  // Null when the runtime uses the service default.
+  idleSessionTimeout() int
+  // Maximum lifetime of a runtime instance in seconds
+  //
+  // Null when the runtime uses the service default.
+  maxLifetime() int
+  // Container image URI the agent code is deployed from
+  //
+  // Null when the agent code is deployed as a code package from Amazon S3.
+  containerUri() string
+  // Managed language runtime for agent code deployed as a code package
+  //
+  // For example PYTHON_3_12 or NODE_22. Null when the agent code is deployed as a container image.
+  codeRuntime() string
+  // Command that starts agent code deployed as a code package
+  //
+  // Empty when the agent code is deployed as a container image.
+  codeEntryPoint() []string
+  // S3 bucket holding the agent code package
+  //
+  // Null when the agent code is deployed as a container image.
+  codeBucket() aws.s3.bucket
+  // S3 key prefix of the agent code package within codeBucket
+  //
+  // Null when the agent code is deployed as a container image.
+  codeS3Prefix() string
+  // Whether the runtime microVM accepts only MMDSv2 requests to its metadata service
+  //
+  // False means the older, token-less MMDSv1 requests are also accepted. Null when the runtime does not declare a metadata configuration.
+  requiresMmdsV2() bool
+  // Workload identity the agent runtime uses to obtain credentials for outbound calls
+  //
+  // Null when the agent runtime has no workload identity.
+  workloadIdentity() aws.bedrock.agentCore.workloadIdentity
+  // Versions of the agent runtime
+  //
+  // Every version AgentCore keeps for the runtime, including versions no endpoint serves.
+  versions() []aws.bedrock.agentCore.runtimeVersion
   // Endpoints exposed by the agent runtime
   endpoints() []aws.bedrock.agentCore.runtimeEndpoint
   // Capacity provider supplying the account-owned EC2 instances the runtime runs on
@@ -32552,7 +32620,11 @@ private aws.bedrock.agentCore.runtimeEndpoint @defaults("name status liveVersion
   // ARN of the endpoint
   arn string
   // ARN of the agent runtime that owns this endpoint
-  agentRuntimeArn string
+  //
+  // Deprecated in favor of agentRuntime, which returns the agent runtime itself.
+  agentRuntimeArn @maturity("deprecated") string
+  // Agent runtime that owns this endpoint
+  agentRuntime() aws.bedrock.agentCore.runtime
   // Name of the endpoint
   name string
   // Region where the endpoint exists
@@ -32583,6 +32655,35 @@ private aws.bedrock.agentCore.runtimeEndpoint @defaults("name status liveVersion
   isPublic() bool
   // Tags assigned to the runtime endpoint
   tags() map[string]string
+}
+
+// Port or port range reachable through an AgentCore runtime session URL
+private aws.bedrock.agentCore.runtimeAllowedPort @defaults("fromPort toPort") {
+  // First port in the inclusive range
+  //
+  // Equal to toPort when the entry is a single port.
+  fromPort int
+  // Last port in the inclusive range
+  //
+  // Equal to fromPort when the entry is a single port.
+  toPort int
+}
+
+// Version of an Amazon Bedrock AgentCore runtime
+//
+// A version AgentCore keeps for an agent runtime. Each update to the
+// runtime configuration or agent code creates a new version, and
+// endpoints serve one version at a time. Compare `version` with the
+// endpoints' liveVersion to find versions no endpoint serves.
+private aws.bedrock.agentCore.runtimeVersion @defaults("version status") {
+  // Version number
+  version string
+  // Current status of the version
+  status string
+  // Description of the agent runtime at this version
+  description string
+  // Time the version was last updated
+  updatedAt time
 }
 
 // Amazon Bedrock AgentCore memory

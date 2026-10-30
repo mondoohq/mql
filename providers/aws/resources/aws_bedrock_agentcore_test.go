@@ -6,6 +6,7 @@ package resources
 import (
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockagentcorecontrol"
 	bacctypes "github.com/aws/aws-sdk-go-v2/service/bedrockagentcorecontrol/types"
 	"github.com/stretchr/testify/assert"
@@ -135,5 +136,78 @@ func TestMemoryDeliveryStreamArns(t *testing.T) {
 			"arn:aws:kinesis:us-east-1:123456789012:stream/memory-a",
 			"arn:aws:kinesis:us-east-1:123456789012:stream/memory-b",
 		}, got)
+	})
+}
+
+func TestAgentRuntimeEnvironmentVariableNames(t *testing.T) {
+	// Synthetic: no AgentCore runtime existed in the test account; values must never be returned.
+	got := agentRuntimeEnvironmentVariableNames(map[string]string{
+		"OPENAI_API_KEY": "sk-secret",
+		"LOG_LEVEL":      "debug",
+	})
+	assert.Equal(t, []any{"LOG_LEVEL", "OPENAI_API_KEY"}, got)
+	assert.NotContains(t, got, "sk-secret")
+
+	// Synthetic: absent map reads as an empty list, not null.
+	assert.Equal(t, []any{}, agentRuntimeEnvironmentVariableNames(nil))
+}
+
+func TestAgentRuntimeAllowedPortRanges(t *testing.T) {
+	// Synthetic: the AllowedPort union carries either a single port or an inclusive range.
+	got := agentRuntimeAllowedPortRanges([]bacctypes.AllowedPort{
+		&bacctypes.AllowedPortMemberPort{Value: 8080},
+		&bacctypes.AllowedPortMemberPortRange{Value: bacctypes.PortRange{From: aws.Int32(9000), To: aws.Int32(9010)}},
+		// Synthetic: a range missing a bound is skipped rather than reported as 0.
+		&bacctypes.AllowedPortMemberPortRange{Value: bacctypes.PortRange{From: aws.Int32(10000)}},
+		// Synthetic: a union member this SDK does not model is skipped.
+		&bacctypes.UnknownUnionMember{Tag: "future"},
+	})
+	assert.Equal(t, []agentRuntimePortRange{{from: 8080, to: 8080}, {from: 9000, to: 9010}}, got)
+
+	assert.Empty(t, agentRuntimeAllowedPortRanges(nil))
+}
+
+func TestAgentRuntimeArtifactOf(t *testing.T) {
+	t.Run("container image", func(t *testing.T) {
+		// Synthetic: no AgentCore runtime existed in the test account.
+		info := agentRuntimeArtifactOf(&bacctypes.AgentRuntimeArtifactMemberContainerConfiguration{
+			Value: bacctypes.ContainerConfiguration{ContainerUri: aws.String("123456789012.dkr.ecr.us-east-1.amazonaws.com/agent:v1")},
+		})
+		require.NotNil(t, info.containerUri)
+		assert.Equal(t, "123456789012.dkr.ecr.us-east-1.amazonaws.com/agent:v1", *info.containerUri)
+		assert.Nil(t, info.codeRuntime)
+		assert.Nil(t, info.codeBucket)
+		assert.Nil(t, info.codeS3Prefix)
+	})
+
+	t.Run("code package in s3", func(t *testing.T) {
+		// Synthetic: no AgentCore runtime existed in the test account.
+		info := agentRuntimeArtifactOf(&bacctypes.AgentRuntimeArtifactMemberCodeConfiguration{
+			Value: bacctypes.CodeConfiguration{
+				Runtime:    bacctypes.AgentManagedRuntimeTypePython312,
+				EntryPoint: []string{"main.py"},
+				Code: &bacctypes.CodeMemberS3{Value: bacctypes.S3Location{
+					Bucket: aws.String("agent-code"),
+					Prefix: aws.String("builds/agent.zip"),
+				}},
+			},
+		})
+		assert.Nil(t, info.containerUri)
+		require.NotNil(t, info.codeRuntime)
+		assert.Equal(t, "PYTHON_3_12", *info.codeRuntime)
+		assert.Equal(t, []string{"main.py"}, info.codeEntryPoint)
+		require.NotNil(t, info.codeBucket)
+		assert.Equal(t, "agent-code", *info.codeBucket)
+		require.NotNil(t, info.codeS3Prefix)
+		assert.Equal(t, "builds/agent.zip", *info.codeS3Prefix)
+	})
+
+	t.Run("absent artifact and empty strings read as null", func(t *testing.T) {
+		// Synthetic: no artifact, and a container member with an empty URI.
+		assert.Equal(t, agentRuntimeArtifactInfo{}, agentRuntimeArtifactOf(nil))
+		info := agentRuntimeArtifactOf(&bacctypes.AgentRuntimeArtifactMemberContainerConfiguration{
+			Value: bacctypes.ContainerConfiguration{ContainerUri: aws.String("")},
+		})
+		assert.Nil(t, info.containerUri)
 	})
 }

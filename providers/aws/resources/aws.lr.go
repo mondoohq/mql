@@ -997,6 +997,8 @@ const (
 	ResourceAwsBedrockAgentCoreGatewayTarget                                    string = "aws.bedrock.agentCore.gatewayTarget"
 	ResourceAwsBedrockAgentCoreRuntime                                          string = "aws.bedrock.agentCore.runtime"
 	ResourceAwsBedrockAgentCoreRuntimeEndpoint                                  string = "aws.bedrock.agentCore.runtimeEndpoint"
+	ResourceAwsBedrockAgentCoreRuntimeAllowedPort                               string = "aws.bedrock.agentCore.runtimeAllowedPort"
+	ResourceAwsBedrockAgentCoreRuntimeVersion                                   string = "aws.bedrock.agentCore.runtimeVersion"
 	ResourceAwsBedrockAgentCoreMemory                                           string = "aws.bedrock.agentCore.memory"
 	ResourceAwsBedrockAgentCoreMemoryNamespaceKey                               string = "aws.bedrock.agentCore.memory.namespaceKey"
 	ResourceAwsBedrockAgentCoreBrowser                                          string = "aws.bedrock.agentCore.browser"
@@ -5005,6 +5007,14 @@ func init() {
 		"aws.bedrock.agentCore.runtimeEndpoint": {
 			// to override args, implement: initAwsBedrockAgentCoreRuntimeEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAwsBedrockAgentCoreRuntimeEndpoint,
+		},
+		"aws.bedrock.agentCore.runtimeAllowedPort": {
+			// to override args, implement: initAwsBedrockAgentCoreRuntimeAllowedPort(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsBedrockAgentCoreRuntimeAllowedPort,
+		},
+		"aws.bedrock.agentCore.runtimeVersion": {
+			// to override args, implement: initAwsBedrockAgentCoreRuntimeVersion(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsBedrockAgentCoreRuntimeVersion,
 		},
 		"aws.bedrock.agentCore.memory": {
 			// to override args, implement: initAwsBedrockAgentCoreMemory(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -37136,6 +37146,57 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.bedrock.agentCore.runtime.environmentVariables": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockAgentCoreRuntime).GetEnvironmentVariables()).ToDataRes(types.Map(types.String, types.String))
 	},
+	"aws.bedrock.agentCore.runtime.environmentVariableNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRuntime).GetEnvironmentVariableNames()).ToDataRes(types.Array(types.String))
+	},
+	"aws.bedrock.agentCore.runtime.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRuntime).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"aws.bedrock.agentCore.runtime.failureReason": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRuntime).GetFailureReason()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.runtime.allowedPorts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRuntime).GetAllowedPorts()).ToDataRes(types.Array(types.Resource("aws.bedrock.agentCore.runtimeAllowedPort")))
+	},
+	"aws.bedrock.agentCore.runtime.serverProtocol": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRuntime).GetServerProtocol()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.runtime.protocolPort": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRuntime).GetProtocolPort()).ToDataRes(types.Int)
+	},
+	"aws.bedrock.agentCore.runtime.protocolPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRuntime).GetProtocolPath()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.runtime.idleSessionTimeout": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRuntime).GetIdleSessionTimeout()).ToDataRes(types.Int)
+	},
+	"aws.bedrock.agentCore.runtime.maxLifetime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRuntime).GetMaxLifetime()).ToDataRes(types.Int)
+	},
+	"aws.bedrock.agentCore.runtime.containerUri": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRuntime).GetContainerUri()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.runtime.codeRuntime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRuntime).GetCodeRuntime()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.runtime.codeEntryPoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRuntime).GetCodeEntryPoint()).ToDataRes(types.Array(types.String))
+	},
+	"aws.bedrock.agentCore.runtime.codeBucket": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRuntime).GetCodeBucket()).ToDataRes(types.Resource("aws.s3.bucket"))
+	},
+	"aws.bedrock.agentCore.runtime.codeS3Prefix": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRuntime).GetCodeS3Prefix()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.runtime.requiresMmdsV2": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRuntime).GetRequiresMmdsV2()).ToDataRes(types.Bool)
+	},
+	"aws.bedrock.agentCore.runtime.workloadIdentity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRuntime).GetWorkloadIdentity()).ToDataRes(types.Resource("aws.bedrock.agentCore.workloadIdentity"))
+	},
+	"aws.bedrock.agentCore.runtime.versions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRuntime).GetVersions()).ToDataRes(types.Array(types.Resource("aws.bedrock.agentCore.runtimeVersion")))
+	},
 	"aws.bedrock.agentCore.runtime.endpoints": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockAgentCoreRuntime).GetEndpoints()).ToDataRes(types.Array(types.Resource("aws.bedrock.agentCore.runtimeEndpoint")))
 	},
@@ -37165,6 +37226,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.bedrock.agentCore.runtimeEndpoint.agentRuntimeArn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockAgentCoreRuntimeEndpoint).GetAgentRuntimeArn()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.runtimeEndpoint.agentRuntime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRuntimeEndpoint).GetAgentRuntime()).ToDataRes(types.Resource("aws.bedrock.agentCore.runtime"))
 	},
 	"aws.bedrock.agentCore.runtimeEndpoint.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockAgentCoreRuntimeEndpoint).GetName()).ToDataRes(types.String)
@@ -37201,6 +37265,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.bedrock.agentCore.runtimeEndpoint.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockAgentCoreRuntimeEndpoint).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"aws.bedrock.agentCore.runtimeAllowedPort.fromPort": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRuntimeAllowedPort).GetFromPort()).ToDataRes(types.Int)
+	},
+	"aws.bedrock.agentCore.runtimeAllowedPort.toPort": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRuntimeAllowedPort).GetToPort()).ToDataRes(types.Int)
+	},
+	"aws.bedrock.agentCore.runtimeVersion.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRuntimeVersion).GetVersion()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.runtimeVersion.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRuntimeVersion).GetStatus()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.runtimeVersion.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRuntimeVersion).GetDescription()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.runtimeVersion.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRuntimeVersion).GetUpdatedAt()).ToDataRes(types.Time)
 	},
 	"aws.bedrock.agentCore.memory.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockAgentCoreMemory).GetId()).ToDataRes(types.String)
@@ -86008,6 +86090,74 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsBedrockAgentCoreRuntime).EnvironmentVariables, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
+	"aws.bedrock.agentCore.runtime.environmentVariableNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRuntime).EnvironmentVariableNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.runtime.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRuntime).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.runtime.failureReason": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRuntime).FailureReason, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.runtime.allowedPorts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRuntime).AllowedPorts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.runtime.serverProtocol": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRuntime).ServerProtocol, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.runtime.protocolPort": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRuntime).ProtocolPort, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.runtime.protocolPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRuntime).ProtocolPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.runtime.idleSessionTimeout": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRuntime).IdleSessionTimeout, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.runtime.maxLifetime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRuntime).MaxLifetime, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.runtime.containerUri": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRuntime).ContainerUri, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.runtime.codeRuntime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRuntime).CodeRuntime, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.runtime.codeEntryPoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRuntime).CodeEntryPoint, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.runtime.codeBucket": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRuntime).CodeBucket, ok = plugin.RawToTValue[*mqlAwsS3Bucket](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.runtime.codeS3Prefix": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRuntime).CodeS3Prefix, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.runtime.requiresMmdsV2": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRuntime).RequiresMmdsV2, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.runtime.workloadIdentity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRuntime).WorkloadIdentity, ok = plugin.RawToTValue[*mqlAwsBedrockAgentCoreWorkloadIdentity](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.runtime.versions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRuntime).Versions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"aws.bedrock.agentCore.runtime.endpoints": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsBedrockAgentCoreRuntime).Endpoints, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -86050,6 +86200,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.bedrock.agentCore.runtimeEndpoint.agentRuntimeArn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsBedrockAgentCoreRuntimeEndpoint).AgentRuntimeArn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.runtimeEndpoint.agentRuntime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRuntimeEndpoint).AgentRuntime, ok = plugin.RawToTValue[*mqlAwsBedrockAgentCoreRuntime](v.Value, v.Error)
 		return
 	},
 	"aws.bedrock.agentCore.runtimeEndpoint.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -86098,6 +86252,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.bedrock.agentCore.runtimeEndpoint.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsBedrockAgentCoreRuntimeEndpoint).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.runtimeAllowedPort.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRuntimeAllowedPort).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.bedrock.agentCore.runtimeAllowedPort.fromPort": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRuntimeAllowedPort).FromPort, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.runtimeAllowedPort.toPort": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRuntimeAllowedPort).ToPort, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.runtimeVersion.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRuntimeVersion).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.bedrock.agentCore.runtimeVersion.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRuntimeVersion).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.runtimeVersion.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRuntimeVersion).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.runtimeVersion.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRuntimeVersion).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.runtimeVersion.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRuntimeVersion).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"aws.bedrock.agentCore.memory.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -209528,33 +209714,50 @@ type mqlAwsBedrockAgentCoreRuntime struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAwsBedrockAgentCoreRuntimeInternal
-	Id                     plugin.TValue[string]
-	Arn                    plugin.TValue[string]
-	Name                   plugin.TValue[string]
-	Region                 plugin.TValue[string]
-	Version                plugin.TValue[string]
-	Status                 plugin.TValue[string]
-	Description            plugin.TValue[string]
-	UpdatedAt              plugin.TValue[*time.Time]
-	IamRole                plugin.TValue[*mqlAwsIamRole]
-	RoleArn                plugin.TValue[string]
-	NetworkMode            plugin.TValue[string]
-	Subnets                plugin.TValue[[]any]
-	SecurityGroups         plugin.TValue[[]any]
-	AuthorizerType         plugin.TValue[string]
-	AuthorizerDiscoveryUrl plugin.TValue[string]
-	AllowedClients         plugin.TValue[[]any]
-	AllowedAudiences       plugin.TValue[[]any]
-	AllowedScopes          plugin.TValue[[]any]
-	RequestHeaderAllowlist plugin.TValue[[]any]
-	EnvironmentVariables   plugin.TValue[map[string]any]
-	Endpoints              plugin.TValue[[]any]
-	CapacityProvider       plugin.TValue[*mqlAwsBedrockAgentCoreCapacityProvider]
-	PlatformVersion        plugin.TValue[string]
-	ResourcePolicy         plugin.TValue[string]
-	PolicyStatements       plugin.TValue[[]any]
-	IsPublic               plugin.TValue[bool]
-	Tags                   plugin.TValue[map[string]any]
+	Id                       plugin.TValue[string]
+	Arn                      plugin.TValue[string]
+	Name                     plugin.TValue[string]
+	Region                   plugin.TValue[string]
+	Version                  plugin.TValue[string]
+	Status                   plugin.TValue[string]
+	Description              plugin.TValue[string]
+	UpdatedAt                plugin.TValue[*time.Time]
+	IamRole                  plugin.TValue[*mqlAwsIamRole]
+	RoleArn                  plugin.TValue[string]
+	NetworkMode              plugin.TValue[string]
+	Subnets                  plugin.TValue[[]any]
+	SecurityGroups           plugin.TValue[[]any]
+	AuthorizerType           plugin.TValue[string]
+	AuthorizerDiscoveryUrl   plugin.TValue[string]
+	AllowedClients           plugin.TValue[[]any]
+	AllowedAudiences         plugin.TValue[[]any]
+	AllowedScopes            plugin.TValue[[]any]
+	RequestHeaderAllowlist   plugin.TValue[[]any]
+	EnvironmentVariables     plugin.TValue[map[string]any]
+	EnvironmentVariableNames plugin.TValue[[]any]
+	CreatedAt                plugin.TValue[*time.Time]
+	FailureReason            plugin.TValue[string]
+	AllowedPorts             plugin.TValue[[]any]
+	ServerProtocol           plugin.TValue[string]
+	ProtocolPort             plugin.TValue[int64]
+	ProtocolPath             plugin.TValue[string]
+	IdleSessionTimeout       plugin.TValue[int64]
+	MaxLifetime              plugin.TValue[int64]
+	ContainerUri             plugin.TValue[string]
+	CodeRuntime              plugin.TValue[string]
+	CodeEntryPoint           plugin.TValue[[]any]
+	CodeBucket               plugin.TValue[*mqlAwsS3Bucket]
+	CodeS3Prefix             plugin.TValue[string]
+	RequiresMmdsV2           plugin.TValue[bool]
+	WorkloadIdentity         plugin.TValue[*mqlAwsBedrockAgentCoreWorkloadIdentity]
+	Versions                 plugin.TValue[[]any]
+	Endpoints                plugin.TValue[[]any]
+	CapacityProvider         plugin.TValue[*mqlAwsBedrockAgentCoreCapacityProvider]
+	PlatformVersion          plugin.TValue[string]
+	ResourcePolicy           plugin.TValue[string]
+	PolicyStatements         plugin.TValue[[]any]
+	IsPublic                 plugin.TValue[bool]
+	Tags                     plugin.TValue[map[string]any]
 }
 
 // createAwsBedrockAgentCoreRuntime creates a new instance of this resource
@@ -209728,6 +209931,148 @@ func (c *mqlAwsBedrockAgentCoreRuntime) GetEnvironmentVariables() *plugin.TValue
 	})
 }
 
+func (c *mqlAwsBedrockAgentCoreRuntime) GetEnvironmentVariableNames() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EnvironmentVariableNames, func() ([]any, error) {
+		return c.environmentVariableNames()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntime) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.CreatedAt, func() (*time.Time, error) {
+		return c.createdAt()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntime) GetFailureReason() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.FailureReason, func() (string, error) {
+		return c.failureReason()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntime) GetAllowedPorts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AllowedPorts, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.runtime", c.__id, "allowedPorts")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.allowedPorts()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntime) GetServerProtocol() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ServerProtocol, func() (string, error) {
+		return c.serverProtocol()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntime) GetProtocolPort() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.ProtocolPort, func() (int64, error) {
+		return c.protocolPort()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntime) GetProtocolPath() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ProtocolPath, func() (string, error) {
+		return c.protocolPath()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntime) GetIdleSessionTimeout() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.IdleSessionTimeout, func() (int64, error) {
+		return c.idleSessionTimeout()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntime) GetMaxLifetime() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MaxLifetime, func() (int64, error) {
+		return c.maxLifetime()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntime) GetContainerUri() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ContainerUri, func() (string, error) {
+		return c.containerUri()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntime) GetCodeRuntime() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.CodeRuntime, func() (string, error) {
+		return c.codeRuntime()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntime) GetCodeEntryPoint() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.CodeEntryPoint, func() ([]any, error) {
+		return c.codeEntryPoint()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntime) GetCodeBucket() *plugin.TValue[*mqlAwsS3Bucket] {
+	return plugin.GetOrCompute[*mqlAwsS3Bucket](&c.CodeBucket, func() (*mqlAwsS3Bucket, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.runtime", c.__id, "codeBucket")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsS3Bucket), nil
+			}
+		}
+
+		return c.codeBucket()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntime) GetCodeS3Prefix() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.CodeS3Prefix, func() (string, error) {
+		return c.codeS3Prefix()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntime) GetRequiresMmdsV2() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.RequiresMmdsV2, func() (bool, error) {
+		return c.requiresMmdsV2()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntime) GetWorkloadIdentity() *plugin.TValue[*mqlAwsBedrockAgentCoreWorkloadIdentity] {
+	return plugin.GetOrCompute[*mqlAwsBedrockAgentCoreWorkloadIdentity](&c.WorkloadIdentity, func() (*mqlAwsBedrockAgentCoreWorkloadIdentity, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.runtime", c.__id, "workloadIdentity")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsBedrockAgentCoreWorkloadIdentity), nil
+			}
+		}
+
+		return c.workloadIdentity()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntime) GetVersions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Versions, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.runtime", c.__id, "versions")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.versions()
+	})
+}
+
 func (c *mqlAwsBedrockAgentCoreRuntime) GetEndpoints() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.Endpoints, func() ([]any, error) {
 		if c.MqlRuntime.HasRecording {
@@ -209808,6 +210153,7 @@ type mqlAwsBedrockAgentCoreRuntimeEndpoint struct {
 	Id               plugin.TValue[string]
 	Arn              plugin.TValue[string]
 	AgentRuntimeArn  plugin.TValue[string]
+	AgentRuntime     plugin.TValue[*mqlAwsBedrockAgentCoreRuntime]
 	Name             plugin.TValue[string]
 	Region           plugin.TValue[string]
 	Status           plugin.TValue[string]
@@ -209869,6 +210215,22 @@ func (c *mqlAwsBedrockAgentCoreRuntimeEndpoint) GetArn() *plugin.TValue[string] 
 
 func (c *mqlAwsBedrockAgentCoreRuntimeEndpoint) GetAgentRuntimeArn() *plugin.TValue[string] {
 	return &c.AgentRuntimeArn
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntimeEndpoint) GetAgentRuntime() *plugin.TValue[*mqlAwsBedrockAgentCoreRuntime] {
+	return plugin.GetOrCompute[*mqlAwsBedrockAgentCoreRuntime](&c.AgentRuntime, func() (*mqlAwsBedrockAgentCoreRuntime, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.runtimeEndpoint", c.__id, "agentRuntime")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsBedrockAgentCoreRuntime), nil
+			}
+		}
+
+		return c.agentRuntime()
+	})
 }
 
 func (c *mqlAwsBedrockAgentCoreRuntimeEndpoint) GetName() *plugin.TValue[string] {
@@ -209935,6 +210297,114 @@ func (c *mqlAwsBedrockAgentCoreRuntimeEndpoint) GetTags() *plugin.TValue[map[str
 	return plugin.GetOrCompute[map[string]any](&c.Tags, func() (map[string]any, error) {
 		return c.tags()
 	})
+}
+
+// mqlAwsBedrockAgentCoreRuntimeAllowedPort for the aws.bedrock.agentCore.runtimeAllowedPort resource
+type mqlAwsBedrockAgentCoreRuntimeAllowedPort struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAwsBedrockAgentCoreRuntimeAllowedPortInternal it will be used here
+	FromPort plugin.TValue[int64]
+	ToPort   plugin.TValue[int64]
+}
+
+// createAwsBedrockAgentCoreRuntimeAllowedPort creates a new instance of this resource
+func createAwsBedrockAgentCoreRuntimeAllowedPort(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsBedrockAgentCoreRuntimeAllowedPort{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.bedrock.agentCore.runtimeAllowedPort", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntimeAllowedPort) MqlName() string {
+	return "aws.bedrock.agentCore.runtimeAllowedPort"
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntimeAllowedPort) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntimeAllowedPort) GetFromPort() *plugin.TValue[int64] {
+	return &c.FromPort
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntimeAllowedPort) GetToPort() *plugin.TValue[int64] {
+	return &c.ToPort
+}
+
+// mqlAwsBedrockAgentCoreRuntimeVersion for the aws.bedrock.agentCore.runtimeVersion resource
+type mqlAwsBedrockAgentCoreRuntimeVersion struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAwsBedrockAgentCoreRuntimeVersionInternal it will be used here
+	Version     plugin.TValue[string]
+	Status      plugin.TValue[string]
+	Description plugin.TValue[string]
+	UpdatedAt   plugin.TValue[*time.Time]
+}
+
+// createAwsBedrockAgentCoreRuntimeVersion creates a new instance of this resource
+func createAwsBedrockAgentCoreRuntimeVersion(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsBedrockAgentCoreRuntimeVersion{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.bedrock.agentCore.runtimeVersion", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntimeVersion) MqlName() string {
+	return "aws.bedrock.agentCore.runtimeVersion"
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntimeVersion) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntimeVersion) GetVersion() *plugin.TValue[string] {
+	return &c.Version
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntimeVersion) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntimeVersion) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntimeVersion) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
 }
 
 // mqlAwsBedrockAgentCoreMemory for the aws.bedrock.agentCore.memory resource
