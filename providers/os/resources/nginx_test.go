@@ -50,6 +50,20 @@ func TestParseNginxServerBlock(t *testing.T) {
 	assert.Equal(t, "30d", srv.Locations[1].Params["expires"])
 }
 
+// Synthetic: nginx adds the names of every server_name directive in a block,
+// so the server answers for all three names. Fails if a second server_name
+// replaces the first instead of extending it.
+func TestParseNginxServerBlockRepeatedServerName(t *testing.T) {
+	directives := []nginx.Directive{
+		{Name: "listen", Args: []string{"80"}},
+		{Name: "server_name", Args: []string{"example.com", "www.example.com"}},
+		{Name: "server_name", Args: []string{"static.example.com"}},
+	}
+
+	srv := parseNginxServerBlock(directives)
+	assert.Equal(t, "example.com www.example.com static.example.com", srv.ServerName)
+}
+
 func TestParseNginxServerBlockSSLViaListen(t *testing.T) {
 	directives := []nginx.Directive{
 		{Name: "listen", Args: []string{"443", "ssl"}},
@@ -117,7 +131,7 @@ func TestWalkHTTPBlock(t *testing.T) {
 				{Name: "proxy_pass", Args: []string{"http://backend"}},
 			}},
 		}},
-		{Name: "server", Block: []nginx.Directive{
+		{Name: "server", File: "/etc/nginx/conf.d/tls.conf", Block: []nginx.Directive{
 			{Name: "listen", Args: []string{"443", "ssl"}},
 			{Name: "server_name", Args: []string{"example.com"}},
 		}},
@@ -148,6 +162,9 @@ func TestWalkHTTPBlock(t *testing.T) {
 	assert.Equal(t, "example.com", servers[1].ServerName)
 	assert.Equal(t, "443 ssl", servers[1].Listen)
 	assert.True(t, servers[1].SSL)
+	// Each server block keeps the file its server directive is written in.
+	assert.Equal(t, "", servers[0].File)
+	assert.Equal(t, "/etc/nginx/conf.d/tls.conf", servers[1].File)
 
 	// Listen addresses
 	require.Len(t, listenAddrs, 2)

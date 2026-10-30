@@ -480,6 +480,62 @@ func (s *mqlIisSite) appPool() (*mqlIisAppPool, error) {
 	return pool, nil
 }
 
+// certificate resolves the binding's certificate out of the machine's
+// certificate stores. The store list is read once and shared by every binding,
+// so a server with many HTTPS bindings still reads the stores a single time.
+func (b *mqlIisBinding) certificate() (plugin.Resource, error) {
+	if b.CertificateHash.Data == "" {
+		b.Certificate.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	o, err := CreateResource(b.MqlRuntime, "windows.certificates", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	list := o.(*mqlWindowsCertificates).GetList()
+	if list.Error != nil {
+		return nil, list.Error
+	}
+
+	entry := iisBindingStoreCertificate(list.Data, b.CertificateStoreName.Data, b.CertificateHash.Data)
+	if entry == nil {
+		b.Certificate.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	cert := entry.GetCertificate()
+	if cert.Error != nil {
+		return nil, cert.Error
+	}
+	if cert.Data == nil {
+		b.Certificate.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return cert.Data, nil
+}
+
+// iisBindingStoreCertificate finds the store entry an HTTPS binding names. IIS
+// binds certificates from the machine's stores only, and a binding that names
+// no store uses My. Thumbprints and store names are compared without regard to
+// case: IIS can report the store as "MY" while the store itself is "My".
+func iisBindingStoreCertificate(certs []any, storeName, thumbprint string) *mqlWindowsCertificate {
+	if storeName == "" {
+		storeName = "My"
+	}
+	for _, c := range certs {
+		cert, ok := c.(*mqlWindowsCertificate)
+		if !ok {
+			continue
+		}
+		if cert.Location.Data == "LocalMachine" &&
+			strings.EqualFold(cert.Store.Data, storeName) &&
+			strings.EqualFold(cert.Thumbprint.Data, thumbprint) {
+			return cert
+		}
+	}
+	return nil
+}
+
 func (a *mqlIisApplication) appPool() (*mqlIisAppPool, error) {
 	if a.parent == nil {
 		a.AppPool.State = plugin.StateIsSet | plugin.StateIsNull

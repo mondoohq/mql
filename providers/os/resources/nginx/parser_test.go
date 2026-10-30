@@ -639,6 +639,43 @@ http {
 	}, cfg.Files)
 }
 
+// Synthetic: Debian's layout, a server block in sites-enabled pulling in a
+// snippet. Each directive names the file it is written in, not the file
+// that included it. Fails if setDirectiveFile runs after expandIncludes,
+// which would stamp the includer's path over the included directives.
+func TestParseFilesRecordsDirectiveFile(t *testing.T) {
+	fs := &memFS{files: map[string]string{
+		"/etc/nginx/nginx.conf": `
+http {
+    include /etc/nginx/sites-enabled/default;
+}
+`,
+		"/etc/nginx/sites-enabled/default": `
+server {
+    listen 443 ssl;
+    include /etc/nginx/snippets/tls.conf;
+}
+`,
+		"/etc/nginx/snippets/tls.conf": `ssl_certificate /etc/ssl/site.pem;`,
+	}}
+
+	cfg, err := ParseFiles("/etc/nginx/nginx.conf", fs.open, nil)
+	require.NoError(t, err)
+	require.Empty(t, cfg.Errors)
+
+	require.Len(t, cfg.Directives, 1)
+	http := cfg.Directives[0]
+	assert.Equal(t, "/etc/nginx/nginx.conf", http.File)
+	require.Len(t, http.Block, 1)
+	server := http.Block[0]
+	assert.Equal(t, "server", server.Name)
+	assert.Equal(t, "/etc/nginx/sites-enabled/default", server.File)
+	require.Len(t, server.Block, 2)
+	assert.Equal(t, "/etc/nginx/sites-enabled/default", server.Block[0].File)
+	assert.Equal(t, "ssl_certificate", server.Block[1].Name)
+	assert.Equal(t, "/etc/nginx/snippets/tls.conf", server.Block[1].File)
+}
+
 func TestParseFilesRelativeInclude(t *testing.T) {
 	// include paths without a leading '/' are resolved against the root
 	// file's directory (nginx's "prefix" behavior).

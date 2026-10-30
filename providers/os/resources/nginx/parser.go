@@ -41,6 +41,10 @@ type Directive struct {
 	Block []Directive
 	// Line is the 1-based source line of the directive name.
 	Line int
+	// File is the path of the file the directive is written in, which for a
+	// directive brought in by an include is the included file. Set by
+	// ParseFiles; empty from Parse.
+	File string
 }
 
 // IsBlock reports whether this directive has a '{ ... }' body.
@@ -191,8 +195,19 @@ func parseFileRecursive(path, prefix string, open OpenFunc, glob GlobFunc, cfg *
 		cfg.Errors = append(cfg.Errors, e)
 	}
 
+	setDirectiveFile(directives, path)
 	directives = expandIncludes(directives, prefix, open, glob, cfg, st, path)
 	return directives, nil
+}
+
+// setDirectiveFile records path as the file of every directive in the tree.
+// It runs before includes are expanded, so the directives an include brings
+// in keep the file they are written in.
+func setDirectiveFile(directives []Directive, path string) {
+	for i := range directives {
+		directives[i].File = path
+		setDirectiveFile(directives[i].Block, path)
+	}
 }
 
 // expandIncludes walks the tree and replaces every simple 'include'

@@ -256,6 +256,62 @@ ServerSignature Off
 	assert.Equal(t, "Off", cfg.Params["ServerSignature"])
 }
 
+// Synthetic: Debian's layout, the root apache2.conf including sites-enabled,
+// one site wrapped in <IfModule> and declared after a nested Include. Each
+// virtual host names the file it is written in, not the file that included
+// it. Fails if expandInclude does not restore the includer's file once the
+// nested include is done, which would attribute the second site to the
+// snippet.
+func TestParseWithGlobRecordsVirtualHostFile(t *testing.T) {
+	files := map[string]string{
+		"/etc/apache2/apache2.conf": `
+<VirtualHost *:8080>
+    ServerName root.example.com
+</VirtualHost>
+IncludeOptional sites-enabled/*.conf
+`,
+		"/etc/apache2/sites-enabled/site.conf": `
+<VirtualHost *:80>
+    ServerName www.example.com
+</VirtualHost>
+Include snippets/empty.conf
+<IfModule ssl_module>
+<VirtualHost *:443>
+    ServerName www.example.com
+    SSLEngine on
+</VirtualHost>
+</IfModule>
+`,
+		"/etc/apache2/snippets/empty.conf": `ServerTokens Prod`,
+	}
+
+	fileContent := func(path string) (string, error) {
+		if c, ok := files[path]; ok {
+			return c, nil
+		}
+		return "", &fileNotFoundError{path: path}
+	}
+	globExpand := func(pattern string) ([]string, error) {
+		switch pattern {
+		case "sites-enabled/*.conf":
+			return []string{"/etc/apache2/sites-enabled/site.conf"}, nil
+		case "snippets/empty.conf":
+			return []string{"/etc/apache2/snippets/empty.conf"}, nil
+		}
+		return nil, nil
+	}
+
+	cfg, err := ParseWithGlobOptions("/etc/apache2/apache2.conf", fileContent, globExpand, nil,
+		ParseOptions{StaticModules: []string{"mod_ssl.c"}})
+	require.NoError(t, err)
+
+	require.Len(t, cfg.VHosts, 3)
+	assert.Equal(t, "/etc/apache2/apache2.conf", cfg.VHosts[0].File)
+	assert.Equal(t, "/etc/apache2/sites-enabled/site.conf", cfg.VHosts[1].File)
+	assert.Equal(t, "/etc/apache2/sites-enabled/site.conf", cfg.VHosts[2].File)
+	assert.True(t, cfg.VHosts[2].SSL)
+}
+
 func TestParseWithGlobIncludeCycle(t *testing.T) {
 	// Two files that include each other (and the root re-including itself) must
 	// not recurse forever — the visited guard breaks the cycle.

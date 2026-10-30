@@ -1,0 +1,844 @@
+# Measured: rockylinux:9 with the httpd and mod_ssl packages (Apache
+# 2.4.62), 2026-10-30. httpd.conf has no virtual host and listens on 80, so
+# the main server answers there. ssl.conf listens on 443 with the
+# <VirtualHost _default_:443>, whose DocumentRoot and ServerName are
+# commented out. Only the files that decide the sites are kept: httpd.conf,
+# the LoadModule lines of conf.modules.d, and conf.d/ssl.conf.
+
+[files."/etc"]
+path = "/etc"
+[files."/etc".stat]
+isdir = true
+mode = 16877
+
+[files."/etc/httpd"]
+path = "/etc/httpd"
+[files."/etc/httpd".stat]
+isdir = true
+mode = 16877
+
+[files."/etc/httpd/conf"]
+path = "/etc/httpd/conf"
+[files."/etc/httpd/conf".stat]
+isdir = true
+mode = 16877
+
+[files."/etc/httpd/conf.d"]
+path = "/etc/httpd/conf.d"
+[files."/etc/httpd/conf.d".stat]
+isdir = true
+mode = 16877
+
+[files."/etc/httpd/conf.modules.d"]
+path = "/etc/httpd/conf.modules.d"
+[files."/etc/httpd/conf.modules.d".stat]
+isdir = true
+mode = 16877
+
+[files."/etc/httpd/conf/httpd.conf"]
+path = "/etc/httpd/conf/httpd.conf"
+content = '''
+#
+# This is the main Apache HTTP server configuration file.  It contains the
+# configuration directives that give the server its instructions.
+# See <URL:http://httpd.apache.org/docs/2.4/> for detailed information.
+# In particular, see 
+# <URL:http://httpd.apache.org/docs/2.4/mod/directives.html>
+# for a discussion of each configuration directive.
+#
+# See the httpd.conf(5) man page for more information on this configuration,
+# and httpd.service(8) on using and configuring the httpd service.
+#
+# Do NOT simply read the instructions in here without understanding
+# what they do.  They're here only as hints or reminders.  If you are unsure
+# consult the online docs. You have been warned.  
+#
+# Configuration and logfile names: If the filenames you specify for many
+# of the server's control files begin with "/" (or "drive:/" for Win32), the
+# server will use that explicit path.  If the filenames do *not* begin
+# with "/", the value of ServerRoot is prepended -- so 'log/access_log'
+# with ServerRoot set to '/www' will be interpreted by the
+# server as '/www/log/access_log', where as '/log/access_log' will be
+# interpreted as '/log/access_log'.
+
+#
+# ServerRoot: The top of the directory tree under which the server's
+# configuration, error, and log files are kept.
+#
+# Do not add a slash at the end of the directory path.  If you point
+# ServerRoot at a non-local disk, be sure to specify a local disk on the
+# Mutex directive, if file-based mutexes are used.  If you wish to share the
+# same ServerRoot for multiple httpd daemons, you will need to change at
+# least PidFile.
+#
+ServerRoot "/etc/httpd"
+
+#
+# Listen: Allows you to bind Apache to specific IP addresses and/or
+# ports, instead of the default. See also the <VirtualHost>
+# directive.
+#
+# Change this to Listen on a specific IP address, but note that if
+# httpd.service is enabled to run at boot time, the address may not be
+# available when the service starts.  See the httpd.service(8) man
+# page for more information.
+#
+#Listen 12.34.56.78:80
+Listen 80
+
+#
+# Dynamic Shared Object (DSO) Support
+#
+# To be able to use the functionality of a module which was built as a DSO you
+# have to place corresponding `LoadModule' lines at this location so the
+# directives contained in it are actually available _before_ they are used.
+# Statically compiled modules (those listed by `httpd -l') do not need
+# to be loaded here.
+#
+# Example:
+# LoadModule foo_module modules/mod_foo.so
+#
+Include conf.modules.d/*.conf
+
+#
+# If you wish httpd to run as a different user or group, you must run
+# httpd as root initially and it will switch.  
+#
+# User/Group: The name (or #number) of the user/group to run httpd as.
+# It is usually good practice to create a dedicated user and group for
+# running httpd, as with most system services.
+#
+User apache
+Group apache
+
+# 'Main' server configuration
+#
+# The directives in this section set up the values used by the 'main'
+# server, which responds to any requests that aren't handled by a
+# <VirtualHost> definition.  These values also provide defaults for
+# any <VirtualHost> containers you may define later in the file.
+#
+# All of these directives may appear inside <VirtualHost> containers,
+# in which case these default settings will be overridden for the
+# virtual host being defined.
+#
+
+#
+# ServerAdmin: Your address, where problems with the server should be
+# e-mailed.  This address appears on some server-generated pages, such
+# as error documents.  e.g. admin@your-domain.com
+#
+ServerAdmin root@localhost
+
+#
+# ServerName gives the name and port that the server uses to identify itself.
+# This can often be determined automatically, but we recommend you specify
+# it explicitly to prevent problems during startup.
+#
+# If your host doesn't have a registered DNS name, enter its IP address here.
+#
+#ServerName www.example.com:80
+
+#
+# Deny access to the entirety of your server's filesystem. You must
+# explicitly permit access to web content directories in other 
+# <Directory> blocks below.
+#
+<Directory />
+    AllowOverride none
+    Require all denied
+</Directory>
+
+#
+# Note that from this point forward you must specifically allow
+# particular features to be enabled - so if something's not working as
+# you might expect, make sure that you have specifically enabled it
+# below.
+#
+
+#
+# DocumentRoot: The directory out of which you will serve your
+# documents. By default, all requests are taken from this directory, but
+# symbolic links and aliases may be used to point to other locations.
+#
+DocumentRoot "/var/www/html"
+
+#
+# Relax access to content within /var/www.
+#
+<Directory "/var/www">
+    AllowOverride None
+    # Allow open access:
+    Require all granted
+</Directory>
+
+# Further relax access to the default document root:
+<Directory "/var/www/html">
+    #
+    # Possible values for the Options directive are "None", "All",
+    # or any combination of:
+    #   Indexes Includes FollowSymLinks SymLinksifOwnerMatch ExecCGI MultiViews
+    #
+    # Note that "MultiViews" must be named *explicitly* --- "Options All"
+    # doesn't give it to you.
+    #
+    # The Options directive is both complicated and important.  Please see
+    # http://httpd.apache.org/docs/2.4/mod/core.html#options
+    # for more information.
+    #
+    Options Indexes FollowSymLinks
+
+    #
+    # AllowOverride controls what directives may be placed in .htaccess files.
+    # It can be "All", "None", or any combination of the keywords:
+    #   Options FileInfo AuthConfig Limit
+    #
+    AllowOverride None
+
+    #
+    # Controls who can get stuff from this server.
+    #
+    Require all granted
+</Directory>
+
+#
+# DirectoryIndex: sets the file that Apache will serve if a directory
+# is requested.
+#
+<IfModule dir_module>
+    DirectoryIndex index.html
+</IfModule>
+
+#
+# The following lines prevent .htaccess and .htpasswd files from being 
+# viewed by Web clients. 
+#
+<Files ".ht*">
+    Require all denied
+</Files>
+
+#
+# ErrorLog: The location of the error log file.
+# If you do not specify an ErrorLog directive within a <VirtualHost>
+# container, error messages relating to that virtual host will be
+# logged here.  If you *do* define an error logfile for a <VirtualHost>
+# container, that host's errors will be logged there and not here.
+#
+ErrorLog "logs/error_log"
+
+#
+# LogLevel: Control the number of messages logged to the error_log.
+# Possible values include: debug, info, notice, warn, error, crit,
+# alert, emerg.
+#
+LogLevel warn
+
+<IfModule log_config_module>
+    #
+    # The following directives define some format nicknames for use with
+    # a CustomLog directive (see below).
+    #
+    LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\"" combined
+    LogFormat "%h %l %u %t \"%r\" %>s %b" common
+
+    <IfModule logio_module>
+      # You need to enable mod_logio.c to use %I and %O
+      LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\" %I %O" combinedio
+    </IfModule>
+
+    #
+    # The location and format of the access logfile (Common Logfile Format).
+    # If you do not define any access logfiles within a <VirtualHost>
+    # container, they will be logged here.  Contrariwise, if you *do*
+    # define per-<VirtualHost> access logfiles, transactions will be
+    # logged therein and *not* in this file.
+    #
+    #CustomLog "logs/access_log" common
+
+    #
+    # If you prefer a logfile with access, agent, and referer information
+    # (Combined Logfile Format) you can use the following directive.
+    #
+    CustomLog "logs/access_log" combined
+</IfModule>
+
+<IfModule alias_module>
+    #
+    # Redirect: Allows you to tell clients about documents that used to 
+    # exist in your server's namespace, but do not anymore. The client 
+    # will make a new request for the document at its new location.
+    # Example:
+    # Redirect permanent /foo http://www.example.com/bar
+
+    #
+    # Alias: Maps web paths into filesystem paths and is used to
+    # access content that does not live under the DocumentRoot.
+    # Example:
+    # Alias /webpath /full/filesystem/path
+    #
+    # If you include a trailing / on /webpath then the server will
+    # require it to be present in the URL.  You will also likely
+    # need to provide a <Directory> section to allow access to
+    # the filesystem path.
+
+    #
+    # ScriptAlias: This controls which directories contain server scripts. 
+    # ScriptAliases are essentially the same as Aliases, except that
+    # documents in the target directory are treated as applications and
+    # run by the server when requested rather than as documents sent to the
+    # client.  The same rules about trailing "/" apply to ScriptAlias
+    # directives as to Alias.
+    #
+    ScriptAlias /cgi-bin/ "/var/www/cgi-bin/"
+
+</IfModule>
+
+#
+# "/var/www/cgi-bin" should be changed to whatever your ScriptAliased
+# CGI directory exists, if you have that configured.
+#
+<Directory "/var/www/cgi-bin">
+    AllowOverride None
+    Options None
+    Require all granted
+</Directory>
+
+<IfModule mime_module>
+    #
+    # TypesConfig points to the file containing the list of mappings from
+    # filename extension to MIME-type.
+    #
+    TypesConfig /etc/mime.types
+
+    #
+    # AddType allows you to add to or override the MIME configuration
+    # file specified in TypesConfig for specific file types.
+    #
+    #AddType application/x-gzip .tgz
+    #
+    # AddEncoding allows you to have certain browsers uncompress
+    # information on the fly. Note: Not all browsers support this.
+    #
+    #AddEncoding x-compress .Z
+    #AddEncoding x-gzip .gz .tgz
+    #
+    # If the AddEncoding directives above are commented-out, then you
+    # probably should define those extensions to indicate media types:
+    #
+    AddType application/x-compress .Z
+    AddType application/x-gzip .gz .tgz
+
+    #
+    # AddHandler allows you to map certain file extensions to "handlers":
+    # actions unrelated to filetype. These can be either built into the server
+    # or added with the Action directive (see below)
+    #
+    # To use CGI scripts outside of ScriptAliased directories:
+    # (You will also need to add "ExecCGI" to the "Options" directive.)
+    #
+    #AddHandler cgi-script .cgi
+
+    # For type maps (negotiated resources):
+    #AddHandler type-map var
+
+    #
+    # Filters allow you to process content before it is sent to the client.
+    #
+    # To parse .shtml files for server-side includes (SSI):
+    # (You will also need to add "Includes" to the "Options" directive.)
+    #
+    AddType text/html .shtml
+    AddOutputFilter INCLUDES .shtml
+</IfModule>
+
+#
+# Specify a default charset for all content served; this enables
+# interpretation of all content as UTF-8 by default.  To use the 
+# default browser choice (ISO-8859-1), or to allow the META tags
+# in HTML content to override this choice, comment out this
+# directive:
+#
+AddDefaultCharset UTF-8
+
+<IfModule mime_magic_module>
+    #
+    # The mod_mime_magic module allows the server to use various hints from the
+    # contents of the file itself to determine its type.  The MIMEMagicFile
+    # directive tells the module where the hint definitions are located.
+    #
+    MIMEMagicFile conf/magic
+</IfModule>
+
+#
+# Customizable error responses come in three flavors:
+# 1) plain text 2) local redirects 3) external redirects
+#
+# Some examples:
+#ErrorDocument 500 "The server made a boo boo."
+#ErrorDocument 404 /missing.html
+#ErrorDocument 404 "/cgi-bin/missing_handler.pl"
+#ErrorDocument 402 http://www.example.com/subscription_info.html
+#
+
+#
+# EnableMMAP and EnableSendfile: On systems that support it, 
+# memory-mapping or the sendfile syscall may be used to deliver
+# files.  This usually improves server performance, but must
+# be turned off when serving from networked-mounted 
+# filesystems or if support for these functions is otherwise
+# broken on your system.
+# Defaults if commented: EnableMMAP On, EnableSendfile Off
+#
+#EnableMMAP off
+EnableSendfile on
+
+# Supplemental configuration
+#
+# Load config files in the "/etc/httpd/conf.d" directory, if any.
+IncludeOptional conf.d/*.conf
+'''
+[files."/etc/httpd/conf/httpd.conf".stat]
+mode = 33188
+
+[files."/etc/httpd/conf.modules.d/00-base.conf"]
+path = "/etc/httpd/conf.modules.d/00-base.conf"
+content = '''
+#
+# This file loads most of the modules included with the Apache HTTP
+# Server itself.
+#
+
+LoadModule access_compat_module modules/mod_access_compat.so
+LoadModule actions_module modules/mod_actions.so
+LoadModule alias_module modules/mod_alias.so
+LoadModule allowmethods_module modules/mod_allowmethods.so
+LoadModule auth_basic_module modules/mod_auth_basic.so
+LoadModule auth_digest_module modules/mod_auth_digest.so
+LoadModule authn_anon_module modules/mod_authn_anon.so
+LoadModule authn_core_module modules/mod_authn_core.so
+LoadModule authn_dbd_module modules/mod_authn_dbd.so
+LoadModule authn_dbm_module modules/mod_authn_dbm.so
+LoadModule authn_file_module modules/mod_authn_file.so
+LoadModule authn_socache_module modules/mod_authn_socache.so
+LoadModule authz_core_module modules/mod_authz_core.so
+LoadModule authz_dbd_module modules/mod_authz_dbd.so
+LoadModule authz_dbm_module modules/mod_authz_dbm.so
+LoadModule authz_groupfile_module modules/mod_authz_groupfile.so
+LoadModule authz_host_module modules/mod_authz_host.so
+LoadModule authz_owner_module modules/mod_authz_owner.so
+LoadModule authz_user_module modules/mod_authz_user.so
+LoadModule autoindex_module modules/mod_autoindex.so
+LoadModule cache_module modules/mod_cache.so
+LoadModule cache_disk_module modules/mod_cache_disk.so
+LoadModule cache_socache_module modules/mod_cache_socache.so
+LoadModule data_module modules/mod_data.so
+LoadModule dbd_module modules/mod_dbd.so
+LoadModule deflate_module modules/mod_deflate.so
+LoadModule dir_module modules/mod_dir.so
+LoadModule dumpio_module modules/mod_dumpio.so
+LoadModule echo_module modules/mod_echo.so
+LoadModule env_module modules/mod_env.so
+LoadModule expires_module modules/mod_expires.so
+LoadModule ext_filter_module modules/mod_ext_filter.so
+LoadModule filter_module modules/mod_filter.so
+LoadModule headers_module modules/mod_headers.so
+LoadModule include_module modules/mod_include.so
+LoadModule info_module modules/mod_info.so
+LoadModule log_config_module modules/mod_log_config.so
+LoadModule logio_module modules/mod_logio.so
+LoadModule macro_module modules/mod_macro.so
+LoadModule mime_magic_module modules/mod_mime_magic.so
+LoadModule mime_module modules/mod_mime.so
+LoadModule negotiation_module modules/mod_negotiation.so
+LoadModule remoteip_module modules/mod_remoteip.so
+LoadModule reqtimeout_module modules/mod_reqtimeout.so
+LoadModule request_module modules/mod_request.so
+LoadModule rewrite_module modules/mod_rewrite.so
+LoadModule setenvif_module modules/mod_setenvif.so
+LoadModule slotmem_plain_module modules/mod_slotmem_plain.so
+LoadModule slotmem_shm_module modules/mod_slotmem_shm.so
+LoadModule socache_dbm_module modules/mod_socache_dbm.so
+LoadModule socache_memcache_module modules/mod_socache_memcache.so
+LoadModule socache_redis_module modules/mod_socache_redis.so
+LoadModule socache_shmcb_module modules/mod_socache_shmcb.so
+LoadModule status_module modules/mod_status.so
+LoadModule substitute_module modules/mod_substitute.so
+LoadModule suexec_module modules/mod_suexec.so
+LoadModule unique_id_module modules/mod_unique_id.so
+LoadModule unixd_module modules/mod_unixd.so
+LoadModule userdir_module modules/mod_userdir.so
+LoadModule version_module modules/mod_version.so
+LoadModule vhost_alias_module modules/mod_vhost_alias.so
+LoadModule watchdog_module modules/mod_watchdog.so
+
+'''
+[files."/etc/httpd/conf.modules.d/00-base.conf".stat]
+mode = 33188
+
+[files."/etc/httpd/conf.modules.d/00-brotli.conf"]
+path = "/etc/httpd/conf.modules.d/00-brotli.conf"
+content = '''
+LoadModule brotli_module modules/mod_brotli.so
+'''
+[files."/etc/httpd/conf.modules.d/00-brotli.conf".stat]
+mode = 33188
+
+[files."/etc/httpd/conf.modules.d/00-dav.conf"]
+path = "/etc/httpd/conf.modules.d/00-dav.conf"
+content = '''
+LoadModule dav_module modules/mod_dav.so
+LoadModule dav_fs_module modules/mod_dav_fs.so
+LoadModule dav_lock_module modules/mod_dav_lock.so
+'''
+[files."/etc/httpd/conf.modules.d/00-dav.conf".stat]
+mode = 33188
+
+[files."/etc/httpd/conf.modules.d/00-lua.conf"]
+path = "/etc/httpd/conf.modules.d/00-lua.conf"
+content = '''
+LoadModule lua_module modules/mod_lua.so
+'''
+[files."/etc/httpd/conf.modules.d/00-lua.conf".stat]
+mode = 33188
+
+[files."/etc/httpd/conf.modules.d/00-mpm.conf"]
+path = "/etc/httpd/conf.modules.d/00-mpm.conf"
+content = '''
+# Select the MPM module which should be used by uncommenting exactly
+# one of the following LoadModule lines.  See the httpd.conf(5) man
+# page for more information on changing the MPM.
+
+# prefork MPM: Implements a non-threaded, pre-forking web server
+# See: http://httpd.apache.org/docs/2.4/mod/prefork.html
+#
+# NOTE: If enabling prefork, the httpd_graceful_shutdown SELinux
+# boolean should be enabled, to allow graceful stop/shutdown.
+#
+#LoadModule mpm_prefork_module modules/mod_mpm_prefork.so
+
+# worker MPM: Multi-Processing Module implementing a hybrid
+# multi-threaded multi-process web server
+# See: http://httpd.apache.org/docs/2.4/mod/worker.html
+#
+#LoadModule mpm_worker_module modules/mod_mpm_worker.so
+
+# event MPM: A variant of the worker MPM with the goal of consuming
+# threads only for connections with active processing
+# See: http://httpd.apache.org/docs/2.4/mod/event.html
+#
+LoadModule mpm_event_module modules/mod_mpm_event.so
+'''
+[files."/etc/httpd/conf.modules.d/00-mpm.conf".stat]
+mode = 33188
+
+[files."/etc/httpd/conf.modules.d/00-optional.conf"]
+path = "/etc/httpd/conf.modules.d/00-optional.conf"
+content = '''
+#
+# This file lists modules included with the Apache HTTP Server
+# which are not enabled by default.
+# 
+
+#LoadModule asis_module modules/mod_asis.so
+#LoadModule authnz_fcgi_module modules/mod_authnz_fcgi.so
+#LoadModule buffer_module modules/mod_buffer.so
+#LoadModule heartbeat_module modules/mod_heartbeat.so
+#LoadModule heartmonitor_module modules/mod_heartmonitor.so
+#LoadModule usertrack_module modules/mod_usertrack.so
+#LoadModule dialup_module modules/mod_dialup.so
+#LoadModule charset_lite_module modules/mod_charset_lite.so
+#LoadModule log_debug_module modules/mod_log_debug.so
+#LoadModule log_forensic_module modules/mod_log_forensic.so
+#LoadModule ratelimit_module modules/mod_ratelimit.so
+#LoadModule reflector_module modules/mod_reflector.so
+#LoadModule sed_module modules/mod_sed.so
+#LoadModule speling_module modules/mod_speling.so
+'''
+[files."/etc/httpd/conf.modules.d/00-optional.conf".stat]
+mode = 33188
+
+[files."/etc/httpd/conf.modules.d/00-proxy.conf"]
+path = "/etc/httpd/conf.modules.d/00-proxy.conf"
+content = '''
+# This file configures all the proxy modules:
+LoadModule proxy_module modules/mod_proxy.so
+LoadModule lbmethod_bybusyness_module modules/mod_lbmethod_bybusyness.so
+LoadModule lbmethod_byrequests_module modules/mod_lbmethod_byrequests.so
+LoadModule lbmethod_bytraffic_module modules/mod_lbmethod_bytraffic.so
+LoadModule lbmethod_heartbeat_module modules/mod_lbmethod_heartbeat.so
+LoadModule proxy_ajp_module modules/mod_proxy_ajp.so
+LoadModule proxy_balancer_module modules/mod_proxy_balancer.so
+LoadModule proxy_connect_module modules/mod_proxy_connect.so
+LoadModule proxy_express_module modules/mod_proxy_express.so
+LoadModule proxy_fcgi_module modules/mod_proxy_fcgi.so
+LoadModule proxy_fdpass_module modules/mod_proxy_fdpass.so
+LoadModule proxy_ftp_module modules/mod_proxy_ftp.so
+LoadModule proxy_http_module modules/mod_proxy_http.so
+LoadModule proxy_hcheck_module modules/mod_proxy_hcheck.so
+LoadModule proxy_scgi_module modules/mod_proxy_scgi.so
+LoadModule proxy_uwsgi_module modules/mod_proxy_uwsgi.so
+LoadModule proxy_wstunnel_module modules/mod_proxy_wstunnel.so
+'''
+[files."/etc/httpd/conf.modules.d/00-proxy.conf".stat]
+mode = 33188
+
+[files."/etc/httpd/conf.modules.d/00-ssl.conf"]
+path = "/etc/httpd/conf.modules.d/00-ssl.conf"
+content = '''
+LoadModule ssl_module modules/mod_ssl.so
+'''
+[files."/etc/httpd/conf.modules.d/00-ssl.conf".stat]
+mode = 33188
+
+[files."/etc/httpd/conf.modules.d/00-systemd.conf"]
+path = "/etc/httpd/conf.modules.d/00-systemd.conf"
+content = '''
+# This file configures systemd module:
+LoadModule systemd_module modules/mod_systemd.so
+'''
+[files."/etc/httpd/conf.modules.d/00-systemd.conf".stat]
+mode = 33188
+
+[files."/etc/httpd/conf.modules.d/01-cgi.conf"]
+path = "/etc/httpd/conf.modules.d/01-cgi.conf"
+content = '''
+# This configuration file loads a CGI module appropriate to the MPM
+# which has been configured in 00-mpm.conf.  mod_cgid should be used
+# with a threaded MPM; mod_cgi with the prefork MPM.
+
+<IfModule !mpm_prefork_module>
+   LoadModule cgid_module modules/mod_cgid.so
+</IfModule>
+<IfModule mpm_prefork_module>
+   LoadModule cgi_module modules/mod_cgi.so
+</IfModule>
+
+'''
+[files."/etc/httpd/conf.modules.d/01-cgi.conf".stat]
+mode = 33188
+
+[files."/etc/httpd/conf.modules.d/10-h2.conf"]
+path = "/etc/httpd/conf.modules.d/10-h2.conf"
+content = '''
+LoadModule http2_module modules/mod_http2.so
+'''
+[files."/etc/httpd/conf.modules.d/10-h2.conf".stat]
+mode = 33188
+
+[files."/etc/httpd/conf.modules.d/10-proxy_h2.conf"]
+path = "/etc/httpd/conf.modules.d/10-proxy_h2.conf"
+content = '''
+LoadModule proxy_http2_module modules/mod_proxy_http2.so
+'''
+[files."/etc/httpd/conf.modules.d/10-proxy_h2.conf".stat]
+mode = 33188
+
+[files."/etc/httpd/conf.d/ssl.conf"]
+path = "/etc/httpd/conf.d/ssl.conf"
+content = '''
+#
+# When we also provide SSL we have to listen to the 
+# standard HTTPS port in addition.
+#
+Listen 443 https
+
+##
+##  SSL Global Context
+##
+##  All SSL configuration in this context applies both to
+##  the main server and all SSL-enabled virtual hosts.
+##
+
+#   Pass Phrase Dialog:
+#   Configure the pass phrase gathering process.
+#   The filtering dialog program (`builtin' is a internal
+#   terminal dialog) has to provide the pass phrase on stdout.
+SSLPassPhraseDialog exec:/usr/libexec/httpd-ssl-pass-dialog
+
+#   Inter-Process Session Cache:
+#   Configure the SSL Session Cache: First the mechanism 
+#   to use and second the expiring timeout (in seconds).
+SSLSessionCache         shmcb:/run/httpd/sslcache(512000)
+SSLSessionCacheTimeout  300
+
+#
+# Use "SSLCryptoDevice" to enable any supported hardware
+# accelerators. Use "openssl engine -v" to list supported
+# engine names.  NOTE: If you enable an accelerator and the
+# server does not start, consult the error logs and ensure
+# your accelerator is functioning properly. 
+#
+SSLCryptoDevice builtin
+#SSLCryptoDevice ubsec
+
+##
+## SSL Virtual Host Context
+##
+
+<VirtualHost _default_:443>
+
+# General setup for the virtual host, inherited from global configuration
+#DocumentRoot "/var/www/html"
+#ServerName www.example.com:443
+
+# Use separate log files for the SSL virtual host; note that LogLevel
+# is not inherited from httpd.conf.
+ErrorLog logs/ssl_error_log
+TransferLog logs/ssl_access_log
+LogLevel warn
+
+#   SSL Engine Switch:
+#   Enable/Disable SSL for this virtual host.
+SSLEngine on
+
+#   List the protocol versions which clients are allowed to connect with.
+#   The OpenSSL system profile is used by default.  See
+#   update-crypto-policies(8) for more details.
+#SSLProtocol all -SSLv3
+#SSLProxyProtocol all -SSLv3
+
+#   User agents such as web browsers are not configured for the user's
+#   own preference of either security or performance, therefore this
+#   must be the prerogative of the web server administrator who manages
+#   cpu load versus confidentiality, so enforce the server's cipher order.
+SSLHonorCipherOrder on
+
+#   SSL Cipher Suite:
+#   List the ciphers that the client is permitted to negotiate.
+#   See the mod_ssl documentation for a complete list.
+#   The OpenSSL system profile is configured by default.  See
+#   update-crypto-policies(8) for more details.
+SSLCipherSuite PROFILE=SYSTEM
+SSLProxyCipherSuite PROFILE=SYSTEM
+
+#   Point SSLCertificateFile at a PEM encoded certificate.  If
+#   the certificate is encrypted, then you will be prompted for a
+#   pass phrase.  Note that restarting httpd will prompt again.  Keep
+#   in mind that if you have both an RSA and a DSA certificate you
+#   can configure both in parallel (to also allow the use of DSA
+#   ciphers, etc.)
+#   Some ECC cipher suites (http://www.ietf.org/rfc/rfc4492.txt)
+#   require an ECC certificate which can also be configured in
+#   parallel.
+SSLCertificateFile /etc/pki/tls/certs/localhost.crt
+
+#   Server Private Key:
+#   If the key is not combined with the certificate, use this
+#   directive to point at the key file.  Keep in mind that if
+#   you've both a RSA and a DSA private key you can configure
+#   both in parallel (to also allow the use of DSA ciphers, etc.)
+#   ECC keys, when in use, can also be configured in parallel
+SSLCertificateKeyFile /etc/pki/tls/private/localhost.key
+
+#   Server Certificate Chain:
+#   Point SSLCertificateChainFile at a file containing the
+#   concatenation of PEM encoded CA certificates which form the
+#   certificate chain for the server certificate. Alternatively
+#   the referenced file can be the same as SSLCertificateFile
+#   when the CA certificates are directly appended to the server
+#   certificate for convenience.
+#SSLCertificateChainFile /etc/pki/tls/certs/server-chain.crt
+
+#   Certificate Authority (CA):
+#   Set the CA certificate verification path where to find CA
+#   certificates for client authentication or alternatively one
+#   huge file containing all of them (file must be PEM encoded)
+#SSLCACertificateFile /etc/pki/tls/certs/ca-bundle.crt
+
+#   Client Authentication (Type):
+#   Client certificate verification type and depth.  Types are
+#   none, optional, require and optional_no_ca.  Depth is a
+#   number which specifies how deeply to verify the certificate
+#   issuer chain before deciding the certificate is not valid.
+#SSLVerifyClient require
+#SSLVerifyDepth  10
+
+#   Access Control:
+#   With SSLRequire you can do per-directory access control based
+#   on arbitrary complex boolean expressions containing server
+#   variable checks and other lookup directives.  The syntax is a
+#   mixture between C and Perl.  See the mod_ssl documentation
+#   for more details.
+#<Location />
+#SSLRequire (    %{SSL_CIPHER} !~ m/^(EXP|NULL)/ \
+#            and %{SSL_CLIENT_S_DN_O} eq "Snake Oil, Ltd." \
+#            and %{SSL_CLIENT_S_DN_OU} in {"Staff", "CA", "Dev"} \
+#            and %{TIME_WDAY} >= 1 and %{TIME_WDAY} <= 5 \
+#            and %{TIME_HOUR} >= 8 and %{TIME_HOUR} <= 20       ) \
+#           or %{REMOTE_ADDR} =~ m/^192\.76\.162\.[0-9]+$/
+#</Location>
+
+#   SSL Engine Options:
+#   Set various options for the SSL engine.
+#   o FakeBasicAuth:
+#     Translate the client X.509 into a Basic Authorisation.  This means that
+#     the standard Auth/DBMAuth methods can be used for access control.  The
+#     user name is the `one line' version of the client's X.509 certificate.
+#     Note that no password is obtained from the user. Every entry in the user
+#     file needs this password: `xxj31ZMTZzkVA'.
+#   o ExportCertData:
+#     This exports two additional environment variables: SSL_CLIENT_CERT and
+#     SSL_SERVER_CERT. These contain the PEM-encoded certificates of the
+#     server (always existing) and the client (only existing when client
+#     authentication is used). This can be used to import the certificates
+#     into CGI scripts.
+#   o StdEnvVars:
+#     This exports the standard SSL/TLS related `SSL_*' environment variables.
+#     Per default this exportation is switched off for performance reasons,
+#     because the extraction step is an expensive operation and is usually
+#     useless for serving static content. So one usually enables the
+#     exportation for CGI and SSI requests only.
+#   o StrictRequire:
+#     This denies access when "SSLRequireSSL" or "SSLRequire" applied even
+#     under a "Satisfy any" situation, i.e. when it applies access is denied
+#     and no other module can change it.
+#   o OptRenegotiate:
+#     This enables optimized SSL connection renegotiation handling when SSL
+#     directives are used in per-directory context. 
+#SSLOptions +FakeBasicAuth +ExportCertData +StrictRequire
+<FilesMatch "\.(cgi|shtml|phtml|php)$">
+    SSLOptions +StdEnvVars
+</FilesMatch>
+<Directory "/var/www/cgi-bin">
+    SSLOptions +StdEnvVars
+</Directory>
+
+#   SSL Protocol Adjustments:
+#   The safe and default but still SSL/TLS standard compliant shutdown
+#   approach is that mod_ssl sends the close notify alert but doesn't wait for
+#   the close notify alert from client. When you need a different shutdown
+#   approach you can use one of the following variables:
+#   o ssl-unclean-shutdown:
+#     This forces an unclean shutdown when the connection is closed, i.e. no
+#     SSL close notify alert is sent or allowed to be received.  This violates
+#     the SSL/TLS standard but is needed for some brain-dead browsers. Use
+#     this when you receive I/O errors because of the standard approach where
+#     mod_ssl sends the close notify alert.
+#   o ssl-accurate-shutdown:
+#     This forces an accurate shutdown when the connection is closed, i.e. a
+#     SSL close notify alert is sent and mod_ssl waits for the close notify
+#     alert of the client. This is 100% SSL/TLS standard compliant, but in
+#     practice often causes hanging connections with brain-dead browsers. Use
+#     this only for browsers where you know that their SSL implementation
+#     works correctly. 
+#   Notice: Most problems of broken clients are also related to the HTTP
+#   keep-alive facility, so you usually additionally want to disable
+#   keep-alive for those clients, too. Use variable "nokeepalive" for this.
+#   Similarly, one has to force some clients to use HTTP/1.0 to workaround
+#   their broken HTTP/1.1 implementation. Use variables "downgrade-1.0" and
+#   "force-response-1.0" for this.
+BrowserMatch "MSIE [2-5]" \
+         nokeepalive ssl-unclean-shutdown \
+         downgrade-1.0 force-response-1.0
+
+#   Per-Server Logging:
+#   The home of a custom SSL log file. Use this when you want a
+#   compact non-error SSL logfile on a virtual host basis.
+CustomLog logs/ssl_request_log \
+          "%t %h %{SSL_PROTOCOL}x %{SSL_CIPHER}x \"%r\" %b"
+
+</VirtualHost>
+
+'''
+[files."/etc/httpd/conf.d/ssl.conf".stat]
+mode = 33188

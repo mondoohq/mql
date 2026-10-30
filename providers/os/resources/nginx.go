@@ -1032,8 +1032,17 @@ type nginxServer struct {
 	ServerTokens           string
 	Locations              []nginxLocation
 	Params                 map[string]any
+	// File is the configuration file the server block is written in.
+	File string
 	// scope holds the inheritable directives the block sets itself.
 	scope nginxScope
+}
+
+// mqlNginxConfServerInternal keeps what websites reads from a server block
+// beyond its fields.
+type mqlNginxConfServerInternal struct {
+	// file is the configuration file the server block is written in.
+	file string
 }
 
 // nginxListen is a parsed `listen` directive.
@@ -1088,6 +1097,7 @@ func walkHTTPBlock(directives []nginx.Directive, httpParams map[string]any, serv
 		switch d.Name {
 		case "server":
 			srv := parseNginxServerBlock(d.Block)
+			srv.File = d.File
 			*servers = append(*servers, srv)
 			if srv.Listen != "" {
 				for l := range strings.SplitSeq(srv.Listen, ",") {
@@ -1132,7 +1142,9 @@ func parseNginxServerBlock(directives []nginx.Directive) nginxServer {
 
 		switch d.Name {
 		case "server_name":
-			srv.ServerName = args
+			// nginx adds the names of every server_name directive in the
+			// block, so a second directive extends the list.
+			srv.ServerName = strings.TrimSpace(srv.ServerName + " " + args)
 			setNginxParam(srv.Params, d.Name, args)
 		case "listen":
 			listens = append(listens, args)
@@ -1485,6 +1497,7 @@ func nginxServers2Resources(servers []nginxServer, runtime *plugin.Runtime, owne
 		if err != nil {
 			return nil, err
 		}
+		obj.(*mqlNginxConfServer).file = srv.File
 		res[i] = obj
 	}
 	return res, nil

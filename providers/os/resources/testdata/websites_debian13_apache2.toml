@@ -1,0 +1,673 @@
+# Measured: debian:13 with the apache2 package (Apache 2.4.69), 2026-10-30,
+# after `a2enmod ssl proxy proxy_http` and `a2ensite default-ssl`. The
+# stock 000-default and default-ssl virtual hosts set no ServerName, and
+# neither does apache2.conf. ports.conf listens on 443 only inside
+# <IfModule ssl_module>. Only the files that decide the sites are kept:
+# apache2.conf, ports.conf, envvars, the LoadModule lines of mods-enabled,
+# and sites-enabled.
+
+[files."/etc"]
+path = "/etc"
+[files."/etc".stat]
+isdir = true
+mode = 16877
+
+[files."/etc/apache2"]
+path = "/etc/apache2"
+[files."/etc/apache2".stat]
+isdir = true
+mode = 16877
+
+[files."/etc/apache2/mods-enabled"]
+path = "/etc/apache2/mods-enabled"
+[files."/etc/apache2/mods-enabled".stat]
+isdir = true
+mode = 16877
+
+[files."/etc/apache2/sites-enabled"]
+path = "/etc/apache2/sites-enabled"
+[files."/etc/apache2/sites-enabled".stat]
+isdir = true
+mode = 16877
+
+[files."/etc/apache2/apache2.conf"]
+path = "/etc/apache2/apache2.conf"
+content = '''
+# This is the main Apache server configuration file.  It contains the
+# configuration directives that give the server its instructions.
+# See http://httpd.apache.org/docs/2.4/ for detailed information about
+# the directives and /usr/share/doc/apache2/README.Debian about Debian specific
+# hints.
+#
+#
+# Summary of how the Apache 2 configuration works in Debian:
+# The Apache 2 web server configuration in Debian is quite different to
+# upstream's suggested way to configure the web server. This is because Debian's
+# default Apache2 installation attempts to make adding and removing modules,
+# virtual hosts, and extra configuration directives as flexible as possible, in
+# order to make automating the changes and administering the server as easy as
+# possible.
+
+# It is split into several files forming the configuration hierarchy outlined
+# below, all located in the /etc/apache2/ directory:
+#
+#	/etc/apache2/
+#	|-- apache2.conf
+#	|	`--  ports.conf
+#	|-- mods-enabled
+#	|	|-- *.load
+#	|	`-- *.conf
+#	|-- conf-enabled
+#	|	`-- *.conf
+# 	`-- sites-enabled
+#	 	`-- *.conf
+#
+#
+# * apache2.conf is the main configuration file (this file). It puts the pieces
+#   together by including all remaining configuration files when starting up the
+#   web server.
+#
+# * ports.conf is always included from the main configuration file. It is
+#   supposed to determine listening ports for incoming connections which can be
+#   customized anytime.
+#
+# * Configuration files in the mods-enabled/, conf-enabled/ and sites-enabled/
+#   directories contain particular configuration snippets which manage modules,
+#   global configuration fragments, or virtual host configurations,
+#   respectively.
+#
+#   They are activated by symlinking available configuration files from their
+#   respective *-available/ counterparts. These should be managed by using our
+#   helpers a2enmod/a2dismod, a2ensite/a2dissite and a2enconf/a2disconf. See
+#   their respective man pages for detailed information.
+#
+# * The binary is called apache2. Due to the use of environment variables, in
+#   the default configuration, apache2 needs to be started/stopped with
+#   /etc/init.d/apache2 or apache2ctl. Calling /usr/bin/apache2 directly will not
+#   work with the default configuration.
+
+
+# Global configuration
+#
+
+#
+# ServerRoot: The top of the directory tree under which the server's
+# configuration, error, and log files are kept.
+#
+# NOTE!  If you intend to place this on an NFS (or otherwise network)
+# mounted filesystem then please read the Mutex documentation (available
+# at <URL:http://httpd.apache.org/docs/2.4/mod/core.html#mutex>);
+# you will save yourself a lot of trouble.
+#
+# Do NOT add a slash at the end of the directory path.
+#
+#ServerRoot "/etc/apache2"
+
+#
+# The accept serialization lock file MUST BE STORED ON A LOCAL DISK.
+#
+#Mutex file:${APACHE_LOCK_DIR} default
+
+#
+# The directory where shm and other runtime files will be stored.
+#
+
+DefaultRuntimeDir ${APACHE_RUN_DIR}
+
+#
+# PidFile: The file in which the server should record its process
+# identification number when it starts.
+# This needs to be set in /etc/apache2/envvars
+#
+PidFile ${APACHE_PID_FILE}
+
+#
+# Timeout: The number of seconds before receives and sends time out.
+#
+Timeout 300
+
+#
+# KeepAlive: Whether or not to allow persistent connections (more than
+# one request per connection). Set to "Off" to deactivate.
+#
+KeepAlive On
+
+#
+# MaxKeepAliveRequests: The maximum number of requests to allow
+# during a persistent connection. Set to 0 to allow an unlimited amount.
+# We recommend you leave this number high, for maximum performance.
+#
+MaxKeepAliveRequests 100
+
+#
+# KeepAliveTimeout: Number of seconds to wait for the next request from the
+# same client on the same connection.
+#
+KeepAliveTimeout 5
+
+
+# These need to be set in /etc/apache2/envvars
+User ${APACHE_RUN_USER}
+Group ${APACHE_RUN_GROUP}
+
+#
+# HostnameLookups: Log the names of clients or just their IP addresses
+# e.g., www.apache.org (on) or 204.62.129.132 (off).
+# The default is off because it'd be overall better for the net if people
+# had to knowingly turn this feature on, since enabling it means that
+# each client request will result in AT LEAST one lookup request to the
+# nameserver.
+#
+HostnameLookups Off
+
+# ErrorLog: The location of the error log file.
+# If you do not specify an ErrorLog directive within a <VirtualHost>
+# container, error messages relating to that virtual host will be
+# logged here.  If you *do* define an error logfile for a <VirtualHost>
+# container, that host's errors will be logged there and not here.
+#
+ErrorLog ${APACHE_LOG_DIR}/error.log
+
+#
+# LogLevel: Control the severity of messages logged to the error_log.
+# Available values: trace8, ..., trace1, debug, info, notice, warn,
+# error, crit, alert, emerg.
+# It is also possible to configure the log level for particular modules, e.g.
+# "LogLevel info ssl:warn"
+#
+LogLevel warn
+
+# Include module configuration:
+IncludeOptional mods-enabled/*.load
+IncludeOptional mods-enabled/*.conf
+
+# Include list of ports to listen on
+Include ports.conf
+
+
+# Sets the default security model of the Apache2 HTTPD server. It does
+# not allow access to the root filesystem outside of /usr/share and /var/www.
+# The former is used by web applications packaged in Debian,
+# the latter may be used for local directories served by the web server. If
+# your system is serving content from a sub-directory in /srv you must allow
+# access here, or in any related virtual host.
+<Directory />
+	Options FollowSymLinks
+	AllowOverride None
+	Require all denied
+</Directory>
+
+<Directory /usr/share>
+	AllowOverride None
+	Require all granted
+</Directory>
+
+<Directory /var/www/>
+	Options Indexes FollowSymLinks
+	AllowOverride None
+	Require all granted
+</Directory>
+
+#<Directory /srv/>
+#	Options Indexes FollowSymLinks
+#	AllowOverride None
+#	Require all granted
+#</Directory>
+
+
+
+
+# AccessFileName: The name of the file to look for in each directory
+# for additional configuration directives.  See also the AllowOverride
+# directive.
+#
+AccessFileName .htaccess
+
+#
+# The following lines prevent .htaccess and .htpasswd files from being
+# viewed by Web clients.
+#
+<FilesMatch "^\.ht">
+	Require all denied
+</FilesMatch>
+
+
+#
+# The following directives define some format nicknames for use with
+# a CustomLog directive.
+#
+# These deviate from the Common Log Format definitions in that they use %O
+# (the actual bytes sent including headers) instead of %b (the size of the
+# requested file), because the latter makes it impossible to detect partial
+# requests.
+#
+# Note that the use of %{X-Forwarded-For}i instead of %h is not recommended.
+# Use mod_remoteip instead.
+#
+LogFormat "%v:%p %h %l %u %t \"%r\" %>s %O \"%{Referer}i\" \"%{User-Agent}i\"" vhost_combined
+LogFormat "%h %l %u %t \"%r\" %>s %O \"%{Referer}i\" \"%{User-Agent}i\"" combined
+LogFormat "%h %l %u %t \"%r\" %>s %O" common
+LogFormat "%{Referer}i -> %U" referer
+LogFormat "%{User-agent}i" agent
+
+# Include of directories ignores editors' and dpkg's backup files,
+# see README.Debian for details.
+
+# Include generic snippets of statements
+IncludeOptional conf-enabled/*.conf
+
+# Include the virtual host configurations:
+IncludeOptional sites-enabled/*.conf
+'''
+[files."/etc/apache2/apache2.conf".stat]
+mode = 33188
+
+[files."/etc/apache2/ports.conf"]
+path = "/etc/apache2/ports.conf"
+content = '''
+# If you just change the port or add more ports here, you will likely also
+# have to change the VirtualHost statement in
+# /etc/apache2/sites-enabled/000-default.conf
+
+Listen 80
+
+<IfModule ssl_module>
+	Listen 443
+</IfModule>
+
+<IfModule mod_gnutls.c>
+	Listen 443
+</IfModule>
+'''
+[files."/etc/apache2/ports.conf".stat]
+mode = 33188
+
+[files."/etc/apache2/envvars"]
+path = "/etc/apache2/envvars"
+content = '''
+# envvars - default environment variables for apache2ctl
+
+# this won't be correct after changing uid
+unset HOME
+
+# for supporting multiple apache2 instances
+if [ "${APACHE_CONFDIR##/etc/apache2-}" != "${APACHE_CONFDIR}" ] ; then
+	SUFFIX="-${APACHE_CONFDIR##/etc/apache2-}"
+else
+	SUFFIX=
+fi
+
+# Since there is no sane way to get the parsed apache2 config in scripts, some
+# settings are defined via environment variables and then used in apache2ctl,
+# /etc/init.d/apache2, /etc/logrotate.d/apache2, etc.
+export APACHE_RUN_USER=www-data
+export APACHE_RUN_GROUP=www-data
+# temporary state file location. This might be changed to /run in Wheezy+1
+export APACHE_PID_FILE=/var/run/apache2$SUFFIX/apache2.pid
+export APACHE_RUN_DIR=/var/run/apache2$SUFFIX
+export APACHE_LOCK_DIR=/var/lock/apache2$SUFFIX
+# Only /var/log/apache2 is handled by /etc/logrotate.d/apache2.
+export APACHE_LOG_DIR=/var/log/apache2$SUFFIX
+
+## The locale used by some modules like mod_dav
+export LANG=C
+## Uncomment the following line to use the system default locale instead:
+#. /etc/default/locale
+
+export LANG
+
+## The command to get the status for 'apache2ctl status'.
+## Some packages providing 'www-browser' need '--dump' instead of '-dump'.
+#export APACHE_LYNX='www-browser -dump'
+
+## If you need a higher file descriptor limit, uncomment and adjust the
+## following line (default is 8192):
+#APACHE_ULIMIT_MAX_FILES='ulimit -n 65536'
+
+## If you would like to pass arguments to the web server, add them below
+## to the APACHE_ARGUMENTS environment.
+#export APACHE_ARGUMENTS=''
+
+## Enable the debug mode for maintainer scripts.
+## This will produce a verbose output on package installations of web server modules and web application
+## installations which interact with Apache
+#export APACHE2_MAINTSCRIPT_DEBUG=1
+'''
+[files."/etc/apache2/envvars".stat]
+mode = 33188
+
+[files."/etc/apache2/mods-enabled/access_compat.load"]
+path = "/etc/apache2/mods-enabled/access_compat.load"
+content = '''
+# Depends: authn_core
+LoadModule access_compat_module /usr/lib/apache2/modules/mod_access_compat.so
+'''
+[files."/etc/apache2/mods-enabled/access_compat.load".stat]
+mode = 33188
+
+[files."/etc/apache2/mods-enabled/alias.load"]
+path = "/etc/apache2/mods-enabled/alias.load"
+content = '''
+LoadModule alias_module /usr/lib/apache2/modules/mod_alias.so
+'''
+[files."/etc/apache2/mods-enabled/alias.load".stat]
+mode = 33188
+
+[files."/etc/apache2/mods-enabled/auth_basic.load"]
+path = "/etc/apache2/mods-enabled/auth_basic.load"
+content = '''
+# Depends: authn_core
+LoadModule auth_basic_module /usr/lib/apache2/modules/mod_auth_basic.so
+'''
+[files."/etc/apache2/mods-enabled/auth_basic.load".stat]
+mode = 33188
+
+[files."/etc/apache2/mods-enabled/authn_core.load"]
+path = "/etc/apache2/mods-enabled/authn_core.load"
+content = '''
+LoadModule authn_core_module /usr/lib/apache2/modules/mod_authn_core.so
+'''
+[files."/etc/apache2/mods-enabled/authn_core.load".stat]
+mode = 33188
+
+[files."/etc/apache2/mods-enabled/authn_file.load"]
+path = "/etc/apache2/mods-enabled/authn_file.load"
+content = '''
+LoadModule authn_file_module /usr/lib/apache2/modules/mod_authn_file.so
+'''
+[files."/etc/apache2/mods-enabled/authn_file.load".stat]
+mode = 33188
+
+[files."/etc/apache2/mods-enabled/authz_core.load"]
+path = "/etc/apache2/mods-enabled/authz_core.load"
+content = '''
+LoadModule authz_core_module /usr/lib/apache2/modules/mod_authz_core.so
+'''
+[files."/etc/apache2/mods-enabled/authz_core.load".stat]
+mode = 33188
+
+[files."/etc/apache2/mods-enabled/authz_host.load"]
+path = "/etc/apache2/mods-enabled/authz_host.load"
+content = '''
+# Depends: authz_core
+LoadModule authz_host_module /usr/lib/apache2/modules/mod_authz_host.so
+'''
+[files."/etc/apache2/mods-enabled/authz_host.load".stat]
+mode = 33188
+
+[files."/etc/apache2/mods-enabled/authz_user.load"]
+path = "/etc/apache2/mods-enabled/authz_user.load"
+content = '''
+# Depends: authz_core
+LoadModule authz_user_module /usr/lib/apache2/modules/mod_authz_user.so
+'''
+[files."/etc/apache2/mods-enabled/authz_user.load".stat]
+mode = 33188
+
+[files."/etc/apache2/mods-enabled/autoindex.load"]
+path = "/etc/apache2/mods-enabled/autoindex.load"
+content = '''
+LoadModule autoindex_module /usr/lib/apache2/modules/mod_autoindex.so
+'''
+[files."/etc/apache2/mods-enabled/autoindex.load".stat]
+mode = 33188
+
+[files."/etc/apache2/mods-enabled/deflate.load"]
+path = "/etc/apache2/mods-enabled/deflate.load"
+content = '''
+# Depends: filter
+LoadModule deflate_module /usr/lib/apache2/modules/mod_deflate.so
+'''
+[files."/etc/apache2/mods-enabled/deflate.load".stat]
+mode = 33188
+
+[files."/etc/apache2/mods-enabled/dir.load"]
+path = "/etc/apache2/mods-enabled/dir.load"
+content = '''
+LoadModule dir_module /usr/lib/apache2/modules/mod_dir.so
+'''
+[files."/etc/apache2/mods-enabled/dir.load".stat]
+mode = 33188
+
+[files."/etc/apache2/mods-enabled/env.load"]
+path = "/etc/apache2/mods-enabled/env.load"
+content = '''
+LoadModule env_module /usr/lib/apache2/modules/mod_env.so
+'''
+[files."/etc/apache2/mods-enabled/env.load".stat]
+mode = 33188
+
+[files."/etc/apache2/mods-enabled/filter.load"]
+path = "/etc/apache2/mods-enabled/filter.load"
+content = '''
+LoadModule filter_module /usr/lib/apache2/modules/mod_filter.so
+'''
+[files."/etc/apache2/mods-enabled/filter.load".stat]
+mode = 33188
+
+[files."/etc/apache2/mods-enabled/mime.load"]
+path = "/etc/apache2/mods-enabled/mime.load"
+content = '''
+LoadModule mime_module /usr/lib/apache2/modules/mod_mime.so
+'''
+[files."/etc/apache2/mods-enabled/mime.load".stat]
+mode = 33188
+
+[files."/etc/apache2/mods-enabled/mpm_event.load"]
+path = "/etc/apache2/mods-enabled/mpm_event.load"
+content = '''
+# Conflicts: mpm_worker mpm_prefork
+LoadModule mpm_event_module /usr/lib/apache2/modules/mod_mpm_event.so
+'''
+[files."/etc/apache2/mods-enabled/mpm_event.load".stat]
+mode = 33188
+
+[files."/etc/apache2/mods-enabled/negotiation.load"]
+path = "/etc/apache2/mods-enabled/negotiation.load"
+content = '''
+LoadModule negotiation_module /usr/lib/apache2/modules/mod_negotiation.so
+'''
+[files."/etc/apache2/mods-enabled/negotiation.load".stat]
+mode = 33188
+
+[files."/etc/apache2/mods-enabled/proxy.load"]
+path = "/etc/apache2/mods-enabled/proxy.load"
+content = '''
+LoadModule proxy_module /usr/lib/apache2/modules/mod_proxy.so
+'''
+[files."/etc/apache2/mods-enabled/proxy.load".stat]
+mode = 33188
+
+[files."/etc/apache2/mods-enabled/proxy_http.load"]
+path = "/etc/apache2/mods-enabled/proxy_http.load"
+content = '''
+# Depends: proxy
+LoadModule proxy_http_module /usr/lib/apache2/modules/mod_proxy_http.so
+'''
+[files."/etc/apache2/mods-enabled/proxy_http.load".stat]
+mode = 33188
+
+[files."/etc/apache2/mods-enabled/reqtimeout.load"]
+path = "/etc/apache2/mods-enabled/reqtimeout.load"
+content = '''
+LoadModule reqtimeout_module /usr/lib/apache2/modules/mod_reqtimeout.so
+'''
+[files."/etc/apache2/mods-enabled/reqtimeout.load".stat]
+mode = 33188
+
+[files."/etc/apache2/mods-enabled/setenvif.load"]
+path = "/etc/apache2/mods-enabled/setenvif.load"
+content = '''
+LoadModule setenvif_module /usr/lib/apache2/modules/mod_setenvif.so
+'''
+[files."/etc/apache2/mods-enabled/setenvif.load".stat]
+mode = 33188
+
+[files."/etc/apache2/mods-enabled/socache_shmcb.load"]
+path = "/etc/apache2/mods-enabled/socache_shmcb.load"
+content = '''
+LoadModule socache_shmcb_module /usr/lib/apache2/modules/mod_socache_shmcb.so
+'''
+[files."/etc/apache2/mods-enabled/socache_shmcb.load".stat]
+mode = 33188
+
+[files."/etc/apache2/mods-enabled/ssl.load"]
+path = "/etc/apache2/mods-enabled/ssl.load"
+content = '''
+# Depends: mime socache_shmcb
+LoadModule ssl_module /usr/lib/apache2/modules/mod_ssl.so
+'''
+[files."/etc/apache2/mods-enabled/ssl.load".stat]
+mode = 33188
+
+[files."/etc/apache2/mods-enabled/status.load"]
+path = "/etc/apache2/mods-enabled/status.load"
+content = '''
+LoadModule status_module /usr/lib/apache2/modules/mod_status.so
+'''
+[files."/etc/apache2/mods-enabled/status.load".stat]
+mode = 33188
+
+[files."/etc/apache2/sites-enabled/000-default.conf"]
+path = "/etc/apache2/sites-enabled/000-default.conf"
+content = '''
+<VirtualHost *:80>
+	# The ServerName directive sets the request scheme, hostname and port that
+	# the server uses to identify itself. This is used when creating
+	# redirection URLs. In the context of virtual hosts, the ServerName
+	# specifies what hostname must appear in the request's Host: header to
+	# match this virtual host. For the default virtual host (this file) this
+	# value is not decisive as it is used as a last resort host regardless.
+	# However, you must set it for any further virtual host explicitly.
+	#ServerName www.example.com
+
+	ServerAdmin webmaster@localhost
+	DocumentRoot /var/www/html
+
+	# Available loglevels: trace8, ..., trace1, debug, info, notice, warn,
+	# error, crit, alert, emerg.
+	# It is also possible to configure the loglevel for particular
+	# modules, e.g.
+	#LogLevel info ssl:warn
+
+	ErrorLog ${APACHE_LOG_DIR}/error.log
+	CustomLog ${APACHE_LOG_DIR}/access.log combined
+
+	# For most configuration files from conf-available/, which are
+	# enabled or disabled at a global level, it is possible to
+	# include a line for only one particular virtual host. For example the
+	# following line enables the CGI configuration for this host only
+	# after it has been globally disabled with "a2disconf".
+	#Include conf-available/serve-cgi-bin.conf
+</VirtualHost>
+'''
+[files."/etc/apache2/sites-enabled/000-default.conf".stat]
+mode = 33188
+
+[files."/etc/apache2/sites-enabled/default-ssl.conf"]
+path = "/etc/apache2/sites-enabled/default-ssl.conf"
+content = '''
+<VirtualHost *:443>
+	ServerAdmin webmaster@localhost
+
+	DocumentRoot /var/www/html
+
+	# Available loglevels: trace8, ..., trace1, debug, info, notice, warn,
+	# error, crit, alert, emerg.
+	# It is also possible to configure the loglevel for particular
+	# modules, e.g.
+	#LogLevel info ssl:warn
+
+	ErrorLog ${APACHE_LOG_DIR}/error.log
+	CustomLog ${APACHE_LOG_DIR}/access.log combined
+
+	# For most configuration files from conf-available/, which are
+	# enabled or disabled at a global level, it is possible to
+	# include a line for only one particular virtual host. For example the
+	# following line enables the CGI configuration for this host only
+	# after it has been globally disabled with "a2disconf".
+	#Include conf-available/serve-cgi-bin.conf
+
+	#   SSL Engine Switch:
+	#   Enable/Disable SSL for this virtual host.
+	SSLEngine on
+
+	#   A self-signed (snakeoil) certificate can be created by installing
+	#   the ssl-cert package. See
+	#   /usr/share/doc/apache2/README.Debian.gz for more info.
+	#   If both key and certificate are stored in the same file, only the
+	#   SSLCertificateFile directive is needed.
+	SSLCertificateFile      /etc/ssl/certs/ssl-cert-snakeoil.pem
+	SSLCertificateKeyFile   /etc/ssl/private/ssl-cert-snakeoil.key
+
+	#   Server Certificate Chain:
+	#   Point SSLCertificateChainFile at a file containing the
+	#   concatenation of PEM encoded CA certificates which form the
+	#   certificate chain for the server certificate. Alternatively
+	#   the referenced file can be the same as SSLCertificateFile
+	#   when the CA certificates are directly appended to the server
+	#   certificate for convinience.
+	#SSLCertificateChainFile /etc/apache2/ssl.crt/server-ca.crt
+
+	#   Certificate Authority (CA):
+	#   Set the CA certificate verification path where to find CA
+	#   certificates for client authentication or alternatively one
+	#   huge file containing all of them (file must be PEM encoded)
+	#   Note: Inside SSLCACertificatePath you need hash symlinks
+	#         to point to the certificate files. Use the provided
+	#         Makefile to update the hash symlinks after changes.
+	#SSLCACertificatePath /etc/ssl/certs/
+	#SSLCACertificateFile /etc/apache2/ssl.crt/ca-bundle.crt
+
+	#   Certificate Revocation Lists (CRL):
+	#   Set the CA revocation path where to find CA CRLs for client
+	#   authentication or alternatively one huge file containing all
+	#   of them (file must be PEM encoded)
+	#   Note: Inside SSLCARevocationPath you need hash symlinks
+	#         to point to the certificate files. Use the provided
+	#         Makefile to update the hash symlinks after changes.
+	#SSLCARevocationPath /etc/apache2/ssl.crl/
+	#SSLCARevocationFile /etc/apache2/ssl.crl/ca-bundle.crl
+
+	#   Client Authentication (Type):
+	#   Client certificate verification type and depth.  Types are
+	#   none, optional, require and optional_no_ca.  Depth is a
+	#   number which specifies how deeply to verify the certificate
+	#   issuer chain before deciding the certificate is not valid.
+	#SSLVerifyClient require
+	#SSLVerifyDepth  10
+
+	#   SSL Engine Options:
+	#   Set various options for the SSL engine.
+	#   o FakeBasicAuth:
+	#    Translate the client X.509 into a Basic Authorisation.  This means that
+	#    the standard Auth/DBMAuth methods can be used for access control.  The
+	#    user name is the `one line' version of the client's X.509 certificate.
+	#    Note that no password is obtained from the user. Every entry in the user
+	#    file needs this password: `xxj31ZMTZzkVA'.
+	#   o ExportCertData:
+	#    This exports two additional environment variables: SSL_CLIENT_CERT and
+	#    SSL_SERVER_CERT. These contain the PEM-encoded certificates of the
+	#    server (always existing) and the client (only existing when client
+	#    authentication is used). This can be used to import the certificates
+	#    into CGI scripts.
+	#   o StdEnvVars:
+	#    This exports the standard SSL/TLS related `SSL_*' environment variables.
+	#    Per default this exportation is switched off for performance reasons,
+	#    because the extraction step is an expensive operation and is usually
+	#    useless for serving static content. So one usually enables the
+	#    exportation for CGI and SSI requests only.
+	#   o OptRenegotiate:
+	#    This enables optimized SSL connection renegotiation handling when SSL
+	#    directives are used in per-directory context.
+	#SSLOptions +FakeBasicAuth +ExportCertData +StrictRequire
+	<FilesMatch "\.(?:cgi|shtml|phtml|php)$">
+		SSLOptions +StdEnvVars
+	</FilesMatch>
+	<Directory /usr/lib/cgi-bin>
+		SSLOptions +StdEnvVars
+	</Directory>
+</VirtualHost>
+'''
+[files."/etc/apache2/sites-enabled/default-ssl.conf".stat]
+mode = 33188
