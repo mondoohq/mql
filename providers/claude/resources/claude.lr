@@ -493,7 +493,9 @@ claude.messageBatch @defaults("id processingStatus") {
 // API on behalf of the entity, `externalUserOnboardedAt` records when
 // the platform onboarded the end user behind the profile, and
 // `enforcementStatus` and `enforcementActions` report the restrictions and
-// bans Anthropic holds open on it.
+// bans Anthropic holds open on it. The `workspaces` and `externalKeys`
+// fields list the organization workspaces attached to the profile and the
+// encryption keys bound to it.
 claude.userProfile @defaults("id name accessType enforcementStatus") {
   // Profile identifier
   id string
@@ -535,6 +537,15 @@ claude.userProfile @defaults("id name accessType enforcementStatus") {
   //
   // Empty when no action is open.
   enforcementActions []claude.userProfile.enforcementAction
+  // Organization workspaces this profile is attached to
+  //
+  // Every inference request through these workspaces must name this
+  // profile, so an enforcement action on the profile reaches all of them.
+  workspaces() []claude.organization.workspace
+  // Customer-managed encryption keys bound to this profile
+  //
+  // Only a workspace attached to this profile can use these keys.
+  externalKeys() []claude.organization.externalKey
 }
 
 // Enforcement action on a Claude user profile
@@ -714,6 +725,13 @@ claude.organization.workspace @defaults("id name") {
   //
   // Keys may not begin with anthropic, which is reserved.
   tags map[string]string
+  // User profile attached to this workspace
+  //
+  // Every inference request through the workspace must name this profile,
+  // and the API rejects a request that names none or a different one. The
+  // attachment cannot be replaced or removed; only deleting the profile
+  // clears it. Null when the workspace has no user profile.
+  userProfile() claude.userProfile
   // Members with access to this workspace
   members() []claude.organization.workspace.member
   // Workspace-level rate limit overrides
@@ -1279,6 +1297,13 @@ claude.organization.externalKey @defaults("id displayName provider attached") {
   attached bool
   // Workspaces whose data this key encrypts
   workspaces() []claude.organization.workspace
+  // User profile this key is bound to
+  //
+  // A key bound to a profile can only be attached to a workspace that has
+  // the same user profile, while an unbound key can be attached to any
+  // workspace. The binding cannot be changed once the key is created. Null
+  // when the key is not bound to a profile.
+  userProfile() claude.userProfile
   // Timestamp when the key configuration was created
   createdAt time
   // Timestamp when the key configuration was last updated

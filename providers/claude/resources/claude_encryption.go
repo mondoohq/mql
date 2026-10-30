@@ -32,9 +32,26 @@ func (r *mqlClaudeOrganization) externalKeys() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		mqlKey.(*mqlClaudeOrganizationExternalKey).cacheUserProfileID = k.UserProfileID
 		res = append(res, mqlKey)
 	}
 	return res, nil
+}
+
+type mqlClaudeOrganizationExternalKeyInternal struct {
+	cacheUserProfileID string
+}
+
+func (r *mqlClaudeOrganizationExternalKey) userProfile() (*mqlClaudeUserProfile, error) {
+	profile, ok, err := lookupUserProfile(r.MqlRuntime, r.cacheUserProfileID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		r.UserProfile.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return profile, nil
 }
 
 // externalKeyArgs maps an external key configuration onto resource arguments.

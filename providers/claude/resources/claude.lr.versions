@@ -185,6 +185,7 @@ claude.organization.externalKey.provider 14.0.2
 claude.organization.externalKey.region 14.0.2
 claude.organization.externalKey.tenantId 14.0.2
 claude.organization.externalKey.updatedAt 14.0.2
+claude.organization.externalKey.userProfile 14.2.2
 claude.organization.externalKey.vaultUri 14.0.2
 claude.organization.externalKey.workspaces 14.0.2
 claude.organization.externalKeys 14.0.2
@@ -372,6 +373,7 @@ claude.organization.workspace.members 13.0.0
 claude.organization.workspace.name 13.0.0
 claude.organization.workspace.rateLimits 13.0.0
 claude.organization.workspace.tags 14.0.0
+claude.organization.workspace.userProfile 14.2.2
 claude.organization.workspace.workspaceGeo 13.0.0
 claude.organization.workspaces 13.0.0
 claude.session 13.0.0
@@ -406,12 +408,14 @@ claude.userProfile.enforcementAction.type 14.1.5
 claude.userProfile.enforcementActions 14.1.5
 claude.userProfile.enforcementStatus 14.1.5
 claude.userProfile.externalId 13.0.0
+claude.userProfile.externalKeys 14.2.2
 claude.userProfile.externalUserOnboardedAt 13.1.3
 claude.userProfile.id 13.0.0
 claude.userProfile.name 13.0.0
 claude.userProfile.relationship 13.0.0
 claude.userProfile.type 13.0.0
 claude.userProfile.updatedAt 13.0.0
+claude.userProfile.workspaces 14.2.2
 claude.userProfiles 13.0.0
 claude.vault 13.0.0
 claude.vault.archivedAt 13.0.0

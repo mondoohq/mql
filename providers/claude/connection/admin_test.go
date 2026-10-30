@@ -46,6 +46,31 @@ func TestFlexibleStringSlice_UnmarshalJSON(t *testing.T) {
 	}
 }
 
+// Synthetic: payloads shaped after the SDK's Workspace type, which documents
+// user_profile_id as a string or null; no live organization was available.
+//
+// A mistyped tag leaves the id empty on every workspace, so userProfile reads
+// null and a workspace bound to a banned profile looks unbound.
+func TestAdminWorkspace_UserProfileID(t *testing.T) {
+	var bound AdminWorkspace
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"id": "wrkspc_0001",
+		"type": "workspace",
+		"name": "tenant-a",
+		"user_profile_id": "uprof_0001"
+	}`), &bound))
+	assert.Equal(t, "uprof_0001", bound.UserProfileID)
+
+	var unbound AdminWorkspace
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"id": "wrkspc_0002",
+		"type": "workspace",
+		"name": "shared",
+		"user_profile_id": null
+	}`), &unbound))
+	assert.Empty(t, unbound.UserProfileID)
+}
+
 func TestAdminRateLimit_LimitValue(t *testing.T) {
 	rl := &AdminRateLimit{
 		Limits: []AdminRateLimiter{

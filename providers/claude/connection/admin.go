@@ -113,6 +113,9 @@ type AdminWorkspace struct {
 	CompartmentID string              `json:"compartment_id"`
 	Tags          map[string]string   `json:"tags"`
 	DataResidency *AdminDataResidency `json:"data_residency"`
+	// UserProfileID names the user profile every inference request through
+	// this workspace must name. Empty when the workspace has none.
+	UserProfileID string `json:"user_profile_id"`
 }
 
 type AdminDataResidency struct {

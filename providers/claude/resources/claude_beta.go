@@ -676,6 +676,57 @@ func (r *mqlClaudeUserProfile) enforcementActions() ([]any, error) {
 	return res, nil
 }
 
+// lookupUserProfile resolves a user profile id against the profile list.
+func lookupUserProfile(runtime *plugin.Runtime, id string) (*mqlClaudeUserProfile, bool, error) {
+	return lookupClaudeChild[*mqlClaudeUserProfile](runtime, id, (*mqlClaude).GetUserProfiles)
+}
+
+// userProfileBound is a resource that may be tied to one user profile.
+type userProfileBound interface {
+	boundUserProfileID() string
+}
+
+func (r *mqlClaudeOrganizationWorkspace) boundUserProfileID() string {
+	return r.cacheUserProfileID
+}
+
+func (r *mqlClaudeOrganizationExternalKey) boundUserProfileID() string {
+	return r.cacheUserProfileID
+}
+
+// boundToUserProfile keeps the entries of all that are tied to profileID. An
+// empty profileID matches nothing, so a resource with no profile is never
+// listed under one.
+func boundToUserProfile(all []any, profileID string) []any {
+	res := []any{}
+	if profileID == "" {
+		return res
+	}
+	for _, item := range all {
+		b, ok := item.(userProfileBound)
+		if ok && b.boundUserProfileID() == profileID {
+			res = append(res, item)
+		}
+	}
+	return res
+}
+
+func (r *mqlClaudeUserProfile) workspaces() ([]any, error) {
+	all, err := organizationList(r.MqlRuntime, (*mqlClaudeOrganization).GetWorkspaces)
+	if err != nil {
+		return nil, err
+	}
+	return boundToUserProfile(all, r.Id.Data), nil
+}
+
+func (r *mqlClaudeUserProfile) externalKeys() ([]any, error) {
+	all, err := organizationList(r.MqlRuntime, (*mqlClaudeOrganization).GetExternalKeys)
+	if err != nil {
+		return nil, err
+	}
+	return boundToUserProfile(all, r.Id.Data), nil
+}
+
 // enforcementActionArgs maps an enforcement action onto resource arguments.
 // The action id is only promised stable while the action is open, so the
 // profile id is part of the cache key.

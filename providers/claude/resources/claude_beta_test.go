@@ -133,3 +133,43 @@ func TestEnforcementActionArgs(t *testing.T) {
 	assert.Nil(t, ban["nextStep"].Value)
 	assert.Nil(t, ban["expiresAt"].Value)
 }
+
+func workspaceBoundTo(profileID string) *mqlClaudeOrganizationWorkspace {
+	return &mqlClaudeOrganizationWorkspace{
+		mqlClaudeOrganizationWorkspaceInternal: mqlClaudeOrganizationWorkspaceInternal{cacheUserProfileID: profileID},
+	}
+}
+
+func externalKeyBoundTo(profileID string) *mqlClaudeOrganizationExternalKey {
+	return &mqlClaudeOrganizationExternalKey{
+		mqlClaudeOrganizationExternalKeyInternal: mqlClaudeOrganizationExternalKeyInternal{cacheUserProfileID: profileID},
+	}
+}
+
+// Synthetic: an organization mixing bound and unbound workspaces and keys; no
+// live organization was available.
+//
+// The reverse edges must list only what is tied to the profile. An unbound
+// workspace has an empty id, and a profile id that matched it would list every
+// shared workspace under every profile.
+func TestBoundToUserProfile(t *testing.T) {
+	wsA := workspaceBoundTo("uprof_a")
+	wsB := workspaceBoundTo("uprof_b")
+	wsShared := workspaceBoundTo("")
+	keyA := externalKeyBoundTo("uprof_a")
+	keyUnbound := externalKeyBoundTo("")
+
+	workspaces := []any{wsA, wsShared, wsB}
+	keys := []any{keyUnbound, keyA}
+
+	assert.Equal(t, []any{wsA}, boundToUserProfile(workspaces, "uprof_a"))
+	assert.Equal(t, []any{wsB}, boundToUserProfile(workspaces, "uprof_b"))
+	assert.Equal(t, []any{keyA}, boundToUserProfile(keys, "uprof_a"))
+
+	// A profile with nothing attached reads as an empty list, not null.
+	none := boundToUserProfile(keys, "uprof_b")
+	assert.NotNil(t, none)
+	assert.Empty(t, none)
+
+	assert.Empty(t, boundToUserProfile(workspaces, ""))
+}
