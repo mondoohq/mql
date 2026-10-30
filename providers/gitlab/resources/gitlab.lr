@@ -1031,6 +1031,26 @@ gitlab.project @defaults("fullName visibility webURL") @root {
   // Reads false when the project's GitLab instance does not support or has not
   // enabled Duo.
   autoDuoCodeReviewEnabled bool
+  // Whether GitLab Duo flags likely false positives in SAST findings
+  //
+  // When enabled, GitLab Duo reviews the project's SAST vulnerabilities and
+  // marks the ones it judges to be false positives. Reads false when the
+  // project's license does not include GitLab Duo features, since GitLab then
+  // omits the setting.
+  duoSastFalsePositiveDetectionEnabled bool
+  // Whether GitLab Duo runs the SAST vulnerability resolution workflow
+  //
+  // When enabled, GitLab Duo proposes fixes for the project's SAST
+  // vulnerabilities. Reads false when the project's license does not include
+  // GitLab Duo features, since GitLab then omits the setting.
+  duoSastVulnerabilityResolutionEnabled bool
+  // Whether GitLab Duo flags likely false positives in secret detection findings
+  //
+  // When enabled, GitLab Duo reviews the project's secret detection findings
+  // and marks the ones it judges to be false positives. Reads false when the
+  // project's license does not include GitLab Duo features or the instance has
+  // not turned the feature on, since GitLab then omits the setting.
+  duoSecretDetectionFalsePositiveDetectionEnabled bool
   // Visibility of the machine-learning model experiments feature
   //
   // One of disabled, private, or enabled; empty on instances that do not report
@@ -2038,6 +2058,12 @@ private gitlab.project.pipeline @defaults("id status ref") {
   queuedDuration() int
   // Reported test coverage percentage as a string; empty when not reported
   coverage() string
+  // Whether the pipeline is archived
+  //
+  // GitLab archives a pipeline once it is older than the instance's archive
+  // jobs period. Jobs in an archived pipeline can't be retried or run again.
+  // Reads false on GitLab versions that do not report it.
+  archived() bool
 }
 
 // GitLab CI/CD runner
