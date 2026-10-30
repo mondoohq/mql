@@ -434,10 +434,11 @@ var awsPermissionOverrides = map[string]string{
 	"bedrock:ListAdvancedPromptOptimizationJobs": "",
 
 	// AWS's Service Reference lists these operations but maps them to no
-	// action, and has no action of the obvious name (checked 2026-10-07):
+	// action, and has no action of the obvious name (checked 2026-10-07, and
+	// 2026-10-30 for GetImageFindings):
 	// knowledge-base VPC configurations (bedrockagent SDK, 2026-09-25),
-	// Client VPN Cedar authorization policies (ec2 SDK, 2026-09-28) and the
-	// Glue Data Catalog export configuration, which the Glue guide names but
+	// Client VPN Cedar authorization policies (ec2 SDK, 2026-09-28), Amazon
+	// Inspector findings of an AMI (ec2 SDK v1.343.0) and the Glue Data Catalog export configuration, which the Glue guide names but
 	// IAM Access Analyzer rejects as INVALID_ACTION ("does not exist"). A
 	// policy carrying one of these authorizes nothing, so nothing is emitted
 	// until AWS publishes the action; the permission check (make
@@ -446,6 +447,7 @@ var awsPermissionOverrides = map[string]string{
 	"bedrock:GetVpcConfiguration":                 "",
 	"bedrock:ListVpcConfigurations":               "",
 	"ec2:GetClientVpnEndpointAuthorizationPolicy": "",
+	"ec2:GetImageFindings":                        "",
 	"glue:GetDataCatalogExportConfiguration":      "",
 }
 

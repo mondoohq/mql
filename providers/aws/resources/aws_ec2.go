@@ -2113,7 +2113,9 @@ func (i *mqlAwsEc2Image) inspectorFindings() ([]any, error) {
 				if !plugin.StructuredErrors() {
 					return nil, nil
 				}
-				return nil, llx.Forbidden(err, llx.WithPermissions("ec2:GetImageFindings"))
+				// No permission is named: AWS has not published an IAM
+				// action for GetImageFindings yet.
+				return nil, llx.Forbidden(err)
 			}
 			return nil, err
 		}

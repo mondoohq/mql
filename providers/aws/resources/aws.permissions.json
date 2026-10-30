@@ -1,7 +1,7 @@
 {
   "provider": "aws",
-  "version": "14.6.1",
-  "generated_at": "2026-10-30T13:57:03-07:00",
+  "version": "14.5.5",
+  "generated_at": "2026-10-28T11:54:23-07:00",
   "permissions": [
     "access-analyzer:GetFinding",
     "access-analyzer:ListAnalyzers",
@@ -380,7 +380,6 @@
     "ec2:GetEbsDefaultKmsKeyId",
     "ec2:GetEbsEncryptionByDefault",
     "ec2:GetImageBlockPublicAccessState",
-    "ec2:GetImageFindings",
     "ec2:GetInstanceMetadataDefaults",
     "ec2:GetIpamPoolAllocations",
     "ec2:GetManagedPrefixListEntries",
@@ -3496,12 +3495,6 @@
       "permission": "ec2:GetImageBlockPublicAccessState",
       "service": "ec2",
       "action": "GetImageBlockPublicAccessState",
-      "source_file": "aws_ec2.go"
-    },
-    {
-      "permission": "ec2:GetImageFindings",
-      "service": "ec2",
-      "action": "GetImageFindings",
       "source_file": "aws_ec2.go"
     },
     {
