@@ -22,7 +22,6 @@ import (
 	"go.mondoo.com/mql/providers/gcp/connection"
 	"go.mondoo.com/mql/types"
 	"google.golang.org/api/cloudresourcemanager/v3"
-	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iam/v1"
 	"google.golang.org/api/option"
 	"google.golang.org/api/storage/v1"
@@ -395,13 +394,28 @@ func (g *mqlGcpProjectStorageServiceBucket) tags() (map[string]any, error) {
 	name := fmt.Sprintf("locations/%s/effectiveTagBindingCollections/%s", location, encodedResource)
 
 	resp, err := svc.Locations.EffectiveTagBindingCollections.Get(name).Context(ctx).Do()
+	return bucketEffectiveTags(bucketName, resp, err)
+}
+
+// bucketEffectiveTags turns the effective tag bindings of a bucket into its
+// tags. A refused read is an error under structured errors; v13 read a 403 or
+// 404 as no tags and keeps doing so without them.
+func bucketEffectiveTags(bucketName string, resp *cloudresourcemanager.EffectiveTagBindingCollection, err error) (map[string]any, error) {
 	if err != nil {
-		if gerr, ok := err.(*googleapi.Error); ok && (gerr.Code == 403 || gerr.Code == 404) {
-			return map[string]any{}, nil
+		if !plugin.StructuredErrors() {
+			if gerr, ok := googleAPIError(err); ok && (gerr.Code == 403 || gerr.Code == 404) {
+				log.Warn().Err(err).Str("bucket", bucketName).Msg("cannot read gcp storage bucket tags")
+				return map[string]any{}, nil
+			}
+		}
+		if rerr := classifyRefusal(err, "storage.buckets.listEffectiveTags"); rerr != nil {
+			return nil, rerr
 		}
 		return nil, err
 	}
-
+	if resp == nil {
+		return map[string]any{}, nil
+	}
 	return effectiveTagsToInterface(resp.EffectiveTags), nil
 }
 
