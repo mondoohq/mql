@@ -39,6 +39,22 @@ func (f *FlagSet) ParseCommand(cmd string) error {
 	return f.parseArgs(words[1:])
 }
 
+// ParseArgv parses a process's argv as the kernel holds it, the NUL-separated
+// elements of /proc/<pid>/cmdline, so an argument with spaces stays one
+// value. argv[0] is the program and never a flag. A process that rewrote its
+// title into a single string (sshd, nginx, postgres) has no argument
+// boundaries left, so that one string is split the way ParseCommand splits a
+// command line.
+func (f *FlagSet) ParseArgv(argv []string) error {
+	if len(argv) == 0 {
+		return f.Parse(nil)
+	}
+	if len(argv) == 1 && strings.ContainsAny(argv[0], " \t") {
+		return f.ParseCommand(argv[0])
+	}
+	return f.parseArgs(argv[1:])
+}
+
 // ParseWindowsCommand parses a Windows command line. Windows passes a process
 // one unsplit string, so it is split the way CommandLineToArgvW does it:
 // backslashes are literal unless they precede a double quote, and double
@@ -68,8 +84,8 @@ func (f *FlagSet) parseArgs(args []string) error {
 		// that takes the next word as its value.
 		// A flag that already carries its value after "=" (`--deserialize=35`)
 		// takes nothing from the next word, which stays an operand.
-		if key != "-" && strings.HasPrefix(key, "-") && !strings.Contains(key, "=") {
-			if i+1 < n && !strings.HasPrefix(args[i+1], "-") {
+		if key != "-" && strings.HasPrefix(key, "-") && !strings.Contains(key, "=") && !spacedName(key) {
+			if i+1 < n && (!strings.HasPrefix(args[i+1], "-") || spacedName(args[i+1])) {
 				preparedArgs = append(preparedArgs, key+"="+args[i+1])
 				i++
 				continue
@@ -122,7 +138,7 @@ func (f *FlagSet) parseOneArg() (bool, error) {
 		}
 	}
 	name := s[numMinuses:]
-	if len(name) == 0 || name[0] == '-' || name[0] == '=' {
+	if len(name) == 0 || name[0] == '-' || name[0] == '=' || spacedName(s) {
 		// Not a flag the parser can name ("---x", "-=x"). Keep it as an
 		// operand: one odd argument must not cost the process its flag map.
 		f.args = f.args[1:]
@@ -143,6 +159,15 @@ func (f *FlagSet) parseOneArg() (bool, error) {
 	name = strings.ToLower(name)
 	f.actual[name] = value
 	return true, nil
+}
+
+// spacedName reports whether a word that starts with "-" has whitespace in
+// the part a flag name would take (before any "="). No flag is named that
+// way, so the word is a value: agetty's `-o '-p -- \u'` passes "-p -- \u"
+// as the value of -o.
+func spacedName(word string) bool {
+	name, _, _ := strings.Cut(word, "=")
+	return strings.ContainsAny(name, " \t")
 }
 
 func (f *FlagSet) Map() map[string]string {
