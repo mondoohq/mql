@@ -4769,6 +4769,8 @@ frr {
   bgpNeighbors() []frr.bgp.neighbor
   // EVPN VNIs the local VTEP knows at scan time
   evpnVnis() []frr.evpn.vni
+  // EVPN routing table of the local BGP instance at scan time. Use `frr.evpn.routeTable(vni: <id>)` for one VNI.
+  evpnRoutes() frr.evpn.routeTable
   // Policy routing rules of the kernel at scan time
   routingRules() []frr.routingRule
 }
@@ -5398,6 +5400,139 @@ private frr.routingRule @defaults("priority source table") {
   invert bool
   // `suppress_prefixlength` value, -1 when the rule does not set it
   suppressPrefixLength int
+}
+
+// FRR EVPN routing table
+//
+// The EVPN table of the local BGP instance, read with
+// `show bgp l2vpn evpn json` or, when a VNI is given, with
+// `show bgp l2vpn evpn route vni <id> json`. The VNI is part of the
+// command, so FRR filters before it prints.
+//
+// The table holds one entry per MAC, per MAC and IP pair, and per tenant
+// prefix of the whole fabric, so it is bounded the same way as the
+// routing table. `limit` caps how many prefixes become resources, `total`
+// counts every prefix the command reported, and `truncated` says whether
+// the cap was reached.
+//
+// This is runtime state. It describes the moment of the scan.
+frr.evpn.routeTable @defaults("vni total truncated") {
+  init(vni? int, limit? int)
+  // VNI the query was narrowed to, 0 for the whole table
+  vni int
+  // Maximum number of prefixes turned into resources
+  limit int
+  // Number of prefixes the command reported, including the ones past the limit
+  total() int
+  // The command reported more prefixes than the limit
+  truncated() bool
+  // Prefixes, at most `limit` entries
+  entries() []frr.evpn.route
+}
+
+// FRR EVPN route
+//
+// One prefix of the EVPN table with the paths that carry it. The bracketed
+// prefix form of FRR is read apart, so the MAC address and the IP of a
+// tenant workload are addressable, and the route targets of the paths are
+// collected, because they decide which VRF imports the route.
+//
+// This is runtime state. It describes the moment of the scan.
+private frr.evpn.route @defaults("prefix routeTypeName rd") {
+  // Route distinguisher section the prefix was printed under, empty in a per VNI query
+  rd string
+  // NLRI in the bracketed form FRR prints
+  prefix string
+  // EVPN route type (1 to 5)
+  routeType int
+  // Name of the route type (e.g. mac-ip, inclusive-multicast, ip-prefix)
+  routeTypeName string
+  // Ethernet tag of the route
+  ethernetTag int
+  // MAC address the route advertises, empty when the type carries none
+  macAddress string
+  // IP address or prefix the route advertises, empty when the type carries none
+  ip string
+  // Route targets across every path of this prefix
+  routeTargets []string
+  // Paths that carry the prefix
+  paths []frr.bgp.route
+}
+
+// FRR BGP routes of one session
+//
+// The routes one session advertises or receives, read with
+// `show bgp [vrf <name>] neighbor <peer> advertised-routes json` or its
+// received-routes form. The peer, the VRF and the address family are part
+// of the command, so FRR filters before it prints.
+//
+// Received routes need `soft-reconfiguration inbound` on the session.
+// Without it FRR refuses the query, and `available` is false rather than
+// the resource reporting an empty table.
+//
+// This is runtime state. It describes the moment of the scan.
+frr.bgp.peerRoutes @defaults("peer direction total truncated") {
+  init(peer string, direction? string, vrf? string, afi? string, limit? int)
+  // Peer address, or the interface name of an unnumbered peer
+  peer string
+  // Direction of the query, advertised (default) or received
+  direction string
+  // VRF of the session, empty for the default VRF
+  vrf string
+  // Address family, ipv4 (default), ipv6 or l2vpn
+  afi string
+  // Maximum number of prefixes turned into resources
+  limit int
+  // FRR answered the query. It is false when received routes are asked for without inbound soft reconfiguration.
+  available() bool
+  // Number of prefixes the command reported, including the ones past the limit
+  total() int
+  // The command reported more prefixes than the limit
+  truncated() bool
+  // Prefixes the policy of this direction dropped, -1 when FRR does not report it
+  filteredCount() int
+  // Routes, at most `limit` entries
+  entries() []frr.bgp.route
+}
+
+// FRR BGP route
+//
+// One path of one prefix. The communities carry the tags a policy matches
+// on, and the route targets among the extended communities decide which
+// VRF imports the route.
+//
+// This is runtime state. It describes the moment of the scan.
+private frr.bgp.route @defaults("prefix nexthop asPath bestPath") {
+  // NLRI of the path
+  prefix string
+  // Prefix length, 0 when the command does not report it
+  prefixLength int
+  // First next hop of the path
+  nexthop string
+  // Router the path was learned from, empty for a local path
+  peer string
+  // AS path of the route, empty when the path is local
+  asPath string
+  // Origin of the route (e.g. IGP, EGP, Incomplete)
+  origin string
+  // Multi exit discriminator of the path
+  metric int
+  // Local preference of the path
+  localPreference int
+  // Weight of the path
+  weight int
+  // Path is valid
+  valid bool
+  // Path is the best path for the prefix
+  bestPath bool
+  // Standard communities of the path
+  communities []string
+  // Large communities of the path
+  largeCommunities []string
+  // Extended communities of the path, which include the route targets
+  extendedCommunities []string
+  // Route targets of the path, taken from the extended communities
+  routeTargets []string
 }
 
 // HAProxy load balancer

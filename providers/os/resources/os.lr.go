@@ -189,6 +189,10 @@ const (
 	ResourceFrrBgpNeighborAddressFamily                    string = "frr.bgp.neighbor.addressFamily"
 	ResourceFrrEvpnVni                                     string = "frr.evpn.vni"
 	ResourceFrrRoutingRule                                 string = "frr.routingRule"
+	ResourceFrrEvpnRouteTable                              string = "frr.evpn.routeTable"
+	ResourceFrrEvpnRoute                                   string = "frr.evpn.route"
+	ResourceFrrBgpPeerRoutes                               string = "frr.bgp.peerRoutes"
+	ResourceFrrBgpRoute                                    string = "frr.bgp.route"
 	ResourceHaproxy                                        string = "haproxy"
 	ResourceHaproxyConfig                                  string = "haproxy.config"
 	ResourceHaproxyConfigSection                           string = "haproxy.config.section"
@@ -1534,6 +1538,22 @@ func init() {
 		"frr.routingRule": {
 			// to override args, implement: initFrrRoutingRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createFrrRoutingRule,
+		},
+		"frr.evpn.routeTable": {
+			Init:   initFrrEvpnRouteTable,
+			Create: createFrrEvpnRouteTable,
+		},
+		"frr.evpn.route": {
+			// to override args, implement: initFrrEvpnRoute(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createFrrEvpnRoute,
+		},
+		"frr.bgp.peerRoutes": {
+			Init:   initFrrBgpPeerRoutes,
+			Create: createFrrBgpPeerRoutes,
+		},
+		"frr.bgp.route": {
+			// to override args, implement: initFrrBgpRoute(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createFrrBgpRoute,
 		},
 		"haproxy": {
 			// to override args, implement: initHaproxy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -7381,6 +7401,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"frr.evpnVnis": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlFrr).GetEvpnVnis()).ToDataRes(types.Array(types.Resource("frr.evpn.vni")))
 	},
+	"frr.evpnRoutes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrr).GetEvpnRoutes()).ToDataRes(types.Resource("frr.evpn.routeTable"))
+	},
 	"frr.routingRules": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlFrr).GetRoutingRules()).ToDataRes(types.Array(types.Resource("frr.routingRule")))
 	},
@@ -8040,6 +8063,123 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"frr.routingRule.suppressPrefixLength": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlFrrRoutingRule).GetSuppressPrefixLength()).ToDataRes(types.Int)
+	},
+	"frr.evpn.routeTable.vni": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrEvpnRouteTable).GetVni()).ToDataRes(types.Int)
+	},
+	"frr.evpn.routeTable.limit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrEvpnRouteTable).GetLimit()).ToDataRes(types.Int)
+	},
+	"frr.evpn.routeTable.total": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrEvpnRouteTable).GetTotal()).ToDataRes(types.Int)
+	},
+	"frr.evpn.routeTable.truncated": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrEvpnRouteTable).GetTruncated()).ToDataRes(types.Bool)
+	},
+	"frr.evpn.routeTable.entries": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrEvpnRouteTable).GetEntries()).ToDataRes(types.Array(types.Resource("frr.evpn.route")))
+	},
+	"frr.evpn.route.rd": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrEvpnRoute).GetRd()).ToDataRes(types.String)
+	},
+	"frr.evpn.route.prefix": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrEvpnRoute).GetPrefix()).ToDataRes(types.String)
+	},
+	"frr.evpn.route.routeType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrEvpnRoute).GetRouteType()).ToDataRes(types.Int)
+	},
+	"frr.evpn.route.routeTypeName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrEvpnRoute).GetRouteTypeName()).ToDataRes(types.String)
+	},
+	"frr.evpn.route.ethernetTag": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrEvpnRoute).GetEthernetTag()).ToDataRes(types.Int)
+	},
+	"frr.evpn.route.macAddress": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrEvpnRoute).GetMacAddress()).ToDataRes(types.String)
+	},
+	"frr.evpn.route.ip": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrEvpnRoute).GetIp()).ToDataRes(types.String)
+	},
+	"frr.evpn.route.routeTargets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrEvpnRoute).GetRouteTargets()).ToDataRes(types.Array(types.String))
+	},
+	"frr.evpn.route.paths": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrEvpnRoute).GetPaths()).ToDataRes(types.Array(types.Resource("frr.bgp.route")))
+	},
+	"frr.bgp.peerRoutes.peer": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrBgpPeerRoutes).GetPeer()).ToDataRes(types.String)
+	},
+	"frr.bgp.peerRoutes.direction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrBgpPeerRoutes).GetDirection()).ToDataRes(types.String)
+	},
+	"frr.bgp.peerRoutes.vrf": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrBgpPeerRoutes).GetVrf()).ToDataRes(types.String)
+	},
+	"frr.bgp.peerRoutes.afi": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrBgpPeerRoutes).GetAfi()).ToDataRes(types.String)
+	},
+	"frr.bgp.peerRoutes.limit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrBgpPeerRoutes).GetLimit()).ToDataRes(types.Int)
+	},
+	"frr.bgp.peerRoutes.available": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrBgpPeerRoutes).GetAvailable()).ToDataRes(types.Bool)
+	},
+	"frr.bgp.peerRoutes.total": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrBgpPeerRoutes).GetTotal()).ToDataRes(types.Int)
+	},
+	"frr.bgp.peerRoutes.truncated": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrBgpPeerRoutes).GetTruncated()).ToDataRes(types.Bool)
+	},
+	"frr.bgp.peerRoutes.filteredCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrBgpPeerRoutes).GetFilteredCount()).ToDataRes(types.Int)
+	},
+	"frr.bgp.peerRoutes.entries": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrBgpPeerRoutes).GetEntries()).ToDataRes(types.Array(types.Resource("frr.bgp.route")))
+	},
+	"frr.bgp.route.prefix": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrBgpRoute).GetPrefix()).ToDataRes(types.String)
+	},
+	"frr.bgp.route.prefixLength": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrBgpRoute).GetPrefixLength()).ToDataRes(types.Int)
+	},
+	"frr.bgp.route.nexthop": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrBgpRoute).GetNexthop()).ToDataRes(types.String)
+	},
+	"frr.bgp.route.peer": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrBgpRoute).GetPeer()).ToDataRes(types.String)
+	},
+	"frr.bgp.route.asPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrBgpRoute).GetAsPath()).ToDataRes(types.String)
+	},
+	"frr.bgp.route.origin": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrBgpRoute).GetOrigin()).ToDataRes(types.String)
+	},
+	"frr.bgp.route.metric": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrBgpRoute).GetMetric()).ToDataRes(types.Int)
+	},
+	"frr.bgp.route.localPreference": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrBgpRoute).GetLocalPreference()).ToDataRes(types.Int)
+	},
+	"frr.bgp.route.weight": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrBgpRoute).GetWeight()).ToDataRes(types.Int)
+	},
+	"frr.bgp.route.valid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrBgpRoute).GetValid()).ToDataRes(types.Bool)
+	},
+	"frr.bgp.route.bestPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrBgpRoute).GetBestPath()).ToDataRes(types.Bool)
+	},
+	"frr.bgp.route.communities": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrBgpRoute).GetCommunities()).ToDataRes(types.Array(types.String))
+	},
+	"frr.bgp.route.largeCommunities": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrBgpRoute).GetLargeCommunities()).ToDataRes(types.Array(types.String))
+	},
+	"frr.bgp.route.extendedCommunities": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrBgpRoute).GetExtendedCommunities()).ToDataRes(types.Array(types.String))
+	},
+	"frr.bgp.route.routeTargets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFrrBgpRoute).GetRouteTargets()).ToDataRes(types.Array(types.String))
 	},
 	"haproxy.version": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlHaproxy).GetVersion()).ToDataRes(types.String)
@@ -29389,6 +29529,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlFrr).EvpnVnis, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"frr.evpnRoutes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrr).EvpnRoutes, ok = plugin.RawToTValue[*mqlFrrEvpnRouteTable](v.Value, v.Error)
+		return
+	},
 	"frr.routingRules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlFrr).RoutingRules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -30343,6 +30487,178 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"frr.routingRule.suppressPrefixLength": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlFrrRoutingRule).SuppressPrefixLength, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"frr.evpn.routeTable.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrEvpnRouteTable).__id, ok = v.Value.(string)
+		return
+	},
+	"frr.evpn.routeTable.vni": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrEvpnRouteTable).Vni, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"frr.evpn.routeTable.limit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrEvpnRouteTable).Limit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"frr.evpn.routeTable.total": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrEvpnRouteTable).Total, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"frr.evpn.routeTable.truncated": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrEvpnRouteTable).Truncated, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"frr.evpn.routeTable.entries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrEvpnRouteTable).Entries, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"frr.evpn.route.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrEvpnRoute).__id, ok = v.Value.(string)
+		return
+	},
+	"frr.evpn.route.rd": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrEvpnRoute).Rd, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"frr.evpn.route.prefix": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrEvpnRoute).Prefix, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"frr.evpn.route.routeType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrEvpnRoute).RouteType, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"frr.evpn.route.routeTypeName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrEvpnRoute).RouteTypeName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"frr.evpn.route.ethernetTag": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrEvpnRoute).EthernetTag, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"frr.evpn.route.macAddress": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrEvpnRoute).MacAddress, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"frr.evpn.route.ip": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrEvpnRoute).Ip, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"frr.evpn.route.routeTargets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrEvpnRoute).RouteTargets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"frr.evpn.route.paths": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrEvpnRoute).Paths, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"frr.bgp.peerRoutes.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrBgpPeerRoutes).__id, ok = v.Value.(string)
+		return
+	},
+	"frr.bgp.peerRoutes.peer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrBgpPeerRoutes).Peer, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"frr.bgp.peerRoutes.direction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrBgpPeerRoutes).Direction, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"frr.bgp.peerRoutes.vrf": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrBgpPeerRoutes).Vrf, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"frr.bgp.peerRoutes.afi": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrBgpPeerRoutes).Afi, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"frr.bgp.peerRoutes.limit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrBgpPeerRoutes).Limit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"frr.bgp.peerRoutes.available": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrBgpPeerRoutes).Available, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"frr.bgp.peerRoutes.total": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrBgpPeerRoutes).Total, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"frr.bgp.peerRoutes.truncated": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrBgpPeerRoutes).Truncated, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"frr.bgp.peerRoutes.filteredCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrBgpPeerRoutes).FilteredCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"frr.bgp.peerRoutes.entries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrBgpPeerRoutes).Entries, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"frr.bgp.route.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrBgpRoute).__id, ok = v.Value.(string)
+		return
+	},
+	"frr.bgp.route.prefix": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrBgpRoute).Prefix, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"frr.bgp.route.prefixLength": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrBgpRoute).PrefixLength, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"frr.bgp.route.nexthop": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrBgpRoute).Nexthop, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"frr.bgp.route.peer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrBgpRoute).Peer, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"frr.bgp.route.asPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrBgpRoute).AsPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"frr.bgp.route.origin": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrBgpRoute).Origin, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"frr.bgp.route.metric": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrBgpRoute).Metric, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"frr.bgp.route.localPreference": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrBgpRoute).LocalPreference, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"frr.bgp.route.weight": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrBgpRoute).Weight, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"frr.bgp.route.valid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrBgpRoute).Valid, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"frr.bgp.route.bestPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrBgpRoute).BestPath, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"frr.bgp.route.communities": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrBgpRoute).Communities, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"frr.bgp.route.largeCommunities": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrBgpRoute).LargeCommunities, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"frr.bgp.route.extendedCommunities": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrBgpRoute).ExtendedCommunities, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"frr.bgp.route.routeTargets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFrrBgpRoute).RouteTargets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"haproxy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -69263,6 +69579,7 @@ type mqlFrr struct {
 	Vrfs         plugin.TValue[[]any]
 	BgpNeighbors plugin.TValue[[]any]
 	EvpnVnis     plugin.TValue[[]any]
+	EvpnRoutes   plugin.TValue[*mqlFrrEvpnRouteTable]
 	RoutingRules plugin.TValue[[]any]
 }
 
@@ -69349,6 +69666,22 @@ func (c *mqlFrr) GetEvpnVnis() *plugin.TValue[[]any] {
 		}
 
 		return c.evpnVnis()
+	})
+}
+
+func (c *mqlFrr) GetEvpnRoutes() *plugin.TValue[*mqlFrrEvpnRouteTable] {
+	return plugin.GetOrCompute[*mqlFrrEvpnRouteTable](&c.EvpnRoutes, func() (*mqlFrrEvpnRouteTable, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("frr", c.__id, "evpnRoutes")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFrrEvpnRouteTable), nil
+			}
+		}
+
+		return c.evpnRoutes()
 	})
 }
 
@@ -71460,6 +71793,393 @@ func (c *mqlFrrRoutingRule) GetInvert() *plugin.TValue[bool] {
 
 func (c *mqlFrrRoutingRule) GetSuppressPrefixLength() *plugin.TValue[int64] {
 	return &c.SuppressPrefixLength
+}
+
+// mqlFrrEvpnRouteTable for the frr.evpn.routeTable resource
+type mqlFrrEvpnRouteTable struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlFrrEvpnRouteTableInternal
+	Vni       plugin.TValue[int64]
+	Limit     plugin.TValue[int64]
+	Total     plugin.TValue[int64]
+	Truncated plugin.TValue[bool]
+	Entries   plugin.TValue[[]any]
+}
+
+// createFrrEvpnRouteTable creates a new instance of this resource
+func createFrrEvpnRouteTable(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlFrrEvpnRouteTable{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("frr.evpn.routeTable", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlFrrEvpnRouteTable) MqlName() string {
+	return "frr.evpn.routeTable"
+}
+
+func (c *mqlFrrEvpnRouteTable) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlFrrEvpnRouteTable) GetVni() *plugin.TValue[int64] {
+	return &c.Vni
+}
+
+func (c *mqlFrrEvpnRouteTable) GetLimit() *plugin.TValue[int64] {
+	return &c.Limit
+}
+
+func (c *mqlFrrEvpnRouteTable) GetTotal() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.Total, func() (int64, error) {
+		return c.total()
+	})
+}
+
+func (c *mqlFrrEvpnRouteTable) GetTruncated() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Truncated, func() (bool, error) {
+		return c.truncated()
+	})
+}
+
+func (c *mqlFrrEvpnRouteTable) GetEntries() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Entries, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("frr.evpn.routeTable", c.__id, "entries")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.entries()
+	})
+}
+
+// mqlFrrEvpnRoute for the frr.evpn.route resource
+type mqlFrrEvpnRoute struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlFrrEvpnRouteInternal it will be used here
+	Rd            plugin.TValue[string]
+	Prefix        plugin.TValue[string]
+	RouteType     plugin.TValue[int64]
+	RouteTypeName plugin.TValue[string]
+	EthernetTag   plugin.TValue[int64]
+	MacAddress    plugin.TValue[string]
+	Ip            plugin.TValue[string]
+	RouteTargets  plugin.TValue[[]any]
+	Paths         plugin.TValue[[]any]
+}
+
+// createFrrEvpnRoute creates a new instance of this resource
+func createFrrEvpnRoute(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlFrrEvpnRoute{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("frr.evpn.route", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlFrrEvpnRoute) MqlName() string {
+	return "frr.evpn.route"
+}
+
+func (c *mqlFrrEvpnRoute) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlFrrEvpnRoute) GetRd() *plugin.TValue[string] {
+	return &c.Rd
+}
+
+func (c *mqlFrrEvpnRoute) GetPrefix() *plugin.TValue[string] {
+	return &c.Prefix
+}
+
+func (c *mqlFrrEvpnRoute) GetRouteType() *plugin.TValue[int64] {
+	return &c.RouteType
+}
+
+func (c *mqlFrrEvpnRoute) GetRouteTypeName() *plugin.TValue[string] {
+	return &c.RouteTypeName
+}
+
+func (c *mqlFrrEvpnRoute) GetEthernetTag() *plugin.TValue[int64] {
+	return &c.EthernetTag
+}
+
+func (c *mqlFrrEvpnRoute) GetMacAddress() *plugin.TValue[string] {
+	return &c.MacAddress
+}
+
+func (c *mqlFrrEvpnRoute) GetIp() *plugin.TValue[string] {
+	return &c.Ip
+}
+
+func (c *mqlFrrEvpnRoute) GetRouteTargets() *plugin.TValue[[]any] {
+	return &c.RouteTargets
+}
+
+func (c *mqlFrrEvpnRoute) GetPaths() *plugin.TValue[[]any] {
+	return &c.Paths
+}
+
+// mqlFrrBgpPeerRoutes for the frr.bgp.peerRoutes resource
+type mqlFrrBgpPeerRoutes struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlFrrBgpPeerRoutesInternal
+	Peer          plugin.TValue[string]
+	Direction     plugin.TValue[string]
+	Vrf           plugin.TValue[string]
+	Afi           plugin.TValue[string]
+	Limit         plugin.TValue[int64]
+	Available     plugin.TValue[bool]
+	Total         plugin.TValue[int64]
+	Truncated     plugin.TValue[bool]
+	FilteredCount plugin.TValue[int64]
+	Entries       plugin.TValue[[]any]
+}
+
+// createFrrBgpPeerRoutes creates a new instance of this resource
+func createFrrBgpPeerRoutes(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlFrrBgpPeerRoutes{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("frr.bgp.peerRoutes", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlFrrBgpPeerRoutes) MqlName() string {
+	return "frr.bgp.peerRoutes"
+}
+
+func (c *mqlFrrBgpPeerRoutes) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlFrrBgpPeerRoutes) GetPeer() *plugin.TValue[string] {
+	return &c.Peer
+}
+
+func (c *mqlFrrBgpPeerRoutes) GetDirection() *plugin.TValue[string] {
+	return &c.Direction
+}
+
+func (c *mqlFrrBgpPeerRoutes) GetVrf() *plugin.TValue[string] {
+	return &c.Vrf
+}
+
+func (c *mqlFrrBgpPeerRoutes) GetAfi() *plugin.TValue[string] {
+	return &c.Afi
+}
+
+func (c *mqlFrrBgpPeerRoutes) GetLimit() *plugin.TValue[int64] {
+	return &c.Limit
+}
+
+func (c *mqlFrrBgpPeerRoutes) GetAvailable() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Available, func() (bool, error) {
+		return c.available()
+	})
+}
+
+func (c *mqlFrrBgpPeerRoutes) GetTotal() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.Total, func() (int64, error) {
+		return c.total()
+	})
+}
+
+func (c *mqlFrrBgpPeerRoutes) GetTruncated() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Truncated, func() (bool, error) {
+		return c.truncated()
+	})
+}
+
+func (c *mqlFrrBgpPeerRoutes) GetFilteredCount() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.FilteredCount, func() (int64, error) {
+		return c.filteredCount()
+	})
+}
+
+func (c *mqlFrrBgpPeerRoutes) GetEntries() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Entries, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("frr.bgp.peerRoutes", c.__id, "entries")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.entries()
+	})
+}
+
+// mqlFrrBgpRoute for the frr.bgp.route resource
+type mqlFrrBgpRoute struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlFrrBgpRouteInternal it will be used here
+	Prefix              plugin.TValue[string]
+	PrefixLength        plugin.TValue[int64]
+	Nexthop             plugin.TValue[string]
+	Peer                plugin.TValue[string]
+	AsPath              plugin.TValue[string]
+	Origin              plugin.TValue[string]
+	Metric              plugin.TValue[int64]
+	LocalPreference     plugin.TValue[int64]
+	Weight              plugin.TValue[int64]
+	Valid               plugin.TValue[bool]
+	BestPath            plugin.TValue[bool]
+	Communities         plugin.TValue[[]any]
+	LargeCommunities    plugin.TValue[[]any]
+	ExtendedCommunities plugin.TValue[[]any]
+	RouteTargets        plugin.TValue[[]any]
+}
+
+// createFrrBgpRoute creates a new instance of this resource
+func createFrrBgpRoute(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlFrrBgpRoute{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("frr.bgp.route", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlFrrBgpRoute) MqlName() string {
+	return "frr.bgp.route"
+}
+
+func (c *mqlFrrBgpRoute) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlFrrBgpRoute) GetPrefix() *plugin.TValue[string] {
+	return &c.Prefix
+}
+
+func (c *mqlFrrBgpRoute) GetPrefixLength() *plugin.TValue[int64] {
+	return &c.PrefixLength
+}
+
+func (c *mqlFrrBgpRoute) GetNexthop() *plugin.TValue[string] {
+	return &c.Nexthop
+}
+
+func (c *mqlFrrBgpRoute) GetPeer() *plugin.TValue[string] {
+	return &c.Peer
+}
+
+func (c *mqlFrrBgpRoute) GetAsPath() *plugin.TValue[string] {
+	return &c.AsPath
+}
+
+func (c *mqlFrrBgpRoute) GetOrigin() *plugin.TValue[string] {
+	return &c.Origin
+}
+
+func (c *mqlFrrBgpRoute) GetMetric() *plugin.TValue[int64] {
+	return &c.Metric
+}
+
+func (c *mqlFrrBgpRoute) GetLocalPreference() *plugin.TValue[int64] {
+	return &c.LocalPreference
+}
+
+func (c *mqlFrrBgpRoute) GetWeight() *plugin.TValue[int64] {
+	return &c.Weight
+}
+
+func (c *mqlFrrBgpRoute) GetValid() *plugin.TValue[bool] {
+	return &c.Valid
+}
+
+func (c *mqlFrrBgpRoute) GetBestPath() *plugin.TValue[bool] {
+	return &c.BestPath
+}
+
+func (c *mqlFrrBgpRoute) GetCommunities() *plugin.TValue[[]any] {
+	return &c.Communities
+}
+
+func (c *mqlFrrBgpRoute) GetLargeCommunities() *plugin.TValue[[]any] {
+	return &c.LargeCommunities
+}
+
+func (c *mqlFrrBgpRoute) GetExtendedCommunities() *plugin.TValue[[]any] {
+	return &c.ExtendedCommunities
+}
+
+func (c *mqlFrrBgpRoute) GetRouteTargets() *plugin.TValue[[]any] {
+	return &c.RouteTargets
 }
 
 // mqlHaproxy for the haproxy resource

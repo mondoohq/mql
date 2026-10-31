@@ -124,3 +124,40 @@ func TestFrrRuntimeQueriesCompile(t *testing.T) {
 		})
 	}
 }
+
+// The routing information base resources read what BGP actually carries.
+// These pin one read of every field plus the questions they exist to answer.
+func TestFrrRIBQueriesCompile(t *testing.T) {
+	schema := testutils.MustLoadSchema(testutils.SchemaProvider{Provider: "core"}).
+		Add(testutils.MustLoadSchema(testutils.SchemaProvider{Provider: "os"}))
+
+	queries := []string{
+		// the posture questions these resources exist to answer
+		`frr.evpnRoutes.truncated == false`,
+		`frr.evpn.routeTable(vni: 4001).entries.all(routeTargets.length > 0)`,
+		`frr.evpn.routeTable(vni: 4001).entries.where(routeType == 2).length > 0`,
+		`frr.evpn.routeTable.entries.where(routeTargets.containsOnly(["65100:5000"])).length > 0`,
+		`frr.bgp.peerRoutes(peer: "swp1").entries.all(communities.contains("65100:200"))`,
+		`frr.bgp.peerRoutes(peer: "swp1", direction: "received").available`,
+		`frr.bgp.peerRoutes(peer: "swp1", direction: "received").filteredCount == 0`,
+
+		// evpn table
+		`frr.evpnRoutes { vni limit total truncated }`,
+		`frr.evpn.routeTable(vni: 4001, limit: 100) { total truncated }`,
+		`frr.evpnRoutes.entries { rd prefix routeType routeTypeName ethernetTag macAddress ip routeTargets }`,
+		`frr.evpnRoutes.entries { paths { prefix nexthop peer asPath origin } }`,
+
+		// peer routes
+		`frr.bgp.peerRoutes(peer: "swp1") { peer direction vrf afi limit available total truncated filteredCount }`,
+		`frr.bgp.peerRoutes(peer: "192.0.2.1", vrf: "t-blue", afi: "ipv6", limit: 10) { total }`,
+		`frr.bgp.peerRoutes(peer: "swp1").entries { prefix prefixLength nexthop peer asPath origin metric localPreference weight }`,
+		`frr.bgp.peerRoutes(peer: "swp1").entries { valid bestPath communities largeCommunities extendedCommunities routeTargets }`,
+	}
+
+	for _, query := range queries {
+		t.Run(query, func(t *testing.T) {
+			_, err := mqlc.Compile(query, nil, mqlc.NewConfig(schema, features))
+			require.NoError(t, err, "query %q should compile", query)
+		})
+	}
+}
