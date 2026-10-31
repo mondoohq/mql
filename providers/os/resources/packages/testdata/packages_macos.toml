@@ -93,7 +93,7 @@ stdout = """<?xml version="1.0" encoding="UTF-8"?>
 			</dict>
 			<dict>
 				<key>_name</key>
-				<string>Microsoft Teams (PWA)</string>
+				<string>Build Number Only</string>
 				<key>arch_kind</key>
 				<string>arch_arm_i64</string>
 				<key>lastModified</key>
@@ -101,7 +101,35 @@ stdout = """<?xml version="1.0" encoding="UTF-8"?>
 				<key>obtained_from</key>
 				<string>identified_developer</string>
 				<key>path</key>
-				<string>/Applications/Microsoft Teams (PWA).app</string>
+				<string>/Applications/Build Number Only.app</string>
+			</dict>
+			<dict>
+				<key>_name</key>
+				<string>Hello</string>
+				<key>obtained_from</key>
+				<string>unknown</string>
+				<key>path</key>
+				<string>/Users/user/Applications/Hello.app</string>
+			</dict>
+			<dict>
+				<key>_name</key>
+				<string>Automator Application Stub</string>
+				<key>obtained_from</key>
+				<string>unknown</string>
+				<key>path</key>
+				<string>/System/Library/CoreServices/Automator Application Stub.app</string>
+				<key>version</key>
+				<string>1.3</string>
+			</dict>
+			<dict>
+				<key>_name</key>
+				<string>Microsoft Teams (PWA)</string>
+				<key>obtained_from</key>
+				<string>unknown</string>
+				<key>path</key>
+				<string>/Users/user/Applications/Chrome Apps.localized/Microsoft Teams (PWA).app</string>
+				<key>version</key>
+				<string></string>
 			</dict>
 			<dict>
 				<key>_name</key>
@@ -378,17 +406,80 @@ content = """<?xml version="1.0" encoding="UTF-8"?>
 </plist>
 """
 
-[files."/Applications/Microsoft Teams (PWA).app/Contents/Info.plist"]
+[files."/Applications/Build Number Only.app/Contents/Info.plist"]
 content = """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
 	<key>CFBundleIdentifier</key>
-	<string>com.microsoft.teams2.pwa</string>
+	<string>com.example.build-number-only</string>
 	<key>CFBundleName</key>
-	<string>Microsoft Teams (PWA)</string>
+	<string>Build Number Only</string>
 	<key>CFBundleVersion</key>
 	<string>7778.181</string>
+</dict>
+</plist>
+"""
+
+# Bundles that wrap a script, a workflow or a website. Each is reported by
+# system_profiler and none of them is a package.
+#
+# Measured: macOS 27.0.1, 2026-10-31. osacompile -o Hello.app -e 'display dialog "hi"'
+[files."/Users/user/Applications/Hello.app/Contents/Info.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleExecutable</key>
+	<string>applet</string>
+	<key>CFBundleName</key>
+	<string>Hello</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleSignature</key>
+	<string>aplt</string>
+</dict>
+</plist>
+"""
+
+# Measured: macOS 27.0.1, 2026-10-31. The stub Automator copies when a workflow
+# is saved as an application.
+[files."/System/Library/CoreServices/Automator Application Stub.app/Contents/Info.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleExecutable</key>
+	<string>Automator Application Stub</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.apple.Automator.Automator-Application-Stub</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.3</string>
+</dict>
+</plist>
+"""
+
+# Measured: macOS 27.0.1, Google Chrome 156, 2026-10-31. A web app installed
+# from Chrome. CFBundleVersion is Chrome's build number, not the website's.
+[files."/Users/user/Applications/Chrome Apps.localized/Microsoft Teams (PWA).app/Contents/Info.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleExecutable</key>
+	<string>app_mode_loader</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.google.Chrome.app.cifhbcnohmdccbgoicgdjpfamggdegmo</string>
+	<key>CFBundleName</key>
+	<string>Microsoft Teams (PWA)</string>
+	<key>CFBundleShortVersionString</key>
+	<string></string>
+	<key>CFBundleVersion</key>
+	<string>8059.85</string>
+	<key>CrAppModeShortcutID</key>
+	<string>cifhbcnohmdccbgoicgdjpfamggdegmo</string>
+	<key>CrAppModeShortcutURL</key>
+	<string>https://teams.microsoft.com/v2/?clientType=pwa</string>
 </dict>
 </plist>
 """
