@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -96,4 +97,18 @@ func TestAthenaColumnsToDict(t *testing.T) {
 		// nil *string comment must degrade to "" rather than panic.
 		assert.Equal(t, "", second["comment"])
 	})
+}
+
+func TestAthenaCatalogHasNoTags(t *testing.T) {
+	// Measured: us-east-1, 2026-10-30. ListTagsForResource on the built-in
+	// catalog's ARN answered with this error.
+	assert.True(t, athenaCatalogHasNoTags(athenaAPIErr("ResourceNotFoundException",
+		"Could not find valid resource from ARN: arn:aws:athena:us-east-1:000000000000:datacatalog/AwsDataCatalog")))
+
+	// Synthetic: a refusal and a malformed request still surface; no target
+	// showed these.
+	assert.False(t, athenaCatalogHasNoTags(athenaAPIErr("AccessDeniedException", "not authorized")))
+	assert.False(t, athenaCatalogHasNoTags(athenaAPIErr("InvalidRequestException", "invalid ARN")))
+	// Synthetic: a transport error is not an API answer.
+	assert.False(t, athenaCatalogHasNoTags(errors.New("dial tcp: connection refused")))
 }

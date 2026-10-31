@@ -4,7 +4,9 @@
 package resources
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/oracle/oci-go-sdk/v65/generativeaiagent"
@@ -131,4 +133,66 @@ func TestOciSelectByID(t *testing.T) {
 	assert.Equal(t, []any{c, a}, ociSelectByID(items, []string{"c", "missing", "a"}))
 	assert.Empty(t, ociSelectByID(items, []string{"missing", ""}))
 	assert.Empty(t, ociSelectByID(nil, []string{"a"}))
+}
+
+func TestOciListAgentTools(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("no agents lists no tools", func(t *testing.T) {
+		// Measured: OCI tenancy with no generative AI agents, 2026-10-30. The
+		// compartment-only ListTools call failed with 400 MissingParameter
+		// "agentId must be provided"; with no agents nothing is listed.
+		calls := 0
+		tools, err := ociListAgentTools(ctx, nil, func(ctx context.Context, agentID string, page *string) ([]generativeaiagent.ToolSummary, *string, error) {
+			calls++
+			return nil, nil, errors.New("agentId must be provided")
+		})
+		require.NoError(t, err)
+		assert.NotNil(t, tools)
+		assert.Empty(t, tools)
+		assert.Equal(t, 0, calls)
+	})
+
+	t.Run("pages through the tools of each agent", func(t *testing.T) {
+		// Synthetic: two agents, the first with two pages of tools; an agent
+		// without an id is skipped; no target showed this.
+		next := "p2"
+		pages := map[string]map[string][]generativeaiagent.ToolSummary{
+			"agent-a": {
+				"":   {{Id: new("tool-1"), AgentId: new("agent-a")}},
+				"p2": {{Id: new("tool-2"), AgentId: new("agent-a")}},
+			},
+			"agent-b": {
+				"": {{Id: new("tool-3"), AgentId: new("agent-b")}},
+			},
+		}
+		var seen []string
+		tools, err := ociListAgentTools(ctx, []string{"agent-a", "", "agent-b"}, func(ctx context.Context, agentID string, page *string) ([]generativeaiagent.ToolSummary, *string, error) {
+			cursor := ""
+			if page != nil {
+				cursor = *page
+			}
+			seen = append(seen, agentID+"/"+cursor)
+			if agentID == "agent-a" && cursor == "" {
+				return pages[agentID][cursor], &next, nil
+			}
+			return pages[agentID][cursor], nil, nil
+		})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"agent-a/", "agent-a/p2", "agent-b/"}, seen)
+		ids := make([]string, 0, len(tools))
+		for _, tool := range tools {
+			ids = append(ids, *tool.Id)
+		}
+		assert.Equal(t, []string{"tool-1", "tool-2", "tool-3"}, ids)
+	})
+
+	t.Run("a failed page fails the walk", func(t *testing.T) {
+		// Synthetic: the service error reaches the caller so region handling
+		// can classify it; no target showed this.
+		_, err := ociListAgentTools(ctx, []string{"agent-a"}, func(ctx context.Context, agentID string, page *string) ([]generativeaiagent.ToolSummary, *string, error) {
+			return nil, nil, errors.New("boom")
+		})
+		assert.EqualError(t, err, "boom")
+	})
 }

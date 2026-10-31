@@ -536,8 +536,10 @@ func (o *mqlOciAiAgents) tools() ([]any, error) {
 				return nil, err
 			}
 
-			items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]generativeaiagent.ToolSummary, *string, error) {
-				response, err := svc.ListTools(ctx, generativeaiagent.ListToolsRequest{
+			// ListTools requires an agentId, so list the agents of this
+			// compartment and walk the tools of each one.
+			agents, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]generativeaiagent.AgentSummary, *string, error) {
+				response, err := svc.ListAgents(ctx, generativeaiagent.ListAgentsRequest{
 					CompartmentId: new(compartmentID),
 					Page:          page,
 				})
@@ -546,6 +548,23 @@ func (o *mqlOciAiAgents) tools() ([]any, error) {
 				}
 				return response.Items, response.OpcNextPage, nil
 			})
+			var items []generativeaiagent.ToolSummary
+			if err == nil {
+				agentIDs := make([]string, 0, len(agents))
+				for i := range agents {
+					agentIDs = append(agentIDs, stringValue(agents[i].Id))
+				}
+				items, err = ociListAgentTools(ctx, agentIDs, func(ctx context.Context, agentID string, page *string) ([]generativeaiagent.ToolSummary, *string, error) {
+					response, err := svc.ListTools(ctx, generativeaiagent.ListToolsRequest{
+						AgentId: new(agentID),
+						Page:    page,
+					})
+					if err != nil {
+						return nil, nil, err
+					}
+					return response.Items, response.OpcNextPage, nil
+				})
+			}
 			if err != nil {
 				if ociRegionServiceUnavailable(err) {
 					return []any{}, nil
@@ -587,6 +606,25 @@ func (o *mqlOciAiAgents) tools() ([]any, error) {
 			}
 			return res, nil
 		})
+}
+
+// ociListAgentTools lists the tools of every agent, one paginated ListTools
+// walk per agent. Agents with an empty id are skipped.
+func ociListAgentTools(ctx context.Context, agentIDs []string, page func(ctx context.Context, agentID string, page *string) ([]generativeaiagent.ToolSummary, *string, error)) ([]generativeaiagent.ToolSummary, error) {
+	tools := []generativeaiagent.ToolSummary{}
+	for _, agentID := range agentIDs {
+		if agentID == "" {
+			continue
+		}
+		items, err := ociPaginate(ctx, func(ctx context.Context, cursor *string) ([]generativeaiagent.ToolSummary, *string, error) {
+			return page(ctx, agentID, cursor)
+		})
+		if err != nil {
+			return nil, err
+		}
+		tools = append(tools, items...)
+	}
+	return tools, nil
 }
 
 type mqlOciAiAgentsToolInternal struct {
