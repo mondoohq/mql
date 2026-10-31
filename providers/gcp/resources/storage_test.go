@@ -348,6 +348,7 @@ func TestBucketEffectiveTags(t *testing.T) {
 		if structured {
 			require.Error(t, err)
 			assert.False(t, errors.Is(err, llx.ErrForbidden))
+			assert.Nil(t, tags)
 		} else {
 			require.NoError(t, err)
 			assert.Equal(t, map[string]any{}, tags)
