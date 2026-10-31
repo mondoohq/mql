@@ -129,6 +129,31 @@ jobs:
           echo "providers=$(echo -n $providers | jq -Rsc 'split(" ")')" >> $GITHUB_OUTPUT
           build=""
           root=$PWD
+
+          # What is published comes from the two provider indexes, read once
+          # each, instead of one request per provider: ~150 reads meant a single
+          # DNS blip failed the whole job (curl exit 6 after 50 providers).
+          # install.mondoo.com redirects to releases.mondoo.com, the copy
+          # clients install from. Every read retries transient errors; a 404 is
+          # not an error to curl without --fail, so "unreleased" is not retried.
+          CURL_OPTS=(--silent --show-error --location --retry 5 --retry-delay 3 --retry-all-errors --connect-timeout 10 --max-time 30)
+          PROVIDERS_URL="https://install.mondoo.com/providers"
+          fetch_index() {
+            local body
+            if ! body=$(curl "${CURL_OPTS[@]}" --fail "$PROVIDERS_URL/$1"); then
+              echo "::error::could not read $PROVIDERS_URL/$1 after retries" >&2
+              return 1
+            fi
+            # An empty index would make every provider look unreleased.
+            if ! echo "$body" | jq -e '.providers | length > 0' >/dev/null; then
+              echo "::error::$PROVIDERS_URL/$1 lists no providers" >&2
+              return 1
+            fi
+            echo "$body"
+          }
+          LATEST_INDEX=$(fetch_index latest.json) || exit 1
+          PREVIEW_INDEX=$(fetch_index preview.json) || exit 1
+
           for p in $providers; do
             skip=0
             for s in $SKIP_PROVIDERS; do
@@ -153,14 +178,38 @@ jobs:
             # comparing it against latest.json is a second comparison that never
             # converges: it would republish the same version on every push.
             case "$REPO_VERSION" in
-              *-*) POINTER="preview.json" ;;
-              *)   POINTER="latest.json" ;;
+              *-*) POINTER="preview.json"; INDEX=$PREVIEW_INDEX ;;
+              *)   POINTER="latest.json"; INDEX=$LATEST_INDEX ;;
             esac
-            STATUS_CODE=$(curl -s -o /dev/null -I -w "%{http_code}" https://releases.mondoo.com/providers/${p}/${POINTER})
-            if [ "$STATUS_CODE" -eq "404" ]; then
-              DIST_VERSION="unreleased"
-            else
-              DIST_VERSION=$(curl -s https://releases.mondoo.com/providers/${p}/${POINTER} | jq -r .version)
+            DIST_VERSION=$(echo "$INDEX" | jq -r --arg n "$p" '[.providers[] | select(.name == $n) | .version][0] // "unreleased"')
+
+            # The index is rebuilt after a publish and can trail the provider's
+            # own pointer by minutes. Confirm a difference there before building,
+            # or a push in that window would republish a version that is out.
+            if [ "$DIST_VERSION" != "$REPO_VERSION" ]; then
+              # One GET for the status and the body. No --fail: with it, a 404
+              # would be retried as an error, and a network failure could not be
+              # told apart from "unreleased". 5xx is retried by --retry anyway.
+              POINTER_URL="$PROVIDERS_URL/${p}/${POINTER}"
+              if ! RESPONSE=$(curl "${CURL_OPTS[@]}" -w '\n%{http_code}' "$POINTER_URL"); then
+                echo "::error::could not reach $POINTER_URL after retries"
+                exit 1
+              fi
+              STATUS_CODE=${RESPONSE##*$'\n'}
+              if [ "$STATUS_CODE" = "404" ]; then
+                DIST_VERSION="unreleased"
+              elif [ "$STATUS_CODE" != "200" ]; then
+                echo "::error::could not read $POINTER_URL: HTTP $STATUS_CODE after retries"
+                exit 1
+              else
+                DIST_VERSION=$(echo "${RESPONSE%$'\n'*}" | jq -r .version)
+                # A pointer without a version would never equal the local one and
+                # republish the provider on every push. Stop instead.
+                if [ -z "$DIST_VERSION" ] || [ "$DIST_VERSION" = "null" ]; then
+                  echo "::error::$POINTER_URL has no version"
+                  exit 1
+                fi
+              fi
             fi
             printf "PROVIDER $p:\n  Local version: $REPO_VERSION\n  Remote version: $DIST_VERSION (from $POINTER)\n"
 
