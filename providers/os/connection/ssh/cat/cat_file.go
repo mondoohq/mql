@@ -63,6 +63,18 @@ func (f *File) readContent() ([]byte, error) {
 		return nil, err
 	}
 
+	// A file cat cannot read (permission denied for a scan that is not root,
+	// an I/O error from /proc) read as an empty file. In the base64 pipeline
+	// the exit status is base64's, so cat's own complaint on stderr is what
+	// tells.
+	var stderr []byte
+	if cmd.Stderr != nil {
+		stderr, _ = io.ReadAll(cmd.Stderr)
+	}
+	if cmd.ExitStatus != 0 || catFailed(stderr) {
+		return nil, readError(f.path, string(stderr))
+	}
+
 	if f.useBase64encoding {
 		data, err = base64.StdEncoding.DecodeString(string(data))
 		if err != nil {
@@ -71,6 +83,33 @@ func (f *File) readContent() ([]byte, error) {
 	}
 
 	return data, nil
+}
+
+// catFailed reports whether cat printed an error of its own.
+func catFailed(stderr []byte) bool {
+	for _, line := range strings.Split(string(stderr), "\n") {
+		if strings.HasPrefix(line, "cat: ") {
+			return true
+		}
+	}
+	return false
+}
+
+// readError turns what a failed read printed into an error that says why,
+// matching the standard errors a local read returns.
+func readError(path string, stderr string) error {
+	msg := strings.TrimSpace(stderr)
+	// "cat: <path>: Input/output error" names the path the error already does
+	msg = strings.TrimPrefix(msg, "cat: "+path+": ")
+	switch {
+	case strings.Contains(msg, "Permission denied"), strings.Contains(msg, "Access to the path"):
+		return &os.PathError{Op: "read", Path: path, Err: os.ErrPermission}
+	case strings.Contains(msg, "No such file or directory"):
+		return &os.PathError{Op: "read", Path: path, Err: os.ErrNotExist}
+	case msg == "":
+		return &os.PathError{Op: "read", Path: path, Err: errors.New("could not read file")}
+	}
+	return &os.PathError{Op: "read", Path: path, Err: errors.New(msg)}
 }
 
 func (f *File) Close() error {
