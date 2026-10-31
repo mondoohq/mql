@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"net"
 	"net/http"
+	"slices"
 	"time"
 
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
@@ -99,6 +100,14 @@ func (p *HostConnection) Client(followRedirects bool) *http.Client {
 // the ones it considers insecure, so the client can still complete a handshake
 // with a legacy server and report what it serves. Computed once; never mutated.
 var legacyCipherSuites = allCipherSuites()
+
+// LegacyCipherSuites returns a copy of every TLS 1.0-1.2 cipher suite Go
+// implements, for a scanner's own handshakes. Go leaves RSA key exchange and 3DES
+// out of a client's defaults, and since Go 1.27 no GODEBUG setting puts them back:
+// they are offered only when a tls.Config lists them.
+func LegacyCipherSuites() []uint16 {
+	return slices.Clone(legacyCipherSuites)
+}
 
 func allCipherSuites() []uint16 {
 	suites := make([]uint16, 0, 32)

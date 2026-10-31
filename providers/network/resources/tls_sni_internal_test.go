@@ -7,6 +7,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -147,4 +148,57 @@ func TestGatherTlsCertificatesNoSNIHandshakeFails(t *testing.T) {
 	require.Len(t, certs, 1)
 	assert.Equal(t, "sni.example", certs[0].Subject.CommonName)
 	assert.Nil(t, nonSni)
+}
+
+// A server that offers only an RSA-key-exchange suite over TLS 1.2, as a legacy
+// Apache/OpenSSL stack does: the certificate handshakes still complete. Go leaves
+// these suites out of a client's defaults, and since Go 1.27 the tlsrsakex GODEBUG
+// that used to restore them is gone, so the handshake works only because the
+// client lists them.
+// Measured: nginx 1.29 with `ssl_protocols TLSv1.2; ssl_ciphers AES128-SHA;`,
+// 2026-10-31. Without the explicit suites every certificate check errored.
+func TestGatherTlsCertificatesRSAKeyExchangeOnly(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(7),
+		Subject:      pkix.Name{CommonName: "legacy.example"},
+		DNSNames:     []string{"legacy.example"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	require.NoError(t, err)
+	cert := tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
+
+	ln, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+		MaxVersion:   tls.VersionTLS12,
+		CipherSuites: []uint16{tls.TLS_RSA_WITH_AES_128_CBC_SHA},
+	})
+	require.NoError(t, err)
+	defer ln.Close()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				_ = c.(*tls.Conn).Handshake()
+				c.Close()
+			}()
+		}
+	}()
+
+	host, port, err := net.SplitHostPort(ln.Addr().String())
+	require.NoError(t, err)
+	sniCerts, nonSniCerts, nonSniErr, err := gatherTlsCertificates("tcp", host, port, "legacy.example")
+	require.NoError(t, err)
+	require.NoError(t, nonSniErr)
+	require.Len(t, sniCerts, 1)
+	assert.Equal(t, "legacy.example", sniCerts[0].Subject.CommonName)
+	// The same certificate is served without SNI, so none is reported as different.
+	assert.Empty(t, nonSniCerts)
 }
