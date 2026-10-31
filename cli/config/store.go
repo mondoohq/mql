@@ -55,7 +55,11 @@ func privateMode(mode os.FileMode) os.FileMode {
 // modes are preserved. A missing file is not an error.
 //
 // On Windows, os.Chmod only toggles the read-only attribute and access is
-// governed by ACLs, so this is effectively a no-op there.
+// governed by access lists instead. A file under ProgramData, such as the
+// system config C:\ProgramData\Mondoo\mondoo.yml, would inherit ProgramData's
+// default access list, which lets every local user read it, so there it gets
+// an access list limited to SYSTEM and Administrators. Other files, such as a
+// config in the user's profile, keep the access list they inherit.
 func TightenFileMode(path string) error {
 	info, err := os.Stat(path)
 	if os.IsNotExist(err) {
@@ -65,16 +69,30 @@ func TightenFileMode(path string) error {
 		return err
 	}
 	if mode := privateMode(info.Mode()); mode != info.Mode().Perm() {
-		return os.Chmod(path, mode)
+		if err := os.Chmod(path, mode); err != nil {
+			return err
+		}
 	}
-	return nil
+	return restrictAccess(path)
 }
 
 // WritePrivateFile writes data to path for a file that may hold credentials. A
-// new file is created with PrivateFileMode. An existing file is tightened to
-// PrivateFileMode (keeping stricter modes) before any data is written, so the
-// new content is never readable by other users.
+// new file is created empty with PrivateFileMode and restricted first. An
+// existing file is tightened to PrivateFileMode (keeping stricter modes). Either
+// way the restriction is in place before any data is written, so the new
+// content is never readable by other users.
 func WritePrivateFile(path string, data []byte) error {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, PrivateFileMode)
+		if err != nil && !os.IsExist(err) {
+			return err
+		}
+		if f != nil {
+			if err := f.Close(); err != nil {
+				return err
+			}
+		}
+	}
 	if err := TightenFileMode(path); err != nil {
 		return err
 	}
