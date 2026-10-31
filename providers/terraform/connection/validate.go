@@ -6,6 +6,8 @@ package connection
 import (
 	"encoding/json"
 	"fmt"
+
+	"go.mondoo.com/mql/llx"
 )
 
 // documentKind describes what a JSON document handed to the state or plan
@@ -56,8 +58,8 @@ func classifyDocument(data []byte) (documentKind, error) {
 func validateStateDocument(data []byte) error {
 	kind, err := classifyDocument(data)
 	if err != nil {
-		return fmt.Errorf("state file is not valid JSON: %w. "+
-			"Convert it first with `terraform show -json > state.json`", err)
+		return llx.MalformedData(fmt.Errorf("state file is not valid JSON: %w. "+
+			"Convert it first with `terraform show -json > state.json`", err))
 	}
 
 	switch kind {
@@ -81,9 +83,9 @@ func validateStateDocument(data []byte) error {
 func validatePlanDocument(data []byte) error {
 	kind, err := classifyDocument(data)
 	if err != nil {
-		return fmt.Errorf("plan file is not valid JSON: %w. "+
+		return llx.MalformedData(fmt.Errorf("plan file is not valid JSON: %w. "+
 			"Binary plan files must be converted first with "+
-			"`terraform show -json tfplan > tfplan.json`", err)
+			"`terraform show -json tfplan > tfplan.json`", err))
 	}
 
 	switch kind {
