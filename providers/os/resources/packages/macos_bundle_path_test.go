@@ -54,3 +54,43 @@ func TestIsApplicationBundlePath(t *testing.T) {
 		})
 	}
 }
+
+func TestWrapperBundleKind(t *testing.T) {
+	tests := []struct {
+		name string
+		info infoPlist
+		want string
+	}{
+		// Measured: macOS 27.0.1, 2026-10-31, bundles written by osacompile.
+		// They carry no bundle identifier and no version.
+		{"applescript applet", infoPlist{Executable: "applet", BundleName: "Hello"}, "applescript"},
+		{"applescript droplet", infoPlist{Executable: "droplet", BundleName: "Drop"}, "applescript"},
+		// Measured: macOS 27.0.1, Script Editor's Cocoa-AppleScript Applet template.
+		{"applescriptobjc applet", infoPlist{Executable: "CocoaApplet", BundleID: "com.apple.ScriptEditor.id.cocoa-applet-template"}, "applescript"},
+		// Measured: macOS 27.0.1, /System/Library/CoreServices/Automator Application Stub.app.
+		{"automator stub", infoPlist{Executable: "Automator Application Stub", BundleID: "com.apple.Automator.Automator-Application-Stub", ShortVersion: "1.3"}, "automator"},
+		// Synthetic: a saved workflow identified by its bundle identifier alone;
+		// no target showed an executable other than the stub's.
+		{"automator workflow by id", infoPlist{Executable: "Something Else", BundleID: "com.apple.Automator.Resize-Images"}, "automator"},
+		// Measured: macOS 27.0.1, Google Chrome 156, Microsoft Teams installed as a web app.
+		{"chrome web app", infoPlist{Executable: "app_mode_loader", BundleID: "com.google.Chrome.app.cifhbcnohmdccbgoicgdjpfamggdegmo", BundleVersion: "8059.85", CrAppModeShortcutID: "cifhbcnohmdccbgoicgdjpfamggdegmo"}, "web-app"},
+		// Synthetic: a Chromium web app identified by its shortcut id alone.
+		{"chromium web app by shortcut id", infoPlist{Executable: "launcher", BundleID: "com.microsoft.edgemac.app.abc", CrAppModeShortcutID: "abc"}, "web-app"},
+		// Synthetic: Safari's Add to Dock identifier, com.apple.Safari.WebApp.<UUID>;
+		// no target showed one.
+		{"safari web app", infoPlist{BundleID: "com.apple.Safari.WebApp.6E1A2B9C-0F3D-4C51-9B7E-2A8D1F4C3E50"}, "web-app"},
+		// Measured: macOS 27.0.1. The applications that make these bundles are
+		// reported themselves.
+		{"automator", infoPlist{Executable: "Automator", BundleID: "com.apple.Automator"}, ""},
+		{"script editor", infoPlist{Executable: "Script Editor", BundleID: "com.apple.ScriptEditor2"}, ""},
+		{"chrome", infoPlist{Executable: "Google Chrome", BundleID: "com.google.Chrome"}, ""},
+		{"safari", infoPlist{Executable: "Safari", BundleID: "com.apple.Safari"}, ""},
+		// Synthetic: no Info.plist could be read (a wrapped iOS app).
+		{"empty info", infoPlist{}, ""},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, wrapperBundleKind(test.info))
+		})
+	}
+}

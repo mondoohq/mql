@@ -61,11 +61,18 @@ func TestMacOsXPackageParser(t *testing.T) {
 	assert.Equal(t, []packages.FileRecord{{Path: "/Applications/Firefox.app"}}, m[2].Files)
 
 	// system_profiler only surfaces CFBundleShortVersionString; when that is
-	// absent (e.g. a PWA that ships only a CFBundleVersion) we recover the
+	// absent (a bundle that ships only a CFBundleVersion) we recover the
 	// version from the bundle's Info.plist.
-	assert.Equal(t, "Microsoft Teams (PWA)", m[3].Name, "pkg name detected")
+	assert.Equal(t, "Build Number Only", m[3].Name, "pkg name detected")
 	assert.Equal(t, "7778.181", m[3].Version, "pkg version recovered from Info.plist")
-	assert.Equal(t, "pkg:macos/macos/Microsoft%20Teams%20%28PWA%29@7778.181?arch=x86_64&bundle-id=com.microsoft.teams2.pwa", m[3].PUrl)
+	assert.Equal(t, "pkg:macos/macos/Build%20Number%20Only@7778.181?arch=x86_64&bundle-id=com.example.build-number-only", m[3].PUrl)
+
+	// An AppleScript applet, Automator's application stub and a Chrome web
+	// app are all reported by system_profiler and none of them is a package.
+	for _, pkg := range m {
+		assert.NotContains(t, []string{"Hello", "Automator Application Stub", "Microsoft Teams (PWA)"}, pkg.Name,
+			"bundle wrapping a script, workflow or website reported as a package")
+	}
 
 	// An application bundle whose Info.plist carries no version keys at all is
 	// still a real installed application, so it is reported with an empty

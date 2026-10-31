@@ -69,6 +69,9 @@ type infoPlist struct {
 	// HasLocalizedDisplayName is LSHasLocalizedDisplayName. Bundles store it as
 	// a boolean, a number or a string, so it is decoded loosely.
 	HasLocalizedDisplayName any `plist:"LSHasLocalizedDisplayName"`
+	// CrAppModeShortcutID is set by Chromium-based browsers on the bundle
+	// they generate for an installed web app.
+	CrAppModeShortcutID string `plist:"CrAppModeShortcutID"`
 }
 
 // parse macos system version property list
@@ -133,9 +136,17 @@ func macOSApplicationPackages(conn shared.Connection, platform *inventory.Platfo
 		// identifier. A missing or unreadable one is not an error here, the
 		// version checks below decide what its absence means.
 		info, isBundle := entryInfoPlist(conn, entry)
+		if kind := wrapperBundleKind(info); kind != "" {
+			log.Debug().
+				Str("name", entry.Name).
+				Str("path", entry.Path).
+				Str("kind", kind).
+				Msg("skipping bundle that wraps a script, workflow or website")
+			continue
+		}
 
 		// system_profiler only surfaces CFBundleShortVersionString as the
-		// version. Some bundles (e.g. PWAs) ship a version only in
+		// version. Some bundles ship a version only in
 		// CFBundleVersion, so fall back to the bundle's Info.plist when
 		// system_profiler reports no version, or a version we cannot use.
 		version := stripVersionLabel(entry.Version)
@@ -444,6 +455,61 @@ func isApplicationBundlePath(path string) bool {
 	return true
 }
 
+// wrapperExecutables maps the CFBundleExecutable of a bundle that only wraps a
+// script or a workflow to what it wraps. Every such bundle runs the same
+// runtime binary that its authoring tool copies in, so the executable name
+// identifies them even though they carry no bundle identifier or version of
+// their own: osacompile writes neither.
+var wrapperExecutables = map[string]string{
+	// Script Editor and osacompile: a plain applet, a droplet (a script with
+	// an open handler) and an AppleScriptObjC applet.
+	"applet":      "applescript",
+	"droplet":     "applescript",
+	"CocoaApplet": "applescript",
+	// Automator saves a workflow as an application by copying its stub.
+	"Automator Application Stub": "automator",
+	"Application Stub":           "automator",
+	// Chromium-based browsers launch an installed web app through this loader.
+	"app_mode_loader": "web-app",
+}
+
+// wrapperBundleIDPrefixes are bundle identifier prefixes of bundles that only
+// wrap a workflow or a website.
+var wrapperBundleIDPrefixes = map[string]string{
+	// Automator names a saved workflow com.apple.Automator.<name>. The stub it
+	// copies from is com.apple.Automator.Automator-Application-Stub. Automator
+	// itself is com.apple.Automator and does not match.
+	"com.apple.Automator.": "automator",
+	// Safari's File > Add to Dock names a web app com.apple.Safari.WebApp.<UUID>.
+	"com.apple.Safari.WebApp.": "web-app",
+}
+
+// wrapperBundleKind returns what a bundle wraps when it is an AppleScript
+// applet, an Automator workflow or a web app, and "" for every other bundle.
+//
+// Those bundles have the shape of an application, so system_profiler reports
+// them and they pass isApplicationBundlePath, but they are not software that
+// was installed. An applet or workflow is a user's script, and a web app is a
+// shortcut to a website that runs inside a browser which is reported on its
+// own. None of them has a version that advisory data could match: applets
+// carry none, Automator copies report the stub's version, and web apps report
+// the website's. The software that runs them (Script Editor, Automator, the
+// browser) is reported as its own package.
+func wrapperBundleKind(info infoPlist) string {
+	if kind, ok := wrapperExecutables[info.Executable]; ok {
+		return kind
+	}
+	if info.CrAppModeShortcutID != "" {
+		return "web-app"
+	}
+	for prefix, kind := range wrapperBundleIDPrefixes {
+		if strings.HasPrefix(info.BundleID, prefix) {
+			return kind
+		}
+	}
+	return ""
+}
+
 // dependencyCacheMarkers are whole-segment path markers for caches that hold
 // dependencies and build products. Nothing under them is installed software:
 // the contents are read-only artifacts that no upgrade path touches, and they
@@ -587,8 +653,7 @@ func normalizeVersion(version string) string {
 // bundleVersionOf returns an app's version as its Info.plist states it. It
 // prefers CFBundleShortVersionString (the user-facing version) and falls back
 // to CFBundleVersion (the build version). system_profiler surfaces only the
-// former, so this recovers a version for bundles, such as PWAs, that ship only
-// the latter.
+// former, so this recovers a version for bundles that ship only the latter.
 func bundleVersionOf(info infoPlist) string {
 	if info.ShortVersion != "" {
 		return info.ShortVersion
