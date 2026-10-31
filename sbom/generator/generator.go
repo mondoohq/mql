@@ -6,6 +6,7 @@ package generator
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 
@@ -165,7 +166,7 @@ func GenerateBom(r *reporter.Report) []*sbom.Sbom {
 				bom.Asset.Platform.Family = rb.Asset.Family
 				bom.Asset.Platform.Arch = rb.Asset.Arch
 				bom.Asset.Platform.Cpes = rb.Asset.CPEs
-				bom.Asset.Platform.Labels = rb.Asset.Labels
+				bom.Asset.Platform.Labels = platformLabels(rb.Asset.Labels, rb.Asset.PlatformMetadata)
 				bom.Asset.PlatformIds = enrichPlatformIds(rb.Asset.IDs)
 				bom.Asset.Platform.Title = rb.Asset.PlatformTitle
 			}
@@ -451,4 +452,19 @@ func enrichPlatformIds(ids []string) []string {
 		}
 	}
 	return platformIds
+}
+
+// platformLabels merges the asset labels with the platform metadata into the
+// labels of the SBOM platform, metadata last, the order the vulnerability
+// database merges them in for an EOL lookup. The extended support programs
+// (SLES LTSS, Ubuntu Pro, ELS, ESU) are detected into the metadata, so without
+// it the lookup falls back to the end of general support.
+func platformLabels(labels, metadata map[string]string) map[string]string {
+	if len(metadata) == 0 {
+		return labels
+	}
+	merged := make(map[string]string, len(labels)+len(metadata))
+	maps.Copy(merged, labels)
+	maps.Copy(merged, metadata)
+	return merged
 }

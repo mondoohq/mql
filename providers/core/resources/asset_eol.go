@@ -22,10 +22,7 @@ func initAssetEol(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[st
 	}
 	asset := pkgs.(*mqlAsset)
 
-	labels := map[string]string{}
-	for k, v := range asset.Labels.Data {
-		labels[k] = v.(string)
-	}
+	labels := eolLabels(asset.Labels.Data, asset.PlatformMetadata.Data)
 
 	eolPlatform := &mvd.Platform{
 		Name:    asset.Platform.Data,
@@ -73,4 +70,21 @@ func initAssetEol(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[st
 	args["date"] = llx.TimeDataPtr(eolDate)
 
 	return args, nil, nil
+}
+
+// eolLabels returns the labels an EOL lookup sends for the asset: the asset
+// labels, then the platform metadata, the order the vulnerability database
+// merges them in. The extended support programs (SLES LTSS, Ubuntu Pro, ELS,
+// ESU) are detected into the metadata, so without it the lookup reports the
+// end of general support.
+func eolLabels(labels, metadata map[string]any) map[string]string {
+	res := make(map[string]string, len(labels)+len(metadata))
+	for _, m := range []map[string]any{labels, metadata} {
+		for k, v := range m {
+			if s, ok := v.(string); ok {
+				res[k] = s
+			}
+		}
+	}
+	return res
 }
