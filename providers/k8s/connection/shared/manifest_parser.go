@@ -158,7 +158,7 @@ func (t *ManifestParser) EffectiveNamespace(apiVersion, kind, namespace string) 
 }
 
 func (t *ManifestParser) SupportedResourceTypes() (*resources.ApiResourceIndex, error) {
-	return resources.NewApiResourceIndex(), nil
+	return t.resourceIndex()
 }
 
 func (t *ManifestParser) Namespace(name string) (*v1.Namespace, error) {

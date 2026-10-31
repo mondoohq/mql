@@ -121,6 +121,56 @@ func TestManifestDiscovery(t *testing.T) {
 	inv, err = resources.Discover(pluginRuntime, mql.Features{})
 	require.NoError(t, err)
 	require.Len(t, inv.Spec.Assets, 1)
+
+	conn.InventoryConfig().Discover.Targets = []string{"kyverno"}
+	pluginRuntime = &plugin.Runtime{
+		Resources:      &syncx.Map[plugin.Resource]{},
+		Connection:     conn,
+		HasRecording:   false,
+		CreateResource: resources.CreateResource,
+	}
+	inv, err = resources.Discover(pluginRuntime, mql.Features{})
+	require.NoError(t, err)
+	require.Len(t, inv.Spec.Assets, 1)
+}
+
+func TestManifestDiscoveryKyvernoNamespaceFilter(t *testing.T) {
+	path := "./testdata/valid/deployment.yaml"
+
+	runtime := K8s()
+	rootAsset := &inventory.Asset{
+		Connections: []*inventory.Config{{
+			Type: "k8s",
+			Options: map[string]string{
+				shared.OPTION_MANIFEST:  path,
+				shared.OPTION_NAMESPACE: "mondoo-operator",
+			},
+			Discover: &inventory.Discovery{
+				Targets: []string{"kyverno"},
+			},
+		}},
+	}
+	conn, err := manifest.NewConnection(0, rootAsset, manifest.WithManifestFile(path))
+	require.NoError(t, err)
+
+	err = runtime.Connect(&plugin.ConnectReq{
+		Asset: rootAsset,
+	})
+	require.NoError(t, err)
+
+	pluginRuntime := &plugin.Runtime{
+		Resources:      &syncx.Map[plugin.Resource]{},
+		Connection:     conn,
+		HasRecording:   false,
+		CreateResource: resources.CreateResource,
+	}
+	inv, err := resources.Discover(pluginRuntime, mql.Features{})
+	require.NoError(t, err)
+	require.Len(t, inv.Spec.Assets, 1)
+
+	require.NotEmpty(t, inv.Spec.Assets[0].PlatformIds)
+	assert.Contains(t, inv.Spec.Assets[0].PlatformIds[0], "/namespace/mondoo-operator")
+	assert.Equal(t, "mondoo-operator", inv.Spec.Assets[0].Connections[0].Options[shared.OPTION_NAMESPACE])
 }
 
 func TestOperatorManifest(t *testing.T) {
