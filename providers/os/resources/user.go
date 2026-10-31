@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -80,13 +81,25 @@ func initUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string
 	return nil, nil, errors.New("cannot find user, no search criteria provided")
 }
 
+// group resolves the user's primary group. It is null when no group has the
+// user's gid: a stale passwd entry, or Windows, where local accounts carry no
+// primary group ID (gid is -1) and no group can be matched to one.
 func (x *mqlUser) group(gid int64) (*mqlGroup, error) {
 	raw, err := CreateResource(x.MqlRuntime, "groups", nil)
 	if err != nil {
 		return nil, errors.New("cannot get groups info for user: " + err.Error())
 	}
 	groups := raw.(*mqlGroups)
-	return groups.findID(gid)
+	g, err := groups.findID(gid)
+	if err != nil {
+		var notFound resources.NotFoundError
+		if errors.As(err, &notFound) {
+			x.Group.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		return nil, err
+	}
+	return g, nil
 }
 
 func (u *mqlUser) authorizedkeys(home string) (*mqlAuthorizedkeys, error) {
@@ -212,7 +225,11 @@ func (x *mqlUsers) refreshCache(all []any) error {
 		// The first entry wins, as in getpw*/getgr*: an alias that shares an ID
 		// or name with an earlier entry (a second UID 0 account) must not
 		// rename the owner of every file with that ID.
-		if _, ok := x.usersByID[u.Uid.Data]; !ok {
+		//
+		// A negative ID is not an ID: Windows accounts have none and report -1,
+		// as do files whose owner could not be read. Indexing it would make
+		// every lookup of -1 return whichever account was listed first.
+		if _, ok := x.usersByID[u.Uid.Data]; !ok && u.Uid.Data >= 0 {
 			x.usersByID[u.Uid.Data] = u
 		}
 		if _, ok := x.usersByName[u.Name.Data]; !ok {
@@ -261,12 +278,69 @@ func loggedInUsers(runtime *plugin.Runtime, conn shared.Connection) (map[string]
 		return nil, err
 	}
 	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return map[string]bool{}, nil
+	exit := cmd.GetExitcode()
+	if !isWindows {
+		return parseLoggedInUsers(false, exit.Data, cmd.Stdout.Data, "")
+	}
+	if exit.Error != nil {
+		return nil, exit.Error
+	}
+	stdout := cmd.GetStdout()
+	if stdout.Error != nil {
+		return nil, stdout.Error
+	}
+	// stderr only tells a failure from "nobody is logged on" on a non-zero exit
+	if exit.Data == 0 {
+		return parseLoggedInUsers(true, 0, stdout.Data, "")
+	}
+	stderr := cmd.GetStderr()
+	if stderr.Error != nil {
+		return nil, stderr.Error
+	}
+	return parseLoggedInUsers(true, exit.Data, stdout.Data, stderr.Data)
+}
+
+// queryUserNoSessions reports whether `query user` said that nobody is logged
+// on. It exits 1 for that, the same code it uses for a failure, so the message
+// tells the two apart: "No User exists for *" in English. The message is
+// translated on other display languages, but it is always one line that
+// echoes the `*` the command queried for as a word of its own, which an error
+// message does not.
+func queryUserNoSessions(exit int64, stdout, stderr string) bool {
+	if exit != 1 || strings.TrimSpace(stdout) != "" {
+		return false
+	}
+	msg := strings.TrimSpace(stderr)
+	if strings.HasPrefix(msg, "No User exists for ") {
+		return true
+	}
+	if msg == "" || strings.ContainsAny(msg, "\r\n") {
+		return false
+	}
+	return slices.Contains(strings.Fields(msg), "*")
+}
+
+// parseLoggedInUsers reads the output of `who`, or of `query user` on Windows,
+// into the set of logged-in user names.
+//
+// On Windows a non-zero exit is an error unless `query user` said nobody is
+// logged on: query.exe is missing on some editions (cmd.exe exits 9009), and
+// reporting every user as logged out there would read as a measured answer.
+func parseLoggedInUsers(isWindows bool, exit int64, stdout, stderr string) (map[string]bool, error) {
+	if exit != 0 {
+		if !isWindows || queryUserNoSessions(exit, stdout, stderr) {
+			return map[string]bool{}, nil
+		}
+		msg := strings.TrimSpace(stderr)
+		if msg == "" {
+			msg = strings.TrimSpace(stdout)
+		}
+		return nil, errors.New("cannot list logged-in users, query user exited with " +
+			strconv.FormatInt(exit, 10) + ": " + msg)
 	}
 
 	users := map[string]bool{}
-	for i, line := range strings.Split(cmd.Stdout.Data, "\n") {
+	for i, line := range strings.Split(stdout, "\n") {
 		// Skip header row from "query user" on Windows
 		if isWindows && i == 0 {
 			continue
