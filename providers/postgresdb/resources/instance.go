@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"errors"
 	"time"
 
 	"go.mondoo.com/mql/llx"
@@ -72,9 +73,41 @@ func initPostgresdbInstance(runtime *plugin.Runtime, args map[string]*llx.RawDat
 	return args, nil, nil
 }
 
+// canReadAllSettingsQuery reports whether the session sees every row of
+// pg_settings. Parameters flagged superuser-only are left out of the view
+// for everyone else, unless the role is a member of pg_read_all_settings
+// (PostgreSQL 10+). CASE keeps pg_has_role from running on older servers,
+// where the role does not exist.
+const canReadAllSettingsQuery = `SELECT CASE
+		WHEN current_setting('is_superuser') = 'on' THEN true
+		WHEN current_setting('server_version_num')::int >= 100000
+			THEN pg_has_role('pg_read_all_settings', 'MEMBER')
+		ELSE false
+	END`
+
+// settingsRefusal returns the error for a session that cannot see every
+// setting, or nil when the partial list is to be returned. Through v14 the
+// partial list stays the default (v13 behavior); with StructuredErrors on it
+// is a refusal (ADR 046), since a check against a hidden parameter would
+// otherwise pass on an empty match.
+func settingsRefusal(canReadAll bool) error {
+	if canReadAll || !plugin.StructuredErrors() {
+		return nil
+	}
+	return llx.Forbidden(errors.New("superuser-only settings are hidden from this role; it needs superuser or membership in pg_read_all_settings"),
+		llx.WithPermissions("pg_read_all_settings"))
+}
+
 func (r *mqlPostgresdbInstance) settings() ([]any, error) {
 	pool, err := pgPool(r.MqlRuntime, "")
 	if err != nil {
+		return nil, err
+	}
+	var canReadAll bool
+	if err := pool.QueryRow(pgContext(), canReadAllSettingsQuery).Scan(&canReadAll); err != nil {
+		return nil, err
+	}
+	if err := settingsRefusal(canReadAll); err != nil {
 		return nil, err
 	}
 	rows, err := pool.Query(pgContext(),
