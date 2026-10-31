@@ -27,25 +27,31 @@ func intKeys(m map[int]any) []int {
 	return keys
 }
 
-// Note: We override the default output here to enable JSON5 like export of infinity.
+// MQL represents an unbounded int as math.MaxInt64 (Inf) or math.MinInt64
+// (-Inf). JSON has no token for infinity, so these export as the strings
+// "Inf" and "-Inf", the same way an infinite time exports as "Never".
 func int2json(i int64) string {
 	if i == math.MaxInt64 {
-		return "Inf"
+		return `"Inf"`
 	}
 	if i == math.MinInt64 {
-		return "-Inf"
+		return `"-Inf"`
 	}
 
 	return strconv.FormatInt(i, 10)
 }
 
-// Note: We override the default output here to enable JSON5 like export of infinity.
+// JSON has no token for infinity or NaN, so these export as the strings
+// "Inf", "-Inf" and "NaN".
 func float2json(f float64) string {
 	if math.IsInf(f, 1) {
-		return "Inf"
+		return `"Inf"`
 	}
 	if math.IsInf(f, -1) {
-		return "-Inf"
+		return `"-Inf"`
+	}
+	if math.IsNaN(f) {
+		return `"NaN"`
 	}
 
 	return strconv.FormatFloat(f, 'g', -1, 64)
@@ -357,17 +363,7 @@ func rawDataJSON(typ types.Type, data any, codeID string, bundle *CodeBundle, bu
 		return nil
 
 	case types.Float:
-		// Note: We override the default output here to enable JSON5 like export of infinity.
-		if math.IsInf(data.(float64), 1) {
-			buf.WriteString("Inf")
-			return nil
-		}
-		if math.IsInf(data.(float64), -1) {
-			buf.WriteString("-Inf")
-			return nil
-		}
-
-		buf.WriteString(strconv.FormatFloat(data.(float64), 'g', -1, 64))
+		buf.WriteString(float2json(data.(float64)))
 		return nil
 
 	case types.String:
