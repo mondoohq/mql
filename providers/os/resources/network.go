@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/rs/zerolog/log"
@@ -130,14 +131,31 @@ func (c *mqlNetwork) ipv6() ([]any, error) {
 // global one sat on en0. Where no routable address remains the field reads
 // null, which is the answer a host with no default route already gets.
 func (c *mqlNetwork) primaryIPByDefaultRoute(version uint8, defaultDests []string) (llx.RawIP, error) {
+	res, err := c.primaryIPResourceByDefaultRoute(version, defaultDests)
+	if err != nil || res == nil {
+		return llx.RawIP{}, err
+	}
+
+	ip := res.GetIp()
+	if ip.Error != nil {
+		return llx.RawIP{}, ip.Error
+	}
+	return ip.Data, nil
+}
+
+// primaryIPResourceByDefaultRoute is primaryIPByDefaultRoute's search, kept
+// apart so the ipAddress resource can hand back the address resource the
+// interface already carries rather than build a second one for the same
+// address. It reports nil, and no error, where no routable address remains.
+func (c *mqlNetwork) primaryIPResourceByDefaultRoute(version uint8, defaultDests []string) (*mqlIpAddress, error) {
 	routes := c.GetRoutes()
 	if routes.Error != nil {
-		return llx.RawIP{}, routes.Error
+		return nil, routes.Error
 	}
 
 	defaults := routes.Data.GetDefaults()
 	if defaults.Error != nil {
-		return llx.RawIP{}, defaults.Error
+		return nil, defaults.Error
 	}
 
 	destSet := make(map[string]bool, len(defaultDests))
@@ -181,11 +199,61 @@ func (c *mqlNetwork) primaryIPByDefaultRoute(version uint8, defaultDests []strin
 			if !isPrimaryIPCandidate(ip.Data, version) {
 				continue
 			}
-			return ip.Data, nil
+			return ipAddr, nil
 		}
 	}
 
-	return llx.RawIP{}, nil
+	return nil, nil
+}
+
+// initIpAddress answers a bare `ipAddress` query with the address the host is
+// reached at.
+//
+// The resource is otherwise only ever built with its values already supplied,
+// by network.interfaces and by the cloud instance metadata. Reached on its own
+// -- which the os.base.ipAddress alias invites -- it had nothing to resolve
+// from, so every field came back null and the runtime logged "provider
+// returned no data and no error for a field" five times over.
+//
+// The answer is the primary IPv4 address, or the primary IPv6 one on a host
+// with no IPv4 default route, matching network.primaryIPv4 and primaryIPv6
+// down to the link-local addresses those skip.
+func initIpAddress(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	// The args-already-complete fast path: network.interfaces and the cloud
+	// instance metadata both pass every field.
+	if len(args) > 0 {
+		return args, nil, nil
+	}
+
+	obj, err := CreateResource(runtime, "network", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, nil, err
+	}
+	network, ok := obj.(*mqlNetwork)
+	if !ok {
+		return nil, nil, errors.New("cannot determine the network configuration of this system")
+	}
+
+	for _, candidate := range []struct {
+		version uint8
+		dests   []string
+	}{
+		{4, []string{"0.0.0.0/0", "0.0.0.0", "default"}},
+		{6, []string{"::/0", "::"}},
+	} {
+		res, err := network.primaryIPResourceByDefaultRoute(candidate.version, candidate.dests)
+		if err != nil {
+			return nil, nil, err
+		}
+		if res != nil {
+			return nil, res, nil
+		}
+	}
+
+	// Falling through to an empty args map is what produced the null fields.
+	// A host with no default route has no address to be reached at, and saying
+	// so is the honest answer.
+	return nil, nil, errors.New("this system has no routable IP address on a default route")
 }
 
 // isPrimaryIPCandidate reports whether an address can stand as the host's
