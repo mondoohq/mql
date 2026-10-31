@@ -49,7 +49,7 @@ func NewHostConnection(id uint32, asset *inventory.Asset, conf *inventory.Config
 	// negotiates what it would anyway; TLS 1.3 ignores the suite list.
 	transport.TLSClientConfig = &tls.Config{
 		MinVersion:         tls.VersionTLS10,
-		CipherSuites:       legacyCipherSuites,
+		CipherSuites:       LegacyCipherSuites(),
 		InsecureSkipVerify: conf.Insecure, //nolint:gosec // only when the user asked for --insecure
 	}
 
