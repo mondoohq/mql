@@ -160,7 +160,7 @@ func compileResourceWhere(c *compiler, typ types.Type, ref uint64, id string, ca
 	if err != nil {
 		return types.Nil, err
 	}
-	if refs.isStandalone {
+	if refs.isStandalone && !c.EditorMode {
 		log.Warn().Str("resource", resource.Name).Msg("Detected a standalone function in a WHERE clause! This is probably unintended. Be sure to filter the list.")
 	}
 	if refs.block == 0 {

@@ -1202,6 +1202,9 @@ func (m *shellModel) listResources(filter string) string {
 func (m *shellModel) compilerConfig() mqlc.CompilerConfig {
 	conf := mqlc.NewConfigFrom(m.runtime, m.features)
 	conf.Strict = m.strict
+	// Interactive recompiles run on every keystroke, so keep non-fatal
+	// advisories like the standalone where warning out of the terminal.
+	conf.EditorMode = true
 	return conf
 }
 
