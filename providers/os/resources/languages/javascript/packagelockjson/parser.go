@@ -117,13 +117,18 @@ type packageLock struct {
 
 	// evidence is a list of file paths where the package-lock was found
 	evidence []string `json:"-"`
+	// declared holds the package.json dependency names (see Extractor)
+	declared []string `json:"-"`
 }
 
 type packageLockDependency struct {
-	Version   string `json:"version"`
-	Resolved  string `json:"resolved"`
-	Integrity string `json:"integrity"`
-	Dev       bool   `json:"dev"`
+	Version   string              `json:"version"`
+	Resolved  packageLockResolved `json:"resolved"`
+	Integrity string              `json:"integrity"`
+	Dev       bool                `json:"dev"`
+	// Dependencies holds the versions nested under this package because they
+	// could not be hoisted to the root (lockfileVersion 1 and older).
+	Dependencies map[string]packageLockDependency `json:"dependencies"`
 }
 
 type packageLockPackage struct {
@@ -139,6 +144,26 @@ type packageLockPackage struct {
 	Dev          bool              `json:"dev"`
 	DevOptional  bool              `json:"devOptional"`
 	Dependencies map[string]string `json:"dependencies"`
+}
+
+// packageLockResolved is the `resolved` URL of a lockfileVersion 1 entry. npm 6
+// writes `"resolved": false` for a package bundled inside another (fsevents
+// bundles its node-pre-gyp tree), so a plain string failed to decode the whole
+// lockfile once the nested tree was read.
+type packageLockResolved string
+
+func (r *packageLockResolved) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		*r = packageLockResolved(s)
+		return nil
+	}
+	var b bool
+	if err := json.Unmarshal(data, &b); err != nil {
+		return err
+	}
+	*r = ""
+	return nil
 }
 
 type packageLockLicense []string
