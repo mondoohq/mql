@@ -4,11 +4,21 @@
 package resources
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"google.golang.org/api/cloudresourcemanager/v3"
+	"google.golang.org/api/option"
 	"google.golang.org/api/storage/v1"
 )
 
@@ -280,5 +290,68 @@ func TestBucketTagKeyMatching(t *testing.T) {
 			}
 			assert.Equal(t, tc.wantExists, found)
 		})
+	}
+}
+
+func TestBucketEffectiveTags(t *testing.T) {
+	t.Cleanup(func() { plugin.ReadFeatures([]byte(mql.Features{byte(mql.ResourceContext)})) })
+
+	get := func(t *testing.T, status int, body string) (map[string]any, error) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Contains(t, r.URL.EscapedPath(), "/v3/locations/us-east1/effectiveTagBindingCollections/")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(body))
+		}))
+		t.Cleanup(srv.Close)
+		svc, err := cloudresourcemanager.NewService(context.Background(),
+			option.WithEndpoint(srv.URL+"/"),
+			option.WithHTTPClient(srv.Client()))
+		require.NoError(t, err)
+		resp, err := svc.Locations.EffectiveTagBindingCollections.Get("locations/us-east1/effectiveTagBindingCollections/b").Context(context.Background()).Do()
+		return bucketEffectiveTags("b", resp, err)
+	}
+
+	// Measured: GCP project bucket with one tag binding, 2026-10-30 (project id
+	// replaced). effectiveTagBindingCollections.Get answered with this body.
+	ok := `{"name":"locations/us-east1/effectiveTagBindingCollections/x","effectiveTags":{"example-project/mqlv1030-env":"dev"}}`
+	// Synthetic: a principal without storage.buckets.listEffectiveTags. The
+	// 403 PERMISSION_DENIED status was seen live via REST on a public bucket,
+	// 2026-10-30; the message text is invented.
+	denied := `{"error":{"code":403,"message":"The caller does not have permission","status":"PERMISSION_DENIED"}}`
+	// Synthetic: the bucket is gone; no target showed this.
+	notFound := `{"error":{"code":404,"message":"not found","status":"NOT_FOUND"}}`
+
+	for _, structured := range []bool{false, true} {
+		if structured {
+			plugin.ReadFeatures([]byte(mql.Features{byte(mql.StructuredErrors)}))
+		} else {
+			plugin.ReadFeatures([]byte(mql.Features{byte(mql.ResourceContext)}))
+		}
+
+		tags, err := get(t, http.StatusOK, ok)
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{"example-project/mqlv1030-env": "dev"}, tags)
+
+		tags, err = get(t, http.StatusForbidden, denied)
+		if structured {
+			require.Error(t, err)
+			assert.True(t, errors.Is(err, llx.ErrForbidden))
+			assert.Nil(t, tags)
+		} else {
+			// v13 behavior: a refusal reads as no tags.
+			require.NoError(t, err)
+			assert.Equal(t, map[string]any{}, tags)
+		}
+
+		tags, err = get(t, http.StatusNotFound, notFound)
+		if structured {
+			require.Error(t, err)
+			assert.False(t, errors.Is(err, llx.ErrForbidden))
+			assert.Nil(t, tags)
+		} else {
+			require.NoError(t, err)
+			assert.Equal(t, map[string]any{}, tags)
+		}
 	}
 }
