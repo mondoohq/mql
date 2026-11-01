@@ -296,6 +296,7 @@ type defenderPolicy struct {
 	scan      map[string]registry.RegistryKeyItem
 	reporting map[string]registry.RegistryKeyItem
 	features  map[string]registry.RegistryKeyItem
+	nis       map[string]registry.RegistryKeyItem
 }
 
 // readRegistryValues reads one registry key into a map keyed by lower-cased
@@ -339,6 +340,7 @@ func (p *mqlWindowsDefenderPreferences) getPolicy() (*defenderPolicy, error) {
 		{`Scan`, &pol.scan},
 		{`Reporting`, &pol.reporting},
 		{`Features`, &pol.features},
+		{`NIS`, &pol.nis},
 	}
 	for _, rd := range reads {
 		path := defenderPolicyKey
@@ -365,6 +367,17 @@ func prefOrPolicy(pref *bool, items map[string]registry.RegistryKeyItem, name st
 		return pref
 	}
 	return regBoolPtr(items, name)
+}
+
+// policyOrPref returns the Group Policy DWORD (non-zero is true) when the policy
+// is configured, otherwise the Get-MpPreference value. It is for a preference
+// Get-MpPreference reports without the policy's value, as false rather than null
+// on a machine the policy configures, so prefOrPolicy would never reach it.
+func policyOrPref(items map[string]registry.RegistryKeyItem, name string, pref *bool) *bool {
+	if v := regBoolPtr(items, name); v != nil {
+		return v
+	}
+	return pref
 }
 
 // defenderOverrides are the windows.defender.localSettingOverrides values.
@@ -625,6 +638,10 @@ func (p *mqlWindowsDefenderPreferences) networkProtection() (*mqlWindowsDefender
 	if err != nil {
 		return nil, err
 	}
+	pol, err := p.getPolicy()
+	if err != nil {
+		return nil, err
+	}
 	res, err := CreateResource(p.MqlRuntime, "windows.defender.networkProtectionSettings", map[string]*llx.RawData{
 		"__id":                               llx.StringData("windows.defender.networkProtectionSettings"),
 		"enableNetworkProtection":            llx.IntData(prefs.EnableNetworkProtection),
@@ -632,7 +649,7 @@ func (p *mqlWindowsDefenderPreferences) networkProtection() (*mqlWindowsDefender
 		"allowNetworkProtectionDownLevel":    llx.BoolData(prefs.AllowNetworkProtectionDownLevel),
 		"allowDatagramProcessingOnWinServer": llx.BoolData(prefs.AllowDatagramProcessingOnWinServer),
 		"enableDnsSinkhole":                  llx.BoolData(prefs.EnableDnsSinkhole),
-		"enableConvertWarnToBlock":           llx.BoolDataPtr(prefs.EnableConvertWarnToBlock),
+		"enableConvertWarnToBlock":           llx.BoolDataPtr(policyOrPref(pol.nis, "EnableConvertWarnToBlock", prefs.EnableConvertWarnToBlock)),
 	})
 	if err != nil {
 		return nil, err
