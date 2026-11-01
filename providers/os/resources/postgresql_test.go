@@ -340,12 +340,24 @@ func TestPostgresqlVersionlessPathsStillResolve(t *testing.T) {
 	}
 }
 
+// The official image moved PGDATA to /var/lib/postgresql/<MAJOR>/docker in
+// PostgreSQL 18, and every config file lives in the data directory.
+func TestPostgresqlOfficialImageVersionedDataDirectory(t *testing.T) {
+	for _, name := range []string{"postgresql.conf", "pg_hba.conf", "pg_ident.conf"} {
+		t.Run(name, func(t *testing.T) {
+			p := "/var/lib/postgresql/18/docker/" + name
+			assert.Equal(t, p, findPg(t, pgFs(t, p), name))
+		})
+	}
+}
+
 // The version-stamped groups keep the precedence the flat list gave them:
 // /etc/postgresql beats the version-less paths, which beat /var/lib/pgsql/<N>.
 func TestPostgresqlSearchOrderIsPreserved(t *testing.T) {
 	fs := pgFs(t,
 		"/etc/postgresql/16/main/postgresql.conf",
 		"/var/lib/postgresql/data/postgresql.conf",
+		"/var/lib/postgresql/18/docker/postgresql.conf",
 		"/var/lib/pgsql/18/data/postgresql.conf",
 		"/usr/local/pgsql/data/postgresql.conf",
 	)
@@ -353,6 +365,7 @@ func TestPostgresqlSearchOrderIsPreserved(t *testing.T) {
 		"/etc/postgresql/16/main/postgresql.conf",
 		"/var/lib/postgresql/data/postgresql.conf",
 		"/var/lib/pgsql/data/postgresql.conf",
+		"/var/lib/postgresql/18/docker/postgresql.conf",
 		"/var/lib/pgsql/18/data/postgresql.conf",
 		"/usr/local/var/postgres/postgresql.conf",
 		"/usr/local/pgsql/data/postgresql.conf",

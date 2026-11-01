@@ -35,8 +35,9 @@ import (
 //
 // Distro packages stamp the major version into the directory name
 // (/etc/postgresql/<MAJOR>/<CLUSTER> on Debian/Ubuntu, /var/lib/pgsql/<MAJOR>/data
-// on RHEL, /var/db/postgres/data<MAJOR> on FreeBSD), so those groups are
-// resolved by glob. Enumerating the majors
+// on RHEL, /var/db/postgres/data<MAJOR> on FreeBSD, and since PostgreSQL 18
+// /var/lib/postgresql/<MAJOR>/docker in the official container image), so those
+// groups are resolved by glob. Enumerating the majors
 // by hand goes stale the day a new one ships: the list previously stopped at
 // 17 and therefore found nothing at all on a PostgreSQL 18 install. The
 // remaining paths (container images, initdb defaults, homebrew) carry no
@@ -48,6 +49,9 @@ func postgresqlConfigSearchPaths(fs afero.Fs, name string) []string {
 		"/var/lib/postgresql/data/"+name,
 		"/var/lib/pgsql/data/"+name,
 	)
+	// Only PGDATA names this directory, and a scan without CAP_SYS_PTRACE (a
+	// container's default) cannot read the postmaster's environment.
+	paths = append(paths, versionedPostgresqlPaths(fs, "/var/lib/postgresql", "docker", name)...)
 	paths = append(paths, versionedPostgresqlPaths(fs, "/var/lib/pgsql", "data", name)...)
 	paths = append(paths, freebsdPostgresqlPaths(fs, name)...)
 	return append(paths,
