@@ -160,6 +160,36 @@ func TestResolveLocalSettingOverrides(t *testing.T) {
 
 // Get-MpPreference does not report these settings at all, so each must come
 // from the Group Policy value and subkey WindowsDefender.admx defines for it.
+func TestPolicyOrPref(t *testing.T) {
+	yes, no := true, false
+	nis := func(v int64) map[string]registry.RegistryKeyItem {
+		return defenderPolicyItems(map[string]int64{"EnableConvertWarnToBlock": v})
+	}
+	const name = "EnableConvertWarnToBlock"
+
+	t.Run("the policy wins over the false Get-MpPreference reports", func(t *testing.T) {
+		got := policyOrPref(nis(1), name, &no)
+		require.NotNil(t, got)
+		assert.True(t, *got)
+	})
+
+	t.Run("a policy turning it off wins too", func(t *testing.T) {
+		got := policyOrPref(nis(0), name, &yes)
+		require.NotNil(t, got)
+		assert.False(t, *got)
+	})
+
+	t.Run("without the policy the preference stands", func(t *testing.T) {
+		got := policyOrPref(nil, name, &yes)
+		require.NotNil(t, got)
+		assert.True(t, *got)
+	})
+
+	t.Run("neither is null", func(t *testing.T) {
+		assert.Nil(t, policyOrPref(nil, name, nil))
+	})
+}
+
 func TestResolveDefenderPolicyOnly(t *testing.T) {
 	t.Run("not configured is null", func(t *testing.T) {
 		assert.Equal(t, defenderPolicyOnly{}, resolveDefenderPolicyOnly(&defenderPolicy{}))

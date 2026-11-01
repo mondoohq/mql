@@ -21327,7 +21327,8 @@ windows.defender.networkProtectionSettings @defaults("enableNetworkProtection") 
   enableDnsSinkhole bool
   // Whether network protection blocks connections it would otherwise only warn about
   //
-  // Null when the Defender platform does not report this preference.
+  // The Group Policy value when one is configured, since Get-MpPreference does
+  // not report it. Null when neither reports a value.
   enableConvertWarnToBlock bool
 }
 
