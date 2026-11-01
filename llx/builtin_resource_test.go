@@ -27,6 +27,40 @@ func TestResourceMapV2(t *testing.T) {
 	})
 }
 
+// A where inside a block runs once per element of the outer list, and each run
+// keeps different items. Every run must see its own filter result, not the
+// first run's (a regression in v14.9.1, when field answers began to be cached
+// across the runtime while every run stored its result under the same id).
+func TestResourceWhereV2_InsideBlock(t *testing.T) {
+	blockValues := func(t *testing.T, query string) []any {
+		t.Helper()
+		result, err := exec.Exec(query, testutils.LinuxMock(), testutils.Features, nil)
+		require.NoError(t, err)
+		require.NoError(t, result.Error)
+		rows, ok := result.Value.([]any)
+		require.True(t, ok, "expected a list of block results, got %T", result.Value)
+		values := make([]any, len(rows))
+		for i, row := range rows {
+			fields, ok := row.(map[string]any)
+			require.True(t, ok, "expected a block result, got %T", row)
+			require.Len(t, fields, 1)
+			for _, v := range fields {
+				values[i] = v
+			}
+		}
+		return values
+	}
+
+	t.Run("list of the filter result", func(t *testing.T) {
+		got := blockValues(t, `["root", "chris", "nobody"] { x = _; users.where(name == x).list.map(name) }`)
+		assert.Equal(t, []any{[]any{"root"}, []any{"chris"}, []any{}}, got)
+	})
+	t.Run("length of the filter result", func(t *testing.T) {
+		got := blockValues(t, `[1, 1000] { x = _; users.where(uid >= x).length }`)
+		assert.Equal(t, []any{int64(3), int64(2)}, got)
+	})
+}
+
 func TestPermissionsAtMost(t *testing.T) {
 	tests := []struct {
 		mode, mask int64

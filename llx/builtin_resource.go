@@ -4,6 +4,8 @@
 package llx
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"regexp"
 	"strconv"
@@ -12,6 +14,7 @@ import (
 
 	"go.mondoo.com/mql/types"
 	"go.mondoo.com/mql/utils/timex"
+	"google.golang.org/protobuf/proto"
 )
 
 type Resource interface {
@@ -100,11 +103,12 @@ func _resourceWhereV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64,
 				copyFields = append(copyFields, k)
 			}
 		}
+		filtered := ArrayPrimitive(resList, ct)
 		args := map[string]*Primitive{
-			"list": ArrayPrimitive(resList, ct),
+			"list": filtered,
 		}
 
-		resResource, err := e.ctx.runtime.CloneResource(resource, blockId, copyFields, args)
+		resResource, err := filterResultResource(e.ctx.runtime, resource, blockId, copyFields, args, filtered)
 
 		var data *RawData
 		if err != nil {
@@ -132,6 +136,29 @@ func _resourceWhereV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64,
 	}
 
 	return nil, 0, nil
+}
+
+// filterResultResource stores the result of a where/whereNot call as a clone
+// of the filtered resource. The clone's id must name its content, not only the
+// filter block: the same block runs once per element when it sits inside
+// another block (`list { files.find(from: _).where(...) }`), and each run
+// filters a different source or keeps different items. With an id shared by
+// every run, each clone replaced the previous one in the provider, and any
+// cached field of the first clone answered for all of them. So the id adds
+// the source resource's id (the mandatory fields are copied from it) and a
+// digest of the filtered list to the block id.
+func filterResultResource(runtime Runtime, src Resource, blockId string, copyFields []string, args map[string]*Primitive, filtered *Primitive) (Resource, error) {
+	listBytes, err := proto.MarshalOptions{Deterministic: true}.Marshal(filtered)
+	if err != nil {
+		return nil, err
+	}
+	h := sha256.New()
+	h.Write([]byte(src.MqlID()))
+	h.Write([]byte{0})
+	h.Write(listBytes)
+	id := blockId + "/" + hex.EncodeToString(h.Sum(nil))
+
+	return runtime.CloneResource(src, id, copyFields, args)
 }
 
 func resourceWhereV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
