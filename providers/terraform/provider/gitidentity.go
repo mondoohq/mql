@@ -112,9 +112,16 @@ func parseGitRemote(raw string) (domain, org, repo string, err error) {
 	if err != nil || ep.Host == "" {
 		return "", "", "", errMalformedGitRemote
 	}
-	segments := strings.Split(strings.TrimSuffix(strings.Trim(ep.Path, "/"), ".git"), "/")
-	if len(segments) < 2 || segments[0] == "" || segments[len(segments)-1] == "" {
+	path := strings.Trim(ep.Path, "/")
+	path = strings.TrimSuffix(path, ".git")
+	segments := strings.Split(path, "/")
+	if len(segments) < 2 {
 		return "", "", "", errMalformedGitRemote
 	}
-	return ep.Host, segments[0], segments[len(segments)-1], nil
+	org = segments[0]
+	repo = segments[len(segments)-1]
+	if org == "" || repo == "" {
+		return "", "", "", errMalformedGitRemote
+	}
+	return ep.Host, org, repo, nil
 }
