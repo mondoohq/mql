@@ -1,4 +1,4 @@
-// Copyright Mondoo, Inc. 2026
+// Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package provider
@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/utils/urlx"
 )
 
 func TestParseGitRemote(t *testing.T) {
@@ -24,12 +25,14 @@ func TestParseGitRemote(t *testing.T) {
 		{"https://github.com/exampleorg/example-repo", "github.com", "exampleorg", "example-repo"},
 		{"https://github.com/exampleorg/example-repo.git/", "github.com", "exampleorg", "example-repo"},
 		// a CI token in the URL is not part of the identity
-		{"https://gitlab-ci-token:s3cret@gitlab.example.com/group/sub/example-repo.git", "gitlab.example.com", "group/sub", "example-repo"},
+		{"https://gitlab-ci-token:s3cret@gitlab.example.com/exampleorg/example-repo.git", "gitlab.example.com", "exampleorg", "example-repo"},
 		{"ssh://git@github.com:22/exampleorg/example-repo.git", "github.com", "exampleorg", "example-repo"},
 		{"git://github.com/exampleorg/example-repo.git", "github.com", "exampleorg", "example-repo"},
 		{"git@github.com:exampleorg/example-repo.git", "github.com", "exampleorg", "example-repo"},
-		{"git@gitlab.example.com:group/sub/example-repo.git", "gitlab.example.com", "group/sub", "example-repo"},
-		{"https://dev.azure.com/exampleorg/project/_git/example-repo", "dev.azure.com", "exampleorg/project", "example-repo"},
+		// middle segments are cut the way the ssh-url branch cuts them
+		{"https://gitlab.example.com/exampleorg/group/example-repo.git", "gitlab.example.com", "exampleorg", "example-repo"},
+		{"git@gitlab.example.com:exampleorg/group/example-repo.git", "gitlab.example.com", "exampleorg", "example-repo"},
+		{"https://dev.azure.com/exampleorg/project/_git/example-repo", "dev.azure.com", "exampleorg", "example-repo"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.url, func(t *testing.T) {
@@ -40,6 +43,23 @@ func TestParseGitRemote(t *testing.T) {
 			assert.Equal(t, tc.repo, repo)
 		})
 	}
+
+	// One repository, one identity, however its remote is spelled: the
+	// scp-like form goes through urlx.ParseGitSshUrl, which the ssh-url
+	// branch of detect() uses, and the URL forms must agree with it.
+	t.Run("agrees with ParseGitSshUrl", func(t *testing.T) {
+		sshDomain, sshOrg, sshRepo, err := urlx.ParseGitSshUrl("git@gitlab.example.com:exampleorg/group/example-repo.git")
+		require.NoError(t, err)
+		for _, spelled := range []string{
+			"git@gitlab.example.com:exampleorg/group/example-repo.git",
+			"https://gitlab.example.com/exampleorg/group/example-repo.git",
+			"ssh://git@gitlab.example.com/exampleorg/group/example-repo.git",
+		} {
+			domain, org, repo, err := parseGitRemote(spelled)
+			require.NoError(t, err, spelled)
+			assert.Equal(t, []string{sshDomain, sshOrg, sshRepo}, []string{domain, org, repo}, spelled)
+		}
+	})
 
 	for _, bad := range []string{"", "github.com", "/srv/git/example-repo.git", "https://github.com/", "https://github.com/onlyorg", "git@github.com:example-repo.git"} {
 		t.Run("rejects "+bad, func(t *testing.T) {

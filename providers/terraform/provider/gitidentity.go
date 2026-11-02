@@ -1,4 +1,4 @@
-// Copyright Mondoo, Inc. 2026
+// Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package provider
@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/go-git/go-git/v5"
+	"go.mondoo.com/mql/utils/urlx"
 )
 
 // gitIdentity is the repository a scanned path belongs to, read from the
@@ -27,7 +28,9 @@ type gitIdentity struct {
 // platformID is the repository identity the git-integration path already
 // derives for a whole checkout (the ssh-url branch of detect), with the
 // scanned sub-folder appended so that two roots of one repository, or its
-// prod/ and dev/ folders, stay two assets.
+// prod/ and dev/ folders, stay two assets. The id is an opaque key: nothing
+// parses the path back out of it, so RelPath is spliced in as it is, and a
+// folder that is itself called "path" is as unambiguous as any other key.
 func (g gitIdentity) platformID() string {
 	id := "//platformid.api.mondoo.app/runtime/terraform/domain/" + g.Domain + "/org/" + g.Org + "/repo/" + g.Repo
 	if g.RelPath != "" {
@@ -95,40 +98,38 @@ var errMalformedGitRemote = errors.New("malformed git remote URL")
 // parseGitRemote reads domain, org and repo out of a git remote URL in the
 // spellings git accepts: https://host/org/repo.git, ssh://git@host/org/repo,
 // git://host/org/repo and the scp-like git@host:org/repo.git. Credentials in
-// the URL (a CI token in https://user:token@host/...) are dropped. The org
-// keeps every path segment above the repository, so GitLab subgroups stay
-// distinct; Azure DevOps' "_git" segment is not part of the identity.
+// the URL (a CI token in https://user:token@host/...) are dropped.
+//
+// The three parts are cut the way urlx.ParseGitSshUrl cuts them for the
+// ssh-url branch of detect: the first path segment is the org, the last is
+// the repo, and segments in between (GitLab subgroups, an Azure DevOps
+// project) are not part of the identity. That keeps one identity per
+// repository whichever way it was scanned, a checkout on disk or the git
+// integration's clone, at the price the ssh-url branch already pays: two
+// repositories that differ only in a middle segment share an id.
 func parseGitRemote(raw string) (domain, org, repo string, err error) {
 	raw = strings.TrimSpace(raw)
-	var host, path string
-	if strings.Contains(raw, "://") {
-		u, perr := url.Parse(raw)
-		if perr != nil || u.Host == "" {
+	if !strings.Contains(raw, "://") {
+		// scp-like: [user@]host:path. ParseGitSshUrl also accepts a path
+		// with a single segment and then names the org after the repo; a
+		// remote that names no org is not a repository identity here.
+		domain, org, repo, err = urlx.ParseGitSshUrl(raw)
+		if err != nil {
+			return "", "", "", err
+		}
+		if _, path, _ := strings.Cut(raw, ":"); len(strings.Split(strings.Trim(path, "/"), "/")) < 2 {
 			return "", "", "", errMalformedGitRemote
 		}
-		host, path = u.Hostname(), u.Path
-	} else {
-		// scp-like: [user@]host:path
-		hostPart, pathPart, ok := strings.Cut(raw, ":")
-		if !ok {
-			return "", "", "", errMalformedGitRemote
-		}
-		if _, h, found := strings.Cut(hostPart, "@"); found {
-			hostPart = h
-		}
-		host, path = hostPart, pathPart
+		return domain, org, repo, nil
 	}
-
-	path = strings.TrimSuffix(strings.Trim(path, "/"), ".git")
-	segments := make([]string, 0, 4)
-	for _, s := range strings.Split(path, "/") {
-		if s == "" || s == "_git" {
-			continue
-		}
-		segments = append(segments, s)
-	}
-	if host == "" || len(segments) < 2 {
+	u, perr := url.Parse(raw)
+	if perr != nil || u.Host == "" {
 		return "", "", "", errMalformedGitRemote
 	}
-	return host, strings.Join(segments[:len(segments)-1], "/"), segments[len(segments)-1], nil
+	path := strings.TrimSuffix(strings.Trim(u.Path, "/"), ".git")
+	segments := strings.Split(path, "/")
+	if u.Hostname() == "" || len(segments) < 2 || segments[0] == "" || segments[len(segments)-1] == "" {
+		return "", "", "", errMalformedGitRemote
+	}
+	return u.Hostname(), segments[0], segments[len(segments)-1], nil
 }
