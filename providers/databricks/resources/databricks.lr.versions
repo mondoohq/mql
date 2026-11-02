@@ -397,6 +397,7 @@ databricks.job.trigger 13.2.2
 databricks.job.trigger.continuousTaskRetryMode 13.2.2
 databricks.job.trigger.cronExpression 13.2.2
 databricks.job.trigger.fileArrivalUrl 13.2.2
+databricks.job.trigger.jobCompletionIfStatus 14.0.10
 databricks.job.trigger.minTimeBetweenTriggersSeconds 13.2.2
 databricks.job.trigger.modelAliases 13.2.2
 databricks.job.trigger.modelCondition 13.2.2
@@ -411,6 +412,8 @@ databricks.job.trigger.tableNames 13.2.2
 databricks.job.trigger.tableUpdateCondition 13.2.2
 databricks.job.trigger.timezoneId 13.2.2
 databricks.job.trigger.triggerType 13.2.2
+databricks.job.trigger.upstreamJobs 14.0.10
+databricks.job.trigger.upstreamWorkspaceIds 14.0.10
 databricks.job.trigger.waitAfterLastChangeSeconds 13.2.2
 databricks.job.triggers 13.2.2
 databricks.job.webhookNotificationIds 13.1.4

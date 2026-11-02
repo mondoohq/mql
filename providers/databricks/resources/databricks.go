@@ -4,7 +4,9 @@
 package resources
 
 import (
+	"context"
 	"errors"
+	"strconv"
 	"time"
 
 	databricks "github.com/databricks/databricks-sdk-go"
@@ -35,6 +37,35 @@ func accountClient(runtime *plugin.Runtime) (*databricks.AccountClient, error) {
 		return nil, errors.New("this resource requires connecting to the Databricks account console (use --account-id)")
 	}
 	return acc, nil
+}
+
+// currentWorkspaceId names the workspace the asset is connected to. Discovery
+// sets the id on every workspace asset; a direct connect by host alone leaves it
+// empty, and then the workspace reports its own id, read at most once per scan.
+func currentWorkspaceId(runtime *plugin.Runtime) (string, error) {
+	conn := runtime.Connection.(*connection.DatabricksConnection)
+	if id := conn.WorkspaceID(); id != "" {
+		return id, nil
+	}
+	rootRes, err := NewResource(runtime, "databricks", map[string]*llx.RawData{})
+	if err != nil {
+		return "", err
+	}
+	root := rootRes.(*mqlDatabricks)
+	root.workspaceIdOnce.Do(func() {
+		ws, err := workspaceClient(runtime)
+		if err != nil {
+			root.workspaceIdErr = err
+			return
+		}
+		id, err := ws.CurrentWorkspaceID(context.Background())
+		if err != nil {
+			root.workspaceIdErr = err
+			return
+		}
+		root.workspaceId = strconv.FormatInt(id, 10)
+	})
+	return root.workspaceId, root.workspaceIdErr
 }
 
 // workspaceClient returns the workspace client, or an error when the asset is

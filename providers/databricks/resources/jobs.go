@@ -17,6 +17,12 @@ import (
 	"go.mondoo.com/mql/types"
 )
 
+// mqlDatabricksJobTriggerInternal keeps the upstream jobs a job completion
+// trigger monitors, so upstreamJobs resolves them without re-reading the job.
+type mqlDatabricksJobTriggerInternal struct {
+	upstream []jobs.JobCompletionTriggerConfigurationMonitoredJob
+}
+
 // mqlDatabricksJobInternal keeps the settings the job was built from so tasks
 // and job clusters map without re-listing. The list response truncates both
 // collections for large jobs and reports that through hasMore, in which case the
@@ -465,6 +471,8 @@ func triggerTypeOf(t jobs.TriggerConfiguration) string {
 		return "model"
 	case t.Continuous != nil:
 		return "continuous"
+	case t.JobCompletion != nil:
+		return "job_completion"
 	default:
 		return "unknown"
 	}
@@ -507,7 +515,10 @@ func (r *mqlDatabricksJob) triggers() ([]any, error) {
 			"sqlConditionQueryId":           llx.StringData(""),
 			"sqlConditionWarehouseId":       llx.StringData(""),
 			"sqlConditionTriggerMode":       llx.StringData(""),
+			"jobCompletionIfStatus":         llx.StringData(""),
+			"upstreamWorkspaceIds":          llx.ArrayData([]any{}, types.String),
 		}
+		var upstream []jobs.JobCompletionTriggerConfigurationMonitoredJob
 
 		switch {
 		case t.Schedule != nil:
@@ -532,6 +543,10 @@ func (r *mqlDatabricksJob) triggers() ([]any, error) {
 			args["minTimeBetweenTriggersSeconds"] = llx.IntData(int64(t.Model.MinTimeBetweenTriggersSeconds))
 		case t.Continuous != nil:
 			args["continuousTaskRetryMode"] = llx.StringData(string(t.Continuous.TaskRetryMode))
+		case t.JobCompletion != nil:
+			upstream = t.JobCompletion.Jobs
+			args["jobCompletionIfStatus"] = llx.StringData(jobCompletionIfStatusOf(*t.JobCompletion))
+			args["upstreamWorkspaceIds"] = llx.ArrayData(strSlice(upstreamWorkspaceIdsOf(upstream)), types.String)
 		}
 
 		if c := t.SqlCondition; c != nil {
@@ -544,6 +559,7 @@ func (r *mqlDatabricksJob) triggers() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		res.(*mqlDatabricksJobTrigger).upstream = upstream
 		out = append(out, res)
 	}
 	return out, nil
@@ -595,6 +611,8 @@ func taskTypeOf(t jobs.Task) string {
 		return "ai_runtime"
 	case t.GenAiComputeTask != nil:
 		return "gen_ai_compute"
+	case t.AiFunctionTask != nil:
+		return "ai_function"
 	}
 	return ""
 }
@@ -680,6 +698,91 @@ func (r *mqlDatabricksJob) tasks() ([]any, error) {
 			mqlTask.cachePipelineId = t.PipelineTask.PipelineId
 		}
 		out = append(out, mqlTask)
+	}
+	return out, nil
+}
+
+// jobCompletionIfStatusOf reports the status the upstream jobs must finish with.
+// The API documents SUCCESS as the default for a trigger that sets none, so an
+// unset status is reported as SUCCESS rather than empty: a policy matching on
+// SUCCESS would otherwise miss every trigger that relies on the default.
+func jobCompletionIfStatusOf(c jobs.JobCompletionTriggerConfiguration) string {
+	if c.IfStatus == "" {
+		return string(jobs.JobCompletionTriggerConfigurationIfStatusSuccess)
+	}
+	return string(c.IfStatus)
+}
+
+// upstreamWorkspaceIdsOf lists the workspaces the monitored jobs live in,
+// sorted and deduplicated.
+func upstreamWorkspaceIdsOf(monitored []jobs.JobCompletionTriggerConfigurationMonitoredJob) []string {
+	seen := map[string]struct{}{}
+	out := []string{}
+	for i := range monitored {
+		id := monitored[i].WorkspaceId
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// upstreamJobIdsIn returns the ids of the monitored jobs that live in the given
+// workspace, in configured order. Job ids are only unique within a workspace, so
+// a monitored job in another workspace is never matched against this
+// workspace's jobs, even when the numeric id happens to coincide.
+func upstreamJobIdsIn(monitored []jobs.JobCompletionTriggerConfigurationMonitoredJob, workspaceId string) []string {
+	out := []string{}
+	for i := range monitored {
+		if monitored[i].WorkspaceId == workspaceId && monitored[i].JobId != "" {
+			out = append(out, monitored[i].JobId)
+		}
+	}
+	return out
+}
+
+// upstreamJobs resolves the monitored jobs that live in the scanned workspace
+// against the workspace job list, so a trigger costs no request beyond the list
+// already read for databricks.jobs. A monitored job missing from the list
+// (deleted, or not visible to the scanning identity) is left out.
+func (r *mqlDatabricksJobTrigger) upstreamJobs() ([]any, error) {
+	if len(r.upstream) == 0 {
+		return []any{}, nil
+	}
+	workspaceId, err := currentWorkspaceId(r.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	ids := upstreamJobIdsIn(r.upstream, workspaceId)
+	if len(ids) == 0 {
+		return []any{}, nil
+	}
+
+	rootRes, err := NewResource(r.MqlRuntime, "databricks", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	list := rootRes.(*mqlDatabricks).GetJobs()
+	if list.Error != nil {
+		return nil, list.Error
+	}
+	byId := make(map[string]*mqlDatabricksJob, len(list.Data))
+	for i := range list.Data {
+		job := list.Data[i].(*mqlDatabricksJob)
+		byId[strconv.FormatInt(job.Id.Data, 10)] = job
+	}
+
+	out := []any{}
+	for _, id := range ids {
+		if job, ok := byId[id]; ok {
+			out = append(out, job)
+		}
 	}
 	return out, nil
 }

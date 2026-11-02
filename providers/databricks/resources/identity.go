@@ -51,6 +51,10 @@ type mqlDatabricksInternal struct {
 	domainList  []domains.Domain
 	domainsByID map[string]domains.Domain
 	domainsErr  error
+
+	workspaceIdOnce sync.Once
+	workspaceId     string
+	workspaceIdErr  error
 }
 
 // cachedAccountGroups lists the account groups at most once per scan, caching

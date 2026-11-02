@@ -13,6 +13,7 @@ import (
 	"github.com/databricks/databricks-sdk-go/service/iam"
 	"github.com/databricks/databricks-sdk-go/service/jobs"
 	"github.com/databricks/databricks-sdk-go/service/pipelines"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestPrincipalOf(t *testing.T) {
@@ -285,6 +286,7 @@ func TestTaskTypeOf(t *testing.T) {
 		{name: "clean rooms notebook", task: jobs.Task{CleanRoomsNotebookTask: &jobs.CleanRoomsNotebookTask{}}, want: "clean_rooms_notebook"},
 		{name: "ai runtime", task: jobs.Task{AiRuntimeTask: &jobs.AiRuntimeTask{}}, want: "ai_runtime"},
 		{name: "gen ai compute", task: jobs.Task{GenAiComputeTask: &jobs.GenAiComputeTask{}}, want: "gen_ai_compute"},
+		{name: "ai function", task: jobs.Task{AiFunctionTask: &jobs.AiFunctionTask{}}, want: "ai_function"},
 		// A task carrying no work field at all is a kind this SDK version does
 		// not model. Reporting empty is honest; guessing a type would be worse
 		// than admitting the gap.
@@ -543,4 +545,74 @@ func TestEnvironmentVariablesOf(t *testing.T) {
 			t.Fatal("environmentVariablesOf() error = nil, want the detail error")
 		}
 	})
+}
+
+// Synthetic: one trigger per kind the SDK models; no workspace was scanned.
+func TestTriggerTypeOf(t *testing.T) {
+	tests := []struct {
+		name    string
+		trigger jobs.TriggerConfiguration
+		want    string
+	}{
+		{name: "schedule", trigger: jobs.TriggerConfiguration{Schedule: &jobs.CronTriggerConfiguration{}}, want: "schedule"},
+		{name: "periodic", trigger: jobs.TriggerConfiguration{Periodic: &jobs.PeriodicTriggerConfiguration{}}, want: "periodic"},
+		{name: "file arrival", trigger: jobs.TriggerConfiguration{FileArrival: &jobs.FileArrivalTriggerConfiguration{}}, want: "file_arrival"},
+		{name: "table update", trigger: jobs.TriggerConfiguration{TableUpdate: &jobs.TableUpdateTriggerConfiguration{}}, want: "table_update"},
+		{name: "model", trigger: jobs.TriggerConfiguration{Model: &jobs.ModelTriggerConfiguration{}}, want: "model"},
+		{name: "continuous", trigger: jobs.TriggerConfiguration{Continuous: &jobs.ContinuousTriggerConfiguration{}}, want: "continuous"},
+		{name: "job completion", trigger: jobs.TriggerConfiguration{JobCompletion: &jobs.JobCompletionTriggerConfiguration{}}, want: "job_completion"},
+		{name: "unmodelled kind", trigger: jobs.TriggerConfiguration{}, want: "unknown"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := triggerTypeOf(tc.trigger); got != tc.want {
+				t.Fatalf("triggerTypeOf() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// Synthetic: the API default and each explicit status; no workspace was scanned.
+func TestJobCompletionIfStatusOf(t *testing.T) {
+	tests := []struct {
+		name   string
+		status jobs.JobCompletionTriggerConfigurationIfStatus
+		want   string
+	}{
+		{name: "unset defaults to success", status: "", want: "SUCCESS"},
+		{name: "success", status: jobs.JobCompletionTriggerConfigurationIfStatusSuccess, want: "SUCCESS"},
+		{name: "failed", status: jobs.JobCompletionTriggerConfigurationIfStatusFailed, want: "FAILED"},
+		{name: "done", status: jobs.JobCompletionTriggerConfigurationIfStatusDone, want: "DONE"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := jobCompletionIfStatusOf(jobs.JobCompletionTriggerConfiguration{IfStatus: tc.status})
+			if got != tc.want {
+				t.Fatalf("jobCompletionIfStatusOf() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// Synthetic: upstream jobs spread across two workspaces with a colliding job id;
+// no workspace was scanned.
+func TestUpstreamJobsPartition(t *testing.T) {
+	monitored := []jobs.JobCompletionTriggerConfigurationMonitoredJob{
+		{JobId: "11", WorkspaceId: "200"},
+		{JobId: "12", WorkspaceId: "100"},
+		// Same numeric id as the first entry, in the scanned workspace. Job ids
+		// are per workspace, so only this one may match a local job.
+		{JobId: "11", WorkspaceId: "100"},
+		{JobId: "13", WorkspaceId: "200"},
+		{JobId: "", WorkspaceId: "100"},
+	}
+
+	assert.Equal(t, []string{"12", "11"}, upstreamJobIdsIn(monitored, "100"))
+	assert.Equal(t, []string{"11", "13"}, upstreamJobIdsIn(monitored, "200"))
+	assert.Empty(t, upstreamJobIdsIn(monitored, "300"))
+	assert.Empty(t, upstreamJobIdsIn(nil, "100"))
+
+	assert.Equal(t, []string{"100", "200"}, upstreamWorkspaceIdsOf(monitored))
+	assert.Empty(t, upstreamWorkspaceIdsOf(nil))
+	assert.Empty(t, upstreamWorkspaceIdsOf([]jobs.JobCompletionTriggerConfigurationMonitoredJob{{JobId: "1"}}))
 }
