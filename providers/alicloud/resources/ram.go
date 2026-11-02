@@ -219,6 +219,7 @@ func (r *mqlAlicloudRam) roles() ([]any, error) {
 				"createDate":         llx.TimeDataPtr(ramParseTime(role.CreateDate)),
 				"updateDate":         llx.TimeDataPtr(ramParseTime(role.UpdateDate)),
 				"maxSessionDuration": llx.IntDataPtr(role.MaxSessionDuration),
+				"allowConsoleLogin":  llx.BoolDataPtr(role.AllowConsoleLogin),
 				"tags":               llx.MapData(tags, types.String),
 			})
 			if err != nil {
@@ -955,6 +956,7 @@ func initAlicloudRamRole(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 		"createDate":         llx.TimeDataPtr(ramParseTime(role.CreateDate)),
 		"updateDate":         llx.TimeDataPtr(ramParseTime(role.UpdateDate)),
 		"maxSessionDuration": llx.IntDataPtr(role.MaxSessionDuration),
+		"allowConsoleLogin":  llx.BoolDataPtr(role.AllowConsoleLogin),
 		// GetRole does not return tags (unlike ListRoles), so fetch them
 		// separately to keep a ref-resolved role's tags consistent with a listed
 		// one.
@@ -963,31 +965,100 @@ func initAlicloudRamRole(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 	if err != nil {
 		return nil, nil, err
 	}
+	// The detail is already in hand, so seed the memo rather than reading the
+	// role a second time for its detail-only fields.
+	mqlRole := res.(*mqlAlicloudRamRole)
+	mqlRole.detailOnce.Do(func() { mqlRole.detail = role })
 	return nil, res, nil
 }
 
-func (r *mqlAlicloudRamRole) assumeRolePolicyDocument() (string, error) {
-	conn := r.MqlRuntime.Connection.(*connection.AlicloudConnection)
-	client, err := conn.RamClient()
-	if err != nil {
-		return "", err
-	}
-
-	roleName := r.RoleName.Data
-	resp, err := client.GetRole(&ramclient.GetRoleRequest{RoleName: &roleName})
-	if err != nil {
-		return "", err
-	}
-	if resp == nil || resp.Body == nil || resp.Body.Role == nil {
-		return "", nil
-	}
-	return ramStrVal(resp.Body.Role.AssumeRolePolicyDocument), nil
+// roleDetail reads the role through GetRole once. ListRoles leaves out the
+// trust policy and the service-linked fields, and several fields read them.
+// A nil detail with no error means the role was not returned.
+func (r *mqlAlicloudRamRole) roleDetail() (*ramclient.GetRoleResponseBodyRole, error) {
+	r.detailOnce.Do(func() {
+		conn := r.MqlRuntime.Connection.(*connection.AlicloudConnection)
+		client, err := conn.RamClient()
+		if err != nil {
+			r.detailErr = err
+			return
+		}
+		roleName := r.RoleName.Data
+		resp, err := client.GetRole(&ramclient.GetRoleRequest{RoleName: &roleName})
+		if err != nil {
+			r.detailErr = err
+			return
+		}
+		if resp != nil && resp.Body != nil {
+			r.detail = resp.Body.Role
+		}
+	})
+	return r.detail, r.detailErr
 }
 
-// mqlAlicloudRamRoleInternal memoizes the role's policy attachment list, which
-// both the policies and attachedPolicies fields read.
+func (r *mqlAlicloudRamRole) assumeRolePolicyDocument() (string, error) {
+	role, err := r.roleDetail()
+	if err != nil {
+		return "", err
+	}
+	if role == nil {
+		return "", nil
+	}
+	return ramStrVal(role.AssumeRolePolicyDocument), nil
+}
+
+func (r *mqlAlicloudRamRole) isServiceLinkedRole() (bool, error) {
+	role, err := r.roleDetail()
+	if err != nil {
+		return false, err
+	}
+	v := ramRoleIsServiceLinked(role)
+	if v == nil {
+		r.IsServiceLinkedRole.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return *v, nil
+}
+
+func (r *mqlAlicloudRamRole) rolePrincipalName() (string, error) {
+	role, err := r.roleDetail()
+	if err != nil {
+		return "", err
+	}
+	v := ramRolePrincipalName(role)
+	if v == nil {
+		r.RolePrincipalName.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *v, nil
+}
+
+// ramRoleIsServiceLinked reports the role's service-linked flag, or nil when
+// GetRole did not return it.
+func ramRoleIsServiceLinked(role *ramclient.GetRoleResponseBodyRole) *bool {
+	if role == nil {
+		return nil
+	}
+	return role.IsServiceLinkedRole
+}
+
+// ramRolePrincipalName reports the role's principal name, or nil when GetRole
+// did not return one.
+func ramRolePrincipalName(role *ramclient.GetRoleResponseBodyRole) *string {
+	if role == nil || role.RolePrincipalName == nil || *role.RolePrincipalName == "" {
+		return nil
+	}
+	return role.RolePrincipalName
+}
+
+// mqlAlicloudRamRoleInternal memoizes the role's GetRole detail, which the
+// trust policy and service-linked fields read, and its policy attachment list,
+// which both the policies and attachedPolicies fields read.
 type mqlAlicloudRamRoleInternal struct {
 	ramTrustState
+	detailOnce      sync.Once
+	detail          *ramclient.GetRoleResponseBodyRole
+	detailErr       error
 	attachmentsOnce sync.Once
 	attachments     []*ramclient.ListPoliciesForRoleResponseBodyPoliciesPolicy
 	attachmentsErr  error

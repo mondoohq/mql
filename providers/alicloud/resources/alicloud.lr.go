@@ -1189,6 +1189,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"alicloud.ram.role.maxSessionDuration": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudRamRole).GetMaxSessionDuration()).ToDataRes(types.Int)
 	},
+	"alicloud.ram.role.allowConsoleLogin": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRamRole).GetAllowConsoleLogin()).ToDataRes(types.Bool)
+	},
+	"alicloud.ram.role.isServiceLinkedRole": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRamRole).GetIsServiceLinkedRole()).ToDataRes(types.Bool)
+	},
+	"alicloud.ram.role.rolePrincipalName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRamRole).GetRolePrincipalName()).ToDataRes(types.String)
+	},
 	"alicloud.ram.role.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudRamRole).GetTags()).ToDataRes(types.Map(types.String, types.String))
 	},
@@ -9183,6 +9192,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"alicloud.ram.role.maxSessionDuration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAlicloudRamRole).MaxSessionDuration, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.ram.role.allowConsoleLogin": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRamRole).AllowConsoleLogin, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.ram.role.isServiceLinkedRole": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRamRole).IsServiceLinkedRole, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.ram.role.rolePrincipalName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRamRole).RolePrincipalName, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"alicloud.ram.role.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -20915,6 +20936,9 @@ type mqlAlicloudRamRole struct {
 	CreateDate               plugin.TValue[*time.Time]
 	UpdateDate               plugin.TValue[*time.Time]
 	MaxSessionDuration       plugin.TValue[int64]
+	AllowConsoleLogin        plugin.TValue[bool]
+	IsServiceLinkedRole      plugin.TValue[bool]
+	RolePrincipalName        plugin.TValue[string]
 	Tags                     plugin.TValue[map[string]any]
 	AssumeRolePolicyDocument plugin.TValue[string]
 	Policies                 plugin.TValue[[]any]
@@ -20989,6 +21013,22 @@ func (c *mqlAlicloudRamRole) GetUpdateDate() *plugin.TValue[*time.Time] {
 
 func (c *mqlAlicloudRamRole) GetMaxSessionDuration() *plugin.TValue[int64] {
 	return &c.MaxSessionDuration
+}
+
+func (c *mqlAlicloudRamRole) GetAllowConsoleLogin() *plugin.TValue[bool] {
+	return &c.AllowConsoleLogin
+}
+
+func (c *mqlAlicloudRamRole) GetIsServiceLinkedRole() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.IsServiceLinkedRole, func() (bool, error) {
+		return c.isServiceLinkedRole()
+	})
+}
+
+func (c *mqlAlicloudRamRole) GetRolePrincipalName() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.RolePrincipalName, func() (string, error) {
+		return c.rolePrincipalName()
+	})
 }
 
 func (c *mqlAlicloudRamRole) GetTags() *plugin.TValue[map[string]any] {
