@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/rand/v2"
 	"net/http"
 	"net/url"
@@ -25,8 +26,9 @@ const (
 	// githubBaseBackoff is the base delay before the second attempt; it
 	// doubles for each following attempt.
 	githubBaseBackoff = 1 * time.Second
-	// githubMaxRetryAfter caps how long a Retry-After header can make us wait.
-	githubMaxRetryAfter = 30 * time.Second
+	// githubMaxBackoff caps the computed backoff and how long a Retry-After
+	// header can make us wait.
+	githubMaxBackoff = 30 * time.Second
 )
 
 // GitHubTokenProvider fetches an identity token from GitHub Actions.
@@ -88,12 +90,14 @@ func (p *GitHubTokenProvider) GetToken(ctx context.Context, audience string) (st
 			break
 		}
 
-		// exponential backoff with jitter in [delay/2, delay]
-		delay := backoff << (attempt - 1)
-		delay = delay/2 + rand.N(delay/2+1)
-		if transient.retryAfter > 0 {
-			delay = min(transient.retryAfter, githubMaxRetryAfter)
+		// exponential backoff with jitter in [delay/2, delay], capped; a
+		// Retry-After can only extend the wait, never shorten it
+		delay := githubMaxBackoff
+		if shift := attempt - 1; shift < 32 {
+			delay = min(backoff<<shift, githubMaxBackoff)
 		}
+		delay = delay/2 + rand.N(delay/2+1)
+		delay = max(delay, min(transient.retryAfter, githubMaxBackoff))
 		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
@@ -127,7 +131,11 @@ func fetchGitHubToken(ctx context.Context, client *http.Client, tokenURL, bearer
 		}
 		return "", &githubTransientError{err: err}
 	}
-	defer resp.Body.Close()
+	defer func() {
+		// drain so the connection can be reused for the next attempt
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
+		resp.Body.Close()
+	}()
 
 	switch {
 	case resp.StatusCode == http.StatusOK:

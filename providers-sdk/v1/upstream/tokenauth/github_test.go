@@ -40,7 +40,7 @@ func TestGitHubTokenProvider_RetriesAfterTimeout(t *testing.T) {
 			}
 			return
 		}
-		w.Write([]byte(`{"value":"tok"}`))
+		_, _ = w.Write([]byte(`{"value":"tok"}`))
 	}))
 	defer srv.Close()
 	setGitHubEnv(t, srv)
@@ -59,7 +59,7 @@ func TestGitHubTokenProvider_RetriesOn503(t *testing.T) {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
-		w.Write([]byte(`{"value":"tok"}`))
+		_, _ = w.Write([]byte(`{"value":"tok"}`))
 	}))
 	defer srv.Close()
 	setGitHubEnv(t, srv)
@@ -129,7 +129,7 @@ func TestGitHubTokenProvider_SendsAuthAndAudience(t *testing.T) {
 		gotAuth = r.Header.Get("Authorization")
 		gotAud = r.URL.Query().Get("audience")
 		gotAPI = r.URL.Query().Get("api-version")
-		w.Write([]byte(`{"value":"tok"}`))
+		_, _ = w.Write([]byte(`{"value":"tok"}`))
 	}))
 	defer srv.Close()
 	setGitHubEnv(t, srv)
@@ -158,7 +158,7 @@ func TestGitHubTokenProvider_EmptyValueIsError(t *testing.T) {
 	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
-		w.Write([]byte(`{"value":""}`))
+		_, _ = w.Write([]byte(`{"value":""}`))
 	}))
 	defer srv.Close()
 	setGitHubEnv(t, srv)
