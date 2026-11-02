@@ -279,15 +279,15 @@ func loggedInUsers(runtime *plugin.Runtime, conn shared.Connection) (map[string]
 	}
 	cmd := o.(*mqlCommand)
 	exit := cmd.GetExitcode()
-	if !isWindows {
-		return parseLoggedInUsers(false, exit.Data, cmd.Stdout.Data, "")
-	}
 	if exit.Error != nil {
 		return nil, exit.Error
 	}
 	stdout := cmd.GetStdout()
 	if stdout.Error != nil {
 		return nil, stdout.Error
+	}
+	if !isWindows {
+		return parseLoggedInUsers(false, exit.Data, stdout.Data, "")
 	}
 	// stderr only tells a failure from "nobody is logged on" on a non-zero exit
 	if exit.Data == 0 {
