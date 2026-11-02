@@ -104,6 +104,22 @@ func TestBuildLogGroupResourceRetention(t *testing.T) {
 		assert.True(t, lg.RetentionInDays.IsNull(),
 			"no retention means no expiry, which is not a retention of zero days")
 		assert.True(t, lg.NeverExpires.Data)
+		assert.Empty(t, lg.cacheRetentionPolicyName)
+	})
+
+	// Synthetic: CloudWatch names the account-level retention policy only when
+	// one applies to the group; no account in this test had one.
+	t.Run("a group under an account retention policy keeps the policy name", func(t *testing.T) {
+		lg, err := buildLogGroupResource(testRuntime(), "us-east-1", cloudwatchlogstypes.LogGroup{
+			Arn:                 aws.String("arn:aws:logs:us-east-1:000000000000:log-group:/aws/lambda/governed:*"),
+			LogGroupName:        aws.String("/aws/lambda/governed"),
+			RetentionInDays:     aws.Int32(90),
+			RetentionPolicyName: aws.String("org-retention"),
+		})
+		require.NoError(t, err)
+
+		assert.Equal(t, "org-retention", lg.cacheRetentionPolicyName)
+		assert.Equal(t, int64(90), lg.RetentionInDays.Data)
 	})
 }
 

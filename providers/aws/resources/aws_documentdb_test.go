@@ -124,3 +124,24 @@ func TestDocdbIsArn(t *testing.T) {
 		})
 	}
 }
+
+func TestServerlessV2Capacity(t *testing.T) {
+	// Measured: DocumentDB 8.0.2 cluster in us-east-1, 2026-11-02, created with
+	// MinCapacity=0.5 and MaxCapacity=2; DescribeDBClusters returned the same
+	// bounds and the live scan reported 0.5 and 2.
+	cfg := &docdb_types.ServerlessV2ScalingConfigurationInfo{
+		MinCapacity: aws.Float64(0.5),
+		MaxCapacity: aws.Float64(2),
+	}
+	assert.Equal(t, 0.5, serverlessV2Capacity(cfg, false).Value)
+	assert.Equal(t, 2.0, serverlessV2Capacity(cfg, true).Value)
+
+	// Synthetic: a provisioned cluster with no serverless scaling, and a
+	// configuration naming only one bound; no cluster showed these.
+
+	assert.Nil(t, serverlessV2Capacity(nil, false).Value)
+	assert.Nil(t, serverlessV2Capacity(nil, true).Value)
+	onlyMax := &docdb_types.ServerlessV2ScalingConfigurationInfo{MaxCapacity: aws.Float64(16)}
+	assert.Nil(t, serverlessV2Capacity(onlyMax, false).Value)
+	assert.Equal(t, 16.0, serverlessV2Capacity(onlyMax, true).Value)
+}

@@ -246,6 +246,43 @@ func (a *mqlAwsCloudwatchLoggroup) resourcePolicy() (*mqlAwsCloudwatchResourcepo
 	return nil, nil
 }
 
+// retentionPolicy resolves the account-level retention policy the log group
+// names against the account policies already listed for aws.cloudwatch, so it
+// costs no request per log group. Account policies are regional, so the match
+// is on region as well as name.
+func (a *mqlAwsCloudwatchLoggroup) retentionPolicy() (*mqlAwsCloudwatchLogAccountPolicy, error) {
+	if a.cacheRetentionPolicyName == "" {
+		a.RetentionPolicy.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	obj, err := CreateResource(a.MqlRuntime, "aws.cloudwatch", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	raw := obj.(*mqlAwsCloudwatch).GetAccountPolicies()
+	if raw.Error != nil {
+		return nil, raw.Error
+	}
+	for _, p := range raw.Data {
+		policy := p.(*mqlAwsCloudwatchLogAccountPolicy)
+		if isRetentionPolicyFor(policy, a.Region.Data, a.cacheRetentionPolicyName) {
+			return policy, nil
+		}
+	}
+	// The group names a policy the account policy list does not hold, as when
+	// DescribeAccountPolicies was denied for this region.
+	a.RetentionPolicy.State = plugin.StateIsSet | plugin.StateIsNull
+	return nil, nil
+}
+
+// isRetentionPolicyFor reports whether an account policy is the retention
+// policy with the given name in the given region.
+func isRetentionPolicyFor(policy *mqlAwsCloudwatchLogAccountPolicy, region, name string) bool {
+	return policy.PolicyType.Data == string(cwltypes.PolicyTypeRetentionPolicy) &&
+		policy.Region.Data == region &&
+		policy.PolicyName.Data == name
+}
+
 func trimLogGroupArnSuffix(arnVal string) string {
 	if len(arnVal) >= 2 && arnVal[len(arnVal)-2:] == ":*" {
 		return arnVal[:len(arnVal)-2]
@@ -255,7 +292,7 @@ func trimLogGroupArnSuffix(arnVal string) string {
 
 // accountPolicies returns all CloudWatch Logs account-level policies across
 // every policy type (data protection, subscription filter, field index,
-// transformer, metric extraction) for every enabled region.
+// transformer, metric extraction, retention) for every enabled region.
 func (a *mqlAwsCloudwatch) accountPolicies() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 
@@ -282,6 +319,7 @@ var allCloudwatchLogsPolicyTypes = []cwltypes.PolicyType{
 	cwltypes.PolicyTypeFieldIndexPolicy,
 	cwltypes.PolicyTypeTransformerPolicy,
 	cwltypes.PolicyTypeMetricExtractionPolicy,
+	cwltypes.PolicyTypeRetentionPolicy,
 }
 
 func (a *mqlAwsCloudwatch) getAccountPolicies(conn *connection.AwsConnection) []*jobpool.Job {

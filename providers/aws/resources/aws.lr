@@ -12276,6 +12276,12 @@ private aws.cloudwatch.loggroup @defaults("arn") {
   // not include broader account-scoped policies that may still permit
   // delivery into the group.
   resourcePolicy() aws.cloudwatch.resourcepolicy
+  // Account-level retention policy that sets this log group's retention
+  //
+  // When an account-level retention policy applies, retentionInDays and
+  // neverExpires report the policy's retention instead of the group's own
+  // setting. Null when the group's own retention setting applies.
+  retentionPolicy() aws.cloudwatch.logAccountPolicy
 }
 
 // Amazon CloudWatch log group metrics filter
@@ -12397,7 +12403,8 @@ private aws.cloudwatch.logAccountPolicy @defaults("policyName policyType") {
   // Policy type
   //
   // One of DATA_PROTECTION_POLICY, SUBSCRIPTION_FILTER_POLICY,
-  // FIELD_INDEX_POLICY, TRANSFORMER_POLICY, or METRIC_EXTRACTION_POLICY.
+  // FIELD_INDEX_POLICY, TRANSFORMER_POLICY, METRIC_EXTRACTION_POLICY, or
+  // RETENTION_POLICY.
   policyType string
   // Parsed policy document
   policyDocument dict
@@ -19486,6 +19493,14 @@ private aws.lambda.eventSourceMapping @defaults("uuid eventSourceArn") {
   // Kafka cluster. Null when the API reports none, as for event sources
   // other than Kafka.
   kafkaConsumerGroupId string
+  // How the mapping consumes records from a self-managed Kafka topic
+  //
+  // Stream consumes through a consumer group and keeps record order within
+  // each partition; it is the default. Queue consumes through a share group,
+  // processes records from one partition concurrently, and does not keep
+  // their order. Null when the event source is not a self-managed Kafka
+  // cluster.
+  selfManagedKafkaConsumptionMode string
 }
 
 // AWS Lambda function alias
@@ -23910,6 +23925,18 @@ private aws.documentdb.cluster @defaults("arn name status") {
   exposure() aws.network.exposure
   // Network type for the cluster (IPV4 or DUAL)
   networkType string
+  // Version of the DocumentDB Serverless platform the cluster runs on
+  //
+  // Null when the cluster has no serverless instances configured.
+  serverlessV2PlatformVersion string
+  // Minimum DocumentDB capacity units of a serverless instance in the cluster
+  //
+  // Null when the cluster has no serverless scaling configured.
+  serverlessV2MinCapacity float
+  // Maximum DocumentDB capacity units of a serverless instance in the cluster
+  //
+  // Null when the cluster has no serverless scaling configured.
+  serverlessV2MaxCapacity float
   // Source DB cluster, when this cluster is a read replica (null otherwise)
   replicationSource() aws.documentdb.cluster
   // Read replica clusters
@@ -26995,6 +27022,12 @@ private aws.timestream.influxdb.cluster @defaults("arn name status") {
   dbParameterGroupIdentifier() string
   // Failover mode: AUTOMATIC or NO_FAILOVER
   failoverMode() string
+  // Node groups making up an InfluxDB 3 Enterprise cluster
+  //
+  // Each entry has `count` (nodes in the group), `instanceType`, and
+  // `instanceModes`, the functions the nodes perform: INGEST, QUERY, COMPACT,
+  // or PROCESS. Empty for clusters of other engines.
+  nodeGroups() []dict
   // Tags for the DB cluster
   tags() map[string]string
 }

@@ -17358,6 +17358,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.cloudwatch.loggroup.resourcePolicy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCloudwatchLoggroup).GetResourcePolicy()).ToDataRes(types.Resource("aws.cloudwatch.resourcepolicy"))
 	},
+	"aws.cloudwatch.loggroup.retentionPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLoggroup).GetRetentionPolicy()).ToDataRes(types.Resource("aws.cloudwatch.logAccountPolicy"))
+	},
 	"aws.cloudwatch.loggroup.metricsfilter.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCloudwatchLoggroupMetricsfilter).GetId()).ToDataRes(types.String)
 	},
@@ -24198,6 +24201,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.lambda.eventSourceMapping.kafkaConsumerGroupId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsLambdaEventSourceMapping).GetKafkaConsumerGroupId()).ToDataRes(types.String)
 	},
+	"aws.lambda.eventSourceMapping.selfManagedKafkaConsumptionMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsLambdaEventSourceMapping).GetSelfManagedKafkaConsumptionMode()).ToDataRes(types.String)
+	},
 	"aws.lambda.function.alias.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsLambdaFunctionAlias).GetArn()).ToDataRes(types.String)
 	},
@@ -28548,6 +28554,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.documentdb.cluster.networkType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsDocumentdbCluster).GetNetworkType()).ToDataRes(types.String)
 	},
+	"aws.documentdb.cluster.serverlessV2PlatformVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsDocumentdbCluster).GetServerlessV2PlatformVersion()).ToDataRes(types.String)
+	},
+	"aws.documentdb.cluster.serverlessV2MinCapacity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsDocumentdbCluster).GetServerlessV2MinCapacity()).ToDataRes(types.Float)
+	},
+	"aws.documentdb.cluster.serverlessV2MaxCapacity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsDocumentdbCluster).GetServerlessV2MaxCapacity()).ToDataRes(types.Float)
+	},
 	"aws.documentdb.cluster.replicationSource": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsDocumentdbCluster).GetReplicationSource()).ToDataRes(types.Resource("aws.documentdb.cluster"))
 	},
@@ -31688,6 +31703,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.timestream.influxdb.cluster.failoverMode": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsTimestreamInfluxdbCluster).GetFailoverMode()).ToDataRes(types.String)
+	},
+	"aws.timestream.influxdb.cluster.nodeGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsTimestreamInfluxdbCluster).GetNodeGroups()).ToDataRes(types.Array(types.Dict))
 	},
 	"aws.timestream.influxdb.cluster.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsTimestreamInfluxdbCluster).GetTags()).ToDataRes(types.Map(types.String, types.String))
@@ -57479,6 +57497,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsCloudwatchLoggroup).ResourcePolicy, ok = plugin.RawToTValue[*mqlAwsCloudwatchResourcepolicy](v.Value, v.Error)
 		return
 	},
+	"aws.cloudwatch.loggroup.retentionPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLoggroup).RetentionPolicy, ok = plugin.RawToTValue[*mqlAwsCloudwatchLogAccountPolicy](v.Value, v.Error)
+		return
+	},
 	"aws.cloudwatch.loggroup.metricsfilter.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsCloudwatchLoggroupMetricsfilter).__id, ok = v.Value.(string)
 		return
@@ -67359,6 +67381,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsLambdaEventSourceMapping).KafkaConsumerGroupId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"aws.lambda.eventSourceMapping.selfManagedKafkaConsumptionMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsLambdaEventSourceMapping).SelfManagedKafkaConsumptionMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"aws.lambda.function.alias.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsLambdaFunctionAlias).__id, ok = v.Value.(string)
 		return
@@ -73663,6 +73689,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsDocumentdbCluster).NetworkType, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"aws.documentdb.cluster.serverlessV2PlatformVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsDocumentdbCluster).ServerlessV2PlatformVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.documentdb.cluster.serverlessV2MinCapacity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsDocumentdbCluster).ServerlessV2MinCapacity, ok = plugin.RawToTValue[float64](v.Value, v.Error)
+		return
+	},
+	"aws.documentdb.cluster.serverlessV2MaxCapacity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsDocumentdbCluster).ServerlessV2MaxCapacity, ok = plugin.RawToTValue[float64](v.Value, v.Error)
+		return
+	},
 	"aws.documentdb.cluster.replicationSource": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsDocumentdbCluster).ReplicationSource, ok = plugin.RawToTValue[*mqlAwsDocumentdbCluster](v.Value, v.Error)
 		return
@@ -78221,6 +78259,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.timestream.influxdb.cluster.failoverMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsTimestreamInfluxdbCluster).FailoverMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.timestream.influxdb.cluster.nodeGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsTimestreamInfluxdbCluster).NodeGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"aws.timestream.influxdb.cluster.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -137578,6 +137620,7 @@ type mqlAwsCloudwatchLoggroup struct {
 	InheritedProperties       plugin.TValue[[]any]
 	DataProtectionPolicy      plugin.TValue[any]
 	ResourcePolicy            plugin.TValue[*mqlAwsCloudwatchResourcepolicy]
+	RetentionPolicy           plugin.TValue[*mqlAwsCloudwatchLogAccountPolicy]
 }
 
 // createAwsCloudwatchLoggroup creates a new instance of this resource
@@ -137772,6 +137815,22 @@ func (c *mqlAwsCloudwatchLoggroup) GetResourcePolicy() *plugin.TValue[*mqlAwsClo
 		}
 
 		return c.resourcePolicy()
+	})
+}
+
+func (c *mqlAwsCloudwatchLoggroup) GetRetentionPolicy() *plugin.TValue[*mqlAwsCloudwatchLogAccountPolicy] {
+	return plugin.GetOrCompute[*mqlAwsCloudwatchLogAccountPolicy](&c.RetentionPolicy, func() (*mqlAwsCloudwatchLogAccountPolicy, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.cloudwatch.loggroup", c.__id, "retentionPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsCloudwatchLogAccountPolicy), nil
+			}
+		}
+
+		return c.retentionPolicy()
 	})
 }
 
@@ -162030,6 +162089,7 @@ type mqlAwsLambdaEventSourceMapping struct {
 	SecurityGroups                   plugin.TValue[[]any]
 	SelfManagedKafkaBootstrapServers plugin.TValue[[]any]
 	KafkaConsumerGroupId             plugin.TValue[string]
+	SelfManagedKafkaConsumptionMode  plugin.TValue[string]
 }
 
 // createAwsLambdaEventSourceMapping creates a new instance of this resource
@@ -162235,6 +162295,10 @@ func (c *mqlAwsLambdaEventSourceMapping) GetSelfManagedKafkaBootstrapServers() *
 
 func (c *mqlAwsLambdaEventSourceMapping) GetKafkaConsumerGroupId() *plugin.TValue[string] {
 	return &c.KafkaConsumerGroupId
+}
+
+func (c *mqlAwsLambdaEventSourceMapping) GetSelfManagedKafkaConsumptionMode() *plugin.TValue[string] {
+	return &c.SelfManagedKafkaConsumptionMode
 }
 
 // mqlAwsLambdaFunctionAlias for the aws.lambda.function.alias resource
@@ -177670,6 +177734,9 @@ type mqlAwsDocumentdbCluster struct {
 	SecurityGroups               plugin.TValue[[]any]
 	Exposure                     plugin.TValue[*mqlAwsNetworkExposure]
 	NetworkType                  plugin.TValue[string]
+	ServerlessV2PlatformVersion  plugin.TValue[string]
+	ServerlessV2MinCapacity      plugin.TValue[float64]
+	ServerlessV2MaxCapacity      plugin.TValue[float64]
 	ReplicationSource            plugin.TValue[*mqlAwsDocumentdbCluster]
 	ReadReplicas                 plugin.TValue[[]any]
 	GlobalClusterIdentifier      plugin.TValue[string]
@@ -177984,6 +178051,18 @@ func (c *mqlAwsDocumentdbCluster) GetExposure() *plugin.TValue[*mqlAwsNetworkExp
 
 func (c *mqlAwsDocumentdbCluster) GetNetworkType() *plugin.TValue[string] {
 	return &c.NetworkType
+}
+
+func (c *mqlAwsDocumentdbCluster) GetServerlessV2PlatformVersion() *plugin.TValue[string] {
+	return &c.ServerlessV2PlatformVersion
+}
+
+func (c *mqlAwsDocumentdbCluster) GetServerlessV2MinCapacity() *plugin.TValue[float64] {
+	return &c.ServerlessV2MinCapacity
+}
+
+func (c *mqlAwsDocumentdbCluster) GetServerlessV2MaxCapacity() *plugin.TValue[float64] {
+	return &c.ServerlessV2MaxCapacity
 }
 
 func (c *mqlAwsDocumentdbCluster) GetReplicationSource() *plugin.TValue[*mqlAwsDocumentdbCluster] {
@@ -189535,6 +189614,7 @@ type mqlAwsTimestreamInfluxdbCluster struct {
 	LogDeliveryS3Bucket           plugin.TValue[string]
 	DbParameterGroupIdentifier    plugin.TValue[string]
 	FailoverMode                  plugin.TValue[string]
+	NodeGroups                    plugin.TValue[[]any]
 	Tags                          plugin.TValue[map[string]any]
 }
 
@@ -189691,6 +189771,12 @@ func (c *mqlAwsTimestreamInfluxdbCluster) GetDbParameterGroupIdentifier() *plugi
 func (c *mqlAwsTimestreamInfluxdbCluster) GetFailoverMode() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.FailoverMode, func() (string, error) {
 		return c.failoverMode()
+	})
+}
+
+func (c *mqlAwsTimestreamInfluxdbCluster) GetNodeGroups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.NodeGroups, func() ([]any, error) {
+		return c.nodeGroups()
 	})
 }
 

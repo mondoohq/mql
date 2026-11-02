@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	influxdbtypes "github.com/aws/aws-sdk-go-v2/service/timestreaminfluxdb/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -73,3 +75,31 @@ func ptrStr(s string) *string { return new(s) }
 
 //go:fix inline
 func timePtr(t time.Time) *time.Time { return new(t) }
+
+// Synthetic: an InfluxDB 3 Enterprise topology within the documented node
+// limits, and a cluster of another engine; no cluster was scanned.
+func TestInfluxdbNodeGroups(t *testing.T) {
+	cfg := &influxdbtypes.DeploymentConfigurationMemberInfluxDBv3Enterprise{
+		Value: influxdbtypes.InfluxDBv3EnterpriseDeploymentConfiguration{
+			NodeGroups: []influxdbtypes.NodeGroup{
+				{
+					Count:         aws.Int32(2),
+					InstanceType:  influxdbtypes.DbInstanceTypeDbInfluxMedium,
+					InstanceModes: []influxdbtypes.InstanceMode{influxdbtypes.InstanceModeIngest, influxdbtypes.InstanceModeQuery},
+				},
+				{
+					Count:         aws.Int32(1),
+					InstanceType:  influxdbtypes.DbInstanceTypeDbInfluxLarge,
+					InstanceModes: []influxdbtypes.InstanceMode{influxdbtypes.InstanceModeCompact},
+				},
+			},
+		},
+	}
+	assert.Equal(t, []any{
+		map[string]any{"count": int64(2), "instanceType": "db.influx.medium", "instanceModes": []any{"INGEST", "QUERY"}},
+		map[string]any{"count": int64(1), "instanceType": "db.influx.large", "instanceModes": []any{"COMPACT"}},
+	}, influxdbNodeGroups(cfg))
+
+	assert.Equal(t, []any{}, influxdbNodeGroups(nil))
+	assert.Equal(t, []any{}, influxdbNodeGroups(&influxdbtypes.DeploymentConfigurationMemberInfluxDBv3Enterprise{}))
+}

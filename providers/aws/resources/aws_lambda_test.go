@@ -537,6 +537,37 @@ func TestEventSourceMappingArgsKafka(t *testing.T) {
 			args["selfManagedKafkaBootstrapServers"].Value)
 		assert.Equal(t, "orders-consumer", args["kafkaConsumerGroupId"].Value)
 		assert.Equal(t, []any{"BASIC_AUTH"}, args["sourceAccessTypes"].Value)
+		// Synthetic: a response without a consumption mode; the live API reports
+		// Stream explicitly, so no mapping showed this.
+		assert.Equal(t, "Stream", args["selfManagedKafkaConsumptionMode"].Value)
+	})
+
+	// Measured: Lambda in us-east-1, 2026-11-02. A mapping created with
+	// ConsumptionMode=Queue returned SelfManagedKafkaEventSourceConfig
+	// {ConsumerGroupId: mql-q, ConsumptionMode: Queue}, and one created without a
+	// mode returned ConsumptionMode: Stream.
+	t.Run("self-managed Kafka in queue mode", func(t *testing.T) {
+		esm := lambdatypes.EventSourceMappingConfiguration{
+			UUID: aws.String("11111111-2222-3333-4444-555555555555"),
+			SelfManagedEventSource: &lambdatypes.SelfManagedEventSource{
+				Endpoints: map[string][]string{"KAFKA_BOOTSTRAP_SERVERS": {"b-1.example.com:9092"}},
+			},
+			SelfManagedKafkaEventSourceConfig: &lambdatypes.SelfManagedKafkaEventSourceConfig{
+				ConsumerGroupId: aws.String("mql-q"),
+				ConsumptionMode: lambdatypes.KafkaEventSourceMappingConsumptionModeQueue,
+			},
+		}
+		args, err := eventSourceMappingArgs(esm, "us-east-1", parseSourceAccessConfigurations(esm.SourceAccessConfigurations))
+		require.NoError(t, err)
+		assert.Equal(t, "Queue", args["selfManagedKafkaConsumptionMode"].Value)
+
+		esm.SelfManagedKafkaEventSourceConfig = &lambdatypes.SelfManagedKafkaEventSourceConfig{
+			ConsumerGroupId: aws.String("mql-s"),
+			ConsumptionMode: lambdatypes.KafkaEventSourceMappingConsumptionModeStream,
+		}
+		args, err = eventSourceMappingArgs(esm, "us-east-1", parseSourceAccessConfigurations(esm.SourceAccessConfigurations))
+		require.NoError(t, err)
+		assert.Equal(t, "Stream", args["selfManagedKafkaConsumptionMode"].Value)
 	})
 
 	t.Run("Amazon MSK", func(t *testing.T) {
@@ -551,6 +582,7 @@ func TestEventSourceMappingArgsKafka(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, rawDataIsNull(t, args, "selfManagedKafkaBootstrapServers"))
 		assert.Equal(t, "msk-consumer", args["kafkaConsumerGroupId"].Value)
+		assert.True(t, rawDataIsNull(t, args, "selfManagedKafkaConsumptionMode"))
 	})
 
 	t.Run("not Kafka", func(t *testing.T) {
@@ -562,6 +594,7 @@ func TestEventSourceMappingArgsKafka(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, rawDataIsNull(t, args, "selfManagedKafkaBootstrapServers"))
 		assert.True(t, rawDataIsNull(t, args, "kafkaConsumerGroupId"))
+		assert.True(t, rawDataIsNull(t, args, "selfManagedKafkaConsumptionMode"))
 		assert.Equal(t, []any{}, args["sourceAccessTypes"].Value)
 	})
 }
