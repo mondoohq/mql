@@ -840,3 +840,46 @@ func TestRpmEpochParityAcrossCollectionPaths(t *testing.T) {
 		})
 	}
 }
+
+func TestRpmPurlVersion(t *testing.T) {
+	tests := []struct {
+		name    string
+		version string
+		epoch   string
+		want    string
+	}{
+		{
+			// Synthetic: a package rpm recorded without an epoch.
+			name:    "no epoch",
+			version: "3.9.25-7.el9_8.2",
+			epoch:   "",
+			want:    "3.9.25-7.el9_8.2",
+		},
+		{
+			// Synthetic: the version as both collection paths build it for an epoch-1 package.
+			name:    "epoch prefix is dropped",
+			version: "1:6.1.2-11.el8",
+			epoch:   "1",
+			want:    "6.1.2-11.el8",
+		},
+		{
+			// Synthetic: a version whose leading digits equal the epoch but carry no "epoch:" prefix.
+			name:    "version starting with the epoch digits is kept",
+			version: "12.0-1.el9",
+			epoch:   "1",
+			want:    "12.0-1.el9",
+		},
+		{
+			// Synthetic: a multi-digit epoch.
+			name:    "multi-digit epoch",
+			version: "32:9.18.33-3.el9",
+			epoch:   "32",
+			want:    "9.18.33-3.el9",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, rpmPurlVersion(tc.version, tc.epoch))
+		})
+	}
+}
