@@ -273,3 +273,26 @@ func TestReaddirStatsTheDirectoryInOneGo(t *testing.T) {
 	assert.Equal(t, "late", infos[1].Name(), "stat'ed on its own")
 	assert.Equal(t, 1, st.calls)
 }
+
+// A file cat cannot read used to read as an empty file: a scan that is not
+// root got "" for /etc/shadow, and an unset /proc/sys stable_secret (EIO)
+// read as an empty parameter. In the base64 pipeline cat's status is lost,
+// so its complaint on stderr is what tells.
+func TestFileReadFailure(t *testing.T) {
+	run := &fakeRun{stderr: "cat: /etc/shadow: Permission denied\n", exit: 1}
+	_, err := io.ReadAll(NewFile(&Fs{commandRunner: run}, "/etc/shadow", false))
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, os.ErrPermission))
+
+	run = &fakeRun{stderr: "cat: /proc/sys/net/ipv6/conf/all/stable_secret: Input/output error\n"}
+	_, err = io.ReadAll(NewFile(&Fs{commandRunner: run}, "/proc/sys/net/ipv6/conf/all/stable_secret", true))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Input/output error")
+	assert.False(t, errors.Is(err, os.ErrNotExist))
+
+	// what sudo prints about itself does not fail the read
+	run = &fakeRun{stdout: base64.StdEncoding.EncodeToString([]byte("root:*:20000::::::\n")) + "\n", stderr: "sudo: unable to resolve host mql: Name or service not known\n"}
+	data, err := io.ReadAll(NewFile(&Fs{commandRunner: run}, "/etc/shadow", true))
+	require.NoError(t, err)
+	assert.Equal(t, "root:*:20000::::::\n", string(data))
+}
