@@ -727,6 +727,7 @@ resource "aws_appautoscaling_policy" "example" {
 // TestDynamicBlock_IteratorValueResolved is the core case: a for_each over a
 // literal list must bind <label>.value in the generated block's arguments.
 func TestDynamicBlock_IteratorValueResolved(t *testing.T) {
+	// Synthetic: single-element for_each over a literal list binds ingress.value; no target showed this.
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`
 resource "aws_security_group" "ex" {
@@ -760,6 +761,7 @@ resource "aws_security_group" "ex" {
 // produces one block per element, each carrying its own iterator value. A single
 // merged block would let a violating element hide behind a compliant one.
 func TestDynamicBlock_ExpandsPerForEachElement(t *testing.T) {
+	// Synthetic: two-element for_each yields one block per element; no target showed this.
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`
 resource "aws_security_group" "ex" {
@@ -793,6 +795,7 @@ resource "aws_security_group" "ex" {
 // TestDynamicBlock_IteratorRenamed covers the `iterator = other` override, which
 // parses as a naked keyword rather than a string.
 func TestDynamicBlock_IteratorRenamed(t *testing.T) {
+	// Synthetic: `iterator = rule` renames the iterator; no target showed this.
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`
 resource "aws_security_group" "ex" {
@@ -824,6 +827,7 @@ resource "aws_security_group" "ex" {
 // actually take: for_each iterates a variable, so binding the iterator depends
 // on variable resolution having already happened.
 func TestDynamicBlock_ForEachOverVariable(t *testing.T) {
+	// Synthetic: for_each over a variable default; constructed to the shape of the reported policy failures.
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`
 variable "ssh_cidrs" {
@@ -860,6 +864,7 @@ resource "oci_core_security_list" "ex" {
 // for_each cannot be evaluated statically the block must still appear, unbound,
 // rather than disappearing and taking its structure with it.
 func TestDynamicBlock_UnresolvableForEachStillSurfaces(t *testing.T) {
+	// Synthetic: for_each over a data source that cannot be evaluated statically; no target showed this.
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`
 resource "aws_security_group" "ex" {
