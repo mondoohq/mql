@@ -168,6 +168,7 @@ func (s *Service) StoreData(req *plugin.StoreReq) (*plugin.StoreRes, error) {
 			errs = append(errs, "failed to add cached "+info.Name+" (id: "+info.Id+"), failed to parse arguments")
 			continue
 		}
+		plugin.ResolveResourceArgs(args, runtime)
 
 		resource, ok := runtime.Resources.Get(info.Name + "\x00" + info.Id)
 		if !ok {
