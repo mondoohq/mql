@@ -4,6 +4,7 @@
 package windows
 
 import (
+	"math"
 	"strconv"
 	"testing"
 	"time"
@@ -85,12 +86,39 @@ func TestNormalizeWUAErrorCode(t *testing.T) {
 }
 
 func TestOleDateToTime(t *testing.T) {
+	at := func(f float64) time.Time {
+		t.Helper()
+		got, ok := oleDateToTime(f)
+		require.True(t, ok, "%v", f)
+		return got
+	}
 	// Synthetic: 46000.5 days after 1899-12-30 is 2025-12-09 12:00:00, no tz conversion.
-	assert.Equal(t, time.Date(2025, 12, 9, 12, 0, 0, 0, time.UTC), oleDateToTime(46000.5))
+	assert.Equal(t, time.Date(2025, 12, 9, 12, 0, 0, 0, time.UTC), at(46000.5))
 	// Synthetic: sub-second parts are truncated (0.9999 s before noon).
-	assert.Equal(t, time.Date(2025, 12, 9, 11, 59, 59, 0, time.UTC), oleDateToTime(46000.5-0.9999/86400))
+	assert.Equal(t, time.Date(2025, 12, 9, 11, 59, 59, 0, time.UTC), at(46000.5-0.9999/86400))
 	// Synthetic: the OLE zero.
-	assert.Equal(t, time.Date(1899, 12, 30, 0, 0, 0, 0, time.UTC), oleDateToTime(0))
+	assert.Equal(t, time.Date(1899, 12, 30, 0, 0, 0, 0, time.UTC), at(0))
+	// Synthetic: a negative date's fraction counts forward from that day.
+	assert.Equal(t, time.Date(1899, 12, 29, 6, 0, 0, 0, time.UTC), at(-1.25))
+	// Measured: GitHub's windows-2022 runner (2026-11-02) reports "never" for
+	// LastInstallationSuccessDate as 1601-01-01, 109205 days before the epoch.
+	// A time.Duration offset overflowed there and gave 2185-07-21 23:34:33.
+	assert.Equal(t, time.Date(1601, 1, 1, 0, 0, 0, 0, time.UTC), at(-109205))
+	// Synthetic: the limits of the OLE range, and values outside it.
+	assert.Equal(t, time.Date(100, 1, 1, 0, 0, 0, 0, time.UTC), at(oleDateMin))
+	assert.Equal(t, time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC), at(oleDateMax))
+	for _, f := range []float64{math.NaN(), math.Inf(1), math.Inf(-1), oleDateMin - 1, oleDateMax + 1} {
+		_, ok := oleDateToTime(f)
+		assert.False(t, ok, "%v", f)
+	}
+}
+
+func TestWUACOMDateNeverAsOLEDate(t *testing.T) {
+	// Measured: the 1601-01-01 "never" value as an OLE date (see TestOleDateToTime)
+	// must be nil, which is what the PowerShell path reports on that runner.
+	got, err := wuaCOMDate(float64(-109205))
+	require.NoError(t, err)
+	assert.Nil(t, got)
 }
 
 func TestWUACOMDate(t *testing.T) {

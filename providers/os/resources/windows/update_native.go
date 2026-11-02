@@ -13,10 +13,6 @@ import (
 	"time"
 )
 
-// wuaEventLog is the event log the Windows Update client writes its scan
-// results to.
-const wuaEventLog = "Microsoft-Windows-WindowsUpdateClient/Operational"
-
 // wuaNeverYear is the first year a COM date must reach to count as a real
 // date. The agent reports "never" as DateTime.MinValue, 1601 or the 1899-12-30
 // OLE zero; WINDOWS_QUERY_WUA_RESULTS drops everything before 1980 the same way.
@@ -74,14 +70,29 @@ func parseWUAEvent(rendered string) (time.Time, string, error) {
 	return t.UTC().Truncate(time.Second), code, nil
 }
 
+// OLE automation dates are valid from 100-01-01 to 9999-12-31.
+const (
+	oleDateMin = -657434.0
+	oleDateMax = 2958465.999999
+	// oleEpochUnixMilli is 1899-12-30, the OLE day zero, in Unix milliseconds.
+	oleEpochUnixMilli = -2209161600000
+)
+
 // oleDateToTime converts an OLE automation date (days since 1899-12-30, the
-// fraction is the time of day) to its wall-clock value, labelled UTC: the COM
-// dates are not converted to another time zone. The result is truncated to
-// seconds.
-func oleDateToTime(f float64) time.Time {
-	ms := int64(math.Round(f * 86400000))
-	return time.Date(1899, 12, 30, 0, 0, 0, 0, time.UTC).
-		Add(time.Duration(ms) * time.Millisecond).Truncate(time.Second)
+// fraction being the time of day) into a UTC time. Like .NET's FromOADate it
+// rounds to milliseconds, and like the script's yyyy-MM-dd HH:mm:ss format the
+// result is then cut to the second. For a negative date the fraction still
+// counts forward from the start of the day: -1.25 is 1899-12-29 06:00. The sum
+// is kept in int64 milliseconds because a time.Duration spans only about 292
+// years, and the agent's "never" value (1601) lies 298 years before the epoch.
+// ok is false for NaN and dates outside the OLE range.
+func oleDateToTime(f float64) (t time.Time, ok bool) {
+	if math.IsNaN(f) || f < oleDateMin || f > oleDateMax {
+		return time.Time{}, false
+	}
+	days := math.Trunc(f)
+	ms := int64(days)*86400000 + int64(math.Round(math.Abs(f-days)*86400000))
+	return time.UnixMilli(oleEpochUnixMilli + ms).UTC().Truncate(time.Second), true
 }
 
 // wuaCOMDate maps a COM date value to a result time. nil and a "never"
@@ -95,7 +106,10 @@ func wuaCOMDate(v any) (*time.Time, error) {
 	case time.Time:
 		t = d
 	case float64:
-		t = oleDateToTime(d)
+		var ok bool
+		if t, ok = oleDateToTime(d); !ok {
+			return nil, nil
+		}
 	default:
 		return nil, fmt.Errorf("unexpected COM date type %T", v)
 	}

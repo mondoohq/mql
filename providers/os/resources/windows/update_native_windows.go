@@ -135,6 +135,10 @@ func readCOMDate(obj *ole.IDispatch, name string) (*time.Time, error) {
 	return t, nil
 }
 
+// wuaEventLog is the event log the Windows Update client writes its scan
+// results to.
+const wuaEventLog = "Microsoft-Windows-WindowsUpdateClient/Operational"
+
 const (
 	evtQueryChannelPath      = 0x1
 	evtQueryReverseDirection = 0x200
