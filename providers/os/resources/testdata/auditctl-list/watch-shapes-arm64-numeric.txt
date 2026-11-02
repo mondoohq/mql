@@ -1,0 +1,8 @@
+-a never,task
+-a always,exit -F arch=0x40000028 -S 5,8,9,10,14,15,16,38,39,40,51,83,87,92,93,94,95,131,182,226,227,228,235,236,237,282,322,323,324,325,328,329,330,331,333,352,382,437,463,466 -F path=/etc/sysconfig/network -F perm=wa -F key=b32only
+-a always,exit -S all -F path=/etc/NetworkManager/system-connections -F key=nm-noperm
+-a always,exit -F arch=b64 -S setxattr,lsetxattr,fsetxattr,removexattr,lremovexattr,fremovexattr,mknodat,mkdirat,unlinkat,symlinkat,linkat,renameat,truncate,ftruncate,fallocate,fchmod,fchmodat,fchownat,fchown,openat,quotactl,acct,bind,swapon,renameat2,openat2,463,466 -F dir=/etc/NetworkManager/conf.d -F perm=wa -F key=nm-dir
+-a always,exit -F arch=b64 -S setxattr,lsetxattr,fsetxattr,removexattr,lremovexattr,fremovexattr,mknodat,mkdirat,unlinkat,symlinkat,linkat,renameat,truncate,ftruncate,fallocate,fchmod,fchmodat,fchownat,fchown,openat,quotactl,acct,bind,swapon,renameat2,openat2,463,466 -F path=/etc/hosts -F perm=wa -F key=hosts
+-a always,exit -F arch=0x40000028 -S 5,8,9,10,14,15,16,38,39,40,51,83,87,92,93,94,95,131,182,226,227,228,235,236,237,282,322,323,324,325,328,329,330,331,333,352,382,437,463,466 -F path=/etc/hosts -F perm=wa -F key=hosts
+-a always,exit -F arch=b64 -S setxattr,lsetxattr,fsetxattr,removexattr,lremovexattr,fremovexattr,mknodat,mkdirat,unlinkat,symlinkat,linkat,renameat,truncate,ftruncate,fallocate,fchmod,fchmodat,fchownat,fchown,openat,quotactl,acct,bind,swapon,renameat2,openat2,463,466 -F path=/etc/shadow -F perm=wa -F key=shadow
+-w /etc/passwd -p wa -k identity

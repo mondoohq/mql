@@ -385,6 +385,7 @@ auditd.config.numLogs 14.0.2
 auditd.config.params 11.4.3
 auditd.config.spaceLeftAction 14.0.2
 auditd.loadedRules 14.24.2
+auditd.loadedRules.disablesSyscallAuditing 14.33.5
 auditd.loadedRules.files 14.24.2
 auditd.loadedRules.syscalls 14.24.2
 auditd.loadedRules.watches 14.24.2
@@ -407,12 +408,14 @@ auditd.rule.syscall.keyname 11.4.21
 auditd.rule.syscall.list 11.4.21
 auditd.rule.syscall.syscalls 11.4.21
 auditd.rule.watch 14.0.2
+auditd.rule.watch.arch 14.33.5
 auditd.rule.watch.keyname 14.0.2
 auditd.rule.watch.path 14.0.2
 auditd.rule.watch.permissions 14.0.2
 auditd.rule.watch.type 14.0.2
 auditd.rules 11.4.21
 auditd.rules.controls 11.4.21
+auditd.rules.disablesSyscallAuditing 14.33.5
 auditd.rules.exists 14.0.2
 auditd.rules.files 11.4.21
 auditd.rules.immutable 14.0.2

@@ -1,0 +1,7 @@
+-a always,exit -F arch=b32 -F path=/etc/sysconfig/network -F perm=wa -k b32only
+-a always,exit -F path=/etc/NetworkManager/system-connections -k nm-noperm
+-a always,exit -F arch=b64 -F dir=/etc/NetworkManager/conf.d -F perm=wa -k nm-dir
+-a always,exit -F arch=b64 -F path=/etc/hosts -F perm=wa -k hosts
+-a always,exit -F arch=b32 -F path=/etc/hosts -F perm=wa -k hosts
+-a always,exit -F arch=aarch64 -F path=/etc/shadow -F perm=wa -k shadow
+-w /etc/passwd -p wa -k identity
