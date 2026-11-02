@@ -795,3 +795,49 @@ func TestWindowsFieldScopeAndNil(t *testing.T) {
 	assert.Nil(t, pkgs[2].Windows, "appx")
 	assert.Nil(t, pkgs[3].Windows, "not a Windows application")
 }
+
+// Measured: Windows Server 2022 Datacenter Azure Edition (20348.5773), 2026-11-02,
+// with the .NET 8.0.11 runtime installer, 7-Zip 24.08 MSI and Git 2.47.1. Key
+// names, WindowsInstaller and BundleUpgradeCode were read with Get-ItemProperty
+// on the Uninstall keys; each UpgradeCode was confirmed with the Windows
+// Installer API (RelatedProducts lists the ProductCode). The expected values
+// are what the live scan of this PR's build returned on that host, over SSH and
+// locally.
+func TestWindowsFieldMeasuredServer2022(t *testing.T) {
+	pf := &inventory.Platform{Name: "windows", Arch: "x86_64", Family: []string{"windows"}}
+	dotnetBundle := createPackage("Microsoft .NET Runtime - 8.0.11 (x64)", "8.0.11", "windows/app", "x86_64", "Microsoft Corporation", "", pf)
+	dotnetBundle.installIdentity = newInstallIdentity("{e883dae5-a63d-4a45-afb9-257f64d5a59b}", false, "{8DA0C13F-57EB-417F-0238-B9ADB29DA0A2}", "")
+	dotnetMsi := createPackage("Microsoft .NET Runtime - 8.0.11 (x64)", "8.0.11", "windows/app", "x86_64", "Microsoft Corporation", "", pf)
+	dotnetMsi.installIdentity = newInstallIdentity("{9C80213E-9079-4561-8D57-1FDD0D62251F}", true, "", "")
+	sevenZip := createPackage("7-Zip 24.08 (x64 edition)", "24.08.00.0", "windows/app", "x86_64", "Igor Pavlov", "", pf)
+	sevenZip.installIdentity = newInstallIdentity("{23170F69-40C1-2702-2408-000001000000}", true, "", "")
+	git := createPackage("Git", "2.47.1", "windows/app", "x86_64", "The Git Development Community", "", pf)
+	git.installIdentity = newInstallIdentity("Git_is1", false, "", `"C:\Program Files\Git\unins000.exe"`)
+
+	upgradeCodes := map[string]string{
+		"9C80213E-9079-4561-8D57-1FDD0D62251F": "8940AD6A-5295-4FAE-390E-C523D5650270",
+		"23170F69-40C1-2702-2408-000001000000": "23170F69-40C1-2702-0000-000004000000",
+	}
+	for _, dotnet := range [][]Package{{*dotnetBundle, *dotnetMsi}, {*dotnetMsi, *dotnetBundle}} {
+		w := &WinPkgManager{msiUpgradeCodes: upgradeCodes}
+		out := w.withInstallIdentity(collapsePackages(append(dotnet, *sevenZip, *git)))
+		require.Len(t, out, 3)
+		byName := map[string]*WindowsInstallIdentity{}
+		for i := range out {
+			windowsFieldMatchesPurl(t, out[i])
+			byName[out[i].Name] = out[i].Windows
+		}
+		assert.Equal(t, &WindowsInstallIdentity{
+			ProductCode:       "9C80213E-9079-4561-8D57-1FDD0D62251F",
+			UpgradeCode:       "8940AD6A-5295-4FAE-390E-C523D5650270",
+			BundleUpgradeCode: "8DA0C13F-57EB-417F-0238-B9ADB29DA0A2",
+			Installer:         "msi",
+		}, byName["Microsoft .NET Runtime - 8.0.11 (x64)"])
+		assert.Equal(t, &WindowsInstallIdentity{
+			ProductCode: "23170F69-40C1-2702-2408-000001000000",
+			UpgradeCode: "23170F69-40C1-2702-0000-000004000000",
+			Installer:   "msi",
+		}, byName["7-Zip 24.08 (x64 edition)"])
+		assert.Equal(t, &WindowsInstallIdentity{AppID: "Git", Installer: "inno"}, byName["Git"])
+	}
+}
