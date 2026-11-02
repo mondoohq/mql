@@ -13,16 +13,21 @@ import (
 
 // Structures to parse the data from cnquery report
 type BomAsset struct {
-	Name          string            `json:"name,omitempty"`
-	Platform      string            `json:"platform,omitempty"`
-	Version       string            `json:"version,omitempty"`
-	Build         string            `json:"build,omitempty"`
-	Family        []string          `json:"family,omitempty"`
-	Arch          string            `json:"arch,omitempty"`
-	CPEs          []string          `json:"cpes.map,omitempty"`
-	IDs           []string          `json:"ids,omitempty"`
-	Labels        map[string]string `json:"labels,omitempty"`
-	PlatformTitle string            `json:"platformTitle,omitempty"`
+	Name     string            `json:"name,omitempty"`
+	Platform string            `json:"platform,omitempty"`
+	Version  string            `json:"version,omitempty"`
+	Build    string            `json:"build,omitempty"`
+	Family   []string          `json:"family,omitempty"`
+	Arch     string            `json:"arch,omitempty"`
+	CPEs     []string          `json:"cpes.map,omitempty"`
+	IDs      []string          `json:"ids,omitempty"`
+	Labels   map[string]string `json:"labels,omitempty"`
+	// PlatformMetadata holds what the OS detector learned about the platform
+	// (SLES LTSS and SAP products, Ubuntu Pro, RHEL and Oracle ELS, Windows
+	// ESU). The vulnerability database reads it as platform labels to pick
+	// the EOL date that applies to the asset.
+	PlatformMetadata map[string]string `json:"platformMetadata,omitempty"`
+	PlatformTitle    string            `json:"platformTitle,omitempty"`
 }
 
 type BomPackage struct {

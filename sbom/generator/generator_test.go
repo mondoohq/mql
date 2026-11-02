@@ -137,3 +137,35 @@ func TestRunningBinaryPackagesEvidenceAndSignature(t *testing.T) {
 	assert.Nil(t, pkgs[1].IdentityEvidence)
 	assert.Nil(t, pkgs[1].Signature)
 }
+
+func TestPlatformLabels(t *testing.T) {
+	t.Run("ltss extension from the platform metadata", func(t *testing.T) {
+		// Measured: SLES 15 SP4 (EC2 suse-sles-15-sp4-sapcal-v20260703) with
+		// an SLES-LTSS extension in /etc/products.d, 2026-10-31.
+		got := platformLabels(
+			map[string]string{"distro-id": "sles", "variant-id": "sles-sapcal"},
+			map[string]string{
+				"distro-id":        "sles",
+				"suse/baseproduct": "sles",
+				"suse/modules":     "Linux Enterprise Server LTSS 15 SP4,Basesystem",
+			},
+		)
+		assert.Equal(t, map[string]string{
+			"distro-id":        "sles",
+			"variant-id":       "sles-sapcal",
+			"suse/baseproduct": "sles",
+			"suse/modules":     "Linux Enterprise Server LTSS 15 SP4,Basesystem",
+		}, got)
+	})
+
+	t.Run("no metadata keeps the labels", func(t *testing.T) {
+		// Synthetic: a report from a cnspec that does not query platformMetadata.
+		labels := map[string]string{"distro-id": "alpine"}
+		assert.Equal(t, labels, platformLabels(labels, nil))
+	})
+
+	t.Run("metadata only", func(t *testing.T) {
+		// Synthetic: an asset with no labels of its own.
+		assert.Equal(t, map[string]string{"ubuntu/pro": "enabled"}, platformLabels(nil, map[string]string{"ubuntu/pro": "enabled"}))
+	})
+}
