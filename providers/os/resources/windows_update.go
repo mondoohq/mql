@@ -321,6 +321,19 @@ func laterTime(a, b *time.Time) *time.Time {
 
 // readWUAResults runs WINDOWS_QUERY_WUA_RESULTS and parses its output.
 func (w *mqlWindowsUpdate) readWUAResults(conn shared.Connection) (*windows.WUAResults, error) {
+	// On a local Windows scan with the native readers on: COM and the event
+	// log from Go, no PowerShell. On error, the script as before.
+	if shared.WindowsNative(conn) {
+		res, err := windows.NativeWUAResults()
+		if err == nil {
+			log.Debug().Msg("windows.update.config> read Windows Update Agent results natively")
+			return res, nil
+		}
+		log.Debug().Err(err).Msg("windows.update.config> native Windows Update Agent read failed, falling back to PowerShell")
+	} else {
+		log.Debug().Msg("windows.update.config> reading Windows Update Agent results with PowerShell")
+	}
+
 	cmd, err := conn.RunCommand(powershell.Encode(windows.WINDOWS_QUERY_WUA_RESULTS))
 	if err != nil {
 		return nil, err

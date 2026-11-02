@@ -39,6 +39,7 @@ require (
 	github.com/glebarez/go-sqlite v1.23.0
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/go-jose/go-jose/v3 v3.0.5
+	github.com/go-ole/go-ole v1.3.0
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/gobwas/glob v1.1.0
 	github.com/gofrs/uuid v4.4.0+incompatible
@@ -205,7 +206,6 @@ require (
 	github.com/go-jose/go-jose/v4 v4.1.6 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/goccy/go-json v0.12.0 // indirect
 	github.com/godbus/dbus v0.0.0-20190726142602-4481cbc300e2 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
