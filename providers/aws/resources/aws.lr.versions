@@ -2392,6 +2392,7 @@ aws.cloudwatch.loggroup.neverExpires 13.53.6
 aws.cloudwatch.loggroup.region 11.15.2
 aws.cloudwatch.loggroup.resourcePolicy 13.26.3
 aws.cloudwatch.loggroup.retentionInDays 11.15.2
+aws.cloudwatch.loggroup.retentionPolicy 14.6.3
 aws.cloudwatch.loggroup.storedBytes 13.6.3
 aws.cloudwatch.loggroup.subscriptionFilters 13.6.3
 aws.cloudwatch.loggroup.subscriptionfilter 13.6.3
@@ -3247,6 +3248,9 @@ aws.documentdb.cluster.readerEndpoint 13.19.1
 aws.documentdb.cluster.region 11.16.1
 aws.documentdb.cluster.replicationSource 13.19.1
 aws.documentdb.cluster.securityGroups 13.3.1
+aws.documentdb.cluster.serverlessV2MaxCapacity 14.6.3
+aws.documentdb.cluster.serverlessV2MinCapacity 14.6.3
+aws.documentdb.cluster.serverlessV2PlatformVersion 14.6.3
 aws.documentdb.cluster.snapshots 11.16.1
 aws.documentdb.cluster.status 11.16.1
 aws.documentdb.cluster.storageEncrypted 11.16.1
@@ -7390,6 +7394,7 @@ aws.lambda.eventSourceMapping.region 11.15.2
 aws.lambda.eventSourceMapping.secrets 14.4.4
 aws.lambda.eventSourceMapping.securityGroups 14.4.4
 aws.lambda.eventSourceMapping.selfManagedKafkaBootstrapServers 14.4.4
+aws.lambda.eventSourceMapping.selfManagedKafkaConsumptionMode 14.6.3
 aws.lambda.eventSourceMapping.sourceAccessTypes 14.4.4
 aws.lambda.eventSourceMapping.startingPosition 11.15.2
 aws.lambda.eventSourceMapping.state 11.15.2
@@ -11567,6 +11572,7 @@ aws.timestream.influxdb.cluster.logDeliveryEnabled 11.16.1
 aws.timestream.influxdb.cluster.logDeliveryS3Bucket 11.16.1
 aws.timestream.influxdb.cluster.name 11.16.1
 aws.timestream.influxdb.cluster.networkType 11.16.1
+aws.timestream.influxdb.cluster.nodeGroups 14.6.3
 aws.timestream.influxdb.cluster.port 11.16.1
 aws.timestream.influxdb.cluster.publiclyAccessible 11.16.1
 aws.timestream.influxdb.cluster.readerEndpoint 11.16.1

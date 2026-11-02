@@ -752,7 +752,9 @@ func buildLogGroupResource(runtime *plugin.Runtime, region string, loggroup clou
 	if err != nil {
 		return nil, err
 	}
-	return mqlLogGroup.(*mqlAwsCloudwatchLoggroup), nil
+	lg := mqlLogGroup.(*mqlAwsCloudwatchLoggroup)
+	lg.cacheRetentionPolicyName = convert.ToValue(loggroup.RetentionPolicyName)
+	return lg, nil
 }
 
 func initAwsCloudwatchLoggroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -881,6 +883,9 @@ type mqlAwsCloudwatchLoggroupInternal struct {
 	cacheTags   map[string]string
 	tagsFetched bool
 	tagsLock    sync.Mutex
+	// cacheRetentionPolicyName names the account-level retention policy that
+	// sets the group's retention, empty when the group's own setting applies.
+	cacheRetentionPolicyName string
 }
 
 func (a *mqlAwsCloudwatchLoggroup) tags() (map[string]any, error) {

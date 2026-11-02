@@ -158,6 +158,22 @@ func docdbLogExportsEnabled(exports []string) (audit, profiler bool) {
 	return
 }
 
+// serverlessV2Capacity reports the minimum or maximum capacity units of a
+// cluster's serverless scaling, or null when the cluster sets none.
+func serverlessV2Capacity(cfg *docdb_types.ServerlessV2ScalingConfigurationInfo, max bool) *llx.RawData {
+	if cfg == nil {
+		return llx.NilData
+	}
+	v := cfg.MinCapacity
+	if max {
+		v = cfg.MaxCapacity
+	}
+	if v == nil {
+		return llx.NilData
+	}
+	return llx.FloatData(*v)
+}
+
 func newMqlAwsDocumentdbCluster(runtime *plugin.Runtime, region, accountID string, cluster docdb_types.DBCluster) (*mqlAwsDocumentdbCluster, error) {
 	auditEnabled, profilerEnabled := docdbLogExportsEnabled(cluster.EnabledCloudwatchLogsExports)
 
@@ -215,6 +231,9 @@ func newMqlAwsDocumentdbCluster(runtime *plugin.Runtime, region, accountID strin
 			"storageEncrypted":             llx.BoolDataPtr(cluster.StorageEncrypted),
 			"storageType":                  llx.StringDataPtr(cluster.StorageType),
 			"networkType":                  llx.StringDataPtr(cluster.NetworkType),
+			"serverlessV2PlatformVersion":  llx.StringDataPtr(cluster.ServerlessV2PlatformVersion),
+			"serverlessV2MinCapacity":      serverlessV2Capacity(cluster.ServerlessV2ScalingConfiguration, false),
+			"serverlessV2MaxCapacity":      serverlessV2Capacity(cluster.ServerlessV2ScalingConfiguration, true),
 		})
 	if err != nil {
 		return nil, err

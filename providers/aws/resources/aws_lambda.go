@@ -1351,6 +1351,21 @@ func kafkaConsumerGroupId(esm lambdatypes.EventSourceMappingConfiguration) *stri
 	return nil
 }
 
+// selfManagedKafkaConsumptionMode reports how a self-managed Kafka mapping
+// consumes records, or null when the source is not self-managed Kafka. The API
+// reports Stream for a mapping created without a mode. A response that leaves
+// the mode out still describes a Stream mapping, since that is the documented
+// default, so it reports Stream rather than empty.
+func selfManagedKafkaConsumptionMode(esm lambdatypes.EventSourceMappingConfiguration) *llx.RawData {
+	if esm.SelfManagedEventSource == nil && esm.SelfManagedKafkaEventSourceConfig == nil {
+		return llx.NilData
+	}
+	if esm.SelfManagedKafkaEventSourceConfig != nil && esm.SelfManagedKafkaEventSourceConfig.ConsumptionMode != "" {
+		return llx.StringData(string(esm.SelfManagedKafkaEventSourceConfig.ConsumptionMode))
+	}
+	return llx.StringData(string(lambdatypes.KafkaEventSourceMappingConsumptionModeStream))
+}
+
 // eventSourceMappingArgs maps an SDK event source mapping into resource
 // arguments. Settings the mapping does not carry stay null: zero is outside
 // the valid range of parallelizationFactor (1-10) and maximumConcurrency
@@ -1405,6 +1420,7 @@ func eventSourceMappingArgs(esm lambdatypes.EventSourceMappingConfiguration, reg
 		"sourceAccessTypes":                llx.ArrayData(access.types, types.String),
 		"selfManagedKafkaBootstrapServers": selfManagedKafkaBootstrapServers(esm.SelfManagedEventSource),
 		"kafkaConsumerGroupId":             llx.StringDataPtr(kafkaConsumerGroupId(esm)),
+		"selfManagedKafkaConsumptionMode":  selfManagedKafkaConsumptionMode(esm),
 	}, nil
 }
 

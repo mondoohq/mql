@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/timestreaminfluxdb"
+	influxdbtypes "github.com/aws/aws-sdk-go-v2/service/timestreaminfluxdb/types"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -420,6 +421,41 @@ func (a *mqlAwsTimestreamInfluxdbCluster) failoverMode() (string, error) {
 		return "", err
 	}
 	return string(detail.FailoverMode), nil
+}
+
+func (a *mqlAwsTimestreamInfluxdbCluster) nodeGroups() ([]any, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	return influxdbNodeGroups(detail.DeploymentConfiguration), nil
+}
+
+// influxdbNodeGroups maps the node groups of an InfluxDB 3 Enterprise
+// deployment. The deployment configuration is a union, and only that member
+// carries node groups, so every other engine reports none.
+func influxdbNodeGroups(cfg influxdbtypes.DeploymentConfiguration) []any {
+	out := []any{}
+	enterprise, ok := cfg.(*influxdbtypes.DeploymentConfigurationMemberInfluxDBv3Enterprise)
+	if !ok {
+		return out
+	}
+	for _, g := range enterprise.Value.NodeGroups {
+		modes := make([]any, 0, len(g.InstanceModes))
+		for _, m := range g.InstanceModes {
+			modes = append(modes, string(m))
+		}
+		entry := map[string]any{
+			"count":         nil,
+			"instanceType":  string(g.InstanceType),
+			"instanceModes": modes,
+		}
+		if g.Count != nil {
+			entry["count"] = int64(*g.Count)
+		}
+		out = append(out, entry)
+	}
+	return out
 }
 
 func (a *mqlAwsTimestreamInfluxdbCluster) tags() (map[string]any, error) {
