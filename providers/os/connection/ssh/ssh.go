@@ -1073,7 +1073,10 @@ func verifyError(sudo *inventory.Sudo, errMsg string) error {
 	case strings.Contains(errMsg, "you must have a tty"):
 		// sudo with `Defaults requiretty`; the connection runs commands
 		// without a terminal
-		return errors.New("could not establish connection: " + executable + " requires a terminal (Defaults requiretty), which a scan does not have; exempt the login user with Defaults:<user> !requiretty")
+		if executable != shared.ElevationSudo {
+			return errors.New("could not establish connection: " + executable + " requires a terminal, which a scan does not have")
+		}
+		return errors.New("could not establish connection: sudo requires a terminal (Defaults requiretty), which a scan does not have; exempt the login user with Defaults:<user> !requiretty")
 	case strings.Contains(errMsg, "a password is required"),
 		// sudo-rs: "sudo: A terminal is required to authenticate"
 		strings.Contains(errMsg, "A terminal is required to authenticate"),
