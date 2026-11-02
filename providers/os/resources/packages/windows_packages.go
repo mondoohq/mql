@@ -2166,11 +2166,6 @@ func stampMsSqlPackages(pkgs []Package, updates []Package) []Package {
 	return pkgs
 }
 
-// updateMsSqlPackages updates the version of the SQL Server packages to the latest hotfix version
-func updateMsSqlPackages(pkgs []Package, latestMsSqlUpdate Package) []Package {
-	return updateMsSqlReleasePackages(pkgs, msSqlRelease(latestMsSqlUpdate.Name), latestMsSqlUpdate)
-}
-
 // updateMsSqlReleasePackages stamps the packages of one SQL Server release
 // (release "" = any, for an update whose name carries none) with the update's
 // version.
