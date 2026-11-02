@@ -248,9 +248,10 @@ func TestBatchRetryAfter(t *testing.T) {
 	assert.Zero(t, batchRetryAfter(nil))
 }
 
-// A throttled chunk pauses sending for its Retry-After, or a backoff that
-// doubles while chunks keep coming back throttled, and drops to one call in
-// flight; a run of clean chunks raises the limit again, one at a time.
+// A heavily throttled chunk pauses sending for its Retry-After, or a backoff
+// that doubles while chunks keep coming back that way, and drops to one call
+// in flight; a run of chunks without heavy throttling raises the limit again,
+// one at a time. A lightly throttled chunk neither pauses nor lowers the limit.
 func TestBatchPacer(t *testing.T) {
 	backoff := batchRetryBackoff
 	batchRetryBackoff = time.Second
@@ -261,54 +262,63 @@ func TestBatchPacer(t *testing.T) {
 	assert.Equal(t, 2, p.limit)
 	assert.True(t, p.ready(now))
 
-	p.observe(now, true, 10*time.Second)
-	assert.Equal(t, 1, p.limit, "throttling drops to one call in flight")
+	assert.False(t, p.observe(now, 1, batchChunkSize, 10*time.Second), "one throttled key of a chunk is no reason to pause")
+	assert.False(t, p.observe(now, 9, 19, 0))
+	assert.Equal(t, 2, p.limit)
+	assert.True(t, p.ready(now))
+
+	assert.True(t, p.observe(now, 10, 19, 10*time.Second))
+	assert.Equal(t, 1, p.limit, "heavy throttling drops to one call in flight")
 	assert.False(t, p.ready(now.Add(9*time.Second)))
 	assert.True(t, p.ready(now.Add(10*time.Second)), "the pause is the Retry-After Graph asked for")
 
-	// without a Retry-After the pause doubles while chunks stay throttled
+	// without a Retry-After the pause doubles while chunks stay heavily throttled
 	now = now.Add(10 * time.Second)
-	p.observe(now, true, 0)
+	p.observe(now, batchChunkSize, batchChunkSize, 0)
 	assert.Equal(t, now.Add(2*time.Second), p.pausedUntil)
 	now = now.Add(2 * time.Second)
-	p.observe(now, true, 0)
+	p.observe(now, batchChunkSize, batchChunkSize, 0)
 	assert.Equal(t, now.Add(4*time.Second), p.pausedUntil)
-	p.observe(now, true, 10*time.Hour)
+	p.observe(now, batchChunkSize, batchChunkSize, 10*time.Hour)
 	assert.Equal(t, now.Add(batchMaxRetryWait), p.pausedUntil, "the pause is capped")
 
-	// a clean chunk resets the backoff
+	// a chunk without heavy throttling resets the backoff
 	now = now.Add(batchMaxRetryWait)
-	p.observe(now, false, 0)
-	p.observe(now, true, 0)
+	p.observe(now, 1, batchChunkSize, 0)
+	p.observe(now, batchChunkSize, batchChunkSize, 0)
 	assert.Equal(t, now.Add(time.Second), p.pausedUntil)
 
-	// batchRampUpChunks clean chunks in a row raise the limit by one, up to max
+	// batchRampUpChunks such chunks in a row raise the limit by one, up to max
 	for range batchRampUpChunks - 1 {
-		p.observe(now, false, 0)
+		p.observe(now, 0, batchChunkSize, 0)
 	}
 	assert.Equal(t, 1, p.limit)
-	p.observe(now, false, 0)
-	assert.Equal(t, 2, p.limit)
+	p.observe(now, 1, batchChunkSize, 0)
+	assert.Equal(t, 2, p.limit, "light throttling still counts towards the ramp-up")
 	for range 2 * batchRampUpChunks {
-		p.observe(now, false, 0)
+		p.observe(now, 0, batchChunkSize, 0)
 	}
 	assert.Equal(t, 2, p.limit, "never above max")
 }
 
-// A throttled sub-request pauses the whole fetch before anything else is sent.
-func TestBatchEachPausesAfterThrottling(t *testing.T) {
+// A heavily throttled chunk pauses the whole fetch before anything else is
+// sent.
+func TestBatchEachPausesAfterHeavyThrottling(t *testing.T) {
 	backoff := batchRetryBackoff
 	batchRetryBackoff = 200 * time.Millisecond
 	t.Cleanup(func() { batchRetryBackoff = backoff })
 
 	keys := make([]string, 3*batchChunkSize)
 	routes := map[string]fakeRoute{}
+	f := newFakeGraph(t, routes)
+	f.throttle = map[string]int{}
 	for i := range keys {
 		keys[i] = fmt.Sprintf("u%03d", i)
 		routes["/users/"+keys[i]] = fakeRoute{status: http.StatusOK, body: `{"id":"` + keys[i] + `"}`}
+		if i < batchChunkSize {
+			f.throttle["/users/"+keys[i]] = 1
+		}
 	}
-	f := newFakeGraph(t, routes)
-	f.throttle = map[string]int{"/users/u000": 1}
 	client := f.client()
 	ctx := context.Background()
 
@@ -322,7 +332,108 @@ func TestBatchEachPausesAfterThrottling(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, errs)
 	assert.GreaterOrEqual(t, time.Since(start), batchRetryBackoff, "sending resumed before the pause was over")
-	assert.Len(t, f.steps, len(keys)+1, "only the throttled key is sent twice")
+	assert.Len(t, f.steps, len(keys)+batchChunkSize, "only the throttled chunk is sent twice")
+}
+
+// Graph throttling the odd sub-request must not pause the fetch: those keys
+// are sent again later while everything else keeps going.
+func TestBatchEachDoesNotPauseOnLightThrottling(t *testing.T) {
+	backoff := batchRetryBackoff
+	batchRetryBackoff = time.Hour
+	t.Cleanup(func() { batchRetryBackoff = backoff })
+
+	keys := make([]string, 6*batchChunkSize)
+	routes := map[string]fakeRoute{}
+	f := newFakeGraph(t, routes)
+	f.throttle = map[string]int{}
+	for i := range keys {
+		keys[i] = fmt.Sprintf("u%03d", i)
+		routes["/users/"+keys[i]] = fakeRoute{status: http.StatusOK, body: `{"id":"` + keys[i] + `"}`}
+		if i%batchChunkSize == 0 {
+			f.throttle["/users/"+keys[i]] = 1
+		}
+	}
+	client := f.client()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	seen := map[string]bool{}
+	errs, _, err := batchEach(ctx, client.GetAdapter(), keys,
+		func(key string) (*abstractions.RequestInformation, error) {
+			return client.Users().ByUserId(key).ToGetRequestInformation(ctx, nil)
+		},
+		models.CreateUserFromDiscriminatorValue,
+		func(key string, u *models.User) error {
+			seen[key] = true
+			return nil
+		})
+	require.NoError(t, err, "a pause of batchRetryBackoff would have run into the deadline")
+	assert.Empty(t, errs)
+	assert.Len(t, seen, len(keys))
+}
+
+// A $batch call that fails as a whole puts its keys back into the queue; the
+// fetch still gets every key.
+func TestBatchEachResendsFailedBatchCalls(t *testing.T) {
+	backoff := batchRetryBackoff
+	batchRetryBackoff = time.Millisecond
+	t.Cleanup(func() { batchRetryBackoff = backoff })
+
+	keys := make([]string, 4*batchChunkSize)
+	routes := map[string]fakeRoute{}
+	for i := range keys {
+		keys[i] = fmt.Sprintf("u%03d", i)
+		routes["/users/"+keys[i]] = fakeRoute{status: http.StatusOK, body: `{"id":"` + keys[i] + `"}`}
+	}
+	f := newFakeGraph(t, routes)
+	f.failBatches = 3
+	client := f.client()
+	ctx := context.Background()
+
+	seen := map[string]int{}
+	errs, _, err := batchEach(ctx, client.GetAdapter(), keys,
+		func(key string) (*abstractions.RequestInformation, error) {
+			return client.Users().ByUserId(key).ToGetRequestInformation(ctx, nil)
+		},
+		models.CreateUserFromDiscriminatorValue,
+		func(key string, u *models.User) error {
+			seen[key]++
+			return nil
+		})
+	require.NoError(t, err)
+	assert.Empty(t, errs)
+	assert.Len(t, seen, len(keys))
+	for key, count := range seen {
+		assert.Equalf(t, 1, count, "%s handed over more than once", key)
+	}
+}
+
+// A fetch whose $batch calls keep failing gives up after batchMaxSendFailures
+// failures in a row and returns the error.
+func TestBatchEachGivesUpAfterRepeatedFailures(t *testing.T) {
+	backoff := batchRetryBackoff
+	batchRetryBackoff = time.Millisecond
+	t.Cleanup(func() { batchRetryBackoff = backoff })
+
+	keys := make([]string, 2*batchChunkSize)
+	routes := map[string]fakeRoute{}
+	for i := range keys {
+		keys[i] = fmt.Sprintf("u%03d", i)
+		routes["/users/"+keys[i]] = fakeRoute{status: http.StatusOK, body: `{"id":"` + keys[i] + `"}`}
+	}
+	f := newFakeGraph(t, routes)
+	f.failBatches = 1000
+	client := f.client()
+	ctx := context.Background()
+
+	_, _, err := batchEach(ctx, client.GetAdapter(), keys,
+		func(key string) (*abstractions.RequestInformation, error) {
+			return client.Users().ByUserId(key).ToGetRequestInformation(ctx, nil)
+		},
+		models.CreateUserFromDiscriminatorValue,
+		func(key string, u *models.User) error { return nil })
+	require.Error(t, err)
+	assert.LessOrEqual(t, f.batchCalls, batchMaxSendFailures+batchMaxConcurrency, "no call is sent after giving up")
 }
 
 // A tenant whose limit is one $batch call at a time throttles every

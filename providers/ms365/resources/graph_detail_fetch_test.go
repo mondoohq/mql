@@ -45,6 +45,10 @@ type fakeGraph struct {
 	// rateLimit, when set, answers every step of a $batch call with 429
 	// while more than this many calls are in flight
 	rateLimit int
+	// failBatches answers this many $batch calls with a 500 for the whole
+	// call, which the SDK's retry handler does not retry
+	failBatches int
+	batchCalls  int
 }
 
 type fakeRoute struct {
@@ -88,6 +92,11 @@ func (f *fakeGraph) serve(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if strings.HasSuffix(r.URL.Path, "/$batch") {
 		f.mu.Lock()
+		f.batchCalls++
+		fail := f.failBatches > 0
+		if fail {
+			f.failBatches--
+		}
 		f.inflight++
 		f.maxInflight = max(f.maxInflight, f.inflight)
 		overLimit := f.rateLimit > 0 && f.inflight > f.rateLimit
@@ -98,6 +107,11 @@ func (f *fakeGraph) serve(w http.ResponseWriter, r *http.Request) {
 			f.mu.Unlock()
 		}()
 		time.Sleep(f.delay)
+		if fail {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"error":{"code":"InternalServerError","message":"batch failed"}}`))
+			return
+		}
 		var req struct {
 			Requests []struct {
 				ID  string `json:"id"`
