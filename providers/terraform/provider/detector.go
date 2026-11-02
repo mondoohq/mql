@@ -82,12 +82,21 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.Connection) er
 		h.Write([]byte(absPath))
 		hash := hex.EncodeToString(h.Sum(nil))
 		platformID := "//platformid.api.mondoo.app/runtime/terraform/hash/" + hash
+		name := parseNameFromPath(projectPath)
+		// A path inside a git checkout is identified by the repository it
+		// belongs to, not by where the checkout happens to sit on disk. The
+		// path hash alone made every repository a CI job checks out into the
+		// same workspace folder the same asset, each run overwriting the
+		// last project's findings.
+		if gi, found := detectGitIdentity(absPath); found {
+			platformID, name = gi.platformID(), gi.name()
+		}
 		if len(asset.PlatformIds) == 0 {
 			asset.PlatformIds = []string{platformID}
 		}
 		asset.Connections[0].PlatformId = asset.PlatformIds[0]
 		if asset.Name == "" {
-			asset.Name = p.Title + " " + parseNameFromPath(projectPath)
+			asset.Name = p.Title + " " + name
 		}
 		return nil
 	}

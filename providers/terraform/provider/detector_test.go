@@ -4,6 +4,8 @@
 package provider
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -44,10 +46,17 @@ func TestDetectNameFromSsh_GitlabSubgroups(t *testing.T) {
 // afterwards and must leave that name alone. Dropping either `asset.Name == ""`
 // guard in detect() fails the "keeps a caller-supplied name" cases.
 func TestDetect_AssetName(t *testing.T) {
+	// The plan file is copied out of this repository's checkout: inside it,
+	// detect() would name the asset after the repository (see
+	// gitidentity_test.go), and these cases are about the path-based name.
 	pathConn := func() *inventory.Config {
+		plan, err := os.ReadFile("./testdata/tfplan/plan_gcp_simple.json")
+		require.NoError(t, err)
+		path := filepath.Join(t.TempDir(), "plan_gcp_simple.json")
+		require.NoError(t, os.WriteFile(path, plan, 0o644))
 		return &inventory.Config{
 			Type:    PlanConnectionType,
-			Options: map[string]string{"path": "./testdata/tfplan/plan_gcp_simple.json"},
+			Options: map[string]string{"path": path},
 		}
 	}
 	gitConn := func() *inventory.Config {

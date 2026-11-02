@@ -5,6 +5,7 @@ replace go.mondoo.com/mql => ../..
 go 1.27.3
 
 require (
+	github.com/go-git/go-git/v5 v5.19.3
 	github.com/hashicorp/hcl/v2 v2.25.0
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.35.1
@@ -47,7 +48,6 @@ require (
 	github.com/getsentry/sentry-go v0.50.0 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.9.2 // indirect
-	github.com/go-git/go-git/v5 v5.19.3 // indirect
 	github.com/go-jose/go-jose/v3 v3.0.5 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
