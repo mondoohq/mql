@@ -1615,6 +1615,9 @@ package @defaults("name version") {
 
   // macOS application details; null for anything that is not a macOS application
   macos() package.macos
+
+  // Windows install identity; null for anything that is not a Windows application from the Uninstall registry
+  windows() package.windows
 }
 
 // macOS application details of a package
@@ -1627,6 +1630,30 @@ private package.macos @defaults("bundleId teamId appStore") {
   teamId string
   // Whether the Mac App Store installs and updates the application
   appStore bool
+}
+
+// Windows install identity of a package
+private package.windows @defaults("productCode upgradeCode appId installer") {
+  // MSI ProductCode, e.g. "23170F69-40C1-2702-2603-000001000000"
+  //
+  // Upper case GUID without braces. Empty when the entry is not an MSI.
+  productCode string
+  // MSI UpgradeCode or Burn bundle BundleUpgradeCode, e.g. "F608407A-6091-42E0-A1BA-B8FFFC21199B"
+  //
+  // Upper case GUID without braces. Stays the same across releases of a product line. Empty when the installer does not report one.
+  upgradeCode string
+  // BundleUpgradeCode of a WiX Burn bundle folded into this MSI entry
+  //
+  // Upper case GUID without braces. Set only when the bundle and the MSI describe one install, for example a .NET runtime. Empty otherwise.
+  bundleUpgradeCode string
+  // Uninstall key name of an entry that is not an MSI or Burn bundle, e.g. "Notepad3"
+  //
+  // Inno Setup's "_is1" suffix is removed and a GUID is written in upper case without braces. Empty for MSI and Burn entries.
+  appId string
+  // Installer technology that wrote the entry
+  //
+  // One of msi, burn, inno, installshield, squirrel, chromium or unknown.
+  installer string
 }
 
 // File recorded for a package

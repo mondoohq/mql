@@ -89,6 +89,10 @@ type Package struct {
 	// generic package fields. Nil for every other package.
 	MacOS *MacOSApp `json:"macos,omitempty"`
 
+	// Windows holds the install identity of a Windows application read from
+	// its Add/Remove Programs entry. Nil for every other package.
+	Windows *WindowsInstallIdentity `json:"windows,omitempty"`
+
 	// regDedupKey identifies the physical Windows registry key this package
 	// was read from (see windows_packages.go: registryDedupKey,
 	// mergeDedupedRegistryPackages). Unexported: a Windows-registry-reading
@@ -123,6 +127,17 @@ type MacOSApp struct {
 	// AppStore reports an application installed and updated by the Mac App
 	// Store.
 	AppStore bool `json:"app_store,omitempty"`
+}
+
+// WindowsInstallIdentity is the install identity of a Windows application. It
+// holds the same values as the purl qualifiers product_code, upgrade_code,
+// bundle_upgrade_code, app_id and installer; a value that does not apply is "".
+type WindowsInstallIdentity struct {
+	ProductCode       string `json:"product_code,omitempty"`
+	UpgradeCode       string `json:"upgrade_code,omitempty"`
+	BundleUpgradeCode string `json:"bundle_upgrade_code,omitempty"`
+	AppID             string `json:"app_id,omitempty"`
+	Installer         string `json:"installer,omitempty"`
 }
 
 type FileRecord struct {
