@@ -15,6 +15,7 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
@@ -166,7 +167,7 @@ func newHclConnection(id uint32, path string, asset *inventory.Asset) (*Connecti
 
 	for _, cfg := range resolved.Configs {
 		if err := loader.ParseHclFile(cfg); err != nil {
-			return nil, errors.Wrap(err, "could not parse hcl file")
+			return nil, llx.MalformedData(errors.Wrap(err, "could not parse hcl file"))
 		}
 	}
 

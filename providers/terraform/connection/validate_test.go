@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 )
 
@@ -183,6 +184,23 @@ func TestHclConnectionSurfacesParseErrors(t *testing.T) {
 	_, err := hclConnectionFor(dir)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "could not parse hcl file")
+	assert.Equal(t, llx.ErrorKind_ERROR_KIND_MALFORMED_DATA, llx.KindOf(err))
+}
+
+func TestStateAndPlanDocumentsThatAreNotJSONAreMalformed(t *testing.T) {
+	err := validateStateDocument([]byte("not json"))
+	require.Error(t, err)
+	assert.Equal(t, llx.ErrorKind_ERROR_KIND_MALFORMED_DATA, llx.KindOf(err))
+
+	err = validatePlanDocument([]byte("not json"))
+	require.Error(t, err)
+	assert.Equal(t, llx.ErrorKind_ERROR_KIND_MALFORMED_DATA, llx.KindOf(err))
+
+	// An encrypted state is readable JSON in a shape this provider does not
+	// decrypt; it is not malformed.
+	err = validateStateDocument([]byte(`{"encrypted_data":"AAAA","encryption_version":"v0"}`))
+	require.Error(t, err)
+	assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED, llx.KindOf(err))
 }
 
 func TestStateConnectionRejectsUnreadableFiles(t *testing.T) {
