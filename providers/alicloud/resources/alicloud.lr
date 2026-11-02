@@ -287,6 +287,21 @@ alicloud.ram.role {
   updateDate time
   // Maximum session duration in seconds allowed when assuming the role
   maxSessionDuration int
+  // Whether the role can be used to sign in to the Alibaba Cloud console
+  //
+  // True when an identity that assumes the role may open a console session
+  // with it, not only call the API. Null when the API does not report it.
+  allowConsoleLogin bool
+  // Whether the role is a service-linked role
+  //
+  // A service-linked role is created and managed by an Alibaba Cloud service
+  // for its own use. Its trust and permission policies are set by the service,
+  // so checks aimed at roles that customers create can exclude it.
+  isServiceLinkedRole() bool
+  // Principal name of the role, including its domain suffix
+  //
+  // For example `ECSAdmin@role.123456.onaliyunservice.com`.
+  rolePrincipalName() string
   // Tags attached to the role
   tags map[string]string
   // Trust policy document controlling which identities may assume the role
