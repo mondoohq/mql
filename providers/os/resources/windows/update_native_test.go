@@ -132,3 +132,22 @@ func TestWUACOMDate(t *testing.T) {
 	_, err = wuaCOMDate("2026-01-01")
 	assert.Error(t, err)
 }
+
+// Measured: Windows Server 2022 Datacenter Azure Edition (20348.5773), 2026-11-02.
+// The XML is Get-WinEvent's ToXml() of the newest event 25 (a search against a
+// WSUS policy pointing at 127.0.0.1:8530) and event 26, which is the same
+// EvtRender output the native path reads. On that host the PowerShell path and
+// the native path both reported lastDetectionError 0x80240438 for event 25.
+func TestParseWUAEventMeasuredServer2022(t *testing.T) {
+	ev25 := `<Event xmlns='http://schemas.microsoft.com/win/2004/08/events/event'><System><Provider Name='Microsoft-Windows-WindowsUpdateClient' Guid='{945a8954-c147-4acd-923f-40c45405a658}'/><EventID>25</EventID><Version>1</Version><Level>2</Level><Task>1</Task><Opcode>11</Opcode><Keywords>0x4000000000000022</Keywords><TimeCreated SystemTime='2026-11-02T14:38:45.7433914Z'/><EventRecordID>19</EventRecordID><Correlation/><Execution ProcessID='4952' ThreadID='1796'/><Channel>Microsoft-Windows-WindowsUpdateClient/Operational</Channel><Computer>pkgwin</Computer><Security UserID='S-1-5-18'/></System><EventData><Data Name='errorCode'>0x80240438</Data><Data Name='serviceGuid'>{3da21691-e39d-4da6-8a4b-b43877bcb1b7}</Data></EventData></Event>`
+	ts, code, err := parseWUAEvent(ev25)
+	require.NoError(t, err)
+	assert.Equal(t, time.Date(2026, 11, 2, 14, 38, 45, 0, time.UTC), ts)
+	assert.Equal(t, "0x80240438", code)
+
+	ev26 := `<Event xmlns='http://schemas.microsoft.com/win/2004/08/events/event'><System><Provider Name='Microsoft-Windows-WindowsUpdateClient' Guid='{945a8954-c147-4acd-923f-40c45405a658}'/><EventID>26</EventID><Version>1</Version><Level>4</Level><Task>1</Task><Opcode>11</Opcode><Keywords>0x4000000000000012</Keywords><TimeCreated SystemTime='2026-11-02T14:29:09.2090419Z'/><EventRecordID>18</EventRecordID><Correlation/><Execution ProcessID='3952' ThreadID='5720'/><Channel>Microsoft-Windows-WindowsUpdateClient/Operational</Channel><Computer>pkgwin</Computer><Security UserID='S-1-5-18'/></System><EventData><Data Name='updateCount'>1</Data><Data Name='serviceGuid'>{8b24b027-1dee-babb-9a95-3517dfb9c552}</Data></EventData></Event>`
+	ts, code, err = parseWUAEvent(ev26)
+	require.NoError(t, err)
+	assert.Equal(t, time.Date(2026, 11, 2, 14, 29, 9, 0, time.UTC), ts)
+	assert.Empty(t, code, "event 26 carries no errorCode")
+}
