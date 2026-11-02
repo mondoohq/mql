@@ -1369,10 +1369,7 @@ func (w *WinPkgManager) getFsInstalledApps() ([]Package, error) {
 	// from the NDP keys and the runtime files, as the live paths do.
 	packages = append(packages, w.getFsDotNetFramework(rh)...)
 
-	msSqlHotfixes := findMsSqlHotfixes(packages)
-	if len(msSqlHotfixes) > 0 {
-		packages = updateMsSqlPackages(packages, msSqlHotfixes[len(msSqlHotfixes)-1])
-	}
+	packages = stampMsSqlPackages(packages, append(findMsSqlHotfixes(packages), findMsSqlGdrUpdates(packages)...))
 
 	return packages, nil
 }
@@ -1833,15 +1830,9 @@ func (w *WinPkgManager) List() ([]Package, error) {
 	}
 	hotfixAsPkgs := HotFixesToPackages(hotfixes)
 
-	msSqlHotfixes := findMsSqlHotfixes(appPkgs)
-	msSqlGdrPackages := findMsSqlGdrUpdates(appPkgs)
-	// MS only allows GDR or Hotfixes/CU, no need to check which one takes precedence
-	if len(msSqlGdrPackages) > 0 {
-		pkgs = updateMsSqlPackages(pkgs, msSqlGdrPackages[len(msSqlGdrPackages)-1])
-	}
-	if len(msSqlHotfixes) > 0 {
-		pkgs = updateMsSqlPackages(pkgs, msSqlHotfixes[len(msSqlHotfixes)-1])
-	}
+	// A release is on either the GDR or the CU track; its newest update of
+	// either kind is its patch level.
+	pkgs = stampMsSqlPackages(pkgs, append(findMsSqlHotfixes(appPkgs), findMsSqlGdrUpdates(appPkgs)...))
 
 	exchangeCU := findExchangeCU(pkgs)
 	if exchangeCU != nil {
@@ -2090,14 +2081,121 @@ func findMsSqlGdrUpdates(packages []Package) []Package {
 	return sqlGdrUpdates
 }
 
+// msSqlReleaseRegexp captures the release year from a SQL Server package or
+// update name: "Hotfix 4500 for SQL Server 2019 (KB5128494) (64-bit)",
+// "GDR 1145 for SQL Server 2025 (KB5128492) (64-bit)",
+// "Hotfix 6500 for Microsoft SQL Server 2016 (KB5102340) (64-bit)".
+var msSqlReleaseRegexp = regexp.MustCompile(`SQL Server (\d{4})\b`)
+
+func msSqlRelease(name string) string {
+	if m := msSqlReleaseRegexp.FindStringSubmatch(name); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
+// msSqlEngineRowsPerInstance is how many "SQL Server <year> Database Engine
+// Services" uninstall entries one instance registers: the engine MSI and its
+// resource MSI, both at the release's base build. Observed for every release
+// from 2012 to 2025, single instances and side-by-side ones.
+const msSqlEngineRowsPerInstance = 2
+
+// compareMsSqlVersions compares dotted numeric versions; a string compare
+// would put "9.x" above "16.x".
+func compareMsSqlVersions(a, b string) int {
+	as, bs := strings.Split(a, "."), strings.Split(b, ".")
+	for i := 0; i < len(as) || i < len(bs); i++ {
+		var x, y int
+		if i < len(as) {
+			x, _ = strconv.Atoi(as[i])
+		}
+		if i < len(bs) {
+			y, _ = strconv.Atoi(bs[i])
+		}
+		if x != y {
+			if x < y {
+				return -1
+			}
+			return 1
+		}
+	}
+	return 0
+}
+
+// stampMsSqlPackages sets the packages of each installed SQL Server release
+// to that release's newest installed update (Hotfix/CU or GDR row).
+//
+// A host can run several releases side by side, each patched on its own, so
+// the update rows are grouped by the release in their name and each group
+// stamps only its own release. Stamping one host-wide newest update onto
+// whichever engine row came first reported a 2022 engine at a 2019 build,
+// dropped the patched 2019 engine back to RTM, and lost a 2025 GDR entirely.
+// An update whose name carries no release is assigned to the host's only
+// release, and ignored when there are several.
+func stampMsSqlPackages(pkgs []Package, updates []Package) []Package {
+	releases := map[string]struct{}{}
+	for _, p := range pkgs {
+		if msSqlServiceRegexp.MatchString(p.Name) {
+			releases[msSqlRelease(p.Name)] = struct{}{}
+		}
+	}
+	newest := map[string]Package{}
+	for _, u := range updates {
+		release := msSqlRelease(u.Name)
+		if release == "" {
+			if len(releases) != 1 {
+				continue
+			}
+			for r := range releases {
+				release = r
+			}
+		}
+		cur, ok := newest[release]
+		if !ok || compareMsSqlVersions(normalizeMsSqlVersion(u.Version), normalizeMsSqlVersion(cur.Version)) > 0 {
+			newest[release] = u
+		}
+	}
+	order := make([]string, 0, len(newest))
+	for r := range newest {
+		order = append(order, r)
+	}
+	slices.Sort(order)
+	for _, r := range order {
+		pkgs = updateMsSqlReleasePackages(pkgs, r, newest[r])
+	}
+	return pkgs
+}
+
 // updateMsSqlPackages updates the version of the SQL Server packages to the latest hotfix version
 func updateMsSqlPackages(pkgs []Package, latestMsSqlUpdate Package) []Package {
+	return updateMsSqlReleasePackages(pkgs, msSqlRelease(latestMsSqlUpdate.Name), latestMsSqlUpdate)
+}
+
+// updateMsSqlReleasePackages stamps the packages of one SQL Server release
+// (release "" = any, for an update whose name carries none) with the update's
+// version.
+//
+// With more than one instance of the release the update rows cannot say which
+// instance they patched: one "Hotfix" row is registered whether one instance
+// or all of them took the update, and every engine row keeps the base build.
+// Stamping would then report a second instance left at RTM as patched, so the
+// release keeps its base build and every instance stays in scope of its
+// advisories.
+func updateMsSqlReleasePackages(pkgs []Package, release string, latestMsSqlUpdate Package) []Package {
 	currentVersion := ""
+	engineRows := 0
 	for _, pkg := range pkgs {
-		if msSqlServiceRegexp.MatchString(pkg.Name) {
-			currentVersion = pkg.Version
-			break
+		if !msSqlServiceRegexp.MatchString(pkg.Name) || (release != "" && msSqlRelease(pkg.Name) != release) {
+			continue
 		}
+		engineRows++
+		if currentVersion == "" {
+			currentVersion = pkg.Version
+		}
+	}
+	if release != "" && engineRows > msSqlEngineRowsPerInstance {
+		log.Debug().Str("release", release).Int("engineRows", engineRows).Msg("several SQL Server instances of one release; not stamping")
+		return pkgs
 	}
 	// Without the Database Engine Services package there is no anchor version to
 	// match the other SQL Server packages against, so there is nothing to stamp.
@@ -2118,8 +2216,15 @@ func updateMsSqlPackages(pkgs []Package, latestMsSqlUpdate Package) []Package {
 	log.Debug().Str("currentVersion", currentVersion).Str("normalizedVersion", normalizedVersion).Msg("Updating SQL Server packages")
 
 	// Find other SQL Server packages and update them to the latest hotfix version
+	scope := "SQL Server"
+	if release != "" {
+		scope = "SQL Server " + release
+	}
 	for i, pkg := range pkgs {
-		if strings.Contains(pkg.Name, "SQL Server") && pkg.Version == currentVersion {
+		if sqlHotfixRegExp.MatchString(pkg.Name) || sqlGDRUpdateRegExp.MatchString(pkg.Name) {
+			continue
+		}
+		if strings.Contains(pkg.Name, scope) && pkg.Version == currentVersion {
 			pkgs[i].Version = normalizedVersion
 			log.Debug().Str("package", pkg.Name).Str("version", normalizedVersion).Msg("Updated SQL Server package")
 			// Replace only the version component (`@<version>`) so we never
