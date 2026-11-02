@@ -90,4 +90,9 @@ func TestArgvForCommand(t *testing.T) {
 	assert.Nil(t, argvForCommand(cmdline, "/usr/sbin/sshd -D"))
 	// a kernel thread, or a process that exited
 	assert.Nil(t, argvForCommand(nil, psCommand))
+
+	// Synthetic: an empty argument, which ps prints as two spaces.
+	assert.Equal(t,
+		[]string{"app", "", "-x"},
+		argvForCommand([]byte("app\x00\x00-x\x00"), "app  -x"))
 }
