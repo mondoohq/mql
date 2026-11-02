@@ -429,6 +429,10 @@ func TestAuditdRulesWatches(t *testing.T) {
 -a always,exit -F dir=/etc/apparmor.d/ -F perm=wa -k mac
 -a never,exit -F path=/tmp/excluded -F perm=wa
 -a always,exit -F arch=b64 -S chmod -F path=/etc/hosts -k no-perm
+-a always,exit -F arch=b64 -F path=/etc/sysconfig/network -F perm=wa -k network
+-a always,exit -F arch=b32 -F path=/etc/sysconfig/network -F perm=wa -k network
+-a always,exit -F path=/etc/NetworkManager/system-connections -k nm
+-a always,exit -F arch=x86_64 -S all -F dir=/etc/NetworkManager/conf.d/ -k nm
 `
 
 	var errs multierr.Errors
@@ -438,21 +442,75 @@ func TestAuditdRulesWatches(t *testing.T) {
 	require.Len(t, rules.Files.Data, 3)
 
 	type watch struct {
-		path, keyname, typ string
-		permissions        []any
+		path, keyname, typ, arch string
+		permissions              []any
 	}
 	got := []watch{}
 	for _, raw := range rules.Watches.Data {
 		w := raw.(*mqlAuditdRuleWatch)
-		got = append(got, watch{w.Path.Data, w.Keyname.Data, w.Type.Data, w.Permissions.Data})
+		got = append(got, watch{w.Path.Data, w.Keyname.Data, w.Type.Data, w.Arch.Data, w.Permissions.Data})
 	}
+	all := []any{"r", "w", "x", "a"}
 	assert.Equal(t, []watch{
-		{"/etc/shadow", "identity", "watch", []any{"w", "a"}},
-		{"/etc/passwd", "", "watch", []any{"r", "w", "x", "a"}},
-		{"/etc/sudoers.d", "scope", "watch", []any{"w", "a"}},
-		{"/usr/bin/kmod", "modules", "path", []any{"x"}},
-		{"/etc/apparmor.d", "mac", "dir", []any{"w", "a"}},
+		{"/etc/shadow", "identity", "watch", "", []any{"w", "a"}},
+		{"/etc/passwd", "", "watch", "", all},
+		{"/etc/sudoers.d", "scope", "watch", "", []any{"w", "a"}},
+		{"/usr/bin/kmod", "modules", "path", "", []any{"x"}},
+		{"/etc/apparmor.d", "mac", "dir", "", []any{"w", "a"}},
+		// the b32 twin of a b64 rule is its own watch, not the cached b64 one
+		{"/etc/sysconfig/network", "network", "path", "b64", []any{"w", "a"}},
+		{"/etc/sysconfig/network", "network", "path", "b32", []any{"w", "a"}},
+		// without -F perm= and -S, every syscall on the path is audited
+		{"/etc/NetworkManager/system-connections", "nm", "path", "", all},
+		{"/etc/NetworkManager/conf.d", "nm", "dir", "b64", all},
 	}, got)
+}
+
+func TestAuditdRulesDisablesSyscallAuditing(t *testing.T) {
+	// Measured: openSUSE Leap 15.6, audit-3.0.6-150400.4.16.1, the packaged
+	// /etc/audit/rules.d/audit.rules without its comments (2026-11-02).
+	runtime := newAuditdFilesTestRuntime(t, map[string]string{
+		"/etc/audit/rules.d/audit.rules":  "-D\n-a task,never\n",
+		"/etc/audit/rules.d/50-net.rules": "-w /etc/sysconfig/network -p wa -k system-locale\n",
+	}, "/etc/audit/rules.d")
+	rules := &mqlAuditdRules{MqlRuntime: runtime}
+
+	disabled := rules.GetDisablesSyscallAuditing()
+	require.NoError(t, disabled.Error)
+	assert.True(t, disabled.Data)
+	// the watch is still listed, the task rule keeps it from firing
+	assert.Contains(t, watchPaths(t, rules), "watch:/etc/sysconfig/network")
+}
+
+func TestAuditdRuleSetDisablesSyscallAuditing(t *testing.T) {
+	// Synthetic: task-list orderings and filters; no target showed these.
+	tests := []struct {
+		name  string
+		rules string
+		want  bool
+	}{
+		{"no task rule", "-a always,exit -F arch=b64 -S execve -k exec\n", false},
+		{"never,task", "-a never,task\n", true},
+		{"with a key", "-a never,task -F key=quiet\n", true},
+		{"with -k", "-a task,never -k quiet\n", true},
+		{"filtered by uid", "-a never,task -F uid=0\n", false},
+		{"filtered by a comparison", "-a never,task -C uid!=euid\n", false},
+		{"filtered never before an unfiltered one", "-a never,task -F uid=0\n-a never,task\n", true},
+		{"filtered always first", "-a always,task -F auid>=1000\n-a never,task\n", false},
+		{"unfiltered always first", "-a always,task\n-a never,task\n", false},
+		{"prepended never", "-a always,task\n-A never,task\n", true},
+		{"deleted", "-a never,task\n-d never,task\n", false},
+		{"never on the exit list", "-a never,exit\n", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rules := newAuditdRuleSet(newAuditdRulesTestRuntime(t))
+			var errs multierr.Errors
+			rules.parse(tc.rules, &errs)
+			require.NoError(t, errs.Deduplicate())
+			assert.Equal(t, tc.want, rules.disablesSyscallAuditing())
+		})
+	}
 }
 
 func TestAuditdSyscallKeyFromField(t *testing.T) {
@@ -808,6 +866,11 @@ func TestAuditdLoadedRules(t *testing.T) {
 	mounts := syscalls[10].(*mqlAuditdRuleSyscall)
 	assert.Equal(t, int64(1000), mounts.AuidMin.Data, "auid>999 is auid>=1000")
 
+	// rules-loaded.txt ends with `-a never,task`, which the kernel lists first
+	disabled, err := rules.disablesSyscallAuditing()
+	require.NoError(t, err)
+	assert.True(t, disabled)
+
 	files, err := rules.files()
 	require.NoError(t, err)
 	assert.Len(t, files, 9)
@@ -843,6 +906,56 @@ func anyStrings(list []any) []string {
 
 // An auditctl whose syscall tables lack an architecture lists its rules by
 // number; the arch still reads b32 or b64.
+// Measured: testdata/auditctl-list/watch-shapes-rules.txt after openSUSE's
+// default `-D` and `-a task,never`, loaded into the arm64 Linux 7.0 kernel of
+// the Docker Desktop VM by auditctl 4.1.1 (Fedora 41) and listed by it and by
+// auditctl 3.0.6 (openSUSE Leap 15.6), 2026-11-02. auditctl expands `perm=` on
+// an arch rule into the syscalls of those classes and lists a rule without
+// `perm=` as `-S all`; the openSUSE one lists b32 by number. The expected
+// values are what the live scans of both containers returned.
+func TestAuditdWatchShapes(t *testing.T) {
+	want := []string{
+		"path:/etc/sysconfig/network:b32:wa:b32only",
+		"path:/etc/NetworkManager/system-connections::rwxa:nm-noperm",
+		"dir:/etc/NetworkManager/conf.d:b64:wa:nm-dir",
+		"path:/etc/hosts:b64:wa:hosts",
+		"path:/etc/hosts:b32:wa:hosts",
+		"path:/etc/shadow:b64:wa:shadow",
+		"watch:/etc/passwd::wa:identity",
+	}
+	format := func(watches []any) []string {
+		res := []string{}
+		for _, raw := range watches {
+			w := raw.(*mqlAuditdRuleWatch)
+			res = append(res, w.Type.Data+":"+w.Path.Data+":"+w.Arch.Data+":"+strings.Join(anyStrings(w.Permissions.Data), "")+":"+w.Keyname.Data)
+		}
+		return res
+	}
+
+	for _, name := range []string{"watch-shapes-arm64.txt", "watch-shapes-arm64-numeric.txt"} {
+		t.Run(name, func(t *testing.T) {
+			rules := newAuditdLoadedRules(t, &mock.Command{Stdout: readAuditctlList(t, name)})
+			watches, err := rules.watches()
+			require.NoError(t, err)
+			assert.Equal(t, want, format(watches))
+			disabled, err := rules.disablesSyscallAuditing()
+			require.NoError(t, err)
+			assert.True(t, disabled)
+		})
+	}
+
+	t.Run("on disk", func(t *testing.T) {
+		runtime := newAuditdFilesTestRuntime(t, map[string]string{
+			"/etc/audit/rules.d/audit.rules":  "-D\n-a task,never\n",
+			"/etc/audit/rules.d/50-net.rules": readAuditctlList(t, "watch-shapes-rules.txt"),
+		}, "/etc/audit/rules.d")
+		rules := &mqlAuditdRules{MqlRuntime: runtime}
+		watches := rules.GetWatches()
+		require.NoError(t, watches.Error)
+		assert.Equal(t, want, format(watches.Data))
+	})
+}
+
 func TestAuditdLoadedRulesNumericArch(t *testing.T) {
 	rules := newAuditdLoadedRules(t, &mock.Command{Stdout: readAuditctlList(t, "arm64-numeric-compat.txt")})
 
@@ -860,8 +973,13 @@ func TestAuditdArchName(t *testing.T) {
 	assert.Equal(t, "b32", auditdArchName("0x40000003")) // i386
 	assert.Equal(t, "b64", auditdArchName("0xc000003e")) // x86_64
 	assert.Equal(t, "b64", auditdArchName("0xC00000B7")) // aarch64
-	assert.Equal(t, "x86_64", auditdArchName("x86_64"))  // a machine name stays
-	assert.Equal(t, "0xzz", auditdArchName("0xzz"))      // not a number
+	assert.Equal(t, "b64", auditdArchName("x86_64"))     // machine names, by word size
+	assert.Equal(t, "b64", auditdArchName("AARCH64"))
+	assert.Equal(t, "b64", auditdArchName("ppc64le"))
+	assert.Equal(t, "b32", auditdArchName("i686"))
+	assert.Equal(t, "b32", auditdArchName("armv7l"))
+	assert.Equal(t, "sparc", auditdArchName("sparc")) // unknown name stays
+	assert.Equal(t, "0xzz", auditdArchName("0xzz"))   // not a number
 }
 
 func TestAuditdLoadedRulesNoRules(t *testing.T) {

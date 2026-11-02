@@ -227,6 +227,9 @@ type auditdRuleSet struct {
 	files    []any
 	syscalls []any
 	watches  []any
+	// task-list rules in the order the kernel evaluates them, with -A rules
+	// first
+	taskRules []any
 	// rules added so far in load order, so a later -d or -W can remove them
 	loadedRules      []auditdLoadedRule
 	lastRuleIdentity string
@@ -387,6 +390,7 @@ func (s *mqlAuditdRules) setEmptyRules() {
 	s.Syscalls = plugin.TValue[[]any]{Data: []any{}, State: plugin.StateIsSet}
 	s.Watches = plugin.TValue[[]any]{Data: []any{}, State: plugin.StateIsSet}
 	s.Immutable = plugin.TValue[bool]{Data: false, State: plugin.StateIsSet}
+	s.DisablesSyscallAuditing = plugin.TValue[bool]{Data: false, State: plugin.StateIsSet}
 }
 
 func (s *mqlAuditdRules) setLoadError(err error) {
@@ -396,6 +400,7 @@ func (s *mqlAuditdRules) setLoadError(err error) {
 	s.Watches = plugin.TValue[[]any]{State: plugin.StateIsSet, Error: err}
 	s.Exists = plugin.TValue[bool]{State: plugin.StateIsSet, Error: err}
 	s.Immutable = plugin.TValue[bool]{State: plugin.StateIsSet, Error: err}
+	s.DisablesSyscallAuditing = plugin.TValue[bool]{State: plugin.StateIsSet, Error: err}
 }
 
 func (s *mqlAuditdRules) load(path string) error {
@@ -446,6 +451,7 @@ func (s *mqlAuditdRules) load(path string) error {
 	s.Files.State = plugin.StateIsSet
 	s.Controls.State = plugin.StateIsSet
 	s.Watches.State = plugin.StateIsSet
+	s.DisablesSyscallAuditing.State = plugin.StateIsSet
 
 	s.loadError = errors.Deduplicate()
 	s.loaded = true
@@ -530,6 +536,7 @@ func (s *mqlAuditdRules) parse(content string, errors *multierr.Errors) {
 	s.Files.Data = rules.files
 	s.Syscalls.Data = rules.syscalls
 	s.Watches.Data = rules.watches
+	s.DisablesSyscallAuditing.Data = rules.disablesSyscallAuditing()
 }
 
 // Make sure this regex matches the most complete form first (ie >=) before
@@ -546,6 +553,7 @@ func (s *auditdRuleSet) parse(content string, errors *multierr.Errors) {
 
 		resourceName := "auditd.rule.control"
 		deleteRule := false
+		prepend := false
 		args := map[string]*llx.RawData{}
 		rawFields := []string{}
 		rawComparisons := []string{}
@@ -570,6 +578,7 @@ func (s *auditdRuleSet) parse(content string, errors *multierr.Errors) {
 				// the matching rule added earlier
 				resourceName = "auditd.rule.syscall"
 				deleteRule = k == "-d"
+				prepend = k == "-A"
 				action, list := splitAuditdRuleAction(v)
 				args["action"] = llx.StringData(action)
 				args["list"] = llx.StringData(list)
@@ -649,7 +658,7 @@ func (s *auditdRuleSet) parse(content string, errors *multierr.Errors) {
 			}
 			path, _ := args["path"].Value.(string)
 			keyname, _ := args["keyname"].Value.(string)
-			w := s.addWatch("watch", path, perm, keyname, errors)
+			w := s.addWatch("watch", path, perm, "", keyname, errors)
 			s.recordRule(r, w)
 
 		case "auditd.rule.syscall":
@@ -752,13 +761,26 @@ func (s *auditdRuleSet) parse(content string, errors *multierr.Errors) {
 			}
 			s.syscalls = append(s.syscalls, r)
 
-			// `-a always,exit -F path=X -F perm=P` is the syscall form of `-w X -p P`
 			action, _ := args["action"].Value.(string)
 			list, _ := args["list"].Value.(string)
+			if list == "task" {
+				if prepend {
+					s.taskRules = append([]any{r}, s.taskRules...)
+				} else {
+					s.taskRules = append(s.taskRules, r)
+				}
+			}
+
+			// `-a always,exit -F path=X -F perm=P` is the syscall form of
+			// `-w X -p P`. Without -F perm= and without -S the rule audits
+			// every syscall on the path, which covers all four permissions.
+			if watchPerm == "" && auditdAllSyscalls(syscalls) {
+				watchPerm = "rwxa"
+			}
 			var w plugin.Resource
 			if action == "always" && list == "exit" && watchPath != "" && watchPerm != "" {
 				keyname, _ := args["keyname"].Value.(string)
-				w = s.addWatch(watchType, watchPath, watchPerm, keyname, errors)
+				w = s.addWatch(watchType, watchPath, watchPerm, arch, keyname, errors)
 			}
 			s.recordRule(r, w)
 
@@ -778,12 +800,28 @@ func (s *auditdRuleSet) parse(content string, errors *multierr.Errors) {
 	}
 }
 
-// auditdArchName names an AUDIT_ARCH_* value the way auditctl's b32 and b64
-// aliases do. An auditctl without the syscall table of an architecture lists
-// a rule for it by number, such as `arch=0x40000028` for 32-bit ARM, where the
-// 64-bit flag tells b64 from b32. Other values are returned unchanged.
+// auditdMachineWordSize maps the machine names auditctl accepts for
+// `-F arch=` to the b32 or b64 alias of the same word size.
+var auditdMachineWordSize = map[string]string{
+	"i386": "b32", "i486": "b32", "i586": "b32", "i686": "b32",
+	"ppc": "b32", "s390": "b32",
+	"arm": "b32", "armeb": "b32", "armv5tejl": "b32", "armv5tel": "b32", "armv6l": "b32", "armv7l": "b32",
+	"riscv32": "b32",
+	"x86_64":  "b64", "ia64": "b64", "ppc64": "b64", "ppc64le": "b64", "s390x": "b64", "aarch64": "b64",
+	"riscv64": "b64",
+}
+
+// auditdArchName names an `-F arch=` value the way auditctl's b32 and b64
+// aliases do. A machine name such as `x86_64` or `i686` reads by its word
+// size. An auditctl without the syscall table of an architecture lists a rule
+// for it by number, such as `arch=0x40000028` for 32-bit ARM, where the 64-bit
+// flag tells b64 from b32. Other values are returned unchanged.
 func auditdArchName(v string) string {
-	hex, ok := strings.CutPrefix(strings.ToLower(v), "0x")
+	lower := strings.ToLower(v)
+	if alias, ok := auditdMachineWordSize[lower]; ok {
+		return alias
+	}
+	hex, ok := strings.CutPrefix(lower, "0x")
 	if !ok {
 		return v
 	}
@@ -811,7 +849,55 @@ func splitAuditdRuleAction(v string) (string, string) {
 	return first, second
 }
 
-func (s *auditdRuleSet) addWatch(watchType string, path string, perm string, keyname string, errors *multierr.Errors) plugin.Resource {
+// auditdAllSyscalls reports whether a rule's -S list matches every syscall:
+// no -S at all, or -S all.
+func auditdAllSyscalls(syscalls []any) bool {
+	for _, sc := range syscalls {
+		if name, _ := sc.(string); name != "all" {
+			return false
+		}
+	}
+	return true
+}
+
+// disablesSyscallAuditing reports whether the task list turns syscall
+// auditing off for every process. The kernel gives a new task the action of
+// the first task rule whose filters match it, so the first rule without a
+// filter decides for every process no earlier rule matched. A filtered always
+// rule before it enables auditing for the processes it matches.
+func (s *auditdRuleSet) disablesSyscallAuditing() bool {
+	for _, raw := range s.taskRules {
+		r, ok := raw.(*mqlAuditdRuleSyscall)
+		if !ok {
+			continue
+		}
+		if !auditdRuleUnfiltered(r) {
+			if r.Action.Data == "always" {
+				return false
+			}
+			continue
+		}
+		return r.Action.Data == "never"
+	}
+	return false
+}
+
+// auditdRuleUnfiltered reports whether a rule matches every event: no field
+// filter other than its key, and no field comparison.
+func auditdRuleUnfiltered(r *mqlAuditdRuleSyscall) bool {
+	if len(r.Comparisons.Data) > 0 {
+		return false
+	}
+	for _, raw := range r.Fields.Data {
+		f, _ := raw.(map[string]any)
+		if key, _ := f["key"].(string); key != "key" {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *auditdRuleSet) addWatch(watchType, path, perm, arch, keyname string, errors *multierr.Errors) plugin.Resource {
 	if trimmed := strings.TrimRight(path, "/"); trimmed != "" {
 		path = trimmed
 	}
@@ -828,6 +914,7 @@ func (s *auditdRuleSet) addWatch(watchType string, path string, perm string, key
 		"permissions": llx.ArrayData(permissions, types.String),
 		"keyname":     llx.StringData(keyname),
 		"type":        llx.StringData(watchType),
+		"arch":        llx.StringData(arch),
 	})
 	if err != nil {
 		errors.Add(err)
@@ -882,6 +969,7 @@ func (s *auditdRuleSet) deleteRule(identity string) {
 	}
 	s.files = slices.DeleteFunc(s.files, drop)
 	s.syscalls = slices.DeleteFunc(s.syscalls, drop)
+	s.taskRules = slices.DeleteFunc(s.taskRules, drop)
 	s.watches = slices.DeleteFunc(s.watches, drop)
 }
 
@@ -975,6 +1063,10 @@ func (s *mqlAuditdRules) immutable(path string) (bool, error) {
 	return false, s.load(path)
 }
 
+func (s *mqlAuditdRules) disablesSyscallAuditing(path string) (bool, error) {
+	return false, s.load(path)
+}
+
 func (s *mqlAuditdRules) controls(path string) ([]any, error) {
 	return nil, s.load(path)
 }
@@ -1001,6 +1093,7 @@ func (s *mqlAuditdRuleWatch) id() (string, error) {
 	f = f.
 		Add(s.Type.Data).
 		Add(s.Path.Data).
+		Add(s.Arch.Data).
 		Add(s.Keyname.Data)
 	for i := range s.Permissions.Data {
 		f = f.Add(s.Permissions.Data[i].(string))
@@ -1140,6 +1233,14 @@ func (s *mqlAuditdLoadedRules) watches() ([]any, error) {
 		return nil, err
 	}
 	return rules.watches, nil
+}
+
+func (s *mqlAuditdLoadedRules) disablesSyscallAuditing() (bool, error) {
+	rules, err := s.load()
+	if err != nil {
+		return false, err
+	}
+	return rules.disablesSyscallAuditing(), nil
 }
 
 func (s *mqlAuditdStatus) id() (string, error) {

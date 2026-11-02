@@ -2276,6 +2276,15 @@ auditd.rules {
   // applies rules in order and ignores changes after `-e 2`, so any `-e 2`
   // makes it true. False when there is no -e control.
   immutable(path) bool
+  // Whether a task rule stops all syscall auditing
+  //
+  // True when the first task-list rule to match every process is
+  // `-a never,task` with no filter other than a key, as SUSE's default
+  // /etc/audit/rules.d/audit.rules ships it. Every process then starts
+  // without syscall auditing, so no syscall rule and no file watch produces
+  // events, whatever `syscalls` and `watches` list. False when an earlier
+  // `-a always,task` rule with a filter enables auditing for some processes.
+  disablesSyscallAuditing(path) bool
 }
 
 // Kernel audit rules in effect
@@ -2310,6 +2319,14 @@ auditd.loadedRules {
   // trailing slash and permissions become a set, so `-p aw` and `-p wa`
   // compare equal.
   watches() []auditd.rule.watch
+  // Whether a loaded task rule stops all syscall auditing
+  //
+  // True when the first task-list rule to match every process is
+  // `-a never,task` with no filter other than a key. Every process then
+  // starts without syscall auditing, so no syscall rule and no file watch
+  // produces events. False when an earlier `-a always,task` rule with a
+  // filter enables auditing for some processes.
+  disablesSyscallAuditing() bool
 }
 
 // auditd (Linux Audit Daemon) rule
@@ -2355,12 +2372,21 @@ private auditd.rule.watch @defaults("path permissions") {
   // Access types that trigger the watch, a set ordered r, w, x, a
   //
   // From -p or -F perm=. A -w rule without -p watches all four, as auditctl
-  // does.
+  // does. A syscall rule on a path or directory without -F perm= and without
+  // -S audits every syscall on it, and reads as all four.
   permissions []string
   // Key tagging records this rule produces (from -k or -F key=)
   keyname string
   // Syntax the watch was written in: "watch" for -w, "path" or "dir" for a syscall rule with -F path= or -F dir=
   type string
+  // CPU architecture the watch is restricted to
+  //
+  // "b64" or "b32" from the `-F arch=` filter of a syscall rule, read as
+  // `auditd.rule.syscall` reads it. Empty for a -w rule and for a syscall
+  // rule without an architecture filter, which apply to all architectures.
+  // A watch restricted to b32 does not see the 64-bit syscalls of a 64-bit
+  // system.
+  arch string
 }
 
 // auditd (Linux Audit Daemon) rule for a syscall
@@ -2394,11 +2420,12 @@ private auditd.rule.syscall @defaults("action list") {
   keyname string
   // CPU architecture this rule is restricted to
   //
-  // The value of the `-F arch=` filter, normally `b64` or `b32`. An
+  // The value of the `-F arch=` filter as `b64` or `b32`. A machine name
+  // (`x86_64`, `aarch64`, `i686`) reads by its word size, and an
   // architecture number, which an auditctl without that architecture's
-  // syscall table lists (`arch=0x40000028`), reads `b64` or `b32` by its
-  // 64-bit flag. Empty when the rule has no architecture filter and therefore
-  // applies to all architectures.
+  // syscall table lists (`arch=0x40000028`), by its 64-bit flag. Any other
+  // value is kept as written. Empty when the rule has no architecture filter
+  // and therefore applies to all architectures.
   arch string
   // Minimum audit UID this rule is restricted to
   //
