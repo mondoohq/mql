@@ -52,6 +52,9 @@ func TestVerifyError(t *testing.T) {
 		"could not establish connection: doas password is not supported yet, configure password-less doas")
 	assert.EqualError(t, verifyError(sudo, "sudo: sorry, you must have a tty to run sudo\n"),
 		"could not establish connection: sudo requires a terminal (Defaults requiretty), which a scan does not have; exempt the login user with Defaults:<user> !requiretty")
+	// Synthetic: no doas build prints this; the sudoers advice must not reach a doas user.
+	assert.EqualError(t, verifyError(doas, "doas: you must have a tty\n"),
+		"could not establish connection: doas requires a terminal, which a scan does not have")
 	assert.EqualError(t, verifyError(doas, "doas: Operation not permitted\n"),
 		"could not establish connection: doas: Operation not permitted\n")
 }
