@@ -1,0 +1,98 @@
+[
+  {
+    "Name": "Microsoft.Windows.ShellExperienceHost",
+    "PackageFullName": "Microsoft.Windows.ShellExperienceHost_10.0.26100.8115_neutral_neutral_cw5n1h2txyewy",
+    "Architecture": 11,
+    "Version": "10.0.26100.8115",
+    "Publisher": "CN=Microsoft Windows, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+    "InstallLocation": "C:\\Windows\\SystemApps\\ShellExperienceHost_cw5n1h2txyewy"
+  },
+  {
+    "Name": "Microsoft.VCLibs.140.00",
+    "PackageFullName": "Microsoft.VCLibs.140.00_14.0.33519.0_x64__8wekyb3d8bbwe",
+    "Architecture": 9,
+    "Version": "14.0.33519.0",
+    "Publisher": "CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+    "InstallLocation": "C:\\Program Files\\WindowsApps\\Microsoft.VCLibs.140.00_14.0.33519.0_x64__8wekyb3d8bbwe"
+  },
+  {
+    "Name": "Clipchamp.Clipchamp",
+    "PackageFullName": "Clipchamp.Clipchamp_4.5.10920.0_x64__yxz26nhyzhsrt",
+    "Architecture": 9,
+    "Version": "4.5.10920.0",
+    "Publisher": "CN=33F0F141-36F3-4EC2-A77D-51B53D0BA0E4",
+    "InstallLocation": "C:\\Program Files\\WindowsApps\\Clipchamp.Clipchamp_4.5.10920.0_x64__yxz26nhyzhsrt"
+  },
+  {
+    "Name": "Microsoft.Windows.Photos",
+    "PackageFullName": "Microsoft.Windows.Photos_24.24070.23002.0_x64__8wekyb3d8bbwe",
+    "Architecture": 9,
+    "Version": "24.24070.23002.0",
+    "Publisher": "CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+    "InstallLocation": "C:\\Program Files\\WindowsApps\\Microsoft.Windows.Photos_24.24070.23002.0_x64__8wekyb3d8bbwe"
+  },
+  {
+    "Name": "Microsoft.WindowsCalculator",
+    "PackageFullName": "Microsoft.WindowsCalculator_11.2502.2.0_x64__8wekyb3d8bbwe",
+    "Architecture": 9,
+    "Version": "11.2502.2.0",
+    "Publisher": "CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+    "InstallLocation": "C:\\Program Files\\WindowsApps\\Microsoft.WindowsCalculator_11.2502.2.0_x64__8wekyb3d8bbwe"
+  },
+  {
+    "Name": "Microsoft.WindowsStore",
+    "PackageFullName": "Microsoft.WindowsStore_22506.1400.2.0_x64__8wekyb3d8bbwe",
+    "Architecture": 9,
+    "Version": "22506.1400.2.0",
+    "Publisher": "CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+    "InstallLocation": "C:\\Program Files\\WindowsApps\\Microsoft.WindowsStore_22506.1400.2.0_x64__8wekyb3d8bbwe"
+  },
+  {
+    "Name": "MicrosoftWindows.Client.WebExperience",
+    "PackageFullName": "MicrosoftWindows.Client.WebExperience_526.17301.80.9_x64__cw5n1h2txyewy",
+    "Architecture": 9,
+    "Version": "526.17301.80.9",
+    "Publisher": "CN=Microsoft Windows, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+    "InstallLocation": "C:\\Program Files\\WindowsApps\\MicrosoftWindows.Client.WebExperience_526.17301.80.9_x64__cw5n1h2txyewy"
+  },
+  {
+    "Name": "MSTeams",
+    "PackageFullName": "MSTeams_1.0.0.1_x64__8wekyb3d8bbwe",
+    "Architecture": 9,
+    "Version": "1.0.0.1",
+    "Publisher": "CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+    "InstallLocation": "C:\\Program Files\\WindowsApps\\MSTeams_1.0.0.1_x64__8wekyb3d8bbwe"
+  },
+  {
+    "Name": "Microsoft.MicrosoftEdge.Stable",
+    "PackageFullName": "Microsoft.MicrosoftEdge.Stable_154.0.4258.62_neutral__8wekyb3d8bbwe",
+    "Architecture": 11,
+    "Version": "154.0.4258.62",
+    "Publisher": "CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+    "InstallLocation": "C:\\Program Files\\WindowsApps\\Microsoft.MicrosoftEdge.Stable_154.0.4258.62_neutral__8wekyb3d8bbwe"
+  },
+  {
+    "Name": "NotepadPlusPlus",
+    "PackageFullName": "NotepadPlusPlus_1.0.0.0_neutral__2247w0b46hfww",
+    "Architecture": 11,
+    "Version": "1.0.0.0",
+    "Publisher": "E=don.h@free.fr, CN=\"NOTEPAD++\", O=\"NOTEPAD++\", L=Paris, S=Ile-de-France, C=FR",
+    "InstallLocation": "C:\\Program Files\\WindowsApps\\NotepadPlusPlus_1.0.0.0_neutral__2247w0b46hfww"
+  },
+  {
+    "Name": "Microsoft.StartExperiencesApp",
+    "PackageFullName": "Microsoft.StartExperiencesApp_1.380.0.0_x64__8wekyb3d8bbwe",
+    "Architecture": 9,
+    "Version": "1.380.0.0",
+    "Publisher": "CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+    "InstallLocation": "C:\\Program Files\\WindowsApps\\Microsoft.StartExperiencesApp_1.380.0.0_x64__8wekyb3d8bbwe"
+  },
+  {
+    "Name": "19282JackieLiu.Notepads-Beta",
+    "PackageFullName": "19282JackieLiu.Notepads-Beta_1.5.6.0_x64__echhpq9pdbte8",
+    "Architecture": 9,
+    "Version": "1.5.6.0",
+    "Publisher": "CN=40E66D07-5A3A-4954-9CA3-A1EB15ED0804",
+    "InstallLocation": "C:\\Program Files\\WindowsApps\\19282JackieLiu.Notepads-Beta_1.5.6.0_x64__echhpq9pdbte8"
+  }
+]
