@@ -4,11 +4,11 @@
 package resources
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/rs/zerolog/log"
@@ -152,13 +152,15 @@ func readProcArgv(conn shared.Connection, pid int64, command string) []string {
 
 // argvForCommand splits a /proc/<pid>/cmdline into argv, or returns nil when
 // it is empty or no longer belongs to the process whose command was listed
-// (the pid was reused).
+// (the pid was reused). ps writes each NUL as a space, so an empty argument
+// shows up as a run of spaces; the two are compared with runs of whitespace
+// collapsed.
 func argvForCommand(data []byte, command string) []string {
 	if len(data) == 0 {
 		return nil
 	}
-	joined, err := procfs.ParseProcessCmdline(bytes.NewReader(data))
-	if err != nil || joined != command {
+	joined := strings.Fields(strings.ReplaceAll(string(data), "\x00", " "))
+	if strings.Join(joined, " ") != strings.Join(strings.Fields(command), " ") {
 		return nil
 	}
 	return procfs.ParseProcessArgv(data)
@@ -230,6 +232,9 @@ func (p *mqlProcesses) list() ([]any, error) {
 	procs, err := opm.List()
 	if err != nil {
 		log.Warn().Err(err).Msg("mql[processes]> could not retrieve process list")
+		// A hidepid refusal is an error even without structured errors: v13
+		// returned the scanner's own processes as the full list, and that
+		// partial list is not kept behind the flag (see processesError).
 		var hidden *processes.HiddenProcessesError
 		if errors.As(err, &hidden) {
 			return nil, processesError(err)
