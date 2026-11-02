@@ -2044,6 +2044,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"databricks.job.trigger.sqlConditionTriggerMode": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricksJobTrigger).GetSqlConditionTriggerMode()).ToDataRes(types.String)
 	},
+	"databricks.job.trigger.jobCompletionIfStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksJobTrigger).GetJobCompletionIfStatus()).ToDataRes(types.String)
+	},
+	"databricks.job.trigger.upstreamJobs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksJobTrigger).GetUpstreamJobs()).ToDataRes(types.Array(types.Resource("databricks.job")))
+	},
+	"databricks.job.trigger.upstreamWorkspaceIds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksJobTrigger).GetUpstreamWorkspaceIds()).ToDataRes(types.Array(types.String))
+	},
 	"databricks.pipeline.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricksPipeline).GetId()).ToDataRes(types.String)
 	},
@@ -4916,6 +4925,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"databricks.job.trigger.sqlConditionTriggerMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDatabricksJobTrigger).SqlConditionTriggerMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.job.trigger.jobCompletionIfStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksJobTrigger).JobCompletionIfStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.job.trigger.upstreamJobs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksJobTrigger).UpstreamJobs, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"databricks.job.trigger.upstreamWorkspaceIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksJobTrigger).UpstreamWorkspaceIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"databricks.pipeline.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -11128,7 +11149,7 @@ func (c *mqlDatabricksJobTask) GetPipeline() *plugin.TValue[*mqlDatabricksPipeli
 type mqlDatabricksJobTrigger struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlDatabricksJobTriggerInternal it will be used here
+	mqlDatabricksJobTriggerInternal
 	TriggerType                   plugin.TValue[string]
 	PauseStatus                   plugin.TValue[string]
 	CronExpression                plugin.TValue[string]
@@ -11147,6 +11168,9 @@ type mqlDatabricksJobTrigger struct {
 	SqlConditionQueryId           plugin.TValue[string]
 	SqlConditionWarehouseId       plugin.TValue[string]
 	SqlConditionTriggerMode       plugin.TValue[string]
+	JobCompletionIfStatus         plugin.TValue[string]
+	UpstreamJobs                  plugin.TValue[[]any]
+	UpstreamWorkspaceIds          plugin.TValue[[]any]
 }
 
 // createDatabricksJobTrigger creates a new instance of this resource
@@ -11251,6 +11275,30 @@ func (c *mqlDatabricksJobTrigger) GetSqlConditionWarehouseId() *plugin.TValue[st
 
 func (c *mqlDatabricksJobTrigger) GetSqlConditionTriggerMode() *plugin.TValue[string] {
 	return &c.SqlConditionTriggerMode
+}
+
+func (c *mqlDatabricksJobTrigger) GetJobCompletionIfStatus() *plugin.TValue[string] {
+	return &c.JobCompletionIfStatus
+}
+
+func (c *mqlDatabricksJobTrigger) GetUpstreamJobs() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.UpstreamJobs, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("databricks.job.trigger", c.__id, "upstreamJobs")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.upstreamJobs()
+	})
+}
+
+func (c *mqlDatabricksJobTrigger) GetUpstreamWorkspaceIds() *plugin.TValue[[]any] {
+	return &c.UpstreamWorkspaceIds
 }
 
 // mqlDatabricksPipeline for the databricks.pipeline resource

@@ -1784,7 +1784,8 @@ private databricks.job.task @defaults("taskKey taskType") {
   // Derived from the task definition. Values include notebook, spark_jar,
   // spark_python, spark_submit, pipeline, sql, dbt, dbt_cloud, dbt_platform,
   // python_wheel, python_operator, run_job, condition, for_each, dashboard,
-  // power_bi, alert, clean_rooms_notebook, ai_runtime, and gen_ai_compute.
+  // power_bi, alert, clean_rooms_notebook, ai_runtime, gen_ai_compute, and
+  // ai_function.
   // Empty when the task uses a kind this provider does not yet model.
   taskType string
   // Whether the task is disabled and skipped by every run
@@ -1851,8 +1852,8 @@ private databricks.job.task @defaults("taskKey taskType") {
 private databricks.job.trigger @defaults("triggerType pauseStatus") {
   // Kind of trigger
   //
-  // One of schedule, periodic, file_arrival, table_update, model, or
-  // continuous. Reports unknown when the SDK models a kind this provider does
+  // One of schedule, periodic, file_arrival, table_update, model, continuous,
+  // or job_completion. Reports unknown when the SDK models a kind this provider does
   // not yet classify, so a trigger never silently disappears from the list.
   triggerType string
   // Whether the trigger is paused, PAUSED or UNPAUSED
@@ -1901,6 +1902,23 @@ private databricks.job.trigger @defaults("triggerType pauseStatus") {
   sqlConditionWarehouseId string
   // How the gating query result is read, empty when ungated
   sqlConditionTriggerMode string
+  // Status every upstream job must finish with before a job completion trigger fires
+  //
+  // One of SUCCESS, FAILED, or DONE. A trigger that sets no status fires on
+  // SUCCESS and reports SUCCESS. Empty for other kinds.
+  jobCompletionIfStatus string
+  // Upstream jobs in the scanned workspace whose completion starts a run
+  //
+  // Whoever can start or edit one of these jobs can start this job, which then
+  // runs under its own identity. Upstream jobs in other workspaces are not
+  // listed here; upstreamWorkspaceIds names their workspaces. Empty for other
+  // kinds.
+  upstreamJobs() []databricks.job
+  // Workspaces holding the upstream jobs of a job completion trigger
+  //
+  // Sorted and deduplicated. A workspace other than the scanned one means a job
+  // outside this workspace can start runs of this job. Empty for other kinds.
+  upstreamWorkspaceIds []string
 }
 
 // Delta Live Tables pipeline
