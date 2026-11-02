@@ -78,6 +78,9 @@ func initAssetEol(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[st
 // ESU) are detected into the metadata, so without it the lookup reports the
 // end of general support.
 func eolLabels(labels, metadata map[string]any) map[string]string {
+	if len(labels) == 0 && len(metadata) == 0 {
+		return nil
+	}
 	res := make(map[string]string, len(labels)+len(metadata))
 	for _, m := range []map[string]any{labels, metadata} {
 		for k, v := range m {

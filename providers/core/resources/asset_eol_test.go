@@ -39,6 +39,6 @@ func TestEolLabels(t *testing.T) {
 
 	t.Run("no labels and no metadata", func(t *testing.T) {
 		// Synthetic: an asset without labels, such as a cloud account.
-		assert.Empty(t, eolLabels(nil, nil))
+		assert.Nil(t, eolLabels(nil, nil))
 	})
 }
