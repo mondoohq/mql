@@ -133,7 +133,7 @@ const (
 	// status: new
 	StructuredErrors Feature = 24
 
-	// On a local scan of Windows (the agent, cnspec scan local), read Windows data through Windows APIs instead of starting PowerShell: users and groups, services, security and audit policy, optional features, computerInfo and the hypervisor. Remote scans (SSH, WinRM) keep PowerShell. Off by default until each native path has shown the same results as PowerShell; MONDOO_WINDOWS_NATIVE turns it on locally too.
+	// On a local scan of Windows (the agent, cnspec scan local), read Windows data through Windows APIs instead of starting PowerShell: users and groups, services, security and audit policy, optional features, computerInfo, the hypervisor and the Windows Update results (windows.update.config). Remote scans (SSH, WinRM) keep PowerShell. Off by default until each native path has shown the same results as PowerShell; MONDOO_WINDOWS_NATIVE turns it on locally too.
 	// start:  v14.x
 	// status: new
 	WindowsNative Feature = 25
