@@ -9,12 +9,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"os"
-	"strconv"
 	"time"
+
+	"github.com/hashicorp/go-retryablehttp"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/logger/zerologadapter"
 )
 
 const (
@@ -26,8 +28,8 @@ const (
 	// githubBaseBackoff is the base delay before the second attempt; it
 	// doubles for each following attempt.
 	githubBaseBackoff = 1 * time.Second
-	// githubMaxBackoff caps the computed backoff and how long a Retry-After
-	// header can make us wait.
+	// githubMaxBackoff caps the wait between attempts, including a
+	// server-provided Retry-After.
 	githubMaxBackoff = 30 * time.Second
 )
 
@@ -41,14 +43,27 @@ type GitHubTokenProvider struct {
 	baseBackoff    time.Duration
 }
 
-// githubTransientError marks a failure that is worth retrying.
-type githubTransientError struct {
-	err        error
-	retryAfter time.Duration
+// cappedBackoff is retryablehttp.DefaultBackoff, but never waits longer than
+// waitMax. DefaultBackoff returns a Retry-After header uncapped.
+func cappedBackoff(waitMin, waitMax time.Duration, attemptNum int, resp *http.Response) time.Duration {
+	return min(retryablehttp.DefaultBackoff(waitMin, waitMax, attemptNum, resp), waitMax)
 }
 
-func (e *githubTransientError) Error() string { return e.err.Error() }
-func (e *githubTransientError) Unwrap() error { return e.err }
+// githubRetryExhausted turns the end of the retries into an error that names
+// the last status or error, wrapped so callers can still match a context
+// error. It contains neither the bearer token nor the URL.
+func githubRetryExhausted(resp *http.Response, err error, numTries int) (*http.Response, error) {
+	if resp != nil {
+		// drain so the connection can be reused
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
+		resp.Body.Close()
+		return nil, fmt.Errorf("github Actions token request failed after %d attempt(s): status %d", numTries, resp.StatusCode)
+	}
+	if uerr, ok := errors.AsType[*url.Error](err); ok {
+		err = uerr.Err
+	}
+	return nil, fmt.Errorf("github Actions token request failed after %d attempt(s): %w", numTries, err)
+}
 
 func (p *GitHubTokenProvider) GetToken(ctx context.Context, audience string) (string, error) {
 	tokenRequestToken := os.Getenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
@@ -71,81 +86,32 @@ func (p *GitHubTokenProvider) GetToken(ctx context.Context, audience string) (st
 		backoff = githubBaseBackoff
 	}
 
+	client := retryablehttp.NewClient()
+	client.Logger = zerologadapter.New(log.Logger)
+	client.HTTPClient = &http.Client{Timeout: timeout}
+	client.RetryMax = maxAttempts - 1
+	client.RetryWaitMin = backoff
+	client.RetryWaitMax = githubMaxBackoff
+	client.Backoff = cappedBackoff
+	client.ErrorHandler = githubRetryExhausted
+
 	tokenURL := fmt.Sprintf("%s&audience=%s", tokenRequestURL, url.QueryEscape(audience))
-	client := &http.Client{Timeout: timeout}
-
-	var lastErr error
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		token, err := fetchGitHubToken(ctx, client, tokenURL, tokenRequestToken)
-		if err == nil {
-			return token, nil
-		}
-		lastErr = err
-
-		transient, ok := errors.AsType[*githubTransientError](err)
-		if !ok {
-			return "", err
-		}
-		if attempt == maxAttempts {
-			break
-		}
-
-		// exponential backoff with jitter in [delay/2, delay], capped; a
-		// Retry-After can only extend the wait, never shorten it
-		delay := githubMaxBackoff
-		if shift := attempt - 1; shift < 32 {
-			delay = min(backoff<<shift, githubMaxBackoff)
-		}
-		delay = delay/2 + rand.N(delay/2+1)
-		delay = max(delay, min(transient.retryAfter, githubMaxBackoff))
-		timer := time.NewTimer(delay)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return "", ctx.Err()
-		case <-timer.C:
-		}
-	}
-	return "", fmt.Errorf("github Actions token request failed after %d attempts: %w", maxAttempts, lastErr)
-}
-
-// fetchGitHubToken performs a single token request. Transient failures are
-// wrapped in a *githubTransientError.
-func fetchGitHubToken(ctx context.Context, client *http.Client, tokenURL, bearer string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, tokenURL, nil)
+	req, err := retryablehttp.NewRequestWithContext(ctx, http.MethodGet, tokenURL, nil)
 	if err != nil {
 		return "", err
 	}
-	req.Header.Add("Authorization", "bearer "+bearer)
+	req.Header.Add("Authorization", "bearer "+tokenRequestToken)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		// the parent context ending is final, anything else (timeout,
-		// connection reset, ...) may succeed on retry
-		if ctx.Err() != nil {
-			return "", ctx.Err()
-		}
-		if uerr, ok := errors.AsType[*url.Error](err); ok {
-			// do not leak the request URL into the error
-			err = uerr.Err
-		}
-		return "", &githubTransientError{err: err}
+		return "", err
 	}
 	defer func() {
-		// drain so the connection can be reused for the next attempt
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
 		resp.Body.Close()
 	}()
 
-	switch {
-	case resp.StatusCode == http.StatusOK:
-	case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
-		terr := &githubTransientError{err: fmt.Errorf("github Actions token service returned status: %d", resp.StatusCode)}
-		if secs, convErr := strconv.Atoi(resp.Header.Get("Retry-After")); convErr == nil && secs > 0 {
-			terr.retryAfter = time.Duration(secs) * time.Second
-		}
-		return "", terr
-	default:
+	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("github Actions token service returned non-OK status: %d", resp.StatusCode)
 	}
 

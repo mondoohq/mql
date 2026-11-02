@@ -98,7 +98,7 @@ func TestGitHubTokenProvider_PersistentServerError(t *testing.T) {
 
 	_, err := newTestGitHubProvider().GetToken(context.Background(), "aud")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "3 attempts")
+	assert.Contains(t, err.Error(), "3 attempt(s)")
 	assert.Contains(t, err.Error(), "500")
 	assert.NotContains(t, err.Error(), "secret-bearer")
 	assert.Equal(t, int32(3), calls.Load())
@@ -122,6 +122,25 @@ func TestGitHubTokenProvider_ContextCancelled(t *testing.T) {
 	assert.Less(t, time.Since(start), 2*time.Second)
 }
 
+func TestGitHubTokenProvider_ContextEndsDuringRequest(t *testing.T) {
+	// Synthetic: the caller's deadline hits while a request is in flight; no real target showed this.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+	setGitHubEnv(t, srv)
+
+	p := newTestGitHubProvider()
+	p.attemptTimeout = 5 * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, err := p.GetToken(ctx, "aud")
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Less(t, time.Since(start), 2*time.Second)
+}
+
 func TestGitHubTokenProvider_SendsAuthAndAudience(t *testing.T) {
 	// Synthetic: request shape check against a local server.
 	var gotAuth, gotAud, gotAPI string
@@ -141,6 +160,19 @@ func TestGitHubTokenProvider_SendsAuthAndAudience(t *testing.T) {
 	assert.Equal(t, "bearer secret-bearer", gotAuth)
 	assert.Equal(t, aud, gotAud)
 	assert.Equal(t, "2.0", gotAPI)
+}
+
+func TestCappedBackoff(t *testing.T) {
+	// Synthetic: a huge Retry-After must not stall the caller; no real target showed this.
+	resp := &http.Response{
+		StatusCode: http.StatusTooManyRequests,
+		Header:     http.Header{"Retry-After": []string{"3600"}},
+	}
+	assert.Equal(t, 30*time.Second, cappedBackoff(time.Second, 30*time.Second, 0, resp))
+
+	// Synthetic: without Retry-After the exponential backoff applies.
+	got := cappedBackoff(time.Second, 30*time.Second, 1, &http.Response{StatusCode: http.StatusServiceUnavailable})
+	assert.Equal(t, 2*time.Second, got)
 }
 
 func TestGitHubTokenProvider_MissingEnv(t *testing.T) {
