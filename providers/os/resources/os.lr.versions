@@ -4743,6 +4743,12 @@ package.purl 9.1.6
 package.status 9.0.0
 package.vendor 11.2.18
 package.version 9.0.0
+package.windows 14.33.5
+package.windows.appId 14.33.5
+package.windows.bundleUpgradeCode 14.33.5
+package.windows.installer 14.33.5
+package.windows.productCode 14.33.5
+package.windows.upgradeCode 14.33.5
 packages 9.0.0
 packages.list 9.0.0
 pam.conf 9.0.0

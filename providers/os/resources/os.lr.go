@@ -70,6 +70,7 @@ const (
 	ResourceGroups                                         string = "groups"
 	ResourcePackage                                        string = "package"
 	ResourcePackageMacos                                   string = "package.macos"
+	ResourcePackageWindows                                 string = "package.windows"
 	ResourcePkgFileInfo                                    string = "pkgFileInfo"
 	ResourcePackages                                       string = "packages"
 	ResourcePamConf                                        string = "pam.conf"
@@ -1058,6 +1059,10 @@ func init() {
 		"package.macos": {
 			Init:   initPackageMacos,
 			Create: createPackageMacos,
+		},
+		"package.windows": {
+			Init:   initPackageWindows,
+			Create: createPackageWindows,
 		},
 		"pkgFileInfo": {
 			// to override args, implement: initPkgFileInfo(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -5020,6 +5025,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"package.macos": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPackage).GetMacos()).ToDataRes(types.Resource("package.macos"))
 	},
+	"package.windows": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPackage).GetWindows()).ToDataRes(types.Resource("package.windows"))
+	},
 	"package.macos.bundleId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPackageMacos).GetBundleId()).ToDataRes(types.String)
 	},
@@ -5031,6 +5039,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"package.macos.appStore": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPackageMacos).GetAppStore()).ToDataRes(types.Bool)
+	},
+	"package.windows.productCode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPackageWindows).GetProductCode()).ToDataRes(types.String)
+	},
+	"package.windows.upgradeCode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPackageWindows).GetUpgradeCode()).ToDataRes(types.String)
+	},
+	"package.windows.bundleUpgradeCode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPackageWindows).GetBundleUpgradeCode()).ToDataRes(types.String)
+	},
+	"package.windows.appId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPackageWindows).GetAppId()).ToDataRes(types.String)
+	},
+	"package.windows.installer": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPackageWindows).GetInstaller()).ToDataRes(types.String)
 	},
 	"pkgFileInfo.path": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPkgFileInfo).GetPath()).ToDataRes(types.String)
@@ -25837,6 +25860,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlPackage).Macos, ok = plugin.RawToTValue[*mqlPackageMacos](v.Value, v.Error)
 		return
 	},
+	"package.windows": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPackage).Windows, ok = plugin.RawToTValue[*mqlPackageWindows](v.Value, v.Error)
+		return
+	},
 	"package.macos.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlPackageMacos).__id, ok = v.Value.(string)
 		return
@@ -25855,6 +25882,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"package.macos.appStore": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlPackageMacos).AppStore, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"package.windows.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPackageWindows).__id, ok = v.Value.(string)
+		return
+	},
+	"package.windows.productCode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPackageWindows).ProductCode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"package.windows.upgradeCode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPackageWindows).UpgradeCode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"package.windows.bundleUpgradeCode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPackageWindows).BundleUpgradeCode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"package.windows.appId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPackageWindows).AppId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"package.windows.installer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPackageWindows).Installer, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"pkgFileInfo.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -59331,6 +59382,7 @@ type mqlPackage struct {
 	InstallScope plugin.TValue[string]
 	InstallUser  plugin.TValue[*mqlUser]
 	Macos        plugin.TValue[*mqlPackageMacos]
+	Windows      plugin.TValue[*mqlPackageWindows]
 }
 
 // createPackage creates a new instance of this resource
@@ -59500,6 +59552,22 @@ func (c *mqlPackage) GetMacos() *plugin.TValue[*mqlPackageMacos] {
 	})
 }
 
+func (c *mqlPackage) GetWindows() *plugin.TValue[*mqlPackageWindows] {
+	return plugin.GetOrCompute[*mqlPackageWindows](&c.Windows, func() (*mqlPackageWindows, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("package", c.__id, "windows")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlPackageWindows), nil
+			}
+		}
+
+		return c.windows()
+	})
+}
+
 // mqlPackageMacos for the package.macos resource
 type mqlPackageMacos struct {
 	MqlRuntime *plugin.Runtime
@@ -59557,6 +59625,70 @@ func (c *mqlPackageMacos) GetTeamId() *plugin.TValue[string] {
 
 func (c *mqlPackageMacos) GetAppStore() *plugin.TValue[bool] {
 	return &c.AppStore
+}
+
+// mqlPackageWindows for the package.windows resource
+type mqlPackageWindows struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlPackageWindowsInternal it will be used here
+	ProductCode       plugin.TValue[string]
+	UpgradeCode       plugin.TValue[string]
+	BundleUpgradeCode plugin.TValue[string]
+	AppId             plugin.TValue[string]
+	Installer         plugin.TValue[string]
+}
+
+// createPackageWindows creates a new instance of this resource
+func createPackageWindows(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlPackageWindows{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("package.windows", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlPackageWindows) MqlName() string {
+	return "package.windows"
+}
+
+func (c *mqlPackageWindows) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlPackageWindows) GetProductCode() *plugin.TValue[string] {
+	return &c.ProductCode
+}
+
+func (c *mqlPackageWindows) GetUpgradeCode() *plugin.TValue[string] {
+	return &c.UpgradeCode
+}
+
+func (c *mqlPackageWindows) GetBundleUpgradeCode() *plugin.TValue[string] {
+	return &c.BundleUpgradeCode
+}
+
+func (c *mqlPackageWindows) GetAppId() *plugin.TValue[string] {
+	return &c.AppId
+}
+
+func (c *mqlPackageWindows) GetInstaller() *plugin.TValue[string] {
+	return &c.Installer
 }
 
 // mqlPkgFileInfo for the pkgFileInfo resource

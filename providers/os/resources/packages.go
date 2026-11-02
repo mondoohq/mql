@@ -96,6 +96,10 @@ type mqlPackageInternal struct {
 	// a macOS application bundle.
 	macosApp *packages.MacOSApp
 
+	// windowsIdentity backs the windows() accessor. Nil for every package that
+	// is not a Windows application with a known install identity.
+	windowsIdentity *packages.WindowsInstallIdentity
+
 	// updates backs available() and outdated(): the pending updates of the
 	// package manager that listed this package, shared by all its packages.
 	// Nil for a package that list() did not build.
@@ -132,6 +136,37 @@ func (x *mqlPackage) macos() (*mqlPackageMacos, error) {
 		return nil, err
 	}
 	return res.(*mqlPackageMacos), nil
+}
+
+// initPackageWindows keeps `package.windows` from resolving on its own, for
+// the same reason as initPackageMacos.
+func initPackageWindows(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if _, ok := args["__id"]; ok {
+		return args, nil, nil
+	}
+	return nil, nil, errors.New("package.windows belongs to a package and cannot be queried on its own, read the windows field of a package instead")
+}
+
+// windows returns the install identity of a Windows application, and null for
+// every other package.
+func (x *mqlPackage) windows() (*mqlPackageWindows, error) {
+	id := x.windowsIdentity
+	if id == nil {
+		x.Windows.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := CreateResource(x.MqlRuntime, ResourcePackageWindows, map[string]*llx.RawData{
+		"__id":              llx.StringData(x.__id + "/windows"),
+		"productCode":       llx.StringData(id.ProductCode),
+		"upgradeCode":       llx.StringData(id.UpgradeCode),
+		"bundleUpgradeCode": llx.StringData(id.BundleUpgradeCode),
+		"appId":             llx.StringData(id.AppID),
+		"installer":         llx.StringData(id.Installer),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlPackageWindows), nil
 }
 
 // installUser resolves the SID that reported this package (installScope ==
@@ -237,6 +272,7 @@ func initPackage(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[str
 	res.License.State = plugin.StateIsSet | plugin.StateIsNull
 	res.InstallDate.State = plugin.StateIsSet | plugin.StateIsNull
 	res.Macos.State = plugin.StateIsSet | plugin.StateIsNull
+	res.Windows.State = plugin.StateIsSet | plugin.StateIsNull
 	res.__id, _ = res.id()
 	return nil, res, nil
 }
@@ -561,6 +597,7 @@ func (x *mqlPackages) list() ([]any, error) {
 		// here, same as filesState/filesOnDisks above.
 		s.installUserSid = osPkg.InstallUser
 		s.macosApp = osPkg.MacOS
+		s.windowsIdentity = osPkg.Windows
 		s.updates = osPkgUpdates[i]
 		pkgs[i] = s
 	}

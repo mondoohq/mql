@@ -675,3 +675,123 @@ func TestInstallerQualifierAgreesAcrossPaths(t *testing.T) {
 	require.Len(t, remote, len(entries))
 	assert.Equal(t, want, installerOf(remote), "PowerShell path")
 }
+
+// windowsFieldMatchesPurl requires Package.Windows to hold exactly the identity
+// qualifiers of the purl, and nothing else.
+func windowsFieldMatchesPurl(t *testing.T, p Package) {
+	t.Helper()
+	require.NotNil(t, p.Windows, p.Name)
+	assert.Equal(t, purlQualifierOrEmpty(t, p.PUrl, "product_code"), p.Windows.ProductCode, p.Name)
+	assert.Equal(t, purlQualifierOrEmpty(t, p.PUrl, "upgrade_code"), p.Windows.UpgradeCode, p.Name)
+	assert.Equal(t, purlQualifierOrEmpty(t, p.PUrl, "bundle_upgrade_code"), p.Windows.BundleUpgradeCode, p.Name)
+	assert.Equal(t, purlQualifierOrEmpty(t, p.PUrl, "app_id"), p.Windows.AppID, p.Name)
+	assert.Equal(t, purlQualifierOrEmpty(t, p.PUrl, "installer"), p.Windows.Installer, p.Name)
+}
+
+func purlQualifierOrEmpty(t *testing.T, rawPurl, key string) string {
+	t.Helper()
+	parsed, err := packageurl.FromString(rawPurl)
+	require.NoError(t, err)
+	return parsed.Qualifiers.Map()[key]
+}
+
+// Synthetic: the Uninstall entries of installerTestEntries (their values were
+// measured, the pairing with the purl is what is checked here) must give a
+// Windows field equal to the purl qualifiers for every installer type.
+func TestWindowsFieldMatchesPurlForEveryInstaller(t *testing.T) {
+	pf := &inventory.Platform{Name: "windows", Arch: "x86_64", Family: []string{"windows"}}
+	upgradeCodes := map[string]string{
+		unpackMsiGUID(sevenZipPackedProduct):  unpackMsiGUID(sevenZipPackedUpgrade),
+		unpackMsiGUID(vcRuntimePackedProduct): unpackMsiGUID(vcRuntimePackedUpgrade),
+	}
+	entries := installerTestEntries()
+	var pkgs []Package
+	for _, e := range entries {
+		p, _ := getPackageFromRegistryKeyItems(e.items, pf, pf.Arch)
+		require.NotNil(t, p, e.name)
+		p.installIdentity = installIdentityFromItems(e.key, e.items)
+		pkgs = append(pkgs, *p)
+	}
+	applyInstallIdentityQualifiers(pkgs, upgradeCodes)
+	seen := map[string]bool{}
+	for i, p := range pkgs {
+		windowsFieldMatchesPurl(t, p)
+		assert.Equal(t, entries[i].want, p.Windows.Installer)
+		seen[p.Windows.Installer] = true
+	}
+	for _, want := range []string{"msi", "burn", "inno", "installshield", "squirrel", "chromium", "unknown"} {
+		assert.True(t, seen[want], "installer %s is covered", want)
+	}
+}
+
+// Synthetic: MSI with a known UpgradeCode, Burn bundle and Inno entry, with
+// the exact field values spelled out (the purl comparison alone would pass if
+// both sides were wrong the same way).
+func TestWindowsFieldValues(t *testing.T) {
+	pf := &inventory.Platform{Name: "windows", Arch: "x86_64", Family: []string{"windows"}}
+	msi := createPackage("7-Zip", "26.03", "windows/app", "x86_64", "Igor Pavlov", "", pf)
+	msi.installIdentity = newInstallIdentity(sevenZipProductKey, true, "", "")
+	bundle := createPackage("VC", "14.42", "windows/app", "x86_64", "Microsoft", "", pf)
+	bundle.installIdentity = newInstallIdentity(vcBundleKey, false, vcBundleUpgradeCode, "")
+	inno := createPackage("Notepad3", "7.26", "windows/app", "x86_64", "Rizonesoft", "", pf)
+	inno.installIdentity = newInstallIdentity("Notepad3_is1", false, "", "")
+	pkgs := []Package{*msi, *bundle, *inno}
+	applyInstallIdentityQualifiers(pkgs, map[string]string{
+		unpackMsiGUID(sevenZipPackedProduct): unpackMsiGUID(sevenZipPackedUpgrade),
+	})
+	assert.Equal(t, &WindowsInstallIdentity{
+		ProductCode: "23170F69-40C1-2702-2603-000001000000",
+		UpgradeCode: "23170F69-40C1-2702-0000-000004000000",
+		Installer:   "msi",
+	}, pkgs[0].Windows)
+	assert.Equal(t, &WindowsInstallIdentity{
+		UpgradeCode: "F608407A-6091-42E0-A1BA-B8FFFC21199B",
+		Installer:   "burn",
+	}, pkgs[1].Windows)
+	assert.Equal(t, &WindowsInstallIdentity{AppID: "Notepad3", Installer: "inno"}, pkgs[2].Windows)
+}
+
+// Synthetic: a .NET Burn bundle + MSI pair collapsed in either order keeps the
+// MSI identity and the folded bundle's upgrade code in the Windows field.
+func TestWindowsFieldAfterDotNetCollapse(t *testing.T) {
+	pf := &inventory.Platform{Name: "windows", Arch: "x86_64", Family: []string{"windows"}}
+	bundle := createPackage("Microsoft .NET Runtime - 8.0.21 (x64)", "8.0.21", "windows/app", "x86_64", "Microsoft Corporation", "", pf)
+	bundle.installIdentity = newInstallIdentity(vcBundleKey, false, vcBundleUpgradeCode, "")
+	msi := createPackage("Microsoft .NET Runtime - 8.0.21 (x64)", "8.0.21", "windows/app", "x86_64", "Microsoft Corporation", "", pf)
+	msi.installIdentity = newInstallIdentity(vcRuntimeProductKey, true, "", "")
+
+	for _, order := range [][]Package{{*bundle, *msi}, {*msi, *bundle}} {
+		w := &WinPkgManager{}
+		out := w.withInstallIdentity(collapsePackages(order))
+		require.Len(t, out, 1)
+		windowsFieldMatchesPurl(t, out[0])
+		assert.Equal(t, "1E7D98FD-97A9-4EE3-B08E-F53E96DF3491", out[0].Windows.ProductCode)
+		assert.Equal(t, "msi", out[0].Windows.Installer)
+		assert.Equal(t, normalizeGUID(vcBundleUpgradeCode), out[0].Windows.BundleUpgradeCode)
+	}
+}
+
+// Synthetic: install-scope is a purl qualifier but not identity, so it must not
+// reach the Windows field; an entry without identity, an appx package and a
+// non windows/app package keep a nil field.
+func TestWindowsFieldScopeAndNil(t *testing.T) {
+	pf := &inventory.Platform{Name: "windows", Arch: "x86_64", Family: []string{"windows"}}
+	user := createPackage("Slack", "4.41.105", "windows/app", "x86_64", "Slack Technologies Inc.", "", pf)
+	user.InstallScope = installScopeUser
+	user.installIdentity = newInstallIdentity("slack", false, "", `"C:\Users\user\AppData\Local\slack\Update.exe" --uninstall -s`)
+	noIdentity := createPackage("Postman x64", "11.2.0", "windows/app", "x86_64", "Postman", "", pf)
+	noIdentity.InstallScope = installScopeUser
+	appx := createPackage("Microsoft.WindowsTerminal", "1.20.0.0", "windows/appx", "x86_64", "Microsoft", "", pf)
+	appx.installIdentity = newInstallIdentity("Notepad3_is1", false, "", "")
+	other := createPackage("curl", "8.0", "deb", "x86_64", "", "", pf)
+	other.installIdentity = newInstallIdentity("curl", false, "", "")
+
+	pkgs := []Package{*user, *noIdentity, *appx, *other}
+	applyInstallIdentityQualifiers(pkgs, nil)
+
+	assert.Equal(t, "user", purlQualifier(t, pkgs[0].PUrl, "install-scope"))
+	assert.Equal(t, &WindowsInstallIdentity{AppID: "slack", Installer: "squirrel"}, pkgs[0].Windows)
+	assert.Nil(t, pkgs[1].Windows, "no identity read")
+	assert.Nil(t, pkgs[2].Windows, "appx")
+	assert.Nil(t, pkgs[3].Windows, "not a Windows application")
+}

@@ -117,7 +117,7 @@ const (
 )
 
 // installIdentity is what an Uninstall entry says about itself beyond its
-// name. Unexported on Package: it only feeds the purl qualifiers.
+// name. Unexported on Package: it feeds the purl qualifiers and Package.Windows.
 type installIdentity struct {
 	// uninstallKey is the Uninstall subkey's own name.
 	uninstallKey string
@@ -465,6 +465,9 @@ func applyInstallIdentityQualifiers(pkgs []Package, upgradeCodes map[string]stri
 			continue
 		}
 		add := p.installIdentity.qualifiers(upgradeCodes)
+		// The field is read from the same map as the purl, so the two cannot
+		// drift. Taken before install-scope is added: that is not identity.
+		p.Windows = windowsInstallIdentityFromQualifiers(add)
 		if p.InstallScope == installScopeUser {
 			if add == nil {
 				add = map[string]string{}
@@ -496,6 +499,22 @@ func applyInstallIdentityQualifiers(pkgs []Package, upgradeCodes map[string]stri
 	// Spent: the identity now lives in the purl.
 	for i := range pkgs {
 		pkgs[i].installIdentity = nil
+	}
+}
+
+// windowsInstallIdentityFromQualifiers copies the identity qualifiers of
+// qualifiers() into the exported struct. It returns nil for a nil map (an entry
+// without identity).
+func windowsInstallIdentityFromQualifiers(q map[string]string) *WindowsInstallIdentity {
+	if q == nil {
+		return nil
+	}
+	return &WindowsInstallIdentity{
+		ProductCode:       q[qualifierProductCode],
+		UpgradeCode:       q[qualifierUpgradeCode],
+		BundleUpgradeCode: q[qualifierBundleUpgradeCode],
+		AppID:             q[qualifierAppID],
+		Installer:         q[qualifierInstaller],
 	}
 }
 
