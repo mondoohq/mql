@@ -1816,25 +1816,12 @@ var eulerFamily = &PlatformResolver{
 	},
 }
 
-// yoctoReleaseCodenames are the Yocto Project release codenames. A Yocto /
-// OpenEmbedded image's os-release carries VERSION_CODENAME = the release it was
-// built from (DISTRO_CODENAME, inherited from poky unless a custom DISTRO
-// overrides it). These words are coined by the Yocto Project and do not collide
-// with another distribution's codenames, so one is a reliable Yocto marker even
-// when a product ships a custom DISTRO with its own os-release ID.
-var yoctoReleaseCodenames = map[string]bool{
-	"dunfell":    true, // 3.1 LTS
-	"gatesgarth": true, // 3.2
-	"hardknott":  true, // 3.3
-	"honister":   true, // 3.4
-	"kirkstone":  true, // 4.0 LTS
-	"langdale":   true, // 4.1
-	"mickledore": true, // 4.2
-	"nanbield":   true, // 4.3
-	"scarthgap":  true, // 5.0 LTS
-	"styhead":    true, // 5.1
-	"walnascar":  true, // 5.2
-}
+// The Yocto release codename set (yoctoReleaseCodenames, used below) is
+// generated from endoflife.date, which tracks every Yocto cycle and its
+// codename, and is refreshed by the update-yocto-releases workflow so a new
+// Yocto release is recognized without a hand edit. Regenerate locally with:
+//
+//go:generate go run ./gen -out yocto_releases.gen.go
 
 // yocto detects a Yocto Project / OpenEmbedded-built Linux image and normalizes
 // it to the platform name "yocto", the name the vulnerability backend keys the
