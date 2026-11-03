@@ -106,14 +106,20 @@ type toolPackageSpec struct {
 	// is never executed: any user can write a file there, and a scan running as
 	// root would run it with root's privileges.
 	homeBinaries []string
+	// npmPackage is the tool's npm package name ("@google/gemini-cli"). When the
+	// tool is installed with `npm install -g`, its package.json under a global
+	// npm prefix carries the version. It is read before inferVersion runs the
+	// binary, so the version is known even when `--version` fails or the scan's
+	// PATH misses the binary.
+	npmPackage string
 }
 
 // toolPackageSpecs is keyed by MQL resource name.
 var toolPackageSpecs = map[string]toolPackageSpec{
-	"claude.code":    {packageName: "claude-code", binaryNames: []string{"claude"}, managerCandidates: []string{"claude-code", "claude-code@latest", "Claude Code", "Claude CLI"}, vendor: "Anthropic", inferVersion: inferClaudeCodeVersion},
-	"openai.codex":   {packageName: "openai-codex", binaryNames: []string{"codex"}, managerCandidates: []string{"codex", "OpenAI.Codex"}, vendor: "OpenAI", inferVersion: inferCodexVersion},
+	"claude.code":    {packageName: "claude-code", binaryNames: []string{"claude"}, managerCandidates: []string{"claude-code", "claude-code@latest", "Claude Code", "Claude CLI"}, vendor: "Anthropic", npmPackage: "@anthropic-ai/claude-code", inferVersion: inferClaudeCodeVersion},
+	"openai.codex":   {packageName: "openai-codex", binaryNames: []string{"codex"}, managerCandidates: []string{"codex", "OpenAI.Codex"}, vendor: "OpenAI", npmPackage: "@openai/codex", inferVersion: inferCodexVersion},
 	"cursor":         {packageName: "cursor", binaryNames: []string{"cursor"}, managerCandidates: []string{"cursor", "Cursor", "Cursor (User)"}, vendor: "Anysphere"},
-	"github.copilot": {packageName: "github-copilot", vendor: "GitHub", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates},
+	"github.copilot": {packageName: "github-copilot", vendor: "GitHub", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates, vscodeExtensionIDs: []string{"GitHub.copilot", "GitHub.copilot-chat"}},
 	// Bare "goose"/"gemini" are intentionally NOT used as binaryNames: "goose"
 	// collides with the widely-packaged pressly/goose DB-migration tool, and
 	// "gemini" is ambiguous — attributing either by binary name risks pointing
@@ -128,7 +134,7 @@ var toolPackageSpecs = map[string]toolPackageSpec{
 	// package GNOME Warp (file transfer) under that name, and package(name)
 	// cannot tell it from the terminal's Homebrew cask.
 	"goose":            {packageName: "goose", managerCandidates: []string{"block-goose-cli", "block-goose"}, vendor: "Block"},
-	"gemini":           {packageName: "gemini", managerCandidates: []string{"gemini-cli"}, vendor: "Google"},
+	"gemini":           {packageName: "gemini", managerCandidates: []string{"gemini-cli"}, vendor: "Google", npmPackage: "@google/gemini-cli"},
 	"windsurf":         {packageName: "windsurf", binaryNames: []string{"windsurf"}, managerCandidates: []string{"windsurf", "Windsurf", "Windsurf (User)"}},
 	"breezell":         {packageName: "breezell", binaryNames: []string{"breezell"}, managerCandidates: []string{"breezell", "Breezell", "Breezell (User)"}},
 	"zed":              {packageName: "zed", managerCandidates: []string{"zed", "Zed", "ZedIndustries.Zed"}, vendor: "Zed Industries"},
@@ -138,7 +144,7 @@ var toolPackageSpecs = map[string]toolPackageSpec{
 	"continuedev":      {packageName: "continuedev", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates, vscodeExtensionIDs: []string{"Continue.continue"}},
 	"trae":             {packageName: "trae", managerCandidates: []string{"trae"}},
 	"opencode":         {packageName: "opencode", binaryNames: []string{"opencode"}, managerCandidates: []string{"opencode", "opencode-desktop", "OpenCode"}},
-	"pi":               {packageName: "pi"},
+	"pi":               {packageName: "pi", npmPackage: "@mariozechner/pi-coding-agent"},
 	"mistral.vibe":     {packageName: "mistral-vibe", vendor: "Mistral AI"},
 	"antigravity":      {packageName: "antigravity", managerCandidates: []string{"antigravity", "Antigravity", "Antigravity (User)", "Antigravity IDE", "Antigravity IDE (User)"}, vendor: "Google", homeBinaries: []string{".local/bin/agy", "AppData/Local/agy/bin/agy.exe"}},
 	"ibm.bob":          {packageName: "ibm-bob", vendor: "IBM"},
@@ -149,7 +155,7 @@ var toolPackageSpecs = map[string]toolPackageSpec{
 	"warp":             {packageName: "warp", managerCandidates: []string{"Warp"}, vendor: "Warp"},
 	"kilocode":         {packageName: "kilocode", managerCandidates: []string{"kilocode"}, runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates, vscodeExtensionIDs: []string{"kilocode.Kilo-Code"}},
 	"openhands":        {packageName: "openhands", binaryNames: []string{"openhands"}, managerCandidates: []string{"openhands"}},
-	"qwen.code":        {packageName: "qwen-code", binaryNames: []string{"qwen"}, vendor: "Alibaba"},
+	"qwen.code":        {packageName: "qwen-code", binaryNames: []string{"qwen"}, vendor: "Alibaba", npmPackage: "@qwen-code/qwen-code"},
 	// The desktop app installs per user (Windows, macOS), so no package manager
 	// owns it; its app name ("Claude", macOS and Windows) carries the version.
 	// The Homebrew cask "claude" is left out: a macOS Claude Code install also
@@ -285,6 +291,12 @@ func resolveToolPackage(runtime *plugin.Runtime, configPath string, spec toolPac
 			dirs = append(dirs, u.home)
 		}
 		installed = findHomeBinary(connectionAfs(runtime), dirs, spec.homeBinaries) != ""
+	}
+	if (installed || configFound) && version == "" && spec.npmPackage != "" {
+		if v := npmGlobalVersion(connectionAfs(runtime), spec.npmPackage); v != "" {
+			version = v
+			installed = true
+		}
 	}
 	if (installed || configFound) && version == "" && spec.inferVersion != nil {
 		v, err := spec.inferVersion(runtime, configPath)
@@ -481,6 +493,37 @@ func versionedPackageMatch(byName map[string]*mqlPackage, name string) *mqlPacka
 		}
 	}
 	return nil
+}
+
+// npmGlobalVersion returns the highest version of the npm package pkgName
+// installed under any of the global npm locations in defaultNpmPaths, read
+// from its package.json without running anything. Empty when none is found.
+//
+// ponytail: the highest across every user's npm prefix, not only the one in
+// the home that owns the tool's configPath; scope it per home if users on one
+// machine running different versions turns out to matter.
+func npmGlobalVersion(afs *afero.Afero, pkgName string) string {
+	version := ""
+	for _, prefix := range defaultNpmPaths {
+		modules := filepath.Join(prefix, "node_modules")
+		if isNodeModuleRootPath(prefix) {
+			modules = prefix
+		}
+		matches, err := afero.Glob(afs.Fs, filepath.Join(modules, filepath.FromSlash(pkgName), "package.json"))
+		if err != nil {
+			continue
+		}
+		for _, m := range matches {
+			pkg, err := readVSCodePackageJSON(afs, m)
+			if err != nil || pkg.Name != pkgName || !isSemverVersion(pkg.Version) {
+				continue
+			}
+			if version == "" || semverLess(version, pkg.Version) {
+				version = pkg.Version
+			}
+		}
+	}
+	return version
 }
 
 // findHomeBinary returns the first of rels, joined onto each home in turn, that

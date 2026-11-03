@@ -406,3 +406,21 @@ func TestToolPackageSpecsSharedConfig(t *testing.T) {
 	assert.True(t, toolPackageSpecs["anthropic.cli"].configShared, "every anthropic-sdk-go client writes ~/.config/anthropic")
 	assert.Empty(t, toolPackageSpecs["anthropic.cli"].binaryNames, "Apache Ant owns a binary named ant")
 }
+
+// A CLI installed with `npm install -g` keeps its version in its package.json
+// under a global prefix, which is read without running the binary.
+func TestNpmGlobalVersion(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	write := func(path, body string) {
+		require.NoError(t, afero.WriteFile(fs, path, []byte(body), 0o644))
+	}
+	write("/usr/local/lib/node_modules/@google/gemini-cli/package.json", `{"name":"@google/gemini-cli","version":"0.64.0"}`)
+	write("/home/dev/.nvm/versions/node/v22.11.0/lib/node_modules/@google/gemini-cli/package.json", `{"name":"@google/gemini-cli","version":"0.66.0"}`)
+	// A directory whose manifest names another package is not the tool.
+	write("/usr/lib/node_modules/@openai/codex/package.json", `{"name":"something-else","version":"9.9.9"}`)
+
+	afs := &afero.Afero{Fs: fs}
+	assert.Equal(t, "0.66.0", npmGlobalVersion(afs, "@google/gemini-cli"), "highest version across prefixes")
+	assert.Equal(t, "", npmGlobalVersion(afs, "@openai/codex"))
+	assert.Equal(t, "", npmGlobalVersion(afs, "@mariozechner/pi-coding-agent"))
+}
