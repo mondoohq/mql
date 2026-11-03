@@ -10,7 +10,7 @@ Proposed
 `command("id").stdout` is a harmless probe; `command("curl … | sh").exitcode`
 is remote code execution, and the two are the same resource. Its sibling
 `powershell` does the same with a script. Both are first-class MQL resources
-(`providers/os/resources/os.lr:933`, `:952`), so any query that reaches a
+(`providers/os/resources/os.lr`), so any query that reaches a
 scanner can use them: a query pack pulled from a registry, a policy enabled in a
 space, a check written by anyone with write access to that space.
 
@@ -60,19 +60,19 @@ the *resource* must not disable the *mechanism*; an operator who turns off
 
 **Every query-originated resource passes through one function.** The executor
 creates a resource with `runtime.CreateResource(name, args)`
-(`llx/llx.go:826`), which is `Runtime.createResource`
-(`providers/runtime.go:587`). Cross-provider requests (ADR 042) arrive through
-`providerCallbacks.GetData` (`providers/runtime.go:1173`), which calls the same
-function. Field reads go through `Runtime.watchAndUpdateContext`
-(`providers/runtime.go:731`). Those are the coordinator's two doors, and a
+(`llx/llx.go`), which is `Runtime.createResource`
+(`providers/runtime.go`). Cross-provider requests (ADR 042) arrive through
+`providerCallbacks.GetData`, which calls the same
+function. Field reads go through `Runtime.watchAndUpdateContext`.
+Those are the coordinator's two doors, and a
 provider-internal `CreateResource` uses neither.
 
 There is one more trap. `command` is reachable under three names:
-`alias os.base.command = command` (`os.lr:12`), and `powershell` likewise as
-`os.windows.powershell` and `os.any.powershell` (`os.lr:129`, `:175`). A switch
+`alias os.base.command = command`, and `powershell` likewise as
+`os.windows.powershell` and `os.any.powershell`. A switch
 that matched the name the author typed would be bypassed by the alias.
 `createResource` already resolves every name to its canonical id
-(`name = info.Id`, `providers/runtime.go:595`) before it does anything else.
+(`name = info.Id`) before it does anything else.
 
 ## Decision
 
@@ -154,7 +154,7 @@ entries the same way.
 The set lives on the **coordinator**, not on a `Runtime`. Runtimes are created
 in several places (`NewRuntime`, `NewRuntimeFrom`, `RuntimeFor` for every
 discovered and cross-asset runtime, ADR 031), and `NewRuntimeFrom` copies an
-explicit list of fields from its parent (`providers/coordinator.go:163-170`).
+explicit list of fields from its parent (`providers/coordinator.go`).
 A per-runtime setting is one forgotten copy away from a child asset that runs
 `command` freely. A coordinator setting cannot be forgotten by a constructor:
 
@@ -208,7 +208,7 @@ The setting is not sent to providers. They have nothing to do with it, and
 keeping it out of `ConnectReq` means a provider release is never needed to
 enforce it.
 
-### 4. A tenth error kind: `ERROR_KIND_DISABLED`
+### 4. A new error kind: `ERROR_KIND_DISABLED`
 
 A disabled resource is reported as an `*llx.Error` (ADR 046 §6) with a new
 kind:
@@ -376,7 +376,7 @@ internal `command` use) return the same values as with the setting removed.
 - The runtime gains a lookup on every resource creation and every field read.
   It is a lock-free read of an immutable set, and a map miss when the set is
   empty.
-- `ErrorKind` grows a tenth value, owned by the runtime rather than providers,
+- `ErrorKind` grows an eleventh value, owned by the runtime rather than providers,
   like `ERROR_KIND_ASSET_VANISHED`.
 - Policies that rely on `command` report errors on hosts that disable it.
   Content authors who want broad coverage have a reason to prefer typed
