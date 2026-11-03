@@ -1,0 +1,43 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "yocto-core-image-minimal",
+  "documentNamespace": "",
+  "creationInfo": {
+    "creators": [
+      "Tool: oe-spdx-creator"
+    ],
+    "created": "2026-05-01T08:30:00Z"
+  },
+  "packages": [
+    {
+      "name": "curl",
+      "SPDXID": "SPDXRef-Package-curl",
+      "versionInfo": "8.7.1",
+      "downloadLocation": "",
+      "filesAnalyzed": false,
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:yocto/core/curl@8.7.1"
+        }
+      ]
+    },
+    {
+      "name": "libcurl4",
+      "SPDXID": "SPDXRef-Package-libcurl4",
+      "versionInfo": "8.7.1",
+      "downloadLocation": "",
+      "filesAnalyzed": false,
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:yocto/core/libcurl4@8.7.1"
+        }
+      ]
+    }
+  ]
+}

@@ -478,6 +478,7 @@ var familyMap = map[string][]string{
 	"alpine":        {"linux", "unix", "os"},
 	"fedora":        {"linux", "unix", "os"},
 	"rhel":          {"linux", "unix", "os"},
+	"yocto":         {"linux", "unix", "os"},
 }
 
 // cycloneDXTools renders the tool that produced the document, or nothing when

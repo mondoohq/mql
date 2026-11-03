@@ -1,0 +1,21 @@
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[commands."uname -r"]
+stdout = "6.6.32-yocto-standard"
+
+# A product's custom DISTRO: its own os-release ID, but it kept the Yocto
+# release codename (DISTRO_CODENAME) inherited from poky. This is the common
+# case and is detected via the codename.
+[files."/etc/os-release"]
+content = """
+ID=acme-embedded
+NAME="ACME Embedded Linux"
+VERSION="1.0 (scarthgap)"
+VERSION_ID=1.0
+VERSION_CODENAME=scarthgap
+PRETTY_NAME="ACME Embedded Linux 1.0 (scarthgap)"
+"""

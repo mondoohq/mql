@@ -180,7 +180,7 @@ func TestOpkgFixtureReportsTheHeldPackage(t *testing.T) {
 	start = strings.Index(content[start:], `"""`) + start + 3
 	end := strings.Index(content[start:], `"""`) + start
 
-	pkgs, err := ParseOpkgPackages(strings.NewReader(content[start:end]))
+	pkgs, err := ParseOpkgPackages(nil, strings.NewReader(content[start:end]))
 	require.NoError(t, err)
 	require.NotEmpty(t, pkgs)
 

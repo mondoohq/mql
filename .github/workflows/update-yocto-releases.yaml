@@ -1,0 +1,112 @@
+name: Update the Yocto release codenames
+
+# The os detector recognizes a Yocto / OpenEmbedded image partly by its
+# VERSION_CODENAME (dunfell, scarthgap, ...). The Yocto Project coins a new
+# codename every release, so the checked-in set goes stale on its own. This
+# regenerates it from endoflife.date once a week and opens a pull request when a
+# new release appeared.
+
+on:
+  schedule:
+    - cron: "44 8 * * 1" # every monday
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GEN_DIR: providers/os/detector/gen
+  OUT_FILE: providers/os/detector/yocto_releases.gen.go
+  YOCTO_JSON_URL: https://endoflife.date/api/yocto.json
+
+jobs:
+  update-yocto-releases:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # https://github.com/peter-evans/create-pull-request/blob/main/docs/concepts-guidelines.md#push-using-ssh-deploy-keys
+      # The GITHUB_TOKEN is limited when creating PRs from a workflow; the ssh
+      # deploy key is not, which is how the other data-refresh workflows do it.
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ssh-key: ${{ secrets.CNQUERY_DEPLOY_KEY_PRIV }}
+
+      - name: Import environment variables from file
+        run: cat ".github/env" >> $GITHUB_ENV
+
+      - name: Install Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "${{ env.golang-version }}"
+          check-latest: true
+          cache: false
+
+      - name: Download the Yocto release list
+        run: |
+          curl --fail --silent --show-error --location \
+            --retry 5 --retry-all-errors --retry-delay 30 --max-time 120 \
+            --output "${RUNNER_TEMP}/yocto.json" "${YOCTO_JSON_URL}"
+
+          # endoflife.date behind a CDN can answer with an error page instead of
+          # the release list. Regenerating from that would drop every codename
+          # and open a pull request that stops Yocto detection, so anything that
+          # is not the release JSON (missing a long-lived LTS codename) fails the
+          # run. The generator's own minimum-count guard is the second check.
+          if ! grep -qi 'scarthgap' "${RUNNER_TEMP}/yocto.json"; then
+            echo "::error::${YOCTO_JSON_URL} did not return the Yocto release list"
+            echo "it starts with: $(head -c 200 "${RUNNER_TEMP}/yocto.json")"
+            exit 1
+          fi
+
+      - name: Regenerate the codename set
+        working-directory: ${{ env.GEN_DIR }}
+        run: |
+          go run . -in "${RUNNER_TEMP}/yocto.json" -out "${GITHUB_WORKSPACE}/${OUT_FILE}"
+
+      # The set gates Yocto detection, so a wrong one would silently stop
+      # recognizing Yocto images. The detector suite has to pass before the
+      # change is proposed.
+      - name: Test the detector
+        run: go test ./providers/os/detector/...
+
+      - name: Compose the pull request body
+        run: |
+          {
+            echo "\`${OUT_FILE}\` regenerated from the Yocto release list."
+            echo
+            echo "Source: <${YOCTO_JSON_URL}>, fetched $(date -u +%Y-%m-%d)."
+            echo "Built by \`${GEN_DIR}\`, no hand edits."
+            echo "Workflow: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } > "${RUNNER_TEMP}/pr-body.md"
+
+      - name: Prepare title and branch name
+        id: branch
+        run: |
+          BRANCH_NAME="version/yocto_releases_update_$(date +%Y%m%d)"
+          COMMIT_MSG="🧹 os: refresh the Yocto release codenames $(date +%Y%m%d)"
+          echo "COMMIT_TITLE=${COMMIT_MSG}" >> $GITHUB_OUTPUT
+          echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_OUTPUT
+
+      # peter-evans is a no-op when the regenerated file is byte-identical to the
+      # committed one, which keeps a quiet week from opening a pull request.
+      - name: Create pull request
+        id: cpr
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          base: main
+          labels: dependencies
+          committer: "Mondoo Tools <tools@mondoo.com>"
+          commit-message: ${{ steps.branch.outputs.COMMIT_TITLE }}
+          author: "Mondoo Tools <tools@mondoo.com>"
+          title: ${{ steps.branch.outputs.COMMIT_TITLE }}
+          branch: ${{ steps.branch.outputs.BRANCH_NAME }}
+          body-path: ${{ runner.temp }}/pr-body.md
+
+      - name: PR infos
+        if: ${{ steps.cpr.outputs.pull-request-number }}
+        run: |
+          echo "Pull Request Number - ${{ steps.cpr.outputs.pull-request-number }}"
+          echo "Pull Request URL - ${{ steps.cpr.outputs.pull-request-url }}"
