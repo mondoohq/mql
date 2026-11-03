@@ -62,7 +62,33 @@ mysqldb.instance @defaults("version flavor") {
   // Installed server components
   components() []mysqldb.component
   // Replication source connections configured on the server
+  //
+  // Read from performance_schema.replication_connection_configuration on MySQL
+  // and Percona, and from SHOW ALL REPLICAS STATUS on MariaDB. Empty on a
+  // server that does not replicate. CIS MariaDB 9.2:
+  // `mysqldb.instance.replicationChannels.all(sslVerifyServerCert == true)`
   replicationChannels() []mysqldb.replicationChannel
+  // Status of the keyring component loaded through the server manifest
+  //
+  // Read from performance_schema.keyring_component_status (MySQL 8.0.24 and
+  // later). Null when no keyring component is loaded, or on servers without
+  // the table (MariaDB, older MySQL). Keyring plugins are listed in plugins.
+  // CIS MySQL 3.10:
+  // `mysqldb.instance.keyringComponentStatus.status == "Active" || mysqldb.instance.plugins.any(name == /^keyring_/ && status == "ACTIVE")`
+  keyringComponentStatus() mysqldb.keyringComponentStatus
+  // Audit log filters defined for MySQL Enterprise Audit
+  //
+  // Rows of the audit_log_filter table in the audit_log_database schema
+  // (mysql by default). Null when the table does not exist, which means the
+  // audit log filter tables are not installed; empty when no filter is defined.
+  auditLogFilters() []mysqldb.auditLogFilter
+  // Accounts bound to MySQL Enterprise Audit log filters
+  //
+  // Rows of the audit_log_user table in the audit_log_database schema (mysql
+  // by default). The binding for user % applies to every account without a
+  // binding of its own. Null when the table does not exist. CIS MySQL 6.6:
+  // `mysqldb.instance.auditLogUsers.any(user == "%") && mysqldb.instance.auditLogUsers.all(filter.logsAll == true)`
+  auditLogUsers() []mysqldb.auditLogUser
 }
 
 // MySQL account
@@ -258,9 +284,12 @@ mysqldb.table @defaults("schema name") {
 
 // MySQL replication channel
 //
-// A replication source connection (performance_schema.replication_connection_configuration).
-// `sslAllowed` and `sslVerifyServerCert` report whether the channel secures and
-// verifies its connection to the source.
+// A replication source connection, read from
+// performance_schema.replication_connection_configuration on MySQL and Percona
+// and from SHOW ALL REPLICAS STATUS on MariaDB. `sslAllowed` and
+// `sslVerifyServerCert` report whether the channel secures and verifies its
+// connection to the source; `sslCipher`, `sslCert`, `sslKey`, and `sslCaFile`
+// report the TLS material it uses.
 mysqldb.replicationChannel @defaults("channel") {
   // Replication channel name
   channel string
@@ -270,4 +299,75 @@ mysqldb.replicationChannel @defaults("channel") {
   sslAllowed bool
   // Whether the channel verifies the source server certificate
   sslVerifyServerCert bool
+  // Cipher list the channel allows for its TLS connection, or empty for the default
+  sslCipher string
+  // Client certificate file the channel presents to the source, or empty when none is set
+  sslCert string
+  // Private key file for the client certificate, or empty when none is set
+  sslKey string
+  // CA certificate file the channel verifies the source against, or empty when none is set
+  sslCaFile string
+}
+
+// MySQL keyring component status
+//
+// The keyring component loaded through the server manifest
+// (performance_schema.keyring_component_status). `status` is Active when the
+// component initialized and serves keys; `dataFile` is the keyring data file
+// for file-based components, whose permissions CIS MySQL 3.10 asks to verify on
+// the host. `properties` holds every status row, including those specific to a
+// component.
+mysqldb.keyringComponentStatus @defaults("componentName status") {
+  // Component name, for example component_keyring_file
+  componentName string
+  // Name of the keyring implementation
+  implementationName string
+  // Component author
+  author string
+  // Component license
+  license string
+  // Component version
+  version string
+  // Component status, for example Active or Disabled
+  status string
+  // Keyring data file, or empty when the component does not keep one
+  dataFile string
+  // Whether the keyring is read-only
+  readOnly bool
+  // Every status row, keyed by STATUS_KEY
+  properties map[string]string
+}
+
+// MySQL Enterprise Audit log filter
+//
+// A filter definition from the audit_log_filter table, selected by `name`.
+// `definition` is the parsed JSON filter and `logsAll` reports whether it logs
+// every event.
+mysqldb.auditLogFilter @defaults("name logsAll") {
+  // Filter name, for example log_all
+  name string
+  // Filter definition, for example {"filter": {"log": true}}
+  definition dict
+  // Whether the filter logs every event
+  //
+  // True when the filter has no class or event items and its log item is
+  // absent or true, as in {"filter": {"log": true}} or {"filter": {}}. A
+  // filter that names classes or events logs only part of the activity.
+  logsAll bool
+}
+
+// MySQL Enterprise Audit log filter binding
+//
+// An account bound to an audit log filter (audit_log_user table). The binding
+// for user % with an empty host is the default for every account without a
+// binding of its own.
+mysqldb.auditLogUser @defaults("user host filterName") {
+  // User name of the bound account, or % for the default binding
+  user string
+  // Host of the bound account, empty for the default binding
+  host string
+  // Name of the filter bound to the account
+  filterName string
+  // Filter bound to the account, or null when no filter has that name
+  filter mysqldb.auditLogFilter
 }

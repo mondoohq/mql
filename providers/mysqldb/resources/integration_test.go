@@ -100,6 +100,11 @@ func TestIntegrationResolveAll(t *testing.T) {
 	resolveList(t, "plugins", inst.GetPlugins())
 	resolveList(t, "components", inst.GetComponents())
 	resolveList(t, "replicationChannels", inst.GetReplicationChannels())
+	if tv := inst.GetKeyringComponentStatus(); tv.Error != nil {
+		t.Errorf("keyringComponentStatus errored: %v", tv.Error)
+	}
+	resolveList(t, "auditLogFilters", inst.GetAuditLogFilters())
+	resolveList(t, "auditLogUsers", inst.GetAuditLogUsers())
 
 	// Child __ids must carry the server prefix so resources from different
 	// servers never collide (regression guard for the MariaDB no-server_uuid

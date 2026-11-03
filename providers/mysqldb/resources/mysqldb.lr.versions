@@ -2,13 +2,25 @@
 # SPDX-License-Identifier: BUSL-1.1
 
 mysqldb 13.0.0
+mysqldb.auditLogFilter 14.0.12
+mysqldb.auditLogFilter.definition 14.0.12
+mysqldb.auditLogFilter.logsAll 14.0.12
+mysqldb.auditLogFilter.name 14.0.12
+mysqldb.auditLogUser 14.0.12
+mysqldb.auditLogUser.filter 14.0.12
+mysqldb.auditLogUser.filterName 14.0.12
+mysqldb.auditLogUser.host 14.0.12
+mysqldb.auditLogUser.user 14.0.12
 mysqldb.component 13.0.0
 mysqldb.component.name 13.0.0
 mysqldb.component.urn 13.0.0
 mysqldb.instance 13.0.0
+mysqldb.instance.auditLogFilters 14.0.12
+mysqldb.instance.auditLogUsers 14.0.12
 mysqldb.instance.bindAddress 13.0.0
 mysqldb.instance.components 13.0.0
 mysqldb.instance.flavor 13.0.0
+mysqldb.instance.keyringComponentStatus 14.0.12
 mysqldb.instance.localInfile 13.0.0
 mysqldb.instance.plugins 13.0.0
 mysqldb.instance.replicationChannels 13.0.0
@@ -23,6 +35,16 @@ mysqldb.instance.users 13.0.0
 mysqldb.instance.variables 13.0.0
 mysqldb.instance.version 13.0.0
 mysqldb.instance.versionComment 13.0.0
+mysqldb.keyringComponentStatus 14.0.12
+mysqldb.keyringComponentStatus.author 14.0.12
+mysqldb.keyringComponentStatus.componentName 14.0.12
+mysqldb.keyringComponentStatus.dataFile 14.0.12
+mysqldb.keyringComponentStatus.implementationName 14.0.12
+mysqldb.keyringComponentStatus.license 14.0.12
+mysqldb.keyringComponentStatus.properties 14.0.12
+mysqldb.keyringComponentStatus.readOnly 14.0.12
+mysqldb.keyringComponentStatus.status 14.0.12
+mysqldb.keyringComponentStatus.version 14.0.12
 mysqldb.plugin 13.0.0
 mysqldb.plugin.library 13.0.0
 mysqldb.plugin.license 13.0.0
@@ -44,6 +66,10 @@ mysqldb.replicationChannel 13.0.0
 mysqldb.replicationChannel.channel 13.0.0
 mysqldb.replicationChannel.sourceHost 13.0.0
 mysqldb.replicationChannel.sslAllowed 13.0.0
+mysqldb.replicationChannel.sslCaFile 14.0.12
+mysqldb.replicationChannel.sslCert 14.0.12
+mysqldb.replicationChannel.sslCipher 14.0.12
+mysqldb.replicationChannel.sslKey 14.0.12
 mysqldb.replicationChannel.sslVerifyServerCert 13.0.0
 mysqldb.routine 13.0.0
 mysqldb.routine.definer 13.0.0
