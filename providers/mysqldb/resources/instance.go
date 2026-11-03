@@ -236,7 +236,8 @@ func (r *mqlMysqldbInstance) replicationChannels() ([]any, error) {
 	// MariaDB exposes replication state differently. A missing table means no
 	// channels. A refusal is not an answer.
 	rows, err := db.QueryContext(mysqldbContext(),
-		`SELECT CHANNEL_NAME, HOST, SSL_ALLOWED, SSL_VERIFY_SERVER_CERTIFICATE
+		`SELECT CHANNEL_NAME, HOST, SSL_ALLOWED, SSL_VERIFY_SERVER_CERTIFICATE,
+			SSL_CIPHER, SSL_CERTIFICATE, SSL_KEY, SSL_CA_FILE
 		 FROM performance_schema.replication_connection_configuration`)
 	if err != nil {
 		if isMissingTable(err) {
@@ -252,15 +253,19 @@ func (r *mqlMysqldbInstance) replicationChannels() ([]any, error) {
 	list := []any{}
 	for rows.Next() {
 		var channel, host, sslAllowed, sslVerify string
-		if err := rows.Scan(&channel, &host, &sslAllowed, &sslVerify); err != nil {
+		var cipher, cert, key, caFile sql.NullString
+		if err := rows.Scan(&channel, &host, &sslAllowed, &sslVerify, &cipher, &cert, &key, &caFile); err != nil {
 			return nil, err
 		}
-		res, err := CreateResource(r.MqlRuntime, "mysqldb.replicationChannel", map[string]*llx.RawData{
-			"__id":                llx.StringData(r.__id + "/replchannel/" + channel),
-			"channel":             llx.StringData(channel),
-			"sourceHost":          llx.StringData(host),
-			"sslAllowed":          llx.BoolData(isYes(sslAllowed)),
-			"sslVerifyServerCert": llx.BoolData(isYes(sslVerify)),
+		res, err := r.newReplicationChannel(replicationChannelRow{
+			channel:             channel,
+			host:                host,
+			sslAllowed:          isYes(sslAllowed),
+			sslVerifyServerCert: isYes(sslVerify),
+			sslCipher:           cipher.String,
+			sslCert:             cert.String,
+			sslKey:              key.String,
+			sslCaFile:           caFile.String,
 		})
 		if err != nil {
 			return nil, err
@@ -268,6 +273,20 @@ func (r *mqlMysqldbInstance) replicationChannels() ([]any, error) {
 		list = append(list, res)
 	}
 	return list, rows.Err()
+}
+
+func (r *mqlMysqldbInstance) newReplicationChannel(ch replicationChannelRow) (plugin.Resource, error) {
+	return CreateResource(r.MqlRuntime, "mysqldb.replicationChannel", map[string]*llx.RawData{
+		"__id":                llx.StringData(r.__id + "/replchannel/" + ch.channel),
+		"channel":             llx.StringData(ch.channel),
+		"sourceHost":          llx.StringData(ch.host),
+		"sslAllowed":          llx.BoolData(ch.sslAllowed),
+		"sslVerifyServerCert": llx.BoolData(ch.sslVerifyServerCert),
+		"sslCipher":           llx.StringData(ch.sslCipher),
+		"sslCert":             llx.StringData(ch.sslCert),
+		"sslKey":              llx.StringData(ch.sslKey),
+		"sslCaFile":           llx.StringData(ch.sslCaFile),
+	})
 }
 
 // sslAvailable reports whether the server accepts TLS connections. have_ssl
@@ -311,30 +330,14 @@ func componentName(urn string) string {
 // activeKeyringComponent returns the URN of the keyring component loaded
 // through the manifest, if any. The status table exists from MySQL 8.0.24.
 func activeKeyringComponent(db *sql.DB) (string, bool, error) {
-	rows, err := db.QueryContext(mysqldbContext(),
-		"SELECT STATUS_KEY, STATUS_VALUE FROM performance_schema.keyring_component_status")
+	status, err := readKeyringComponentStatus(db)
 	if err != nil {
-		if isMissingTable(err) {
-			return "", false, nil
-		}
 		if isAccessDenied(err) {
 			if plugin.StructuredErrors() {
-				return "", false, llx.Forbidden(err, llx.WithPermissions("SELECT ON performance_schema.keyring_component_status"))
+				return "", false, llx.Forbidden(err, llx.WithPermissions(keyringStatusPermission))
 			}
 			return "", false, nil
 		}
-		return "", false, err
-	}
-	defer rows.Close()
-	status := map[string]string{}
-	for rows.Next() {
-		var k, v sql.NullString
-		if err := rows.Scan(&k, &v); err != nil {
-			return "", false, err
-		}
-		status[k.String] = v.String
-	}
-	if err := rows.Err(); err != nil {
 		return "", false, err
 	}
 	urn, ok := keyringComponent(status)
@@ -343,8 +346,9 @@ func activeKeyringComponent(db *sql.DB) (string, bool, error) {
 
 // replicationChannelRow is one replication source connection.
 type replicationChannelRow struct {
-	channel, host                   string
-	sslAllowed, sslVerifyServerCert bool
+	channel, host                         string
+	sslAllowed, sslVerifyServerCert       bool
+	sslCipher, sslCert, sslKey, sslCaFile string
 }
 
 // mariadbChannelFromStatus maps one row of SHOW ALL SLAVES STATUS, keyed by
@@ -357,6 +361,10 @@ func mariadbChannelFromStatus(row map[string]string) replicationChannelRow {
 		host:                row["Master_Host"],
 		sslAllowed:          isYes(strings.ToUpper(row["Master_SSL_Allowed"])),
 		sslVerifyServerCert: isYes(strings.ToUpper(row["Master_SSL_Verify_Server_Cert"])),
+		sslCipher:           row["Master_SSL_Cipher"],
+		sslCert:             row["Master_SSL_Cert"],
+		sslKey:              row["Master_SSL_Key"],
+		sslCaFile:           row["Master_SSL_CA_File"],
 	}
 }
 
@@ -406,14 +414,7 @@ func (r *mqlMysqldbInstance) mariadbReplicationChannels() ([]any, error) {
 		for i, c := range cols {
 			row[c] = vals[i].String
 		}
-		ch := mariadbChannelFromStatus(row)
-		res, err := CreateResource(r.MqlRuntime, "mysqldb.replicationChannel", map[string]*llx.RawData{
-			"__id":                llx.StringData(r.__id + "/replchannel/" + ch.channel),
-			"channel":             llx.StringData(ch.channel),
-			"sourceHost":          llx.StringData(ch.host),
-			"sslAllowed":          llx.BoolData(ch.sslAllowed),
-			"sslVerifyServerCert": llx.BoolData(ch.sslVerifyServerCert),
-		})
+		res, err := r.newReplicationChannel(mariadbChannelFromStatus(row))
 		if err != nil {
 			return nil, err
 		}

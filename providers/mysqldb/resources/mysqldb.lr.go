@@ -16,17 +16,20 @@ import (
 
 // The MQL type names exposed as public consts for ease of reference.
 const (
-	ResourceMysqldb                   string = "mysqldb"
-	ResourceMysqldbInstance           string = "mysqldb.instance"
-	ResourceMysqldbUser               string = "mysqldb.user"
-	ResourceMysqldbPrivilege          string = "mysqldb.privilege"
-	ResourceMysqldbSchema             string = "mysqldb.schema"
-	ResourceMysqldbRoutine            string = "mysqldb.routine"
-	ResourceMysqldbVariable           string = "mysqldb.variable"
-	ResourceMysqldbPlugin             string = "mysqldb.plugin"
-	ResourceMysqldbComponent          string = "mysqldb.component"
-	ResourceMysqldbTable              string = "mysqldb.table"
-	ResourceMysqldbReplicationChannel string = "mysqldb.replicationChannel"
+	ResourceMysqldb                       string = "mysqldb"
+	ResourceMysqldbInstance               string = "mysqldb.instance"
+	ResourceMysqldbUser                   string = "mysqldb.user"
+	ResourceMysqldbPrivilege              string = "mysqldb.privilege"
+	ResourceMysqldbSchema                 string = "mysqldb.schema"
+	ResourceMysqldbRoutine                string = "mysqldb.routine"
+	ResourceMysqldbVariable               string = "mysqldb.variable"
+	ResourceMysqldbPlugin                 string = "mysqldb.plugin"
+	ResourceMysqldbComponent              string = "mysqldb.component"
+	ResourceMysqldbTable                  string = "mysqldb.table"
+	ResourceMysqldbReplicationChannel     string = "mysqldb.replicationChannel"
+	ResourceMysqldbKeyringComponentStatus string = "mysqldb.keyringComponentStatus"
+	ResourceMysqldbAuditLogFilter         string = "mysqldb.auditLogFilter"
+	ResourceMysqldbAuditLogUser           string = "mysqldb.auditLogUser"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -76,6 +79,18 @@ func init() {
 		"mysqldb.replicationChannel": {
 			// to override args, implement: initMysqldbReplicationChannel(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMysqldbReplicationChannel,
+		},
+		"mysqldb.keyringComponentStatus": {
+			// to override args, implement: initMysqldbKeyringComponentStatus(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMysqldbKeyringComponentStatus,
+		},
+		"mysqldb.auditLogFilter": {
+			// to override args, implement: initMysqldbAuditLogFilter(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMysqldbAuditLogFilter,
+		},
+		"mysqldb.auditLogUser": {
+			// to override args, implement: initMysqldbAuditLogUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMysqldbAuditLogUser,
 		},
 	}
 }
@@ -198,6 +213,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"mysqldb.instance.replicationChannels": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMysqldbInstance).GetReplicationChannels()).ToDataRes(types.Array(types.Resource("mysqldb.replicationChannel")))
+	},
+	"mysqldb.instance.keyringComponentStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbInstance).GetKeyringComponentStatus()).ToDataRes(types.Resource("mysqldb.keyringComponentStatus"))
+	},
+	"mysqldb.instance.auditLogFilters": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbInstance).GetAuditLogFilters()).ToDataRes(types.Array(types.Resource("mysqldb.auditLogFilter")))
+	},
+	"mysqldb.instance.auditLogUsers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbInstance).GetAuditLogUsers()).ToDataRes(types.Array(types.Resource("mysqldb.auditLogUser")))
 	},
 	"mysqldb.user.user": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMysqldbUser).GetUser()).ToDataRes(types.String)
@@ -370,6 +394,66 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mysqldb.replicationChannel.sslVerifyServerCert": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMysqldbReplicationChannel).GetSslVerifyServerCert()).ToDataRes(types.Bool)
 	},
+	"mysqldb.replicationChannel.sslCipher": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbReplicationChannel).GetSslCipher()).ToDataRes(types.String)
+	},
+	"mysqldb.replicationChannel.sslCert": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbReplicationChannel).GetSslCert()).ToDataRes(types.String)
+	},
+	"mysqldb.replicationChannel.sslKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbReplicationChannel).GetSslKey()).ToDataRes(types.String)
+	},
+	"mysqldb.replicationChannel.sslCaFile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbReplicationChannel).GetSslCaFile()).ToDataRes(types.String)
+	},
+	"mysqldb.keyringComponentStatus.componentName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbKeyringComponentStatus).GetComponentName()).ToDataRes(types.String)
+	},
+	"mysqldb.keyringComponentStatus.implementationName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbKeyringComponentStatus).GetImplementationName()).ToDataRes(types.String)
+	},
+	"mysqldb.keyringComponentStatus.author": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbKeyringComponentStatus).GetAuthor()).ToDataRes(types.String)
+	},
+	"mysqldb.keyringComponentStatus.license": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbKeyringComponentStatus).GetLicense()).ToDataRes(types.String)
+	},
+	"mysqldb.keyringComponentStatus.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbKeyringComponentStatus).GetVersion()).ToDataRes(types.String)
+	},
+	"mysqldb.keyringComponentStatus.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbKeyringComponentStatus).GetStatus()).ToDataRes(types.String)
+	},
+	"mysqldb.keyringComponentStatus.dataFile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbKeyringComponentStatus).GetDataFile()).ToDataRes(types.String)
+	},
+	"mysqldb.keyringComponentStatus.readOnly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbKeyringComponentStatus).GetReadOnly()).ToDataRes(types.Bool)
+	},
+	"mysqldb.keyringComponentStatus.properties": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbKeyringComponentStatus).GetProperties()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"mysqldb.auditLogFilter.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbAuditLogFilter).GetName()).ToDataRes(types.String)
+	},
+	"mysqldb.auditLogFilter.definition": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbAuditLogFilter).GetDefinition()).ToDataRes(types.Dict)
+	},
+	"mysqldb.auditLogFilter.logsAll": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbAuditLogFilter).GetLogsAll()).ToDataRes(types.Bool)
+	},
+	"mysqldb.auditLogUser.user": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbAuditLogUser).GetUser()).ToDataRes(types.String)
+	},
+	"mysqldb.auditLogUser.host": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbAuditLogUser).GetHost()).ToDataRes(types.String)
+	},
+	"mysqldb.auditLogUser.filterName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbAuditLogUser).GetFilterName()).ToDataRes(types.String)
+	},
+	"mysqldb.auditLogUser.filter": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbAuditLogUser).GetFilter()).ToDataRes(types.Resource("mysqldb.auditLogFilter"))
+	},
 }
 
 func GetData(resource plugin.Resource, field string, args map[string]*llx.RawData) *plugin.DataRes {
@@ -456,6 +540,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mysqldb.instance.replicationChannels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMysqldbInstance).ReplicationChannels, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"mysqldb.instance.keyringComponentStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbInstance).KeyringComponentStatus, ok = plugin.RawToTValue[*mqlMysqldbKeyringComponentStatus](v.Value, v.Error)
+		return
+	},
+	"mysqldb.instance.auditLogFilters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbInstance).AuditLogFilters, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"mysqldb.instance.auditLogUsers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbInstance).AuditLogUsers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"mysqldb.user.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -722,6 +818,98 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMysqldbReplicationChannel).SslVerifyServerCert, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"mysqldb.replicationChannel.sslCipher": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbReplicationChannel).SslCipher, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mysqldb.replicationChannel.sslCert": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbReplicationChannel).SslCert, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mysqldb.replicationChannel.sslKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbReplicationChannel).SslKey, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mysqldb.replicationChannel.sslCaFile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbReplicationChannel).SslCaFile, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mysqldb.keyringComponentStatus.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbKeyringComponentStatus).__id, ok = v.Value.(string)
+		return
+	},
+	"mysqldb.keyringComponentStatus.componentName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbKeyringComponentStatus).ComponentName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mysqldb.keyringComponentStatus.implementationName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbKeyringComponentStatus).ImplementationName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mysqldb.keyringComponentStatus.author": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbKeyringComponentStatus).Author, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mysqldb.keyringComponentStatus.license": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbKeyringComponentStatus).License, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mysqldb.keyringComponentStatus.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbKeyringComponentStatus).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mysqldb.keyringComponentStatus.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbKeyringComponentStatus).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mysqldb.keyringComponentStatus.dataFile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbKeyringComponentStatus).DataFile, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mysqldb.keyringComponentStatus.readOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbKeyringComponentStatus).ReadOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"mysqldb.keyringComponentStatus.properties": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbKeyringComponentStatus).Properties, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"mysqldb.auditLogFilter.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbAuditLogFilter).__id, ok = v.Value.(string)
+		return
+	},
+	"mysqldb.auditLogFilter.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbAuditLogFilter).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mysqldb.auditLogFilter.definition": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbAuditLogFilter).Definition, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"mysqldb.auditLogFilter.logsAll": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbAuditLogFilter).LogsAll, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"mysqldb.auditLogUser.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbAuditLogUser).__id, ok = v.Value.(string)
+		return
+	},
+	"mysqldb.auditLogUser.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbAuditLogUser).User, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mysqldb.auditLogUser.host": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbAuditLogUser).Host, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mysqldb.auditLogUser.filterName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbAuditLogUser).FilterName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mysqldb.auditLogUser.filter": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbAuditLogUser).Filter, ok = plugin.RawToTValue[*mqlMysqldbAuditLogFilter](v.Value, v.Error)
+		return
+	},
 }
 
 func SetData(resource plugin.Resource, field string, val *llx.RawData) error {
@@ -812,6 +1000,9 @@ type mqlMysqldbInstance struct {
 	Plugins                plugin.TValue[[]any]
 	Components             plugin.TValue[[]any]
 	ReplicationChannels    plugin.TValue[[]any]
+	KeyringComponentStatus plugin.TValue[*mqlMysqldbKeyringComponentStatus]
+	AuditLogFilters        plugin.TValue[[]any]
+	AuditLogUsers          plugin.TValue[[]any]
 }
 
 // createMysqldbInstance creates a new instance of this resource
@@ -983,6 +1174,54 @@ func (c *mqlMysqldbInstance) GetReplicationChannels() *plugin.TValue[[]any] {
 		}
 
 		return c.replicationChannels()
+	})
+}
+
+func (c *mqlMysqldbInstance) GetKeyringComponentStatus() *plugin.TValue[*mqlMysqldbKeyringComponentStatus] {
+	return plugin.GetOrCompute[*mqlMysqldbKeyringComponentStatus](&c.KeyringComponentStatus, func() (*mqlMysqldbKeyringComponentStatus, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mysqldb.instance", c.__id, "keyringComponentStatus")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMysqldbKeyringComponentStatus), nil
+			}
+		}
+
+		return c.keyringComponentStatus()
+	})
+}
+
+func (c *mqlMysqldbInstance) GetAuditLogFilters() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AuditLogFilters, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mysqldb.instance", c.__id, "auditLogFilters")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.auditLogFilters()
+	})
+}
+
+func (c *mqlMysqldbInstance) GetAuditLogUsers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AuditLogUsers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mysqldb.instance", c.__id, "auditLogUsers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.auditLogUsers()
 	})
 }
 
@@ -1644,6 +1883,10 @@ type mqlMysqldbReplicationChannel struct {
 	SourceHost          plugin.TValue[string]
 	SslAllowed          plugin.TValue[bool]
 	SslVerifyServerCert plugin.TValue[bool]
+	SslCipher           plugin.TValue[string]
+	SslCert             plugin.TValue[string]
+	SslKey              plugin.TValue[string]
+	SslCaFile           plugin.TValue[string]
 }
 
 // createMysqldbReplicationChannel creates a new instance of this resource
@@ -1692,4 +1935,217 @@ func (c *mqlMysqldbReplicationChannel) GetSslAllowed() *plugin.TValue[bool] {
 
 func (c *mqlMysqldbReplicationChannel) GetSslVerifyServerCert() *plugin.TValue[bool] {
 	return &c.SslVerifyServerCert
+}
+
+func (c *mqlMysqldbReplicationChannel) GetSslCipher() *plugin.TValue[string] {
+	return &c.SslCipher
+}
+
+func (c *mqlMysqldbReplicationChannel) GetSslCert() *plugin.TValue[string] {
+	return &c.SslCert
+}
+
+func (c *mqlMysqldbReplicationChannel) GetSslKey() *plugin.TValue[string] {
+	return &c.SslKey
+}
+
+func (c *mqlMysqldbReplicationChannel) GetSslCaFile() *plugin.TValue[string] {
+	return &c.SslCaFile
+}
+
+// mqlMysqldbKeyringComponentStatus for the mysqldb.keyringComponentStatus resource
+type mqlMysqldbKeyringComponentStatus struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMysqldbKeyringComponentStatusInternal it will be used here
+	ComponentName      plugin.TValue[string]
+	ImplementationName plugin.TValue[string]
+	Author             plugin.TValue[string]
+	License            plugin.TValue[string]
+	Version            plugin.TValue[string]
+	Status             plugin.TValue[string]
+	DataFile           plugin.TValue[string]
+	ReadOnly           plugin.TValue[bool]
+	Properties         plugin.TValue[map[string]any]
+}
+
+// createMysqldbKeyringComponentStatus creates a new instance of this resource
+func createMysqldbKeyringComponentStatus(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMysqldbKeyringComponentStatus{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("mysqldb.keyringComponentStatus", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMysqldbKeyringComponentStatus) MqlName() string {
+	return "mysqldb.keyringComponentStatus"
+}
+
+func (c *mqlMysqldbKeyringComponentStatus) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMysqldbKeyringComponentStatus) GetComponentName() *plugin.TValue[string] {
+	return &c.ComponentName
+}
+
+func (c *mqlMysqldbKeyringComponentStatus) GetImplementationName() *plugin.TValue[string] {
+	return &c.ImplementationName
+}
+
+func (c *mqlMysqldbKeyringComponentStatus) GetAuthor() *plugin.TValue[string] {
+	return &c.Author
+}
+
+func (c *mqlMysqldbKeyringComponentStatus) GetLicense() *plugin.TValue[string] {
+	return &c.License
+}
+
+func (c *mqlMysqldbKeyringComponentStatus) GetVersion() *plugin.TValue[string] {
+	return &c.Version
+}
+
+func (c *mqlMysqldbKeyringComponentStatus) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlMysqldbKeyringComponentStatus) GetDataFile() *plugin.TValue[string] {
+	return &c.DataFile
+}
+
+func (c *mqlMysqldbKeyringComponentStatus) GetReadOnly() *plugin.TValue[bool] {
+	return &c.ReadOnly
+}
+
+func (c *mqlMysqldbKeyringComponentStatus) GetProperties() *plugin.TValue[map[string]any] {
+	return &c.Properties
+}
+
+// mqlMysqldbAuditLogFilter for the mysqldb.auditLogFilter resource
+type mqlMysqldbAuditLogFilter struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMysqldbAuditLogFilterInternal it will be used here
+	Name       plugin.TValue[string]
+	Definition plugin.TValue[any]
+	LogsAll    plugin.TValue[bool]
+}
+
+// createMysqldbAuditLogFilter creates a new instance of this resource
+func createMysqldbAuditLogFilter(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMysqldbAuditLogFilter{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("mysqldb.auditLogFilter", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMysqldbAuditLogFilter) MqlName() string {
+	return "mysqldb.auditLogFilter"
+}
+
+func (c *mqlMysqldbAuditLogFilter) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMysqldbAuditLogFilter) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlMysqldbAuditLogFilter) GetDefinition() *plugin.TValue[any] {
+	return &c.Definition
+}
+
+func (c *mqlMysqldbAuditLogFilter) GetLogsAll() *plugin.TValue[bool] {
+	return &c.LogsAll
+}
+
+// mqlMysqldbAuditLogUser for the mysqldb.auditLogUser resource
+type mqlMysqldbAuditLogUser struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMysqldbAuditLogUserInternal it will be used here
+	User       plugin.TValue[string]
+	Host       plugin.TValue[string]
+	FilterName plugin.TValue[string]
+	Filter     plugin.TValue[*mqlMysqldbAuditLogFilter]
+}
+
+// createMysqldbAuditLogUser creates a new instance of this resource
+func createMysqldbAuditLogUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMysqldbAuditLogUser{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("mysqldb.auditLogUser", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMysqldbAuditLogUser) MqlName() string {
+	return "mysqldb.auditLogUser"
+}
+
+func (c *mqlMysqldbAuditLogUser) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMysqldbAuditLogUser) GetUser() *plugin.TValue[string] {
+	return &c.User
+}
+
+func (c *mqlMysqldbAuditLogUser) GetHost() *plugin.TValue[string] {
+	return &c.Host
+}
+
+func (c *mqlMysqldbAuditLogUser) GetFilterName() *plugin.TValue[string] {
+	return &c.FilterName
+}
+
+func (c *mqlMysqldbAuditLogUser) GetFilter() *plugin.TValue[*mqlMysqldbAuditLogFilter] {
+	return &c.Filter
 }

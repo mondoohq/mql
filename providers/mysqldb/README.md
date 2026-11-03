@@ -37,7 +37,7 @@ mql shell mysqldb db.contoso.com --user root --ask-pass
 >
 > `SELECT` on `*.*` lets the account read `mysql.user`, the role and component tables, and `performance_schema`, and makes `information_schema` list every account's privileges and every schema, table, and routine. MySQL and MariaDB filter those `information_schema` views to the caller's own objects without raising an error, so a narrower account sees only part of the server.
 >
-> In mql 14, a collection the account cannot read comes back empty, so a check over it can pass on a server the scanner could not read. With the `StructuredErrors` feature enabled (the default from mql 15), it errors and names the missing privilege instead: `users` (`SELECT ON mysql.user`), `grantedRoles`, `components`, `replicationChannels`, account, schema, and table `privileges` (`SELECT ON mysql.*`), and `schemas`, `tables`, and `routines` when `information_schema` would list only part of them.
+> In mql 14, a collection the account cannot read comes back empty, so a check over it can pass on a server the scanner could not read. With the `StructuredErrors` feature enabled (the default from mql 15), it errors and names the missing privilege instead: `users` (`SELECT ON mysql.user`), `grantedRoles`, `components`, `replicationChannels`, `auditLogFilters`, `auditLogUsers`, account, schema, and table `privileges` (`SELECT ON mysql.*`), and `schemas`, `tables`, and `routines` when `information_schema` would list only part of them.
 
 ## Usage
 
