@@ -56,9 +56,13 @@ func (r *mqlMysqldbInstance) keyringComponentStatus() (*mqlMysqldbKeyringCompone
 		if plugin.StructuredErrors() {
 			return nil, llx.Forbidden(err, llx.WithPermissions(keyringStatusPermission))
 		}
-		status = nil
+		// v14 keeps a refusal null, as activeKeyringComponent does for
+		// components; StructuredErrors turns it into Forbidden above.
+		r.KeyringComponentStatus.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
-	// An empty table means no keyring component is loaded through the manifest.
+	// A missing table (nil map) or an empty one means no keyring component is
+	// loaded through the manifest.
 	if status["Component_name"] == "" {
 		r.KeyringComponentStatus.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
