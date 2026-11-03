@@ -16074,6 +16074,87 @@ macos.filevault @defaults("enabled status") {
   users() []string
 }
 
+// macOS storage volumes
+//
+// Every volume on the disks attached to a Mac, as `diskutil list` and
+// `diskutil info` report them: APFS volumes, HFS+, ExFAT, FAT and other
+// partitions, and disk images. Mounted APFS snapshots are not volumes and are
+// left out. Audit encryption per volume, for example
+// `macos.volumes.where(internal && userStorage && filesystemType == "apfs").all(fileVault)`
+// for internal APFS user volumes, or
+// `macos.volumes.where(internal == false && userStorage && filesystemType.in(["apfs", "hfs"])).all(fileVault)`
+// for external APFS and HFS+ volumes. The list is empty, not an error, when no
+// volume of a kind is attached.
+macos.volumes {
+  []macos.volume
+}
+
+// macOS storage volume
+//
+// One volume, selected by its `deviceIdentifier` (for example `disk3s5`):
+// its name, filesystem, APFS roles, whether its disk is internal, and its
+// encryption state.
+private macos.volume @defaults("deviceIdentifier name filesystemType internal fileVault") {
+  // Device identifier, for example disk3s5
+  deviceIdentifier string
+  // Volume name
+  name string
+  // Volume UUID
+  uuid string
+  // Mount point, empty when the volume is not mounted
+  //
+  // The APFS System volume of a sealed system is not mounted itself; its
+  // snapshot is mounted at `/`.
+  mountPoint string
+  // Filesystem type, for example apfs, hfs, msdos, exfat or ntfs
+  //
+  // Empty when macOS does not recognize the filesystem.
+  filesystemType string
+  // Filesystem name, for example APFS, HFS+, Journaled HFS+, ExFAT or MS-DOS FAT32
+  filesystem string
+  // Partition type of the partition holding the volume
+  //
+  // For example Apple_HFS, EFI, Microsoft Basic Data, Windows_NTFS or
+  // DOS_FAT_32. Empty for APFS volumes, which live in an APFS container, and
+  // for a filesystem that fills a whole disk.
+  partitionType string
+  // APFS volume roles, for example System, Data, Preboot, Recovery, VM or Update
+  //
+  // Empty for an APFS volume with no specific role and for volumes of other
+  // filesystems.
+  roles []string
+  // Whether the volume is on an internal disk
+  //
+  // False for external disks and attached disk images.
+  internal bool
+  // Bus the volume's disk is attached through, for example Apple Fabric, PCI-Express, USB, Thunderbolt or Disk Image
+  busProtocol string
+  // Whether macOS reserves the volume for its own use and hides it from `diskutil list`
+  osInternal bool
+  // Whether the volume can hold user data
+  //
+  // False for volumes macOS reserves for itself: those it marks internal to
+  // the OS, APFS volumes with a Preboot, Recovery, VM, Update, xART, Hardware
+  // or Installer role, and EFI and Apple_Boot partitions. True for every
+  // other volume, including the APFS System and Data volumes and volumes with
+  // no specific role. CIS macOS benchmarks require these volumes encrypted.
+  userStorage bool
+  // Whether the volume's contents are encrypted
+  //
+  // On Macs that encrypt internal storage at rest with a hardware key, this
+  // can be true while FileVault is off. Use `fileVault` to check that a
+  // password or recovery key protects the volume.
+  encrypted bool
+  // Whether the volume is encrypted with a key that a password or recovery key protects
+  //
+  // diskutil reports this as FileVault for the startup volume, for any other
+  // encrypted APFS volume, and for an encrypted CoreStorage volume. False when
+  // diskutil reports no FileVault state, as for an unencrypted HFS+ volume.
+  fileVault bool
+  // Whether the volume is encrypted and locked
+  locked bool
+}
+
 // macOS Gatekeeper application execution policy
 //
 // Gatekeeper policy that controls whether downloaded applications may

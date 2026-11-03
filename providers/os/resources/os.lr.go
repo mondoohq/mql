@@ -493,6 +493,8 @@ const (
 	ResourceMacosFirewall                                  string = "macos.firewall"
 	ResourceMacosFirewallApp                               string = "macos.firewall.app"
 	ResourceMacosFilevault                                 string = "macos.filevault"
+	ResourceMacosVolumes                                   string = "macos.volumes"
+	ResourceMacosVolume                                    string = "macos.volume"
 	ResourceMacosGatekeeper                                string = "macos.gatekeeper"
 	ResourceMacosSip                                       string = "macos.sip"
 	ResourceMacosXprotect                                  string = "macos.xprotect"
@@ -2751,6 +2753,14 @@ func init() {
 		"macos.filevault": {
 			// to override args, implement: initMacosFilevault(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMacosFilevault,
+		},
+		"macos.volumes": {
+			Init:   initMacosVolumes,
+			Create: createMacosVolumes,
+		},
+		"macos.volume": {
+			// to override args, implement: initMacosVolume(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMacosVolume,
 		},
 		"macos.gatekeeper": {
 			// to override args, implement: initMacosGatekeeper(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -15851,6 +15861,54 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"macos.filevault.users": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMacosFilevault).GetUsers()).ToDataRes(types.Array(types.String))
+	},
+	"macos.volumes.list": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosVolumes).GetList()).ToDataRes(types.Array(types.Resource("macos.volume")))
+	},
+	"macos.volume.deviceIdentifier": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosVolume).GetDeviceIdentifier()).ToDataRes(types.String)
+	},
+	"macos.volume.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosVolume).GetName()).ToDataRes(types.String)
+	},
+	"macos.volume.uuid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosVolume).GetUuid()).ToDataRes(types.String)
+	},
+	"macos.volume.mountPoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosVolume).GetMountPoint()).ToDataRes(types.String)
+	},
+	"macos.volume.filesystemType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosVolume).GetFilesystemType()).ToDataRes(types.String)
+	},
+	"macos.volume.filesystem": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosVolume).GetFilesystem()).ToDataRes(types.String)
+	},
+	"macos.volume.partitionType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosVolume).GetPartitionType()).ToDataRes(types.String)
+	},
+	"macos.volume.roles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosVolume).GetRoles()).ToDataRes(types.Array(types.String))
+	},
+	"macos.volume.internal": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosVolume).GetInternal()).ToDataRes(types.Bool)
+	},
+	"macos.volume.busProtocol": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosVolume).GetBusProtocol()).ToDataRes(types.String)
+	},
+	"macos.volume.osInternal": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosVolume).GetOsInternal()).ToDataRes(types.Bool)
+	},
+	"macos.volume.userStorage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosVolume).GetUserStorage()).ToDataRes(types.Bool)
+	},
+	"macos.volume.encrypted": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosVolume).GetEncrypted()).ToDataRes(types.Bool)
+	},
+	"macos.volume.fileVault": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosVolume).GetFileVault()).ToDataRes(types.Bool)
+	},
+	"macos.volume.locked": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosVolume).GetLocked()).ToDataRes(types.Bool)
 	},
 	"macos.gatekeeper.enabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMacosGatekeeper).GetEnabled()).ToDataRes(types.Bool)
@@ -41999,6 +42057,78 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"macos.filevault.users": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMacosFilevault).Users, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"macos.volumes.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosVolumes).__id, ok = v.Value.(string)
+		return
+	},
+	"macos.volumes.list": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosVolumes).List, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"macos.volume.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosVolume).__id, ok = v.Value.(string)
+		return
+	},
+	"macos.volume.deviceIdentifier": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosVolume).DeviceIdentifier, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"macos.volume.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosVolume).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"macos.volume.uuid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosVolume).Uuid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"macos.volume.mountPoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosVolume).MountPoint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"macos.volume.filesystemType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosVolume).FilesystemType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"macos.volume.filesystem": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosVolume).Filesystem, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"macos.volume.partitionType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosVolume).PartitionType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"macos.volume.roles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosVolume).Roles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"macos.volume.internal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosVolume).Internal, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"macos.volume.busProtocol": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosVolume).BusProtocol, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"macos.volume.osInternal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosVolume).OsInternal, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"macos.volume.userStorage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosVolume).UserStorage, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"macos.volume.encrypted": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosVolume).Encrypted, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"macos.volume.fileVault": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosVolume).FileVault, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"macos.volume.locked": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosVolume).Locked, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"macos.gatekeeper.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -105545,6 +105675,181 @@ func (c *mqlMacosFilevault) GetUsers() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.Users, func() ([]any, error) {
 		return c.users()
 	})
+}
+
+// mqlMacosVolumes for the macos.volumes resource
+type mqlMacosVolumes struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMacosVolumesInternal it will be used here
+	List plugin.TValue[[]any]
+}
+
+// createMacosVolumes creates a new instance of this resource
+func createMacosVolumes(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMacosVolumes{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("macos.volumes", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMacosVolumes) MqlName() string {
+	return "macos.volumes"
+}
+
+func (c *mqlMacosVolumes) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMacosVolumes) GetList() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.List, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("macos.volumes", c.__id, "list")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.list()
+	})
+}
+
+// mqlMacosVolume for the macos.volume resource
+type mqlMacosVolume struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMacosVolumeInternal it will be used here
+	DeviceIdentifier plugin.TValue[string]
+	Name             plugin.TValue[string]
+	Uuid             plugin.TValue[string]
+	MountPoint       plugin.TValue[string]
+	FilesystemType   plugin.TValue[string]
+	Filesystem       plugin.TValue[string]
+	PartitionType    plugin.TValue[string]
+	Roles            plugin.TValue[[]any]
+	Internal         plugin.TValue[bool]
+	BusProtocol      plugin.TValue[string]
+	OsInternal       plugin.TValue[bool]
+	UserStorage      plugin.TValue[bool]
+	Encrypted        plugin.TValue[bool]
+	FileVault        plugin.TValue[bool]
+	Locked           plugin.TValue[bool]
+}
+
+// createMacosVolume creates a new instance of this resource
+func createMacosVolume(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMacosVolume{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("macos.volume", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMacosVolume) MqlName() string {
+	return "macos.volume"
+}
+
+func (c *mqlMacosVolume) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMacosVolume) GetDeviceIdentifier() *plugin.TValue[string] {
+	return &c.DeviceIdentifier
+}
+
+func (c *mqlMacosVolume) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlMacosVolume) GetUuid() *plugin.TValue[string] {
+	return &c.Uuid
+}
+
+func (c *mqlMacosVolume) GetMountPoint() *plugin.TValue[string] {
+	return &c.MountPoint
+}
+
+func (c *mqlMacosVolume) GetFilesystemType() *plugin.TValue[string] {
+	return &c.FilesystemType
+}
+
+func (c *mqlMacosVolume) GetFilesystem() *plugin.TValue[string] {
+	return &c.Filesystem
+}
+
+func (c *mqlMacosVolume) GetPartitionType() *plugin.TValue[string] {
+	return &c.PartitionType
+}
+
+func (c *mqlMacosVolume) GetRoles() *plugin.TValue[[]any] {
+	return &c.Roles
+}
+
+func (c *mqlMacosVolume) GetInternal() *plugin.TValue[bool] {
+	return &c.Internal
+}
+
+func (c *mqlMacosVolume) GetBusProtocol() *plugin.TValue[string] {
+	return &c.BusProtocol
+}
+
+func (c *mqlMacosVolume) GetOsInternal() *plugin.TValue[bool] {
+	return &c.OsInternal
+}
+
+func (c *mqlMacosVolume) GetUserStorage() *plugin.TValue[bool] {
+	return &c.UserStorage
+}
+
+func (c *mqlMacosVolume) GetEncrypted() *plugin.TValue[bool] {
+	return &c.Encrypted
+}
+
+func (c *mqlMacosVolume) GetFileVault() *plugin.TValue[bool] {
+	return &c.FileVault
+}
+
+func (c *mqlMacosVolume) GetLocked() *plugin.TValue[bool] {
+	return &c.Locked
 }
 
 // mqlMacosGatekeeper for the macos.gatekeeper resource
