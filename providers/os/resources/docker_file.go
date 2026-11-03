@@ -286,10 +286,7 @@ func (p *mqlDockerFile) stage2resource(stage instructions.Stage, isFinal bool, e
 			userValue, groupValue, userIsRoot = st.user(v.User)
 
 		case *instructions.RunCommand:
-			script, argvs := runScript(v)
-			if !v.PrependShell {
-				script = p.execFormScript(v.Location(), v.CmdLine)
-			}
+			script, argvs := p.runScript(v)
 			mounts, err := p.mountResources(v)
 			if err != nil {
 				return nil, err

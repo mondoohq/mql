@@ -1443,7 +1443,9 @@ CMD ["nginx", "-g", "daemon off;"]
 	require.Len(t, runs, 2)
 
 	// Synthetic: flags before an exec-form RUN, and a line continuation inside
-	// the array, which the parser joins; no target showed this.
+	// the array; no target showed this. The parser drops the backslash and
+	// the newline but keeps the next line's indentation, which is where the
+	// run of spaces after the comma comes from.
 	execRun := runs[0].(*mqlDockerFileRun)
 	assert.Equal(t, `["echo",     "hi"]`, execRun.Script.Data)
 	assert.Equal(t, []string{"echo"}, runCommandBinaries(t, execRun))
