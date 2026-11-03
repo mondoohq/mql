@@ -185,6 +185,18 @@ func TestResolveSystemPkgManagersNoDoubleCountOnKnownPlatforms(t *testing.T) {
 			expected: []string{"Rpm Package Manager"},
 		},
 		{
+			// Synthetic: platform shape OS detection reports for SLES. SUSE
+			// checks for updates with zypper, so its update-check warnings
+			// must not name rpm.
+			name: "suse family with an rpm database",
+			platform: &inventory.Platform{
+				Name:   "sles",
+				Family: []string{"suse", "linux", "unix", "os"},
+			},
+			files:    []string{"/var/lib/rpm"},
+			expected: []string{"Zypper Package Manager"},
+		},
+		{
 			name: "debian family with a dpkg status file",
 			platform: &inventory.Platform{
 				Name:   "debian",

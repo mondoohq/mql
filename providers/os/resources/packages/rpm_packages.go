@@ -762,6 +762,10 @@ type SusePkgManager struct {
 	RpmPkgManager
 }
 
+func (spm *SusePkgManager) Name() string {
+	return "Zypper Package Manager"
+}
+
 func (spm *SusePkgManager) Available() (map[string]PackageUpdate, error) {
 	if spm.isStaticAnalysis() {
 		return spm.staticAvailable()
