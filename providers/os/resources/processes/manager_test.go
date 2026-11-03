@@ -96,6 +96,48 @@ func TestManagerFreeBSD15State(t *testing.T) {
 	assert.Equal(t, "/bin/sh - /dev/stdin daily", byPid[43822].Command)
 }
 
+// Over SSH, Linux processes come from ps instead of procfs, and must report
+// what a procfs scan of the same host does: the State line and the Name line
+// of /proc/<pid>/status. Before, state was always "" and a kernel thread's
+// executable was the text after the last slash ("0:0H-i915_cleanup").
+//
+// Measured: Debian 13 (kernel 7.0.14-26-pve), 2026-11-03. Each expected value
+// is the Name or State line of /proc/<pid>/status on that host.
+func TestManagerDebian13StateAndExecutable(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{
+			Name:   "debian",
+			Family: []string{"debian", "linux", "unix", "os"},
+		},
+	}, mock.WithPath("./testdata/debian13.toml"))
+	require.NoError(t, err)
+
+	mm, err := processes.ResolveManager(conn)
+	require.NoError(t, err)
+	list, err := mm.List()
+	require.NoError(t, err)
+	require.Len(t, list, 8)
+
+	byPid := map[int64]*processes.OSProcess{}
+	for _, p := range list {
+		byPid[p.Pid] = p
+	}
+	want := map[int64]struct{ exe, state string }{
+		1:       {"systemd", "S (sleeping)"},               // Ss /sbin/init
+		2:       {"kthreadd", "S (sleeping)"},              // S [kthreadd]
+		4:       {"kworker/R-rcu_gp", "I (idle)"},          // I< [kworker/R-rcu_gp]
+		10:      {"kworker/0:0H-i915_cleanup", "I (idle)"}, // I< [kworker/0:0H-i915_cleanup]
+		54716:   {"sshd", "S (sleeping)"},                  // Ss sshd: /usr/sbin/sshd -D [listener] ...
+		1384995: {"sshd-session", "S (sleeping)"},          // Ss sshd-session: root [priv]
+	}
+	for pid, w := range want {
+		require.Contains(t, byPid, pid)
+		assert.Equal(t, w.exe, byPid[pid].Executable, "pid %d", pid)
+		assert.Equal(t, w.state, byPid[pid].State, "pid %d", pid)
+	}
+	assert.Equal(t, "[kworker/0:0H-i915_cleanup]", byPid[10].Command)
+}
+
 // FreeBSD daemons rewrite their process title with setproctitle(3), so the
 // first word of ps's command column is not the binary ("nginx:", "sshd:",
 // "(postgres)"). The executable must come from ps's comm column, which holds
