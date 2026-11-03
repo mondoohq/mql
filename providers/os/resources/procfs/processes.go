@@ -31,7 +31,9 @@ type LinuxProcessStatus struct {
 	Ngid       int64  `json:"ngid"` // NUMA group ID (0 if none)
 }
 
-var LINUX_PROCESS_STATUS_REGEX = regexp.MustCompile(`^(.*):\s*(.*)$`)
+// The key ends at the first colon: a Name such as "kworker/0:0H" holds
+// colons of its own.
+var LINUX_PROCESS_STATUS_REGEX = regexp.MustCompile(`^([^:]+):\s*(.*)$`)
 
 func ParseProcessStatus(input io.Reader) (*LinuxProcessStatus, error) {
 	lps := &LinuxProcessStatus{}

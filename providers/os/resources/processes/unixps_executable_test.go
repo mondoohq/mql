@@ -41,6 +41,25 @@ func TestProcessEntryToOSProcess(t *testing.T) {
 			executable: "worker",
 		},
 		{
+			// Measured: Debian 13 ps prints a kernel thread's name in brackets.
+			name:       "kernel thread keeps the slashes and colons of its name",
+			command:    "[kworker/0:0H-i915_cleanup]",
+			executable: "kworker/0:0H-i915_cleanup",
+		},
+		{
+			// Synthetic: procps prints a zombie as its bracketed name followed
+			// by <defunct>; no target showed this.
+			name:       "zombie",
+			command:    "[bash] <defunct>",
+			executable: "bash",
+		},
+		{
+			// Synthetic: brackets with nothing inside are not a name.
+			name:       "empty brackets",
+			command:    "[]",
+			executable: "[]",
+		},
+		{
 			name:       "empty command",
 			command:    "",
 			executable: "",
@@ -124,4 +143,31 @@ func allocatedBytes(n int, f func()) uint64 {
 	}
 	runtime.ReadMemStats(&after)
 	return after.TotalAlloc - before.TotalAlloc
+}
+
+// Linux ps STAT is the state letter followed by modifiers; the state must read
+// as the State line of /proc/<pid>/status.
+func TestLinuxProcessState(t *testing.T) {
+	tests := []struct {
+		stat string
+		want string
+	}{
+		// Measured: Debian 13, ps STAT and /proc/<pid>/status State, 2026-11-03.
+		{stat: "Ss", want: "S (sleeping)"},
+		{stat: "I<", want: "I (idle)"},
+		{stat: "R+", want: "R (running)"},
+		// Synthetic: the other letters of procps ps(1); no target showed these.
+		{stat: "D", want: "D (disk sleep)"},
+		{stat: "T", want: "T (stopped)"},
+		{stat: "t", want: "t (tracing stop)"},
+		{stat: "Z+", want: "Z (zombie)"},
+		{stat: "X", want: "X (dead)"},
+		{stat: "P", want: "P (parked)"},
+		// Synthetic: an undocumented letter is kept, nothing stays nothing.
+		{stat: "Q<", want: "Q"},
+		{stat: "", want: ""},
+	}
+	for _, test := range tests {
+		assert.Equal(t, test.want, linuxProcessState(test.stat), "stat %q", test.stat)
+	}
 }

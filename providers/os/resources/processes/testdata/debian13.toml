@@ -1,0 +1,25 @@
+# Measured: Debian 13 (kernel 7.0.14-26-pve) over SSH, 2026-11-03. A subset of
+# the rows each ps call printed on the host, with the same pids in both.
+
+[commands."ps axo pid,pcpu,pmem,vsz,rss,tty,stat,stime,time,uid,command"]
+stdout = """    PID %CPU %MEM    VSZ   RSS TT       STAT STIME     TIME   UID COMMAND
+      1  0.0  0.0  25568 14104 ?        Ss   Oct30 00:04:25     0 /sbin/init
+      2  0.0  0.0      0     0 ?        S    Oct30 00:00:06     0 [kthreadd]
+      4  0.0  0.0      0     0 ?        I<   Oct30 00:00:00     0 [kworker/R-rcu_gp]
+     10  0.0  0.0      0     0 ?        I<   Oct30 00:00:00     0 [kworker/0:0H-i915_cleanup]
+     14  0.0  0.0      0     0 ?        S    Oct30 00:00:06     0 [ksoftirqd/0]
+     15  0.0  0.0      0     0 ?        I    Oct30 00:05:10     0 [rcu_preempt]
+  54716  0.0  0.0  11780  7820 ?        Ss   Oct30 00:00:00     0 sshd: /usr/sbin/sshd -D [listener] 0 of 10-100 startups
+1384995  0.0  0.0  19908 12516 ?        Ss   10:47 00:00:00     0 sshd-session: root [priv]
+"""
+
+[commands."ps ax -o pid= -o comm="]
+stdout = """      1 systemd
+      2 kthreadd
+      4 kworker/R-rcu_gp
+     10 kworker/0:0H-i915_cleanup
+     14 ksoftirqd/0
+     15 rcu_preempt
+  54716 sshd
+1384995 sshd-session
+"""

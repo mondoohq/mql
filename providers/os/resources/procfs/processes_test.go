@@ -46,6 +46,21 @@ func TestParseProcessStatus_PidAndPPidDistinct(t *testing.T) {
 	assert.Equal(t, int64(1), processStatus.PPid, "PPid holds the parent process id")
 }
 
+// Measured: Debian 13 (kernel 7.0.14-26-pve), /proc/10/status, 2026-11-03.
+// Kernel thread names hold colons; the key ends at the first one.
+func TestParseProcessStatus_NameWithColon(t *testing.T) {
+	status := "Name:\tkworker/0:0H-i915_cleanup\n" +
+		"State:\tI (idle)\n" +
+		"Pid:\t10\n"
+
+	processStatus, err := ParseProcessStatus(bytes.NewBufferString(status))
+	require.NoError(t, err)
+
+	assert.Equal(t, "kworker/0:0H-i915_cleanup", processStatus.Executable)
+	assert.Equal(t, "I (idle)", processStatus.State)
+	assert.Equal(t, int64(10), processStatus.Pid)
+}
+
 func TestParseProcessCmdline(t *testing.T) {
 	trans, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/process-pid1.toml"))
 	require.NoError(t, err)

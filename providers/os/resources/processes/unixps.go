@@ -70,7 +70,9 @@ func (p ProcessEntry) ToOSProcess() *OSProcess {
 	// Deliberately not path.Base: it maps "" to "." and "/usr/bin/" to "bin",
 	// where this reports "" for both.
 	executable := executablePath
-	if _, after, ok := strings.CutLast(executablePath, "/"); ok {
+	if name, ok := kernelThreadName(executablePath); ok {
+		executable = name
+	} else if _, after, ok := strings.CutLast(executablePath, "/"); ok {
 		executable = after
 	}
 
@@ -80,6 +82,17 @@ func (p ProcessEntry) ToOSProcess() *OSProcess {
 		Executable: executable,
 		State:      "",
 	}
+}
+
+// kernelThreadName returns the name inside the brackets ps prints for a
+// process with an empty command line: a kernel thread ("[kworker/0:0H]") or a
+// zombie ("[bash] <defunct>"). The bracketed text is the process name, which
+// may itself contain slashes, so it is not cut at the last one.
+func kernelThreadName(arg string) (string, bool) {
+	if len(arg) < 3 || arg[0] != '[' || arg[len(arg)-1] != ']' {
+		return "", false
+	}
+	return arg[1 : len(arg)-1], true
 }
 
 func ParseLinuxPsResult(input io.Reader) ([]*ProcessEntry, error) {
@@ -383,9 +396,10 @@ func (upm *UnixProcessManager) runList() ([]*OSProcess, error) {
 	isFreeBSD := upm.platform.Name == "freebsd"
 	isSolaris := upm.platform.Name == "solaris"
 	isAix := upm.platform.Name == "aix"
+	isLinux := !isSolaris && upm.platform.IsFamily("linux")
 	var comms map[int64]string
-	if isFreeBSD {
-		comms = upm.freebsdComms()
+	if isFreeBSD || isLinux {
+		comms = upm.processComms()
 	}
 	var ps []*OSProcess
 	for i := range entries {
@@ -402,33 +416,43 @@ func (upm *UnixProcessManager) runList() ([]*OSProcess, error) {
 				p.Executable = comm
 			}
 		}
+		if isLinux {
+			p.State = linuxProcessState(entries[i].Stat)
+			if comm, ok := comms[p.Pid]; ok {
+				// comm is the Name line of /proc/<pid>/status, so this matches
+				// what LinuxProcManager reports, including its recovery of a
+				// name the kernel cut to 15 characters
+				argv0, _, _ := strings.Cut(p.Command, " ")
+				p.Executable = fullExecutableName(comm, []byte(argv0))
+			}
+		}
 		ps = append(ps, p)
 	}
 	return ps, nil
 }
 
-// freebsdComms returns the name of the binary each process exec'd, keyed by
-// pid, from ps's comm column. FreeBSD daemons rewrite their process title with
-// setproctitle(3) ("nginx: master process ...", "sshd: /usr/sbin/sshd
-// [listener] ...", "(postgres)"), so the first word of the command column does
-// not name the binary. comm is the exec'd file name (up to MAXCOMLEN
-// characters), the counterpart of the Name line in Linux's /proc/<pid>/status.
-// It runs as a separate ps call because a comm can contain spaces (kernel
-// threads such as "sequencer 00"), which only parses as the last column. A
-// failure leaves the map empty, and every process keeps the executable taken
-// from its command.
-func (upm *UnixProcessManager) freebsdComms() map[int64]string {
+// processComms returns the name of the binary each process exec'd, keyed by
+// pid, from ps's comm column. Daemons rewrite their process title
+// (setproctitle(3) on FreeBSD, argv on Linux: "nginx: master process ...",
+// "sshd: /usr/sbin/sshd [listener] ...", "(postgres)"), so the first word of
+// the command column does not name the binary. comm is the exec'd file name,
+// the Name line in Linux's /proc/<pid>/status and up to MAXCOMLEN characters
+// on FreeBSD. It runs as a separate ps call because a comm can contain spaces
+// (kernel threads such as "sequencer 00"), which only parses as the last
+// column. A failure leaves the map empty, and every process keeps the
+// executable taken from its command.
+func (upm *UnixProcessManager) processComms() map[int64]string {
 	stdout, err := upm.runPs("ps ax -o pid= -o comm=")
 	if err != nil {
 		log.Debug().Err(err).Msg("processes> could not read process names, using the command")
 		return nil
 	}
-	return ParseFreeBSDComms(stdout)
+	return ParsePsComms(stdout)
 }
 
-// ParseFreeBSDComms parses the output of `ps ax -o pid= -o comm=`: a pid, then
+// ParsePsComms parses the output of `ps ax -o pid= -o comm=`: a pid, then
 // the rest of the line as the name.
-func ParseFreeBSDComms(input io.Reader) map[int64]string {
+func ParsePsComms(input io.Reader) map[int64]string {
 	res := map[int64]string{}
 	scanner := iox.NewLineScanner(input)
 	for scanner.Scan() {
@@ -451,6 +475,37 @@ func ParseFreeBSDComms(input io.Reader) map[int64]string {
 		log.Debug().Err(err).Msg("processes> could not read ps comm output")
 	}
 	return res
+}
+
+// linuxRunStates names the run state that leads a Linux ps STAT column, as
+// documented in procps ps(1), with the label the kernel writes on the State
+// line of /proc/<pid>/status (fs/proc/array.c), so a scan over ps reports the
+// same state as one that reads procfs.
+var linuxRunStates = map[byte]string{
+	'D': "disk sleep",   // uninterruptible sleep, usually IO
+	'I': "idle",         // idle kernel thread
+	'P': "parked",       // parked kernel thread
+	'R': "running",      // running or runnable
+	'S': "sleeping",     // interruptible sleep
+	'T': "stopped",      // stopped by a job control signal
+	't': "tracing stop", // stopped by a debugger
+	'X': "dead",         // dead, should never be seen
+	'Z': "zombie",       // dead, not yet reaped
+}
+
+// linuxProcessState turns a Linux ps STAT value such as "Ss" or "I<" into the
+// "<letter> (<name>)" form of /proc/<pid>/status, for example "S (sleeping)".
+// Only the first character is the run state; the rest are modifiers
+// (priority, session leader, threads) that the State line does not carry. An
+// undocumented letter is kept as is, and an empty value stays empty.
+func linuxProcessState(stat string) string {
+	if stat == "" {
+		return ""
+	}
+	if name, ok := linuxRunStates[stat[0]]; ok {
+		return stat[:1] + " (" + name + ")"
+	}
+	return stat[:1]
 }
 
 // freebsdRunStates names the run state that leads a FreeBSD ps STAT column,
