@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -27,39 +28,82 @@ func roleColumnsFor(runtime *plugin.Runtime) string {
 		pgColumn(runtime, pgVersion95, "r.rolbypassrls", "false"), 1)
 }
 
-// passwordTypesByOid best-effort reads pg_authid (superuser-only) and maps each
-// role oid to how its password is stored. The credential itself stays in the
-// server: only the passwordFormExpr discriminator is selected. An empty map
-// means the catalog was not readable, so passwordType is left null.
-func passwordTypesByOid(pool *pgxpool.Pool) map[int64]string {
+// passwordTypesByOid reads pg_authid (superuser-only) and maps each role oid
+// to how its password is stored. The credential itself stays in the server:
+// only the passwordFormExpr discriminator is selected. A failed read returns
+// the error, which passwordTypeField turns into the field's value.
+func passwordTypesByOid(pool *pgxpool.Pool) (map[int64]string, error) {
 	out := map[int64]string{}
 	rows, err := pool.Query(pgContext(), "SELECT oid::bigint, "+passwordFormExpr+" FROM pg_authid")
 	if err != nil {
-		return out
+		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var oid int64
 		var passwordForm *string
 		if err := rows.Scan(&oid, &passwordForm); err != nil {
-			// Return an empty map on a partial read so every role reports a
-			// uniform null passwordType rather than a confusing mix.
-			return map[int64]string{}
+			return nil, err
 		}
 		out[oid] = classifyPassword(passwordForm)
 	}
+	// pgx reports a permission error from the first row fetch, so it
+	// surfaces here rather than from Query.
 	if err := rows.Err(); err != nil {
-		return map[int64]string{}
+		return nil, err
 	}
-	return out
+	return out, nil
+}
+
+// passwordTypeField builds the passwordType value for one role from the
+// result of passwordTypesByOid.
+//
+// A refusal to read pg_authid (any role that is not a superuser) is an error
+// (ADR 046). Through v14 it stays the v13 null unless StructuredErrors is
+// on. Any other failure is returned as is.
+func passwordTypeField(passwordTypes map[int64]string, readErr error, oid int64) *llx.RawData {
+	if readErr != nil {
+		if isPermissionDenied(readErr) {
+			if !plugin.StructuredErrors() {
+				return llx.NilData
+			}
+			return &llx.RawData{Type: types.String, Error: llx.Forbidden(readErr,
+				llx.WithPermissions("SELECT on pg_catalog.pg_authid (superuser)"))}
+		}
+		return &llx.RawData{Type: types.String, Error: readErr}
+	}
+	if pt, ok := passwordTypes[oid]; ok {
+		return llx.StringData(pt)
+	}
+	// a role created between the two catalog reads
+	return llx.NilData
+}
+
+// validUntilTime maps pg_roles.rolvaliduntil to the validUntil field. NULL
+// and 'infinity' both mean the password never expires and read as null;
+// '-infinity' means it has always been expired and reads as the earliest
+// representable time.
+func validUntilTime(ts pgtype.Timestamptz) *time.Time {
+	if !ts.Valid {
+		return nil
+	}
+	switch ts.InfinityModifier {
+	case pgtype.Infinity:
+		return nil
+	case pgtype.NegativeInfinity:
+		t := llx.NeverPastTime
+		return &t
+	}
+	t := ts.Time
+	return &t
 }
 
 // newPostgresdbRole builds a role from a row selected with roleColumns.
-func newPostgresdbRole(runtime *plugin.Runtime, systemID string, rows pgx.Rows, passwordTypes map[int64]string) (*mqlPostgresdbRole, error) {
+func newPostgresdbRole(runtime *plugin.Runtime, systemID string, rows pgx.Rows, passwordTypes map[int64]string, passwordTypesErr error) (*mqlPostgresdbRole, error) {
 	var name string
 	var oid, connLimit int64
 	var super, canLogin, createRole, createDb, replication, bypassRLS, inherit bool
-	var validUntil *time.Time
+	var validUntil pgtype.Timestamptz
 	var config []string
 	if err := rows.Scan(&name, &oid, &super, &canLogin, &createRole, &createDb,
 		&replication, &bypassRLS, &inherit, &connLimit, &validUntil, &config); err != nil {
@@ -78,16 +122,9 @@ func newPostgresdbRole(runtime *plugin.Runtime, systemID string, rows pgx.Rows, 
 		"bypassRLS":          llx.BoolData(bypassRLS),
 		"inheritsPrivileges": llx.BoolData(inherit),
 		"connectionLimit":    llx.IntData(connLimit),
-		"validUntil":         llx.TimeDataPtr(validUntil),
+		"validUntil":         llx.TimeDataPtr(validUntilTime(validUntil)),
 		"config":             llx.ArrayData(strSliceToAny(config), types.String),
-	}
-	// When pg_authid is unreadable (non-superuser), the map is empty; mark the
-	// field explicitly null rather than leaving it unset (unset surfaces as a
-	// primitive with no type information).
-	if pt, ok := passwordTypes[oid]; ok {
-		fields["passwordType"] = llx.StringData(pt)
-	} else {
-		fields["passwordType"] = llx.NilData
+		"passwordType":       passwordTypeField(passwordTypes, passwordTypesErr, oid),
 	}
 
 	res, err := CreateResource(runtime, "postgresdb.role", fields)
@@ -129,7 +166,8 @@ func initPostgresdbRole(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 		}
 		return nil, nil, errors.New("postgresdb.role " + name + " not found")
 	}
-	res, err := newPostgresdbRole(runtime, systemID, rows, passwordTypesByOid(pool))
+	passwordTypes, passwordTypesErr := passwordTypesByOid(pool)
+	res, err := newPostgresdbRole(runtime, systemID, rows, passwordTypes, passwordTypesErr)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -141,7 +179,7 @@ func (r *mqlPostgresdbInstance) roles() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	passwordTypes := passwordTypesByOid(pool)
+	passwordTypes, passwordTypesErr := passwordTypesByOid(pool)
 	rows, err := pool.Query(pgContext(), "SELECT "+roleColumnsFor(r.MqlRuntime)+" FROM pg_roles r ORDER BY r.rolname")
 	if err != nil {
 		return nil, err
@@ -150,7 +188,7 @@ func (r *mqlPostgresdbInstance) roles() ([]any, error) {
 
 	list := []any{}
 	for rows.Next() {
-		role, err := newPostgresdbRole(r.MqlRuntime, r.SystemIdentifier.Data, rows, passwordTypes)
+		role, err := newPostgresdbRole(r.MqlRuntime, r.SystemIdentifier.Data, rows, passwordTypes, passwordTypesErr)
 		if err != nil {
 			return nil, err
 		}
@@ -159,7 +197,7 @@ func (r *mqlPostgresdbInstance) roles() ([]any, error) {
 	return list, rows.Err()
 }
 
-// rolesByQuery resolves each role name returned by a membership query into a
+// rolesByQuery resolves each distinct role name returned by a membership query into a
 // full postgresdb.role via its init.
 func rolesByQuery(runtime *plugin.Runtime, oid int64, query string) ([]any, error) {
 	pool, err := pgPool(runtime, "")
@@ -195,12 +233,21 @@ func rolesByQuery(runtime *plugin.Runtime, oid int64, query string) ([]any, erro
 	return list, nil
 }
 
+// Since PostgreSQL 16 pg_auth_members has one row per grantor, so the same
+// membership granted by two roles appears twice; DISTINCT folds them.
+const (
+	memberOfQuery = `SELECT DISTINCT g.rolname FROM pg_auth_members m
+		JOIN pg_roles g ON m.roleid = g.oid WHERE m.member = $1::oid ORDER BY g.rolname`
+	membersQuery = `SELECT DISTINCT mr.rolname FROM pg_auth_members m
+		JOIN pg_roles mr ON m.member = mr.oid WHERE m.roleid = $1::oid ORDER BY mr.rolname`
+)
+
 func (r *mqlPostgresdbRole) memberOf() ([]any, error) {
 	return rolesByQuery(r.MqlRuntime, r.Oid.Data,
-		"SELECT g.rolname FROM pg_auth_members m JOIN pg_roles g ON m.roleid = g.oid WHERE m.member = $1::oid")
+		memberOfQuery)
 }
 
 func (r *mqlPostgresdbRole) members() ([]any, error) {
 	return rolesByQuery(r.MqlRuntime, r.Oid.Data,
-		"SELECT mr.rolname FROM pg_auth_members m JOIN pg_roles mr ON m.member = mr.oid WHERE m.roleid = $1::oid")
+		membersQuery)
 }
