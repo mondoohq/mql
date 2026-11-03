@@ -8700,6 +8700,9 @@ private docker.file.from @defaults("name image tag") @context("file.context") {
 // build-time credential handling.
 private docker.file.run @defaults("script") @context("file.context") {
   // Raw command text of the RUN instruction
+  //
+  // For shell form, the command line. For exec form, the JSON array as
+  // written, such as `["nginx", "-g", "daemon off;"]`.
   script string
   // `--mount=...` flags applied to this RUN
   //

@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"encoding/json"
 	"errors"
 	"slices"
 	"strconv"
@@ -71,6 +72,9 @@ func initDockerFile(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 
 type mqlDockerFileInternal struct {
 	lock sync.Mutex
+	// nodes maps an instruction's first line to its parser node, which keeps
+	// the instruction's text as written.
+	nodes map[int]*parser.Node
 }
 
 func (p *mqlDockerFile) id() (string, error) {
@@ -138,6 +142,13 @@ func (p *mqlDockerFile) parse(file *mqlFile) error {
 		p.Instructions = plugin.TValue[any]{
 			Data:  []any{},
 			State: plugin.StateIsSet,
+		}
+	}
+
+	p.nodes = map[int]*parser.Node{}
+	if ast.AST != nil {
+		for _, node := range ast.AST.Children {
+			p.nodes[node.StartLine] = node
 		}
 	}
 
@@ -276,6 +287,9 @@ func (p *mqlDockerFile) stage2resource(stage instructions.Stage, isFinal bool, e
 
 		case *instructions.RunCommand:
 			script, argvs := runScript(v)
+			if !v.PrependShell {
+				script = p.execFormScript(v.Location(), v.CmdLine)
+			}
 			mounts, err := p.mountResources(v)
 			if err != nil {
 				return nil, err
@@ -505,7 +519,7 @@ func (p *mqlDockerFile) stage2resource(stage instructions.Stage, isFinal bool, e
 	}
 
 	if entrypointRaw != nil {
-		script := strings.Join(entrypointRaw.CmdLine, "\n")
+		script := p.commandScript(entrypointRaw.Location(), entrypointRaw.CmdLine, entrypointRaw.PrependShell)
 		commands, err := p.runCommandResources(p.locationID(entrypointRaw.Location()), cmdLineArgvs(entrypointRaw.CmdLine, !entrypointRaw.PrependShell))
 		if err != nil {
 			return nil, err
@@ -536,7 +550,7 @@ func (p *mqlDockerFile) stage2resource(stage instructions.Stage, isFinal bool, e
 	}
 
 	if cmdRaw != nil {
-		script := strings.Join(cmdRaw.CmdLine, "\n")
+		script := p.commandScript(cmdRaw.Location(), cmdRaw.CmdLine, cmdRaw.PrependShell)
 		commands, err := p.runCommandResources(p.locationID(cmdRaw.Location()), cmdLineArgvs(cmdRaw.CmdLine, !cmdRaw.PrependShell))
 		if err != nil {
 			return nil, err
@@ -725,6 +739,68 @@ func splitDockerfileBaseName(baseName string) (image string, tag string, digest 
 		image = image[:idx]
 	}
 	return image, tag, digest
+}
+
+// commandScript returns the script of a CMD or ENTRYPOINT: the command line
+// for shell form, and the JSON array for exec form (see execFormScript).
+func (p *mqlDockerFile) commandScript(location []parser.Range, cmdLine []string, shellForm bool) string {
+	if shellForm {
+		return strings.Join(cmdLine, "\n")
+	}
+	return p.execFormScript(location, cmdLine)
+}
+
+// execFormScript returns the JSON array of an exec-form instruction as
+// written in the Dockerfile, `["nginx", "-g", "daemon off;"]`. The parsed
+// argv alone would have to be joined into something that is neither the
+// text nor a command line. When the instruction's text cannot be recovered,
+// the argv is rendered as a JSON array instead.
+func (p *mqlDockerFile) execFormScript(location []parser.Range, cmdLine []string) string {
+	if len(location) > 0 {
+		if node, ok := p.nodes[location[0].Start.Line]; ok {
+			if text, ok := execFormText(node); ok {
+				return text
+			}
+		}
+	}
+	return jsonArray(cmdLine)
+}
+
+// execFormText cuts the keyword and the flags off an instruction's original
+// text, leaving the JSON array. It reports false when the remainder is not
+// an array, so a flag spelled differently from how the parser recorded it
+// falls back rather than producing a wrong script.
+func execFormText(node *parser.Node) (string, bool) {
+	rest := strings.TrimSpace(node.Original)
+	i := strings.IndexAny(rest, " \t")
+	if i < 0 {
+		return "", false
+	}
+	rest = strings.TrimLeft(rest[i:], " \t")
+	for _, flag := range node.Flags {
+		if !strings.HasPrefix(rest, flag) {
+			return "", false
+		}
+		rest = strings.TrimLeft(rest[len(flag):], " \t")
+	}
+	if !strings.HasPrefix(rest, "[") || !strings.HasSuffix(rest, "]") {
+		return "", false
+	}
+	return rest, true
+}
+
+// jsonArray renders an argv the way exec form is usually written, without
+// escaping <, > and & as Go's encoder does by default.
+func jsonArray(argv []string) string {
+	parts := make([]string, len(argv))
+	for i, a := range argv {
+		var b strings.Builder
+		enc := json.NewEncoder(&b)
+		enc.SetEscapeHTML(false)
+		_ = enc.Encode(a)
+		parts[i] = strings.TrimSuffix(b.String(), "\n")
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
 }
 
 func (p *mqlDockerFile) locationID(location []parser.Range) string {
