@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Bootable</key>
+	<false/>
+	<key>BusProtocol</key>
+	<string>Disk Image</string>
+	<key>CanBeMadeBootable</key>
+	<false/>
+	<key>CanBeMadeBootableRequiresDestroy</key>
+	<false/>
+	<key>Content</key>
+	<string>Apple_HFS</string>
+	<key>DeviceBlockSize</key>
+	<integer>512</integer>
+	<key>DeviceIdentifier</key>
+	<string>disk6s1</string>
+	<key>DeviceNode</key>
+	<string>/dev/disk6s1</string>
+	<key>DeviceTreePath</key>
+	<string>IODeviceTree:/</string>
+	<key>DiskUUID</key>
+	<string>C794AFE4-0A8D-4A86-A41B-B1325C4AEF08</string>
+	<key>Ejectable</key>
+	<true/>
+	<key>EjectableMediaAutomaticUnderSoftwareControl</key>
+	<true/>
+	<key>EjectableOnly</key>
+	<true/>
+	<key>FilesystemName</key>
+	<string>HFS+</string>
+	<key>FilesystemType</key>
+	<string>hfs</string>
+	<key>FilesystemUserVisibleName</key>
+	<string>Mac OS Extended</string>
+	<key>FreeSpace</key>
+	<integer>40923136</integer>
+	<key>GlobalPermissionsEnabled</key>
+	<false/>
+	<key>IOKitSize</key>
+	<integer>41902080</integer>
+	<key>IORegistryEntryName</key>
+	<string>disk image</string>
+	<key>Internal</key>
+	<false/>
+	<key>MediaName</key>
+	<string></string>
+	<key>MediaType</key>
+	<string>Generic</string>
+	<key>MountPoint</key>
+	<string>/Volumes/CEPPlainHFS</string>
+	<key>OSInternalMedia</key>
+	<false/>
+	<key>ParentWholeDisk</key>
+	<string>disk6</string>
+	<key>PartitionMapPartition</key>
+	<true/>
+	<key>PartitionMapPartitionOffset</key>
+	<integer>20480</integer>
+	<key>RAIDMaster</key>
+	<false/>
+	<key>RAIDSlice</key>
+	<false/>
+	<key>Removable</key>
+	<true/>
+	<key>RemovableMedia</key>
+	<true/>
+	<key>RemovableMediaOrExternalDevice</key>
+	<true/>
+	<key>SMARTStatus</key>
+	<string>Not Supported</string>
+	<key>Size</key>
+	<integer>41902080</integer>
+	<key>SupportsGlobalPermissionsDisable</key>
+	<true/>
+	<key>SystemImage</key>
+	<false/>
+	<key>TotalSize</key>
+	<integer>41902080</integer>
+	<key>VolumeAllocationBlockSize</key>
+	<integer>4096</integer>
+	<key>VolumeName</key>
+	<string>CEPPlainHFS</string>
+	<key>VolumeSize</key>
+	<integer>41902080</integer>
+	<key>VolumeUUID</key>
+	<string>5D6B01EA-3421-334F-B84F-68419F32C4C2</string>
+	<key>WholeDisk</key>
+	<false/>
+	<key>Writable</key>
+	<true/>
+	<key>WritableMedia</key>
+	<true/>
+	<key>WritableVolume</key>
+	<true/>
+</dict>
+</plist>
