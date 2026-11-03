@@ -189,20 +189,16 @@ func DefaultIdDetectors(connType shared.ConnectionType, req *plugin.ConnectReq, 
 		features = req.Features
 	}
 	switch connType {
-	case shared.Type_Local:
+	case shared.Type_Local, shared.Type_SSH:
+		// Local and SSH scans of the same host must produce the same ids.
+		// Reading the serial number needs root; without it the detector
+		// yields no id, on either transport.
 		res := []string{ids.IdDetector_CloudDetect, ids.IdDetector_Hostname}
 		if mql.Features(features).IsActive(mql.SerialNumberAsID) {
 			res = append(res, ids.IdDetector_SerialNumber)
 		}
 		// Automatically use BIOS UUID for VMs since serial numbers may not be unique
 		// (e.g., OpenStack passes through the host's serial number to VMs)
-		if mql.Features(features).IsActive(mql.BiosUUIDAsID) || isVM {
-			res = append(res, ids.IdDetector_BiosUUID)
-		}
-		return res
-	case shared.Type_SSH:
-		res := []string{ids.IdDetector_CloudDetect, ids.IdDetector_Hostname}
-		// Use BIOS UUID for SSH connections when explicitly enabled or when VM is detected
 		if mql.Features(features).IsActive(mql.BiosUUIDAsID) || isVM {
 			res = append(res, ids.IdDetector_BiosUUID)
 		}
