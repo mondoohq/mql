@@ -330,9 +330,15 @@ mysqldb.keyringComponentStatus @defaults("componentName status") {
   version string
   // Component status, for example Active or Disabled
   status string
-  // Keyring data file, or empty when the component does not keep one
+  // Keyring data file
+  //
+  // Null when the component does not keep one, or reports it as not
+  // applicable (a Disabled component that failed to initialize).
   dataFile string
   // Whether the keyring is read-only
+  //
+  // Null when the component reports it as not applicable (a Disabled
+  // component that failed to initialize).
   readOnly bool
   // Every status row, keyed by STATUS_KEY
   properties map[string]string

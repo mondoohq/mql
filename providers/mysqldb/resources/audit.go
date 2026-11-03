@@ -80,14 +80,37 @@ func (r *mqlMysqldbInstance) keyringComponentStatus() (*mqlMysqldbKeyringCompone
 		"license":            llx.StringData(status["License"]),
 		"version":            llx.StringData(status["Version"]),
 		"status":             llx.StringData(status["Component_status"]),
-		"dataFile":           llx.StringData(status["Data_file"]),
-		"readOnly":           llx.BoolData(isYes(strings.ToUpper(status["Read_only"]))),
+		"dataFile":           keyringStatusString(status["Data_file"]),
+		"readOnly":           keyringStatusBool(status["Read_only"]),
 		"properties":         llx.MapData(properties, types.String),
 	})
 	if err != nil {
 		return nil, err
 	}
 	return res.(*mqlMysqldbKeyringComponentStatus), nil
+}
+
+// keyringNotApplicable is the value a keyring component reports for a status
+// key it cannot answer, for example Data_file and Read_only while the
+// component is Disabled because it failed to initialize.
+const keyringNotApplicable = "<NOT APPLICABLE>"
+
+// keyringStatusString maps a keyring status value to a string, null when the
+// component does not report it.
+func keyringStatusString(v string) *llx.RawData {
+	if v == "" || v == keyringNotApplicable {
+		return llx.NilData
+	}
+	return llx.StringData(v)
+}
+
+// keyringStatusBool maps a keyring status Yes/No value to a bool, null when
+// the component does not report it.
+func keyringStatusBool(v string) *llx.RawData {
+	if v == "" || v == keyringNotApplicable {
+		return llx.NilData
+	}
+	return llx.BoolData(isYes(strings.ToUpper(v)))
 }
 
 // auditLogDatabase returns the schema holding the audit log filter tables.

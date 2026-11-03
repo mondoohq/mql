@@ -80,3 +80,27 @@ func TestIsUnknownSystemVariable(t *testing.T) {
 		t.Error("a transport error is not an unknown variable")
 	}
 }
+
+// Values from performance_schema.keyring_component_status on MySQL 8.4 with
+// component_keyring_file loaded but Disabled because its data file is
+// unreadable.
+func TestKeyringStatusNotApplicable(t *testing.T) {
+	if got := keyringStatusString("<NOT APPLICABLE>"); got.Value != nil {
+		t.Errorf("Data_file <NOT APPLICABLE> = %v, want null", got.Value)
+	}
+	if got := keyringStatusBool("<NOT APPLICABLE>"); got.Value != nil {
+		t.Errorf("Read_only <NOT APPLICABLE> = %v, want null", got.Value)
+	}
+	if got := keyringStatusString(""); got.Value != nil {
+		t.Errorf("absent Data_file = %v, want null", got.Value)
+	}
+	if got := keyringStatusString("/var/lib/mysql-keyring/component_keyring_file"); got.Value != "/var/lib/mysql-keyring/component_keyring_file" {
+		t.Errorf("Data_file = %v", got.Value)
+	}
+	if got := keyringStatusBool("No"); got.Value != false {
+		t.Errorf("Read_only No = %v, want false", got.Value)
+	}
+	if got := keyringStatusBool("Yes"); got.Value != true {
+		t.Errorf("Read_only Yes = %v, want true", got.Value)
+	}
+}
