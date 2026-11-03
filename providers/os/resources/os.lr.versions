@@ -689,6 +689,7 @@ cassandra.conf.roleManager 13.40.5
 cassandra.conf.rpcAddress 13.40.5
 cassandra.conf.sasiIndexesEnabled 13.40.5
 cassandra.conf.savedCachesDirectory 13.40.5
+cassandra.conf.scriptedUserDefinedFunctionsEnabled 14.35.1
 cassandra.conf.seedProviderClass 13.40.5
 cassandra.conf.seeds 13.40.5
 cassandra.conf.serverEncryptionCipherSuites 13.40.5
