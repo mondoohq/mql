@@ -887,7 +887,7 @@ func TestRsyslogConf_UnreadableFileIsRefused(t *testing.T) {
 	for _, a := range actions.Data {
 		targets = append(targets, a.(*mqlRsyslogAction).Target.Data)
 	}
-	assert.Contains(t, targets, "192.0.2.97:514")
+	assert.Contains(t, targets, "192.0.2.97")
 
 	// the resource is keyed on its file list, so the refusal surfaces as soon
 	// as rsyslog.conf is built, before any field is read
