@@ -413,9 +413,13 @@ func gatherTlsCertificates(proto, host, port, domainName string) (sniCerts, nonS
 		Str("domain_name", domainName).
 		Dur("timeout", DefaultDialerTimeout).
 		Msg("network.tls> gathering tls certificates")
-	conn, err := tls.DialWithDialer(dialer, proto, addr, &tls.Config{
+	// Every version and suite Go implements, so a legacy server's certificate can still be
+	// read and judged; the server picks what is negotiated. Nothing secret is sent.
+	conn, err := tls.DialWithDialer(dialer, proto, addr, &tls.Config{ // nosemgrep: go-insecure-tls
 		InsecureSkipVerify: true,
 		ServerName:         domainName,
+		MinVersion:         tls.VersionTLS10,
+		CipherSuites:       connection.LegacyCipherSuites(),
 	})
 	if err != nil {
 		return nil, nil, nil, err
@@ -463,7 +467,12 @@ func nonSniPeerCertificates(dialer *net.Dialer, proto, addr string) ([]*x509.Cer
 			return nil, err
 		}
 	}
-	conn := tls.Client(raw, &tls.Config{InsecureSkipVerify: true})
+	// As in gatherTlsCertificates: every version and suite, to read a legacy server's certificate.
+	conn := tls.Client(raw, &tls.Config{ // nosemgrep: go-insecure-tls
+		InsecureSkipVerify: true,
+		MinVersion:         tls.VersionTLS10,
+		CipherSuites:       connection.LegacyCipherSuites(),
+	})
 	if err := conn.Handshake(); err != nil {
 		return nil, err
 	}
@@ -692,7 +701,13 @@ func (s *mqlTls) getConnectionState(socket *mqlSocket, domainName string) (*tls.
 	conn, err := tls.DialWithDialer(
 		&net.Dialer{Timeout: DefaultDialerTimeout},
 		proto, addr,
-		&tls.Config{InsecureSkipVerify: true, ServerName: domainName},
+		// Every version and suite, so TLS detection succeeds on a legacy-only server.
+		&tls.Config{ // nosemgrep: go-insecure-tls
+			InsecureSkipVerify: true,
+			ServerName:         domainName,
+			MinVersion:         tls.VersionTLS10,
+			CipherSuites:       connection.LegacyCipherSuites(),
+		},
 	)
 
 	s.lock.Lock()
