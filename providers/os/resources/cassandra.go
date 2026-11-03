@@ -694,7 +694,51 @@ func (c *mqlCassandraEnv) parseEnv(file *mqlFile) (*cassandraconf.Env, error) {
 	if err != nil {
 		return nil, err
 	}
-	return cassandraconf.ParseEnv(content), nil
+	var launcher map[string]string
+	if file != nil {
+		if conn, ok := c.MqlRuntime.Connection.(shared.Connection); ok {
+			launcher = cassandraLauncherVars(&afero.Afero{Fs: conn.FileSystem()}, file.Path.Data)
+		}
+	}
+	return cassandraconf.ParseEnvWithLauncher(content, launcher), nil
+}
+
+// cassandraPackageHomes lists where an install that keeps its configuration
+// under /etc has its CASSANDRA_HOME: the Debian and RPM packages, then the
+// official container image, which unpacks the tarball into /opt/cassandra
+// and points CASSANDRA_CONF at /etc/cassandra.
+var cassandraPackageHomes = []string{
+	"/usr/share/cassandra",
+	"/opt/cassandra",
+}
+
+// cassandraLauncherVars returns the variables the launch script sets before
+// it sources the cassandra-env.sh at envPath. cassandra.in.sh sets
+// CASSANDRA_CONF to the directory that holds the file. A tarball sets
+// CASSANDRA_HOME to the parent of its conf directory; a package install keeps
+// its configuration under /etc and its home in a fixed place, the first of
+// cassandraPackageHomes that has a lib directory. With no home found,
+// CASSANDRA_HOME is left out and expands to empty, as before.
+func cassandraLauncherVars(afs *afero.Afero, envPath string) map[string]string {
+	if envPath == "" {
+		return nil
+	}
+	conf := path.Dir(envPath)
+	vars := map[string]string{"CASSANDRA_CONF": conf}
+	if path.Base(conf) == "conf" && !strings.HasPrefix(conf, "/etc/") {
+		vars["CASSANDRA_HOME"] = path.Dir(conf)
+		return vars
+	}
+	if !strings.HasPrefix(conf+"/", "/etc/") {
+		return vars
+	}
+	for _, home := range cassandraPackageHomes {
+		if ok, _ := afs.DirExists(path.Join(home, "lib")); ok {
+			vars["CASSANDRA_HOME"] = home
+			break
+		}
+	}
+	return vars
 }
 
 func (c *mqlCassandraEnv) variables(file *mqlFile) (map[string]any, error) {

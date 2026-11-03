@@ -7265,7 +7265,11 @@ cassandra.env @defaults("localJmx jmxPort jmxAuthenticate") {
   // JVM system properties the script appends to JVM_OPTS
   //
   // Keyed without the -D prefix, with $VAR references expanded and only the
-  // live branch of the JMX conditional included.
+  // live branch of the JMX conditional included. CASSANDRA_HOME and
+  // CASSANDRA_CONF, which the launcher sets before it reads the script,
+  // expand to the install's directories: the directory holding the script
+  // for CASSANDRA_CONF, and for CASSANDRA_HOME the parent of a tarball's
+  // conf directory or the package's home (/usr/share/cassandra).
   properties(file) map[string]string
 
   // Whether JMX is reachable from localhost only
