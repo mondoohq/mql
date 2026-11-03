@@ -6357,6 +6357,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.powerbi.tenantSetting.enabledSecurityGroups": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftPowerbiTenantSetting).GetEnabledSecurityGroups()).ToDataRes(types.Array(types.Dict))
 	},
+	"microsoft.powerbi.tenantSetting.excludedSecurityGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPowerbiTenantSetting).GetExcludedSecurityGroups()).ToDataRes(types.Array(types.Dict))
+	},
+	"microsoft.powerbi.tenantSetting.delegateToCapacity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPowerbiTenantSetting).GetDelegateToCapacity()).ToDataRes(types.Bool)
+	},
+	"microsoft.powerbi.tenantSetting.delegateToDomain": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPowerbiTenantSetting).GetDelegateToDomain()).ToDataRes(types.Bool)
+	},
+	"microsoft.powerbi.tenantSetting.delegateToWorkspace": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPowerbiTenantSetting).GetDelegateToWorkspace()).ToDataRes(types.Bool)
+	},
+	"microsoft.powerbi.tenantSetting.properties": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPowerbiTenantSetting).GetProperties()).ToDataRes(types.Map(types.String, types.String))
+	},
 	"microsoft.powerbi.workspace.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftPowerbiWorkspace).GetId()).ToDataRes(types.String)
 	},
@@ -15348,6 +15363,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.powerbi.tenantSetting.enabledSecurityGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftPowerbiTenantSetting).EnabledSecurityGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.powerbi.tenantSetting.excludedSecurityGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPowerbiTenantSetting).ExcludedSecurityGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.powerbi.tenantSetting.delegateToCapacity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPowerbiTenantSetting).DelegateToCapacity, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.powerbi.tenantSetting.delegateToDomain": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPowerbiTenantSetting).DelegateToDomain, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.powerbi.tenantSetting.delegateToWorkspace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPowerbiTenantSetting).DelegateToWorkspace, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.powerbi.tenantSetting.properties": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPowerbiTenantSetting).Properties, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
 	"microsoft.powerbi.workspace.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -37271,6 +37306,11 @@ type mqlMicrosoftPowerbiTenantSetting struct {
 	CanSpecifySecurityGroups plugin.TValue[bool]
 	TenantSettingGroup       plugin.TValue[string]
 	EnabledSecurityGroups    plugin.TValue[[]any]
+	ExcludedSecurityGroups   plugin.TValue[[]any]
+	DelegateToCapacity       plugin.TValue[bool]
+	DelegateToDomain         plugin.TValue[bool]
+	DelegateToWorkspace      plugin.TValue[bool]
+	Properties               plugin.TValue[map[string]any]
 }
 
 // createMicrosoftPowerbiTenantSetting creates a new instance of this resource
@@ -37327,6 +37367,26 @@ func (c *mqlMicrosoftPowerbiTenantSetting) GetTenantSettingGroup() *plugin.TValu
 
 func (c *mqlMicrosoftPowerbiTenantSetting) GetEnabledSecurityGroups() *plugin.TValue[[]any] {
 	return &c.EnabledSecurityGroups
+}
+
+func (c *mqlMicrosoftPowerbiTenantSetting) GetExcludedSecurityGroups() *plugin.TValue[[]any] {
+	return &c.ExcludedSecurityGroups
+}
+
+func (c *mqlMicrosoftPowerbiTenantSetting) GetDelegateToCapacity() *plugin.TValue[bool] {
+	return &c.DelegateToCapacity
+}
+
+func (c *mqlMicrosoftPowerbiTenantSetting) GetDelegateToDomain() *plugin.TValue[bool] {
+	return &c.DelegateToDomain
+}
+
+func (c *mqlMicrosoftPowerbiTenantSetting) GetDelegateToWorkspace() *plugin.TValue[bool] {
+	return &c.DelegateToWorkspace
+}
+
+func (c *mqlMicrosoftPowerbiTenantSetting) GetProperties() *plugin.TValue[map[string]any] {
+	return &c.Properties
 }
 
 // mqlMicrosoftPowerbiWorkspace for the microsoft.powerbi.workspace resource

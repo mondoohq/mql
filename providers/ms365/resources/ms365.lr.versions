@@ -1388,9 +1388,14 @@ microsoft.powerbi.publishedToWeb 13.5.1
 microsoft.powerbi.sharedToWholeOrganization 13.5.1
 microsoft.powerbi.tenantSetting 13.5.1
 microsoft.powerbi.tenantSetting.canSpecifySecurityGroups 13.5.1
+microsoft.powerbi.tenantSetting.delegateToCapacity 14.1.15
+microsoft.powerbi.tenantSetting.delegateToDomain 14.1.15
+microsoft.powerbi.tenantSetting.delegateToWorkspace 14.1.15
 microsoft.powerbi.tenantSetting.enabled 13.5.1
 microsoft.powerbi.tenantSetting.enabledSecurityGroups 13.5.1
+microsoft.powerbi.tenantSetting.excludedSecurityGroups 14.1.15
 microsoft.powerbi.tenantSetting.name 13.5.1
+microsoft.powerbi.tenantSetting.properties 14.1.15
 microsoft.powerbi.tenantSetting.tenantSettingGroup 13.5.1
 microsoft.powerbi.tenantSetting.title 13.5.1
 microsoft.powerbi.tenantSettings 13.5.1
