@@ -1816,12 +1816,72 @@ var eulerFamily = &PlatformResolver{
 	},
 }
 
+// yoctoReleaseCodenames are the Yocto Project release codenames. A Yocto /
+// OpenEmbedded image's os-release carries VERSION_CODENAME = the release it was
+// built from (DISTRO_CODENAME, inherited from poky unless a custom DISTRO
+// overrides it). These words are coined by the Yocto Project and do not collide
+// with another distribution's codenames, so one is a reliable Yocto marker even
+// when a product ships a custom DISTRO with its own os-release ID.
+var yoctoReleaseCodenames = map[string]bool{
+	"dunfell":    true, // 3.1 LTS
+	"gatesgarth": true, // 3.2
+	"hardknott":  true, // 3.3
+	"honister":   true, // 3.4
+	"kirkstone":  true, // 4.0 LTS
+	"langdale":   true, // 4.1
+	"mickledore": true, // 4.2
+	"nanbield":   true, // 4.3
+	"scarthgap":  true, // 5.0 LTS
+	"styhead":    true, // 5.1
+	"walnascar":  true, // 5.2
+}
+
+// yocto detects a Yocto Project / OpenEmbedded-built Linux image and normalizes
+// it to the platform name "yocto", the name the vulnerability backend keys the
+// Yocto:<codename> advisory set on. Either signal is sufficient:
+//   - os-release ID=poky (the Yocto Project reference distro), or
+//   - VERSION_CODENAME is a known Yocto release codename -- this catches a
+//     product's custom DISTRO, which keeps the inherited codename unless it
+//     deliberately overrides DISTRO_CODENAME.
+//
+// Placed late in linuxFamily.Children so a recognized distribution (debian,
+// alpine, ...) always matches first; only an otherwise-unclassified image is
+// tested here. The image's own os-release ID stays in pf.Labels[LabelDistroID]
+// (set by the parent) for provenance; pf.Name is normalized so matching works.
+// A custom DISTRO whose ID is unknown AND which overrode its codename cannot be
+// recognized from os-release alone -- the documented self-identification limit.
+var yocto = &PlatformResolver{
+	Name:     "yocto",
+	IsFamily: false,
+	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
+		osrd := NewOSReleaseDetector(conn)
+		osr, err := osrd.osrelease()
+		if err != nil {
+			return false, nil
+		}
+		codename := osr["VERSION_CODENAME"]
+		if osr["ID"] != "poky" && !yoctoReleaseCodenames[codename] {
+			return false, nil
+		}
+		pf.Name = "yocto"
+		if pf.Title == "" {
+			pf.Title = "Yocto Project Linux"
+		}
+		// The Yocto release codename (e.g. scarthgap) is the ecosystem suffix the
+		// backend matches on; carry it as the build when os-release provides it.
+		if codename != "" {
+			pf.Build = codename
+		}
+		return true, nil
+	},
+}
+
 var linuxFamily = &PlatformResolver{
 	Name:     inventory.FAMILY_LINUX,
 	IsFamily: true,
 	// NOTE: altlinux runs before the redhat family, whose members probe
 	// /etc/redhat-release and /etc/fedora-release, both of which ALT ships.
-	Children: []*PlatformResolver{archFamily, altlinux, redhatFamily, debianFamily, suseFamily, eulerFamily, bottlerocket, amazonlinux, alpaquita, bellsoftHardenedContainers, chainguard, minimos, echo, cleanstart, wizos, alpine, wolfi, nixos, gentoo, voidlinux, clearlinux, busybox, photon, windriver, lede, openwrt, plcnext, mageia, azurelinux, cos, flatcar, talos, opencloudos, cirros, defaultLinux},
+	Children: []*PlatformResolver{archFamily, altlinux, redhatFamily, debianFamily, suseFamily, eulerFamily, bottlerocket, amazonlinux, alpaquita, bellsoftHardenedContainers, chainguard, minimos, echo, cleanstart, wizos, alpine, wolfi, nixos, gentoo, voidlinux, clearlinux, busybox, photon, windriver, lede, openwrt, plcnext, mageia, azurelinux, cos, flatcar, talos, opencloudos, cirros, yocto, defaultLinux},
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
 		detected := false
 		osrd := NewOSReleaseDetector(conn)

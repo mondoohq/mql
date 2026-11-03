@@ -48,6 +48,18 @@ var (
 	// Tracks the shape proposed in package-url/purl-spec#270 and emitted by
 	// osv-scalibr; not (yet) in the formal purl-spec registry.
 	TypeCos Type = "cos"
+	// TypeYocto is a pkg:yocto purl for Yocto Project / OpenEmbedded images.
+	//
+	// A Yocto image keeps the UPSTREAM version of each component and backports
+	// fixes as patches, so it cannot be matched by version against a generic
+	// ecosystem (deb/rpm/apk) the way an ordinary distro can -- the authoritative
+	// data is per-release recipe metadata. The pkg:yocto type routes a package to
+	// that Yocto-specific advisory set. The NAMESPACE is the OpenEmbedded LAYER
+	// (e.g. "core" for OE-Core/poky), part of the identity like a Flatpak remote,
+	// and the name is the recipe/output-package name. Yocto emits pkg:yocto
+	// natively from 6.0; this type lets a live scan and older SBOMs produce the
+	// same identity. Not (yet) in the formal purl-spec registry.
+	TypeYocto Type = "yocto"
 	// Types we use coming from:
 	// https://github.com/package-url/packageurl-go/blob/master/packageurl.go#L54
 	TypeGeneric = Type(packageurl.TypeGeneric)
@@ -74,6 +86,7 @@ var (
 		TypeNix:           {},
 		TypeRPM:           {},
 		TypeCos:           {},
+		TypeYocto:         {},
 		TypeSnap:          {},
 		TypeBrew:          {},
 		TypeChocolatey:    {},

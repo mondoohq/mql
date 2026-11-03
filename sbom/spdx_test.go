@@ -131,6 +131,33 @@ func TestSpdxJsonDecoder_PurlWithoutDistro(t *testing.T) {
 	assert.Equal(t, "spdx", sbomReport.Asset.Platform.Name)
 }
 
+// TestSpdxJsonDecoder_Yocto pins that a Yocto 6.0+ SBOM, which emits pkg:yocto
+// purls natively, imports with those purls and their type preserved -- so no
+// import-side synthesis is needed for the forward-looking path. The soname-
+// renamed library (libcurl4) keeps its name; the vulnerability backend
+// reconciles it to the recipe's packages.
+func TestSpdxJsonDecoder_Yocto(t *testing.T) {
+	f, err := os.Open("testdata/yocto-6.0.spdx.json")
+	require.NoError(t, err)
+
+	decoder := sbom.NewSPDX(sbom.FormatSpdxJSON)
+
+	sbomReport, err := decoder.Parse(f)
+	require.NoError(t, err)
+	require.NotNil(t, sbomReport)
+
+	byName := map[string]*sbom.Package{}
+	for _, p := range sbomReport.Packages {
+		byName[p.Name] = p
+	}
+	require.Contains(t, byName, "curl")
+	require.Contains(t, byName, "libcurl4")
+	assert.Equal(t, "pkg:yocto/core/curl@8.7.1", byName["curl"].Purl)
+	assert.Equal(t, "yocto", byName["curl"].Type, "the pkg:yocto purl type is preserved on import")
+	assert.Equal(t, "pkg:yocto/core/libcurl4@8.7.1", byName["libcurl4"].Purl)
+	assert.Equal(t, "yocto", byName["libcurl4"].Type)
+}
+
 func TestSpdxJsonDecoder_Alpine_syft(t *testing.T) {
 	f, err := os.Open("testdata/alpine-3.19.syft.spdx.json")
 	require.NoError(t, err)

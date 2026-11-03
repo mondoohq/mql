@@ -11,28 +11,51 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/purl"
 )
 
 const (
 	OpkgPkgFormat = "opkg"
+
+	// yoctoOeCoreLayer is the OpenEmbedded layer used as the pkg:yocto namespace.
+	// v1 covers OE-Core/poky, whose layer is "core"; it matches the layer the
+	// Yocto advisories are keyed on and the one native 6.0 SBOMs emit.
+	yoctoOeCoreLayer = "core"
 )
+
+// setYoctoPurl assigns a pkg:yocto/core/<name>@<version> purl to an opkg package
+// when the platform is a Yocto image. opkg is ALSO OpenWrt's package manager, so
+// the purl is emitted only for a yocto platform -- OpenWrt packages keep their
+// previous behaviour (no purl). The package name is the installed (opkg) name,
+// which the vulnerability backend matches against the recipe's output-package
+// identities (reconciling the debian soname rename on its side).
+func setYoctoPurl(pf *inventory.Platform, pkg *Package) {
+	if pf == nil || pf.Name != "yocto" || pkg.Name == "" || pkg.Version == "" {
+		return
+	}
+	pkg.PUrl = purl.NewPackageURL(pf, purl.TypeYocto, pkg.Name, pkg.Version,
+		purl.WithNamespace(yoctoOeCoreLayer)).String()
+}
 
 var OPKG_LIST_PACKAGE_REGEX = regexp.MustCompile(`^([\w\d\-]+)\s-\s([\w\d\-\.]+)$`)
 
 // ParseOpkgListPackagesCommand parses the output of `opkg list-installed`
-func ParseOpkgListPackagesCommand(input io.Reader) []Package {
+func ParseOpkgListPackagesCommand(pf *inventory.Platform, input io.Reader) []Package {
 	pkgs := []Package{}
 	scanner := bufio.NewScanner(input)
 	for scanner.Scan() {
 		line := scanner.Text()
 		m := OPKG_LIST_PACKAGE_REGEX.FindStringSubmatch(line)
 		if m != nil {
-			pkgs = append(pkgs, Package{
+			pkg := Package{
 				Name:    m[1],
 				Version: m[2],
 				Format:  OpkgPkgFormat,
-			})
+			}
+			setYoctoPurl(pf, &pkg)
+			pkgs = append(pkgs, pkg)
 		}
 	}
 	return pkgs
@@ -45,7 +68,7 @@ var (
 
 // ParseOpkgPackages parses the opkg database content located in:
 // `/var/lib/opkg/status` or `/usr/lib/opkg/status`
-func ParseOpkgPackages(input io.Reader) ([]Package, error) {
+func ParseOpkgPackages(pf *inventory.Platform, input io.Reader) ([]Package, error) {
 	const STATE_RESET = 0
 	const STATE_DESC = 1
 	pkgs := []Package{}
@@ -56,6 +79,7 @@ func ParseOpkgPackages(input io.Reader) ([]Package, error) {
 			// opkg records a hold in the flag field of the status triple,
 			// where dpkg carried it historically.
 			pkg.Pinned = isHeldStatus(pkg.Status)
+			setYoctoPurl(pf, &pkg)
 			pkgs = append(pkgs, pkg)
 		} else {
 			log.Debug().Msg("ignored opkg packages since information is missing")
@@ -114,7 +138,8 @@ func ParseOpkgPackages(input io.Reader) ([]Package, error) {
 }
 
 type OpkgPkgManager struct {
-	conn shared.Connection
+	conn     shared.Connection
+	platform *inventory.Platform
 }
 
 func (opkg *OpkgPkgManager) Name() string {
@@ -132,7 +157,7 @@ func (opkg *OpkgPkgManager) List() ([]Package, error) {
 		if err != nil {
 			return nil, fmt.Errorf("could not read opkg package list")
 		}
-		return ParseOpkgListPackagesCommand(cmd.Stdout), nil
+		return ParseOpkgListPackagesCommand(opkg.platform, cmd.Stdout), nil
 	}
 
 	// otherwise let's try to read the package list from file
@@ -165,7 +190,7 @@ func (opkg *OpkgPkgManager) ListFromFile() ([]Package, error) {
 	}
 	defer fi.Close()
 
-	list, err := ParseOpkgPackages(fi)
+	list, err := ParseOpkgPackages(opkg.platform, fi)
 	if err != nil {
 		return nil, fmt.Errorf("could not parse opkg package list")
 	}

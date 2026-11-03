@@ -1,0 +1,19 @@
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "aarch64"
+
+[commands."uname -r"]
+stdout = "6.6.32-yocto-standard"
+
+[files."/etc/os-release"]
+content = """
+ID=poky
+NAME="Poky (Yocto Project Reference Distro)"
+VERSION="5.0 (scarthgap)"
+VERSION_ID=5.0
+VERSION_CODENAME=scarthgap
+PRETTY_NAME="Poky (Yocto Project Reference Distro) 5.0 (scarthgap)"
+BUILD_ID="20240501083000"
+"""

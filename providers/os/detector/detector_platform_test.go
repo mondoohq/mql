@@ -27,6 +27,33 @@ func detectPlatformFromMock(filepath string) (*inventory.Platform, error) {
 	return di, foundErr
 }
 
+func TestYoctoPokyOSDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-yocto-poky.toml")
+	require.NoError(t, err)
+
+	// The poky reference distro (os-release ID=poky) is normalized to "yocto",
+	// the name the vulnerability backend keys the Yocto advisory set on.
+	assert.Equal(t, "yocto", di.Name, "poky is normalized to the yocto platform")
+	assert.Equal(t, "5.0", di.Version, "VERSION_ID")
+	assert.Equal(t, "scarthgap", di.Build, "VERSION_CODENAME is carried as the build")
+	assert.Equal(t, "aarch64", di.Arch)
+	assert.Contains(t, di.Family, "linux")
+	// The image's own os-release ID is preserved for provenance.
+	assert.Equal(t, "poky", di.Labels[LabelDistroID])
+}
+
+func TestYoctoCustomDistroOSDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-yocto-custom-distro.toml")
+	require.NoError(t, err)
+
+	// A custom DISTRO with its own os-release ID but the inherited Yocto
+	// codename is detected via VERSION_CODENAME.
+	assert.Equal(t, "yocto", di.Name, "custom DISTRO detected via the Yocto codename")
+	assert.Equal(t, "scarthgap", di.Build)
+	assert.Contains(t, di.Family, "linux")
+	assert.Equal(t, "acme-embedded", di.Labels[LabelDistroID], "original distro id preserved")
+}
+
 func TestRhel6OSDetector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-rhel-6.toml")
 	assert.Nil(t, err, "was able to create the provider")
