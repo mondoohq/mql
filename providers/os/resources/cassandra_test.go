@@ -165,3 +165,54 @@ func TestCassandraScriptedUserDefinedFunctionsEnabled(t *testing.T) {
 		})
 	}
 }
+
+func TestCassandraLauncherVars(t *testing.T) {
+	fsWith := func(dirs ...string) *afero.Afero {
+		afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+		for _, d := range dirs {
+			require.NoError(t, afs.MkdirAll(d, 0o755))
+		}
+		return afs
+	}
+
+	for _, tc := range []struct {
+		name    string
+		afs     *afero.Afero
+		envPath string
+		want    map[string]string
+	}{
+		// Measured: Ubuntu 24.04, cassandra 4.1.12 deb, 2026-11-03.
+		// /usr/share/cassandra/cassandra.in.sh sets both values; the running
+		// JVM had -Djava.library.path=/usr/share/cassandra/lib/sigar-bin.
+		{"Debian package", fsWith("/usr/share/cassandra/lib"), "/etc/cassandra/cassandra-env.sh",
+			map[string]string{"CASSANDRA_HOME": "/usr/share/cassandra", "CASSANDRA_CONF": "/etc/cassandra"}},
+		// Measured: cassandra-4.1.12-1.noarch.rpm unpacked with rpm2cpio,
+		// 2026-11-03. cassandra.in.sh sets CASSANDRA_CONF=/etc/cassandra/conf.
+		{"RPM conf subdirectory", fsWith("/usr/share/cassandra/lib"), "/etc/cassandra/conf/cassandra-env.sh",
+			map[string]string{"CASSANDRA_HOME": "/usr/share/cassandra", "CASSANDRA_CONF": "/etc/cassandra/conf"}},
+		// Measured: cassandra:5.0 container image, 2026-11-03. The image sets
+		// CASSANDRA_HOME=/opt/cassandra and CASSANDRA_CONF=/etc/cassandra and
+		// has no /usr/share/cassandra.
+		{"container image", fsWith("/opt/cassandra/lib"), "/etc/cassandra/cassandra-env.sh",
+			map[string]string{"CASSANDRA_HOME": "/opt/cassandra", "CASSANDRA_CONF": "/etc/cassandra"}},
+		// Measured: Ubuntu 24.04, apache-cassandra-5.0.9-bin.tar.gz in /opt,
+		// 2026-11-03. The running JVM had
+		// -Djava.library.path=/opt/apache-cassandra-5.0.9/bin/../lib/sigar-bin.
+		{"tarball", fsWith(), "/opt/apache-cassandra-5.0.9/conf/cassandra-env.sh",
+			map[string]string{"CASSANDRA_HOME": "/opt/apache-cassandra-5.0.9", "CASSANDRA_CONF": "/opt/apache-cassandra-5.0.9/conf"}},
+		// Synthetic: configuration under /etc with no known home on disk; no
+		// target showed this.
+		{"/etc without a known home", fsWith(), "/etc/cassandra/cassandra-env.sh",
+			map[string]string{"CASSANDRA_CONF": "/etc/cassandra"}},
+		// Synthetic: a Homebrew path is neither a tarball nor under /etc, so
+		// the package homes are not consulted; no target showed this.
+		{"Homebrew", fsWith("/usr/share/cassandra/lib"), "/opt/homebrew/etc/cassandra/cassandra-env.sh",
+			map[string]string{"CASSANDRA_CONF": "/opt/homebrew/etc/cassandra"}},
+		// Synthetic: no file located; no target showed this.
+		{"no path", fsWith(), "", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, cassandraLauncherVars(tc.afs, tc.envPath))
+		})
+	}
+}

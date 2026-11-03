@@ -225,6 +225,12 @@ JVM_OPTS="$JVM_OPTS -Dcom.sun.management.jmxremote.password.file=$CASSANDRA_CONF
 // The launcher sets CASSANDRA_HOME and CASSANDRA_CONF before sourcing the
 // file, so paths the file builds from them carry the install directory.
 func TestParseEnvLauncherVariables(t *testing.T) {
+	// Measured: the java.library.path line is line 287 of the
+	// cassandra-env.sh in the cassandra 4.1.12 deb, launcher values from its
+	// cassandra.in.sh, Ubuntu 24.04, 2026-11-03. The running JVM had
+	// -Djava.library.path=/usr/share/cassandra/lib/sigar-bin.
+	// Synthetic: the password file built from ${CASSANDRA_CONF} covers the
+	// braced form; the shipped file names /etc/cassandra literally.
 	script := `
 JVM_OPTS="$JVM_OPTS -Djava.library.path=$CASSANDRA_HOME/lib/sigar-bin"
 JVM_OPTS="$JVM_OPTS -Dcom.sun.management.jmxremote.password.file=${CASSANDRA_CONF}/jmxremote.password"
@@ -239,11 +245,14 @@ JVM_OPTS="$JVM_OPTS -Dcom.sun.management.jmxremote.password.file=${CASSANDRA_CON
 	assert.Equal(t, "/etc/cassandra/jmxremote.password", env.Properties["com.sun.management.jmxremote.password.file"])
 	assert.NotContains(t, env.Variables, "CASSANDRA_HOME", "launcher variables are not the file's assignments")
 
+	// Synthetic: the file reassigns a launcher variable; no target showed this.
 	t.Run("an assignment in the file wins", func(t *testing.T) {
 		env := cassandraconf.ParseEnvWithLauncher("CASSANDRA_HOME=/srv/cassandra\n"+script, launcher)
 		assert.Equal(t, "/srv/cassandra/lib/sigar-bin", env.Properties["java.library.path"])
 	})
 
+	// Synthetic: the file read without launcher values, which is how
+	// ParseEnv still reads it; no target was scanned this way.
 	t.Run("without the launcher the variable is unset", func(t *testing.T) {
 		env := cassandraconf.ParseEnv(script)
 		assert.Equal(t, "/lib/sigar-bin", env.Properties["java.library.path"])
