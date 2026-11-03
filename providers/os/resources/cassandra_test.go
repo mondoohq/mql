@@ -127,6 +127,10 @@ func TestCassandraAbsentIsNotARefusal(t *testing.T) {
 
 // Without Cassandra the setting fields are null, like file, rather than the
 // server's defaults read as if from a file.
+//
+// Measured: Ubuntu 24.04 with no Cassandra installed, 2026-11-03. A live
+// scan returned null for every field queried here, with and without
+// StructuredErrors.
 func TestCassandraAbsentReportsNullFields(t *testing.T) {
 	for _, structured := range []bool{false, true} {
 		withStructuredErrors(t, structured)
@@ -156,6 +160,11 @@ func TestCassandraAbsentReportsNullFields(t *testing.T) {
 
 // An explicit path that does not exist is a missing file, not a server on
 // its defaults.
+//
+// Measured: Ubuntu 24.04, 2026-11-03. A live scan of
+// cassandra.conf("/etc/does-not-exist.yaml") returned null params and
+// authenticator, and with StructuredErrors the error
+// "/etc/does-not-exist.yaml does not exist" on both.
 func TestCassandraMissingExplicitPath(t *testing.T) {
 	newConf := func(t *testing.T) *mqlCassandraConf {
 		runtime := newDeniedDirRuntime(t, &mock.TomlData{Files: map[string]*mock.MockFileData{}})
@@ -177,6 +186,8 @@ func TestCassandraMissingExplicitPath(t *testing.T) {
 }
 
 // A file that exists but is empty is a server on its defaults.
+//
+// Synthetic: an empty cassandra.yaml; no target showed this.
 func TestCassandraEmptyFileReportsDefaults(t *testing.T) {
 	withStructuredErrors(t, true)
 	runtime := newDeniedDirRuntime(t, &mock.TomlData{Files: map[string]*mock.MockFileData{
