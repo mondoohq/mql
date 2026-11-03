@@ -153,6 +153,9 @@ install:
 - Parse `<binary> --version` — always through the **`command` resource**, never
   `os/exec` (see CLAUDE.md).
 - Read a manifest or lockfile the tool writes.
+- Read the `package.json` of the tool's npm package under a global npm prefix
+  (`npmPackage` in its spec), for CLIs installed with `npm install -g`. It runs
+  nothing, so it is tried before `--version`.
 
 The same detection that produces the version doubles as the presence check that decides
 `installed` for the abstract package.
