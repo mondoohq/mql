@@ -835,10 +835,17 @@ func (p *rsyslogParser) legacyAction(token string) rsyslogEntry {
 		maps.Copy(fileSettings, p.legacyFile)
 	}
 
+	dest := legacyTargetValue(moduleType, target)
+	var port int64
+	if moduleType == "omfwd" || moduleType == "omrelp" {
+		dest, port = splitLegacyNetworkTarget(dest)
+	}
+
 	return rsyslogEntry{
 		kind:         rsyslogKindAction,
 		moduleType:   moduleType,
-		target:       legacyTargetValue(moduleType, target),
+		target:       dest,
+		port:         port,
 		protocol:     protocol,
 		tlsEnabled:   tlsEnabled,
 		template:     strings.TrimSpace(template),
@@ -856,6 +863,8 @@ func (p *rsyslogParser) legacyAction(token string) rsyslogEntry {
 //	|/dev/xconsole     -> /dev/xconsole
 //	:omrelp:host:2514  -> host:2514
 //	:omusrmsg:root     -> root
+//
+// splitLegacyNetworkTarget then separates the port of a network target.
 func legacyTargetValue(moduleType, target string) string {
 	switch {
 	case moduleType == "omfwd":
@@ -1018,18 +1027,33 @@ func rsyslogActionPort(e rsyslogEntry) int64 {
 	if _, ok := e.parameters["port"]; ok {
 		return parseIntParam(e.parameters, "port")
 	}
-	if e.legacy {
-		if _, port, ok := splitRsyslogHostPort(e.target); ok {
-			n, err := strconv.ParseInt(port, 10, 64)
-			if err == nil {
-				return n
-			}
-		}
+	if e.legacy && e.port != 0 {
+		return e.port
 	}
 	if e.moduleType == "omfwd" || e.moduleType == "omrelp" {
 		return 514
 	}
 	return 0
+}
+
+// splitLegacyNetworkTarget splits a legacy omfwd or omrelp destination into
+// the host and its port, so `@@host:6514` reports the same target as
+// `action(type="omfwd" target="host" port="6514")`. The brackets around an
+// IPv6 address go too, as the modern form has none. A port that is not a
+// number leaves the destination whole and the port 0 (the module default).
+func splitLegacyNetworkTarget(dest string) (string, int64) {
+	host, port, ok := splitRsyslogHostPort(dest)
+	if !ok {
+		if len(dest) > 2 && dest[0] == '[' && dest[len(dest)-1] == ']' {
+			return dest[1 : len(dest)-1], 0
+		}
+		return dest, 0
+	}
+	n, err := strconv.ParseInt(port, 10, 64)
+	if err != nil {
+		return dest, 0
+	}
+	return host, n
 }
 
 // splitRsyslogHostPort splits `host:port` or `[v6addr]:port`. A bare IPv6

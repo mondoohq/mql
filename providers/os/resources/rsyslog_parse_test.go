@@ -678,7 +678,7 @@ if $syslogfacility-text == 'auth' then {
 		{"discard", "stop", "", false, 2},
 		{"omfwd", "logs.example.com", "tcp", true, 3},
 		{"omfile", "/var/log/errors.log", "", false, 5},
-		{"omfwd", "logs.example.com:514", "tcp", false, 6},
+		{"omfwd", "logs.example.com", "tcp", false, 6},
 		{"omfile", "/var/log/not-cron.log", "", false, 7},
 		{"omfile", "/var/log/x.log", "", false, 8},
 		{"omfile", "/var/log/auth.log", "", false, 10},
@@ -703,19 +703,25 @@ daemon.* |/dev/xconsole
 `
 	got := parseRsyslogFile("/etc/rsyslog.conf", content)
 	actions := entriesOfKind(got, rsyslogKindAction)
-	want := []struct{ typ, target, template string }{
-		{"omfwd", "logs.example.com:514", "RSYSLOG_ForwardFormat"},
-		{"omfwd", "[2001:db8::1]:514", ""},
-		{"omrelp", "relp.example.com:2514", "RSYSLOG_ForwardFormat"},
-		{"omfile", "/var/log/syslog", ""},
-		{"omusrmsg", "*", ""},
-		{"ompipe", "/dev/xconsole", ""},
+	// A network target reports the host alone, as the modern form does; the
+	// port moves to port.
+	want := []struct {
+		typ, target, template string
+		port                  int64
+	}{
+		{"omfwd", "logs.example.com", "RSYSLOG_ForwardFormat", 514},
+		{"omfwd", "2001:db8::1", "", 514},
+		{"omrelp", "relp.example.com", "RSYSLOG_ForwardFormat", 2514},
+		{"omfile", "/var/log/syslog", "", 0},
+		{"omusrmsg", "*", "", 0},
+		{"ompipe", "/dev/xconsole", "", 0},
 	}
 	require.Len(t, actions, len(want))
 	for i, w := range want {
 		assert.Equal(t, w.typ, actions[i].moduleType, "type @ %d", i)
 		assert.Equal(t, w.target, actions[i].target, "target @ %d", i)
 		assert.Equal(t, w.template, actions[i].template, "template @ %d", i)
+		assert.Equal(t, w.port, rsyslogActionPort(actions[i]), "port @ %d", i)
 	}
 
 	// Rules keep the raw token as written.
@@ -981,16 +987,39 @@ func TestRsyslogActionPort(t *testing.T) {
 		{"modern port", rsyslogEntry{moduleType: "omfwd", parameters: map[string]any{"port": "6514"}}, 6514},
 		{"modern omfwd default", rsyslogEntry{moduleType: "omfwd", parameters: map[string]any{}}, 514},
 		{"modern omrelp default", rsyslogEntry{moduleType: "omrelp", parameters: map[string]any{}}, 514},
-		{"legacy host:port", rsyslogEntry{moduleType: "omfwd", legacy: true, target: "logs:6514"}, 6514},
-		{"legacy bracketed v6", rsyslogEntry{moduleType: "omfwd", legacy: true, target: "[2001:db8::1]:10514"}, 10514},
+		{"legacy host:port", rsyslogEntry{moduleType: "omfwd", legacy: true, target: "logs", port: 6514}, 6514},
 		{"legacy no port", rsyslogEntry{moduleType: "omfwd", legacy: true, target: "logs"}, 514},
-		{"legacy omrelp", rsyslogEntry{moduleType: "omrelp", legacy: true, target: "relp:2514"}, 2514},
+		{"legacy omrelp", rsyslogEntry{moduleType: "omrelp", legacy: true, target: "relp", port: 2514}, 2514},
 		{"non-network action", rsyslogEntry{moduleType: "omfile", legacy: true, target: "/var/log/x"}, 0},
 		{"modern omhttp port", rsyslogEntry{moduleType: "omhttp", parameters: map[string]any{"port": "443"}}, 443},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, rsyslogActionPort(tt.e))
+		})
+	}
+}
+
+// Synthetic: legacy forward destinations as rsyslog.conf(5) writes them.
+func TestSplitLegacyNetworkTarget(t *testing.T) {
+	tests := []struct {
+		in, host string
+		port     int64
+	}{
+		{"192.0.2.10:6514", "192.0.2.10", 6514},
+		{"logs.example.com", "logs.example.com", 0},
+		{"[2001:db8::1]:10514", "2001:db8::1", 10514},
+		{"[2001:db8::1]", "2001:db8::1", 0},
+		{"2001:db8::1", "2001:db8::1", 0},
+		// a port that is not a number is left in place, not dropped
+		{"logs:syslog", "logs:syslog", 0},
+		{"logs:", "logs:", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			host, port := splitLegacyNetworkTarget(tt.in)
+			assert.Equal(t, tt.host, host)
+			assert.Equal(t, tt.port, port)
 		})
 	}
 }

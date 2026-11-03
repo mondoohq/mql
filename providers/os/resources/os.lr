@@ -12518,10 +12518,12 @@ private rsyslog.action @defaults("type target sourceFile") {
   type string
   // Destination of the action
   //
-  // For omfile a filesystem path; for omfwd a `host` or `host:port`; for
-  // omusrmsg a comma-separated user list (or `*` for wall); for omhttp /
-  // omkafka the relevant URL or broker list. Legacy prefixes such as `@@`,
-  // `-`, `|`, and `:omrelp:` are removed.
+  // For omfile a filesystem path; for omfwd and omrelp the host name or
+  // address without the port, which is in `port` (`@@192.0.2.10:6514` and
+  // `action(type="omfwd" target="192.0.2.10" port="6514")` both give
+  // `192.0.2.10`); for omusrmsg a comma-separated user list (or `*` for
+  // wall); for omhttp / omkafka the relevant URL or broker list. Legacy
+  // prefixes such as `@@`, `-`, `|`, and `:omrelp:` are removed.
   target string
   // Transport protocol for network actions: `"tcp"`, `"udp"`, or empty
   protocol string
