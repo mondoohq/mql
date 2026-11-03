@@ -67,6 +67,19 @@ var (
 // whichever is written last and gives a localhost-only host and a hardened
 // remote-JMX host the same answer.
 func ParseEnv(content string) *Env {
+	return ParseEnvWithLauncher(content, nil)
+}
+
+// ParseEnvWithLauncher parses a cassandra-env.sh like ParseEnv, with the
+// variables the launch script sets before it sources the file.
+//
+// The launcher defines CASSANDRA_HOME and CASSANDRA_CONF in cassandra.in.sh,
+// not in cassandra-env.sh, and the file builds paths from them
+// (-Djava.library.path=$CASSANDRA_HOME/lib/sigar-bin). Read on its own, the
+// file expands them to empty. An assignment in the file still wins, as it
+// does in the shell. launcher is not reported in Variables, which holds what
+// the file assigns.
+func ParseEnvWithLauncher(content string, launcher map[string]string) *Env {
 	lines := activeLines(content)
 	localJMX := resolveLocalJMX(lines)
 
@@ -130,7 +143,7 @@ func ParseEnv(content string) *Env {
 		}
 
 		if m := reAssign.FindStringSubmatch(text); m != nil {
-			name, value := m[1], expand(unquote(m[2]), env.Variables)
+			name, value := m[1], expand(unquote(m[2]), env.Variables, launcher)
 			// JVM_OPTS is an accumulator rather than a setting; its
 			// contents are reported through Properties.
 			if name != "JVM_OPTS" {
@@ -141,7 +154,7 @@ func ParseEnv(content string) *Env {
 		// Scan for properties past the inline comment, so a line that ends
 		// in a note mentioning another -D flag does not contribute it.
 		for _, m := range reSysProp.FindAllStringSubmatch(cutUnquoted(text), -1) {
-			env.Properties[m[1]] = expand(m[2], env.Variables)
+			env.Properties[m[1]] = expand(m[2], env.Variables, launcher)
 		}
 	}
 
@@ -260,10 +273,11 @@ func cutUnquoted(v string) string {
 	return v
 }
 
-// expand substitutes $VAR references from the variables read so far. A
-// reference to something not assigned in the file resolves to empty, which is
-// what the shell does for an unset variable.
-func expand(v string, vars map[string]string) string {
+// expand substitutes $VAR references from the variables read so far, then
+// from the variables the launcher set before sourcing the file. A reference
+// to something set in neither resolves to empty, which is what the shell does
+// for an unset variable.
+func expand(v string, vars, launcher map[string]string) string {
 	if !strings.Contains(v, "$") {
 		return v
 	}
@@ -272,7 +286,10 @@ func expand(v string, vars map[string]string) string {
 		if m == nil {
 			return ""
 		}
-		return vars[m[1]]
+		if val, ok := vars[m[1]]; ok {
+			return val
+		}
+		return launcher[m[1]]
 	})
 }
 
