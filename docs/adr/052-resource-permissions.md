@@ -1,4 +1,4 @@
-# ADR 052: Disabled resources
+# ADR 052: Resource permissions
 
 ## Status
 
@@ -76,23 +76,55 @@ that matched the name the author typed would be bypassed by the alias.
 
 ## Decision
 
-### 1. One setting: `disabled_resources`
+### 1. One setting: `permissions`, with `deny` now and `allow` reserved
 
 ```yaml
 # /etc/opt/mondoo/mondoo.yml
-disabled_resources:
-  - command
-  - powershell
+permissions:
+  deny:
+    - command
+    - powershell
 ```
 
-A list of resource names in `CommonOpts` (`cli/config/config.go`), beside
-`strict` and `exceptions`:
+A `permissions` block in `CommonOpts` (`cli/config/config.go`), beside
+`strict` and `exceptions`, with two lists of resource names:
 
 ```go
-// DisabledResources names resources this client will not create or read,
-// whatever query asks for them (ADR 052). Provider-internal use is unaffected.
-DisabledResources []string `json:"disabled_resources,omitempty" mapstructure:"disabled_resources"`
+// Permissions limits which resources this client will create or read on
+// behalf of a query, whatever query asks for them (ADR 052).
+// Provider-internal use is unaffected.
+Permissions ResourcePermissions `json:"permissions,omitempty" mapstructure:"permissions"`
+
+type ResourcePermissions struct {
+	// Allow is reserved for an allow-list (§1, "allow"). It must be empty.
+	Allow []string `json:"allow,omitempty" mapstructure:"allow"`
+	// Deny names resources queries may not use. A denied resource is disabled.
+	Deny []string `json:"deny,omitempty" mapstructure:"deny"`
+}
 ```
+
+The shape follows the allow/deny permission blocks operators know from other
+tools. The default is **allow**: with no `permissions` block, or with only
+`deny`, every resource not denied is available, as it is today. This ADR
+implements `deny`. `allow` is part of the structure from the start so that an
+allow-list can be added later without a second, differently shaped key.
+
+**`allow` is reserved, and setting it fails closed.** A client that implements
+only `deny` refuses to start when `permissions.allow` is non-empty, with
+`permissions.allow is not supported by this version; remove it or upgrade`.
+An operator who writes an allow-list expects everything else to be off;
+ignoring the key would leave every resource on, which is the opposite of what
+they asked for. The meaning a future ADR gives `allow` is constrained now, so
+that configurations written for it stay valid:
+
+- A non-empty `allow` flips the default to deny: only listed resources are
+  available.
+- `deny` wins over `allow`. A name in both lists is denied, so an operator can
+  allow a broad set and still carve out exceptions.
+- Provider-internal use (§3) stays unaffected either way.
+
+The rules below apply to every entry in `deny`, and will apply to `allow`
+entries the same way.
 
 - **Names are full resource names**, the way they appear in the schema:
   `command`, `aws.iam.credentialReport`, `k8s.secret`. Matching is exact. An
@@ -109,12 +141,12 @@ DisabledResources []string `json:"disabled_resources,omitempty" mapstructure:"di
   knows is not an error, because the provider that defines it may simply not be
   installed yet, and once it is, the entry applies. But a typo here fails
   *open*, so the client logs a warning at startup naming every entry the
-  schemas do not resolve: `disabled_resources: no resource named "aws.iam.credentialsReport"`.
+  schemas do not resolve: `permissions.deny: no resource named "aws.iam.credentialsReport"`.
 - **There is no CLI flag and nothing in a policy, bundle or server response can
   change it.** The setting belongs to whoever owns the scanning host's
   configuration, and the content it constrains must not be able to lift it.
   Like every viper key it can be set through the environment
-  (`MONDOO_DISABLED_RESOURCES`); whoever controls the agent's environment
+  (`MONDOO_PERMISSIONS_DENY`); whoever controls the agent's environment
   already controls its configuration, so that adds no new principal.
 
 ### 2. Enforced in the coordinator's runtime, not in the compiler
@@ -128,15 +160,19 @@ A per-runtime setting is one forgotten copy away from a child asset that runs
 
 ```go
 // providers/coordinator.go
-// SetDisabledResources installs the set of resources no runtime of this
+// SetResourcePermissions installs the set of resources no runtime of this
 // coordinator will create or read on behalf of a query (ADR 052).
-func (c *coordinator) SetDisabledResources(names []string)
+func (c *coordinator) SetResourcePermissions(p ResourcePermissions) error
 ```
 
 It is set once at startup by every binary that loads `mondoo.yml` (`mql`,
 `cnspec`, `cnspec serve`) and by embedders through the mqlx API (ADR 027).
-It is read on every resource creation, so it is held behind an
-`atomic.Pointer` to an immutable set, not a mutex.
+It returns an error for a non-empty `Allow` (§1), so an embedder cannot get
+the fail-open behavior the CLI refuses. It is read on every resource creation,
+so it is held behind an `atomic.Pointer` to an immutable decision (today a
+denied set; later a denied set plus an optional allowed set), not a mutex. The
+runtime asks one question, "is this resource disabled?", so adding `allow`
+changes how the answer is computed and none of the call sites below.
 
 The runtime checks it at both doors:
 
@@ -164,7 +200,7 @@ plugin boundary. A provider that creates `command` for its own use
 resource built on a fixed command line keep working with `command` disabled.
 
 That is the intended meaning, and the documentation has to say it plainly:
-**`disabled_resources: [command]` stops queries from running commands of their
+**`permissions.deny: [command]` stops queries from running commands of their
 choosing. It does not stop mql from running commands.** The OS provider still
 executes the command lines its resources are built from.
 
@@ -180,7 +216,7 @@ kind:
 ```proto
 // llx/llx.proto, enum ErrorKind
   // The client's configuration disabled the resource this needed
-  // (disabled_resources, ADR 052). Raised by the runtime, never by a provider.
+  // (permissions, ADR 052). Raised by the runtime, never by a provider.
   ERROR_KIND_DISABLED = 11;
 ```
 
@@ -193,8 +229,12 @@ kind:
 ```go
 // llx/errors.go
 var ErrDisabled = ...
-func Disabled(resource, configPath string) *Error
+func Disabled(resource, setting, configPath string) *Error
 ```
+
+The kind says what happened to the resource (the client disabled it), not which
+list did it, so the same kind covers a `deny` entry today and a resource
+missing from an `allow` list later. The `setting` argument carries which one.
 
 **Not `forbidden`.** ADR 046 defines forbidden as "authenticated and not
 permitted" by the *target*, and everything downstream of the kind is built on
@@ -204,8 +244,9 @@ resource has no grant that would fix it; the target was never asked. The
 remedy is a local configuration change, made by a different person, and the
 coverage line has to name that person's setting, not a cloud permission.
 ADR 046's test for a kind is "name the user's action", and this kind's action
-(remove the entry from `disabled_resources`, or stop running checks that need
-it) is unlike every other kind's.
+(remove the entry from `permissions.deny`, or stop running checks that need
+it) is unlike every other kind's. The setting's name does not make it
+`forbidden` either: these are the client's permissions, not the target's.
 
 **Scope is the call**, never `ERROR_SCOPE_ASSET`. A disabled resource makes one
 query fail; the rest of the asset scans normally.
@@ -214,13 +255,13 @@ The message names the resource, the setting and the file it came from, so a
 user who has never seen the setting can find it:
 
 ```
-resource "command" is disabled by disabled_resources in /etc/opt/mondoo/mondoo.yml
+resource "command" is disabled by permissions.deny in /etc/opt/mondoo/mondoo.yml
 ```
 
 When the name the query used is an alias, the message names both:
 `resource "os.base.command" (command) is disabled …`. The config path comes from
 `viper.ConfigFileUsed()`; when the setting came from the environment the
-message says `MONDOO_DISABLED_RESOURCES` instead.
+message says `MONDOO_PERMISSIONS_DENY` instead.
 
 ### 5. Where the user sees it
 
@@ -230,7 +271,7 @@ disabled resources, so a user is not offered a resource that cannot run.
 
 ```
 $ mql run local -c 'command("id").stdout'
-command.stdout: resource "command" is disabled by disabled_resources in /etc/opt/mondoo/mondoo.yml
+command.stdout: resource "command" is disabled by permissions.deny in /etc/opt/mondoo/mondoo.yml
 ```
 
 **cnspec and the platform.** A check whose query used a disabled resource
@@ -275,9 +316,12 @@ It does not protect against:
   group ("all execution resources") is deliberately left out: it would need a
   maintained list whose omissions fail open, which is worse than an explicit
   list the operator can read.
-- **Older clients.** A client that predates this ADR ignores the key and runs
-  `command`. The setting fails open on a downgrade, and the documentation has
-  to state the minimum mql and cnspec versions that enforce it.
+- **Older clients.** A client that predates this ADR ignores the
+  `permissions` block and runs `command`. The setting fails open on a
+  downgrade, and the documentation has to state the minimum mql and cnspec
+  versions that enforce it. (The same is true of `allow`: §1 makes the first
+  client that knows the block refuse an `allow` it cannot enforce, but a client
+  older than that cannot refuse a key it has never heard of.)
 
 ### 7. Disabling a resource the scan depends on
 
@@ -293,19 +337,22 @@ root or `asset`, so the cause is easy to find.
 
 1. **Kind and carrier.** `ERROR_KIND_DISABLED`, `ErrorDetail.resource`,
    `llx.Disabled`, `llx.ErrDisabled`, rendering. Regenerate `llx.pb.go`.
-2. **Enforcement.** `coordinator.SetDisabledResources`, alias resolution against
-   the loaded schemas, the three runtime checks, the startup warnings. Tests in
+2. **Enforcement.** `coordinator.SetResourcePermissions`, alias resolution
+   against the loaded schemas, the three runtime checks, the startup warnings,
+   the refusal of a non-empty `allow`. Tests in
    `providers/runtime_test.go` with the mock provider: creating a disabled
    resource returns `ErrDisabled` and never reaches the provider; an alias is
    refused; a field returning a disabled type errors; a field on an enabled
    resource is untouched; a runtime from `NewRuntimeFrom` and from `RuntimeFor`
-   enforces the same set; a cross-provider `GetData` callback is refused.
-3. **Wiring.** `CommonOpts.DisabledResources`, read in `mql run`, `mql shell`,
+   enforces the same set; a cross-provider `GetData` callback is refused; a
+   non-empty `allow` returns an error.
+3. **Wiring.** `CommonOpts.Permissions`, read in `mql run`, `mql shell`,
    and cnspec's `scan` and `serve`; shell completion and help. `StoreConfig`
    preserves the key across `login` (it writes viper's merged state, which
    includes it; a test pins that).
 4. **cnspec.** The coverage summary line for the new kind. No scoring change.
-5. **Docs.** The `mondoo.yml` reference: the key, the `command` and
+5. **Docs.** The `mondoo.yml` reference: the `permissions` block, that `allow`
+   is reserved and refused, the `command` and
    `powershell` recommendation, §3's "it does not stop mql from running
    commands", §6's limits, and the minimum versions.
 
@@ -313,7 +360,7 @@ Phases 1 to 3 need only an mql client release. No provider changes, no
 provider releases.
 
 Verification beyond the unit tests: on a Linux host with
-`disabled_resources: [command, powershell]`, `mql run local -c
+`permissions.deny: [command, powershell]`, `mql run local -c
 'command("id").stdout'` and `os.base.command("id")` both fail with the message,
 while `packages.length`, `mount.list` and `kernel.modules.length` (all built on
 internal `command` use) return the same values as with the setting removed.
@@ -321,7 +368,7 @@ internal `command` use) return the same values as with the setting removed.
 ## Consequences
 
 - Operators can run the agent on hosts where arbitrary command execution by
-  policy content is unacceptable, with one line of configuration.
+  policy content is unacceptable, with a three-line `permissions` block.
 - A disabled resource is a visible, attributed error everywhere a result is
   shown. Nothing reads as passing that did not run.
 - Compiled output and checksums do not depend on local configuration, so
@@ -367,9 +414,19 @@ summary. A disabled resource fits none of that, and folding it in would make
 and the policy owner would never learn their checks are not being assessed on
 these hosts. The request was for an error. Rejected (§5).
 
-**An allow-list instead of a deny-list.** `enabled_resources` would be the
-stronger posture, but the schema has thousands of resources and a provider
-release adds more; an allow-list would break every new check on every upgrade.
-A deny-list for the handful of resources an operator actually objects to is the
-shape the request has. An allow-list can be added later as a separate key if
-someone needs it.
+**Implement the allow-list now.** An allow-list is the stronger posture, but
+the schema has thousands of resources and a provider release adds more, so an
+allow-list breaks every new check on every upgrade, and it needs answers this
+ADR does not have yet (do sub-resources a provider returns count as allowed,
+does `asset` have to be listed). A deny-list for the handful of resources an
+operator actually objects to is the shape the request has. Deferred, with the
+key reserved and its precedence fixed (§1) so it can land without a new shape.
+
+**A flat `disabled_resources` list.** The first draft of this ADR. It says the
+same thing as `permissions.deny` today, but an allow-list would then need a
+second top-level key whose interaction with the first is defined by prose
+rather than by structure. Rejected in favor of one block holding both lists.
+
+**Ignore a non-empty `allow` until it is implemented.** Forward-compatible in
+the usual sense, but it fails open in exactly the case where the operator asked
+for the tightest setting. Rejected (§1).
