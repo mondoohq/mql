@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/moby/buildkit/frontend/dockerfile/parser"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/utils/syncx"
@@ -46,7 +48,7 @@ CMD ["/bin/sh", "-c", "echo 'Hola'"]
 			expectedFromImage: "alpine",
 			expectedCmd: plugin.TValue[*mqlDockerFileRun]{
 				Data: &mqlDockerFileRun{
-					Script: plugin.TValue[string]{Data: "/bin/sh\n-c\necho 'Hola'"},
+					Script: plugin.TValue[string]{Data: `["/bin/sh", "-c", "echo 'Hola'"]`},
 				},
 			},
 		},
@@ -63,7 +65,7 @@ ENTRYPOINT ["/usr/sbin/apache2ctl", "-D", "FOREGROUND"]
 			expectedFromTag:   "stable",
 			expectedEntrypoint: plugin.TValue[*mqlDockerFileRun]{
 				Data: &mqlDockerFileRun{
-					Script: plugin.TValue[string]{Data: "/usr/sbin/apache2ctl\n-D\nFOREGROUND"},
+					Script: plugin.TValue[string]{Data: `["/usr/sbin/apache2ctl", "-D", "FOREGROUND"]`},
 				},
 			},
 		},
@@ -116,12 +118,12 @@ ADD /foo-add /bar-add
 			},
 			expectedEntrypoint: plugin.TValue[*mqlDockerFileRun]{
 				Data: &mqlDockerFileRun{
-					Script: plugin.TValue[string]{Data: "sh"},
+					Script: plugin.TValue[string]{Data: `["sh"]`},
 				},
 			},
 			expectedCmd: plugin.TValue[*mqlDockerFileRun]{
 				Data: &mqlDockerFileRun{
-					Script: plugin.TValue[string]{Data: "curl\nhttp://example.com"},
+					Script: plugin.TValue[string]{Data: `["curl", "http://example.com"]`},
 				},
 			},
 			expectedCopyStruct: []plugin.TValue[*mqlDockerFileCopy]{
@@ -1424,4 +1426,53 @@ func TestParseDockerfile_StageInheritance(t *testing.T) {
 			require.Equal(t, kase.root, dockerfileStage(t, df, idx).RunsAsRoot.Data)
 		})
 	}
+}
+
+// Exec form keeps the JSON array as written; shell form keeps the command
+// line.
+func TestParseDockerfile_ExecFormScript(t *testing.T) {
+	df := parseTestDockerfile(t, newDockerfileTestRuntime(), "/opt/df/Dockerfile", `FROM alpine:3.20
+RUN --network=none --mount=type=cache,target=/root/.cache ["echo", \
+    "hi"]
+RUN apk add --no-cache curl
+ENTRYPOINT [ "nginx","-g",   "daemon off;" ]
+CMD ["nginx", "-g", "daemon off;"]
+`)
+	stage := dockerfileStage(t, df, 0)
+	runs := stage.Run.Data
+	require.Len(t, runs, 2)
+
+	// Synthetic: flags before an exec-form RUN, and a line continuation inside
+	// the array; no target showed this. The parser drops the backslash and
+	// the newline but keeps the next line's indentation, which is where the
+	// run of spaces after the comma comes from.
+	execRun := runs[0].(*mqlDockerFileRun)
+	assert.Equal(t, `["echo",     "hi"]`, execRun.Script.Data)
+	assert.Equal(t, []string{"echo"}, runCommandBinaries(t, execRun))
+
+	// Synthetic: shell form is unchanged; no target showed this.
+	assert.Equal(t, "apk add --no-cache curl", runs[1].(*mqlDockerFileRun).Script.Data)
+
+	// Synthetic: irregular spacing is kept as written; no target showed this.
+	assert.Equal(t, `[ "nginx","-g",   "daemon off;" ]`, stage.Entrypoint.Data.Script.Data)
+
+	// Measured: the CMD from the issue's fixture, macOS with Docker 29.9.2,
+	// 2026-11-03. A live mql scan of the file returned this script, and
+	// `docker inspect` of the built image reported Config.Cmd
+	// ["nginx","-g","daemon off;"], the argv in commands.
+	assert.Equal(t, `["nginx", "-g", "daemon off;"]`, stage.Cmd.Data.Script.Data)
+	assert.True(t, stage.Cmd.Data.IsExecForm.Data)
+}
+
+// Synthetic: the fallback rendering when an instruction's text cannot be
+// recovered; no target showed this.
+func TestDockerfileExecFormFallback(t *testing.T) {
+	assert.Equal(t, `["sh", "-c", "a && b > /dev/null"]`, jsonArray([]string{"sh", "-c", "a && b > /dev/null"}))
+	assert.Equal(t, `["echo", "say \"hi\""]`, jsonArray([]string{"echo", `say "hi"`}))
+	assert.Equal(t, `[]`, jsonArray(nil))
+
+	_, ok := execFormText(&parser.Node{Original: `RUN --network=none ["echo"]`, Flags: []string{"--network=host"}})
+	assert.False(t, ok, "a flag that does not match the text falls back")
+	_, ok = execFormText(&parser.Node{Original: `CMD echo hi`})
+	assert.False(t, ok, "text that is not an array falls back")
 }

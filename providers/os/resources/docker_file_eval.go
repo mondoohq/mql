@@ -363,13 +363,17 @@ var heredocShells = map[string]struct{}{
 }
 
 // runScript returns the script a RUN executes and the argv of each command
-// in it. Heredocs follow the BuildKit frontend: a RUN that is only a heredoc
-// runs the heredoc body; otherwise the instruction line and the heredoc
-// bodies form one shell script, where a heredoc is the input of a command and
+// in it. Exec form is the JSON array as written (see execFormScript).
+// Heredocs follow the BuildKit frontend: a RUN that is only a heredoc runs
+// the heredoc body; otherwise the instruction line and the heredoc bodies
+// form one shell script, where a heredoc is the input of a command and
 // counts as commands only when that command is a shell.
-func runScript(cmd *instructions.RunCommand) (script string, argvs [][]string) {
-	if len(cmd.Files) == 0 || len(cmd.CmdLine) != 1 || !cmd.PrependShell {
-		return strings.Join(cmd.CmdLine, "\n"), cmdLineArgvs(cmd.CmdLine, !cmd.PrependShell)
+func (p *mqlDockerFile) runScript(cmd *instructions.RunCommand) (script string, argvs [][]string) {
+	if !cmd.PrependShell {
+		return p.execFormScript(cmd.Location(), cmd.CmdLine), cmdLineArgvs(cmd.CmdLine, true)
+	}
+	if len(cmd.Files) == 0 || len(cmd.CmdLine) != 1 {
+		return strings.Join(cmd.CmdLine, "\n"), cmdLineArgvs(cmd.CmdLine, false)
 	}
 
 	line := cmd.CmdLine[0]
