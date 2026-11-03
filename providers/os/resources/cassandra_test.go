@@ -297,17 +297,24 @@ func TestCassandraLauncherVars(t *testing.T) {
 func TestCassandraRackdcPreferLocal(t *testing.T) {
 	c := &mqlCassandraRackdc{}
 	for value, want := range map[string]bool{
+		// Measured: Ubuntu 24.04, cassandra 4.1.12 deb, 2026-11-03. Each value
+		// written to cassandra-rackdc.properties and read by the snitch's own
+		// steps in jshell (Properties.load, Boolean.parseBoolean) and by a
+		// live mql scan; both agreed.
 		"true":  true,
 		"True":  true,
 		"TRUE":  true,
 		"false": false,
+		"true ": false, // Cassandra does not trim prefer_local
+		// Measured: Properties.load and parseBoolean in jshell, OpenJDK 11,
+		// 2026-11-03; no live mql scan of these values.
+		"true\t": false,
+		"yes":    false,
+		// Synthetic: other values parseBoolean rejects, and empty; no target
+		// showed these.
 		"False": false,
-		"yes":   false,
 		"1":     false,
 		"":      false,
-		// Cassandra does not trim prefer_local before parseBoolean.
-		"true ":  false,
-		"true\t": false,
 	} {
 		got, err := c.preferLocal(map[string]any{"prefer_local": value})
 		require.NoError(t, err)
@@ -319,6 +326,10 @@ func TestCassandraRackdcPreferLocal(t *testing.T) {
 }
 
 // The snitch trims dc and rack.
+//
+// Measured: `dc=dc1  ` in cassandra-rackdc.properties on the cassandra
+// 4.1.12 deb read as dc1 both by the snitch's steps in jshell and by a live
+// mql scan, 2026-11-03. Synthetic: the tab after rack1; no target showed it.
 func TestCassandraRackdcTrimsDcAndRack(t *testing.T) {
 	c := &mqlCassandraRackdc{}
 	params := map[string]any{"dc": "dc1  ", "rack": "rack1\t"}

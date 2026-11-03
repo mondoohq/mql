@@ -180,6 +180,11 @@ dc_suffix=
 }
 
 // Whitespace follows java.util.Properties.load, which Cassandra uses.
+//
+// Measured: Properties.load in jshell, OpenJDK 11, 2026-11-03, kept the
+// trailing whitespace of `dc=dc1  ` and `prefer_local=true\t` and accepted
+// whitespace as the separator in `prefer_local true`. Synthetic: the tab
+// separator after rack, dc_suffix and the bare key; no target showed them.
 func TestParsePropertiesWhitespace(t *testing.T) {
 	props := cassandraconf.ParseProperties("  dc =  dc1  \nrack\track1\nprefer_local true\t\ndc_suffix:  -east \nbare\n")
 	assert.Equal(t, map[string]string{
