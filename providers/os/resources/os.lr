@@ -7018,6 +7018,8 @@ cassandra {
 // reads as the server default rather than as empty. That matters most where
 // the default is permissive: `authenticator` and `authorizer` both default to
 // their AllowAll variants, which authenticate nobody and authorize everybody.
+// With no file at all every field is null, so a host without Cassandra does
+// not read as a node running on those defaults.
 //
 // Option names follow Cassandra 4.1 and later, which renamed most of
 // cassandra.yaml. Settings that name an implementation class are read in both

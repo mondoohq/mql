@@ -125,6 +125,71 @@ func TestCassandraAbsentIsNotARefusal(t *testing.T) {
 	assert.Nil(t, file.Data)
 }
 
+// Without Cassandra the setting fields are null, like file, rather than the
+// server's defaults read as if from a file.
+func TestCassandraAbsentReportsNullFields(t *testing.T) {
+	for _, structured := range []bool{false, true} {
+		withStructuredErrors(t, structured)
+		runtime := newDeniedDirRuntime(t, &mock.TomlData{Files: map[string]*mock.MockFileData{}})
+
+		raw, err := CreateResource(runtime, "cassandra.conf", nil)
+		require.NoError(t, err)
+		conf := raw.(*mqlCassandraConf)
+		for name, v := range map[string]*plugin.TValue[string]{"authenticator": conf.GetAuthenticator(), "authorizer": conf.GetAuthorizer()} {
+			require.NoError(t, v.Error, name)
+			assert.True(t, v.IsNull(), "%s must be null, not a default: %q", name, v.Data)
+		}
+		require.NoError(t, conf.GetClientEncryptionEnabled().Error)
+		assert.True(t, conf.GetClientEncryptionEnabled().IsNull(), "clientEncryptionEnabled must be null, not false")
+		assert.True(t, conf.GetParams().IsNull(), "params must be null, not {}")
+
+		rawEnv, err := CreateResource(runtime, "cassandra.env", nil)
+		require.NoError(t, err)
+		require.NoError(t, rawEnv.(*mqlCassandraEnv).GetLocalJmx().Error)
+		assert.True(t, rawEnv.(*mqlCassandraEnv).GetLocalJmx().IsNull(), "localJmx must be null, not true")
+
+		rawRackdc, err := CreateResource(runtime, "cassandra.rackdc", nil)
+		require.NoError(t, err)
+		assert.True(t, rawRackdc.(*mqlCassandraRackdc).GetPreferLocal().IsNull())
+	}
+}
+
+// An explicit path that does not exist is a missing file, not a server on
+// its defaults.
+func TestCassandraMissingExplicitPath(t *testing.T) {
+	newConf := func(t *testing.T) *mqlCassandraConf {
+		runtime := newDeniedDirRuntime(t, &mock.TomlData{Files: map[string]*mock.MockFileData{}})
+		raw, err := NewResource(runtime, "cassandra.conf", map[string]*llx.RawData{"path": llx.StringData("/etc/does-not-exist.yaml")})
+		require.NoError(t, err)
+		return raw.(*mqlCassandraConf)
+	}
+
+	withStructuredErrors(t, false)
+	conf := newConf(t)
+	require.NoError(t, conf.GetAuthenticator().Error)
+	assert.True(t, conf.GetAuthenticator().IsNull())
+	assert.True(t, conf.GetParams().IsNull())
+
+	withStructuredErrors(t, true)
+	conf = newConf(t)
+	assert.True(t, errors.Is(conf.GetParams().Error, llx.ErrNotFound), "params: %v", conf.GetParams().Error)
+	assert.True(t, errors.Is(conf.GetAuthenticator().Error, llx.ErrNotFound), "authenticator: %v", conf.GetAuthenticator().Error)
+}
+
+// A file that exists but is empty is a server on its defaults.
+func TestCassandraEmptyFileReportsDefaults(t *testing.T) {
+	withStructuredErrors(t, true)
+	runtime := newDeniedDirRuntime(t, &mock.TomlData{Files: map[string]*mock.MockFileData{
+		"/etc/cassandra/cassandra.yaml": fileEntry("/etc/cassandra/cassandra.yaml", ""),
+	}})
+	raw, err := CreateResource(runtime, "cassandra.conf", nil)
+	require.NoError(t, err)
+	authenticator := raw.(*mqlCassandraConf).GetAuthenticator()
+	require.NoError(t, authenticator.Error)
+	assert.False(t, authenticator.IsNull())
+	assert.NotEmpty(t, authenticator.Data)
+}
+
 // RHEL 7 with Cassandra 4.1.10 unpacked under its versioned name and no
 // /opt/cassandra symlink.
 func TestCassandraFindsVersionedTarball(t *testing.T) {

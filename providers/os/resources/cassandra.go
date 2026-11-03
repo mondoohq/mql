@@ -5,6 +5,7 @@ package resources
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"path"
@@ -188,27 +189,47 @@ func probeCassandraFile(runtime *plugin.Runtime, resource any, state *plugin.TVa
 	return nil, nil
 }
 
-// readCassandraFile reports the content of a located configuration file, and
-// the empty string when there is none. Every parser treats empty content as a
-// server running on its defaults, so the callers do not need to distinguish
-// the two. A file whose existence the scan was refused is not one that is
-// missing (see cassandraRefusal).
+// readCassandraFile reports the content of a located configuration file.
+//
+// Empty content from a file that exists is a server running on its
+// defaults, and every parser reads it that way. No file is not: with none
+// located (Cassandra is not installed), every field of the resource is
+// marked null, so a host without Cassandra does not read as a node running
+// AllowAllAuthenticator. A file that was located but does not exist, which
+// only an explicit path produces, is a missing file (see cassandraMissing),
+// and one whose existence the scan was refused is a refusal (see
+// cassandraRefusal).
 func readCassandraFile(resource any, file *mqlFile) (string, error) {
 	if file == nil {
+		markUnsetFieldsNull(resource)
 		return "", nil
 	}
 	exists := file.GetExists()
 	if exists.Error != nil && errors.Is(exists.Error, fs.ErrPermission) {
 		return "", cassandraRefusal(resource, exists.Error)
 	}
-	if exists.Error != nil || !exists.Data {
-		return "", nil
+	if exists.Error != nil {
+		return "", exists.Error
+	}
+	if !exists.Data {
+		return "", cassandraMissing(resource, file.Path.Data)
 	}
 	content := file.GetContent()
 	if content.Error != nil {
 		return "", content.Error
 	}
 	return content.Data, nil
+}
+
+// cassandraMissing reports an explicitly named configuration file that does
+// not exist. With structured errors on it is a NotFound error. Without them
+// every field of the resource is null, as for a refusal.
+func cassandraMissing(resource any, p string) error {
+	if plugin.StructuredErrors() {
+		return llx.NotFound(fmt.Errorf("%s does not exist", p))
+	}
+	markUnsetFieldsNull(resource)
+	return nil
 }
 
 // cassandraRefusal reports a configuration file the scan was refused. With
