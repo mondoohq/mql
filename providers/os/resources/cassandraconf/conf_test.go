@@ -179,6 +179,18 @@ dc_suffix=
 	}, props)
 }
 
+// Whitespace follows java.util.Properties.load, which Cassandra uses.
+func TestParsePropertiesWhitespace(t *testing.T) {
+	props := cassandraconf.ParseProperties("  dc =  dc1  \nrack\track1\nprefer_local true\t\ndc_suffix:  -east \nbare\n")
+	assert.Equal(t, map[string]string{
+		"dc":           "dc1  ",
+		"rack":         "rack1",
+		"prefer_local": "true\t",
+		"dc_suffix":    "-east ",
+		"bare":         "",
+	}, props)
+}
+
 func TestParseVersion(t *testing.T) {
 	for _, tc := range []struct {
 		output   string

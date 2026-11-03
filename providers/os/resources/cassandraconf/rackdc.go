@@ -11,30 +11,42 @@ import (
 // ParseProperties parses a Java properties file, which is the format of
 // cassandra-rackdc.properties and cassandra-topology.properties.
 //
-// Both `=` and `:` separate a key from its value, `#` and `!` open a comment,
-// and surrounding whitespace is not part of either side. A repeated key takes
-// its last value, as the Java loader does.
+// It follows java.util.Properties.load on whitespace, because Cassandra reads
+// some values without trimming them: the key ends at the first `=`, `:` or
+// whitespace; whitespace around that separator is skipped; whitespace before
+// the key is skipped; and trailing whitespace stays part of the value.
+// `prefer_local=true ` is therefore "true " here as it is to Cassandra, whose
+// Boolean.parseBoolean reads it as false. `#` and `!` open a comment. A
+// repeated key takes its last value, as the Java loader does. Escapes and
+// continuation lines are not interpreted.
 func ParseProperties(content string) map[string]string {
 	out := map[string]string{}
 	for line := range strings.SplitSeq(content, "\n") {
-		line = strings.TrimSpace(strings.TrimSuffix(line, "\r"))
+		line = strings.TrimLeft(strings.TrimSuffix(line, "\r"), propertiesSpace)
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "!") {
 			continue
 		}
-		i := strings.IndexAny(line, "=:")
+		i := strings.IndexAny(line, "=:"+propertiesSpace)
 		if i < 0 {
 			// A bare key is legal and means the empty string.
 			out[line] = ""
 			continue
 		}
-		key := strings.TrimSpace(line[:i])
+		key, rest := line[:i], strings.TrimLeft(line[i:], propertiesSpace)
+		if rest != "" && (rest[0] == '=' || rest[0] == ':') {
+			rest = strings.TrimLeft(rest[1:], propertiesSpace)
+		}
 		if key == "" {
 			continue
 		}
-		out[key] = strings.TrimSpace(line[i+1:])
+		out[key] = rest
 	}
 	return out
 }
+
+// propertiesSpace is the whitespace java.util.Properties skips around keys
+// and separators.
+const propertiesSpace = " \t\f"
 
 // reVersion matches the version `cassandra -v` prints, which is the bare
 // version on a line of its own, optionally carrying a qualifier such as

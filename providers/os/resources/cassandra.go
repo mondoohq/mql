@@ -868,15 +868,19 @@ func (c *mqlCassandraRackdc) params(file *mqlFile) (map[string]any, error) {
 }
 
 func (c *mqlCassandraRackdc) dc(params map[string]any) (string, error) {
-	return propString(params, "dc"), nil
+	return strings.TrimSpace(propString(params, "dc")), nil
 }
 
 func (c *mqlCassandraRackdc) rack(params map[string]any) (string, error) {
-	return propString(params, "rack"), nil
+	return strings.TrimSpace(propString(params, "rack")), nil
 }
 
+// dc and rack are trimmed because GossipingPropertyFileSnitch trims them.
+// prefer_local is not: the snitch passes the raw value to Java's
+// Boolean.parseBoolean, so case-insensitive "true" is on and anything else,
+// "true " with trailing whitespace included, is off.
 func (c *mqlCassandraRackdc) preferLocal(params map[string]any) (bool, error) {
-	return propString(params, "prefer_local") == "true", nil
+	return strings.EqualFold(propString(params, "prefer_local"), "true"), nil
 }
 
 func (c *mqlCassandraRackdc) dcSuffix(params map[string]any) (string, error) {
