@@ -598,6 +598,14 @@ func (c *mqlCassandraConf) userDefinedFunctionsEnabled(params any) (bool, error)
 	return yamlconf.Bool(cassandraParams(params), false, "user_defined_functions_enabled"), nil
 }
 
+func (c *mqlCassandraConf) scriptedUserDefinedFunctionsEnabled(params any) (bool, error) {
+	p := cassandraParams(params)
+	if v, ok := yamlconf.Lookup(p, "scripted_user_defined_functions_enabled"); ok && v != nil {
+		return yamlconf.Bool(p, false, "scripted_user_defined_functions_enabled"), nil
+	}
+	return yamlconf.Bool(p, false, "enable_scripted_user_defined_functions"), nil
+}
+
 func (c *mqlCassandraConf) materializedViewsEnabled(params any) (bool, error) {
 	return yamlconf.Bool(cassandraParams(params), false, "materialized_views_enabled"), nil
 }

@@ -7193,6 +7193,12 @@ cassandra.conf {
 
   // user_defined_functions_enabled option, allowing user code to run in the server
   userDefinedFunctionsEnabled(params) bool
+  // scripted_user_defined_functions_enabled option, allowing JavaScript UDFs
+  //
+  // Cassandra 4.0 names it enable_scripted_user_defined_functions, which is
+  // read when the 4.1 name is absent. Cassandra 5.0 removed scripted UDFs
+  // and refuses to start when this option is true.
+  scriptedUserDefinedFunctionsEnabled(params) bool
   // materialized_views_enabled option
   materializedViewsEnabled(params) bool
   // sasi_indexes_enabled option

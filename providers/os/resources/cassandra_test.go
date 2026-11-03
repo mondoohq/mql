@@ -137,3 +137,31 @@ func TestCassandraFindsVersionedTarball(t *testing.T) {
 	assert.Equal(t, "/opt/apache-cassandra-4.0.1/conf/cassandra.yaml", paths[len(paths)-1])
 	assert.Contains(t, cassandraBinaries(cassandraConfDirsOn(afs)), "/opt/apache-cassandra-4.1.10/bin/cassandra")
 }
+
+func TestCassandraScriptedUserDefinedFunctionsEnabled(t *testing.T) {
+	c := &mqlCassandraConf{}
+	for _, tc := range []struct {
+		name   string
+		params map[string]any
+		want   bool
+	}{
+		{"unset", map[string]any{}, false},
+		{"4.1 name", map[string]any{"scripted_user_defined_functions_enabled": true}, true},
+		{"4.0 name", map[string]any{"enable_scripted_user_defined_functions": true}, true},
+		{"4.0 name as string", map[string]any{"enable_scripted_user_defined_functions": "true"}, true},
+		{"4.1 name wins", map[string]any{
+			"scripted_user_defined_functions_enabled": false,
+			"enable_scripted_user_defined_functions":  true,
+		}, false},
+		{"null 4.1 name falls back", map[string]any{
+			"scripted_user_defined_functions_enabled": nil,
+			"enable_scripted_user_defined_functions":  true,
+		}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := c.scriptedUserDefinedFunctionsEnabled(tc.params)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}

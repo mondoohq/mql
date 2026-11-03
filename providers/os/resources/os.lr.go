@@ -9676,6 +9676,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"cassandra.conf.userDefinedFunctionsEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCassandraConf).GetUserDefinedFunctionsEnabled()).ToDataRes(types.Bool)
 	},
+	"cassandra.conf.scriptedUserDefinedFunctionsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCassandraConf).GetScriptedUserDefinedFunctionsEnabled()).ToDataRes(types.Bool)
+	},
 	"cassandra.conf.materializedViewsEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCassandraConf).GetMaterializedViewsEnabled()).ToDataRes(types.Bool)
 	},
@@ -32717,6 +32720,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"cassandra.conf.userDefinedFunctionsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCassandraConf).UserDefinedFunctionsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cassandra.conf.scriptedUserDefinedFunctionsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCassandraConf).ScriptedUserDefinedFunctionsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"cassandra.conf.materializedViewsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -77373,6 +77380,7 @@ type mqlCassandraConf struct {
 	FullQueryLogDir                             plugin.TValue[string]
 	FullQueryLogAllowNodetoolArchiveCommand     plugin.TValue[bool]
 	UserDefinedFunctionsEnabled                 plugin.TValue[bool]
+	ScriptedUserDefinedFunctionsEnabled         plugin.TValue[bool]
 	MaterializedViewsEnabled                    plugin.TValue[bool]
 	SasiIndexesEnabled                          plugin.TValue[bool]
 	DropCompactStorageEnabled                   plugin.TValue[bool]
@@ -78054,6 +78062,17 @@ func (c *mqlCassandraConf) GetUserDefinedFunctionsEnabled() *plugin.TValue[bool]
 		}
 
 		return c.userDefinedFunctionsEnabled(vargParams.Data)
+	})
+}
+
+func (c *mqlCassandraConf) GetScriptedUserDefinedFunctionsEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ScriptedUserDefinedFunctionsEnabled, func() (bool, error) {
+		vargParams := c.GetParams()
+		if vargParams.Error != nil {
+			return false, vargParams.Error
+		}
+
+		return c.scriptedUserDefinedFunctionsEnabled(vargParams.Data)
 	})
 }
 
