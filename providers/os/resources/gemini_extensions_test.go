@@ -130,8 +130,9 @@ func TestGeminiContextFileName(t *testing.T) {
 }
 
 func TestGeminiMcpServerID(t *testing.T) {
-	assert.Equal(t, "gemini.mcpServer/fs", geminiMcpServerID("/root/.gemini/settings.json", "fs"))
-	assert.Equal(t, "gemini.mcpServer/fs", geminiMcpServerID("/root/.gemini/antigravity/mcp_config.json", "fs"))
-	assert.NotEqual(t, "gemini.mcpServer/fs",
-		geminiMcpServerID("/root/.gemini/extensions/a/gemini-extension.json", "fs"))
+	settings := geminiMcpServerID("/root/.gemini", "/root/.gemini/settings.json", "fs")
+	assert.Equal(t, settings, geminiMcpServerID("/root/.gemini", "/root/.gemini/antigravity/mcp_config.json", "fs"))
+	assert.NotEqual(t, settings, geminiMcpServerID("/home/alice/.gemini", "/home/alice/.gemini/settings.json", "fs"))
+	assert.NotEqual(t, settings,
+		geminiMcpServerID("/root/.gemini", "/root/.gemini/extensions/a/gemini-extension.json", "fs"))
 }

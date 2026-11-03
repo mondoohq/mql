@@ -46,7 +46,7 @@ func (r *mqlCursor) mcpServers() ([]any, error) {
 	var result []any
 	for name, server := range mcpConfig.McpServers {
 		fields := map[string]*llx.RawData{
-			"__id":    llx.StringData("cursor.mcpServer/" + name),
+			"__id":    llx.StringData(aiChildID("cursor.mcpServer", configDir, name)),
 			"name":    llx.StringData(name),
 			"type":    llx.StringData(deriveMcpTransport(server.Type, server.Command, server.URL)),
 			"command": llx.StringData(server.Command),
@@ -100,7 +100,7 @@ func (r *mqlCursor) rules() ([]any, error) {
 
 		ruleName := strings.TrimSuffix(name, filepath.Ext(name))
 		res, err := NewResource(r.MqlRuntime, "cursor.rule", map[string]*llx.RawData{
-			"__id":    llx.StringData("cursor.rule/" + name),
+			"__id":    llx.StringData(aiChildID("cursor.rule", r.ConfigPath.Data, name)),
 			"name":    llx.StringData(ruleName),
 			"content": llx.StringData(string(data)),
 			"source":  llx.StringData(rulePath),
