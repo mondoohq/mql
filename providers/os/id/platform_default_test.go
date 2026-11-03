@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/local"
@@ -23,6 +24,14 @@ func TestDefaultIdDetectors(t *testing.T) {
 	assert.Equal(t, withBios, DefaultIdDetectors(shared.Type_Local, &plugin.ConnectReq{}, true), "bios-uuid on VMs")
 	assert.Equal(t, cloudHost, DefaultIdDetectors(shared.Type_SSH, nil, false))
 	assert.Equal(t, withBios, DefaultIdDetectors(shared.Type_SSH, nil, true), "bios-uuid on VMs")
+
+	serialReq := &plugin.ConnectReq{Features: []byte{byte(mql.SerialNumberAsID)}}
+	withSerial := []string{ids.IdDetector_CloudDetect, ids.IdDetector_Hostname, ids.IdDetector_SerialNumber}
+	withSerialBios := append(append([]string{}, withSerial...), ids.IdDetector_BiosUUID)
+	for _, ct := range []shared.ConnectionType{shared.Type_Local, shared.Type_SSH} {
+		assert.Equal(t, withSerial, DefaultIdDetectors(ct, serialReq, false), "serialnumber with SerialNumberAsID on %s", ct)
+		assert.Equal(t, withSerialBios, DefaultIdDetectors(ct, serialReq, true), "serialnumber and bios-uuid on %s VMs", ct)
+	}
 	assert.Equal(t, []string{ids.IdDetector_Hostname}, DefaultIdDetectors(shared.Type_Tar, nil, true))
 	assert.Nil(t, DefaultIdDetectors(shared.Type_Winrm, nil, false))
 }
