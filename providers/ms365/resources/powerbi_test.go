@@ -453,3 +453,111 @@ func TestPowerBiWorkspaceDecodesUsers(t *testing.T) {
 	require.Len(t, out[0].Users, 1)
 	assert.Equal(t, "Admin", out[0].Users[0].GroupUserAccessRight)
 }
+
+// fabricTenantSettingsResponse follows the List Tenant Settings response
+// schema, with the fields the CIS Microsoft 365 benchmark reads: scoped and
+// excluded security groups, delegation flags and the createP2w property of
+// PublishToWeb.
+const fabricTenantSettingsResponse = `{
+  "value": [
+    {
+      "settingName": "PublishToWeb",
+      "title": "Publish to web",
+      "enabled": true,
+      "canSpecifySecurityGroups": true,
+      "tenantSettingGroup": "ExportAndSharing",
+      "delegateToCapacity": false,
+      "delegateToDomain": true,
+      "delegateToWorkspace": false,
+      "enabledSecurityGroups": [{"graphId": "f51b705f-a409-4d40-9197-c5d5f349e2f0", "name": "Publishers"}],
+      "excludedSecurityGroups": [{"graphId": "1fecf19f-6e33-41b3-89fa-de8c821f3b79", "name": "Interns"}],
+      "properties": [
+        {"name": "createP2w", "value": "false", "type": "Boolean"},
+        {"name": "embedCodeUrl", "value": "https://contoso.com", "type": "Url"}
+      ]
+    },
+    {
+      "settingName": "RScriptVisual",
+      "title": "Interact with and share R and Python visuals",
+      "enabled": false,
+      "canSpecifySecurityGroups": false,
+      "tenantSettingGroup": "RAndPythonVisuals"
+    }
+  ]
+}`
+
+func TestPowerBiTenantSettingsDecode(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte(fabricTenantSettingsResponse))
+	}))
+	defer srv.Close()
+
+	raw, err := powerBiGet(context.Background(), "tok", srv.URL, "value", "tenantSettings")
+	require.NoError(t, err)
+	assert.Equal(t, "Bearer tok", gotAuth)
+
+	out, err := unmarshalPowerBiSection[powerBiTenantSetting](powerBiSection{Data: raw})
+	require.NoError(t, err)
+	require.Len(t, out, 2)
+
+	p2w := out[0]
+	assert.Equal(t, "PublishToWeb", p2w.SettingName)
+	assert.Equal(t, "Publish to web", p2w.Title)
+	assert.True(t, p2w.Enabled)
+	assert.True(t, p2w.CanSpecifySecurityGroups)
+	assert.Equal(t, "ExportAndSharing", p2w.TenantSettingGroup)
+	assert.False(t, p2w.DelegateToCapacity)
+	assert.True(t, p2w.DelegateToDomain)
+	assert.False(t, p2w.DelegateToWorkspace)
+	require.Len(t, p2w.EnabledSecurityGroups, 1)
+	assert.Equal(t, "Publishers", p2w.EnabledSecurityGroups[0].(map[string]any)["name"])
+	require.Len(t, p2w.ExcludedSecurityGroups, 1)
+	assert.Equal(t, "1fecf19f-6e33-41b3-89fa-de8c821f3b79", p2w.ExcludedSecurityGroups[0].(map[string]any)["graphId"])
+	assert.Equal(t, map[string]any{
+		"createP2w":    "false",
+		"embedCodeUrl": "https://contoso.com",
+	}, tenantSettingPropertyMap(p2w.Properties))
+
+	// a setting without groups, delegation or properties decodes to zero
+	// values, not an error
+	r := out[1]
+	assert.Equal(t, "RScriptVisual", r.SettingName)
+	assert.False(t, r.Enabled)
+	assert.Nil(t, r.EnabledSecurityGroups)
+	assert.Nil(t, r.ExcludedSecurityGroups)
+	assert.False(t, r.DelegateToCapacity || r.DelegateToDomain || r.DelegateToWorkspace)
+	assert.Empty(t, tenantSettingPropertyMap(r.Properties))
+}
+
+func TestTenantSettingPropertyMap(t *testing.T) {
+	t.Run("nil yields an empty, non-nil map", func(t *testing.T) {
+		m := tenantSettingPropertyMap(nil)
+		require.NotNil(t, m)
+		assert.Empty(t, m)
+	})
+
+	t.Run("values stay strings whatever the type", func(t *testing.T) {
+		m := tenantSettingPropertyMap([]powerBiTenantSettingProperty{
+			{Name: "createP2w", Type: "Boolean", Value: "true"},
+			{Name: "maxSize", Type: "Integer", Value: "10"},
+		})
+		assert.Equal(t, map[string]any{"createP2w": "true", "maxSize": "10"}, m)
+	})
+
+	t.Run("unnamed properties are dropped", func(t *testing.T) {
+		m := tenantSettingPropertyMap([]powerBiTenantSettingProperty{
+			{Name: "", Type: "FreeText", Value: "orphan"},
+			{Name: "a", Type: "FreeText", Value: "1"},
+		})
+		assert.Equal(t, map[string]any{"a": "1"}, m)
+	})
+
+	t.Run("empty value is kept", func(t *testing.T) {
+		m := tenantSettingPropertyMap([]powerBiTenantSettingProperty{{Name: "url", Type: "Url", Value: ""}})
+		v, ok := m["url"]
+		assert.True(t, ok)
+		assert.Equal(t, "", v)
+	})
+}

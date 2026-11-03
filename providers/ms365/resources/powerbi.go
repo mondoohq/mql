@@ -28,14 +28,18 @@ import (
 const (
 	powerbiScope = "https://analysis.windows.net/powerbi/api/.default"
 
+	// fabricScope is the token audience the Fabric REST API documents. The
+	// tenant settings endpoint is called with a token for this audience rather
+	// than the Power BI one.
+	fabricScope = "https://api.fabric.microsoft.com/.default"
+
 	// powerBiApiBase is the Power BI REST API root. The admin endpoints below
 	// are the same ones the MicrosoftPowerBIMgmt module reaches through
 	// Invoke-PowerBIRestMethod, so the payloads are unchanged.
 	powerBiApiBase = "https://api.powerbi.com/v1.0/myorg/"
 
 	// fabricTenantSettingsUrl serves tenant settings. They live on the Fabric
-	// admin API rather than the Power BI REST API, but accept the same bearer
-	// token.
+	// admin API rather than the Power BI REST API.
 	fabricTenantSettingsUrl = "https://api.fabric.microsoft.com/v1/admin/tenantsettings"
 
 	// powerBiWorkspacePageSize is the maximum page size the admin groups
@@ -80,12 +84,40 @@ type powerBiReportRaw struct {
 }
 
 type powerBiTenantSetting struct {
-	SettingName              string `json:"settingName"`
-	Title                    string `json:"title"`
-	Enabled                  bool   `json:"enabled"`
-	CanSpecifySecurityGroups bool   `json:"canSpecifySecurityGroups"`
-	TenantSettingGroup       string `json:"tenantSettingGroup"`
-	EnabledSecurityGroups    []any  `json:"enabledSecurityGroups"`
+	SettingName              string                         `json:"settingName"`
+	Title                    string                         `json:"title"`
+	Enabled                  bool                           `json:"enabled"`
+	CanSpecifySecurityGroups bool                           `json:"canSpecifySecurityGroups"`
+	TenantSettingGroup       string                         `json:"tenantSettingGroup"`
+	EnabledSecurityGroups    []any                          `json:"enabledSecurityGroups"`
+	ExcludedSecurityGroups   []any                          `json:"excludedSecurityGroups"`
+	DelegateToCapacity       bool                           `json:"delegateToCapacity"`
+	DelegateToDomain         bool                           `json:"delegateToDomain"`
+	DelegateToWorkspace      bool                           `json:"delegateToWorkspace"`
+	Properties               []powerBiTenantSettingProperty `json:"properties"`
+}
+
+// powerBiTenantSettingProperty is one extra option of a tenant setting. The API
+// returns every value as a string, whatever its type (FreeText, Url, Boolean,
+// MailEnabledSecurityGroup, Integer, more may be added).
+type powerBiTenantSettingProperty struct {
+	Name  string `json:"name"`
+	Type  string `json:"type"`
+	Value string `json:"value"`
+}
+
+// tenantSettingPropertyMap keys the properties of a tenant setting by name. A
+// setting without properties yields an empty map, so a lookup is null rather
+// than an error. A property without a name cannot be addressed and is dropped.
+func tenantSettingPropertyMap(props []powerBiTenantSettingProperty) map[string]any {
+	res := make(map[string]any, len(props))
+	for _, p := range props {
+		if p.Name == "" {
+			continue
+		}
+		res[p.Name] = p.Value
+	}
+	return res
 }
 
 type powerBiWorkspace struct {
@@ -163,7 +195,7 @@ type mqlMicrosoftPowerbiInternal struct {
 	raw        *powerBiReportRaw
 }
 
-// gatherReport runs the PowerShell collection once and caches the raw sections.
+// gatherReport collects the admin API sections once and caches them.
 // The returned error covers connection and transport failures that affect the
 // whole report; per-section authorization errors are carried inside the raw
 // sections and surfaced by the individual getters.
@@ -213,7 +245,15 @@ func (r *mqlMicrosoftPowerbi) fetchReport() (*powerBiReportRaw, error) {
 	raw := &powerBiReportRaw{
 		// the documented envelope is "value"; "tenantSettings" is accepted as a
 		// fallback because that is the name the previous collection looked for
-		TenantSettings: collect(get(fabricTenantSettingsUrl, "value", "tenantSettings")),
+		TenantSettings: collect(func() (json.RawMessage, error) {
+			fabricToken, err := conn.Token().GetToken(ctx, policy.TokenRequestOptions{
+				Scopes: []string{fabricScope},
+			})
+			if err != nil {
+				return nil, err
+			}
+			return powerBiGet(ctx, fabricToken.Token, fabricTenantSettingsUrl, "value", "tenantSettings")
+		}),
 		Workspaces: collect(func() (json.RawMessage, error) {
 			return fetchPowerBiWorkspaces(ctx, token)
 		}),
@@ -414,6 +454,10 @@ func (r *mqlMicrosoftPowerbi) tenantSettings() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		excluded, err := convert.JsonToDictSlice(s.ExcludedSecurityGroups)
+		if err != nil {
+			return nil, err
+		}
 		o, err := CreateResource(r.MqlRuntime, "microsoft.powerbi.tenantSetting", map[string]*llx.RawData{
 			"__id":                     llx.StringData(s.SettingName),
 			"name":                     llx.StringData(s.SettingName),
@@ -422,6 +466,11 @@ func (r *mqlMicrosoftPowerbi) tenantSettings() ([]any, error) {
 			"canSpecifySecurityGroups": llx.BoolData(s.CanSpecifySecurityGroups),
 			"tenantSettingGroup":       llx.StringData(s.TenantSettingGroup),
 			"enabledSecurityGroups":    llx.ArrayData(groups, types.Dict),
+			"excludedSecurityGroups":   llx.ArrayData(excluded, types.Dict),
+			"delegateToCapacity":       llx.BoolData(s.DelegateToCapacity),
+			"delegateToDomain":         llx.BoolData(s.DelegateToDomain),
+			"delegateToWorkspace":      llx.BoolData(s.DelegateToWorkspace),
+			"properties":               llx.MapData(tenantSettingPropertyMap(s.Properties), types.String),
 		})
 		if err != nil {
 			return nil, err

@@ -6276,14 +6276,17 @@ private microsoft.devicemanagement.roleScopeTag @defaults("id displayName isBuil
 
 // Microsoft Power BI
 //
-// Use this namespace to examine tenant-wide Power BI (Microsoft Fabric)
-// governance posture. Exposes the tenant feature switches that control
-// sharing and export (`tenantSettings`), the `workspaces` provisioned in the
-// tenant and who has access to them, the `capacities` backing those
-// workspaces, and the reports and dashboards that have broad exposure —
-// either `publishedToWeb` or `sharedToWholeOrganization`. Data is collected
-// through the Power BI admin REST APIs, which require the service principal to
-// be granted read-only admin API access in the Power BI tenant settings.
+// Tenant-wide Power BI (Microsoft Fabric) governance posture. Exposes the
+// tenant feature switches that control sharing, export and developer access
+// (`tenantSettings`), the `workspaces` provisioned in the tenant and who has
+// access to them, the `capacities` backing those workspaces, and the reports
+// and dashboards with broad exposure, either `publishedToWeb` or
+// `sharedToWholeOrganization`. Data is collected through the Power BI and
+// Fabric admin REST APIs. A Fabric administrator must enable the "Service
+// principals can access read-only admin APIs" tenant setting for a security
+// group that contains the service principal, and the app registration must not
+// hold any admin-consent Power BI application permissions. A signed-in user
+// must be a Fabric administrator with the `Tenant.Read.All` scope.
 microsoft.powerbi {
   // Tenant-wide Power BI feature switches
   tenantSettings() []microsoft.powerbi.tenantSetting
@@ -6299,13 +6302,18 @@ microsoft.powerbi {
 
 // Power BI tenant feature switch
 //
-// Examine a single tenant-level Power BI governance setting — for example
-// whether publishing reports to the web is allowed, whether users can export
-// data, or whether service principals may call Power BI APIs. The `name`
-// field is the API setting name (for example `PublishToWeb`) and selects the
-// setting; `enabled` reports whether the feature is turned on; and when a
-// setting is scoped to specific security groups, `enabledSecurityGroups`
-// lists them.
+// A single tenant-level Power BI (Microsoft Fabric) setting, for example
+// whether publishing reports to the web is allowed, whether guest users can
+// access content, or whether service principals may call Fabric APIs. The
+// `name` field is the API setting name (for example `PublishToWeb`) and
+// selects the setting. `enabled` reports whether the feature is turned on;
+// when it is scoped to specific security groups, `enabledSecurityGroups` lists
+// them and `excludedSecurityGroups` lists the groups exempted. Extra options of
+// a setting are in `properties`, keyed by property name. For example, a setting
+// that is either off or limited to named groups:
+// `microsoft.powerbi.tenantSettings.where(name == "AllowGuestUserToAccessSharedContent").all(enabled == false || enabledSecurityGroups.length > 0)`,
+// and Publish to web limited to existing embed codes:
+// `microsoft.powerbi.tenantSettings.where(name == "PublishToWeb").all(enabled == false || properties["createP2w"] == "false" && enabledSecurityGroups.length > 0)`.
 private microsoft.powerbi.tenantSetting @defaults("name title enabled") {
   // API name of the setting, for example PublishToWeb
   name string
@@ -6313,12 +6321,28 @@ private microsoft.powerbi.tenantSetting @defaults("name title enabled") {
   title string
   // Whether the feature is enabled
   enabled bool
-  // Whether the setting can be scoped to specific security groups
+  // Whether the setting is scoped to specific security groups
+  //
+  // False when the setting applies to the entire organization.
   canSpecifySecurityGroups bool
   // Grouping the setting belongs to in the admin portal
   tenantSettingGroup string
   // Security groups the setting applies to when scoped, each with graphId and name
   enabledSecurityGroups []dict
+  // Security groups exempted from the setting, each with graphId and name
+  excludedSecurityGroups []dict
+  // Whether capacity admins can override the setting
+  delegateToCapacity bool
+  // Whether domain admins can override the setting
+  delegateToDomain bool
+  // Whether workspace admins can override the setting
+  delegateToWorkspace bool
+  // Additional options of the setting, keyed by property name
+  //
+  // Values are strings as the API returns them, for example `"false"` for a
+  // Boolean property. Publish to web stores "Only allow existing codes" as
+  // `createP2w`.
+  properties map[string]string
 }
 
 // Power BI workspace
