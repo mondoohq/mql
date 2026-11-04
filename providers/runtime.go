@@ -713,6 +713,9 @@ func (r *Runtime) cloneResource(ctx context.Context, src llx.Resource, id string
 		_, err = r.handlePluginError(err, provider, name, "")
 		return nil, err
 	}
+	// The store replaced whatever the provider held under this id, so fields
+	// cached for it describe a resource that is gone.
+	r.fields.dropResource(provider.Connection.Id, name, id)
 
 	return &llx.MockResource{Name: name, ID: id}, nil
 }

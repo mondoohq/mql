@@ -1735,6 +1735,32 @@ func TestRuntime_WatchAndUpdate_CachesFieldAnswers(t *testing.T) {
 		}
 	})
 
+	// A filter result (where/whereNot) is stored with CloneResource; storing a
+	// resource again under an id replaces the provider's copy, so the fields
+	// cached for the old one must not answer for the new one.
+	t.Run("a resource stored again under its id is read again", func(t *testing.T) {
+		r, mockPlugin := newRuntime(t)
+		stored := ""
+		mockPlugin.EXPECT().StoreData(gomock.Any()).Times(2).DoAndReturn(func(req *plugin.StoreReq) (*plugin.StoreRes, error) {
+			stored = req.Resources[0].Fields[fieldName].Data.RawData().Value.(string)
+			return &plugin.StoreRes{}, nil
+		})
+		mockPlugin.EXPECT().GetData(gomock.Any()).Times(2).DoAndReturn(func(req *plugin.DataReq) (*plugin.DataRes, error) {
+			return &plugin.DataRes{Data: llx.StringPrimitive(stored)}, nil
+		})
+
+		src := &llx.MockResource{Name: resName, ID: "src"}
+		for _, want := range []string{"first", "second"} {
+			clone, err := r.CloneResource(src, "filtered", nil, map[string]*llx.Primitive{fieldName: llx.StringPrimitive(want)})
+			require.NoError(t, err)
+			for range 2 {
+				raw, err := r.watchAndUpdate(resName, clone.MqlID(), fieldName, "")
+				require.NoError(t, err)
+				assert.Equal(t, want, raw.Value)
+			}
+		}
+	})
+
 	t.Run("a failed call is asked again", func(t *testing.T) {
 		r, mockPlugin := newRuntime(t)
 		gomock.InOrder(
