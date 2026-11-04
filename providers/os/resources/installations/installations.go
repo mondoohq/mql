@@ -31,13 +31,16 @@ const (
 )
 
 // Evidence a version was read from, as installation.versionSource reports it.
-// installMetadata is shared with binary.versionSource.
 const (
 	// SourcePatchInventory is the record of patches the vendor's patch tool
 	// applied to the installation.
 	SourcePatchInventory = "patchInventory"
-	// SourceInstallMetadata is metadata the installer wrote into the install root.
-	SourceInstallMetadata = "installMetadata"
+	// SourceReleaseMetadata is a file the vendor ships in the install root
+	// that names the full release.
+	SourceReleaseMetadata = "releaseMetadata"
+	// SourceBaseRelease is the release the installation was installed at,
+	// without the updates applied since. It is a floor, not the exact version.
+	SourceBaseRelease = "baseRelease"
 )
 
 // Installation is one install root of one product.
