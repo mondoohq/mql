@@ -51,7 +51,7 @@ func parseRpmManifest(pf *inventory.Platform, r io.Reader) ([]Package, error) {
 		installTime, _ := strconv.ParseInt(fields[2], 10, 64)
 
 		pkg := newRpmPackage(pf, name, version, arch, epoch, cleanupVendorName(fields[4]), "", "", "", installTime)
-		pkg.Origin = rpmSourceName(fields[9])
+		pkg.Origin = rpmOrigin(fields[9], version)
 		pkg.FilesAvailable = PkgFilesIncluded
 		pkg.Files = []FileRecord{{Path: rpmManifestPath}}
 		pkgs = append(pkgs, pkg)
