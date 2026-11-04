@@ -7316,12 +7316,18 @@ cassandra.rackdc @defaults("dc rack") {
   // Properties file
   file() file
   // All properties as written in the file
+  //
+  // Read the way java.util.Properties reads them, so a value keeps its
+  // trailing whitespace.
   params(file) map[string]string
   // dc property, the data center name this node reports
   dc(params) string
   // rack property, the rack name this node reports
   rack(params) string
   // prefer_local property, routing traffic over the private address within a data center
+  //
+  // True for "true" in any case, as Cassandra reads it. Cassandra does not
+  // trim this value, so "true" followed by whitespace is false.
   preferLocal(params) bool
   // dc_suffix property, appended to the data center name the snitch derives
   dcSuffix(params) string
