@@ -4,10 +4,14 @@
 package resources
 
 import (
+	"context"
+	"errors"
+	"net/netip"
 	"testing"
 	"time"
 
 	"github.com/shadowscatcher/shodan/models"
+	"github.com/shadowscatcher/shodan/search"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers/shodan/connection"
@@ -215,4 +219,107 @@ func TestHandleTargets(t *testing.T) {
 		handleTargets([]string{connection.DiscoveryAuto}))
 	assert.Equal(t, []string{connection.DiscoveryHosts},
 		handleTargets([]string{connection.DiscoveryHosts}))
+}
+
+// fakeShodan answers Count from countRes (or countErr) and Host for the IPs in
+// hosts. It records every call so tests can tell which path ran.
+type fakeShodan struct {
+	countRes  models.SearchResult
+	countErr  error
+	hosts     map[string]bool
+	lookups   []string
+	countArgs []search.Params
+}
+
+func (f *fakeShodan) Host(_ context.Context, p search.HostParams) (models.Host, error) {
+	f.lookups = append(f.lookups, p.IP)
+	if f.hosts[p.IP] {
+		return models.Host{}, nil
+	}
+	return models.Host{}, errors.New("404 not found")
+}
+
+func (f *fakeShodan) Count(_ context.Context, p search.Params) (models.SearchResult, error) {
+	f.countArgs = append(f.countArgs, p)
+	return f.countRes, f.countErr
+}
+
+func addrStrings(addrs []netip.Addr) []string {
+	out := make([]string, len(addrs))
+	for i, a := range addrs {
+		out[i] = a.String()
+	}
+	return out
+}
+
+func TestDiscoverAddrs(t *testing.T) {
+	t.Run("range listed with one Count call, no host lookups", func(t *testing.T) {
+		f := &fakeShodan{countRes: models.SearchResult{
+			Total: 5,
+			Facets: map[string][]models.Facet{"ip": {
+				{Count: 3, Value: "192.0.2.10"},
+				{Count: 2, Value: "192.0.2.11"},
+			}},
+		}}
+		got := discoverAddrs(context.Background(), f, []string{"192.0.2.0/24"})
+		assert.ElementsMatch(t, []string{"192.0.2.10", "192.0.2.11"}, addrStrings(got))
+		assert.Empty(t, f.lookups)
+		require.Len(t, f.countArgs, 1)
+		assert.Contains(t, f.countArgs[0].Query.String(), "net:192.0.2.0/24")
+		// a /24 asks for 256 IPs, not the plan-wide cap
+		assert.Equal(t, []string{"ip:256"}, f.countArgs[0].Facets)
+	})
+
+	t.Run("partial facet falls back to host lookups", func(t *testing.T) {
+		f := &fakeShodan{
+			countRes: models.SearchResult{
+				Total:  10, // the facet only accounts for 3
+				Facets: map[string][]models.Facet{"ip": {{Count: 3, Value: "192.0.2.1"}}},
+			},
+			hosts: map[string]bool{"192.0.2.2": true},
+		}
+		got := discoverAddrs(context.Background(), f, []string{"192.0.2.0/30"})
+		assert.Equal(t, []string{"192.0.2.2"}, addrStrings(got))
+		assert.Equal(t, []string{"192.0.2.1", "192.0.2.2"}, f.lookups)
+	})
+
+	t.Run("Count error falls back to host lookups", func(t *testing.T) {
+		f := &fakeShodan{countErr: errors.New("403 access denied"), hosts: map[string]bool{"192.0.2.1": true}}
+		got := discoverAddrs(context.Background(), f, []string{"192.0.2.0/30"})
+		assert.Equal(t, []string{"192.0.2.1"}, addrStrings(got))
+	})
+
+	t.Run("outside, network and broadcast addresses are dropped", func(t *testing.T) {
+		f := &fakeShodan{countRes: models.SearchResult{
+			Total: 4,
+			Facets: map[string][]models.Facet{"ip": {
+				{Count: 1, Value: "192.0.2.5"},
+				{Count: 1, Value: "198.51.100.5"},
+				{Count: 1, Value: "192.0.2.0"},
+				{Count: 1, Value: "192.0.2.255"},
+			}},
+		}}
+		got := discoverAddrs(context.Background(), f, []string{"192.0.2.0/24"})
+		assert.Equal(t, []string{"192.0.2.5"}, addrStrings(got))
+	})
+
+	t.Run("small IPv6 range", func(t *testing.T) {
+		f := &fakeShodan{countRes: models.SearchResult{
+			Total: 2,
+			Facets: map[string][]models.Facet{"ip": {
+				{Count: 1, Value: "2001:db8::5"},
+				{Count: 1, Value: "2001:db8::ff"}, // last address of the /120
+			}},
+		}}
+		got := discoverAddrs(context.Background(), f, []string{"2001:db8::/120"})
+		assert.Equal(t, []string{"2001:db8::5"}, addrStrings(got))
+	})
+
+	t.Run("single IPs and oversized ranges keep their old handling", func(t *testing.T) {
+		f := &fakeShodan{hosts: map[string]bool{"203.0.113.7": true}}
+		got := discoverAddrs(context.Background(), f, []string{"203.0.113.7", "203.0.113.8", "10.0.0.0/8"})
+		assert.Equal(t, []string{"203.0.113.7"}, addrStrings(got))
+		assert.Empty(t, f.countArgs, "oversized range must not be searched")
+		assert.Equal(t, []string{"203.0.113.7", "203.0.113.8"}, f.lookups)
+	})
 }
