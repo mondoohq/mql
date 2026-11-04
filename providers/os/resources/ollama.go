@@ -18,6 +18,7 @@ import (
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/aimodel"
 	"go.mondoo.com/mql/providers/os/resources/ollama"
+	"go.mondoo.com/mql/providers/os/resources/packages"
 	"go.mondoo.com/mql/providers/os/resources/systemd"
 	"go.mondoo.com/mql/types"
 )
@@ -402,9 +403,17 @@ func (c *mqlOllamaConfig) compute_package() (*mqlPackage, error) {
 	spec := toolPackageSpecs["ollama"]
 	if bin := c.serverBinary; bin != "" {
 		// The binary the unit runs, or the one found at a well-known path, is
-		// the one to ask: the scan's PATH may not reach it.
+		// the one to ask: the scan's PATH may not reach it. It is run only when
+		// no other account can replace it, since the scan may run as root.
 		spec.inferVersion = func(runtime *plugin.Runtime, _ string) (string, error) {
-			return probeOllamaVersion(runtime, versionCommand(bin))
+			conn, ok := runtime.Connection.(shared.Connection)
+			if !ok {
+				return "", nil
+			}
+			if _, trusted := packages.ResolveTrustedExecutable(conn, bin); !trusted {
+				return "", nil
+			}
+			return runVersionCommand(runtime, versionCommand(bin), parseOllamaVersion), nil
 		}
 	}
 	return resolveToolPackage(c.MqlRuntime, c.ollamaDir, spec)
