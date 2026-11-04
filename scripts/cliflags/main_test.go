@@ -1,10 +1,11 @@
-// Copyright (c) Mondoo, Inc.
+// Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -93,7 +94,7 @@ import "go.mondoo.com/mql/providers/`+filepath.Base(dir)+`/connection"
 var Config = plugin.Provider{Connectors: []plugin.Connector{{
 	Name: "x",
 	Flags: []plugin.Flag{{Long: connection.OptionToken}},
-}}}`, dir)
+}}}`, dir, workingTree)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +116,7 @@ var Config = plugin.Provider{
 			{Long: "ask", Type: plugin.FlagType_Bool},
 		},
 	}},
-}`, t.TempDir())
+}`, t.TempDir(), workingTree)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,9 +141,69 @@ func TestParseRejectsWhatItCannotRead(t *testing.T) {
 		"connectors from a var": `package config; var C = plugin.Provider{Connectors: all}`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := Parse("config.go", src, t.TempDir()); err == nil {
+			if _, err := Parse("config.go", src, t.TempDir(), workingTree); err == nil {
 				t.Fatal("expected an error")
 			}
 		})
+	}
+}
+
+// A provider without a record at the base is compared with the base's config, whose
+// constants have to come from the base too: read from the working tree, the flag
+// below looks unchanged.
+func TestBaseConfigUsesBaseConstants(t *testing.T) {
+	root := t.TempDir()
+	config := filepath.Join(root, "providers", "x", "config")
+	if err := os.MkdirAll(config, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(flag string) {
+		t.Helper()
+		src := `package config
+const optionToken = "` + flag + `"
+var Config = plugin.Provider{Connectors: []plugin.Connector{{
+	Name: "x",
+	Flags: []plugin.Flag{{Long: optionToken}},
+}}}
+`
+		if err := os.WriteFile(filepath.Join(config, "config.go"), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_SYSTEM="+os.DevNull,
+			"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.com",
+			"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@example.com")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	write("token")
+	git("init", "-q")
+	git("add", ".")
+	git("commit", "-qm", "base")
+
+	write("api-token")
+	if err := run(root, "", true, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(root, "HEAD", false, false); err == nil {
+		t.Fatal("renaming the flag through its constant was not reported as breaking")
+	}
+}
+
+func TestLiteralVersion(t *testing.T) {
+	src := []byte(`package config
+var Config = plugin.Provider{Name: "x", Version: "14.0.2"}`)
+	if v := literalVersion(src); v != "14.0.2" {
+		t.Fatalf("unexpected version: %q", v)
+	}
+	src = []byte(`package config
+var Config = plugin.Provider{Name: "core", Version: mql.GetVersion()}`)
+	if v := literalVersion(src); v != "" {
+		t.Fatalf("unexpected version: %q", v)
 	}
 }

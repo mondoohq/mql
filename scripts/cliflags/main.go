@@ -1,4 +1,4 @@
-// Copyright (c) Mondoo, Inc.
+// Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 // Command cliflags keeps the CLI flags of the providers from breaking by accident.
@@ -141,8 +141,12 @@ func Notable(old, cur Record) []string {
 		current[c.Name] = c
 	}
 	for _, o := range old.Connectors {
+		n, ok := current[o.Name]
+		if !ok {
+			continue // Breaking reports the removal
+		}
 		flags := map[string]Flag{}
-		for _, f := range current[o.Name].Flags {
+		for _, f := range n.Flags {
 			flags[f.Long] = f
 		}
 		for _, f := range o.Flags {
@@ -211,13 +215,13 @@ func contains(list []string, s string) bool {
 
 // Parse reads a provider's record from the source of its config/config.go. It only
 // understands literals and string constants: anything else is an error, not a flag
-// silently left out. providerDir is where it looks for the constants.
-func Parse(filename string, src any, providerDir string) (Record, error) {
+// silently left out. providerDir is where read looks for the constants.
+func Parse(filename string, src any, providerDir string, read goFiles) (Record, error) {
 	file, err := parser.ParseFile(token.NewFileSet(), filename, src, 0)
 	if err != nil {
 		return Record{}, err
 	}
-	loadConstants(providerDir, file)
+	loadConstants(providerDir, file, read)
 	loadReturns(file)
 	var rec Record
 	var parseErr error
@@ -325,17 +329,76 @@ func loadReturns(file *ast.File) {
 	}
 }
 
+// literalVersion reads a config's version without its constants, which only a
+// config before records needs. Built-in providers take theirs from a call: none then.
+func literalVersion(src []byte) string {
+	file, err := parser.ParseFile(token.NewFileSet(), "", src, 0)
+	if err != nil {
+		return ""
+	}
+	version := ""
+	ast.Inspect(file, func(n ast.Node) bool {
+		lit, ok := n.(*ast.CompositeLit)
+		if !ok || !isSelector(lit.Type, "plugin", "Provider") {
+			return true
+		}
+		for _, field := range fields(lit) {
+			if v, ok := field.value.(*ast.BasicLit); ok && field.name == "Version" && v.Kind == token.STRING {
+				version, _ = strconv.Unquote(v.Value)
+			}
+		}
+		return false
+	})
+	return version
+}
+
+// goFiles returns the Go sources of a directory, by path.
+type goFiles func(dir string) map[string][]byte
+
+// workingTree reads the sources from disk.
+func workingTree(dir string) map[string][]byte {
+	files := map[string][]byte{}
+	paths, err := filepath.Glob(filepath.Join(dir, "*.go"))
+	if err != nil {
+		return files
+	}
+	for _, path := range paths {
+		if src, err := os.ReadFile(path); err == nil {
+			files[path] = src
+		}
+	}
+	return files
+}
+
+// atRef reads the sources from a git ref, for directories relative to root.
+func atRef(root, ref string) goFiles {
+	return func(dir string) map[string][]byte {
+		files := map[string][]byte{}
+		cmd := exec.Command("git", "ls-tree", "--name-only", ref, filepath.ToSlash(dir)+"/")
+		cmd.Dir = root
+		out, err := cmd.Output()
+		if err != nil {
+			return files
+		}
+		for _, path := range strings.Fields(string(out)) {
+			if !strings.HasSuffix(path, ".go") {
+				continue
+			}
+			if src, ok := gitShow(root, ref, path); ok {
+				files[path] = src
+			}
+		}
+		return files
+	}
+}
+
 // loadConstants reads the string constants of a config's own package and of the
 // packages of its provider it imports, from their source.
-func loadConstants(providerDir string, file *ast.File) {
+func loadConstants(providerDir string, file *ast.File, sources goFiles) {
 	constants = map[string]string{}
 	read := func(dir, prefix string) {
-		pkgs, err := filepath.Glob(filepath.Join(dir, "*.go"))
-		if err != nil {
-			return
-		}
-		for _, path := range pkgs {
-			f, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		for path, src := range sources(dir) {
+			f, err := parser.ParseFile(token.NewFileSet(), path, src, 0)
 			if err != nil {
 				continue
 			}
@@ -533,7 +596,7 @@ func run(root, base string, update, allowBreaking bool) error {
 	for _, cfg := range configs {
 		name := filepath.Base(filepath.Dir(filepath.Dir(cfg)))
 		providerDir := filepath.Dir(filepath.Dir(cfg))
-		rec, err := Parse(cfg, nil, providerDir)
+		rec, err := Parse(cfg, nil, providerDir, workingTree)
 		if err != nil {
 			return err
 		}
@@ -559,23 +622,19 @@ func run(root, base string, update, allowBreaking bool) error {
 		}
 		// The record at the base, or the base's config before records existed.
 		rel := filepath.ToSlash(filepath.Join("providers", name, "config"))
+		baseConfig, ok := gitShow(root, base, rel+"/config.go")
+		if !ok {
+			continue // a new provider
+		}
 		var old Record
 		if raw, ok := gitShow(root, base, rel+"/"+recordName); ok {
 			if err := json.Unmarshal(raw, &old); err != nil {
 				return fmt.Errorf("%s at %s: %w", rel, base, err)
 			}
-		} else if raw, ok := gitShow(root, base, rel+"/config.go"); ok {
-			if old, err = Parse(rel+"/config.go", raw, providerDir); err != nil {
-				return err
-			}
-		} else {
-			continue // a new provider
+		} else if old, err = Parse(rel+"/config.go", baseConfig, filepath.Join("providers", name), atRef(root, base)); err != nil {
+			return err
 		}
-		if raw, ok := gitShow(root, base, rel+"/config.go"); ok {
-			if v, err := Parse(rel+"/config.go", raw, providerDir); err == nil {
-				old.Version = v.Version
-			}
-		}
+		old.Version = literalVersion(baseConfig)
 		for _, b := range Breaking(old, rec) {
 			if allowBreaking {
 				fmt.Printf("::warning::%s: breaking, allowed by the label: %s\n", name, b)
