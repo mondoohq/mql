@@ -108,7 +108,7 @@ func TestDetectReportsHomeWithUnreadableVersion(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	assert.Equal(t, "19.0.0.0.0", got[0].Version)
-	assert.Equal(t, SourceInstallMetadata, got[0].VersionSource)
+	assert.Equal(t, SourceBaseRelease, got[0].VersionSource)
 }
 
 func TestDetectWithoutAnyOracleFiles(t *testing.T) {

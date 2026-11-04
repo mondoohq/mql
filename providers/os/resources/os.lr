@@ -12053,16 +12053,21 @@ private installation @defaults("name version path") {
   path string
   // Version of the installation, e.g. "19.21.0.0.0"; empty when none was found
   //
-  // For Oracle Database, the Release Update applied to the home, in the
-  // five-part form the database reports as `v$instance.version_full`. A home
-  // with no Release Update recorded reports its base release, e.g.
-  // "23.0.0.0.0".
+  // For Oracle Database, the release of the home in the five-part form the
+  // database reports as `v$instance.version_full`: the highest Release Update
+  // applied to the home, or for a home that records none, such as Oracle
+  // Database Free, the release its storage management library names. A home
+  // with neither reports its base release, e.g. "21.0.0.0.0", with
+  // `versionSource` "baseRelease".
   version string
   // Evidence the version was read from
   //
   // One of `patchInventory` (the patches the vendor's patch tool recorded as
-  // applied) or `installMetadata` (metadata the installer wrote into the
-  // install root). Empty when no version was found.
+  // applied), `releaseMetadata` (a file the vendor ships in the install root
+  // that names the full release), or `baseRelease` (the release the
+  // installation was installed at, without the updates applied since, so a
+  // lower bound rather than the exact version). Empty when no version was
+  // found.
   versionSource string
   // File the version was read from; null when no version was found
   versionFile() file

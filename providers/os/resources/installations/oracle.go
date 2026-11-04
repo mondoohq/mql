@@ -39,6 +39,7 @@ var oracleDatabase = Detector{
 	Accept: isOracleDatabaseHome,
 	Version: []VersionReader{
 		oracleReleaseUpdate,
+		oracleUSMVersion,
 		oracleBaseRelease,
 	},
 	Identify: func(version string) (string, []string) {
@@ -227,7 +228,37 @@ func oracleBaseRelease(fs afero.Fs, root string) (Version, bool, error) {
 	if err != nil || !ok || v == "" {
 		return Version{}, false, err
 	}
-	return Version{Value: v, Source: SourceInstallMetadata, File: oracleCompsFile(root)}, true, nil
+	return Version{Value: v, Source: SourceBaseRelease, File: oracleCompsFile(root)}, true, nil
+}
+
+func oracleUSMVersionFile(root string) string {
+	return path.Join(root, "lib", "usmvsn.pm")
+}
+
+// oracleUSMVersionLine is the comment lib/usmvsn.pm carries with the full
+// release, e.g. "# USM VERSION FULL: 23.5.0.24.07".
+var oracleUSMVersionLine = regexp.MustCompile(`USM VERSION FULL:\s*(\d+(?:\.\d+){4})\b`)
+
+// oracleUSMVersion is the full release lib/usmvsn.pm names. A home installed
+// whole at its release, such as Oracle Database Free, records no Release
+// Update in its patch inventory, and this file is where its release is
+// written. It belongs to the storage management (ACFS) component, which a
+// patched home updates separately from the database, so it is read only
+// after the patch inventory found no database Release Update.
+func oracleUSMVersion(fs afero.Fs, root string) (Version, bool, error) {
+	file := oracleUSMVersionFile(root)
+	data, err := afero.ReadFile(fs, file)
+	if err != nil {
+		if isAbsent(err) {
+			return Version{}, false, nil
+		}
+		return Version{}, false, fmt.Errorf("cannot read %s: %w", file, err)
+	}
+	m := oracleUSMVersionLine.FindSubmatch(data)
+	if m == nil {
+		return Version{}, false, nil
+	}
+	return Version{Value: oracleVersionFull(string(m[1])), Source: SourceReleaseMetadata, File: file}, true, nil
 }
 
 func oraclePatchFile(root string) string {

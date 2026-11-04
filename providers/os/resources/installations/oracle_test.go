@@ -12,8 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The measured values below were read on 2026-11-03 from two images, by
-// extracting the files from the image layers with crane and tar:
+// The measured values below were read on 2026-11-03 by extracting the files
+// from the image layers with crane and tar, and for the gvenzl images also by
+// running Oracle's oraversion -compositeVersion inside them:
 //
 //   - 19c: an image built by Oracle's docker-images SingleInstance 19.3.0
 //     Dockerfile, which unzips LINUX.X64_193000_db_home.zip and registers the
@@ -203,6 +204,60 @@ func TestParseOracleReleaseUpdate(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestOracleUSMVersion(t *testing.T) {
+	// Measured: the gvenzl/oracle-free <tag>-full images on 2026-11-03. The
+	// line is the one lib/usmvsn.pm carries; want is what oraversion
+	// -compositeVersion reported in the same image.
+	measured := []struct {
+		image string
+		line  string
+		want  string
+	}{
+		{"23.3", "# USM VERSION FULL: 23.3.0.23.09", "23.3.0.23.09"},
+		{"23.4", "# USM VERSION FULL: 23.4.0.24.05", "23.4.0.24.05"},
+		{"23.5", "# USM VERSION FULL: 23.5.0.24.07", "23.5.0.24.07"},
+		{"23.6", "# USM VERSION FULL: 23.6.0.24.10", "23.6.0.24.10"},
+		{"23.7", "# USM VERSION FULL: 23.7.0.25.01", "23.7.0.25.01"},
+		{"23.8", "# USM VERSION FULL: 23.8.0.25.04", "23.8.0.25.04"},
+		{"23.9", "# USM VERSION FULL: 23.9.0.25.07", "23.9.0.25.07"},
+		{"23.26.0", "# USM VERSION FULL: 23.26.0.0.0", "23.26.0.0.0"},
+		{"23.26.1", "# USM VERSION FULL: 23.26.1.0.0", "23.26.1.0.0"},
+		{"23.26.2", "# USM VERSION FULL: 23.26.2.0.0", "23.26.2.0.0"},
+		{"23.26.3", "# USM VERSION FULL: 23.26.3.0.0", "23.26.3.0.0"},
+	}
+	for _, m := range measured {
+		t.Run(m.image, func(t *testing.T) {
+			fs := afero.NewMemMapFs()
+			writeFiles(t, fs, map[string]string{"/home/lib/usmvsn.pm": "#\n" + m.line + "\n#\n"})
+			v, ok, err := oracleUSMVersion(fs, "/home")
+			require.NoError(t, err)
+			require.True(t, ok)
+			assert.Equal(t, Version{Value: m.want, Source: SourceReleaseMetadata, File: "/home/lib/usmvsn.pm"}, v)
+		})
+	}
+
+	t.Run("no USM VERSION FULL line", func(t *testing.T) {
+		// Measured: the 19c home's usmvsn.pm has no such line.
+		fs := afero.NewMemMapFs()
+		writeFiles(t, fs, map[string]string{"/home/lib/usmvsn.pm": `our $LIBMAJVSN = "19";
+our %USMVSN = (
+    "MAJORVSN"      => "19",
+    "MINORVSN"      => "0",
+    "MIDTIERVSN"    => "0",
+`})
+		_, ok, err := oracleUSMVersion(fs, "/home")
+		require.NoError(t, err)
+		assert.False(t, ok)
+	})
+
+	t.Run("no usmvsn.pm", func(t *testing.T) {
+		// Measured: the XE 18.4 and 21.3 homes have none.
+		_, ok, err := oracleUSMVersion(afero.NewMemMapFs(), "/home")
+		require.NoError(t, err)
+		assert.False(t, ok)
+	})
+}
+
 func TestCompareDotted(t *testing.T) {
 	// Synthetic
 	assert.Equal(t, 1, compareDotted("19.10.0.0.0", "19.9.1.0.0"))
@@ -244,14 +299,18 @@ func TestDetectOracleDatabase(t *testing.T) {
 		}}, got)
 	})
 
-	t.Run("26ai Free with no patches recorded", func(t *testing.T) {
-		// Measured: 26ai Free. Only its oratab is kept here, so the home is
-		// found through oratab rather than the central inventory.
+	t.Run("Free with no patches recorded reports the release usmvsn.pm names", func(t *testing.T) {
+		// Measured: gvenzl/oracle-free:23.26.0-full, whose oraversion
+		// -compositeVersion reports 23.26.0.0.0 while comps.xml and the
+		// empty patch inventory say 23.0.0.0.0 and nothing. Only its oratab
+		// is kept here, so the home is found through oratab rather than the
+		// central inventory.
 		fs := afero.NewMemMapFs()
 		writeFiles(t, fs, map[string]string{
 			"/etc/oratab": measured26aiOratab,
 			"/opt/oracle/product/26ai/dbhomeFree/inventory/ContentsXML/comps.xml":     measured26aiComps,
 			"/opt/oracle/product/26ai/dbhomeFree/inventory/ContentsXML/oui-patch.xml": measured26aiPatches,
+			"/opt/oracle/product/26ai/dbhomeFree/lib/usmvsn.pm":                       "# USM VERSION FULL: 23.26.0.0.0\n",
 		})
 
 		got, err := Detect(fs, []Detector{oracleDatabase})
@@ -259,9 +318,45 @@ func TestDetectOracleDatabase(t *testing.T) {
 		require.Len(t, got, 1)
 		assert.Equal(t, "/opt/oracle/product/26ai/dbhomeFree", got[0].Path)
 		assert.Equal(t, LocatedByRegistry, got[0].LocatedBy)
-		assert.Equal(t, "23.0.0.0.0", got[0].Version)
-		assert.Equal(t, SourceInstallMetadata, got[0].VersionSource)
-		assert.Equal(t, "/opt/oracle/product/26ai/dbhomeFree/inventory/ContentsXML/comps.xml", got[0].VersionFile)
+		assert.Equal(t, "23.26.0.0.0", got[0].Version)
+		assert.Equal(t, SourceReleaseMetadata, got[0].VersionSource)
+		assert.Equal(t, "/opt/oracle/product/26ai/dbhomeFree/lib/usmvsn.pm", got[0].VersionFile)
+	})
+
+	t.Run("XE with neither reports its base release", func(t *testing.T) {
+		// Measured: gvenzl/oracle-xe:21.3.0-full. Its home has no usmvsn.pm
+		// and comps.xml names 21.0.0.0.0; oraversion -compositeVersion
+		// reports 21.3.0.0.0, which no file read here carries.
+		fs := afero.NewMemMapFs()
+		writeFiles(t, fs, map[string]string{
+			"/opt/oracle/product/21c/dbhomeXE/inventory/ContentsXML/comps.xml":     `<PRD_LIST><TL_LIST><COMP NAME="oracle.server" VER="21.0.0.0.0"/></TL_LIST></PRD_LIST>`,
+			"/opt/oracle/product/21c/dbhomeXE/inventory/ContentsXML/oui-patch.xml": measured26aiPatches,
+		})
+
+		got, err := Detect(fs, []Detector{oracleDatabase})
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		assert.Equal(t, "21.0.0.0.0", got[0].Version)
+		assert.Equal(t, SourceBaseRelease, got[0].VersionSource)
+		assert.Equal(t, "/opt/oracle/product/21c/dbhomeXE/inventory/ContentsXML/comps.xml", got[0].VersionFile)
+	})
+
+	t.Run("a Release Update wins over a lagging usmvsn.pm", func(t *testing.T) {
+		// Synthetic: a patched home whose storage management library was
+		// left at the release the home was installed with; the 19c image
+		// measured here has a usmvsn.pm without the USM VERSION FULL line.
+		fs := afero.NewMemMapFs()
+		writeFiles(t, fs, map[string]string{
+			"/opt/oracle/product/19c/dbhome_1/inventory/ContentsXML/comps.xml":     measured19cComps,
+			"/opt/oracle/product/19c/dbhome_1/inventory/ContentsXML/oui-patch.xml": measured19cPatches,
+			"/opt/oracle/product/19c/dbhome_1/lib/usmvsn.pm":                       "# USM VERSION FULL: 19.3.0.0.0\n",
+		})
+
+		got, err := Detect(fs, []Detector{oracleDatabase})
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		assert.Equal(t, "19.9.1.0.0", got[0].Version)
+		assert.Equal(t, SourcePatchInventory, got[0].VersionSource)
 	})
 
 	t.Run("home found by its path when nothing registers it", func(t *testing.T) {
