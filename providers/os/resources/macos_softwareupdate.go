@@ -150,10 +150,14 @@ func (s *mqlMacosSoftwareupdate) scheduleEnabled() (bool, error) {
 		return false, err
 	}
 	cmd := res.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
+	run, err := commandResult(cmd)
+	if err != nil {
+		return false, err
+	}
+	if run.exitcode != 0 {
 		return false, errUpdateScheduleUnavailable
 	}
-	v, ok := parseSoftwareUpdateSchedule(cmd.GetStdout().Data)
+	v, ok := parseSoftwareUpdateSchedule(run.stdout)
 	if !ok {
 		return false, errUpdateScheduleUnavailable
 	}
@@ -228,10 +232,13 @@ func (s *mqlMacosSoftwareupdate) updates() ([]any, error) {
 		return nil, err
 	}
 	cmd := res.(*mqlCommand)
-	exit := cmd.GetExitcode()
-	stdout := cmd.GetStdout().Data
-	stderr := cmd.GetStderr().Data
-	if exit.Data != 0 {
+	run, err := commandResult(cmd)
+	if err != nil {
+		return nil, err
+	}
+	stdout := run.stdout
+	stderr := run.stderr
+	if run.exitcode != 0 {
 		// softwareupdate exits non-zero on Darwin in two well-known
 		// "no updates" situations that should still return an empty
 		// list rather than fail the query:
@@ -245,13 +252,13 @@ func (s *mqlMacosSoftwareupdate) updates() ([]any, error) {
 		// a clean device.
 		if isSoftwareUpdateNoUpdatesSignal(stdout, stderr) {
 			log.Debug().
-				Int64("exitcode", exit.Data).
+				Int64("exitcode", run.exitcode).
 				Str("stderr", stderr).
 				Msg("macos.softwareupdate: no updates available")
 			return []any{}, nil
 		}
 		log.Warn().
-			Int64("exitcode", exit.Data).
+			Int64("exitcode", run.exitcode).
 			Str("stderr", stderr).
 			Msg("macos.softwareupdate: `softwareupdate -l --no-scan` failed")
 		return nil, errors.New("softwareupdate failed: " + strings.TrimSpace(stderr))

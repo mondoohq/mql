@@ -54,13 +54,20 @@ func (s *mqlMacosSharing) fetchState() (map[string]bool, error) {
 		return nil, err
 	}
 	cmd := res.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
+	run, err := commandResult(cmd)
+	if err != nil {
+		return nil, err
+	}
+	if run.exitcode != 0 {
+		// A panel that failed to print is read like one that printed
+		// nothing: sharingFlag falls back to each toggle's own setting. A
+		// command that never ran is an error instead, above.
 		s.state = map[string]bool{}
 		s.fetched = true
 		return s.state, nil
 	}
 
-	s.state = parseSharingOutput(cmd.GetStdout().Data)
+	s.state = parseSharingOutput(run.stdout)
 	s.fetched = true
 	return s.state, nil
 }

@@ -519,9 +519,9 @@ func pidsAsAny(in []string) []any {
 
 // runShellCmd executes a command via the command resource. Returns
 // (stdout, true, nil) on success and (empty, false, nil) when the
-// command exits non-zero (e.g. shell unavailable, /sys/fs/cgroup
-// inaccessible). This matches the pattern used by lvm.go and the
-// systemd resources.
+// command exits non-zero (e.g. a tool that is not installed, /sys/fs/cgroup
+// inaccessible). A command that could not run at all is an error. This
+// matches the pattern used by lvm.go and the systemd resources.
 func runShellCmd(runtime *plugin.Runtime, cmdline string) (string, bool, error) {
 	o, err := CreateResource(runtime, "command", map[string]*llx.RawData{
 		"command": llx.StringData(cmdline),
@@ -529,9 +529,12 @@ func runShellCmd(runtime *plugin.Runtime, cmdline string) (string, bool, error) 
 	if err != nil {
 		return "", false, err
 	}
-	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
+	run, err := commandResult(o.(*mqlCommand))
+	if err != nil {
+		return "", false, err
+	}
+	if run.exitcode != 0 {
 		return "", false, nil
 	}
-	return cmd.Stdout.Data, true, nil
+	return run.stdout, true, nil
 }
