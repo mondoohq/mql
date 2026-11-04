@@ -70,6 +70,7 @@ func TestDefaultProvidersIncludesAllLocalProviders(t *testing.T) {
 func TestDefaultProvidersIncludesExternalProviders(t *testing.T) {
 	external := []string{
 		"ai",
+		"aoscx",
 		"bigip",
 		"checkpoint",
 		"db2",

@@ -77,6 +77,21 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"aoscx": {
+		Provider: &plugin.Provider{
+			Name:            "aoscx",
+			ID:              "go.mondoo.com/mql/providers/aoscx",
+			ConnectionTypes: []string{"aoscx"},
+			Connectors: []plugin.Connector{
+				{
+					Name:  "aoscx",
+					Use:   "aoscx",
+					Short: "a remote HPE Aruba Networking AOS-CX switch",
+				},
+			},
+		},
+	},
+
 	"arista": {
 		Provider: &plugin.Provider{
 			Name:            "arista",
