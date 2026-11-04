@@ -153,7 +153,7 @@ func ParseRpmPackages(pf *inventory.Platform, input io.Reader) []Package {
 			}
 
 			pkg := newRpmPackage(pf, name, version, arch, epoch, vendor, m[6], license, modularity, installTime)
-			pkg.Origin = rpmSourceName(sourceRpm)
+			pkg.Origin = rpmOrigin(sourceRpm, version)
 			pkg.FilesAvailable = PkgFilesAsync // when we use commands we need to fetch the files async
 			pkgs = append(pkgs, pkg)
 
@@ -192,7 +192,7 @@ const rpmSourceTag = "src="
 // rpmSourceName is the source package an rpm was built from, read from its
 // SOURCERPM tag: "openssl-3.0.1-23.el9_0.src.rpm" -> "openssl".
 //
-// It becomes the package's Origin. rpm advisories are filed against the source
+// It becomes the package's Origin (see rpmOrigin for when). rpm advisories are filed against the source
 // package -- Microsoft's Azure Linux feed and Rocky's both name `openssl`,
 // never `openssl-libs` -- so without it a subpackage built from a
 // differently-named source can only be looked up by its own name, under which
@@ -203,21 +203,52 @@ const rpmSourceTag = "src="
 // before the last two. Anything else -- "(none)", the empty tag gpg-pubkey
 // carries -- is no source.
 func rpmSourceName(sourceRpm string) string {
+	name, _ := splitRpmSource(sourceRpm)
+	return name
+}
+
+// splitRpmSource splits a SOURCERPM tag into the source name and its
+// "<version>-<release>". Both are empty when the tag is not a source rpm.
+func splitRpmSource(sourceRpm string) (name, versionRelease string) {
 	s := strings.TrimSpace(strings.TrimRight(sourceRpm, "\x00"))
 	var ok bool
 	if s, ok = strings.CutSuffix(s, ".src.rpm"); !ok {
 		if s, ok = strings.CutSuffix(s, ".nosrc.rpm"); !ok {
-			return ""
+			return "", ""
 		}
 	}
+	rest := s
 	for range 2 { // drop the release, then the version
-		before, _, found := strings.CutLast(s, "-")
+		before, _, found := strings.CutLast(rest, "-")
 		if !found || before == "" {
-			return ""
+			return "", ""
 		}
-		s = before
+		rest = before
 	}
-	return s
+	return rest, s[len(rest)+1:]
+}
+
+// rpmOrigin is the Origin for a binary rpm: the source package name, but only
+// when the source has the same version-release as the binary (epoch ignored,
+// SOURCERPM carries none). Consumers look up the source's advisories with the
+// binary's version, which is only meaningful when both share it:
+// openssl-libs 3.3.7-6.azl3 from openssl-3.3.7-6.azl3.src.rpm. A subpackage
+// with its own version (perl-IO 1.43-484.el9_8 from perl-5.32.1-484.el9_8)
+// would be compared against the wrong version scheme, so it gets no origin and
+// is matched by its own name. If the source's version-release cannot be
+// parsed, the origin is dropped too, as the safer choice.
+func rpmOrigin(sourceRpm, version string) string {
+	name, srcVR := splitRpmSource(sourceRpm)
+	if name == "" || srcVR == "" {
+		return ""
+	}
+	if e, rest, ok := strings.Cut(version, ":"); ok && e != "" && strings.Trim(e, "0123456789") == "" {
+		version = rest
+	}
+	if version != srcVR {
+		return ""
+	}
+	return name
 }
 
 // normalizeRpmEpoch collapses rpm's spellings of "this package has no epoch"
@@ -253,7 +284,7 @@ func newRpmPackageFromDB(pf *inventory.Platform, pkg *rpmdb.PackageInfo, rpmDBPa
 
 	rpmPkg := newRpmPackage(pf, pkg.Name, version, pkg.Arch, epoch, cleanupVendorName(pkg.Vendor),
 		pkg.Summary, pkg.License, pkg.Modularitylabel, int64(pkg.InstallTime))
-	rpmPkg.Origin = rpmSourceName(pkg.SourceRpm)
+	rpmPkg.Origin = rpmOrigin(pkg.SourceRpm, version)
 
 	rpmPkg.FilesAvailable = PkgFilesIncluded
 	rpmPkg.Files = []FileRecord{

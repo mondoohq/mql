@@ -101,3 +101,35 @@ func TestParseRpmPackagesWithoutTheSourceField(t *testing.T) {
 	assert.Equal(t, "", pkgs[0].Origin)
 	assert.Contains(t, pkgs[0].PUrl, "rpmmod=", "the modularity label still parses")
 }
+
+// Origin is only set when the source has the binary's own version-release;
+// otherwise the source's advisories would be compared against a version from
+// a different scheme (perl-IO 1.43 against perl 5.32.1).
+func TestRpmOrigin(t *testing.T) {
+	for _, tc := range []struct{ name, sourceRpm, version, want string }{
+		{"openssl-libs", "openssl-3.3.7-6.azl3.src.rpm", "3.3.7-6.azl3", "openssl"},
+		{"openssl-libs epoch", "openssl-3.3.7-6.azl3.src.rpm", "1:3.3.7-6.azl3", "openssl"},
+		{"kernel-core", "kernel-5.14.0-70.13.1.el9_0.src.rpm", "5.14.0-70.13.1.el9_0", "kernel"},
+		{"kernel-core nosrc", "kernel-5.14.0-70.13.1.el9_0.nosrc.rpm", "5.14.0-70.13.1.el9_0", "kernel"},
+		{"el8 module package", "perl-IO-Socket-SSL-2.066-4.module+el8.3.0+6446+594cad75.src.rpm", "2.066-4.module+el8.3.0+6446+594cad75", "perl-IO-Socket-SSL"},
+		{"perl-IO el9", "perl-5.32.1-484.el9_8.src.rpm", "1.43-484.el9_8", ""},
+		{"perl-IO el8", "perl-5.26.3-423.el8_10.1.src.rpm", "1.38-423.el8_10.1", ""},
+		{"device-mapper-libs", "lvm2-2.03.32-4.el9_8.1.src.rpm", "9:1.02.207-4.el9_8.1", ""},
+		{"libreadline7", "bash-4.4-150400.27.3.2.src.rpm", "7.0-150400.27.3.2", ""},
+		{"iwl2000-firmware", "linux-firmware-20240827-1.el9.src.rpm", "18.168.6.1-1.el9", ""},
+		{"none", "(none)", "1.0-1", ""},
+		{"empty", "", "1.0-1", ""},
+		{"not a source rpm", "openssl-3.0.1-23.x86_64.rpm", "3.0.1-23", ""},
+		{"unparsable source", "name-1.0.src.rpm", "1.0", ""},
+	} {
+		assert.Equal(t, tc.want, rpmOrigin(tc.sourceRpm, tc.version), tc.name)
+	}
+}
+
+func TestRpmPackageFromDBDropsOriginOnVersionMismatch(t *testing.T) {
+	pkg := newRpmPackageFromDB(azureLinux3, &rpmdb.PackageInfo{
+		Name: "perl-IO", Version: "1.43", Release: "484.el9_8", Arch: "x86_64",
+		SourceRpm: "perl-5.32.1-484.el9_8.src.rpm",
+	}, "/var/lib/rpm/rpmdb.sqlite")
+	assert.Equal(t, "", pkg.Origin)
+}
