@@ -4,11 +4,15 @@
 package resources
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"time"
 
+	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -26,46 +30,129 @@ func (r *mqlCursor) id() (string, error) {
 
 func (r *mqlCursor) mcpServers() ([]any, error) {
 	afs := connectionAfs(r.MqlRuntime)
-	configDir := r.ConfigPath.Data
 
-	// Cursor stores MCP config in mcp.json
-	configFile := filepath.Join(configDir, "mcp.json")
-	data, err := afs.ReadFile(configFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	var mcpConfig cursorMCPConfig
-	if err := unmarshalJSONConfig(data, &mcpConfig); err != nil {
-		return nil, fmt.Errorf("failed to parse cursor mcp.json: %w", err)
-	}
-
+	// The user's own mcp.json comes first, so it wins a name clash with a plugin.
+	seen := map[string]struct{}{}
 	var result []any
-	for name, server := range mcpConfig.McpServers {
-		fields := map[string]*llx.RawData{
-			"__id":    llx.StringData("cursor.mcpServer/" + name),
-			"name":    llx.StringData(name),
-			"type":    llx.StringData(deriveMcpTransport(server.Type, server.Command, server.URL)),
-			"command": llx.StringData(server.Command),
-			"args":    mcpArgsData(server.Args),
-			"url":     llx.StringData(redactURL(server.URL)),
-			"hasEnv":  llx.BoolData(len(server.Env) > 0),
-
-			"hasHeaders":  llx.BoolData(len(server.Headers) > 0),
-			"headerNames": mcpHeaderNamesData(mapKeys(server.Headers)),
-			"source":      llx.StringData(configFile),
-		}
-		setMcpServerShape(fields, server.Command, server.Args, server.URL, mapKeys(server.Env))
-		res, err := NewResource(r.MqlRuntime, "cursor.mcpServer", fields)
+	for _, configFile := range cursorMCPConfigFiles(afs, r.ConfigPath.Data) {
+		data, err := afs.ReadFile(configFile)
 		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
 			return nil, err
 		}
-		result = append(result, res)
+
+		var mcpConfig cursorMCPConfig
+		if err := unmarshalJSONConfig(data, &mcpConfig); err != nil {
+			return nil, fmt.Errorf("failed to parse cursor %s: %w", configFile, err)
+		}
+
+		for name, server := range mcpConfig.McpServers {
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			fields := map[string]*llx.RawData{
+				"__id":    llx.StringData("cursor.mcpServer/" + name),
+				"name":    llx.StringData(name),
+				"type":    llx.StringData(deriveMcpTransport(server.Type, server.Command, server.URL)),
+				"command": llx.StringData(server.Command),
+				"args":    mcpArgsData(server.Args),
+				"url":     llx.StringData(redactURL(server.URL)),
+				"hasEnv":  llx.BoolData(len(server.Env) > 0),
+
+				"hasHeaders":  llx.BoolData(len(server.Headers) > 0),
+				"headerNames": mcpHeaderNamesData(mapKeys(server.Headers)),
+				"source":      llx.StringData(configFile),
+			}
+			setMcpServerShape(fields, server.Command, server.Args, server.URL, mapKeys(server.Env))
+			res, err := NewResource(r.MqlRuntime, "cursor.mcpServer", fields)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, res)
+		}
 	}
 	return result, nil
+}
+
+// cursorMCPConfigFiles lists the MCP config files Cursor loads: the user's
+// mcp.json, then one per installed plugin. Plugins installed from the
+// Customize page or the marketplace keep their servers in their own mcp.json.
+func cursorMCPConfigFiles(afs *afero.Afero, configDir string) []string {
+	files := []string{filepath.Join(configDir, "mcp.json")}
+	for _, root := range cursorPluginRoots(afs, configDir) {
+		if f := cursorPluginMCPFile(afs, root); f != "" {
+			files = append(files, f)
+		}
+	}
+	return files
+}
+
+// cursorPluginRoots returns the root directory of each installed Cursor
+// plugin: plugins/local/<plugin> and plugins/cache/<marketplace>/<plugin>/<ref>,
+// where <ref> is a git commit. When an update leaves several refs behind, only
+// the most recently modified one is returned.
+//
+// ponytail: a disabled plugin keeps its cache dir, so it is still reported.
+// Cursor keeps the enabled list in its SQLite state.vscdb, which we don't read.
+func cursorPluginRoots(afs *afero.Afero, configDir string) []string {
+	pluginsDir := filepath.Join(configDir, "plugins")
+	var roots []string
+	locals, _ := listSubdirsAfero(afs, filepath.Join(pluginsDir, "local"))
+	for _, d := range locals {
+		roots = append(roots, d.path)
+	}
+
+	markets, _ := listSubdirsAfero(afs, filepath.Join(pluginsDir, "cache"))
+	for _, market := range markets {
+		plugins, _ := listSubdirsAfero(afs, market.path)
+		for _, p := range plugins {
+			refs, _ := listSubdirsAfero(afs, p.path)
+			newest, newestTime := "", time.Time{}
+			for _, ref := range refs {
+				info, err := afs.Stat(ref.path)
+				if err != nil {
+					continue
+				}
+				if newest == "" || info.ModTime().After(newestTime) {
+					newest, newestTime = ref.path, info.ModTime()
+				}
+			}
+			if newest != "" {
+				roots = append(roots, newest)
+			}
+		}
+	}
+	return roots
+}
+
+// cursorPluginMCPFile returns the plugin's MCP config file, or "" when it has
+// none. The manifest's mcpServers may name a file inside the plugin; otherwise
+// Cursor discovers mcp.json at the plugin root.
+//
+// ponytail: an inline or array mcpServers in plugin.json is skipped; every
+// official plugin points to a file.
+func cursorPluginMCPFile(afs *afero.Afero, root string) string {
+	rel := "mcp.json"
+	var manifest struct {
+		McpServers json.RawMessage `json:"mcpServers"`
+	}
+	if err := readJSONFileAfero(afs, root, filepath.Join(".cursor-plugin", "plugin.json"), &manifest); err == nil {
+		var path string
+		if json.Unmarshal(manifest.McpServers, &path) == nil && path != "" {
+			rel = path
+		}
+	}
+	file := filepath.Join(root, filepath.FromSlash(rel))
+	if r, err := filepath.Rel(root, file); err != nil || strings.HasPrefix(r, "..") {
+		return ""
+	}
+	if ok, _ := afs.Exists(file); !ok {
+		return ""
+	}
+	return file
 }
 
 func (r *mqlCursor) rules() ([]any, error) {
@@ -114,8 +201,21 @@ func (r *mqlCursor) rules() ([]any, error) {
 }
 
 func (r *mqlCursor) skills() ([]any, error) {
-	return agentSkills(r.MqlRuntime, "cursor.skill", r.ConfigPath.Data, defaultCursorConfigDir,
+	dirs, err := resolvePerUserDirs(r.MqlRuntime, r.ConfigPath.Data, defaultCursorConfigDir,
 		filepath.Join(defaultCursorConfigDir, "skills"), filepath.Join(r.ConfigPath.Data, "skills"))
+	if err != nil {
+		return nil, err
+	}
+	// Each skills dir sits in a .cursor dir whose installed plugins can carry
+	// skills too.
+	afs := connectionAfs(r.MqlRuntime)
+	all := slices.Clone(dirs)
+	for _, d := range dirs {
+		for _, root := range cursorPluginRoots(afs, filepath.Dir(d)) {
+			all = append(all, filepath.Join(root, "skills"))
+		}
+	}
+	return readSkillsFromDirs(r.MqlRuntime, all, "cursor.skill")
 }
 
 // Child resource ID methods
