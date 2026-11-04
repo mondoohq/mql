@@ -1,0 +1,57 @@
+{
+  "connectors": [
+    {
+      "name": "elasticsearch",
+      "flags": [
+        {
+          "long": "api-key",
+          "type": "String",
+          "options": [
+            "Password"
+          ]
+        },
+        {
+          "long": "ask-pass",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "host",
+          "type": "String"
+        },
+        {
+          "long": "password",
+          "short": "p",
+          "type": "String",
+          "options": [
+            "Password"
+          ]
+        },
+        {
+          "long": "port",
+          "type": "Int",
+          "default": "9200"
+        },
+        {
+          "long": "scheme",
+          "type": "String",
+          "default": "https"
+        },
+        {
+          "long": "tls-ca",
+          "type": "String"
+        },
+        {
+          "long": "tls-insecure",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "user",
+          "short": "u",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

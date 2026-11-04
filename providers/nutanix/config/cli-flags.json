@@ -1,0 +1,51 @@
+{
+  "connectors": [
+    {
+      "name": "nutanix",
+      "flags": [
+        {
+          "long": "api-key",
+          "type": "String",
+          "options": [
+            "Password"
+          ]
+        },
+        {
+          "long": "ask-pass",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "endpoint",
+          "type": "String",
+          "options": [
+            "Required"
+          ]
+        },
+        {
+          "long": "insecure",
+          "short": "k",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "password",
+          "short": "p",
+          "type": "String",
+          "options": [
+            "Password"
+          ]
+        },
+        {
+          "long": "port",
+          "type": "Int",
+          "default": "9440"
+        },
+        {
+          "long": "user",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

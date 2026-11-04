@@ -1,0 +1,66 @@
+{
+  "connectors": [
+    {
+      "name": "mssql",
+      "flags": [
+        {
+          "long": "ask-pass",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "auth",
+          "type": "String",
+          "default": "sql"
+        },
+        {
+          "long": "database",
+          "type": "String"
+        },
+        {
+          "long": "encrypt",
+          "type": "String",
+          "default": "mandatory"
+        },
+        {
+          "long": "host",
+          "type": "String"
+        },
+        {
+          "long": "instance",
+          "type": "String"
+        },
+        {
+          "long": "password",
+          "short": "p",
+          "type": "String",
+          "options": [
+            "Password"
+          ]
+        },
+        {
+          "long": "port",
+          "type": "Int",
+          "default": "1433"
+        },
+        {
+          "long": "token",
+          "type": "String",
+          "options": [
+            "Password"
+          ]
+        },
+        {
+          "long": "trust-server-certificate",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "user",
+          "short": "u",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

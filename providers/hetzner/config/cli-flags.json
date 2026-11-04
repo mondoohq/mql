@@ -1,0 +1,17 @@
+{
+  "connectors": [
+    {
+      "name": "hetzner",
+      "flags": [
+        {
+          "long": "endpoint",
+          "type": "String"
+        },
+        {
+          "long": "token",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

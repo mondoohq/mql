@@ -1,0 +1,17 @@
+{
+  "connectors": [
+    {
+      "name": "slack",
+      "flags": [
+        {
+          "long": "team-id",
+          "type": "String"
+        },
+        {
+          "long": "token",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

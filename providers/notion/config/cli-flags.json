@@ -1,0 +1,13 @@
+{
+  "connectors": [
+    {
+      "name": "notion",
+      "flags": [
+        {
+          "long": "token",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

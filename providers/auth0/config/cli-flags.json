@@ -1,0 +1,21 @@
+{
+  "connectors": [
+    {
+      "name": "auth0",
+      "flags": [
+        {
+          "long": "client-id",
+          "type": "String"
+        },
+        {
+          "long": "client-secret",
+          "type": "String"
+        },
+        {
+          "long": "domain",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

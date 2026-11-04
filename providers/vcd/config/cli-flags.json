@@ -1,0 +1,40 @@
+{
+  "connectors": [
+    {
+      "name": "vcd",
+      "flags": [
+        {
+          "long": "ask-pass",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "host",
+          "type": "String",
+          "options": [
+            "Required"
+          ]
+        },
+        {
+          "long": "organization",
+          "type": "String"
+        },
+        {
+          "long": "password",
+          "short": "p",
+          "type": "String",
+          "options": [
+            "Password"
+          ]
+        },
+        {
+          "long": "user",
+          "type": "String",
+          "options": [
+            "Required"
+          ]
+        }
+      ]
+    }
+  ]
+}

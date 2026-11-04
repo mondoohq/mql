@@ -1,0 +1,13 @@
+{
+  "connectors": [
+    {
+      "name": "nextdns",
+      "flags": [
+        {
+          "long": "api-key",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

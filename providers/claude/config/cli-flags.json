@@ -1,0 +1,37 @@
+{
+  "connectors": [
+    {
+      "name": "claude",
+      "flags": [
+        {
+          "long": "admin-token",
+          "type": "String"
+        },
+        {
+          "long": "federation-rule-id",
+          "type": "String"
+        },
+        {
+          "long": "identity-token-file",
+          "type": "String"
+        },
+        {
+          "long": "organization-id",
+          "type": "String"
+        },
+        {
+          "long": "service-account-id",
+          "type": "String"
+        },
+        {
+          "long": "token",
+          "type": "String"
+        },
+        {
+          "long": "workspace-id",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "connectors": [
+    {
+      "name": "datadog",
+      "flags": [
+        {
+          "long": "api-key",
+          "type": "String"
+        },
+        {
+          "long": "app-key",
+          "type": "String"
+        },
+        {
+          "long": "site",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

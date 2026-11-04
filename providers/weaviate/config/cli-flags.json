@@ -1,0 +1,44 @@
+{
+  "connectors": [
+    {
+      "name": "weaviate",
+      "flags": [
+        {
+          "long": "api-key",
+          "type": "String",
+          "options": [
+            "Password"
+          ]
+        },
+        {
+          "long": "ask-api-key",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "host",
+          "type": "String"
+        },
+        {
+          "long": "port",
+          "type": "Int",
+          "default": "8080"
+        },
+        {
+          "long": "scheme",
+          "type": "String",
+          "default": "http"
+        },
+        {
+          "long": "tls-ca",
+          "type": "String"
+        },
+        {
+          "long": "tls-insecure",
+          "type": "Bool",
+          "default": "false"
+        }
+      ]
+    }
+  ]
+}

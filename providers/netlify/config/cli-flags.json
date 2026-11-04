@@ -1,0 +1,17 @@
+{
+  "connectors": [
+    {
+      "name": "netlify",
+      "flags": [
+        {
+          "long": "account",
+          "type": "String"
+        },
+        {
+          "long": "token",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

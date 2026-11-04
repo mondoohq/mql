@@ -1,0 +1,53 @@
+{
+  "connectors": [
+    {
+      "name": "k8s",
+      "aliases": [
+        "kubernetes"
+      ],
+      "flags": [
+        {
+          "long": "container-proxy",
+          "type": "String"
+        },
+        {
+          "long": "context",
+          "type": "String"
+        },
+        {
+          "long": "images",
+          "type": "String"
+        },
+        {
+          "long": "images-exclude",
+          "type": "String"
+        },
+        {
+          "long": "inherit-namespace-labels",
+          "type": "String"
+        },
+        {
+          "long": "kubelogin",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "namespace-label-selector",
+          "type": "String"
+        },
+        {
+          "long": "namespaces",
+          "type": "String"
+        },
+        {
+          "long": "namespaces-exclude",
+          "type": "String"
+        },
+        {
+          "long": "object-label-selector",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

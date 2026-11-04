@@ -1,0 +1,25 @@
+{
+  "connectors": [
+    {
+      "name": "ibm",
+      "flags": [
+        {
+          "long": "api-key",
+          "type": "String"
+        },
+        {
+          "long": "api-key-file",
+          "type": "String"
+        },
+        {
+          "long": "filters",
+          "type": "KeyValue"
+        },
+        {
+          "long": "regions",
+          "type": "List"
+        }
+      ]
+    }
+  ]
+}

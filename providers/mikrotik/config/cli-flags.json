@@ -1,0 +1,34 @@
+{
+  "connectors": [
+    {
+      "name": "mikrotik",
+      "flags": [
+        {
+          "long": "ask-pass",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "insecure",
+          "short": "k",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "password",
+          "short": "p",
+          "type": "String"
+        },
+        {
+          "long": "port",
+          "type": "String"
+        },
+        {
+          "long": "tls",
+          "type": "Bool",
+          "default": "false"
+        }
+      ]
+    }
+  ]
+}

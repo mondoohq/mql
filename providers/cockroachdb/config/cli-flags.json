@@ -1,0 +1,62 @@
+{
+  "connectors": [
+    {
+      "name": "cockroachdb",
+      "flags": [
+        {
+          "long": "ask-pass",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "certs-dir",
+          "type": "String"
+        },
+        {
+          "long": "database",
+          "type": "String",
+          "default": "defaultdb"
+        },
+        {
+          "long": "host",
+          "type": "String"
+        },
+        {
+          "long": "password",
+          "short": "p",
+          "type": "String",
+          "options": [
+            "Password"
+          ]
+        },
+        {
+          "long": "port",
+          "type": "Int",
+          "default": "26257"
+        },
+        {
+          "long": "sslcert",
+          "type": "String"
+        },
+        {
+          "long": "sslkey",
+          "type": "String"
+        },
+        {
+          "long": "sslmode",
+          "type": "String"
+        },
+        {
+          "long": "sslrootcert",
+          "type": "String"
+        },
+        {
+          "long": "user",
+          "short": "u",
+          "type": "String",
+          "default": "root"
+        }
+      ]
+    }
+  ]
+}

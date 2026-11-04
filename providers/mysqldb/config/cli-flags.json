@@ -1,0 +1,61 @@
+{
+  "connectors": [
+    {
+      "name": "mysqldb",
+      "flags": [
+        {
+          "long": "ask-pass",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "database",
+          "type": "String"
+        },
+        {
+          "long": "host",
+          "type": "String"
+        },
+        {
+          "long": "password",
+          "short": "p",
+          "type": "String",
+          "options": [
+            "Password"
+          ]
+        },
+        {
+          "long": "port",
+          "type": "Int",
+          "default": "3306"
+        },
+        {
+          "long": "tls-ca",
+          "type": "String"
+        },
+        {
+          "long": "tls-cert",
+          "type": "String"
+        },
+        {
+          "long": "tls-key",
+          "type": "String"
+        },
+        {
+          "long": "tls-mode",
+          "type": "String",
+          "default": "preferred"
+        },
+        {
+          "long": "tls-server-name",
+          "type": "String"
+        },
+        {
+          "long": "user",
+          "short": "u",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

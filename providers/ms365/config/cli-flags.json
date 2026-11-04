@@ -1,0 +1,44 @@
+{
+  "connectors": [
+    {
+      "name": "ms365",
+      "aliases": [
+        "m365"
+      ],
+      "flags": [
+        {
+          "long": "auth-method",
+          "type": "String"
+        },
+        {
+          "long": "certificate-path",
+          "type": "String"
+        },
+        {
+          "long": "certificate-secret",
+          "type": "String"
+        },
+        {
+          "long": "client-id",
+          "type": "String"
+        },
+        {
+          "long": "client-secret",
+          "type": "String"
+        },
+        {
+          "long": "organization",
+          "type": "String"
+        },
+        {
+          "long": "sharepoint-url",
+          "type": "String"
+        },
+        {
+          "long": "tenant-id",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

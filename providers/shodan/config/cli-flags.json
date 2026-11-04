@@ -1,0 +1,17 @@
+{
+  "connectors": [
+    {
+      "name": "shodan",
+      "flags": [
+        {
+          "long": "networks",
+          "type": "List"
+        },
+        {
+          "long": "token",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

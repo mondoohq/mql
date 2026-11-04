@@ -1,0 +1,29 @@
+{
+  "connectors": [
+    {
+      "name": "databricks",
+      "flags": [
+        {
+          "long": "account-id",
+          "type": "String"
+        },
+        {
+          "long": "client-id",
+          "type": "String"
+        },
+        {
+          "long": "client-secret",
+          "type": "String"
+        },
+        {
+          "long": "host",
+          "type": "String"
+        },
+        {
+          "long": "token",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

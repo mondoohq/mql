@@ -180,6 +180,15 @@ providers/proto:
 	go generate ./providers-sdk/v1/plugin
 	go generate ./providers-sdk/v1/recording
 
+# Provider CLI flags are a public interface: see "CLI flags" in AGENTS.md.
+.PHONY: test/cli-flags
+test/cli-flags:
+	cd scripts/cliflags && go test . && go run . -root ../.. -base origin/main
+
+.PHONY: cli-flags/update
+cli-flags/update:
+	cd scripts/cliflags && go run . -root ../.. -update
+
 .PHONY: providers/config
 providers/config:
 	go run ./providers-sdk/v1/util/configure -f providers.yaml -o providers/builtin_dev.go

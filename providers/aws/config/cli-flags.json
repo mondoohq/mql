@@ -1,0 +1,37 @@
+{
+  "connectors": [
+    {
+      "name": "aws",
+      "flags": [
+        {
+          "long": "endpoint-url",
+          "type": "String"
+        },
+        {
+          "long": "filters",
+          "type": "KeyValue"
+        },
+        {
+          "long": "no-setup",
+          "type": "String"
+        },
+        {
+          "long": "profile",
+          "type": "String"
+        },
+        {
+          "long": "region",
+          "type": "String"
+        },
+        {
+          "long": "role",
+          "type": "String"
+        },
+        {
+          "long": "scope",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

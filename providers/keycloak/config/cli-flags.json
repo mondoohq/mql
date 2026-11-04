@@ -1,0 +1,41 @@
+{
+  "connectors": [
+    {
+      "name": "keycloak",
+      "flags": [
+        {
+          "long": "auth-realm",
+          "type": "String"
+        },
+        {
+          "long": "ca-cert",
+          "type": "String"
+        },
+        {
+          "long": "client-id",
+          "type": "String"
+        },
+        {
+          "long": "client-secret",
+          "type": "String"
+        },
+        {
+          "long": "password",
+          "type": "String"
+        },
+        {
+          "long": "realm",
+          "type": "String"
+        },
+        {
+          "long": "url",
+          "type": "String"
+        },
+        {
+          "long": "username",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

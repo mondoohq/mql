@@ -1,0 +1,22 @@
+{
+  "connectors": [
+    {
+      "name": "huggingface",
+      "flags": [
+        {
+          "long": "namespace",
+          "type": "String"
+        },
+        {
+          "long": "namespace-type",
+          "type": "String",
+          "default": "user"
+        },
+        {
+          "long": "token",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

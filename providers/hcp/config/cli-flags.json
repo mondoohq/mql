@@ -1,0 +1,25 @@
+{
+  "connectors": [
+    {
+      "name": "hcp",
+      "flags": [
+        {
+          "long": "client-id",
+          "type": "String"
+        },
+        {
+          "long": "client-secret",
+          "type": "String"
+        },
+        {
+          "long": "org-id",
+          "type": "String"
+        },
+        {
+          "long": "project-id",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

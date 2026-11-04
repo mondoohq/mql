@@ -1,0 +1,33 @@
+{
+  "connectors": [
+    {
+      "name": "clickhousecloud",
+      "flags": [
+        {
+          "long": "api-key",
+          "type": "String"
+        },
+        {
+          "long": "api-secret",
+          "type": "String",
+          "options": [
+            "Password"
+          ]
+        },
+        {
+          "long": "api-url",
+          "type": "String"
+        },
+        {
+          "long": "ask-secret",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "organization-id",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

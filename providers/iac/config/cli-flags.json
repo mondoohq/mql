@@ -1,0 +1,13 @@
+{
+  "connectors": [
+    {
+      "name": "iac",
+      "flags": [
+        {
+          "long": "iac-ignore",
+          "type": "List"
+        }
+      ]
+    }
+  ]
+}

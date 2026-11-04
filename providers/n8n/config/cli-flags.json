@@ -1,0 +1,17 @@
+{
+  "connectors": [
+    {
+      "name": "n8n",
+      "flags": [
+        {
+          "long": "api-key",
+          "type": "String"
+        },
+        {
+          "long": "url",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

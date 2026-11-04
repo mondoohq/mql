@@ -1,0 +1,21 @@
+{
+  "connectors": [
+    {
+      "name": "zoom",
+      "flags": [
+        {
+          "long": "account-id",
+          "type": "String"
+        },
+        {
+          "long": "client-id",
+          "type": "String"
+        },
+        {
+          "long": "client-secret",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

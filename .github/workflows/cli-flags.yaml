@@ -1,0 +1,48 @@
+name: CLI Flags
+
+# Provider flags are a public interface: see "CLI flags" in AGENTS.md. An intended
+# break needs the `cli-flags: breaking` label, hence the labeled events. It has no
+# path filter, so it can be a required check: it builds nothing and takes seconds.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  cli-flags:
+    runs-on:
+      group: arc-runners
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Import environment variables from file
+        run: cat ".github/env" >> "$GITHUB_ENV"
+
+      - name: Install Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ">=${{ env.golang-version }}"
+          cache: false
+
+      - name: Test the check
+        working-directory: scripts/cliflags
+        run: go test .
+
+      - name: Check flags against the base branch
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          ALLOW_BREAKING: "${{ contains(github.event.pull_request.labels.*.name, 'cli-flags: breaking') }}"
+        run: |
+          args=()
+          if [ "$ALLOW_BREAKING" = "true" ]; then args+=(-allow-breaking); fi
+          cd scripts/cliflags
+          go run . -root ../.. -base "origin/$BASE_REF" "${args[@]}"

@@ -1,0 +1,17 @@
+{
+  "connectors": [
+    {
+      "name": "nmap",
+      "flags": [
+        {
+          "long": "networks",
+          "type": "List"
+        },
+        {
+          "long": "ports",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "connectors": [
+    {
+      "name": "vllm",
+      "flags": [
+        {
+          "long": "api-key",
+          "type": "String"
+        },
+        {
+          "long": "insecure",
+          "type": "Bool"
+        },
+        {
+          "long": "timeout",
+          "type": "Int",
+          "default": "10"
+        }
+      ]
+    }
+  ]
+}

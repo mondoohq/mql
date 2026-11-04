@@ -1,0 +1,55 @@
+{
+  "connectors": [
+    {
+      "name": "mongo",
+      "flags": [
+        {
+          "long": "ask-pass",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "auth-db",
+          "type": "String",
+          "default": "admin"
+        },
+        {
+          "long": "host",
+          "type": "String"
+        },
+        {
+          "long": "password",
+          "short": "p",
+          "type": "String",
+          "options": [
+            "Password"
+          ]
+        },
+        {
+          "long": "port",
+          "type": "Int",
+          "default": "27017"
+        },
+        {
+          "long": "tls",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "tls-ca",
+          "type": "String"
+        },
+        {
+          "long": "tls-insecure",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "user",
+          "short": "u",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

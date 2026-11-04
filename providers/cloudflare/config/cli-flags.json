@@ -1,0 +1,13 @@
+{
+  "connectors": [
+    {
+      "name": "cloudflare",
+      "flags": [
+        {
+          "long": "token",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

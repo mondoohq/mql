@@ -1,0 +1,56 @@
+{
+  "connectors": [
+    {
+      "name": "azure",
+      "flags": [
+        {
+          "long": "auth-method",
+          "type": "String"
+        },
+        {
+          "long": "certificate-path",
+          "type": "String"
+        },
+        {
+          "long": "certificate-secret",
+          "type": "String"
+        },
+        {
+          "long": "client-id",
+          "type": "String"
+        },
+        {
+          "long": "client-secret",
+          "type": "String"
+        },
+        {
+          "long": "federated-token-file",
+          "type": "String"
+        },
+        {
+          "long": "filters",
+          "type": "KeyValue"
+        },
+        {
+          "long": "subscription",
+          "type": "String",
+          "options": [
+            "Hidden"
+          ]
+        },
+        {
+          "long": "subscriptions",
+          "type": "String"
+        },
+        {
+          "long": "subscriptions-exclude",
+          "type": "String"
+        },
+        {
+          "long": "tenant-id",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

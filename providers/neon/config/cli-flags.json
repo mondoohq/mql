@@ -1,0 +1,17 @@
+{
+  "connectors": [
+    {
+      "name": "neon",
+      "flags": [
+        {
+          "long": "organization",
+          "type": "String"
+        },
+        {
+          "long": "token",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

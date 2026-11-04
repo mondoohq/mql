@@ -1,0 +1,21 @@
+{
+  "connectors": [
+    {
+      "name": "together",
+      "flags": [
+        {
+          "long": "base-url",
+          "type": "String"
+        },
+        {
+          "long": "project",
+          "type": "String"
+        },
+        {
+          "long": "token",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

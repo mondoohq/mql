@@ -244,9 +244,23 @@ Hide synthetic `__id` values, don't expose them as `id` fields. When a sub-resou
 - Every provider that accepts connections declares an asset root (ADR 031): `@root` on the resource, `option root = "<resource>"` in the `.lr`, `Root:` in `config/config.go`, core in `Requires` (ADR 042). Enforced by `providers/roots_test.go`. Scaffolding: DEVELOPMENT.md → Creating a new provider, and `new-provider`.
 - `go mod tidy` runs inside `providers/<name>/`, not the repo root, or new SDK deps stay `// indirect`. Exception: `os`, `core`, `network` and `iac` have no `go.mod` of their own and build from the root module, so their dependencies go in the root `go.mod` and `go mod tidy` runs at the repo root.
 
+## CLI flags
+
+A provider's connectors and flags are a public interface: scripts and pipelines use them, and a removed flag fails a scan whatever the version number says. `providers/<name>/config/cli-flags.json` records them, and CI (`make test/cli-flags`) fails on anything that breaks an existing command line against `main`:
+
+- a connector or alias removed;
+- a flag removed, unless it was already marked `plugin.FlagOption_Deprecated` and the provider's major version goes up;
+- a shorthand no flag of the connector has anymore;
+- a type changed, or a flag that became required.
+
+To remove a flag, mark it deprecated, release it, and remove it in a later major version. After changing flags, run `make cli-flags/update` and commit the record. An intended break needs the `cli-flags: breaking` label on the pull request.
+
+A shorthand means one thing across all providers, because the CLI's pre-scan puts all their flags into one set, and warns on every command when a letter has two meanings. Use the long name the letter already has (`-u` is `--user`), which CI reports otherwise. Don't move or drop a shorthand to silence that warning: that's a breaking change.
+
 ## 6. Pre-PR checklist
 
 - [ ] `gofmt -w` on all changed `.go` files
+- [ ] CLI flag records current: `make test/cli-flags` (see "CLI flags")
 - [ ] Generated files current: `make mql/generate && git diff --exit-code` (`.lr.go`, `.pb.go`, `.permissions.json`)
 - [ ] `go mod tidy` inside `providers/<name>/` (at the repo root for `os`, `core`, `network`, `iac`) shows no diff
 - [ ] `make test/lint` and `make test/go/plain` pass; `go test -v ./providers/<provider>/...` if the provider has tests

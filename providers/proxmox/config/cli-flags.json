@@ -1,0 +1,24 @@
+{
+  "connectors": [
+    {
+      "name": "proxmox",
+      "flags": [
+        {
+          "long": "host",
+          "type": "String"
+        },
+        {
+          "long": "insecure",
+          "short": "k",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "token",
+          "short": "t",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}
