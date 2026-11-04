@@ -42,7 +42,7 @@ ansible.plays.first.name
 ```
 
 Assume the following ansible tasks where we install httpd
-with [yum](https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/dnf_module.html#ansible-collections-ansible-builtin-dnf-module):
+with [yum](https://github.com/ansible/ansible/blob/devel/lib/ansible/modules/dnf.py):
 
 ```yaml
 - name: Install packages
