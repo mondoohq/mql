@@ -1,0 +1,25 @@
+{
+  "connectors": [
+    {
+      "name": "tailscale",
+      "flags": [
+        {
+          "long": "base-url",
+          "type": "String"
+        },
+        {
+          "long": "client-id",
+          "type": "String"
+        },
+        {
+          "long": "client-secret",
+          "type": "String"
+        },
+        {
+          "long": "token",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

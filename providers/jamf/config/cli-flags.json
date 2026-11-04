@@ -1,0 +1,24 @@
+{
+  "connectors": [
+    {
+      "name": "jamf",
+      "flags": [
+        {
+          "long": "client-id",
+          "type": "String"
+        },
+        {
+          "long": "client-secret",
+          "type": "String",
+          "options": [
+            "Password"
+          ]
+        },
+        {
+          "long": "instance-domain",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

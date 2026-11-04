@@ -1,0 +1,41 @@
+{
+  "connectors": [
+    {
+      "name": "alicloud",
+      "flags": [
+        {
+          "long": "access-key-id",
+          "type": "String"
+        },
+        {
+          "long": "access-key-secret",
+          "type": "String"
+        },
+        {
+          "long": "filters",
+          "type": "KeyValue"
+        },
+        {
+          "long": "region",
+          "type": "String"
+        },
+        {
+          "long": "regions",
+          "type": "String"
+        },
+        {
+          "long": "role-arn",
+          "type": "String"
+        },
+        {
+          "long": "role-session-name",
+          "type": "String"
+        },
+        {
+          "long": "sts-token",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

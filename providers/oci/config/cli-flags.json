@@ -1,0 +1,49 @@
+{
+  "connectors": [
+    {
+      "name": "oci",
+      "flags": [
+        {
+          "long": "auth-method",
+          "type": "String"
+        },
+        {
+          "long": "config-file",
+          "type": "String"
+        },
+        {
+          "long": "filters",
+          "type": "KeyValue"
+        },
+        {
+          "long": "fingerprint",
+          "type": "String"
+        },
+        {
+          "long": "key-path",
+          "type": "String"
+        },
+        {
+          "long": "key-secret",
+          "type": "String"
+        },
+        {
+          "long": "profile",
+          "type": "String"
+        },
+        {
+          "long": "region",
+          "type": "String"
+        },
+        {
+          "long": "tenancy",
+          "type": "String"
+        },
+        {
+          "long": "user",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

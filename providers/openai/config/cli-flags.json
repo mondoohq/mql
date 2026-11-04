@@ -1,0 +1,29 @@
+{
+  "connectors": [
+    {
+      "name": "openai",
+      "flags": [
+        {
+          "long": "admin-token",
+          "type": "String"
+        },
+        {
+          "long": "base-url",
+          "type": "String"
+        },
+        {
+          "long": "organization",
+          "type": "String"
+        },
+        {
+          "long": "project",
+          "type": "String"
+        },
+        {
+          "long": "token",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

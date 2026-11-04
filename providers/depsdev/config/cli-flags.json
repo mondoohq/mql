@@ -1,0 +1,13 @@
+{
+  "connectors": [
+    {
+      "name": "depsdev",
+      "flags": [
+        {
+          "long": "path",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

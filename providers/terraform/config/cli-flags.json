@@ -1,0 +1,27 @@
+{
+  "connectors": [
+    {
+      "name": "opentofu",
+      "aliases": [
+        "tofu"
+      ],
+      "flags": [
+        {
+          "long": "ignore-dot-terraform",
+          "type": "Bool",
+          "default": "false"
+        }
+      ]
+    },
+    {
+      "name": "terraform",
+      "flags": [
+        {
+          "long": "ignore-dot-terraform",
+          "type": "Bool",
+          "default": "false"
+        }
+      ]
+    }
+  ]
+}

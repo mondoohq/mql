@@ -1,0 +1,17 @@
+{
+  "connectors": [
+    {
+      "name": "host",
+      "flags": [
+        {
+          "long": "follow-redirects",
+          "type": "Bool"
+        },
+        {
+          "long": "insecure",
+          "type": "Bool"
+        }
+      ]
+    }
+  ]
+}

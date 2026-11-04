@@ -1,0 +1,22 @@
+{
+  "connectors": [
+    {
+      "name": "ipmi",
+      "flags": [
+        {
+          "long": "ask-pass",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "password",
+          "short": "p",
+          "type": "String",
+          "options": [
+            "Password"
+          ]
+        }
+      ]
+    }
+  ]
+}

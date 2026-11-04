@@ -1,0 +1,30 @@
+{
+  "connectors": [
+    {
+      "name": "google-workspace",
+      "aliases": [
+        "googleworkspace"
+      ],
+      "flags": [
+        {
+          "long": "credentials-path",
+          "type": "String",
+          "options": [
+            "Required"
+          ]
+        },
+        {
+          "long": "customer-id",
+          "type": "String",
+          "options": [
+            "Required"
+          ]
+        },
+        {
+          "long": "impersonated-user-email",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

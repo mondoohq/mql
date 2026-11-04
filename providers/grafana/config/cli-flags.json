@@ -1,0 +1,17 @@
+{
+  "connectors": [
+    {
+      "name": "grafana",
+      "flags": [
+        {
+          "long": "token",
+          "type": "String"
+        },
+        {
+          "long": "url",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

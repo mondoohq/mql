@@ -1,0 +1,43 @@
+{
+  "connectors": [
+    {
+      "name": "opcua",
+      "flags": [
+        {
+          "long": "cert-file",
+          "type": "String"
+        },
+        {
+          "long": "endpoint",
+          "type": "String",
+          "options": [
+            "Required"
+          ]
+        },
+        {
+          "long": "key-file",
+          "type": "String"
+        },
+        {
+          "long": "password",
+          "type": "String",
+          "options": [
+            "Password"
+          ]
+        },
+        {
+          "long": "security-mode",
+          "type": "String"
+        },
+        {
+          "long": "security-policy",
+          "type": "String"
+        },
+        {
+          "long": "username",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "connectors": [
+    {
+      "name": "snowflake",
+      "flags": [
+        {
+          "long": "account",
+          "type": "String"
+        },
+        {
+          "long": "ask-pass",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "identity-file",
+          "short": "i",
+          "type": "String"
+        },
+        {
+          "long": "password",
+          "short": "p",
+          "type": "String",
+          "options": [
+            "Password"
+          ]
+        },
+        {
+          "long": "region",
+          "type": "String"
+        },
+        {
+          "long": "role",
+          "type": "String"
+        },
+        {
+          "long": "token",
+          "type": "String",
+          "options": [
+            "Password"
+          ]
+        },
+        {
+          "long": "user",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

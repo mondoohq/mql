@@ -1,0 +1,25 @@
+{
+  "connectors": [
+    {
+      "name": "exoscale",
+      "flags": [
+        {
+          "long": "api-key",
+          "type": "String"
+        },
+        {
+          "long": "api-secret",
+          "type": "String"
+        },
+        {
+          "long": "filters",
+          "type": "KeyValue"
+        },
+        {
+          "long": "zones",
+          "type": "List"
+        }
+      ]
+    }
+  ]
+}

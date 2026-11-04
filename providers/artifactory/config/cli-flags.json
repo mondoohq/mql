@@ -1,0 +1,21 @@
+{
+  "connectors": [
+    {
+      "name": "artifactory",
+      "flags": [
+        {
+          "long": "api-key",
+          "type": "String"
+        },
+        {
+          "long": "token",
+          "type": "String"
+        },
+        {
+          "long": "url",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

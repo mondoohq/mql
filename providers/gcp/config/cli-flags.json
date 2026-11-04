@@ -1,0 +1,34 @@
+{
+  "connectors": [
+    {
+      "name": "gcp",
+      "flags": [
+        {
+          "long": "create-snapshot",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "credentials-path",
+          "type": "String"
+        },
+        {
+          "long": "filters",
+          "type": "KeyValue"
+        },
+        {
+          "long": "project-id",
+          "type": "String"
+        },
+        {
+          "long": "repository",
+          "type": "String"
+        },
+        {
+          "long": "zone",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

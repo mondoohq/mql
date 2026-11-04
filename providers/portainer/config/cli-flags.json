@@ -1,0 +1,23 @@
+{
+  "connectors": [
+    {
+      "name": "portainer",
+      "flags": [
+        {
+          "long": "access-token",
+          "type": "String"
+        },
+        {
+          "long": "address",
+          "type": "String"
+        },
+        {
+          "long": "insecure",
+          "short": "k",
+          "type": "Bool",
+          "default": "false"
+        }
+      ]
+    }
+  ]
+}

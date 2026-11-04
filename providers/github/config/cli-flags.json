@@ -1,0 +1,41 @@
+{
+  "connectors": [
+    {
+      "name": "github",
+      "flags": [
+        {
+          "long": "app-id",
+          "type": "String"
+        },
+        {
+          "long": "app-installation-id",
+          "type": "String"
+        },
+        {
+          "long": "app-private-key",
+          "type": "String"
+        },
+        {
+          "long": "app-private-key-content",
+          "type": "String"
+        },
+        {
+          "long": "enterprise-url",
+          "type": "String"
+        },
+        {
+          "long": "repos",
+          "type": "String"
+        },
+        {
+          "long": "repos-exclude",
+          "type": "String"
+        },
+        {
+          "long": "token",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

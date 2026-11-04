@@ -1,0 +1,7 @@
+{
+  "connectors": [
+    {
+      "name": "ipinfo"
+    }
+  ]
+}

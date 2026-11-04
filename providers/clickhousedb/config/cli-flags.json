@@ -1,0 +1,49 @@
+{
+  "connectors": [
+    {
+      "name": "clickhousedb",
+      "flags": [
+        {
+          "long": "ask-pass",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "database",
+          "type": "String"
+        },
+        {
+          "long": "host",
+          "type": "String"
+        },
+        {
+          "long": "password",
+          "short": "p",
+          "type": "String",
+          "options": [
+            "Password"
+          ]
+        },
+        {
+          "long": "port",
+          "type": "Int",
+          "default": "9000"
+        },
+        {
+          "long": "tls",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "tls-insecure",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "user",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

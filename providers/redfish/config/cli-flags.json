@@ -1,0 +1,27 @@
+{
+  "connectors": [
+    {
+      "name": "redfish",
+      "flags": [
+        {
+          "long": "ask-pass",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "insecure",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "password",
+          "short": "p",
+          "type": "String",
+          "options": [
+            "Password"
+          ]
+        }
+      ]
+    }
+  ]
+}

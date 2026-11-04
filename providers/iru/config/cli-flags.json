@@ -1,0 +1,20 @@
+{
+  "connectors": [
+    {
+      "name": "iru",
+      "flags": [
+        {
+          "long": "subdomain",
+          "type": "String"
+        },
+        {
+          "long": "token",
+          "type": "String",
+          "options": [
+            "Password"
+          ]
+        }
+      ]
+    }
+  ]
+}

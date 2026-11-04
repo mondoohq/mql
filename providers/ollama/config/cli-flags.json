@@ -1,0 +1,17 @@
+{
+  "connectors": [
+    {
+      "name": "ollama",
+      "flags": [
+        {
+          "long": "host",
+          "type": "String"
+        },
+        {
+          "long": "token",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

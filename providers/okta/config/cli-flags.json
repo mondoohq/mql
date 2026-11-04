@@ -1,0 +1,33 @@
+{
+  "connectors": [
+    {
+      "name": "okta",
+      "flags": [
+        {
+          "long": "client-id",
+          "type": "String"
+        },
+        {
+          "long": "organization",
+          "type": "String"
+        },
+        {
+          "long": "private-key",
+          "type": "String"
+        },
+        {
+          "long": "private-key-id",
+          "type": "String"
+        },
+        {
+          "long": "scopes",
+          "type": "String"
+        },
+        {
+          "long": "token",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

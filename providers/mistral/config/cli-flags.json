@@ -1,0 +1,21 @@
+{
+  "connectors": [
+    {
+      "name": "mistral",
+      "flags": [
+        {
+          "long": "base-url",
+          "type": "String"
+        },
+        {
+          "long": "token",
+          "type": "String"
+        },
+        {
+          "long": "workspace",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

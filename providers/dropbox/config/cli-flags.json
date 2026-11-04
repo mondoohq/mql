@@ -1,0 +1,13 @@
+{
+  "connectors": [
+    {
+      "name": "dropbox",
+      "flags": [
+        {
+          "long": "token",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

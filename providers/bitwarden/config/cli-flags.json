@@ -1,0 +1,25 @@
+{
+  "connectors": [
+    {
+      "name": "bitwarden",
+      "flags": [
+        {
+          "long": "api-url",
+          "type": "String"
+        },
+        {
+          "long": "client-id",
+          "type": "String"
+        },
+        {
+          "long": "client-secret",
+          "type": "String"
+        },
+        {
+          "long": "identity-url",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "connectors": [
+    {
+      "name": "helm",
+      "flags": [
+        {
+          "long": "api-versions",
+          "short": "a",
+          "type": "List"
+        },
+        {
+          "long": "is-upgrade",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "kube-version",
+          "type": "String"
+        },
+        {
+          "long": "namespace",
+          "short": "n",
+          "type": "String"
+        },
+        {
+          "long": "password",
+          "type": "String",
+          "options": [
+            "Password"
+          ]
+        },
+        {
+          "long": "release-name",
+          "type": "String"
+        },
+        {
+          "long": "repo",
+          "type": "String"
+        },
+        {
+          "long": "repository-cache",
+          "type": "String"
+        },
+        {
+          "long": "repository-config",
+          "type": "String"
+        },
+        {
+          "long": "set",
+          "type": "List"
+        },
+        {
+          "long": "set-file",
+          "type": "List"
+        },
+        {
+          "long": "set-json",
+          "type": "List"
+        },
+        {
+          "long": "set-string",
+          "type": "List"
+        },
+        {
+          "long": "username",
+          "type": "String"
+        },
+        {
+          "long": "values",
+          "type": "List"
+        },
+        {
+          "long": "version",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

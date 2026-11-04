@@ -1,0 +1,73 @@
+{
+  "connectors": [
+    {
+      "name": "activedirectory",
+      "aliases": [
+        "ad"
+      ],
+      "flags": [
+        {
+          "long": "backend",
+          "type": "String",
+          "default": "ldap"
+        },
+        {
+          "long": "base-dn",
+          "type": "String"
+        },
+        {
+          "long": "ccache",
+          "type": "String"
+        },
+        {
+          "long": "dc",
+          "type": "String"
+        },
+        {
+          "long": "domain",
+          "type": "String"
+        },
+        {
+          "long": "insecure",
+          "type": "Bool"
+        },
+        {
+          "long": "kerberos",
+          "type": "Bool"
+        },
+        {
+          "long": "keytab",
+          "type": "String"
+        },
+        {
+          "long": "krb5conf",
+          "type": "String"
+        },
+        {
+          "long": "ldaps",
+          "type": "Bool"
+        },
+        {
+          "long": "password",
+          "type": "String"
+        },
+        {
+          "long": "plain-ldap",
+          "type": "Bool"
+        },
+        {
+          "long": "port",
+          "type": "Int"
+        },
+        {
+          "long": "starttls",
+          "type": "Bool"
+        },
+        {
+          "long": "user",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

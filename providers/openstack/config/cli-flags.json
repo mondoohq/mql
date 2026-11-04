@@ -1,0 +1,69 @@
+{
+  "connectors": [
+    {
+      "name": "openstack",
+      "flags": [
+        {
+          "long": "application-credential-id",
+          "type": "String"
+        },
+        {
+          "long": "application-credential-name",
+          "type": "String"
+        },
+        {
+          "long": "application-credential-secret",
+          "type": "String"
+        },
+        {
+          "long": "auth-url",
+          "type": "String"
+        },
+        {
+          "long": "cloud",
+          "type": "String"
+        },
+        {
+          "long": "insecure",
+          "type": "Bool"
+        },
+        {
+          "long": "password",
+          "type": "String"
+        },
+        {
+          "long": "project-domain-id",
+          "type": "String"
+        },
+        {
+          "long": "project-domain-name",
+          "type": "String"
+        },
+        {
+          "long": "project-id",
+          "type": "String"
+        },
+        {
+          "long": "project-name",
+          "type": "String"
+        },
+        {
+          "long": "region",
+          "type": "String"
+        },
+        {
+          "long": "user-domain-id",
+          "type": "String"
+        },
+        {
+          "long": "user-domain-name",
+          "type": "String"
+        },
+        {
+          "long": "username",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

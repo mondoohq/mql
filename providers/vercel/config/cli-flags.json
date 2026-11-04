@@ -1,0 +1,17 @@
+{
+  "connectors": [
+    {
+      "name": "vercel",
+      "flags": [
+        {
+          "long": "team",
+          "type": "String"
+        },
+        {
+          "long": "token",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

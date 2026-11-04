@@ -1,0 +1,41 @@
+{
+  "connectors": [
+    {
+      "name": "stackit",
+      "flags": [
+        {
+          "long": "endpoint",
+          "type": "String"
+        },
+        {
+          "long": "private-key",
+          "type": "String"
+        },
+        {
+          "long": "private-key-path",
+          "type": "String"
+        },
+        {
+          "long": "project-id",
+          "type": "String"
+        },
+        {
+          "long": "region",
+          "type": "String"
+        },
+        {
+          "long": "service-account-key",
+          "type": "String"
+        },
+        {
+          "long": "service-account-key-path",
+          "type": "String"
+        },
+        {
+          "long": "token",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

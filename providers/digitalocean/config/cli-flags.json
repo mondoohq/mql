@@ -1,0 +1,17 @@
+{
+  "connectors": [
+    {
+      "name": "digitalocean",
+      "flags": [
+        {
+          "long": "filters",
+          "type": "KeyValue"
+        },
+        {
+          "long": "token",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

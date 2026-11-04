@@ -1,0 +1,245 @@
+{
+  "connectors": [
+    {
+      "name": "container",
+      "flags": [
+        {
+          "long": "container-proxy",
+          "type": "String"
+        },
+        {
+          "long": "disable-cache",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "id-detector",
+          "type": "String",
+          "options": [
+            "Hidden"
+          ]
+        },
+        {
+          "long": "sudo",
+          "type": "Bool",
+          "default": "false"
+        }
+      ]
+    },
+    {
+      "name": "device",
+      "flags": [
+        {
+          "long": "device-name",
+          "type": "String",
+          "options": [
+            "Deprecated",
+            "Hidden"
+          ]
+        },
+        {
+          "long": "device-names",
+          "type": "List",
+          "options": [
+            "Hidden"
+          ]
+        },
+        {
+          "long": "include-mounted",
+          "type": "Bool",
+          "options": [
+            "Hidden"
+          ]
+        },
+        {
+          "long": "keep-mounted",
+          "type": "Bool",
+          "options": [
+            "Hidden"
+          ]
+        },
+        {
+          "long": "lun",
+          "type": "String",
+          "options": [
+            "Hidden"
+          ]
+        },
+        {
+          "long": "mount-all-partitions",
+          "type": "Bool",
+          "options": [
+            "Hidden"
+          ]
+        },
+        {
+          "long": "platform-ids",
+          "type": "List",
+          "options": [
+            "Hidden"
+          ]
+        },
+        {
+          "long": "serial-number",
+          "type": "String",
+          "options": [
+            "Hidden"
+          ]
+        },
+        {
+          "long": "skip-attempt-expand-partitions",
+          "type": "Bool",
+          "options": [
+            "Hidden"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "docker",
+      "flags": [
+        {
+          "long": "container-proxy",
+          "type": "String"
+        },
+        {
+          "long": "disable-cache",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "id-detector",
+          "type": "String",
+          "options": [
+            "Hidden"
+          ]
+        },
+        {
+          "long": "sudo",
+          "type": "Bool",
+          "default": "false"
+        }
+      ]
+    },
+    {
+      "name": "filesystem",
+      "aliases": [
+        "fs"
+      ],
+      "flags": [
+        {
+          "long": "path",
+          "type": "String",
+          "options": [
+            "Deprecated"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "local",
+      "flags": [
+        {
+          "long": "id-detector",
+          "type": "String",
+          "options": [
+            "Hidden"
+          ]
+        },
+        {
+          "long": "sudo",
+          "type": "Bool",
+          "default": "false"
+        }
+      ]
+    },
+    {
+      "name": "ssh",
+      "flags": [
+        {
+          "long": "ask-pass",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "id-detector",
+          "type": "String",
+          "options": [
+            "Hidden"
+          ]
+        },
+        {
+          "long": "identity-file",
+          "short": "i",
+          "type": "String"
+        },
+        {
+          "long": "insecure",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "password",
+          "short": "p",
+          "type": "String",
+          "options": [
+            "Password"
+          ]
+        },
+        {
+          "long": "sudo",
+          "type": "Bool",
+          "default": "false"
+        }
+      ]
+    },
+    {
+      "name": "vagrant",
+      "flags": [
+        {
+          "long": "id-detector",
+          "type": "String",
+          "options": [
+            "Hidden"
+          ]
+        },
+        {
+          "long": "sudo",
+          "type": "Bool",
+          "default": "false"
+        }
+      ]
+    },
+    {
+      "name": "winrm",
+      "flags": [
+        {
+          "long": "ask-pass",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "id-detector",
+          "type": "String",
+          "options": [
+            "Hidden"
+          ]
+        },
+        {
+          "long": "insecure",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "password",
+          "short": "p",
+          "type": "String",
+          "default": "false",
+          "options": [
+            "Password"
+          ]
+        }
+      ]
+    }
+  ]
+}

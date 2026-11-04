@@ -1,0 +1,28 @@
+{
+  "connectors": [
+    {
+      "name": "gitlab",
+      "flags": [
+        {
+          "long": "group",
+          "type": "String",
+          "options": [
+            "Required"
+          ]
+        },
+        {
+          "long": "project",
+          "type": "String"
+        },
+        {
+          "long": "token",
+          "type": "String"
+        },
+        {
+          "long": "url",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "connectors": [
+    {
+      "name": "atlassian",
+      "flags": [
+        {
+          "long": "admin-token",
+          "type": "String"
+        },
+        {
+          "long": "host",
+          "type": "String"
+        },
+        {
+          "long": "scim-token",
+          "type": "String"
+        },
+        {
+          "long": "user",
+          "type": "String"
+        },
+        {
+          "long": "user-token",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

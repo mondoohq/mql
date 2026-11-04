@@ -1,0 +1,17 @@
+{
+  "connectors": [
+    {
+      "name": "jumpcloud",
+      "flags": [
+        {
+          "long": "api-key",
+          "type": "String"
+        },
+        {
+          "long": "org-id",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "connectors": [
+    {
+      "name": "azuredevops",
+      "flags": [
+        {
+          "long": "client-id",
+          "type": "String"
+        },
+        {
+          "long": "client-secret",
+          "type": "String"
+        },
+        {
+          "long": "repos",
+          "type": "String"
+        },
+        {
+          "long": "repos-exclude",
+          "type": "String"
+        },
+        {
+          "long": "tenant-id",
+          "type": "String"
+        },
+        {
+          "long": "token",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}
