@@ -346,6 +346,9 @@ func (mpm *MacOSPkgManager) List() ([]Package, error) {
 			Msg("system_profiler listed no applications, Spotlight indexing may be off; using the application folders")
 	}
 	applyMacOSReceiptInstallDates(pkgs, readMacOSReceipts(mpm.conn))
+	// .NET runtimes are directories, not application bundles, so they are
+	// added after the receipt dates, which only apply to bundles.
+	pkgs = append(pkgs, macOSDotnetPackages(mpm.conn.FileSystem(), mpm.platform)...)
 	return pkgs, nil
 }
 
