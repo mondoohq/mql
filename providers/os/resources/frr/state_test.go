@@ -426,3 +426,26 @@ func TestStreamRoutes_TruncatedOnDroppedEntries(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, table.Truncated)
 }
+
+// TestValidatePeer covers the peer identifier, which reaches the vtysh
+// command line. An address carries colons, dots and a scope, and nothing
+// else may pass.
+func TestValidatePeer(t *testing.T) {
+	valid := []string{
+		"swp1", "192.0.2.1", "2001:db8::1", "fe80::1%swp1", "eth-dcgw1", "a",
+	}
+	for _, v := range valid {
+		assert.NoError(t, ValidatePeer(v), v)
+	}
+
+	// The characters between `%` and `-` in ASCII are listed on purpose, so
+	// a character class that was read as a range would fail here.
+	invalid := []string{
+		"", "-lead", "a b", "a;id", "a$(id)", "a`id`", "a|b", "a&b", "a'b",
+		"a(b", "a)b", "a*b", "a+b", "a,b", "a\"b", "a\nb",
+		strings.Repeat("a", 65),
+	}
+	for _, v := range invalid {
+		assert.Error(t, ValidatePeer(v), "%q must be rejected", v)
+	}
+}
