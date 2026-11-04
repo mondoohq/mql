@@ -57,6 +57,7 @@ type mqlGcpProjectComputeServiceSslPolicyInternal struct {
 type mqlGcpProjectComputeServiceSubnetworkInternal struct {
 	cacheNetworkUrl string
 	cacheRegionUrl  string
+	cacheSelfLink   string
 }
 
 func initGcpProjectComputeService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -795,6 +796,13 @@ type mqlGcpProjectComputeServiceInstanceInternal struct {
 	cacheServiceAccountEmails []string
 }
 
+func (g *mqlGcpProjectComputeServiceInstance) effectiveTags() ([]any, error) {
+	if g.SelfLink.Error != nil {
+		return nil, g.SelfLink.Error
+	}
+	return effectiveTagsForResource(g.MqlRuntime, computeSelfLinkToResourceName(g.SelfLink.Data), "compute.instances.listEffectiveTags")
+}
+
 func newMqlComputeServiceInstance(projectId string, zone *mqlGcpProjectComputeServiceZone, runtime *plugin.Runtime, instance *compute.Instance) (*mqlGcpProjectComputeServiceInstance, error) {
 	metadata := map[string]string{}
 	if instance.Metadata != nil {
@@ -1184,6 +1192,11 @@ type mqlGcpProjectComputeServiceDiskInternal struct {
 	cacheSourceSnapshotUrl string
 	cacheStoragePoolUrl    string
 	cacheKmsKeyName        string
+	cacheSelfLink          string
+}
+
+func (g *mqlGcpProjectComputeServiceDisk) effectiveTags() ([]any, error) {
+	return effectiveTagsForResource(g.MqlRuntime, computeSelfLinkToResourceName(g.cacheSelfLink), "compute.disks.listEffectiveTags")
 }
 
 func (g *mqlGcpProjectComputeServiceDisk) kmsKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
@@ -1488,6 +1501,7 @@ func (g *mqlGcpProjectComputeService) disks() ([]any, error) {
 				mqlD.cacheSourceImageUrl = disk.SourceImage
 				mqlD.cacheSourceSnapshotUrl = disk.SourceSnapshot
 				mqlD.cacheStoragePoolUrl = disk.StoragePool
+				mqlD.cacheSelfLink = disk.SelfLink
 				if disk.DiskEncryptionKey != nil {
 					mqlD.cacheKmsKeyName = disk.DiskEncryptionKey.KmsKeyName
 				}
@@ -1503,6 +1517,11 @@ func (g *mqlGcpProjectComputeService) disks() ([]any, error) {
 
 type mqlGcpProjectComputeServiceFirewallInternal struct {
 	cacheNetworkUrl string
+	cacheSelfLink   string
+}
+
+func (g *mqlGcpProjectComputeServiceFirewall) effectiveTags() ([]any, error) {
+	return effectiveTagsForResource(g.MqlRuntime, computeSelfLinkToResourceName(g.cacheSelfLink), "compute.firewalls.listEffectiveTags")
 }
 
 func (g *mqlGcpProjectComputeServiceFirewall) network() (*mqlGcpProjectComputeServiceNetwork, error) {
@@ -1702,6 +1721,7 @@ func (g *mqlGcpProjectComputeService) firewalls() ([]any, error) {
 			}
 			mqlFw := mqlFirewall.(*mqlGcpProjectComputeServiceFirewall)
 			mqlFw.cacheNetworkUrl = firewall.Network
+			mqlFw.cacheSelfLink = firewall.SelfLink
 			res = append(res, mqlFirewall)
 		}
 		return nil
@@ -2086,6 +2106,11 @@ func (g *mqlGcpProjectComputeService) images() ([]any, error) {
 
 type mqlGcpProjectComputeServiceNetworkInternal struct {
 	cachePeerings []*compute.NetworkPeering
+	cacheSelfLink string
+}
+
+func (g *mqlGcpProjectComputeServiceNetwork) effectiveTags() ([]any, error) {
+	return effectiveTagsForResource(g.MqlRuntime, computeSelfLinkToResourceName(g.cacheSelfLink), "compute.networks.listEffectiveTags")
 }
 
 func (g *mqlGcpProjectComputeServiceNetwork) id() (string, error) {
@@ -2320,7 +2345,9 @@ func initGcpProjectComputeServiceNetwork(runtime *plugin.Runtime, args map[strin
 	if err != nil {
 		return nil, nil, err
 	}
-	return args, mqlNetwork.(*mqlGcpProjectComputeServiceNetwork), nil
+	mqlNet := mqlNetwork.(*mqlGcpProjectComputeServiceNetwork)
+	mqlNet.cacheSelfLink = network.SelfLink
+	return args, mqlNet, nil
 }
 
 func (g *mqlGcpProjectComputeService) networks() ([]any, error) {
@@ -2383,6 +2410,7 @@ func (g *mqlGcpProjectComputeService) networks() ([]any, error) {
 			}
 			mqlNet := mqlNetwork.(*mqlGcpProjectComputeServiceNetwork)
 			mqlNet.cachePeerings = network.Peerings
+			mqlNet.cacheSelfLink = network.SelfLink
 			res = append(res, mqlNetwork)
 		}
 		return nil
@@ -2657,7 +2685,12 @@ func newMqlSubnetwork(projectId string, runtime *plugin.Runtime, subnetwork *com
 	mqlSubnet := res.(*mqlGcpProjectComputeServiceSubnetwork)
 	mqlSubnet.cacheRegionUrl = subnetwork.GetRegion()
 	mqlSubnet.cacheNetworkUrl = subnetwork.GetNetwork()
+	mqlSubnet.cacheSelfLink = subnetwork.GetSelfLink()
 	return res, nil
+}
+
+func (g *mqlGcpProjectComputeServiceSubnetwork) effectiveTags() ([]any, error) {
+	return effectiveTagsForResource(g.MqlRuntime, computeSelfLinkToResourceName(g.cacheSelfLink), "compute.subnetworks.listEffectiveTags")
 }
 
 func (g *mqlGcpProjectComputeService) subnetworks() ([]any, error) {
@@ -3958,6 +3991,18 @@ func (g *mqlGcpProjectComputeServiceVpnGateway) id() (string, error) {
 type mqlGcpProjectComputeServiceVpnGatewayInternal struct {
 	cacheNetworkUrl string
 	cacheRegionUrl  string
+	cacheSelfLink   string
+}
+
+func (g *mqlGcpProjectComputeServiceVpnGateway) effectiveTags() ([]any, error) {
+	return effectiveTagsForResource(g.MqlRuntime, computeSelfLinkToResourceName(g.cacheSelfLink), "compute.vpnGateways.listEffectiveTags")
+}
+
+func (g *mqlGcpProjectComputeServiceVpnTunnel) effectiveTags() ([]any, error) {
+	if g.SelfLink.Error != nil {
+		return nil, g.SelfLink.Error
+	}
+	return effectiveTagsForResource(g.MqlRuntime, computeSelfLinkToResourceName(g.SelfLink.Data), "compute.vpnTunnels.listEffectiveTags")
 }
 
 func (g *mqlGcpProjectComputeServiceVpnGateway) network() (*mqlGcpProjectComputeServiceNetwork, error) {
@@ -4028,9 +4073,10 @@ func (g *mqlGcpProjectComputeService) vpnGateways() ([]any, error) {
 				if err != nil {
 					return err
 				}
-				mqlRef := mqlGw.(*mqlGcpProjectComputeServiceVpnGateway)
-				mqlRef.cacheRegionUrl = gw.Region
-				mqlGw.(*mqlGcpProjectComputeServiceVpnGateway).cacheNetworkUrl = gw.Network
+				mqlGwRes := mqlGw.(*mqlGcpProjectComputeServiceVpnGateway)
+				mqlGwRes.cacheRegionUrl = gw.Region
+				mqlGwRes.cacheNetworkUrl = gw.Network
+				mqlGwRes.cacheSelfLink = gw.SelfLink
 				res = append(res, mqlGw)
 			}
 		}
