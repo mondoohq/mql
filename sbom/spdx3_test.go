@@ -154,3 +154,35 @@ func TestMultiDecoder_UnknownFormat(t *testing.T) {
 	assert.ErrorIs(t, err, sbom.ErrUnknownFormat)
 	assert.Contains(t, err.Error(), "SPDX 3.0.1 (JSON-LD)")
 }
+
+// TestSpdx3Decoder_YoctoCpeOnly pins the ≤5.x Yocto build path for the native
+// SPDX 3.0.1 export: OpenEmbedded's oe-spdx-creator writes CPEs and no purls.
+// The importer recognizes the Yocto origin and synthesizes a pkg:yocto purl for
+// each INSTALLED package from its name, but leaves source/build inputs (a source
+// tarball) alone, and marks the asset as a Yocto image.
+func TestSpdx3Decoder_YoctoCpeOnly(t *testing.T) {
+	bom := parseFile(t, sbom.DefaultMultiDecoder(), "testdata/yocto-5.x.spdx3.json")
+	require.NotNil(t, bom)
+
+	byName := map[string]*sbom.Package{}
+	for _, p := range bom.Packages {
+		byName[p.Name] = p
+	}
+
+	// Installed packages gain a pkg:yocto purl from their name.
+	for _, name := range []string{"curl", "libcurl4"} {
+		require.Contains(t, byName, name)
+		assert.Equal(t, "pkg:yocto/core/"+name+"@8.7.1", byName[name].Purl, name)
+		assert.Equal(t, "yocto", byName[name].Type, name)
+	}
+
+	// The source tarball (primaryPurpose "source") is not something installed on
+	// the device, so it is left purl-less -- it must not become a bogus
+	// pkg:yocto/core/curl-8.7.1.tar.xz finding.
+	require.Contains(t, byName, "curl-8.7.1.tar.xz")
+	assert.Empty(t, byName["curl-8.7.1.tar.xz"].Purl, "a source package must not get a synthesized purl")
+
+	require.NotNil(t, bom.Asset)
+	require.NotNil(t, bom.Asset.Platform)
+	assert.Equal(t, "yocto", bom.Asset.Platform.Name)
+}

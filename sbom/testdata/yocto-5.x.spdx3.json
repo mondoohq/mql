@@ -1,0 +1,68 @@
+{
+  "@context": "https://spdx.org/rdf/3.0.1/spdx-context.jsonld",
+  "@graph": [
+    {
+      "type": "CreationInfo",
+      "@id": "_:creationinfo",
+      "specVersion": "3.0.1",
+      "created": "2026-10-23T11:25:39Z",
+      "createdBy": ["https://spdx.org/spdxdocs/yocto#agent-openembedded"],
+      "createdUsing": ["https://spdx.org/spdxdocs/yocto#tool-oe-spdx-creator"]
+    },
+    {
+      "type": "Organization",
+      "spdxId": "https://spdx.org/spdxdocs/yocto#agent-openembedded",
+      "creationInfo": "_:creationinfo",
+      "name": "OpenEmbedded"
+    },
+    {
+      "type": "Tool",
+      "spdxId": "https://spdx.org/spdxdocs/yocto#tool-oe-spdx-creator",
+      "creationInfo": "_:creationinfo",
+      "name": "oe-spdx-creator 1.0"
+    },
+    {
+      "type": "software_Package",
+      "spdxId": "https://spdx.org/spdxdocs/yocto#pkg-curl",
+      "creationInfo": "_:creationinfo",
+      "name": "curl",
+      "software_packageVersion": "8.7.1",
+      "software_primaryPurpose": "install",
+      "externalIdentifier": [
+        {"type": "ExternalIdentifier", "externalIdentifierType": "cpe23", "identifier": "cpe:2.3:*:haxx:curl:8.7.1:*:*:*:*:*:*:*"},
+        {"type": "ExternalIdentifier", "externalIdentifierType": "cpe23", "identifier": "cpe:2.3:*:curl:curl:8.7.1:*:*:*:*:*:*:*"}
+      ]
+    },
+    {
+      "type": "software_Package",
+      "spdxId": "https://spdx.org/spdxdocs/yocto#pkg-libcurl4",
+      "creationInfo": "_:creationinfo",
+      "name": "libcurl4",
+      "software_packageVersion": "8.7.1",
+      "software_primaryPurpose": "install",
+      "externalIdentifier": [
+        {"type": "ExternalIdentifier", "externalIdentifierType": "cpe23", "identifier": "cpe:2.3:*:haxx:curl:8.7.1:*:*:*:*:*:*:*"}
+      ]
+    },
+    {
+      "type": "software_Package",
+      "spdxId": "https://spdx.org/spdxdocs/yocto#src-curl",
+      "creationInfo": "_:creationinfo",
+      "name": "curl-8.7.1.tar.xz",
+      "software_packageVersion": "8.7.1",
+      "software_primaryPurpose": "source",
+      "software_downloadLocation": "https://curl.se/download/curl-8.7.1.tar.xz",
+      "externalIdentifier": [
+        {"type": "ExternalIdentifier", "externalIdentifierType": "cpe23", "identifier": "cpe:2.3:*:haxx:curl:8.7.1:*:*:*:*:*:*:*"}
+      ]
+    },
+    {
+      "type": "SpdxDocument",
+      "spdxId": "https://spdx.org/spdxdocs/yocto#document",
+      "creationInfo": "_:creationinfo",
+      "name": "acme-image-prod-examplevendor-mx8mm-v1.0",
+      "profileConformance": ["core", "software"],
+      "rootElement": ["https://spdx.org/spdxdocs/yocto#pkg-curl"]
+    }
+  ]
+}
