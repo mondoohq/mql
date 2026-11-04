@@ -159,6 +159,14 @@ func appendConfigKey(path string, key string, value string) error {
 	}
 	defer os.Remove(tmp.Name())
 
+	// On Windows the temporary file inherits the folder's access list, which
+	// under ProgramData lets every local user read it. Restrict it before the
+	// content goes in; the rename keeps the access list.
+	if err := restrictAccess(tmp.Name()); err != nil {
+		tmp.Close()
+		return err
+	}
+
 	if _, err := tmp.Write(append(current, []byte(addition)...)); err != nil {
 		tmp.Close()
 		return err
