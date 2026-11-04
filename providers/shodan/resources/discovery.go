@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
+	"github.com/shadowscatcher/shodan/models"
 	"github.com/shadowscatcher/shodan/search"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -44,19 +45,10 @@ func Discover(runtime *plugin.Runtime, opts map[string]string) (*inventory.Inven
 	networks := strings.Split(networkValue, ",")
 	assetList := []*inventory.Asset{}
 
-	addrs := resolveNetworks(networks)
+	addrs := discoverAddrs(context.Background(), conn.Client(), networks)
 
 	for i := range addrs {
 		addr := addrs[i]
-
-		// if the host is not found, we skip it
-		// TODO: optimize this by using the bulk search so we save some API calls
-		_, err := conn.Client().Host(context.Background(), search.HostParams{
-			IP: addr.String(),
-		})
-		if err != nil {
-			continue
-		}
 
 		a := &inventory.Asset{
 			Name: addr.String(),
@@ -79,6 +71,98 @@ func Discover(runtime *plugin.Runtime, opts map[string]string) (*inventory.Inven
 		Assets: assetList,
 	}}
 	return in, nil
+}
+
+// shodanClient is the part of the Shodan API discovery uses.
+type shodanClient interface {
+	Host(ctx context.Context, params search.HostParams) (models.Host, error)
+	Count(ctx context.Context, params search.Params) (models.SearchResult, error)
+}
+
+// maxIPFacet caps how many distinct IPs one Count call asks Shodan to list.
+// Shodan rejects a facet larger than the plan allows (5120 on the basic API
+// plan), and a rejected call costs the range its fast path.
+const maxIPFacet = 5000
+
+// discoverAddrs returns the addresses Shodan has data for. A CIDR range is
+// listed with one Count call per range instead of one host lookup per
+// address: API calls are rate limited to about one per second, so a /22 is
+// ~17 minutes of lookups, most of them for addresses Shodan has no data on. Count
+// does not use query credits. A range falls back to per-address lookups when
+// Count fails (e.g. a plan without search filters) or returns a partial list.
+func discoverAddrs(ctx context.Context, client shodanClient, networks []string) []netip.Addr {
+	addrs := []netip.Addr{}
+	for _, network := range networks {
+		if strings.Contains(network, "/") {
+			found, err := indexedAddrs(ctx, client, network)
+			if err == nil {
+				addrs = append(addrs, found...)
+				continue
+			}
+			log.Debug().Err(err).Str("network", network).Msg("Shodan range listing unavailable, looking up each address")
+		}
+		for _, addr := range resolveNetworks([]string{network}) {
+			// if the host is not found, we skip it
+			if _, err := client.Host(ctx, search.HostParams{IP: addr.String()}); err == nil {
+				addrs = append(addrs, addr)
+			}
+		}
+	}
+	return addrs
+}
+
+// indexedAddrs lists the addresses in cidr that Shodan has banners for.
+func indexedAddrs(ctx context.Context, client shodanClient, cidr string) ([]netip.Addr, error) {
+	prefix, err := netip.ParsePrefix(cidr)
+	if err != nil {
+		return nil, err
+	}
+	prefix = prefix.Masked()
+	// Same cap as cidrIPs, so a range too large to enumerate stays skipped.
+	hostBits := prefix.Addr().BitLen() - prefix.Bits()
+	if hostBits > 16 {
+		return nil, fmt.Errorf("CIDR range %q is too large to enumerate (limit is %d addresses)", cidr, maxCIDRHosts)
+	}
+
+	res, err := client.Count(ctx, search.Params{
+		Query:  search.Query{Net: prefix.String()},
+		Facets: []string{fmt.Sprintf("ip:%d", min(1<<hostBits, maxIPFacet))},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Total counts banners; every banner belongs to one IP. If the per-IP
+	// counts don't add up to it, Shodan cut the facet list short.
+	sum := 0
+	addrs := []netip.Addr{}
+	for _, f := range res.Facets["ip"] {
+		sum += f.Count
+		s, _ := f.Value.(string)
+		addr, err := netip.ParseAddr(s)
+		if err != nil {
+			return nil, fmt.Errorf("unexpected ip facet value %v", f.Value)
+		}
+		// cidrIPs never looked up a range's network and broadcast address,
+		// so neither does this.
+		if prefix.Contains(addr) && (hostBits < 2 || (addr != prefix.Addr() && addr != lastAddr(prefix))) {
+			addrs = append(addrs, addr)
+		}
+	}
+	if sum != res.Total {
+		return nil, fmt.Errorf("ip facet is partial: %d of %d banners", sum, res.Total)
+	}
+	return addrs, nil
+}
+
+// lastAddr returns the highest address in a masked prefix.
+func lastAddr(p netip.Prefix) netip.Addr {
+	b := p.Addr().AsSlice()
+	for i := p.Bits(); i < p.Addr().BitLen(); i++ {
+		b[i/8] |= 1 << (7 - i%8)
+	}
+	addr, _ := netip.AddrFromSlice(b)
+	return addr
 }
 
 func handleTargets(targets []string) []string {
