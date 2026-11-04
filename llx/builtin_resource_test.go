@@ -3,6 +3,7 @@
 package llx_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,6 +11,7 @@ import (
 	"go.mondoo.com/mql/exec"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/testutils"
+	"go.mondoo.com/mql/types"
 )
 
 func TestResourceMapV2(t *testing.T) {
@@ -32,7 +34,9 @@ func TestResourceMapV2(t *testing.T) {
 // first run's (a regression in v14.9.1, when field answers began to be cached
 // across the runtime while every run stored its result under the same id).
 func TestResourceWhereV2_InsideBlock(t *testing.T) {
-	blockValues := func(t *testing.T, query string) []any {
+	// blockValues returns the value of one field from each block result: the
+	// only field when key is empty, otherwise the field named key.
+	blockValues := func(t *testing.T, query string, key string) []any {
 		t.Helper()
 		result, err := exec.Exec(query, testutils.LinuxMock(), testutils.Features, nil)
 		require.NoError(t, err)
@@ -43,6 +47,12 @@ func TestResourceWhereV2_InsideBlock(t *testing.T) {
 		for i, row := range rows {
 			fields, ok := row.(map[string]any)
 			require.True(t, ok, "expected a block result, got %T", row)
+			if key != "" {
+				v, ok := fields[key]
+				require.True(t, ok, "expected field %q in the block result, got %v", key, fields)
+				values[i] = v
+				continue
+			}
 			require.Len(t, fields, 1)
 			for _, v := range fields {
 				values[i] = v
@@ -52,12 +62,68 @@ func TestResourceWhereV2_InsideBlock(t *testing.T) {
 	}
 
 	t.Run("list of the filter result", func(t *testing.T) {
-		got := blockValues(t, `["root", "chris", "nobody"] { x = _; users.where(name == x).list.map(name) }`)
+		got := blockValues(t, `["root", "chris", "nobody"] { x = _; users.where(name == x).list.map(name) }`, "")
 		assert.Equal(t, []any{[]any{"root"}, []any{"chris"}, []any{}}, got)
 	})
 	t.Run("length of the filter result", func(t *testing.T) {
-		got := blockValues(t, `[1, 1000] { x = _; users.where(uid >= x).length }`)
+		got := blockValues(t, `[1, 1000] { x = _; users.where(uid >= x).length }`, "")
 		assert.Equal(t, []any{int64(3), int64(2)}, got)
+	})
+	// all() keeps the items that fail its condition with whereNot, which stores
+	// its result the same way as where.
+	t.Run("all, filtered with whereNot", func(t *testing.T) {
+		got := blockValues(t, `[0, 1000] { x = _; users.all(uid >= x) }`, "users.all()")
+		assert.Equal(t, []any{true, false}, got)
+	})
+}
+
+// cloneRecorder is a runtime that only records the ids that filter results
+// are stored under.
+type cloneRecorder struct {
+	llx.Runtime
+	ids []string
+}
+
+func (r *cloneRecorder) CloneResource(src llx.Resource, id string, fields []string, args map[string]*llx.Primitive) (llx.Resource, error) {
+	r.ids = append(r.ids, id)
+	return &llx.MockResource{Name: src.MqlName(), ID: id}, nil
+}
+
+// Synthetic: the id a filter result is stored under names the filter block,
+// the filtered resource and the items kept. The runtime also drops cached
+// fields when an id is stored again, so the block tests above pass without
+// this; the id is what keeps a recording, which that drop doesn't reach, from
+// answering one result for another.
+func TestFilterResultResource(t *testing.T) {
+	userList := func(ids ...string) *llx.Primitive {
+		items := make([]*llx.Primitive, len(ids))
+		for i, id := range ids {
+			items[i] = &llx.Primitive{Type: string(types.Resource("user")), Value: []byte(id)}
+		}
+		return llx.ArrayPrimitive(items, types.Resource("user"))
+	}
+	cloneID := func(t *testing.T, srcID string, filtered *llx.Primitive) string {
+		t.Helper()
+		r := &cloneRecorder{}
+		src := &llx.MockResource{Name: "users", ID: srcID}
+		_, err := llx.FilterResultResource(r, src, "block", nil, map[string]*llx.Primitive{"list": filtered}, filtered)
+		require.NoError(t, err)
+		require.Len(t, r.ids, 1)
+		return r.ids[0]
+	}
+
+	t.Run("the same items of the same resource share an id", func(t *testing.T) {
+		a := cloneID(t, "users", userList("root", "chris"))
+		b := cloneID(t, "users", userList("root", "chris"))
+		assert.Equal(t, a, b)
+		assert.True(t, strings.HasPrefix(a, "block/"), "the id starts with the filter block: %s", a)
+	})
+	t.Run("different items get different ids", func(t *testing.T) {
+		assert.NotEqual(t, cloneID(t, "users", userList("root")), cloneID(t, "users", userList("chris")))
+		assert.NotEqual(t, cloneID(t, "users", userList()), cloneID(t, "users", userList("root")))
+	})
+	t.Run("the same items of different resources get different ids", func(t *testing.T) {
+		assert.NotEqual(t, cloneID(t, "files/root", userList()), cloneID(t, "files/home", userList()))
 	})
 }
 

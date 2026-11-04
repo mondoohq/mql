@@ -5,6 +5,7 @@ package llx
 
 // Exported for the tests in package llx_test.
 var (
-	PermissionsAtMost  = permissionsAtMost
-	PermissionsAtLeast = permissionsAtLeast
+	PermissionsAtMost    = permissionsAtMost
+	PermissionsAtLeast   = permissionsAtLeast
+	FilterResultResource = filterResultResource
 )
