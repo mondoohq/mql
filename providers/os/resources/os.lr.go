@@ -345,6 +345,8 @@ const (
 	ResourceProcesses                                      string = "processes"
 	ResourceRunningBinaries                                string = "runningBinaries"
 	ResourceBinary                                         string = "binary"
+	ResourceInstallations                                  string = "installations"
+	ResourceInstallation                                   string = "installation"
 	ResourcePort                                           string = "port"
 	ResourcePorts                                          string = "ports"
 	ResourceWebsites                                       string = "websites"
@@ -2161,6 +2163,14 @@ func init() {
 		"binary": {
 			// to override args, implement: initBinary(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createBinary,
+		},
+		"installations": {
+			// to override args, implement: initInstallations(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createInstallations,
+		},
+		"installation": {
+			// to override args, implement: initInstallation(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createInstallation,
 		},
 		"port": {
 			// to override args, implement: initPort(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -13134,6 +13144,36 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"binary.signer": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlBinary).GetSigner()).ToDataRes(types.Resource("certificate"))
+	},
+	"installations.list": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlInstallations).GetList()).ToDataRes(types.Array(types.Resource("installation")))
+	},
+	"installation.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlInstallation).GetName()).ToDataRes(types.String)
+	},
+	"installation.vendor": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlInstallation).GetVendor()).ToDataRes(types.String)
+	},
+	"installation.path": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlInstallation).GetPath()).ToDataRes(types.String)
+	},
+	"installation.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlInstallation).GetVersion()).ToDataRes(types.String)
+	},
+	"installation.versionSource": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlInstallation).GetVersionSource()).ToDataRes(types.String)
+	},
+	"installation.versionFile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlInstallation).GetVersionFile()).ToDataRes(types.Resource("file"))
+	},
+	"installation.locatedBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlInstallation).GetLocatedBy()).ToDataRes(types.String)
+	},
+	"installation.purl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlInstallation).GetPurl()).ToDataRes(types.String)
+	},
+	"installation.cpes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlInstallation).GetCpes()).ToDataRes(types.Array(types.Resource("cpe")))
 	},
 	"port.protocol": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPort).GetProtocol()).ToDataRes(types.String)
@@ -37832,6 +37872,54 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"binary.signer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlBinary).Signer, ok = plugin.RawToTValue[plugin.Resource](v.Value, v.Error)
+		return
+	},
+	"installations.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlInstallations).__id, ok = v.Value.(string)
+		return
+	},
+	"installations.list": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlInstallations).List, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"installation.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlInstallation).__id, ok = v.Value.(string)
+		return
+	},
+	"installation.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlInstallation).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"installation.vendor": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlInstallation).Vendor, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"installation.path": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlInstallation).Path, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"installation.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlInstallation).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"installation.versionSource": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlInstallation).VersionSource, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"installation.versionFile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlInstallation).VersionFile, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"installation.locatedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlInstallation).LocatedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"installation.purl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlInstallation).Purl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"installation.cpes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlInstallation).Cpes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"port.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -91601,6 +91689,158 @@ func (c *mqlBinary) GetSigner() *plugin.TValue[plugin.Resource] {
 
 		return c.signer()
 	})
+}
+
+// mqlInstallations for the installations resource
+type mqlInstallations struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlInstallationsInternal it will be used here
+	List plugin.TValue[[]any]
+}
+
+// createInstallations creates a new instance of this resource
+func createInstallations(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlInstallations{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("installations", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlInstallations) MqlName() string {
+	return "installations"
+}
+
+func (c *mqlInstallations) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlInstallations) GetList() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.List, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("installations", c.__id, "list")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.list()
+	})
+}
+
+// mqlInstallation for the installation resource
+type mqlInstallation struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlInstallationInternal
+	Name          plugin.TValue[string]
+	Vendor        plugin.TValue[string]
+	Path          plugin.TValue[string]
+	Version       plugin.TValue[string]
+	VersionSource plugin.TValue[string]
+	VersionFile   plugin.TValue[*mqlFile]
+	LocatedBy     plugin.TValue[string]
+	Purl          plugin.TValue[string]
+	Cpes          plugin.TValue[[]any]
+}
+
+// createInstallation creates a new instance of this resource
+func createInstallation(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlInstallation{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("installation", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlInstallation) MqlName() string {
+	return "installation"
+}
+
+func (c *mqlInstallation) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlInstallation) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlInstallation) GetVendor() *plugin.TValue[string] {
+	return &c.Vendor
+}
+
+func (c *mqlInstallation) GetPath() *plugin.TValue[string] {
+	return &c.Path
+}
+
+func (c *mqlInstallation) GetVersion() *plugin.TValue[string] {
+	return &c.Version
+}
+
+func (c *mqlInstallation) GetVersionSource() *plugin.TValue[string] {
+	return &c.VersionSource
+}
+
+func (c *mqlInstallation) GetVersionFile() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.VersionFile, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("installation", c.__id, "versionFile")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.versionFile()
+	})
+}
+
+func (c *mqlInstallation) GetLocatedBy() *plugin.TValue[string] {
+	return &c.LocatedBy
+}
+
+func (c *mqlInstallation) GetPurl() *plugin.TValue[string] {
+	return &c.Purl
+}
+
+func (c *mqlInstallation) GetCpes() *plugin.TValue[[]any] {
+	return &c.Cpes
 }
 
 // mqlPort for the port resource
