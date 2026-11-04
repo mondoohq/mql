@@ -7,10 +7,47 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// Plugins installed from Cursor's Customize page keep their MCP servers in
+// their own mcp.json, not in the user's.
+func TestCursorPluginMCPConfigFiles(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	cfg := "/home/u/.cursor"
+	write := func(path, content string) {
+		require.NoError(t, afs.WriteFile(filepath.Join(cfg, path), []byte(content), 0o644))
+	}
+	cache := "plugins/cache/cursor-public"
+
+	write("mcp.json", `{"mcpServers":{}}`)
+	// Default discovery: mcp.json at the plugin root.
+	write("plugins/local/mine/mcp.json", `{}`)
+	// Two refs left by an update: only the newer one counts.
+	write(cache+"/attio/old/mcp.json", `{}`)
+	write(cache+"/attio/new/mcp.json", `{}`)
+	require.NoError(t, afs.Chtimes(filepath.Join(cfg, cache, "attio/old"), time.Unix(1, 0), time.Unix(1, 0)))
+	require.NoError(t, afs.Chtimes(filepath.Join(cfg, cache, "attio/new"), time.Unix(2, 0), time.Unix(2, 0)))
+	// The manifest names a custom file.
+	write(cache+"/custom/abc/.cursor-plugin/plugin.json", `{"mcpServers":"./config/servers.json"}`)
+	write(cache+"/custom/abc/config/servers.json", `{}`)
+	// A manifest pointing outside the plugin is ignored.
+	write(cache+"/escape/abc/.cursor-plugin/plugin.json", `{"mcpServers":"../../../../../mcp.json"}`)
+	// No MCP servers at all.
+	write(cache+"/skillsonly/abc/skills/x/SKILL.md", `x`)
+
+	got := cursorMCPConfigFiles(afs, cfg)
+	assert.Equal(t, []string{
+		filepath.Join(cfg, "mcp.json"),
+		filepath.Join(cfg, "plugins/local/mine/mcp.json"),
+		filepath.Join(cfg, cache, "attio/new/mcp.json"),
+		filepath.Join(cfg, cache, "custom/abc/config/servers.json"),
+	}, got)
+}
 
 func createTestCursorConfig(t *testing.T) string {
 	t.Helper()
