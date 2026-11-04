@@ -13,31 +13,9 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers/os/connection/shared"
-	"go.mondoo.com/mql/providers/os/resources/purl"
 )
 
-const (
-	OpkgPkgFormat = "opkg"
-
-	// yoctoOeCoreLayer is the OpenEmbedded layer used as the pkg:yocto namespace.
-	// v1 covers OE-Core/poky, whose layer is "core"; it matches the layer the
-	// Yocto advisories are keyed on and the one native 6.0 SBOMs emit.
-	yoctoOeCoreLayer = "core"
-)
-
-// setYoctoPurl assigns a pkg:yocto/core/<name>@<version> purl to an opkg package
-// when the platform is a Yocto image. opkg is ALSO OpenWrt's package manager, so
-// the purl is emitted only for a yocto platform -- OpenWrt packages keep their
-// previous behaviour (no purl). The package name is the installed (opkg) name,
-// which the vulnerability backend matches against the recipe's output-package
-// identities (reconciling the debian soname rename on its side).
-func setYoctoPurl(pf *inventory.Platform, pkg *Package) {
-	if pf == nil || pf.Name != "yocto" || pkg.Name == "" || pkg.Version == "" {
-		return
-	}
-	pkg.PUrl = purl.NewPackageURL(pf, purl.TypeYocto, pkg.Name, pkg.Version,
-		purl.WithNamespace(yoctoOeCoreLayer)).String()
-}
+const OpkgPkgFormat = "opkg"
 
 var OPKG_LIST_PACKAGE_REGEX = regexp.MustCompile(`^([\w\d\-]+)\s-\s([\w\d\-\.]+)$`)
 
@@ -54,7 +32,7 @@ func ParseOpkgListPackagesCommand(pf *inventory.Platform, input io.Reader) []Pac
 				Version: m[2],
 				Format:  OpkgPkgFormat,
 			}
-			setYoctoPurl(pf, &pkg)
+			SetYoctoPurl(pf, &pkg)
 			pkgs = append(pkgs, pkg)
 		}
 	}
@@ -79,7 +57,7 @@ func ParseOpkgPackages(pf *inventory.Platform, input io.Reader) ([]Package, erro
 			// opkg records a hold in the flag field of the status triple,
 			// where dpkg carried it historically.
 			pkg.Pinned = isHeldStatus(pkg.Status)
-			setYoctoPurl(pf, &pkg)
+			SetYoctoPurl(pf, &pkg)
 			pkgs = append(pkgs, pkg)
 		} else {
 			log.Debug().Msg("ignored opkg packages since information is missing")
