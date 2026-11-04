@@ -45,6 +45,7 @@ alias os.base.gemini = gemini
 alias os.base.goose = goose
 alias os.base.haproxy = haproxy
 alias os.base.idp = idp
+alias os.base.installations = installations
 alias os.base.ipAddress = ipAddress
 alias os.base.jboss = jboss
 alias os.base.jetbrains = jetbrains
