@@ -116,6 +116,7 @@ const (
 	kindBFDPeer
 	// kindKey is a `key <id>` block inside a `key chain`.
 	kindKey
+	kindNested
 )
 
 // blockTerminators maps an explicit terminator to the block type it closes.
@@ -192,6 +193,8 @@ func parseInto(filename string, r io.Reader, cfg *Config) error {
 				stack[len(stack)-1].kind != kindTop {
 				closeTop(endLine)
 			}
+		case kindNested:
+			// Nested segment-routing blocks remain below their current parent.
 		}
 	}
 
@@ -291,6 +294,14 @@ func parseInto(filename string, r io.Reader, cfg *Config) error {
 // blockHeader decides whether fields start a block. It returns the block
 // type, its primary name, the header arguments and where the block may nest.
 func blockHeader(fields []string, stack []frame) (string, string, []string, blockKind, bool) {
+	if len(stack) > 0 && nestedKeywords[fields[0]] {
+		name := ""
+		if len(fields) > 1 {
+			name = fields[1]
+		}
+		return fields[0], name, fields[1:], kindNested, true
+	}
+
 	switch fields[0] {
 	case "address-family":
 		if len(fields) < 2 {
@@ -325,17 +336,17 @@ func blockHeader(fields []string, stack []frame) (string, string, []string, bloc
 		return "router " + fields[1], name, fields[2:], kindTop, true
 
 	case "vrf", "interface", "route-map", "pbr-map", "nexthop-group",
-		"segment-routing", "srv6", "rpki":
+		"rpki":
 		if len(fields) < 2 {
 			return "", "", nil, kindTop, false
 		}
 		return fields[0], fields[1], fields[1:], kindTop, true
 
-	case "bfd":
-		if len(fields) != 1 {
+	case "bfd", "segment-routing":
+		if len(fields) != 1 || len(stack) > 0 {
 			return "", "", nil, kindTop, false
 		}
-		return "bfd", "", nil, kindTop, true
+		return fields[0], "", nil, kindTop, true
 
 	case "key", "line":
 		// `key chain <name>` and `line vty`. Inside a key chain, `key <id>`
@@ -354,6 +365,11 @@ func blockHeader(fields []string, stack []frame) (string, string, []string, bloc
 		return fields[0] + " " + fields[1], name, fields[2:], kindTop, true
 	}
 	return "", "", nil, kindTop, false
+}
+
+var nestedKeywords = map[string]bool{
+	"srv6": true, "locators": true, "locator": true, "traffic-eng": true,
+	"policy": true, "candidate-path": true, "segment-list": true,
 }
 
 func makeDirective(file string, line int, raw string, fields []string) Directive {
