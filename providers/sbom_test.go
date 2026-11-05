@@ -41,6 +41,7 @@ func TestNewRecording_WindowsPackages(t *testing.T) {
 		},
 		Packages: []*sbom.Package{
 			{Name: "alpine-baselayout", Version: "3.4.3-r2", Purl: "pkg:apk/alpine/alpine-baselayout@3.4.3-r2", Type: "apk"},
+			{Name: "busybox", Version: "1.36.1", Purl: "pkg:yocto/core/busybox@1.36.1", Type: "yocto"},
 			{Name: "VMware Tools", Version: "12.1.5.20735119", Purl: "pkg:windows/windows/VMware%20Tools@12.1.5.20735119", Type: "windows/app"},
 			{Name: "Microsoft.UI.Xaml.2.4", Version: "2.42007.9001.0", Purl: "pkg:windows/windows/Microsoft.UI.Xaml.2.4@2.42007.9001.0", Type: "windows/appx"},
 			{Name: "KB2919355", Type: "windows/hotfix"},
@@ -59,7 +60,7 @@ func TestNewRecording_WindowsPackages(t *testing.T) {
 
 	refs, ok := list.Value.([]any)
 	require.True(t, ok, "packages.list must be an array")
-	assert.Len(t, refs, 5, "every supported os package type must show up in packages.list")
+	assert.Len(t, refs, 6, "every supported os package type must show up in packages.list")
 
 	seenIDs := map[string]bool{}
 	for i, pkg := range doc.Packages {

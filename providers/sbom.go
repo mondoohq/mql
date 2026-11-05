@@ -312,8 +312,11 @@ func newRecording(asset *inventory.Asset, s *sbom.Sbom) (*recording.Asset, error
 		// windows/app, windows/appx and windows/hotfix mirror what a live scan's
 		// packages resource returns on Windows (WinPkgManager.List includes
 		// hotfixes alongside apps). They feed Windows advisory matching
-		// (OS build + KB list + application packages).
-		if pkg.Type == "deb" || pkg.Type == "rpm" || pkg.Type == "apk" ||
+		// (OS build + KB list + application packages). "yocto" is a Yocto /
+		// OpenEmbedded recipe output (pkg:yocto); like deb/rpm/apk it is an OS
+		// package and must be exposed here, or an uploaded Yocto SBOM reaches the
+		// vulnerability backend with no packages and matches nothing.
+		if pkg.Type == "deb" || pkg.Type == "rpm" || pkg.Type == "apk" || pkg.Type == "yocto" ||
 			pkg.Type == "windows/app" || pkg.Type == "windows/appx" || pkg.Type == "windows/hotfix" {
 			pkgResource, otherResources := newOsPackage(pkg)
 			r.Resources = append(r.Resources, pkgResource)
