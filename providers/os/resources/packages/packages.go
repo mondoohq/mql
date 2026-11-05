@@ -258,7 +258,7 @@ func ResolveSystemPkgManagers(conn shared.Connection) ([]OperatingSystemPkgManag
 	case asset.Platform.Name == "openwrt":
 		// OpenWrt replaced opkg with apk in its 25.x snapshots. A system
 		// that has the apk database uses apk; opkg's status file is gone.
-		var pm OperatingSystemPkgManager = &OpkgPkgManager{conn: conn, platform: asset.Platform}
+		var pm OperatingSystemPkgManager = &OpkgPkgManager{conn: conn}
 		for _, path := range ApkDbPaths {
 			if _, err := conn.FileSystem().Stat(path); err == nil {
 				pm = &AlpinePkgManager{conn: conn, platform: asset.Platform}
@@ -304,7 +304,7 @@ func ResolveSystemPkgManagers(conn shared.Connection) ([]OperatingSystemPkgManag
 		opkgPaths := []string{"/bin/opkg", "/usr/bin/opkg"}
 		for i := range opkgPaths {
 			if _, err := conn.FileSystem().Stat(opkgPaths[i]); err == nil {
-				pms = append(pms, &OpkgPkgManager{conn: conn, platform: asset.Platform})
+				pms = append(pms, &OpkgPkgManager{conn: conn})
 				break
 			}
 		}

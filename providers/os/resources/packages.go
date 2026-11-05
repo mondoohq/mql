@@ -573,6 +573,19 @@ func (x *mqlPackages) list() ([]any, error) {
 		}
 	}
 
+	// A Yocto image can use any package backend -- opkg, rpm or deb -- and each
+	// emits its own purl type (pkg:opkg, pkg:rpm, pkg:deb), none of which match
+	// the Yocto vulnerability advisories. On a Yocto platform a package IS a
+	// Yocto recipe output regardless of the backend that installed it, so it is
+	// identified by its pkg:yocto purl. Rewrite every listed package's purl here,
+	// once, so all backends are unified. SetYoctoPurl is a no-op on any other
+	// platform, so nothing else is affected.
+	if asset := conn.Asset(); asset != nil && asset.Platform != nil && asset.Platform.Name == "yocto" {
+		for i := range osPkgs {
+			packages.SetYoctoPurl(asset.Platform, &osPkgs[i])
+		}
+	}
+
 	// create MQL package os for each package
 	pkgs := make([]any, len(osPkgs))
 
