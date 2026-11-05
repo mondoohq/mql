@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
@@ -20,7 +19,7 @@ const OpkgPkgFormat = "opkg"
 var OPKG_LIST_PACKAGE_REGEX = regexp.MustCompile(`^([\w\d\-]+)\s-\s([\w\d\-\.]+)$`)
 
 // ParseOpkgListPackagesCommand parses the output of `opkg list-installed`
-func ParseOpkgListPackagesCommand(pf *inventory.Platform, input io.Reader) []Package {
+func ParseOpkgListPackagesCommand(input io.Reader) []Package {
 	pkgs := []Package{}
 	scanner := bufio.NewScanner(input)
 	for scanner.Scan() {
@@ -32,7 +31,6 @@ func ParseOpkgListPackagesCommand(pf *inventory.Platform, input io.Reader) []Pac
 				Version: m[2],
 				Format:  OpkgPkgFormat,
 			}
-			SetYoctoPurl(pf, &pkg)
 			pkgs = append(pkgs, pkg)
 		}
 	}
@@ -46,7 +44,7 @@ var (
 
 // ParseOpkgPackages parses the opkg database content located in:
 // `/var/lib/opkg/status` or `/usr/lib/opkg/status`
-func ParseOpkgPackages(pf *inventory.Platform, input io.Reader) ([]Package, error) {
+func ParseOpkgPackages(input io.Reader) ([]Package, error) {
 	const STATE_RESET = 0
 	const STATE_DESC = 1
 	pkgs := []Package{}
@@ -57,7 +55,6 @@ func ParseOpkgPackages(pf *inventory.Platform, input io.Reader) ([]Package, erro
 			// opkg records a hold in the flag field of the status triple,
 			// where dpkg carried it historically.
 			pkg.Pinned = isHeldStatus(pkg.Status)
-			SetYoctoPurl(pf, &pkg)
 			pkgs = append(pkgs, pkg)
 		} else {
 			log.Debug().Msg("ignored opkg packages since information is missing")
@@ -116,8 +113,7 @@ func ParseOpkgPackages(pf *inventory.Platform, input io.Reader) ([]Package, erro
 }
 
 type OpkgPkgManager struct {
-	conn     shared.Connection
-	platform *inventory.Platform
+	conn shared.Connection
 }
 
 func (opkg *OpkgPkgManager) Name() string {
@@ -135,7 +131,7 @@ func (opkg *OpkgPkgManager) List() ([]Package, error) {
 		if err != nil {
 			return nil, fmt.Errorf("could not read opkg package list")
 		}
-		return ParseOpkgListPackagesCommand(opkg.platform, cmd.Stdout), nil
+		return ParseOpkgListPackagesCommand(cmd.Stdout), nil
 	}
 
 	// otherwise let's try to read the package list from file
@@ -168,7 +164,7 @@ func (opkg *OpkgPkgManager) ListFromFile() ([]Package, error) {
 	}
 	defer fi.Close()
 
-	list, err := ParseOpkgPackages(opkg.platform, fi)
+	list, err := ParseOpkgPackages(fi)
 	if err != nil {
 		return nil, fmt.Errorf("could not parse opkg package list")
 	}

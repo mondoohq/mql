@@ -22,7 +22,7 @@ dnsmasq - 2.78-1
 dropbear - 2017.75-1
 firewall - 2016-11-29-1`
 
-	m := packages.ParseOpkgListPackagesCommand(nil, strings.NewReader(pkgList))
+	m := packages.ParseOpkgListPackagesCommand(strings.NewReader(pkgList))
 
 	assert.Equal(t, 5, len(m), "detected the right amount of packages")
 	p := packages.Package{
@@ -54,7 +54,7 @@ func TestOpkgStatusParser(t *testing.T) {
 	require.NoError(t, err)
 	defer f.Close()
 
-	m, err := packages.ParseOpkgPackages(nil, f)
+	m, err := packages.ParseOpkgPackages(f)
 	require.NoError(t, err)
 	assert.Equal(t, 8, len(m), "detected the right amount of packages")
 
@@ -114,37 +114,4 @@ func TestOpenWrtApk(t *testing.T) {
 	assert.Equal(t, "apk-mbedtls", pkgList[0].Name)
 	assert.Equal(t, "3.0.5-r4", pkgList[0].Version)
 	assert.Equal(t, "x86_64", pkgList[0].Arch)
-}
-
-// On a Yocto platform, opkg packages carry a pkg:yocto/core/<name>@<version>
-// purl so the vulnerability backend matches them against the Yocto advisory set.
-// OpenWrt (also opkg) must NOT get a yocto purl -- the purl is gated on the
-// platform, not the package manager.
-func TestOpkgYoctoPurl(t *testing.T) {
-	pkgList := "curl - 8.7.1\nlibcurl4 - 8.7.1\n"
-	yocto := &inventory.Platform{Name: "yocto", Arch: "aarch64", Family: []string{"linux", "unix", "os"}}
-
-	m := packages.ParseOpkgListPackagesCommand(yocto, strings.NewReader(pkgList))
-	require.Len(t, m, 2)
-	byName := map[string]packages.Package{}
-	for _, p := range m {
-		byName[p.Name] = p
-	}
-	assert.Equal(t, "pkg:yocto/core/curl@8.7.1?arch=aarch64", byName["curl"].PUrl)
-	// The soname-renamed library keeps its installed name; the backend reconciles
-	// libcurl4 -> libcurl on its side.
-	assert.Equal(t, "pkg:yocto/core/libcurl4@8.7.1?arch=aarch64", byName["libcurl4"].PUrl)
-
-	// OpenWrt (same package manager, different platform) stays purl-less.
-	openwrt := &inventory.Platform{Name: "openwrt", Arch: "x86_64", Family: []string{"linux", "unix", "os"}}
-	ow := packages.ParseOpkgListPackagesCommand(openwrt, strings.NewReader(pkgList))
-	require.NotEmpty(t, ow)
-	for _, p := range ow {
-		assert.Empty(t, p.PUrl, "openwrt opkg package must not get a yocto purl")
-	}
-	// No platform at all: also no purl.
-	none := packages.ParseOpkgListPackagesCommand(nil, strings.NewReader(pkgList))
-	for _, p := range none {
-		assert.Empty(t, p.PUrl)
-	}
 }
