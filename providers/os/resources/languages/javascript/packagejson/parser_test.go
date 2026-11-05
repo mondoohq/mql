@@ -291,3 +291,22 @@ func TestPackageJson(t *testing.T) {
 		})
 	}
 }
+
+// Synthetic: "private": null is valid JSON and means the field is unset.
+func TestPackageJsonPrivateField(t *testing.T) {
+	cases := map[string]bool{
+		`{"private": null}`:    false,
+		`{"private": true}`:    true,
+		`{"private": "TRUE"}`:  true,
+		`{"private": "false"}`: false,
+		`{}`:                   false,
+	}
+	for raw, want := range cases {
+		var pkg packageJson
+		require.NoError(t, json.Unmarshal([]byte(raw), &pkg), raw)
+		assert.Equal(t, want, bool(pkg.Private), raw)
+	}
+
+	var pkg packageJson
+	assert.Error(t, json.Unmarshal([]byte(`{"private": 1}`), &pkg))
+}

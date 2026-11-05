@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io"
 	"regexp"
+	"slices"
 	"strings"
 
 	"go.mondoo.com/mql/providers/os/resources/languages"
@@ -18,7 +19,12 @@ var (
 	_ languages.Bom       = (*packageJson)(nil)
 )
 
-type Extractor struct{}
+type Extractor struct {
+	// Installed marks every manifest parsed as an installed package, for a
+	// caller that reads a module root whose path has no node_modules segment,
+	// such as Debian's /usr/share/nodejs.
+	Installed bool
+}
 
 func (p *Extractor) Name() string {
 	return "packagejson"
@@ -39,6 +45,7 @@ func (p *Extractor) Parse(r io.Reader, filename string) (languages.Bom, error) {
 	if filename != "" {
 		packageJson.evidence = append(packageJson.evidence, filename)
 	}
+	packageJson.installed = p.Installed || inNodeModules(filename)
 
 	return &packageJson, nil
 }
@@ -112,13 +119,26 @@ func pinnedVersion(spec string) string {
 	return m[1]
 }
 
+// inNodeModules reports whether a manifest path has a node_modules segment.
+func inNodeModules(filename string) bool {
+	segments := strings.FieldsFunc(filename, func(r rune) bool { return r == '/' || r == '\\' })
+	return slices.Contains(segments, "node_modules")
+}
+
+// isInstalledPackage reports whether the manifest's own name and version are an
+// installed package. A project's manifest only names the project: "npm init"
+// writes version 1.0.0, and a project, an editor extension or a grammar bundle
+// named like a registry package is not that package. A private package is never
+// published, so it is never a registry package either.
+func (p *packageJson) isInstalledPackage() bool {
+	return p.installed && !bool(p.Private)
+}
+
 func (p *packageJson) Transitive() languages.Packages {
-	// transitive dependencies, includes the root package
 	var transitive languages.Packages
 
-	r := p.Root()
-	if r != nil {
-		transitive = append(transitive, r)
+	if p.isInstalledPackage() {
+		transitive = append(transitive, p.Root())
 	}
 
 	// A dependency in package.json is a declaration, not an installed package:

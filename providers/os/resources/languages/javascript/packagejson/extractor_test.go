@@ -4,6 +4,7 @@
 package packagejson
 
 import (
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -19,7 +20,7 @@ func TestPackageJsonExtractor(t *testing.T) {
 	require.NoError(t, err)
 	defer f.Close()
 
-	info, err := (&Extractor{}).Parse(f, "path/package.json")
+	info, err := (&Extractor{}).Parse(f, "path/node_modules/express/package.json")
 	assert.Nil(t, err)
 
 	root := info.Root()
@@ -32,7 +33,7 @@ func TestPackageJsonExtractor(t *testing.T) {
 		License:      "MIT",
 		Purl:         "pkg:npm/express@4.16.4",
 		Cpes:         []string{"cpe:2.3:a:express:express:4.16.4:*:*:*:*:*:*:*"},
-		EvidenceList: []*sbom.Evidence{{Type: sbom.EvidenceType_EVIDENCE_TYPE_FILE, Value: "path/package.json"}},
+		EvidenceList: []*sbom.Evidence{{Type: sbom.EvidenceType_EVIDENCE_TYPE_FILE, Value: "path/node_modules/express/package.json"}},
 	}, root, "express package is not as expected")
 
 	// the root plus the 16 dependencies pinned to one version; the 14 declared
@@ -51,7 +52,7 @@ func TestPackageJsonExtractor(t *testing.T) {
 		License:      "MIT",
 		Purl:         "pkg:npm/express@4.16.4",
 		Cpes:         []string{"cpe:2.3:a:express:express:4.16.4:*:*:*:*:*:*:*"},
-		EvidenceList: []*sbom.Evidence{{Type: sbom.EvidenceType_EVIDENCE_TYPE_FILE, Value: "path/package.json"}},
+		EvidenceList: []*sbom.Evidence{{Type: sbom.EvidenceType_EVIDENCE_TYPE_FILE, Value: "path/node_modules/express/package.json"}},
 	}, p, "express package is not as expected")
 
 	p = list.Find("path-to-regexp")
@@ -60,7 +61,7 @@ func TestPackageJsonExtractor(t *testing.T) {
 		Version:      "0.1.7",
 		Purl:         "pkg:npm/path-to-regexp@0.1.7",
 		Cpes:         []string{"cpe:2.3:a:path-to-regexp:path-to-regexp:0.1.7:*:*:*:*:*:*:*"},
-		EvidenceList: []*sbom.Evidence{{Type: sbom.EvidenceType_EVIDENCE_TYPE_FILE, Value: "path/package.json"}},
+		EvidenceList: []*sbom.Evidence{{Type: sbom.EvidenceType_EVIDENCE_TYPE_FILE, Value: "path/node_modules/express/package.json"}},
 	}, p, "path-to-regexp package is not as expected")
 
 	// "range-parser": "~1.2.0" is a range, not an installed version
@@ -115,6 +116,96 @@ func TestPackageJsonDeclaredRangesAreNotPackages(t *testing.T) {
 	require.NotNil(t, tslib)
 	assert.Equal(t, "2.8.1", tslib.Version)
 	assert.Equal(t, "pkg:npm/tslib@2.8.1", tslib.Purl)
+}
+
+// A manifest's own name and version are a package only when it is installed.
+// Synthetic: paths are invented; the shapes are a project subdirectory, an
+// editor extension, a grammar bundle, and installs from npm, Windows' global
+// prefix, pnpm and the npm bundled with Node.js.
+func TestPackageJsonTransitiveIdentity(t *testing.T) {
+	cases := []struct {
+		name      string
+		raw       string
+		filename  string
+		installed bool
+		want      []string
+	}{
+		{
+			name:     "project named like a registry package",
+			raw:      `{"name":"playwright","version":"1.0.0","dependencies":{"@playwright/test":"1.59.1","dotenv":"^16.0.0"}}`,
+			filename: "/home/dev/git/web/src/playwright/package.json",
+			want:     []string{"@playwright/test@1.59.1"},
+		},
+		{
+			name:     "editor extension",
+			raw:      `{"name":"grunt","version":"1.0.0","publisher":"vscode"}`,
+			filename: `C:\Program Files\Editor\resources\app\extensions\grunt\package.json`,
+		},
+		{
+			name:     "grammar bundle",
+			raw:      `{"name":"handlebars","version":"1.0.0","contributes":{"grammars":[]}}`,
+			filename: "/opt/ide/plugins/textmate/lib/bundles/handlebars/package.json",
+		},
+		{
+			name:     "installed under node_modules",
+			raw:      `{"name":"lodash","version":"4.17.20"}`,
+			filename: "/srv/app/node_modules/lodash/package.json",
+			want:     []string{"lodash@4.17.20"},
+		},
+		{
+			name:     "installed under the Windows global prefix",
+			raw:      `{"name":"npm","version":"10.9.2"}`,
+			filename: `C:\Users\dev\AppData\Roaming\npm\node_modules\npm\package.json`,
+			want:     []string{"npm@10.9.2"},
+		},
+		{
+			name:     "pnpm's own copy",
+			raw:      `{"name":"pnpm","version":"9.15.0"}`,
+			filename: "/home/dev/.local/share/pnpm/.tools/pnpm/9.15.0/node_modules/pnpm/package.json",
+			want:     []string{"pnpm@9.15.0"},
+		},
+		{
+			name:      "module root the caller marks installed",
+			raw:       `{"name":"lodash","version":"4.17.21"}`,
+			filename:  "/usr/share/nodejs/lodash/package.json",
+			installed: true,
+			want:      []string{"lodash@4.17.21"},
+		},
+		{
+			name:     "private workspace package under node_modules",
+			raw:      `{"name":"ui","version":"1.0.0","private":true,"dependencies":{"react":"18.3.1"}}`,
+			filename: "/srv/app/node_modules/ui/package.json",
+			want:     []string{"react@18.3.1"},
+		},
+		{
+			name:      "private package in a module root",
+			raw:       `{"name":"internal-tool","version":"1.0.0","private":"true"}`,
+			filename:  "/usr/share/nodejs/internal-tool/package.json",
+			installed: true,
+		},
+		{
+			name: "no filename",
+			raw:  `{"name":"lodash","version":"4.17.20"}`,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			info, err := (&Extractor{Installed: c.installed}).Parse(strings.NewReader(c.raw), c.filename)
+			require.NoError(t, err)
+
+			var got []string
+			for _, pkg := range info.Transitive() {
+				got = append(got, pkg.Name+"@"+pkg.Version)
+			}
+			assert.ElementsMatch(t, c.want, got)
+
+			// the root still names the project the manifest describes
+			var m struct{ Name, Version string }
+			require.NoError(t, json.Unmarshal([]byte(c.raw), &m))
+			assert.Equal(t, m.Name, info.Root().Name)
+			assert.Equal(t, m.Version, info.Root().Version)
+		})
+	}
 }
 
 func TestPackageJsonExtractorAuthorForms(t *testing.T) {

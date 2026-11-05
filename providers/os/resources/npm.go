@@ -163,7 +163,7 @@ func collectNpmPackagesInPaths(runtime *plugin.Runtime, fs afero.Fs, paths []str
 			continue
 		}
 		for _, pkg := range nodeModuleRootPackages(fs, p) {
-			bom, err := (&packagejson.Extractor{}).Parse(bytes.NewReader(pkg.manifest), pkg.manifestPath)
+			bom, err := (&packagejson.Extractor{Installed: true}).Parse(bytes.NewReader(pkg.manifest), pkg.manifestPath)
 			if err != nil {
 				log.Debug().Err(err).Str("path", pkg.manifestPath).Msg("could not parse package.json")
 				continue
