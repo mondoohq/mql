@@ -92,6 +92,22 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"apic": {
+		Provider: &plugin.Provider{
+			Name:            "apic",
+			ID:              "go.mondoo.com/mql/providers/apic",
+			ConnectionTypes: []string{"apic"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "apic",
+					Use:   "apic",
+					Short: "a Cisco APIC controller and the ACI fabric it manages",
+				},
+			},
+		},
+	},
+
 	"arista": {
 		Provider: &plugin.Provider{
 			Name:            "arista",
