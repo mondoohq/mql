@@ -45,6 +45,7 @@ alias os.base.gemini = gemini
 alias os.base.goose = goose
 alias os.base.haproxy = haproxy
 alias os.base.idp = idp
+alias os.base.installations = installations
 alias os.base.ipAddress = ipAddress
 alias os.base.jboss = jboss
 alias os.base.jetbrains = jetbrains
@@ -12018,6 +12019,68 @@ private binary @defaults("path name version") {
   // any organization. Null when no signing identity signed the binary (not
   // signed, or ad hoc signed on macOS), and on Linux.
   signer() network.certificate
+}
+
+// Software installed outside a package manager
+//
+// Every product found by its install layout on disk rather than in a package
+// database, such as an Oracle Database home unpacked from a zip archive. Each
+// `installation` names the install root, the version read from files inside
+// it, and the package URL and CPEs that identify it for vulnerability
+// matching. Only files are read, so the same installations are found on a
+// running host, in a container image and on a disk snapshot. Recognized
+// today: Oracle Database homes, found through the central inventory that
+// `/etc/oraInst.loc` names, through `/etc/oratab`, and in the documented
+// `<ORACLE_BASE>/product` directories. A source that cannot be read is
+// skipped when another found installations, and is an error when none did.
+installations {
+  []installation
+}
+
+// Software installation found by its layout on disk
+//
+// One install root of one product: `name` and `vendor` say what it is, `path`
+// where it is, and `version` the release it is at, with `versionSource` and
+// `versionFile` naming the evidence that version was read from. `locatedBy`
+// says how the root was found. `purl` and `cpes` identify the installation
+// for vulnerability matching, the same way they identify a `package`.
+private installation @defaults("name version path") {
+  // Product name, e.g. "oracle-database"
+  name string
+  // Vendor of the product, e.g. "Oracle"
+  vendor string
+  // Install root, e.g. "/u01/app/oracle/product/19.0.0/dbhome_1"
+  path string
+  // Version of the installation, e.g. "19.21.0.0.0"; empty when none was found
+  //
+  // For Oracle Database, the release of the home in the five-part form the
+  // database reports as `v$instance.version_full`: the highest Release Update
+  // applied to the home, or for a home that records none, such as Oracle
+  // Database Free, the release its storage management library names. A home
+  // with neither reports its base release, e.g. "21.0.0.0.0", with
+  // `versionSource` "baseRelease".
+  version string
+  // Evidence the version was read from
+  //
+  // One of `patchInventory` (the patches the vendor's patch tool recorded as
+  // applied), `releaseMetadata` (a file the vendor ships in the install root
+  // that names the full release), or `baseRelease` (the release the
+  // installation was installed at, without the updates applied since, so a
+  // lower bound rather than the exact version). Empty when no version was
+  // found.
+  versionSource string
+  // File the version was read from; null when no version was found
+  versionFile() file
+  // How the install root was found
+  //
+  // One of `registry` (a file in which the vendor's installer records its
+  // installations, such as Oracle's central inventory or `/etc/oratab`) or
+  // `path` (a directory the vendor documents as the install location).
+  locatedBy string
+  // Package URL, e.g. "pkg:generic/oracle/database@19.21.0.0.0"
+  purl string
+  // Common Platform Enumeration (CPE) entries of the installation
+  cpes []core.cpe
 }
 
 // Single TCP/UDP port on the system
