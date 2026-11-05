@@ -1605,7 +1605,7 @@ var DefaultProviders Providers = map[string]*Provider{
 				{
 					Name:  "unifi",
 					Use:   "unifi",
-					Short: "a UniFi network controller",
+					Short: "a Ubiquiti UniFi network controller",
 				},
 			},
 		},
