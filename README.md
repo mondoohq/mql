@@ -148,6 +148,7 @@ To learn about Mondoo Platform, read the [Mondoo Platform docs](https://mondoo.c
 | IBM Cloud accounts            | `ibm`                      | `mql shell ibm --api-key IBM_CLOUD_API_KEY`                                                                                                     |
 | IBM Db2 database              | `db2`                      | `mql shell db2 db.contoso.com --database TESTDB --user auditor --ask-pass`                                                                      |
 | IBM i systems                 | `ibmi`                     | `mql shell ibmi pwr.example.com --username auditor --ask-pass`                                                                                  |
+| IBM Z (z/OS) systems          | `ibmz`                     | `mql shell ibmz zos.example.com --username auditor --ask-pass`                                                                                  |
 | OPC UA IoT devices            | `opcua`                    | `mql shell opcua`                                                                                                                               |
 | IP address information        | `ipinfo`                   | `mql shell ipinfo`                                                                                                                              |
 | IPMI-enabled devices          | `ipmi`                     | `mql shell ipmi user@HOST`                                                                                                                      |

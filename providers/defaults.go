@@ -741,6 +741,22 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"ibmz": {
+		Provider: &plugin.Provider{
+			Name:            "ibmz",
+			ID:              "go.mondoo.com/mql/providers/ibmz",
+			ConnectionTypes: []string{"ibmz"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "ibmz",
+					Use:   "ibmz [host]",
+					Short: "a remote IBM Z (z/OS) system",
+				},
+			},
+		},
+	},
+
 	"ipinfo": {
 		Provider: &plugin.Provider{
 			Name:            "ipinfo",
