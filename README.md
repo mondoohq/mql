@@ -117,6 +117,7 @@ To learn about Mondoo Platform, read the [Mondoo Platform docs](https://mondoo.c
 | Azure DevOps repositories     | `azuredevops repo`         | `mql shell azuredevops repo ORG_NAME/PROJECT/REPO --token PAT`                                                                                  |
 | Bitwarden organizations       | `bitwarden`                | `mql shell bitwarden --client-id CLIENT_ID --client-secret CLIENT_SECRET`                                                                       |
 | Cisco network devices         | `nd-ssh`                   | `mql shell nd-ssh admin@DEVICE_IP --password PASSWORD`                                                                                          |
+| Cisco ACI fabrics (APIC)      | `apic`                     | `mql shell apic --hostname APIC_HOST --username admin --ask-pass`                                                                               |
 | Cisco Catalyst Center         | `ciscocatalyst`            | `mql shell ciscocatalyst --host HOST --user USER --password PASSWORD`                                                                           |
 | ClickHouse Cloud organization | `clickhousecloud`          | `mql shell clickhousecloud --organization-id ORG_ID --api-key KEY_ID --ask-secret`                                                              |
 | ClickHouse server             | `clickhousedb`             | `mql shell clickhousedb db.contoso.com --user default --ask-pass`                                                                               |
