@@ -73,6 +73,8 @@ func (p *booleanField) UnmarshalJSON(data []byte) error {
 	}
 
 	switch v := raw.(type) {
+	case nil:
+		*p = false
 	case bool:
 		*p = booleanField(v)
 	case string:
