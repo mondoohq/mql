@@ -355,7 +355,32 @@ func (s *Spdx) convertToSbom(doc *spdx.Document) *Sbom {
 		bom.Asset.Platform = pf
 	}
 
+	// A Yocto/OpenEmbedded SBOM carries CPEs and no purls. Synthesize a
+	// pkg:yocto purl from each installed package's name so it can match the
+	// Yocto advisories, and mark the asset as a Yocto image. bom.Packages is
+	// built 1:1 with doc.Packages above, so the index aligns to read each
+	// package's purpose.
+	if isYoctoSbom(bom.Generator) {
+		for i, bomPkg := range bom.Packages {
+			synthesizeYoctoPurl(bomPkg, spdxPackageInstalled(doc.Packages[i].PrimaryPackagePurpose))
+		}
+		setYoctoPlatform(bom)
+	}
+
 	return bom
+}
+
+// spdxPackageInstalled reports whether an SPDX 2.x package purpose describes
+// something installed on the device rather than a source or build input. An
+// unset purpose is treated as installed: a Yocto runtime-package SBOM commonly
+// omits it, and the whole document is the installed set.
+func spdxPackageInstalled(purpose string) bool {
+	switch strings.ToUpper(strings.TrimSpace(purpose)) {
+	case "SOURCE", "ARCHIVE", "FILE", "PATCH":
+		return false
+	default:
+		return true
+	}
 }
 
 // purlDistroPlatform reads the platform a package was installed on out of its

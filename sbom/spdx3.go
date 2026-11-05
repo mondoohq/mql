@@ -117,11 +117,16 @@ func spdx3ToSbom(env *spdx3.Envelope, version string) *Sbom {
 	// Packages first, keyed by their spdxId, so the relationships below can
 	// find them however the graph is ordered.
 	pkgByID := map[string]*Package{}
+	// purposeByPkg records each package's primary purpose so the Yocto purl
+	// synthesis below can tell an installed artifact from a source or build
+	// input (a Yocto SBOM lists both).
+	purposeByPkg := map[*Package]software.SoftwarePurpose{}
 	for _, node := range env.Graph {
 		switch n := node.(type) {
 		case *software.Package:
 			pkg := spdx3Package(n)
 			bom.Packages = append(bom.Packages, pkg)
+			purposeByPkg[pkg] = n.PrimaryPurpose
 			if id := n.GetSPDXID(); id != "" {
 				pkgByID[id] = pkg
 			}
@@ -179,7 +184,32 @@ func spdx3ToSbom(env *spdx3.Envelope, version string) *Sbom {
 	}
 
 	spdx3Platform(bom, version)
+
+	// A Yocto/OpenEmbedded SBOM carries CPEs and no purls. Synthesize a
+	// pkg:yocto purl from each installed package's name so it can match the
+	// Yocto advisories, and mark the asset as a Yocto image. This runs after
+	// spdx3Platform so the Yocto platform wins over the generic default.
+	if isYoctoSbom(bom.Generator) {
+		for _, pkg := range bom.Packages {
+			synthesizeYoctoPurl(pkg, spdx3PackageInstalled(purposeByPkg[pkg]))
+		}
+		setYoctoPlatform(bom)
+	}
 	return bom
+}
+
+// spdx3PackageInstalled reports whether an SPDX 3 package purpose describes
+// something installed on the device rather than a source or build input. An
+// unset purpose is treated as installed: a Yocto runtime-package SBOM commonly
+// omits it, and a package the document never marks source is part of the image.
+func spdx3PackageInstalled(purpose software.SoftwarePurpose) bool {
+	switch purpose {
+	case software.SoftwarePurposeSource, software.SoftwarePurposeArchive,
+		software.SoftwarePurposeFile, software.SoftwarePurposePatch:
+		return false
+	default:
+		return true
+	}
 }
 
 // spdx3Relationship returns the relationship a graph node is, including the

@@ -1,0 +1,47 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "acme-image-prod-examplevendor-mx8mm-v1.0",
+  "documentNamespace": "",
+  "creationInfo": {
+    "created": "2026-10-23T11:25:39Z",
+    "creators": [
+      "Organization: OpenEmbedded",
+      "Tool: spdx3to23.py"
+    ],
+    "comment": "Converted from SPDX 3.0.1; installed packages only."
+  },
+  "packages": [
+    {
+      "name": "curl",
+      "SPDXID": "SPDXRef-Package-curl",
+      "versionInfo": "8.7.1",
+      "downloadLocation": "NOASSERTION",
+      "primaryPackagePurpose": "INSTALL",
+      "externalRefs": [
+        {"referenceCategory": "SECURITY", "referenceType": "cpe23Type", "referenceLocator": "cpe:2.3:*:haxx:curl:8.7.1:*:*:*:*:*:*:*"},
+        {"referenceCategory": "SECURITY", "referenceType": "cpe23Type", "referenceLocator": "cpe:2.3:*:curl:curl:8.7.1:*:*:*:*:*:*:*"}
+      ]
+    },
+    {
+      "name": "libcurl4",
+      "SPDXID": "SPDXRef-Package-libcurl4",
+      "versionInfo": "8.7.1",
+      "downloadLocation": "NOASSERTION",
+      "primaryPackagePurpose": "LIBRARY",
+      "externalRefs": [
+        {"referenceCategory": "SECURITY", "referenceType": "cpe23Type", "referenceLocator": "cpe:2.3:*:haxx:curl:8.7.1:*:*:*:*:*:*:*"}
+      ]
+    },
+    {
+      "name": "libzstd1",
+      "SPDXID": "SPDXRef-Package-libzstd1",
+      "versionInfo": "1.5.5",
+      "downloadLocation": "NOASSERTION",
+      "externalRefs": [
+        {"referenceCategory": "SECURITY", "referenceType": "cpe23Type", "referenceLocator": "cpe:2.3:*:*:zstandard:1.5.5:*:*:*:*:*:*:*"}
+      ]
+    }
+  ]
+}

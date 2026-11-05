@@ -190,3 +190,39 @@ func TestSpdxJsonDecoder_DistroNameWithDash(t *testing.T) {
 	assert.Equal(t, "15.6", sbomReport.Asset.Platform.Version)
 	assert.Equal(t, "x86_64", sbomReport.Asset.Platform.Arch)
 }
+
+// TestSpdxJsonDecoder_YoctoCpeOnly pins the ≤5.x Yocto build path: the SBOM is
+// produced by OpenEmbedded's create-spdx, carries CPEs and no purls, and names
+// each package by its recipe output (curl, libcurl4). The importer recognizes
+// the Yocto origin and synthesizes a pkg:yocto/core/<name>@<version> purl from
+// the name -- regardless of the CPE -- so the package can match the Yocto
+// advisories, and marks the asset as a Yocto image.
+func TestSpdxJsonDecoder_YoctoCpeOnly(t *testing.T) {
+	f, err := os.Open("testdata/yocto-5.x.spdx23.json")
+	require.NoError(t, err)
+	defer f.Close()
+
+	sbomReport, err := sbom.NewSPDX(sbom.FormatSpdxJSON).Parse(f)
+	require.NoError(t, err)
+	require.NotNil(t, sbomReport)
+
+	byName := map[string]*sbom.Package{}
+	for _, p := range sbomReport.Packages {
+		byName[p.Name] = p
+	}
+
+	// Every installed package gains a pkg:yocto purl from its name, whatever its
+	// purpose (install, library) or its (inconsistent) CPE product. libzstd1's
+	// CPE product is "zstandard" -- the synthesized purl uses the package name.
+	for name, version := range map[string]string{"curl": "8.7.1", "libcurl4": "8.7.1", "libzstd1": "1.5.5"} {
+		require.Contains(t, byName, name)
+		assert.Equal(t, "pkg:yocto/core/"+name+"@"+version, byName[name].Purl, name)
+		assert.Equal(t, "yocto", byName[name].Type, name)
+		// The CPEs are kept alongside the synthesized purl.
+		assert.NotEmpty(t, byName[name].Cpes, name)
+	}
+
+	require.NotNil(t, sbomReport.Asset)
+	require.NotNil(t, sbomReport.Asset.Platform)
+	assert.Equal(t, "yocto", sbomReport.Asset.Platform.Name)
+}
