@@ -709,6 +709,22 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"ibmi": {
+		Provider: &plugin.Provider{
+			Name:            "ibmi",
+			ID:              "go.mondoo.com/mql/providers/ibmi",
+			ConnectionTypes: []string{"ibmi"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "ibmi",
+					Use:   "ibmi [host]",
+					Short: "a remote IBM i (IBM Power) system",
+				},
+			},
+		},
+	},
+
 	"ipinfo": {
 		Provider: &plugin.Provider{
 			Name:            "ipinfo",
