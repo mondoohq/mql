@@ -148,6 +148,7 @@ func TestCollectNpmPackagesInPaths(t *testing.T) {
 				// "lodash": "^4.17.21" is declared, not installed: nothing is in node_modules
 				for _, pkg := range transitive {
 					require.NotEqual(t, "lodash", pkg.Name, "a declared range is not an installed package")
+					require.NotEqual(t, "test-app", pkg.Name, "a project's own manifest is not an installed package")
 				}
 			},
 		},
@@ -461,7 +462,7 @@ func TestNpmDefaultsFindNvmGlobalsAndHomeApps(t *testing.T) {
 		Callback:   &providerCallbacks{},
 	}
 
-	direct, _, _, err := collectNpmPackagesInPaths(r, conn.FileSystem(), defaultNpmPaths)
+	direct, transitive, _, err := collectNpmPackagesInPaths(r, conn.FileSystem(), defaultNpmPaths)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{
 		"lodash@4.17.20",
@@ -469,6 +470,8 @@ func TestNpmDefaultsFindNvmGlobalsAndHomeApps(t *testing.T) {
 		"alice-app@1.0.0",
 		"node-app@2.0.0",
 	}, packageNames(direct))
+	// the apps' own manifests name the projects, not installed packages
+	assert.ElementsMatch(t, []string{"lodash@4.17.20", "left-pad@1.3.0"}, packageNames(transitive))
 }
 
 // npm11PackageJSON is the start of the package.json nodejs24-npm installs on Fedora 44.
@@ -499,9 +502,10 @@ func TestCollectNpmPackagesInPaths_fedoraVersionedNodeModules(t *testing.T) {
 	require.NoError(t, afero.WriteFile(mockFS, "/usr/lib/node_modules_24/.package-lock.json", []byte(`{}`), 0o644))
 
 	r := npmTestRuntime(t, mockFS)
-	direct, _, _, err := collectNpmPackagesInPaths(r, mockFS, defaultNpmPaths)
+	direct, transitive, _, err := collectNpmPackagesInPaths(r, mockFS, defaultNpmPaths)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{"npm@11.16.0", "@scope/tool@1.2.3"}, packageNames(direct))
+	assert.ElementsMatch(t, []string{"npm@11.16.0", "@scope/tool@1.2.3"}, packageNames(transitive))
 }
 
 func TestCollectNpmPackagesInPaths_rhel10LinkedNodeModulesOnce(t *testing.T) {
@@ -551,11 +555,13 @@ func TestCollectNpmPackagesInPaths_debianModuleRoots(t *testing.T) {
 	writeNpmManifest(t, mockFS, "/usr/local/lib/node_modules/semver", "semver", "7.5.0")
 
 	r := npmTestRuntime(t, mockFS)
-	direct, _, _, err := collectNpmPackagesInPaths(r, mockFS, defaultNpmPaths)
+	direct, transitive, _, err := collectNpmPackagesInPaths(r, mockFS, defaultNpmPaths)
 	require.NoError(t, err)
-	assert.ElementsMatch(t, []string{
+	installed := []string{
 		"npm@7.5.2", "node-gyp@7.1.2", "@types/node@14.14.20", "extend@3.0.2", "semver@7.5.0",
-	}, packageNames(direct))
+	}
+	assert.ElementsMatch(t, installed, packageNames(direct))
+	assert.ElementsMatch(t, installed, packageNames(transitive))
 }
 
 func TestCollectNpmPackagesInPaths_debian9LibNodejs(t *testing.T) {

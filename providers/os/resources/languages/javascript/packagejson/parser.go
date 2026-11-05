@@ -33,6 +33,8 @@ type packageJson struct {
 
 	// evidence is a list of file paths where the package.json was found
 	evidence []string `json:"-"`
+	// installed is set when the manifest is inside an install tree
+	installed bool `json:"-"`
 }
 
 type enginesField map[string]string
