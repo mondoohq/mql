@@ -11,6 +11,7 @@ import (
 
 	discoveryengine "cloud.google.com/go/discoveryengine/apiv1"
 	"cloud.google.com/go/discoveryengine/apiv1/discoveryenginepb"
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/gcp/connection"
@@ -60,7 +61,56 @@ func (g *mqlGcpProject) discoveryEngine() (*mqlGcpProjectDiscoveryEngineService,
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlGcpProjectDiscoveryEngineService), nil
+
+	serviceEnabled, err := g.isServiceEnabled(service_discoveryengine)
+	if err != nil {
+		return nil, err
+	}
+
+	svc := res.(*mqlGcpProjectDiscoveryEngineService)
+	svc.recordEnabled(serviceEnabled)
+	if !serviceEnabled {
+		log.Debug().Str("service", service_discoveryengine).Msg("gcp service is not enabled, skipping")
+	}
+	return svc, nil
+}
+
+type mqlGcpProjectDiscoveryEngineServiceInternal struct {
+	serviceGate
+}
+
+// isEnabled reports whether the API is enabled on this project.
+func (g *mqlGcpProjectDiscoveryEngineService) isEnabled() (bool, error) {
+	return g.resolveEnabled(g.MqlRuntime, g.ProjectId, service_discoveryengine)
+}
+
+// listAcrossDiscoveryEngineLocations runs fn for every Discovery Engine
+// location and merges the results. A location that fails is logged and
+// skipped so the other locations' resources are still reported; the error is
+// returned only when every location failed.
+func listAcrossDiscoveryEngineLocations(kind string, locations []string, fn func(location string) ([]any, error)) ([]any, error) {
+	var (
+		items    = []any{}
+		firstErr error
+		failed   int
+	)
+	for _, location := range locations {
+		locationItems, err := fn(location)
+		if err != nil {
+			failed++
+			if firstErr == nil {
+				firstErr = err
+			}
+			log.Warn().Err(err).Str("kind", kind).Str("location", location).
+				Msg("discovery engine location listing failed, continuing with the remaining locations")
+			continue
+		}
+		items = append(items, locationItems...)
+	}
+	if len(locations) > 0 && failed == len(locations) {
+		return nil, firstErr
+	}
+	return items, nil
 }
 
 func initGcpProjectDiscoveryEngineService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -162,6 +212,13 @@ func (g *mqlGcpProjectDiscoveryEngineService) listDataStoresInLocation(ctx conte
 }
 
 func (g *mqlGcpProjectDiscoveryEngineService) dataStores() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -174,15 +231,9 @@ func (g *mqlGcpProjectDiscoveryEngineService) dataStores() ([]any, error) {
 	}
 
 	ctx := context.Background()
-	var items []any
-	for _, location := range discoveryEngineLocations {
-		locationItems, err := g.listDataStoresInLocation(ctx, creds, projectId, location)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, locationItems...)
-	}
-	return items, nil
+	return listAcrossDiscoveryEngineLocations("dataStores", discoveryEngineLocations, func(location string) ([]any, error) {
+		return g.listDataStoresInLocation(ctx, creds, projectId, location)
+	})
 }
 
 func (g *mqlGcpProjectDiscoveryEngineServiceDataStore) id() (string, error) {
@@ -288,6 +339,13 @@ func (g *mqlGcpProjectDiscoveryEngineService) listEnginesInLocation(ctx context.
 }
 
 func (g *mqlGcpProjectDiscoveryEngineService) engines() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -300,15 +358,9 @@ func (g *mqlGcpProjectDiscoveryEngineService) engines() ([]any, error) {
 	}
 
 	ctx := context.Background()
-	var items []any
-	for _, location := range discoveryEngineLocations {
-		locationItems, err := g.listEnginesInLocation(ctx, creds, projectId, location)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, locationItems...)
-	}
-	return items, nil
+	return listAcrossDiscoveryEngineLocations("engines", discoveryEngineLocations, func(location string) ([]any, error) {
+		return g.listEnginesInLocation(ctx, creds, projectId, location)
+	})
 }
 
 func (g *mqlGcpProjectDiscoveryEngineServiceEngine) id() (string, error) {

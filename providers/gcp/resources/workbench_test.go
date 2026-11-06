@@ -32,3 +32,17 @@ func TestWorkbenchBindingsToIampb(t *testing.T) {
 
 	assert.Empty(t, workbenchBindingsToIampb(nil))
 }
+
+func TestWorkbenchDisablePublicIp(t *testing.T) {
+	// Synthetic: an instance without a GCE setup says nothing about public IPs.
+	assert.Nil(t, workbenchDisablePublicIp(nil))
+
+	// Synthetic: the setting is read as given, false included.
+	v := workbenchDisablePublicIp(&notebooksv2.GceSetup{DisablePublicIp: true})
+	require.NotNil(t, v)
+	assert.True(t, *v)
+
+	v = workbenchDisablePublicIp(&notebooksv2.GceSetup{})
+	require.NotNil(t, v)
+	assert.False(t, *v)
+}

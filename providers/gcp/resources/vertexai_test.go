@@ -262,3 +262,18 @@ func TestVertexaiIamPolicyBindingsRefusals(t *testing.T) {
 		assert.Equal(t, unavailable, err)
 	}
 }
+
+func TestVertexaiRegionalLocations(t *testing.T) {
+	// Synthetic: ListLocations answers with regions, a global entry, a
+	// multi-region and a duplicate.
+	got := vertexaiRegionalLocations([]string{"us-central1", "global", "europe-west4", "us", "us-central1", "me-central2"})
+	assert.Equal(t, []string{"us-central1", "europe-west4", "me-central2"}, got)
+
+	assert.Empty(t, vertexaiRegionalLocations(nil))
+}
+
+func TestVertexaiCandidateRegionsFallsBackWithoutConnection(t *testing.T) {
+	// Synthetic: no runtime to ask, so the built-in list is used.
+	svc := &mqlGcpProjectVertexaiService{}
+	assert.Equal(t, vertexaiRegions, svc.candidateRegions())
+}

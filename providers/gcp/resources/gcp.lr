@@ -16287,8 +16287,8 @@ private gcp.project.vertexaiService.notebookExecutionJob @defaults("displayName 
 // identity that runs the agent's tool calls and API access, `agentFramework`
 // reports the agent framework it was built with (for example `google-adk` or
 // `langchain`), and `spec` holds the full deployment specification including
-// the Python package, dependency URIs, deployment scaling, and any
-// environment variables. `secrets`, `envVarNames`, `networkAttachment`,
+// the Python package, dependency URIs, deployment scaling, and the names of
+// its environment variables. `secrets`, `envVarNames`, `networkAttachment`,
 // `sourceRepository`, `revision`, `containerImage` and `pythonVersion` read
 // the deployment directly, and `iamPolicy` with `public` reports who may
 // query the agent. Encryption at rest is reported through `encryptionSpec`
@@ -16309,6 +16309,10 @@ private gcp.project.vertexaiService.reasoningEngine @defaults("displayName agent
   // Agent framework the agent was built with (e.g., google-adk, langchain)
   agentFramework string
   // Full deployment specification (package spec, deployment spec, class methods)
+  //
+  // Environment variable values, image build argument values and the inline
+  // source archive are left out; environment variable names and secret
+  // references stay.
   spec dict
   // Encryption spec dict
   //

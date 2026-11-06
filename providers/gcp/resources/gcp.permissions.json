@@ -28,6 +28,7 @@
     "aiplatform.hyperparameterTuningJobs.list",
     "aiplatform.indexEndpoints.list",
     "aiplatform.indexes.list",
+    "aiplatform.locations.list",
     "aiplatform.metadataStores.list",
     "aiplatform.modelDeploymentMonitoringJobs.list",
     "aiplatform.models.get",
@@ -480,6 +481,12 @@
       "permission": "aiplatform.indexes.list",
       "service": "aiplatform",
       "action": "ListIndexes",
+      "source_file": "vertexai.go"
+    },
+    {
+      "permission": "aiplatform.locations.list",
+      "service": "aiplatform",
+      "action": "ListLocations",
       "source_file": "vertexai.go"
     },
     {

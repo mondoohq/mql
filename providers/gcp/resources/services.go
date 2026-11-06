@@ -72,6 +72,7 @@ const (
 	service_memcache            = "memcache.googleapis.com"
 	service_monitoring          = "monitoring.googleapis.com"
 	service_aiplatform          = "aiplatform.googleapis.com"
+	service_discoveryengine     = "discoveryengine.googleapis.com"
 	service_datastream          = "datastream.googleapis.com"
 	service_memorystore         = "memorystore.googleapis.com"
 	service_documentai          = "documentai.googleapis.com"
