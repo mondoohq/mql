@@ -94,17 +94,15 @@ func (r *mqlStackitModelExperimentsInstance) tokens() ([]any, error) {
 	tokens := resp.GetTokens()
 	out := make([]any, 0, len(tokens))
 	for i := range tokens {
-		res, err := CreateResource(r.MqlRuntime, "stackit.modelExperiments.instance.token", modelExperimentsTokenArgs(&tokens[i]))
+		args := modelExperimentsTokenArgs(&tokens[i])
+		args["__id"] = llx.StringData(qualifiedId("stackit.modelExperiments.instance.token", r.Id.Data, tokens[i].GetId()))
+		res, err := CreateResource(r.MqlRuntime, "stackit.modelExperiments.instance.token", args)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, res)
 	}
 	return out, nil
-}
-
-func (r *mqlStackitModelExperimentsInstanceToken) id() (string, error) {
-	return "stackit.modelExperiments.instance.token/" + r.Id.Data, nil
 }
 
 // objectStorageBucketRef resolves a bucket by name through the project's

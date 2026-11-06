@@ -23293,12 +23293,7 @@ func createStackitModelExperimentsInstanceToken(runtime *plugin.Runtime, args ma
 		return res, err
 	}
 
-	if res.__id == "" {
-		res.__id, err = res.id()
-		if err != nil {
-			return nil, err
-		}
-	}
+	// to override __id implement: id() (string, error)
 
 	if runtime.HasRecording {
 		args, err = runtime.ResourceFromRecording("stackit.modelExperiments.instance.token", res.__id)
