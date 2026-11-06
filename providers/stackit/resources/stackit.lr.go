@@ -115,6 +115,9 @@ const (
 	ResourceStackitModelServing                            string = "stackit.modelServing"
 	ResourceStackitModelServingToken                       string = "stackit.modelServing.token"
 	ResourceStackitModelServingModel                       string = "stackit.modelServing.model"
+	ResourceStackitModelExperiments                        string = "stackit.modelExperiments"
+	ResourceStackitModelExperimentsInstance                string = "stackit.modelExperiments.instance"
+	ResourceStackitModelExperimentsInstanceToken           string = "stackit.modelExperiments.instance.token"
 	ResourceStackitServiceAccount                          string = "stackit.serviceAccount"
 	ResourceStackitServiceAccountFederatedIdentityProvider string = "stackit.serviceAccount.federatedIdentityProvider"
 	ResourceStackitCertificate                             string = "stackit.certificate"
@@ -557,6 +560,18 @@ func init() {
 			// to override args, implement: initStackitModelServingModel(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createStackitModelServingModel,
 		},
+		"stackit.modelExperiments": {
+			// to override args, implement: initStackitModelExperiments(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createStackitModelExperiments,
+		},
+		"stackit.modelExperiments.instance": {
+			// to override args, implement: initStackitModelExperimentsInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createStackitModelExperimentsInstance,
+		},
+		"stackit.modelExperiments.instance.token": {
+			// to override args, implement: initStackitModelExperimentsInstanceToken(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createStackitModelExperimentsInstanceToken,
+		},
 		"stackit.serviceAccount": {
 			Init:   initStackitServiceAccount,
 			Create: createStackitServiceAccount,
@@ -880,6 +895,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"stackit.modelServing": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackit).GetModelServing()).ToDataRes(types.Resource("stackit.modelServing"))
+	},
+	"stackit.modelExperiments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackit).GetModelExperiments()).ToDataRes(types.Resource("stackit.modelExperiments"))
 	},
 	"stackit.vpn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackit).GetVpn()).ToDataRes(types.Resource("stackit.vpn"))
@@ -3833,6 +3851,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"stackit.modelServing.token.validUntil": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitModelServingToken).GetValidUntil()).ToDataRes(types.Time)
 	},
+	"stackit.modelServing.token.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitModelServingToken).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
 	"stackit.modelServing.model.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitModelServingModel).GetId()).ToDataRes(types.String)
 	},
@@ -3862,6 +3883,63 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"stackit.modelServing.model.skus": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitModelServingModel).GetSkus()).ToDataRes(types.Array(types.Dict))
+	},
+	"stackit.modelExperiments.instances": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitModelExperiments).GetInstances()).ToDataRes(types.Array(types.Resource("stackit.modelExperiments.instance")))
+	},
+	"stackit.modelExperiments.instance.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitModelExperimentsInstance).GetId()).ToDataRes(types.String)
+	},
+	"stackit.modelExperiments.instance.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitModelExperimentsInstance).GetName()).ToDataRes(types.String)
+	},
+	"stackit.modelExperiments.instance.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitModelExperimentsInstance).GetDescription()).ToDataRes(types.String)
+	},
+	"stackit.modelExperiments.instance.url": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitModelExperimentsInstance).GetUrl()).ToDataRes(types.String)
+	},
+	"stackit.modelExperiments.instance.bucket": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitModelExperimentsInstance).GetBucket()).ToDataRes(types.Resource("stackit.objectStorage.bucket"))
+	},
+	"stackit.modelExperiments.instance.deletedExperimentRetention": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitModelExperimentsInstance).GetDeletedExperimentRetention()).ToDataRes(types.String)
+	},
+	"stackit.modelExperiments.instance.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitModelExperimentsInstance).GetState()).ToDataRes(types.String)
+	},
+	"stackit.modelExperiments.instance.errorMessage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitModelExperimentsInstance).GetErrorMessage()).ToDataRes(types.String)
+	},
+	"stackit.modelExperiments.instance.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitModelExperimentsInstance).GetRegion()).ToDataRes(types.String)
+	},
+	"stackit.modelExperiments.instance.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitModelExperimentsInstance).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"stackit.modelExperiments.instance.tokens": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitModelExperimentsInstance).GetTokens()).ToDataRes(types.Array(types.Resource("stackit.modelExperiments.instance.token")))
+	},
+	"stackit.modelExperiments.instance.token.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitModelExperimentsInstanceToken).GetId()).ToDataRes(types.String)
+	},
+	"stackit.modelExperiments.instance.token.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitModelExperimentsInstanceToken).GetName()).ToDataRes(types.String)
+	},
+	"stackit.modelExperiments.instance.token.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitModelExperimentsInstanceToken).GetDescription()).ToDataRes(types.String)
+	},
+	"stackit.modelExperiments.instance.token.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitModelExperimentsInstanceToken).GetState()).ToDataRes(types.String)
+	},
+	"stackit.modelExperiments.instance.token.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitModelExperimentsInstanceToken).GetRegion()).ToDataRes(types.String)
+	},
+	"stackit.modelExperiments.instance.token.validUntil": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitModelExperimentsInstanceToken).GetValidUntil()).ToDataRes(types.Time)
+	},
+	"stackit.modelExperiments.instance.token.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitModelExperimentsInstanceToken).GetLabels()).ToDataRes(types.Map(types.String, types.String))
 	},
 	"stackit.serviceAccount.email": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitServiceAccount).GetEmail()).ToDataRes(types.String)
@@ -5087,6 +5165,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"stackit.modelServing": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlStackit).ModelServing, ok = plugin.RawToTValue[*mqlStackitModelServing](v.Value, v.Error)
+		return
+	},
+	"stackit.modelExperiments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackit).ModelExperiments, ok = plugin.RawToTValue[*mqlStackitModelExperiments](v.Value, v.Error)
 		return
 	},
 	"stackit.vpn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -9413,6 +9495,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlStackitModelServingToken).ValidUntil, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
+	"stackit.modelServing.token.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitModelServingToken).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
 	"stackit.modelServing.model.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlStackitModelServingModel).__id, ok = v.Value.(string)
 		return
@@ -9455,6 +9541,94 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"stackit.modelServing.model.skus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlStackitModelServingModel).Skus, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.modelExperiments.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitModelExperiments).__id, ok = v.Value.(string)
+		return
+	},
+	"stackit.modelExperiments.instances": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitModelExperiments).Instances, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.modelExperiments.instance.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitModelExperimentsInstance).__id, ok = v.Value.(string)
+		return
+	},
+	"stackit.modelExperiments.instance.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitModelExperimentsInstance).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.modelExperiments.instance.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitModelExperimentsInstance).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.modelExperiments.instance.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitModelExperimentsInstance).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.modelExperiments.instance.url": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitModelExperimentsInstance).Url, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.modelExperiments.instance.bucket": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitModelExperimentsInstance).Bucket, ok = plugin.RawToTValue[*mqlStackitObjectStorageBucket](v.Value, v.Error)
+		return
+	},
+	"stackit.modelExperiments.instance.deletedExperimentRetention": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitModelExperimentsInstance).DeletedExperimentRetention, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.modelExperiments.instance.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitModelExperimentsInstance).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.modelExperiments.instance.errorMessage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitModelExperimentsInstance).ErrorMessage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.modelExperiments.instance.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitModelExperimentsInstance).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.modelExperiments.instance.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitModelExperimentsInstance).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"stackit.modelExperiments.instance.tokens": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitModelExperimentsInstance).Tokens, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.modelExperiments.instance.token.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitModelExperimentsInstanceToken).__id, ok = v.Value.(string)
+		return
+	},
+	"stackit.modelExperiments.instance.token.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitModelExperimentsInstanceToken).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.modelExperiments.instance.token.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitModelExperimentsInstanceToken).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.modelExperiments.instance.token.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitModelExperimentsInstanceToken).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.modelExperiments.instance.token.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitModelExperimentsInstanceToken).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.modelExperiments.instance.token.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitModelExperimentsInstanceToken).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.modelExperiments.instance.token.validUntil": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitModelExperimentsInstanceToken).ValidUntil, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"stackit.modelExperiments.instance.token.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitModelExperimentsInstanceToken).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
 	"stackit.serviceAccount.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -11125,6 +11299,7 @@ type mqlStackit struct {
 	Observability        plugin.TValue[*mqlStackitObservability]
 	Telemetry            plugin.TValue[*mqlStackitTelemetry]
 	ModelServing         plugin.TValue[*mqlStackitModelServing]
+	ModelExperiments     plugin.TValue[*mqlStackitModelExperiments]
 	Vpn                  plugin.TValue[*mqlStackitVpn]
 	ServiceAccounts      plugin.TValue[[]any]
 	Certificates         plugin.TValue[[]any]
@@ -11659,6 +11834,22 @@ func (c *mqlStackit) GetModelServing() *plugin.TValue[*mqlStackitModelServing] {
 		}
 
 		return c.modelServing()
+	})
+}
+
+func (c *mqlStackit) GetModelExperiments() *plugin.TValue[*mqlStackitModelExperiments] {
+	return plugin.GetOrCompute[*mqlStackitModelExperiments](&c.ModelExperiments, func() (*mqlStackitModelExperiments, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit", c.__id, "modelExperiments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlStackitModelExperiments), nil
+			}
+		}
+
+		return c.modelExperiments()
 	})
 }
 
@@ -22736,6 +22927,7 @@ type mqlStackitModelServingToken struct {
 	State       plugin.TValue[string]
 	Region      plugin.TValue[string]
 	ValidUntil  plugin.TValue[*time.Time]
+	Labels      plugin.TValue[map[string]any]
 }
 
 // createStackitModelServingToken creates a new instance of this resource
@@ -22797,6 +22989,10 @@ func (c *mqlStackitModelServingToken) GetRegion() *plugin.TValue[string] {
 
 func (c *mqlStackitModelServingToken) GetValidUntil() *plugin.TValue[*time.Time] {
 	return &c.ValidUntil
+}
+
+func (c *mqlStackitModelServingToken) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
 }
 
 // mqlStackitModelServingModel for the stackit.modelServing.model resource
@@ -22891,6 +23087,259 @@ func (c *mqlStackitModelServingModel) GetTags() *plugin.TValue[[]any] {
 
 func (c *mqlStackitModelServingModel) GetSkus() *plugin.TValue[[]any] {
 	return &c.Skus
+}
+
+// mqlStackitModelExperiments for the stackit.modelExperiments resource
+type mqlStackitModelExperiments struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlStackitModelExperimentsInternal it will be used here
+	Instances plugin.TValue[[]any]
+}
+
+// createStackitModelExperiments creates a new instance of this resource
+func createStackitModelExperiments(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlStackitModelExperiments{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("stackit.modelExperiments", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlStackitModelExperiments) MqlName() string {
+	return "stackit.modelExperiments"
+}
+
+func (c *mqlStackitModelExperiments) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlStackitModelExperiments) GetInstances() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Instances, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.modelExperiments", c.__id, "instances")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.instances()
+	})
+}
+
+// mqlStackitModelExperimentsInstance for the stackit.modelExperiments.instance resource
+type mqlStackitModelExperimentsInstance struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlStackitModelExperimentsInstanceInternal
+	Id                         plugin.TValue[string]
+	Name                       plugin.TValue[string]
+	Description                plugin.TValue[string]
+	Url                        plugin.TValue[string]
+	Bucket                     plugin.TValue[*mqlStackitObjectStorageBucket]
+	DeletedExperimentRetention plugin.TValue[string]
+	State                      plugin.TValue[string]
+	ErrorMessage               plugin.TValue[string]
+	Region                     plugin.TValue[string]
+	Labels                     plugin.TValue[map[string]any]
+	Tokens                     plugin.TValue[[]any]
+}
+
+// createStackitModelExperimentsInstance creates a new instance of this resource
+func createStackitModelExperimentsInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlStackitModelExperimentsInstance{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("stackit.modelExperiments.instance", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlStackitModelExperimentsInstance) MqlName() string {
+	return "stackit.modelExperiments.instance"
+}
+
+func (c *mqlStackitModelExperimentsInstance) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlStackitModelExperimentsInstance) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlStackitModelExperimentsInstance) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlStackitModelExperimentsInstance) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlStackitModelExperimentsInstance) GetUrl() *plugin.TValue[string] {
+	return &c.Url
+}
+
+func (c *mqlStackitModelExperimentsInstance) GetBucket() *plugin.TValue[*mqlStackitObjectStorageBucket] {
+	return plugin.GetOrCompute[*mqlStackitObjectStorageBucket](&c.Bucket, func() (*mqlStackitObjectStorageBucket, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.modelExperiments.instance", c.__id, "bucket")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlStackitObjectStorageBucket), nil
+			}
+		}
+
+		return c.bucket()
+	})
+}
+
+func (c *mqlStackitModelExperimentsInstance) GetDeletedExperimentRetention() *plugin.TValue[string] {
+	return &c.DeletedExperimentRetention
+}
+
+func (c *mqlStackitModelExperimentsInstance) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlStackitModelExperimentsInstance) GetErrorMessage() *plugin.TValue[string] {
+	return &c.ErrorMessage
+}
+
+func (c *mqlStackitModelExperimentsInstance) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlStackitModelExperimentsInstance) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlStackitModelExperimentsInstance) GetTokens() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tokens, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.modelExperiments.instance", c.__id, "tokens")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.tokens()
+	})
+}
+
+// mqlStackitModelExperimentsInstanceToken for the stackit.modelExperiments.instance.token resource
+type mqlStackitModelExperimentsInstanceToken struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlStackitModelExperimentsInstanceTokenInternal it will be used here
+	Id          plugin.TValue[string]
+	Name        plugin.TValue[string]
+	Description plugin.TValue[string]
+	State       plugin.TValue[string]
+	Region      plugin.TValue[string]
+	ValidUntil  plugin.TValue[*time.Time]
+	Labels      plugin.TValue[map[string]any]
+}
+
+// createStackitModelExperimentsInstanceToken creates a new instance of this resource
+func createStackitModelExperimentsInstanceToken(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlStackitModelExperimentsInstanceToken{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("stackit.modelExperiments.instance.token", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlStackitModelExperimentsInstanceToken) MqlName() string {
+	return "stackit.modelExperiments.instance.token"
+}
+
+func (c *mqlStackitModelExperimentsInstanceToken) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlStackitModelExperimentsInstanceToken) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlStackitModelExperimentsInstanceToken) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlStackitModelExperimentsInstanceToken) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlStackitModelExperimentsInstanceToken) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlStackitModelExperimentsInstanceToken) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlStackitModelExperimentsInstanceToken) GetValidUntil() *plugin.TValue[*time.Time] {
+	return &c.ValidUntil
+}
+
+func (c *mqlStackitModelExperimentsInstanceToken) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
 }
 
 // mqlStackitServiceAccount for the stackit.serviceAccount resource

@@ -91,6 +91,8 @@ stackit @root {
   telemetry() stackit.telemetry
   // Managed AI Model Serving namespace
   modelServing() stackit.modelServing
+  // Managed MLflow (Model Experiments) namespace
+  modelExperiments() stackit.modelExperiments
   // Site-to-site VPN namespace (gateways, connections, tunnels)
   vpn() stackit.vpn
   // Project service accounts
@@ -4061,6 +4063,8 @@ private stackit.modelServing.token @defaults("id name state validUntil") {
   region string
   // Expiry timestamp
   validUntil time
+  // User-defined labels
+  labels map[string]string
 }
 
 // STACKIT Model Serving model
@@ -4098,6 +4102,81 @@ private stackit.modelServing.model @defaults("name type category") {
   // Each entry is a dict with `id` (SKU UUID), `type` (the billing
   // dimension), and `description`.
   skus []dict
+}
+
+// STACKIT Model Experiments namespace
+//
+// Entry point for STACKIT's managed MLflow service in a project. The
+// `instances` list enumerates the MLflow tracking servers, each with the
+// Object Storage bucket that holds its artifacts and the access tokens
+// issued for it.
+stackit.modelExperiments {
+  // Managed MLflow instances in the project
+  instances() []stackit.modelExperiments.instance
+}
+
+// STACKIT Model Experiments (managed MLflow) instance
+//
+// Managed MLflow tracking server, keyed by its UUID `id`. Audits can check
+// the lifecycle `state`, the public tracking `url`, the artifact `bucket`
+// and how long deleted experiments are kept (`deletedExperimentRetention`),
+// and walk `tokens` to find long-lived or unused access tokens.
+private stackit.modelExperiments.instance @defaults("name state region") {
+  // Instance UUID
+  id string
+  // Instance name
+  name string
+  // Description
+  description string
+  // MLflow tracking server URL
+  url string
+  // Object Storage bucket that stores the experiment artifacts (nullable)
+  //
+  // Null when the instance reports no bucket or the bucket is not readable
+  // from this project and region.
+  bucket() stackit.objectStorage.bucket
+  // Retention period for deleted experiments
+  //
+  // Duration string such as `7d` or `12h` that deleted experiments are kept
+  // before they are purged. The service accepts 1d to 90d.
+  deletedExperimentRetention string
+  // Lifecycle state
+  //
+  // One of pending, creating, updating, active, deleting, impaired, or
+  // reconciling.
+  state string
+  // Error message reported for an impaired instance
+  errorMessage string
+  // Region the instance runs in
+  region string
+  // User-defined labels
+  labels map[string]string
+  // Access tokens issued for the instance
+  tokens() []stackit.modelExperiments.instance.token
+}
+
+// STACKIT Model Experiments instance access token
+//
+// Metadata of a token that authenticates to a managed MLflow instance:
+// `state`, `validUntil` expiry, and `labels`. The secret token value is
+// only returned once at creation and is not exposed here.
+private stackit.modelExperiments.instance.token @defaults("name state validUntil") {
+  // Token UUID
+  id string
+  // Token name
+  name string
+  // Description
+  description string
+  // Lifecycle state
+  //
+  // One of creating, active, deleting, or inactive.
+  state string
+  // Region the token is valid in
+  region string
+  // Expiry timestamp
+  validUntil time
+  // User-defined labels
+  labels map[string]string
 }
 
 // STACKIT project service account

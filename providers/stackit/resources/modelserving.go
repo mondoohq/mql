@@ -22,6 +22,7 @@ func modelServingTokenArgs(t *modelserving.Token) map[string]*llx.RawData {
 		"state":       llx.StringData(string(t.GetState())),
 		"region":      llx.StringData(t.GetRegion()),
 		"validUntil":  llx.TimeDataPtr(timeOrNil(t.GetValidUntilOk())),
+		"labels":      labelData(t.GetLabels()),
 	}
 }
 

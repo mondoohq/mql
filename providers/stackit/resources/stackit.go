@@ -685,6 +685,14 @@ func (r *mqlStackit) modelServing() (*mqlStackitModelServing, error) {
 	return res.(*mqlStackitModelServing), nil
 }
 
+func (r *mqlStackit) modelExperiments() (*mqlStackitModelExperiments, error) {
+	res, err := makeNamespace(r.MqlRuntime, "stackit.modelExperiments")
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlStackitModelExperiments), nil
+}
+
 func (r *mqlStackit) telemetry() (*mqlStackitTelemetry, error) {
 	res, err := makeNamespace(r.MqlRuntime, "stackit.telemetry")
 	if err != nil {
