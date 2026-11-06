@@ -116,6 +116,7 @@ func initGcpProject(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 	args["labels"] = llx.MapData(convert.MapToInterfaceMap(project.Labels), types.String)
 	args["deleteTime"] = llx.TimeDataPtr(parseTime(project.DeleteTime))
 	args["number"] = llx.StringData(strings.TrimPrefix(project.Name, "projects/"))
+	args["managementType"] = llx.StringDataPtr(projectManagementType(project))
 	// TODO: add organization gcp.organization
 	return args, nil, nil
 }
@@ -194,6 +195,21 @@ func (g *mqlGcpProject) managedBy() (string, error) {
 
 func (g *mqlGcpProject) number() (string, error) {
 	return "", errors.New("not implemented")
+}
+
+func (g *mqlGcpProject) managementType() (string, error) {
+	return "", errors.New("not implemented")
+}
+
+// projectManagementType returns the kind of management project, or nil for a
+// project that is not one. The API fills managementType only for management
+// projects, so an empty value on any other project is absence, not a type.
+func projectManagementType(p *cloudresourcemanager.Project) *string {
+	if p == nil || p.ManagementType == "" {
+		return nil
+	}
+	t := p.ManagementType
+	return &t
 }
 
 func (g *mqlGcpProject) fetchIamPolicy() (*cloudresourcemanager.Policy, error) {
@@ -601,6 +617,8 @@ func projectToMql(runtime *plugin.Runtime, p *cloudresourcemanager.Project) (*mq
 		"labels":     llx.MapData(convert.MapToInterfaceMap(p.Labels), types.String),
 		"deleteTime": llx.TimeDataPtr(parseTime(p.DeleteTime)),
 		"number":     llx.StringData(strings.TrimPrefix(p.Name, "projects/")),
+		// Projects.List returns the same Project record as Projects.Get.
+		"managementType": llx.StringDataPtr(projectManagementType(p)),
 	})
 	if err != nil {
 		return nil, err

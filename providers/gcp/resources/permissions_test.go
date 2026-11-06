@@ -87,6 +87,9 @@ var validatedGCPPermissions = []string{
 	"backupdr.backupVaults.list",
 	"backupdr.bvdataSources.list",
 	"backupdr.managementServers.list",
+	"backupdr.restoreTemplates.list",
+	"backupdr.restoreVerificationPlanAssociations.list",
+	"backupdr.restoreVerificationPlans.list",
 	"batch.jobs.list",
 	"bigquery.connections.list",
 	"bigquery.reservations.list",
@@ -218,6 +221,7 @@ var validatedGCPPermissions = []string{
 	// projects.locations.contentPolicies.list rather than against the live IAM
 	// API, which no one has run this against yet. The generic derivation happens
 	// to produce the documented name, so no override is needed.
+	"dlp.contentPolicies.get",
 	"dlp.contentPolicies.list",
 	"dlp.deidentifyTemplates.list",
 	"dlp.fileStoreProfiles.list",

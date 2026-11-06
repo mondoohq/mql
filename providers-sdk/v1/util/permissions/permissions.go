@@ -1446,6 +1446,8 @@ var gcpPermissionOverrides = map[string]map[string]string{
 		// Discovery configs are governed by the jobTriggers permission; there is
 		// no dlp.discoveryConfigs.* permission.
 		"ListDiscoveryConfigs": "dlp.jobTriggers.list",
+		// The singular Get derives "contentPolicy"; the permission is plural.
+		"GetContentPolicy": "dlp.contentPolicies.get",
 	},
 	"memorystore": {
 		"GetInstance":         "memorystore.instances.get",

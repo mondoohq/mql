@@ -353,6 +353,7 @@ const (
 	ResourceGcpProjectAppEngineServiceApplication                                      string = "gcp.project.appEngineService.application"
 	ResourceGcpProjectAppEngineServiceService                                          string = "gcp.project.appEngineService.service"
 	ResourceGcpProjectAppEngineServiceVersion                                          string = "gcp.project.appEngineService.version"
+	ResourceGcpProjectAppEngineServiceVersionNetworkInterface                          string = "gcp.project.appEngineService.version.networkInterface"
 	ResourceGcpProjectApiGatewayService                                                string = "gcp.project.apiGatewayService"
 	ResourceGcpProjectApiGatewayServiceApi                                             string = "gcp.project.apiGatewayService.api"
 	ResourceGcpProjectApiGatewayServiceApiConfig                                       string = "gcp.project.apiGatewayService.apiConfig"
@@ -407,6 +408,9 @@ const (
 	ResourceGcpProjectArtifactRegistryServiceRepositoryModeConfig                      string = "gcp.project.artifactRegistryService.repository.modeConfig"
 	ResourceGcpProjectArtifactRegistryServiceRepositoryUpstreamPolicy                  string = "gcp.project.artifactRegistryService.repository.upstreamPolicy"
 	ResourceGcpProjectBackupdrService                                                  string = "gcp.project.backupdrService"
+	ResourceGcpProjectBackupdrServiceRestoreVerificationPlan                           string = "gcp.project.backupdrService.restoreVerificationPlan"
+	ResourceGcpProjectBackupdrServiceRestoreVerificationPlanAssociation                string = "gcp.project.backupdrService.restoreVerificationPlan.association"
+	ResourceGcpProjectBackupdrServiceRestoreTemplate                                   string = "gcp.project.backupdrService.restoreTemplate"
 	ResourceGcpProjectBackupdrServiceManagementServer                                  string = "gcp.project.backupdrService.managementServer"
 	ResourceGcpProjectBackupdrServiceBackupVault                                       string = "gcp.project.backupdrService.backupVault"
 	ResourceGcpProjectBackupdrServiceDataSource                                        string = "gcp.project.backupdrService.dataSource"
@@ -1917,6 +1921,10 @@ func init() {
 			// to override args, implement: initGcpProjectAppEngineServiceVersion(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createGcpProjectAppEngineServiceVersion,
 		},
+		"gcp.project.appEngineService.version.networkInterface": {
+			// to override args, implement: initGcpProjectAppEngineServiceVersionNetworkInterface(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectAppEngineServiceVersionNetworkInterface,
+		},
 		"gcp.project.apiGatewayService": {
 			// to override args, implement: initGcpProjectApiGatewayService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createGcpProjectApiGatewayService,
@@ -2132,6 +2140,18 @@ func init() {
 		"gcp.project.backupdrService": {
 			Init:   initGcpProjectBackupdrService,
 			Create: createGcpProjectBackupdrService,
+		},
+		"gcp.project.backupdrService.restoreVerificationPlan": {
+			// to override args, implement: initGcpProjectBackupdrServiceRestoreVerificationPlan(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectBackupdrServiceRestoreVerificationPlan,
+		},
+		"gcp.project.backupdrService.restoreVerificationPlan.association": {
+			// to override args, implement: initGcpProjectBackupdrServiceRestoreVerificationPlanAssociation(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectBackupdrServiceRestoreVerificationPlanAssociation,
+		},
+		"gcp.project.backupdrService.restoreTemplate": {
+			// to override args, implement: initGcpProjectBackupdrServiceRestoreTemplate(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectBackupdrServiceRestoreTemplate,
 		},
 		"gcp.project.backupdrService.managementServer": {
 			// to override args, implement: initGcpProjectBackupdrServiceManagementServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -3781,6 +3801,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.number": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProject).GetNumber()).ToDataRes(types.String)
+	},
+	"gcp.project.managementType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProject).GetManagementType()).ToDataRes(types.String)
 	},
 	"gcp.project.iamPolicy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProject).GetIamPolicy()).ToDataRes(types.Array(types.Resource("gcp.resourcemanager.binding")))
@@ -14222,6 +14245,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.appEngineService.version.vpcAccessConnector": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectAppEngineServiceVersion).GetVpcAccessConnector()).ToDataRes(types.Dict)
 	},
+	"gcp.project.appEngineService.version.vpcEgress": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAppEngineServiceVersion).GetVpcEgress()).ToDataRes(types.String)
+	},
+	"gcp.project.appEngineService.version.networkInterfaces": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAppEngineServiceVersion).GetNetworkInterfaces()).ToDataRes(types.Array(types.Resource("gcp.project.appEngineService.version.networkInterface")))
+	},
 	"gcp.project.appEngineService.version.handlers": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectAppEngineServiceVersion).GetHandlers()).ToDataRes(types.Array(types.Dict))
 	},
@@ -14230,6 +14259,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.appEngineService.version.appEngineBundledServices": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectAppEngineServiceVersion).GetAppEngineBundledServices()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.appEngineService.version.networkInterface.network": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAppEngineServiceVersionNetworkInterface).GetNetwork()).ToDataRes(types.Resource("gcp.project.computeService.network"))
+	},
+	"gcp.project.appEngineService.version.networkInterface.subnetwork": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAppEngineServiceVersionNetworkInterface).GetSubnetwork()).ToDataRes(types.Resource("gcp.project.computeService.subnetwork"))
+	},
+	"gcp.project.appEngineService.version.networkInterface.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAppEngineServiceVersionNetworkInterface).GetTags()).ToDataRes(types.Array(types.String))
 	},
 	"gcp.project.apiGatewayService.projectId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectApiGatewayService).GetProjectId()).ToDataRes(types.String)
@@ -15841,6 +15879,117 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.backupdrService.backupPlans": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectBackupdrService).GetBackupPlans()).ToDataRes(types.Array(types.Resource("gcp.project.backupdrService.backupPlan")))
+	},
+	"gcp.project.backupdrService.restoreVerificationPlans": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrService).GetRestoreVerificationPlans()).ToDataRes(types.Array(types.Resource("gcp.project.backupdrService.restoreVerificationPlan")))
+	},
+	"gcp.project.backupdrService.restoreTemplates": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrService).GetRestoreTemplates()).ToDataRes(types.Array(types.Resource("gcp.project.backupdrService.restoreTemplate")))
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlan).GetName()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlan).GetDescription()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlan).GetState()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.schedule": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlan).GetSchedule()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.timeZone": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlan).GetTimeZone()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.successCleanupDelaySeconds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlan).GetSuccessCleanupDelaySeconds()).ToDataRes(types.Int)
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.successCleanupSkipped": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlan).GetSuccessCleanupSkipped()).ToDataRes(types.Bool)
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.failureCleanupDelaySeconds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlan).GetFailureCleanupDelaySeconds()).ToDataRes(types.Int)
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.failureCleanupSkipped": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlan).GetFailureCleanupSkipped()).ToDataRes(types.Bool)
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlan).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.associations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlan).GetAssociations()).ToDataRes(types.Array(types.Resource("gcp.project.backupdrService.restoreVerificationPlan.association")))
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlan).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlan).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.association.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation).GetName()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.association.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation).GetDescription()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.association.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation).GetState()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.association.resourceType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation).GetResourceType()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.association.restoreTemplate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation).GetRestoreTemplate()).ToDataRes(types.Resource("gcp.project.backupdrService.restoreTemplate"))
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.association.lastTriggerTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation).GetLastTriggerTime()).ToDataRes(types.Time)
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.association.nextTriggerTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation).GetNextTriggerTime()).ToDataRes(types.Time)
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.association.lastTriggerError": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation).GetLastTriggerError()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.association.lastVerificationExecution": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation).GetLastVerificationExecution()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.association.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.association.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.association.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.backupdrService.restoreTemplate.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreTemplate).GetName()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.restoreTemplate.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreTemplate).GetDescription()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.restoreTemplate.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreTemplate).GetState()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.restoreTemplate.resourceType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreTemplate).GetResourceType()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.restoreTemplate.dataSource": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreTemplate).GetDataSource()).ToDataRes(types.Resource("gcp.project.backupdrService.dataSource"))
+	},
+	"gcp.project.backupdrService.restoreTemplate.lastExecution": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreTemplate).GetLastExecution()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.restoreTemplate.lastExecutionState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreTemplate).GetLastExecutionState()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.restoreTemplate.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreTemplate).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gcp.project.backupdrService.restoreTemplate.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreTemplate).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.backupdrService.restoreTemplate.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceRestoreTemplate).GetUpdatedAt()).ToDataRes(types.Time)
 	},
 	"gcp.project.backupdrService.managementServer.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectBackupdrServiceManagementServer).GetName()).ToDataRes(types.String)
@@ -17824,6 +17973,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.discoveryEngineService.dataStore.workspaceSuperAdminEmail": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectDiscoveryEngineServiceDataStore).GetWorkspaceSuperAdminEmail()).ToDataRes(types.String)
+	},
+	"gcp.project.discoveryEngineService.dataStore.sensitiveDataProtectionPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceDataStore).GetSensitiveDataProtectionPolicy()).ToDataRes(types.Resource("gcp.project.dlpService.contentPolicy"))
 	},
 	"gcp.project.discoveryEngineService.dataStore.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectDiscoveryEngineServiceDataStore).GetCreatedAt()).ToDataRes(types.Time)
@@ -21831,6 +21983,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.number": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProject).Number, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.managementType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProject).ManagementType, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"gcp.project.iamPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -36993,6 +37149,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectAppEngineServiceVersion).VpcAccessConnector, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
+	"gcp.project.appEngineService.version.vpcEgress": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAppEngineServiceVersion).VpcEgress, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.appEngineService.version.networkInterfaces": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAppEngineServiceVersion).NetworkInterfaces, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"gcp.project.appEngineService.version.handlers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectAppEngineServiceVersion).Handlers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -37003,6 +37167,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.appEngineService.version.appEngineBundledServices": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectAppEngineServiceVersion).AppEngineBundledServices, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.appEngineService.version.networkInterface.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAppEngineServiceVersionNetworkInterface).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.appEngineService.version.networkInterface.network": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAppEngineServiceVersionNetworkInterface).Network, ok = plugin.RawToTValue[*mqlGcpProjectComputeServiceNetwork](v.Value, v.Error)
+		return
+	},
+	"gcp.project.appEngineService.version.networkInterface.subnetwork": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAppEngineServiceVersionNetworkInterface).Subnetwork, ok = plugin.RawToTValue[*mqlGcpProjectComputeServiceSubnetwork](v.Value, v.Error)
+		return
+	},
+	"gcp.project.appEngineService.version.networkInterface.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAppEngineServiceVersionNetworkInterface).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"gcp.project.apiGatewayService.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -39367,6 +39547,166 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.backupdrService.backupPlans": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectBackupdrService).BackupPlans, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlans": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrService).RestoreVerificationPlans, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreTemplates": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrService).RestoreTemplates, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlan).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlan).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlan).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlan).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.schedule": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlan).Schedule, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.timeZone": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlan).TimeZone, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.successCleanupDelaySeconds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlan).SuccessCleanupDelaySeconds, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.successCleanupSkipped": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlan).SuccessCleanupSkipped, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.failureCleanupDelaySeconds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlan).FailureCleanupDelaySeconds, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.failureCleanupSkipped": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlan).FailureCleanupSkipped, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlan).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.associations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlan).Associations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlan).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlan).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.association.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.association.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.association.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.association.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.association.resourceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation).ResourceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.association.restoreTemplate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation).RestoreTemplate, ok = plugin.RawToTValue[*mqlGcpProjectBackupdrServiceRestoreTemplate](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.association.lastTriggerTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation).LastTriggerTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.association.nextTriggerTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation).NextTriggerTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.association.lastTriggerError": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation).LastTriggerError, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.association.lastVerificationExecution": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation).LastVerificationExecution, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.association.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.association.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreVerificationPlan.association.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreTemplate.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreTemplate).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.backupdrService.restoreTemplate.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreTemplate).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreTemplate.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreTemplate).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreTemplate.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreTemplate).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreTemplate.resourceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreTemplate).ResourceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreTemplate.dataSource": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreTemplate).DataSource, ok = plugin.RawToTValue[*mqlGcpProjectBackupdrServiceDataSource](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreTemplate.lastExecution": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreTemplate).LastExecution, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreTemplate.lastExecutionState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreTemplate).LastExecutionState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreTemplate.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreTemplate).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreTemplate.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreTemplate).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.restoreTemplate.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceRestoreTemplate).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"gcp.project.backupdrService.managementServer.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -42223,6 +42563,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.discoveryEngineService.dataStore.workspaceSuperAdminEmail": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectDiscoveryEngineServiceDataStore).WorkspaceSuperAdminEmail, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.dataStore.sensitiveDataProtectionPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceDataStore).SensitiveDataProtectionPolicy, ok = plugin.RawToTValue[*mqlGcpProjectDlpServiceContentPolicy](v.Value, v.Error)
 		return
 	},
 	"gcp.project.discoveryEngineService.dataStore.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -49710,6 +50054,7 @@ type mqlGcpProject struct {
 	Labels                                  plugin.TValue[map[string]any]
 	DeleteTime                              plugin.TValue[*time.Time]
 	Number                                  plugin.TValue[string]
+	ManagementType                          plugin.TValue[string]
 	IamPolicy                               plugin.TValue[[]any]
 	HasPublicIamBinding                     plugin.TValue[bool]
 	PrimitiveRoleBindings                   plugin.TValue[[]any]
@@ -49911,6 +50256,12 @@ func (c *mqlGcpProject) GetDeleteTime() *plugin.TValue[*time.Time] {
 func (c *mqlGcpProject) GetNumber() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.Number, func() (string, error) {
 		return c.number()
+	})
+}
+
+func (c *mqlGcpProject) GetManagementType() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ManagementType, func() (string, error) {
+		return c.managementType()
 	})
 }
 
@@ -86241,6 +86592,8 @@ type mqlGcpProjectAppEngineServiceVersion struct {
 	CreateTime               plugin.TValue[*time.Time]
 	RuntimeApiVersion        plugin.TValue[string]
 	VpcAccessConnector       plugin.TValue[any]
+	VpcEgress                plugin.TValue[string]
+	NetworkInterfaces        plugin.TValue[[]any]
 	Handlers                 plugin.TValue[[]any]
 	InboundServices          plugin.TValue[[]any]
 	AppEngineBundledServices plugin.TValue[[]any]
@@ -86323,6 +86676,14 @@ func (c *mqlGcpProjectAppEngineServiceVersion) GetVpcAccessConnector() *plugin.T
 	return &c.VpcAccessConnector
 }
 
+func (c *mqlGcpProjectAppEngineServiceVersion) GetVpcEgress() *plugin.TValue[string] {
+	return &c.VpcEgress
+}
+
+func (c *mqlGcpProjectAppEngineServiceVersion) GetNetworkInterfaces() *plugin.TValue[[]any] {
+	return &c.NetworkInterfaces
+}
+
 func (c *mqlGcpProjectAppEngineServiceVersion) GetHandlers() *plugin.TValue[[]any] {
 	return &c.Handlers
 }
@@ -86333,6 +86694,84 @@ func (c *mqlGcpProjectAppEngineServiceVersion) GetInboundServices() *plugin.TVal
 
 func (c *mqlGcpProjectAppEngineServiceVersion) GetAppEngineBundledServices() *plugin.TValue[[]any] {
 	return &c.AppEngineBundledServices
+}
+
+// mqlGcpProjectAppEngineServiceVersionNetworkInterface for the gcp.project.appEngineService.version.networkInterface resource
+type mqlGcpProjectAppEngineServiceVersionNetworkInterface struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlGcpProjectAppEngineServiceVersionNetworkInterfaceInternal
+	Network    plugin.TValue[*mqlGcpProjectComputeServiceNetwork]
+	Subnetwork plugin.TValue[*mqlGcpProjectComputeServiceSubnetwork]
+	Tags       plugin.TValue[[]any]
+}
+
+// createGcpProjectAppEngineServiceVersionNetworkInterface creates a new instance of this resource
+func createGcpProjectAppEngineServiceVersionNetworkInterface(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectAppEngineServiceVersionNetworkInterface{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.appEngineService.version.networkInterface", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectAppEngineServiceVersionNetworkInterface) MqlName() string {
+	return "gcp.project.appEngineService.version.networkInterface"
+}
+
+func (c *mqlGcpProjectAppEngineServiceVersionNetworkInterface) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectAppEngineServiceVersionNetworkInterface) GetNetwork() *plugin.TValue[*mqlGcpProjectComputeServiceNetwork] {
+	return plugin.GetOrCompute[*mqlGcpProjectComputeServiceNetwork](&c.Network, func() (*mqlGcpProjectComputeServiceNetwork, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.appEngineService.version.networkInterface", c.__id, "network")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectComputeServiceNetwork), nil
+			}
+		}
+
+		return c.network()
+	})
+}
+
+func (c *mqlGcpProjectAppEngineServiceVersionNetworkInterface) GetSubnetwork() *plugin.TValue[*mqlGcpProjectComputeServiceSubnetwork] {
+	return plugin.GetOrCompute[*mqlGcpProjectComputeServiceSubnetwork](&c.Subnetwork, func() (*mqlGcpProjectComputeServiceSubnetwork, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.appEngineService.version.networkInterface", c.__id, "subnetwork")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectComputeServiceSubnetwork), nil
+			}
+		}
+
+		return c.subnetwork()
+	})
+}
+
+func (c *mqlGcpProjectAppEngineServiceVersionNetworkInterface) GetTags() *plugin.TValue[[]any] {
+	return &c.Tags
 }
 
 // mqlGcpProjectApiGatewayService for the gcp.project.apiGatewayService resource
@@ -92044,10 +92483,12 @@ type mqlGcpProjectBackupdrService struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlGcpProjectBackupdrServiceInternal it will be used here
-	ProjectId         plugin.TValue[string]
-	ManagementServers plugin.TValue[[]any]
-	BackupVaults      plugin.TValue[[]any]
-	BackupPlans       plugin.TValue[[]any]
+	ProjectId                plugin.TValue[string]
+	ManagementServers        plugin.TValue[[]any]
+	BackupVaults             plugin.TValue[[]any]
+	BackupPlans              plugin.TValue[[]any]
+	RestoreVerificationPlans plugin.TValue[[]any]
+	RestoreTemplates         plugin.TValue[[]any]
 }
 
 // createGcpProjectBackupdrService creates a new instance of this resource
@@ -92137,6 +92578,381 @@ func (c *mqlGcpProjectBackupdrService) GetBackupPlans() *plugin.TValue[[]any] {
 
 		return c.backupPlans()
 	})
+}
+
+func (c *mqlGcpProjectBackupdrService) GetRestoreVerificationPlans() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.RestoreVerificationPlans, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.backupdrService", c.__id, "restoreVerificationPlans")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.restoreVerificationPlans()
+	})
+}
+
+func (c *mqlGcpProjectBackupdrService) GetRestoreTemplates() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.RestoreTemplates, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.backupdrService", c.__id, "restoreTemplates")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.restoreTemplates()
+	})
+}
+
+// mqlGcpProjectBackupdrServiceRestoreVerificationPlan for the gcp.project.backupdrService.restoreVerificationPlan resource
+type mqlGcpProjectBackupdrServiceRestoreVerificationPlan struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGcpProjectBackupdrServiceRestoreVerificationPlanInternal it will be used here
+	Name                       plugin.TValue[string]
+	Description                plugin.TValue[string]
+	State                      plugin.TValue[string]
+	Schedule                   plugin.TValue[string]
+	TimeZone                   plugin.TValue[string]
+	SuccessCleanupDelaySeconds plugin.TValue[int64]
+	SuccessCleanupSkipped      plugin.TValue[bool]
+	FailureCleanupDelaySeconds plugin.TValue[int64]
+	FailureCleanupSkipped      plugin.TValue[bool]
+	Labels                     plugin.TValue[map[string]any]
+	Associations               plugin.TValue[[]any]
+	CreatedAt                  plugin.TValue[*time.Time]
+	UpdatedAt                  plugin.TValue[*time.Time]
+}
+
+// createGcpProjectBackupdrServiceRestoreVerificationPlan creates a new instance of this resource
+func createGcpProjectBackupdrServiceRestoreVerificationPlan(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectBackupdrServiceRestoreVerificationPlan{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.backupdrService.restoreVerificationPlan", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlan) MqlName() string {
+	return "gcp.project.backupdrService.restoreVerificationPlan"
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlan) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlan) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlan) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlan) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlan) GetSchedule() *plugin.TValue[string] {
+	return &c.Schedule
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlan) GetTimeZone() *plugin.TValue[string] {
+	return &c.TimeZone
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlan) GetSuccessCleanupDelaySeconds() *plugin.TValue[int64] {
+	return &c.SuccessCleanupDelaySeconds
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlan) GetSuccessCleanupSkipped() *plugin.TValue[bool] {
+	return &c.SuccessCleanupSkipped
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlan) GetFailureCleanupDelaySeconds() *plugin.TValue[int64] {
+	return &c.FailureCleanupDelaySeconds
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlan) GetFailureCleanupSkipped() *plugin.TValue[bool] {
+	return &c.FailureCleanupSkipped
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlan) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlan) GetAssociations() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Associations, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.backupdrService.restoreVerificationPlan", c.__id, "associations")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.associations()
+	})
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlan) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlan) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+// mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation for the gcp.project.backupdrService.restoreVerificationPlan.association resource
+type mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociationInternal
+	Name                      plugin.TValue[string]
+	Description               plugin.TValue[string]
+	State                     plugin.TValue[string]
+	ResourceType              plugin.TValue[string]
+	RestoreTemplate           plugin.TValue[*mqlGcpProjectBackupdrServiceRestoreTemplate]
+	LastTriggerTime           plugin.TValue[*time.Time]
+	NextTriggerTime           plugin.TValue[*time.Time]
+	LastTriggerError          plugin.TValue[string]
+	LastVerificationExecution plugin.TValue[string]
+	Labels                    plugin.TValue[map[string]any]
+	CreatedAt                 plugin.TValue[*time.Time]
+	UpdatedAt                 plugin.TValue[*time.Time]
+}
+
+// createGcpProjectBackupdrServiceRestoreVerificationPlanAssociation creates a new instance of this resource
+func createGcpProjectBackupdrServiceRestoreVerificationPlanAssociation(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.backupdrService.restoreVerificationPlan.association", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation) MqlName() string {
+	return "gcp.project.backupdrService.restoreVerificationPlan.association"
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation) GetResourceType() *plugin.TValue[string] {
+	return &c.ResourceType
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation) GetRestoreTemplate() *plugin.TValue[*mqlGcpProjectBackupdrServiceRestoreTemplate] {
+	return plugin.GetOrCompute[*mqlGcpProjectBackupdrServiceRestoreTemplate](&c.RestoreTemplate, func() (*mqlGcpProjectBackupdrServiceRestoreTemplate, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.backupdrService.restoreVerificationPlan.association", c.__id, "restoreTemplate")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectBackupdrServiceRestoreTemplate), nil
+			}
+		}
+
+		return c.restoreTemplate()
+	})
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation) GetLastTriggerTime() *plugin.TValue[*time.Time] {
+	return &c.LastTriggerTime
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation) GetNextTriggerTime() *plugin.TValue[*time.Time] {
+	return &c.NextTriggerTime
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation) GetLastTriggerError() *plugin.TValue[string] {
+	return &c.LastTriggerError
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation) GetLastVerificationExecution() *plugin.TValue[string] {
+	return &c.LastVerificationExecution
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreVerificationPlanAssociation) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+// mqlGcpProjectBackupdrServiceRestoreTemplate for the gcp.project.backupdrService.restoreTemplate resource
+type mqlGcpProjectBackupdrServiceRestoreTemplate struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlGcpProjectBackupdrServiceRestoreTemplateInternal
+	Name               plugin.TValue[string]
+	Description        plugin.TValue[string]
+	State              plugin.TValue[string]
+	ResourceType       plugin.TValue[string]
+	DataSource         plugin.TValue[*mqlGcpProjectBackupdrServiceDataSource]
+	LastExecution      plugin.TValue[string]
+	LastExecutionState plugin.TValue[string]
+	Labels             plugin.TValue[map[string]any]
+	CreatedAt          plugin.TValue[*time.Time]
+	UpdatedAt          plugin.TValue[*time.Time]
+}
+
+// createGcpProjectBackupdrServiceRestoreTemplate creates a new instance of this resource
+func createGcpProjectBackupdrServiceRestoreTemplate(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectBackupdrServiceRestoreTemplate{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.backupdrService.restoreTemplate", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreTemplate) MqlName() string {
+	return "gcp.project.backupdrService.restoreTemplate"
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreTemplate) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreTemplate) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreTemplate) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreTemplate) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreTemplate) GetResourceType() *plugin.TValue[string] {
+	return &c.ResourceType
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreTemplate) GetDataSource() *plugin.TValue[*mqlGcpProjectBackupdrServiceDataSource] {
+	return plugin.GetOrCompute[*mqlGcpProjectBackupdrServiceDataSource](&c.DataSource, func() (*mqlGcpProjectBackupdrServiceDataSource, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.backupdrService.restoreTemplate", c.__id, "dataSource")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectBackupdrServiceDataSource), nil
+			}
+		}
+
+		return c.dataSource()
+	})
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreTemplate) GetLastExecution() *plugin.TValue[string] {
+	return &c.LastExecution
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreTemplate) GetLastExecutionState() *plugin.TValue[string] {
+	return &c.LastExecutionState
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreTemplate) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreTemplate) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlGcpProjectBackupdrServiceRestoreTemplate) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
 }
 
 // mqlGcpProjectBackupdrServiceManagementServer for the gcp.project.backupdrService.managementServer resource
@@ -98828,6 +99644,7 @@ type mqlGcpProjectDiscoveryEngineServiceDataStore struct {
 	WorkspaceType                     plugin.TValue[string]
 	WorkspaceSuperAdminServiceAccount plugin.TValue[*mqlGcpProjectIamServiceServiceAccount]
 	WorkspaceSuperAdminEmail          plugin.TValue[string]
+	SensitiveDataProtectionPolicy     plugin.TValue[*mqlGcpProjectDlpServiceContentPolicy]
 	CreatedAt                         plugin.TValue[*time.Time]
 }
 
@@ -98942,6 +99759,22 @@ func (c *mqlGcpProjectDiscoveryEngineServiceDataStore) GetWorkspaceSuperAdminSer
 
 func (c *mqlGcpProjectDiscoveryEngineServiceDataStore) GetWorkspaceSuperAdminEmail() *plugin.TValue[string] {
 	return &c.WorkspaceSuperAdminEmail
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceDataStore) GetSensitiveDataProtectionPolicy() *plugin.TValue[*mqlGcpProjectDlpServiceContentPolicy] {
+	return plugin.GetOrCompute[*mqlGcpProjectDlpServiceContentPolicy](&c.SensitiveDataProtectionPolicy, func() (*mqlGcpProjectDlpServiceContentPolicy, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.discoveryEngineService.dataStore", c.__id, "sensitiveDataProtectionPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectDlpServiceContentPolicy), nil
+			}
+		}
+
+		return c.sensitiveDataProtectionPolicy()
+	})
 }
 
 func (c *mqlGcpProjectDiscoveryEngineServiceDataStore) GetCreatedAt() *plugin.TValue[*time.Time] {

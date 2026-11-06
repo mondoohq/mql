@@ -123,6 +123,7 @@ func newMqlDiscoveryEngineDataStore(runtime *plugin.Runtime, ds *discoveryengine
 	mqlDs.cacheKmsKeyName = ds.KmsKeyName
 	mqlDs.cacheSuperAdminServiceAccount = ds.GetWorkspaceConfig().GetSuperAdminServiceAccount()
 	mqlDs.cacheProjectId = projectFromResourceName(ds.Name)
+	mqlDs.cacheSensitiveDataProtectionPolicy = ds.GetDataProtectionPolicy().GetSensitiveDataProtectionPolicy().GetPolicy()
 	return mqlDs, nil
 }
 
@@ -192,6 +193,23 @@ type mqlGcpProjectDiscoveryEngineServiceDataStoreInternal struct {
 	cacheKmsKeyName               string
 	cacheSuperAdminServiceAccount string
 	cacheProjectId                string
+	// resource name of the Sensitive Data Protection content policy
+	cacheSensitiveDataProtectionPolicy string
+}
+
+func (a *mqlGcpProjectDiscoveryEngineServiceDataStore) sensitiveDataProtectionPolicy() (*mqlGcpProjectDlpServiceContentPolicy, error) {
+	if a.cacheSensitiveDataProtectionPolicy == "" {
+		a.SensitiveDataProtectionPolicy.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	cp, err := getDlpContentPolicyByName(a.MqlRuntime, a.cacheSensitiveDataProtectionPolicy)
+	if err != nil {
+		return nil, err
+	}
+	if cp == nil {
+		a.SensitiveDataProtectionPolicy.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return cp, nil
 }
 
 func (a *mqlGcpProjectDiscoveryEngineServiceDataStore) kmsKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {

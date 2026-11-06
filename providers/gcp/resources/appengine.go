@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -211,6 +212,14 @@ func (g *mqlGcpProjectAppEngineServiceService) versions() ([]any, error) {
 			if err != nil {
 				return err
 			}
+			networkInterfaces, err := g.newAppEngineNetworkInterfaces(projectId, v)
+			if err != nil {
+				return err
+			}
+			var vpcEgress *string
+			if v.VpcAccess != nil {
+				vpcEgress = nonEmptyStringPtr(v.VpcAccess.VpcEgress)
+			}
 
 			mqlVersion, err := CreateResource(g.MqlRuntime, "gcp.project.appEngineService.version", map[string]*llx.RawData{
 				"projectId":                llx.StringData(projectId),
@@ -223,6 +232,8 @@ func (g *mqlGcpProjectAppEngineServiceService) versions() ([]any, error) {
 				"createTime":               llx.TimeDataPtr(parseTime(v.CreateTime)),
 				"runtimeApiVersion":        llx.StringData(v.RuntimeApiVersion),
 				"vpcAccessConnector":       llx.DictData(vpcConnector),
+				"vpcEgress":                llx.StringDataPtr(vpcEgress),
+				"networkInterfaces":        llx.ArrayData(networkInterfaces, types.Resource("gcp.project.appEngineService.version.networkInterface")),
 				"handlers":                 llx.ArrayData(handlers, types.Dict),
 				"inboundServices":          llx.ArrayData(convert.SliceAnyToInterface(v.InboundServices), types.String),
 				"appEngineBundledServices": llx.ArrayData(convert.SliceAnyToInterface(v.AppEngineBundledServices), types.String),
@@ -315,6 +326,147 @@ func appEngineConvertHandlers(handlers []*appengine.UrlMap) ([]any, error) {
 		res = append(res, d)
 	}
 	return res, nil
+}
+
+// newAppEngineNetworkInterfaces builds the direct VPC network interfaces of a
+// version. The network and subnetwork may each be a short name or a resource
+// path, and either may be omitted, so they are normalized here and resolved on
+// demand.
+func (g *mqlGcpProjectAppEngineServiceService) newAppEngineNetworkInterfaces(projectId string, v *appengine.Version) ([]any, error) {
+	res := []any{}
+	if v.VpcAccess == nil {
+		return res, nil
+	}
+	for i, ni := range v.VpcAccess.NetworkInterfaces {
+		if ni == nil {
+			continue
+		}
+		obj, err := CreateResource(g.MqlRuntime, "gcp.project.appEngineService.version.networkInterface", map[string]*llx.RawData{
+			"__id": llx.StringData(fmt.Sprintf("gcp.project/%s/appEngineService.version/%s/%s/networkInterfaces/%d", projectId, g.Id.Data, v.Id, i)),
+			"tags": llx.ArrayData(convert.SliceAnyToInterface(ni.Tags), types.String),
+		})
+		if err != nil {
+			return nil, err
+		}
+		mqlNi := obj.(*mqlGcpProjectAppEngineServiceVersionNetworkInterface)
+		mqlNi.cacheProjectId = projectId
+		mqlNi.cacheNetwork = ni.Network
+		mqlNi.cacheSubnet = ni.Subnet
+		res = append(res, mqlNi)
+	}
+	return res, nil
+}
+
+type mqlGcpProjectAppEngineServiceVersionNetworkInterfaceInternal struct {
+	cacheProjectId string
+	cacheNetwork   string
+	cacheSubnet    string
+}
+
+// appEngineNetworkPath turns a version's network reference into a network
+// resource path. A short name refers to a network in the version's project.
+func appEngineNetworkPath(projectId, network string) string {
+	if network == "" {
+		return ""
+	}
+	if strings.Contains(network, "/") {
+		return network
+	}
+	return fmt.Sprintf("projects/%s/global/networks/%s", projectId, network)
+}
+
+// appEngineSubnetworkPath turns a version's subnetwork reference into a
+// subnetwork resource path. A short name lives in the network's project and in
+// region, and an omitted subnetwork is the one named like the network. It
+// returns "" when the subnetwork cannot be determined.
+func appEngineSubnetworkPath(projectId, region, network, subnet string) string {
+	if strings.Contains(subnet, "/") {
+		return subnet
+	}
+	subnetProject := projectId
+	if p, name, ok := parseNetworkURL(appEngineNetworkPath(projectId, network)); ok {
+		subnetProject = p
+		if subnet == "" {
+			subnet = name
+		}
+	}
+	if subnet == "" || region == "" {
+		return ""
+	}
+	return fmt.Sprintf("projects/%s/regions/%s/subnetworks/%s", subnetProject, region, subnet)
+}
+
+// appEngineLocationRegion maps an App Engine location to the Compute region
+// it runs in. Two App Engine locations drop the trailing zone digit the
+// Compute region carries; every other location already is the region name.
+func appEngineLocationRegion(locationId string) string {
+	switch locationId {
+	case "us-central":
+		return "us-central1"
+	case "europe-west":
+		return "europe-west1"
+	}
+	return locationId
+}
+
+// region returns the Compute region of the project's App Engine application,
+// needed to resolve a subnetwork given by short name.
+func (g *mqlGcpProjectAppEngineServiceVersionNetworkInterface) region() (string, error) {
+	obj, err := CreateResource(g.MqlRuntime, "gcp.project.appEngineService", map[string]*llx.RawData{
+		"projectId": llx.StringData(g.cacheProjectId),
+	})
+	if err != nil {
+		return "", err
+	}
+	app := obj.(*mqlGcpProjectAppEngineService).GetApplication()
+	if app.Error != nil {
+		return "", app.Error
+	}
+	if app.Data == nil {
+		return "", nil
+	}
+	return appEngineLocationRegion(app.Data.LocationId.Data), nil
+}
+
+func (g *mqlGcpProjectAppEngineServiceVersionNetworkInterface) subnetwork() (*mqlGcpProjectComputeServiceSubnetwork, error) {
+	var region string
+	if !strings.Contains(g.cacheSubnet, "/") && (g.cacheSubnet != "" || g.cacheNetwork != "") {
+		var err error
+		if region, err = g.region(); err != nil {
+			return nil, err
+		}
+	}
+	path := appEngineSubnetworkPath(g.cacheProjectId, region, g.cacheNetwork, g.cacheSubnet)
+	subnet, err := getSubnetworkByUrl(path, g.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	if subnet == nil {
+		g.Subnetwork.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return subnet, nil
+}
+
+func (g *mqlGcpProjectAppEngineServiceVersionNetworkInterface) network() (*mqlGcpProjectComputeServiceNetwork, error) {
+	if path := appEngineNetworkPath(g.cacheProjectId, g.cacheNetwork); path != "" {
+		return getNetworkByUrl(path, g.MqlRuntime)
+	}
+	// With no network given, the network is the one the subnetwork belongs to.
+	subnet := g.GetSubnetwork()
+	if subnet.Error != nil {
+		return nil, subnet.Error
+	}
+	if subnet.Data != nil {
+		n := subnet.Data.GetNetwork()
+		if n.Error != nil {
+			return nil, n.Error
+		}
+		if n.Data != nil {
+			return n.Data, nil
+		}
+	}
+	g.Network.State = plugin.StateIsSet | plugin.StateIsNull
+	return nil, nil
 }
 
 func appEngineConvertVpcConnector(vc *appengine.VpcAccessConnector) (map[string]any, error) {
