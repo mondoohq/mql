@@ -292,12 +292,11 @@ func (a *mqlAwsS3vectorsVectorBucket) indexes() ([]any, error) {
 		}
 		for _, idx := range page.Indexes {
 			mqlIdx, err := CreateResource(a.MqlRuntime, ResourceAwsS3vectorsIndex, map[string]*llx.RawData{
-				"__id":             llx.StringDataPtr(idx.IndexArn),
-				"arn":              llx.StringDataPtr(idx.IndexArn),
-				"name":             llx.StringDataPtr(idx.IndexName),
-				"vectorBucketName": llx.StringDataPtr(idx.VectorBucketName),
-				"region":           llx.StringData(region),
-				"createdAt":        llx.TimeDataPtr(idx.CreationTime),
+				"__id":      llx.StringDataPtr(idx.IndexArn),
+				"arn":       llx.StringDataPtr(idx.IndexArn),
+				"name":      llx.StringDataPtr(idx.IndexName),
+				"region":    llx.StringData(region),
+				"createdAt": llx.TimeDataPtr(idx.CreationTime),
 			})
 			if err != nil {
 				return nil, err
@@ -314,6 +313,23 @@ type mqlAwsS3vectorsIndexInternal struct {
 	fetchLock sync.Mutex
 	fetched   atomic.Bool
 	detail    *s3vtypes.Index
+}
+
+func (a *mqlAwsS3vectorsIndex) vectorBucket() (*mqlAwsS3vectorsVectorBucket, error) {
+	bucketArn := s3VectorBucketArnOfIndex(a.Arn.Data)
+	if bucketArn == "" {
+		a.VectorBucket.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	b, err := findS3VectorBucket(a.MqlRuntime, bucketArn)
+	if err != nil {
+		return nil, err
+	}
+	if b == nil {
+		a.VectorBucket.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return b, nil
 }
 
 func (a *mqlAwsS3vectorsIndex) fetchDetail() (*s3vtypes.Index, error) {

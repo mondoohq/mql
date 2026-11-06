@@ -39262,8 +39262,8 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.s3vectors.index.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsS3vectorsIndex).GetName()).ToDataRes(types.String)
 	},
-	"aws.s3vectors.index.vectorBucketName": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAwsS3vectorsIndex).GetVectorBucketName()).ToDataRes(types.String)
+	"aws.s3vectors.index.vectorBucket": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsS3vectorsIndex).GetVectorBucket()).ToDataRes(types.Resource("aws.s3vectors.vectorBucket"))
 	},
 	"aws.s3vectors.index.region": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsS3vectorsIndex).GetRegion()).ToDataRes(types.String)
@@ -89404,8 +89404,8 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsS3vectorsIndex).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"aws.s3vectors.index.vectorBucketName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAwsS3vectorsIndex).VectorBucketName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"aws.s3vectors.index.vectorBucket": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3vectorsIndex).VectorBucket, ok = plugin.RawToTValue[*mqlAwsS3vectorsVectorBucket](v.Value, v.Error)
 		return
 	},
 	"aws.s3vectors.index.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -218532,7 +218532,7 @@ type mqlAwsS3vectorsIndex struct {
 	mqlAwsS3vectorsIndexInternal
 	Arn                       plugin.TValue[string]
 	Name                      plugin.TValue[string]
-	VectorBucketName          plugin.TValue[string]
+	VectorBucket              plugin.TValue[*mqlAwsS3vectorsVectorBucket]
 	Region                    plugin.TValue[string]
 	CreatedAt                 plugin.TValue[*time.Time]
 	Dimension                 plugin.TValue[int64]
@@ -218583,8 +218583,20 @@ func (c *mqlAwsS3vectorsIndex) GetName() *plugin.TValue[string] {
 	return &c.Name
 }
 
-func (c *mqlAwsS3vectorsIndex) GetVectorBucketName() *plugin.TValue[string] {
-	return &c.VectorBucketName
+func (c *mqlAwsS3vectorsIndex) GetVectorBucket() *plugin.TValue[*mqlAwsS3vectorsVectorBucket] {
+	return plugin.GetOrCompute[*mqlAwsS3vectorsVectorBucket](&c.VectorBucket, func() (*mqlAwsS3vectorsVectorBucket, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.s3vectors.index", c.__id, "vectorBucket")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsS3vectorsVectorBucket), nil
+			}
+		}
+
+		return c.vectorBucket()
+	})
 }
 
 func (c *mqlAwsS3vectorsIndex) GetRegion() *plugin.TValue[string] {

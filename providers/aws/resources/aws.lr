@@ -33879,13 +33879,13 @@ private aws.bedrock.knowledgeBase.vectorStore @defaults("type endpoint vectorInd
   // ARN of the S3 vector bucket holding the vectors
   //
   // Deprecated in favor of s3VectorBucket.
-  s3VectorBucketArn @maturity("deprecated") string
+  s3VectorBucketArn @maturity("deprecated") @replaced_by("aws.bedrock.knowledgeBase.vectorStore.s3VectorBucket") string
   // S3 vector bucket holding the vectors, for an S3 Vectors store
   s3VectorBucket() aws.s3vectors.vectorBucket
   // ARN of the S3 vector index holding the vectors
   //
   // Deprecated in favor of s3VectorIndex.
-  s3VectorIndexArn @maturity("deprecated") string
+  s3VectorIndexArn @maturity("deprecated") @replaced_by("aws.bedrock.knowledgeBase.vectorStore.s3VectorIndex") string
   // S3 vector index holding the vectors, for an S3 Vectors store
   s3VectorIndex() aws.s3vectors.index
   // Database holding the vectors, for the stores organized into databases
@@ -34939,8 +34939,8 @@ private aws.s3vectors.index @defaults("name dimension distanceMetric") {
   arn string
   // Name of the vector index
   name string
-  // Name of the vector bucket that holds the index
-  vectorBucketName string
+  // Vector bucket that holds the index
+  vectorBucket() aws.s3vectors.vectorBucket
   // Region where the index exists
   region string
   // Time the index was created

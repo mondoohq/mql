@@ -9879,7 +9879,7 @@ aws.s3vectors.index.name 14.6.5
 aws.s3vectors.index.nonFilterableMetadataKeys 14.6.5
 aws.s3vectors.index.region 14.6.5
 aws.s3vectors.index.sseType 14.6.5
-aws.s3vectors.index.vectorBucketName 14.6.5
+aws.s3vectors.index.vectorBucket 14.6.5
 aws.s3vectors.vectorBucket 14.6.5
 aws.s3vectors.vectorBucket.arn 14.6.5
 aws.s3vectors.vectorBucket.createdAt 14.6.5
