@@ -49,9 +49,15 @@ func (a *mqlAwsBedrockFoundationModel) fetchAvailability() (*bedrock.GetFoundati
 	}
 	defer a.availabilityFetched.Store(true)
 
+	// Without the model's region the client would fall back to the
+	// connection's default region and answer for a different region.
+	region := foundationModelRegion(a.ModelArn.Data)
+	if region == "" {
+		return nil, nil
+	}
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	modelId := a.ModelId.Data
-	out, err := conn.Bedrock(foundationModelRegion(a.ModelArn.Data)).GetFoundationModelAvailability(context.Background(),
+	out, err := conn.Bedrock(region).GetFoundationModelAvailability(context.Background(),
 		&bedrock.GetFoundationModelAvailabilityInput{ModelId: &modelId})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
