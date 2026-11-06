@@ -10,6 +10,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // firstPageOnly serves body on the first page and an empty result after it,
@@ -285,6 +288,75 @@ func TestAIGatewaysRefusal(t *testing.T) {
 		})
 		_, err := acc.aiGateways()
 		assert.Error(t, err)
+	})
+}
+
+// enableStructuredErrors turns the StructuredErrors feature on for one test.
+func enableStructuredErrors(t *testing.T) {
+	t.Helper()
+	plugin.ReadFeatures([]byte(mql.Features{byte(mql.StructuredErrors)}))
+	// ReadFeatures ignores an empty slice, so reset to a set without the flag.
+	t.Cleanup(func() { plugin.ReadFeatures(mql.Features{byte(mql.MassQueries)}) })
+}
+
+func refuse(status int) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		fmt.Fprint(w, `{"success": false, "errors": [{"code": 10000, "message": "Authentication error"}], "messages": [], "result": null}`)
+	}
+}
+
+func TestAIGatewaysRefusalStructuredErrors(t *testing.T) {
+	t.Run("403 is forbidden and names the permission", func(t *testing.T) {
+		enableStructuredErrors(t)
+		env := setupTestEnv(t)
+		acc := createTestAccount(t, env)
+		env.Mux.HandleFunc(fmt.Sprintf("/accounts/%s/ai-gateway/gateways", testAccountID), refuse(http.StatusForbidden))
+		result, err := acc.aiGateways()
+		assert.Nil(t, result)
+		assert.Equal(t, llx.ErrorKind_ERROR_KIND_FORBIDDEN, llx.KindOf(err))
+		var e *llx.Error
+		require.ErrorAs(t, err, &e)
+		assert.Equal(t, []string{aiGatewayReadPermission}, e.Permissions)
+	})
+
+	t.Run("401 is unauthenticated", func(t *testing.T) {
+		enableStructuredErrors(t)
+		env := setupTestEnv(t)
+		acc := createTestAccount(t, env)
+		env.Mux.HandleFunc(fmt.Sprintf("/accounts/%s/ai-gateway/gateways", testAccountID), refuse(http.StatusUnauthorized))
+		_, err := acc.aiGateways()
+		assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNAUTHENTICATED, llx.KindOf(err))
+	})
+
+	t.Run("404 still degrades to empty", func(t *testing.T) {
+		enableStructuredErrors(t)
+		env := setupTestEnv(t)
+		acc := createTestAccount(t, env)
+		env.Mux.HandleFunc(fmt.Sprintf("/accounts/%s/ai-gateway/gateways", testAccountID), refuse(http.StatusNotFound))
+		result, err := acc.aiGateways()
+		require.NoError(t, err)
+		assert.Empty(t, result)
+	})
+
+	t.Run("provider configs 403 is forbidden", func(t *testing.T) {
+		env := setupTestEnv(t)
+		gws := loadTestAIGateways(t, env)
+		enableStructuredErrors(t)
+		env.Mux.HandleFunc(fmt.Sprintf("/accounts/%s/ai-gateway/gateways/policy-dlp/provider_configs", testAccountID), refuse(http.StatusForbidden))
+		cfgs, err := gws["policy-dlp"].providerConfigs()
+		assert.Nil(t, cfgs)
+		assert.Equal(t, llx.ErrorKind_ERROR_KIND_FORBIDDEN, llx.KindOf(err))
+	})
+
+	t.Run("flag off keeps the v13 empty list", func(t *testing.T) {
+		env := setupTestEnv(t)
+		gws := loadTestAIGateways(t, env)
+		env.Mux.HandleFunc(fmt.Sprintf("/accounts/%s/ai-gateway/gateways/policy-dlp/provider_configs", testAccountID), refuse(http.StatusForbidden))
+		cfgs, err := gws["policy-dlp"].providerConfigs()
+		require.NoError(t, err)
+		assert.Empty(t, cfgs)
 	})
 }
 

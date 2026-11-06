@@ -108,6 +108,28 @@ func degradedList(err error) ([]any, error) {
 	return nil, err
 }
 
+// refusedList is degradedList for an endpoint that every plan provides, where
+// a 401 or 403 cannot mean "not on this plan" and so can only mean the token
+// lacks the permission. With structured errors on, that refusal is returned as
+// a classified error naming the permission, so a check over the list reports
+// an error instead of passing over an empty list. With the flag off, and for
+// 404 and every other status, it behaves exactly like degradedList (ADR 046
+// §9).
+func refusedList(err error, permissions ...string) ([]any, error) {
+	if plugin.StructuredErrors() {
+		var apiErr *cloudflare.Error
+		if errors.As(err, &apiErr) && !isCredentialScope(apiErr) {
+			switch apiErr.StatusCode {
+			case http.StatusUnauthorized:
+				return nil, llx.Unauthenticated(err, llx.WithPermissions(permissions...))
+			case http.StatusForbidden:
+				return nil, llx.Forbidden(err, llx.WithPermissions(permissions...))
+			}
+		}
+	}
+	return degradedList(err)
+}
+
 // cloudflareTimeLayouts are the timestamp formats seen on Cloudflare endpoints
 // that report a date as a JSON string rather than an RFC 3339 timestamp. The
 // client-certificate and content-scanning endpoints are the two cases we hit:

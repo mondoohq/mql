@@ -19,6 +19,11 @@ import (
 	"go.mondoo.com/mql/types"
 )
 
+// aiGatewayReadPermission is the API token permission the AI Gateway list
+// endpoints require. AI Gateway is available on every plan, so a refusal from
+// them means the token lacks this permission.
+const aiGatewayReadPermission = "AI Gateway Read"
+
 // aiGatewayRecord is the subset of an AI Gateway the provider reads. Besides
 // the decode panic noted on listAIGateways, the cloudflare-go types lose two
 // things this resource needs: the DLP union collapses both of its variants
@@ -235,7 +240,7 @@ func (c *mqlCloudflareAccount) aiGateways() ([]any, error) {
 
 	records, err := listAIGateways(conn, accountID)
 	if err != nil {
-		return degradedList(err)
+		return refusedList(err, aiGatewayReadPermission)
 	}
 
 	result := make([]any, 0, len(records))
@@ -419,7 +424,7 @@ func (c *mqlCloudflareAccountAiGateway) providerConfigs() ([]any, error) {
 		result = append(result, res)
 	}
 	if err := iter.Err(); err != nil {
-		return degradedList(err)
+		return refusedList(err, aiGatewayReadPermission)
 	}
 	return result, nil
 }
