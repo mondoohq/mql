@@ -18999,7 +18999,7 @@ func (c *mqlDigitaloceanGradientai) GetInferenceRouters() *plugin.TValue[[]any] 
 type mqlDigitaloceanGradientaiInferenceRouter struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlDigitaloceanGradientaiInferenceRouterInternal it will be used here
+	mqlDigitaloceanGradientaiInferenceRouterInternal
 	Uuid           plugin.TValue[string]
 	Name           plugin.TValue[string]
 	Description    plugin.TValue[string]
@@ -19059,19 +19059,27 @@ func (c *mqlDigitaloceanGradientaiInferenceRouter) GetDescription() *plugin.TVal
 }
 
 func (c *mqlDigitaloceanGradientaiInferenceRouter) GetFallbackModels() *plugin.TValue[[]any] {
-	return &c.FallbackModels
+	return plugin.GetOrCompute[[]any](&c.FallbackModels, func() ([]any, error) {
+		return c.fallbackModels()
+	})
 }
 
 func (c *mqlDigitaloceanGradientaiInferenceRouter) GetPolicies() *plugin.TValue[any] {
-	return &c.Policies
+	return plugin.GetOrCompute[any](&c.Policies, func() (any, error) {
+		return c.policies()
+	})
 }
 
 func (c *mqlDigitaloceanGradientaiInferenceRouter) GetCreatedAt() *plugin.TValue[*time.Time] {
-	return &c.CreatedAt
+	return plugin.GetOrCompute[*time.Time](&c.CreatedAt, func() (*time.Time, error) {
+		return c.createdAt()
+	})
 }
 
 func (c *mqlDigitaloceanGradientaiInferenceRouter) GetUpdatedAt() *plugin.TValue[*time.Time] {
-	return &c.UpdatedAt
+	return plugin.GetOrCompute[*time.Time](&c.UpdatedAt, func() (*time.Time, error) {
+		return c.updatedAt()
+	})
 }
 
 // mqlDigitaloceanGradientaiAgent for the digitalocean.gradientai.agent resource

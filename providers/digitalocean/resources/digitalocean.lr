@@ -3202,16 +3202,16 @@ private digitalocean.gradientai.inferenceRouter @defaults("uuid name") {
   // Description
   description string
   // Model names tried in order when no policy matches or the chosen model fails
-  fallbackModels []string
+  fallbackModels() []string
   // Routing policies
   //
   // The policy document as the API returns it; policies select a model by
   // task (a preset `task_slug` or a custom task description).
-  policies dict
+  policies() dict
   // Time the router was created
-  createdAt time
+  createdAt() time
   // Time the router was last updated
-  updatedAt time
+  updatedAt() time
 }
 
 // DigitalOcean GradientAI agent

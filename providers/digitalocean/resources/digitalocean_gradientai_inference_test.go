@@ -13,14 +13,21 @@ import (
 	"go.mondoo.com/mql/llx"
 )
 
-func TestInferenceRouterArgs_Decode(t *testing.T) {
-	// Synthetic: shape from godo's InferenceRouter json tags; no router
-	// existed in the test account.
+func TestInferenceRouterSummaryArgs(t *testing.T) {
+	// Measured: shape of GET /v2/gen-ai/models/routers on a DigitalOcean team, 2026-11-06.
+	var s godo.InferenceRouterSummary
+	require.NoError(t, json.Unmarshal([]byte(`{"uuid":"11f1c36a-5ebf-0a46-aee4-4e013e2ddde4","name":"inference-router","description":"DigitalOcean managed Inference Router"}`), &s))
+	args := inferenceRouterSummaryArgs(&s)
+	assert.Equal(t, "digitalocean.gradientai.inferenceRouter/11f1c36a-5ebf-0a46-aee4-4e013e2ddde4", args["__id"].Value)
+	assert.Equal(t, "inference-router", args["name"].Value)
+	assert.Equal(t, "DigitalOcean managed Inference Router", args["description"].Value)
+}
+
+func TestInferenceRouterConfig_Decode(t *testing.T) {
+	// Synthetic: shape from godo's InferenceRouter json tags; no router with
+	// a config existed in the test account.
 	raw := `{
 		"uuid": "ir-1",
-		"name": "support-router",
-		"description": "routes support traffic",
-		"created_at": "2026-06-01T10:00:00Z",
 		"config": {
 			"fallback_models": ["llama3.3-70b-instruct", "openai-gpt-4o"],
 			"policies": [{"task_slug": "code-generation", "models": ["anthropic-claude-sonnet"]}]
@@ -28,30 +35,34 @@ func TestInferenceRouterArgs_Decode(t *testing.T) {
 	}`
 	var ir godo.InferenceRouter
 	require.NoError(t, json.Unmarshal([]byte(raw), &ir))
-	args, err := inferenceRouterArgs(&ir)
+	assert.Equal(t, []any{"llama3.3-70b-instruct", "openai-gpt-4o"}, inferenceRouterFallbackModels(&ir))
+	p, err := inferenceRouterPolicies(&ir)
 	require.NoError(t, err)
-	assert.Equal(t, "digitalocean.gradientai.inferenceRouter/ir-1", args["__id"].Value)
-	assert.Equal(t, "support-router", args["name"].Value)
-	assert.Equal(t, []any{"llama3.3-70b-instruct", "openai-gpt-4o"}, args["fallbackModels"].Value)
 	assert.Equal(t, []any{map[string]any{
 		"task_slug": "code-generation",
 		"models":    []any{"anthropic-claude-sonnet"},
-	}}, args["policies"].Value)
-	assert.NotNil(t, args["createdAt"].Value)
-	assert.Nil(t, args["updatedAt"].Value)
+	}}, p)
 }
 
-func TestInferenceRouterArgs_NoConfig(t *testing.T) {
-	// Synthetic: a router read without a config block.
-	args, err := inferenceRouterArgs(&godo.InferenceRouter{UUID: "ir-2"})
+func TestInferenceRouterConfig_Absent(t *testing.T) {
+	// Measured: GET /v2/gen-ai/models/routers/{uuid} for the managed default
+	// router returns no config block (2026-11-06).
+	ir := &godo.InferenceRouter{UUID: "ir-2"}
+	assert.Equal(t, []any{}, inferenceRouterFallbackModels(ir))
+	p, err := inferenceRouterPolicies(ir)
 	require.NoError(t, err)
-	assert.Equal(t, []any{}, args["fallbackModels"].Value)
-	assert.Nil(t, args["policies"].Value)
+	assert.Nil(t, p)
+
+	// Synthetic: a router deleted since the list (404) reads as no config.
+	assert.Equal(t, []any{}, inferenceRouterFallbackModels(nil))
+	p, err = inferenceRouterPolicies(nil)
+	require.NoError(t, err)
+	assert.Nil(t, p)
 }
 
-func TestInferenceRouterArgs_MalformedPolicies(t *testing.T) {
+func TestInferenceRouterPolicies_Malformed(t *testing.T) {
 	// Synthetic: policies that are not valid JSON surface as malformed data.
-	_, err := inferenceRouterArgs(&godo.InferenceRouter{UUID: "ir-3", Config: &godo.InferenceRouterConfig{Policies: json.RawMessage(`{"x":`)}})
+	_, err := inferenceRouterPolicies(&godo.InferenceRouter{UUID: "ir-3", Config: &godo.InferenceRouterConfig{Policies: json.RawMessage(`{"x":`)}})
 	require.Error(t, err)
 	assert.Equal(t, llx.ErrorKind_ERROR_KIND_MALFORMED_DATA, llx.KindOf(err))
 }
