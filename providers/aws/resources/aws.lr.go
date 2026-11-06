@@ -1059,6 +1059,9 @@ const (
 	ResourceAwsAppflow                                                          string = "aws.appflow"
 	ResourceAwsAppflowFlow                                                      string = "aws.appflow.flow"
 	ResourceAwsAppflowConnectorProfile                                          string = "aws.appflow.connectorProfile"
+	ResourceAwsS3vectors                                                        string = "aws.s3vectors"
+	ResourceAwsS3vectorsVectorBucket                                            string = "aws.s3vectors.vectorBucket"
+	ResourceAwsS3vectorsIndex                                                   string = "aws.s3vectors.index"
 	ResourceAwsVpclattice                                                       string = "aws.vpclattice"
 	ResourceAwsVpclatticeServiceNetwork                                         string = "aws.vpclattice.serviceNetwork"
 	ResourceAwsVpclatticeServiceNetworkVpcAssociation                           string = "aws.vpclattice.serviceNetwork.vpcAssociation"
@@ -5260,6 +5263,18 @@ func init() {
 		"aws.appflow.connectorProfile": {
 			// to override args, implement: initAwsAppflowConnectorProfile(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAwsAppflowConnectorProfile,
+		},
+		"aws.s3vectors": {
+			// to override args, implement: initAwsS3vectors(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsS3vectors,
+		},
+		"aws.s3vectors.vectorBucket": {
+			// to override args, implement: initAwsS3vectorsVectorBucket(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsS3vectorsVectorBucket,
+		},
+		"aws.s3vectors.index": {
+			// to override args, implement: initAwsS3vectorsIndex(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsS3vectorsIndex,
 		},
 		"aws.vpclattice": {
 			// to override args, implement: initAwsVpclattice(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -38413,8 +38428,14 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.bedrock.knowledgeBase.vectorStore.s3VectorBucketArn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockKnowledgeBaseVectorStore).GetS3VectorBucketArn()).ToDataRes(types.String)
 	},
+	"aws.bedrock.knowledgeBase.vectorStore.s3VectorBucket": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockKnowledgeBaseVectorStore).GetS3VectorBucket()).ToDataRes(types.Resource("aws.s3vectors.vectorBucket"))
+	},
 	"aws.bedrock.knowledgeBase.vectorStore.s3VectorIndexArn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockKnowledgeBaseVectorStore).GetS3VectorIndexArn()).ToDataRes(types.String)
+	},
+	"aws.bedrock.knowledgeBase.vectorStore.s3VectorIndex": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockKnowledgeBaseVectorStore).GetS3VectorIndex()).ToDataRes(types.Resource("aws.s3vectors.index"))
 	},
 	"aws.bedrock.knowledgeBase.vectorStore.databaseName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockKnowledgeBaseVectorStore).GetDatabaseName()).ToDataRes(types.String)
@@ -39453,6 +39474,75 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.appflow.connectorProfile.lastUpdatedAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsAppflowConnectorProfile).GetLastUpdatedAt()).ToDataRes(types.Time)
+	},
+	"aws.s3vectors.vectorBuckets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsS3vectors).GetVectorBuckets()).ToDataRes(types.Array(types.Resource("aws.s3vectors.vectorBucket")))
+	},
+	"aws.s3vectors.vectorBucket.arn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsS3vectorsVectorBucket).GetArn()).ToDataRes(types.String)
+	},
+	"aws.s3vectors.vectorBucket.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsS3vectorsVectorBucket).GetName()).ToDataRes(types.String)
+	},
+	"aws.s3vectors.vectorBucket.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsS3vectorsVectorBucket).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.s3vectors.vectorBucket.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsS3vectorsVectorBucket).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"aws.s3vectors.vectorBucket.sseType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsS3vectorsVectorBucket).GetSseType()).ToDataRes(types.String)
+	},
+	"aws.s3vectors.vectorBucket.kmsKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsS3vectorsVectorBucket).GetKmsKey()).ToDataRes(types.Resource("aws.kms.key"))
+	},
+	"aws.s3vectors.vectorBucket.policy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsS3vectorsVectorBucket).GetPolicy()).ToDataRes(types.String)
+	},
+	"aws.s3vectors.vectorBucket.policyStatements": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsS3vectorsVectorBucket).GetPolicyStatements()).ToDataRes(types.Array(types.Resource("aws.iam.policyStatement")))
+	},
+	"aws.s3vectors.vectorBucket.isPublic": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsS3vectorsVectorBucket).GetIsPublic()).ToDataRes(types.Bool)
+	},
+	"aws.s3vectors.vectorBucket.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsS3vectorsVectorBucket).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"aws.s3vectors.vectorBucket.indexes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsS3vectorsVectorBucket).GetIndexes()).ToDataRes(types.Array(types.Resource("aws.s3vectors.index")))
+	},
+	"aws.s3vectors.index.arn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsS3vectorsIndex).GetArn()).ToDataRes(types.String)
+	},
+	"aws.s3vectors.index.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsS3vectorsIndex).GetName()).ToDataRes(types.String)
+	},
+	"aws.s3vectors.index.vectorBucket": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsS3vectorsIndex).GetVectorBucket()).ToDataRes(types.Resource("aws.s3vectors.vectorBucket"))
+	},
+	"aws.s3vectors.index.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsS3vectorsIndex).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.s3vectors.index.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsS3vectorsIndex).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"aws.s3vectors.index.dimension": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsS3vectorsIndex).GetDimension()).ToDataRes(types.Int)
+	},
+	"aws.s3vectors.index.distanceMetric": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsS3vectorsIndex).GetDistanceMetric()).ToDataRes(types.String)
+	},
+	"aws.s3vectors.index.dataType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsS3vectorsIndex).GetDataType()).ToDataRes(types.String)
+	},
+	"aws.s3vectors.index.nonFilterableMetadataKeys": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsS3vectorsIndex).GetNonFilterableMetadataKeys()).ToDataRes(types.Array(types.String))
+	},
+	"aws.s3vectors.index.sseType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsS3vectorsIndex).GetSseType()).ToDataRes(types.String)
+	},
+	"aws.s3vectors.index.kmsKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsS3vectorsIndex).GetKmsKey()).ToDataRes(types.Resource("aws.kms.key"))
 	},
 	"aws.vpclattice.serviceNetworks": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsVpclattice).GetServiceNetworks()).ToDataRes(types.Array(types.Resource("aws.vpclattice.serviceNetwork")))
@@ -88305,8 +88395,16 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsBedrockKnowledgeBaseVectorStore).S3VectorBucketArn, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"aws.bedrock.knowledgeBase.vectorStore.s3VectorBucket": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockKnowledgeBaseVectorStore).S3VectorBucket, ok = plugin.RawToTValue[*mqlAwsS3vectorsVectorBucket](v.Value, v.Error)
+		return
+	},
 	"aws.bedrock.knowledgeBase.vectorStore.s3VectorIndexArn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsBedrockKnowledgeBaseVectorStore).S3VectorIndexArn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.knowledgeBase.vectorStore.s3VectorIndex": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockKnowledgeBaseVectorStore).S3VectorIndex, ok = plugin.RawToTValue[*mqlAwsS3vectorsIndex](v.Value, v.Error)
 		return
 	},
 	"aws.bedrock.knowledgeBase.vectorStore.databaseName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -89823,6 +89921,110 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.appflow.connectorProfile.lastUpdatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsAppflowConnectorProfile).LastUpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.s3vectors.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3vectors).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.s3vectors.vectorBuckets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3vectors).VectorBuckets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.s3vectors.vectorBucket.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3vectorsVectorBucket).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.s3vectors.vectorBucket.arn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3vectorsVectorBucket).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.s3vectors.vectorBucket.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3vectorsVectorBucket).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.s3vectors.vectorBucket.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3vectorsVectorBucket).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.s3vectors.vectorBucket.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3vectorsVectorBucket).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.s3vectors.vectorBucket.sseType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3vectorsVectorBucket).SseType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.s3vectors.vectorBucket.kmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3vectorsVectorBucket).KmsKey, ok = plugin.RawToTValue[*mqlAwsKmsKey](v.Value, v.Error)
+		return
+	},
+	"aws.s3vectors.vectorBucket.policy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3vectorsVectorBucket).Policy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.s3vectors.vectorBucket.policyStatements": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3vectorsVectorBucket).PolicyStatements, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.s3vectors.vectorBucket.isPublic": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3vectorsVectorBucket).IsPublic, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.s3vectors.vectorBucket.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3vectorsVectorBucket).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aws.s3vectors.vectorBucket.indexes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3vectorsVectorBucket).Indexes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.s3vectors.index.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3vectorsIndex).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.s3vectors.index.arn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3vectorsIndex).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.s3vectors.index.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3vectorsIndex).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.s3vectors.index.vectorBucket": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3vectorsIndex).VectorBucket, ok = plugin.RawToTValue[*mqlAwsS3vectorsVectorBucket](v.Value, v.Error)
+		return
+	},
+	"aws.s3vectors.index.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3vectorsIndex).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.s3vectors.index.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3vectorsIndex).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.s3vectors.index.dimension": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3vectorsIndex).Dimension, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aws.s3vectors.index.distanceMetric": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3vectorsIndex).DistanceMetric, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.s3vectors.index.dataType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3vectorsIndex).DataType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.s3vectors.index.nonFilterableMetadataKeys": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3vectorsIndex).NonFilterableMetadataKeys, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.s3vectors.index.sseType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3vectorsIndex).SseType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.s3vectors.index.kmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3vectorsIndex).KmsKey, ok = plugin.RawToTValue[*mqlAwsKmsKey](v.Value, v.Error)
 		return
 	},
 	"aws.vpclattice.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -215266,7 +215468,9 @@ type mqlAwsBedrockKnowledgeBaseVectorStore struct {
 	OpensearchServerlessCollection    plugin.TValue[*mqlAwsOpensearchserverlessCollection]
 	NeptuneGraphArn                   plugin.TValue[string]
 	S3VectorBucketArn                 plugin.TValue[string]
+	S3VectorBucket                    plugin.TValue[*mqlAwsS3vectorsVectorBucket]
 	S3VectorIndexArn                  plugin.TValue[string]
+	S3VectorIndex                     plugin.TValue[*mqlAwsS3vectorsIndex]
 	DatabaseName                      plugin.TValue[string]
 	TableName                         plugin.TValue[string]
 }
@@ -215391,8 +215595,40 @@ func (c *mqlAwsBedrockKnowledgeBaseVectorStore) GetS3VectorBucketArn() *plugin.T
 	return &c.S3VectorBucketArn
 }
 
+func (c *mqlAwsBedrockKnowledgeBaseVectorStore) GetS3VectorBucket() *plugin.TValue[*mqlAwsS3vectorsVectorBucket] {
+	return plugin.GetOrCompute[*mqlAwsS3vectorsVectorBucket](&c.S3VectorBucket, func() (*mqlAwsS3vectorsVectorBucket, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.knowledgeBase.vectorStore", c.__id, "s3VectorBucket")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsS3vectorsVectorBucket), nil
+			}
+		}
+
+		return c.s3VectorBucket()
+	})
+}
+
 func (c *mqlAwsBedrockKnowledgeBaseVectorStore) GetS3VectorIndexArn() *plugin.TValue[string] {
 	return &c.S3VectorIndexArn
+}
+
+func (c *mqlAwsBedrockKnowledgeBaseVectorStore) GetS3VectorIndex() *plugin.TValue[*mqlAwsS3vectorsIndex] {
+	return plugin.GetOrCompute[*mqlAwsS3vectorsIndex](&c.S3VectorIndex, func() (*mqlAwsS3vectorsIndex, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.knowledgeBase.vectorStore", c.__id, "s3VectorIndex")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsS3vectorsIndex), nil
+			}
+		}
+
+		return c.s3VectorIndex()
+	})
 }
 
 func (c *mqlAwsBedrockKnowledgeBaseVectorStore) GetDatabaseName() *plugin.TValue[string] {
@@ -219448,6 +219684,333 @@ func (c *mqlAwsAppflowConnectorProfile) GetCreatedAt() *plugin.TValue[*time.Time
 
 func (c *mqlAwsAppflowConnectorProfile) GetLastUpdatedAt() *plugin.TValue[*time.Time] {
 	return &c.LastUpdatedAt
+}
+
+// mqlAwsS3vectors for the aws.s3vectors resource
+type mqlAwsS3vectors struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAwsS3vectorsInternal it will be used here
+	VectorBuckets plugin.TValue[[]any]
+}
+
+// createAwsS3vectors creates a new instance of this resource
+func createAwsS3vectors(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsS3vectors{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.s3vectors", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsS3vectors) MqlName() string {
+	return "aws.s3vectors"
+}
+
+func (c *mqlAwsS3vectors) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsS3vectors) GetVectorBuckets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.VectorBuckets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.s3vectors", c.__id, "vectorBuckets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.vectorBuckets()
+	})
+}
+
+// mqlAwsS3vectorsVectorBucket for the aws.s3vectors.vectorBucket resource
+type mqlAwsS3vectorsVectorBucket struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsS3vectorsVectorBucketInternal
+	Arn              plugin.TValue[string]
+	Name             plugin.TValue[string]
+	Region           plugin.TValue[string]
+	CreatedAt        plugin.TValue[*time.Time]
+	SseType          plugin.TValue[string]
+	KmsKey           plugin.TValue[*mqlAwsKmsKey]
+	Policy           plugin.TValue[string]
+	PolicyStatements plugin.TValue[[]any]
+	IsPublic         plugin.TValue[bool]
+	Tags             plugin.TValue[map[string]any]
+	Indexes          plugin.TValue[[]any]
+}
+
+// createAwsS3vectorsVectorBucket creates a new instance of this resource
+func createAwsS3vectorsVectorBucket(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsS3vectorsVectorBucket{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.s3vectors.vectorBucket", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsS3vectorsVectorBucket) MqlName() string {
+	return "aws.s3vectors.vectorBucket"
+}
+
+func (c *mqlAwsS3vectorsVectorBucket) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsS3vectorsVectorBucket) GetArn() *plugin.TValue[string] {
+	return &c.Arn
+}
+
+func (c *mqlAwsS3vectorsVectorBucket) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAwsS3vectorsVectorBucket) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlAwsS3vectorsVectorBucket) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlAwsS3vectorsVectorBucket) GetSseType() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SseType, func() (string, error) {
+		return c.sseType()
+	})
+}
+
+func (c *mqlAwsS3vectorsVectorBucket) GetKmsKey() *plugin.TValue[*mqlAwsKmsKey] {
+	return plugin.GetOrCompute[*mqlAwsKmsKey](&c.KmsKey, func() (*mqlAwsKmsKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.s3vectors.vectorBucket", c.__id, "kmsKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsKmsKey), nil
+			}
+		}
+
+		return c.kmsKey()
+	})
+}
+
+func (c *mqlAwsS3vectorsVectorBucket) GetPolicy() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Policy, func() (string, error) {
+		return c.policy()
+	})
+}
+
+func (c *mqlAwsS3vectorsVectorBucket) GetPolicyStatements() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PolicyStatements, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.s3vectors.vectorBucket", c.__id, "policyStatements")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.policyStatements()
+	})
+}
+
+func (c *mqlAwsS3vectorsVectorBucket) GetIsPublic() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.IsPublic, func() (bool, error) {
+		return c.isPublic()
+	})
+}
+
+func (c *mqlAwsS3vectorsVectorBucket) GetTags() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Tags, func() (map[string]any, error) {
+		return c.tags()
+	})
+}
+
+func (c *mqlAwsS3vectorsVectorBucket) GetIndexes() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Indexes, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.s3vectors.vectorBucket", c.__id, "indexes")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.indexes()
+	})
+}
+
+// mqlAwsS3vectorsIndex for the aws.s3vectors.index resource
+type mqlAwsS3vectorsIndex struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsS3vectorsIndexInternal
+	Arn                       plugin.TValue[string]
+	Name                      plugin.TValue[string]
+	VectorBucket              plugin.TValue[*mqlAwsS3vectorsVectorBucket]
+	Region                    plugin.TValue[string]
+	CreatedAt                 plugin.TValue[*time.Time]
+	Dimension                 plugin.TValue[int64]
+	DistanceMetric            plugin.TValue[string]
+	DataType                  plugin.TValue[string]
+	NonFilterableMetadataKeys plugin.TValue[[]any]
+	SseType                   plugin.TValue[string]
+	KmsKey                    plugin.TValue[*mqlAwsKmsKey]
+}
+
+// createAwsS3vectorsIndex creates a new instance of this resource
+func createAwsS3vectorsIndex(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsS3vectorsIndex{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.s3vectors.index", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsS3vectorsIndex) MqlName() string {
+	return "aws.s3vectors.index"
+}
+
+func (c *mqlAwsS3vectorsIndex) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsS3vectorsIndex) GetArn() *plugin.TValue[string] {
+	return &c.Arn
+}
+
+func (c *mqlAwsS3vectorsIndex) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAwsS3vectorsIndex) GetVectorBucket() *plugin.TValue[*mqlAwsS3vectorsVectorBucket] {
+	return plugin.GetOrCompute[*mqlAwsS3vectorsVectorBucket](&c.VectorBucket, func() (*mqlAwsS3vectorsVectorBucket, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.s3vectors.index", c.__id, "vectorBucket")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsS3vectorsVectorBucket), nil
+			}
+		}
+
+		return c.vectorBucket()
+	})
+}
+
+func (c *mqlAwsS3vectorsIndex) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlAwsS3vectorsIndex) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlAwsS3vectorsIndex) GetDimension() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.Dimension, func() (int64, error) {
+		return c.dimension()
+	})
+}
+
+func (c *mqlAwsS3vectorsIndex) GetDistanceMetric() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.DistanceMetric, func() (string, error) {
+		return c.distanceMetric()
+	})
+}
+
+func (c *mqlAwsS3vectorsIndex) GetDataType() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.DataType, func() (string, error) {
+		return c.dataType()
+	})
+}
+
+func (c *mqlAwsS3vectorsIndex) GetNonFilterableMetadataKeys() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.NonFilterableMetadataKeys, func() ([]any, error) {
+		return c.nonFilterableMetadataKeys()
+	})
+}
+
+func (c *mqlAwsS3vectorsIndex) GetSseType() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SseType, func() (string, error) {
+		return c.sseType()
+	})
+}
+
+func (c *mqlAwsS3vectorsIndex) GetKmsKey() *plugin.TValue[*mqlAwsKmsKey] {
+	return plugin.GetOrCompute[*mqlAwsKmsKey](&c.KmsKey, func() (*mqlAwsKmsKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.s3vectors.index", c.__id, "kmsKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsKmsKey), nil
+			}
+		}
+
+		return c.kmsKey()
+	})
 }
 
 // mqlAwsVpclattice for the aws.vpclattice resource

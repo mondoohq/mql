@@ -780,6 +780,7 @@ func awsConnectionMethodToService(method string) string {
 		"bedrock":                  "bedrock",
 		"bedrockagent":             "bedrockagent",
 		"qbusiness":                "qbusiness",
+		"s3vectors":                "s3vectors",
 		"bedrockagentcorecontrol":  "bedrockagentcorecontrol",
 		"personalize":              "personalize",
 		"opensearchserverless":     "opensearchserverless",

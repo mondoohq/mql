@@ -34013,9 +34013,17 @@ private aws.bedrock.knowledgeBase.vectorStore @defaults("type endpoint vectorInd
   // ARN of the Neptune Analytics graph holding the vectors
   neptuneGraphArn string
   // ARN of the S3 vector bucket holding the vectors
-  s3VectorBucketArn string
+  //
+  // Deprecated in favor of s3VectorBucket.
+  s3VectorBucketArn @maturity("deprecated") @replaced_by("aws.bedrock.knowledgeBase.vectorStore.s3VectorBucket") string
+  // S3 vector bucket holding the vectors, for an S3 Vectors store
+  s3VectorBucket() aws.s3vectors.vectorBucket
   // ARN of the S3 vector index holding the vectors
-  s3VectorIndexArn string
+  //
+  // Deprecated in favor of s3VectorIndex.
+  s3VectorIndexArn @maturity("deprecated") @replaced_by("aws.bedrock.knowledgeBase.vectorStore.s3VectorIndex") string
+  // S3 vector index holding the vectors, for an S3 Vectors store
+  s3VectorIndex() aws.s3vectors.index
   // Database holding the vectors, for the stores organized into databases
   databaseName string
   // Table or collection holding the vectors
@@ -35109,6 +35117,97 @@ private aws.appflow.connectorProfile @defaults("arn name connectorType connectio
   createdAt time
   // Time the connector profile was last updated
   lastUpdatedAt time
+}
+
+// Amazon S3 Vectors
+//
+// Vector buckets in the account and the vector indexes inside them, which
+// store the embeddings that retrieval-augmented generation applications and
+// Amazon Bedrock knowledge bases search. `vectorBuckets` lists the buckets
+// across all enabled regions.
+aws.s3vectors {
+  // Vector buckets in the account
+  vectorBuckets() []aws.s3vectors.vectorBucket
+}
+
+// Amazon S3 Vectors vector bucket
+//
+// Bucket that holds vector indexes. `sseType` and `kmsKey` report how vectors
+// are encrypted at rest, `policy` with `policyStatements` and `isPublic` who
+// the bucket policy grants access to, and `indexes` the vector indexes in the
+// bucket. The `arn` field selects a bucket.
+private aws.s3vectors.vectorBucket @defaults("name region sseType") {
+  // ARN of the vector bucket
+  arn string
+  // Name of the vector bucket
+  name string
+  // Region where the vector bucket exists
+  region string
+  // Time the vector bucket was created
+  createdAt time
+  // Server-side encryption type for vectors in the bucket
+  //
+  // AES256 for Amazon S3 managed keys or aws:kms for AWS KMS keys.
+  sseType() string
+  // Customer-managed KMS key encrypting vectors in the bucket
+  //
+  // Null when the bucket uses Amazon S3 managed keys.
+  kmsKey() aws.kms.key
+  // Bucket policy document
+  //
+  // Null when no policy is attached or the policy could not be read.
+  policy() string
+  // Parsed statements of the bucket policy
+  //
+  // Empty when no policy is attached. Null when the policy could not be read.
+  policyStatements() []aws.iam.policyStatement
+  // Whether the bucket policy grants access to any principal
+  //
+  // True when a statement allows a wildcard principal without a condition that scopes the caller. Null when the policy could not be read.
+  isPublic() bool
+  // Tags assigned to the vector bucket
+  tags() map[string]string
+  // Vector indexes in the bucket
+  indexes() []aws.s3vectors.index
+}
+
+// Amazon S3 Vectors vector index
+//
+// Index of vectors with a fixed dimension and distance metric inside a vector
+// bucket. `sseType` and `kmsKey` report the index's encryption, which can
+// differ from the bucket's, and `nonFilterableMetadataKeys` the metadata keys
+// stored with vectors but not usable in query filters.
+private aws.s3vectors.index @defaults("name dimension distanceMetric") {
+  // ARN of the vector index
+  arn string
+  // Name of the vector index
+  name string
+  // Vector bucket that holds the index
+  vectorBucket() aws.s3vectors.vectorBucket
+  // Region where the index exists
+  region string
+  // Time the index was created
+  createdAt time
+  // Number of dimensions of the vectors in the index
+  dimension() int
+  // Distance metric used for similarity search
+  //
+  // euclidean or cosine.
+  distanceMetric() string
+  // Data type of the vectors
+  //
+  // For example float32.
+  dataType() string
+  // Metadata keys stored with vectors that cannot be used in query filters
+  nonFilterableMetadataKeys() []string
+  // Server-side encryption type for vectors in the index
+  //
+  // AES256 for Amazon S3 managed keys or aws:kms for AWS KMS keys.
+  sseType() string
+  // Customer-managed KMS key encrypting vectors in the index
+  //
+  // Null when the index uses Amazon S3 managed keys.
+  kmsKey() aws.kms.key
 }
 
 // Amazon VPC Lattice
