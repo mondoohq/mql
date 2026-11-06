@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"github.com/aws/aws-sdk-go-v2/service/qbusiness"
 	qbusinesstypes "github.com/aws/aws-sdk-go-v2/service/qbusiness/types"
@@ -93,6 +94,8 @@ func (a *mqlAwsQBusiness) getApplications(conn *connection.AwsConnection) []*job
 
 type mqlAwsQBusinessApplicationInternal struct {
 	lazyTags
+	qbusinessChatControlsCache
+	qbusinessPolicyCache
 	cacheRegion string
 	fetchLock   sync.Mutex
 	fetched     bool
@@ -598,10 +601,16 @@ type mqlAwsQBusinessIndexInternal struct {
 
 type mqlAwsQBusinessPluginInternal struct {
 	lazyTags
+	fetchLock sync.Mutex
+	fetched   atomic.Bool
+	detail    *qbusiness.GetPluginOutput
 }
 
 type mqlAwsQBusinessWebExperienceInternal struct {
 	lazyTags
+	fetchLock sync.Mutex
+	fetched   atomic.Bool
+	detail    *qbusiness.GetWebExperienceOutput
 }
 
 func (a *mqlAwsQBusinessApplication) tags() (map[string]any, error) {
@@ -655,26 +664,24 @@ func (a *mqlAwsQBusinessRetriever) tags() (map[string]any, error) {
 
 func (a *mqlAwsQBusinessPlugin) tags() (map[string]any, error) {
 	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
-		return qbusinessTags(a.MqlRuntime, a.Region.Data, "qbusiness:GetPlugin", func(ctx context.Context, svc *qbusiness.Client) (*string, error) {
-			appId, pluginId := a.ApplicationId.Data, a.Id.Data
-			resp, err := svc.GetPlugin(ctx, &qbusiness.GetPluginInput{ApplicationId: &appId, PluginId: &pluginId})
-			if err != nil {
+		return qbusinessTags(a.MqlRuntime, a.Region.Data, "qbusiness:GetPlugin", func(context.Context, *qbusiness.Client) (*string, error) {
+			detail, err := a.fetchDetail()
+			if err != nil || detail == nil {
 				return nil, err
 			}
-			return resp.PluginArn, nil
+			return detail.PluginArn, nil
 		})
 	})
 }
 
 func (a *mqlAwsQBusinessWebExperience) tags() (map[string]any, error) {
 	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
-		return qbusinessTags(a.MqlRuntime, a.Region.Data, "qbusiness:GetWebExperience", func(ctx context.Context, svc *qbusiness.Client) (*string, error) {
-			appId, webExperienceId := a.ApplicationId.Data, a.Id.Data
-			resp, err := svc.GetWebExperience(ctx, &qbusiness.GetWebExperienceInput{ApplicationId: &appId, WebExperienceId: &webExperienceId})
-			if err != nil {
+		return qbusinessTags(a.MqlRuntime, a.Region.Data, "qbusiness:GetWebExperience", func(context.Context, *qbusiness.Client) (*string, error) {
+			detail, err := a.fetchDetail()
+			if err != nil || detail == nil {
 				return nil, err
 			}
-			return resp.WebExperienceArn, nil
+			return detail.WebExperienceArn, nil
 		})
 	})
 }

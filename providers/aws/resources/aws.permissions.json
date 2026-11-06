@@ -771,9 +771,15 @@
     "pipes:DescribePipe",
     "pipes:ListPipes",
     "qbusiness:GetApplication",
+    "qbusiness:GetChatControlsConfiguration",
+    "qbusiness:GetDataAccessor",
     "qbusiness:GetDataSource",
+    "qbusiness:GetPlugin",
+    "qbusiness:GetPolicy",
     "qbusiness:GetRetriever",
+    "qbusiness:GetWebExperience",
     "qbusiness:ListApplications",
+    "qbusiness:ListDataAccessors",
     "qbusiness:ListDataSources",
     "qbusiness:ListIndices",
     "qbusiness:ListPlugins",
@@ -5919,10 +5925,34 @@
       "source_file": "aws_qbusiness.go"
     },
     {
+      "permission": "qbusiness:GetChatControlsConfiguration",
+      "service": "qbusiness",
+      "action": "GetChatControlsConfiguration",
+      "source_file": "aws_qbusiness_controls.go"
+    },
+    {
+      "permission": "qbusiness:GetDataAccessor",
+      "service": "qbusiness",
+      "action": "GetDataAccessor",
+      "source_file": "aws_qbusiness_controls.go"
+    },
+    {
       "permission": "qbusiness:GetDataSource",
       "service": "qbusiness",
       "action": "GetDataSource",
       "source_file": "aws_qbusiness.go"
+    },
+    {
+      "permission": "qbusiness:GetPlugin",
+      "service": "qbusiness",
+      "action": "GetPlugin",
+      "source_file": "aws_qbusiness_controls.go"
+    },
+    {
+      "permission": "qbusiness:GetPolicy",
+      "service": "qbusiness",
+      "action": "GetPolicy",
+      "source_file": "aws_qbusiness_controls.go"
     },
     {
       "permission": "qbusiness:GetRetriever",
@@ -5931,10 +5961,22 @@
       "source_file": "aws_qbusiness.go"
     },
     {
+      "permission": "qbusiness:GetWebExperience",
+      "service": "qbusiness",
+      "action": "GetWebExperience",
+      "source_file": "aws_qbusiness_controls.go"
+    },
+    {
       "permission": "qbusiness:ListApplications",
       "service": "qbusiness",
       "action": "ListApplications",
       "source_file": "aws_qbusiness.go"
+    },
+    {
+      "permission": "qbusiness:ListDataAccessors",
+      "service": "qbusiness",
+      "action": "ListDataAccessors",
+      "source_file": "aws_qbusiness_controls.go"
     },
     {
       "permission": "qbusiness:ListDataSources",
