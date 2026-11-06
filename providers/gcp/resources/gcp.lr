@@ -13710,6 +13710,10 @@ private gcp.project.workbenchService.instance @defaults("name state healthState"
   createTime time
   // Instance last update time
   updateTime time
+  // Resource-level IAM policy bindings governing who can access this instance
+  iamPolicy() []gcp.resourcemanager.binding
+  // Whether the IAM policy grants access to allUsers or allAuthenticatedUsers
+  public() bool
 }
 
 // Google Cloud (GCP) Notebooks
@@ -15732,6 +15736,10 @@ private gcp.project.vertexaiService.endpoint @defaults("name displayName") {
   createdAt time
   // Last update time
   updatedAt time
+  // Resource-level IAM policy bindings governing who can access this endpoint
+  iamPolicy() []gcp.resourcemanager.binding
+  // Whether the IAM policy grants access to allUsers or allAuthenticatedUsers
+  public() bool
 }
 
 // Google Cloud (GCP) Vertex AI model deployment
@@ -15900,6 +15908,10 @@ private gcp.project.vertexaiService.featureOnlineStore @defaults("name state") {
   createdAt time
   // Last update time
   updatedAt time
+  // Resource-level IAM policy bindings governing who can access this online store
+  iamPolicy() []gcp.resourcemanager.binding
+  // Whether the IAM policy grants access to allUsers or allAuthenticatedUsers
+  public() bool
 }
 
 // Google Cloud (GCP) Vertex AI Tensorboard instance
@@ -16272,10 +16284,13 @@ private gcp.project.vertexaiService.notebookExecutionJob @defaults("displayName 
 // reports the agent framework it was built with (for example `google-adk` or
 // `langchain`), and `spec` holds the full deployment specification including
 // the Python package, dependency URIs, deployment scaling, and any
-// environment variables. Encryption at rest is reported through
-// `encryptionSpec` and the resolved `kmsKey`. Audit these to review which
-// agents are deployed, the identity they run as, and their encryption
-// posture.
+// environment variables. `secrets`, `envVarNames`, `networkAttachment`,
+// `sourceRepository`, `revision`, `containerImage` and `pythonVersion` read
+// the deployment directly, and `iamPolicy` with `public` reports who may
+// query the agent. Encryption at rest is reported through `encryptionSpec`
+// and the resolved `kmsKey`. Audit these to review which agents are
+// deployed, the identity they run as, the secrets they read, and their
+// encryption posture.
 private gcp.project.vertexaiService.reasoningEngine @defaults("displayName agentFramework") {
   // Full resource name
   name string
@@ -16306,6 +16321,42 @@ private gcp.project.vertexaiService.reasoningEngine @defaults("displayName agent
   createdAt time
   // Last update time
   updatedAt time
+  // Resource-level IAM policy bindings governing who can access this agent
+  iamPolicy() []gcp.resourcemanager.binding
+  // Whether the IAM policy grants access to allUsers or allAuthenticatedUsers
+  public() bool
+  // Secret Manager secrets exposed to the agent as environment variables
+  //
+  // Read from the deployment's secret environment variables. Only the secrets
+  // are referenced, never their values.
+  secrets() []gcp.project.secretmanagerService.secret
+  // Names of the plain environment variables set on the deployment
+  //
+  // Values are not reported. Variables backed by Secret Manager are listed in
+  // secrets instead.
+  envVarNames []string
+  // Network attachment the agent uses for Private Service Connect interface egress
+  //
+  // Full resource name of a Compute Engine network attachment, for example
+  // `projects/my-project/regions/us-central1/networkAttachments/agents`.
+  // Empty when the agent has no Private Service Connect interface.
+  networkAttachment string
+  // Minimum number of serving instances; null when not set
+  minInstances int
+  // Maximum number of serving instances; null when not set
+  maxInstances int
+  // Git repository the agent source is deployed from
+  //
+  // Developer Connect Git repository link, for example
+  // `projects/my-project/locations/us-central1/connections/github/gitRepositoryLinks/agent`.
+  // Empty unless the agent is deployed from Developer Connect.
+  sourceRepository string
+  // Git revision deployed from sourceRepository (commit SHA, branch or tag)
+  revision string
+  // Container image URI the agent is deployed from, when deployed as a container
+  containerImage string
+  // Python version of the agent runtime, for example `3.12`
+  pythonVersion string
 }
 
 // Google Cloud (GCP) Vertex AI RAG Engine corpus
@@ -16352,6 +16403,10 @@ private gcp.project.vertexaiService.ragCorpus @defaults("displayName") {
   createdAt time
   // Last update time
   updatedAt time
+  // Vector Search index storing the corpus embeddings, when backendType is vertexVectorSearch
+  vectorSearchIndex() gcp.project.vertexaiService.index
+  // Vector Search index endpoint serving vectorSearchIndex, when backendType is vertexVectorSearch
+  vectorSearchIndexEndpoint() gcp.project.vertexaiService.indexEndpoint
 }
 
 // Google Cloud (GCP) Vertex AI feature group
@@ -16375,6 +16430,10 @@ private gcp.project.vertexaiService.featureGroup @defaults("name") {
   createdAt time
   // Last update time
   updatedAt time
+  // Resource-level IAM policy bindings governing who can access this feature group
+  iamPolicy() []gcp.resourcemanager.binding
+  // Whether the IAM policy grants access to allUsers or allAuthenticatedUsers
+  public() bool
 }
 
 // Google Cloud (GCP) Vertex AI persistent resource

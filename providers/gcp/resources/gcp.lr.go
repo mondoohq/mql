@@ -14461,6 +14461,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.workbenchService.instance.updateTime": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectWorkbenchServiceInstance).GetUpdateTime()).ToDataRes(types.Time)
 	},
+	"gcp.project.workbenchService.instance.iamPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectWorkbenchServiceInstance).GetIamPolicy()).ToDataRes(types.Array(types.Resource("gcp.resourcemanager.binding")))
+	},
+	"gcp.project.workbenchService.instance.public": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectWorkbenchServiceInstance).GetPublic()).ToDataRes(types.Bool)
+	},
 	"gcp.project.notebooksService.projectId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectNotebooksService).GetProjectId()).ToDataRes(types.String)
 	},
@@ -16396,6 +16402,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.vertexaiService.endpoint.updatedAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectVertexaiServiceEndpoint).GetUpdatedAt()).ToDataRes(types.Time)
 	},
+	"gcp.project.vertexaiService.endpoint.iamPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceEndpoint).GetIamPolicy()).ToDataRes(types.Array(types.Resource("gcp.resourcemanager.binding")))
+	},
+	"gcp.project.vertexaiService.endpoint.public": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceEndpoint).GetPublic()).ToDataRes(types.Bool)
+	},
 	"gcp.project.vertexaiService.endpoint.deployment.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectVertexaiServiceEndpointDeployment).GetId()).ToDataRes(types.String)
 	},
@@ -16566,6 +16578,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.vertexaiService.featureOnlineStore.updatedAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.iamPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).GetIamPolicy()).ToDataRes(types.Array(types.Resource("gcp.resourcemanager.binding")))
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.public": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).GetPublic()).ToDataRes(types.Bool)
 	},
 	"gcp.project.vertexaiService.tensorboard.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectVertexaiServiceTensorboard).GetName()).ToDataRes(types.String)
@@ -16984,6 +17002,39 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.vertexaiService.reasoningEngine.updatedAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectVertexaiServiceReasoningEngine).GetUpdatedAt()).ToDataRes(types.Time)
 	},
+	"gcp.project.vertexaiService.reasoningEngine.iamPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceReasoningEngine).GetIamPolicy()).ToDataRes(types.Array(types.Resource("gcp.resourcemanager.binding")))
+	},
+	"gcp.project.vertexaiService.reasoningEngine.public": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceReasoningEngine).GetPublic()).ToDataRes(types.Bool)
+	},
+	"gcp.project.vertexaiService.reasoningEngine.secrets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceReasoningEngine).GetSecrets()).ToDataRes(types.Array(types.Resource("gcp.project.secretmanagerService.secret")))
+	},
+	"gcp.project.vertexaiService.reasoningEngine.envVarNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceReasoningEngine).GetEnvVarNames()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.vertexaiService.reasoningEngine.networkAttachment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceReasoningEngine).GetNetworkAttachment()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.reasoningEngine.minInstances": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceReasoningEngine).GetMinInstances()).ToDataRes(types.Int)
+	},
+	"gcp.project.vertexaiService.reasoningEngine.maxInstances": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceReasoningEngine).GetMaxInstances()).ToDataRes(types.Int)
+	},
+	"gcp.project.vertexaiService.reasoningEngine.sourceRepository": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceReasoningEngine).GetSourceRepository()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.reasoningEngine.revision": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceReasoningEngine).GetRevision()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.reasoningEngine.containerImage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceReasoningEngine).GetContainerImage()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.reasoningEngine.pythonVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceReasoningEngine).GetPythonVersion()).ToDataRes(types.String)
+	},
 	"gcp.project.vertexaiService.ragCorpus.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectVertexaiServiceRagCorpus).GetName()).ToDataRes(types.String)
 	},
@@ -17023,6 +17074,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.vertexaiService.ragCorpus.updatedAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectVertexaiServiceRagCorpus).GetUpdatedAt()).ToDataRes(types.Time)
 	},
+	"gcp.project.vertexaiService.ragCorpus.vectorSearchIndex": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceRagCorpus).GetVectorSearchIndex()).ToDataRes(types.Resource("gcp.project.vertexaiService.index"))
+	},
+	"gcp.project.vertexaiService.ragCorpus.vectorSearchIndexEndpoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceRagCorpus).GetVectorSearchIndexEndpoint()).ToDataRes(types.Resource("gcp.project.vertexaiService.indexEndpoint"))
+	},
 	"gcp.project.vertexaiService.featureGroup.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectVertexaiServiceFeatureGroup).GetName()).ToDataRes(types.String)
 	},
@@ -17043,6 +17100,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.vertexaiService.featureGroup.updatedAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectVertexaiServiceFeatureGroup).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.vertexaiService.featureGroup.iamPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceFeatureGroup).GetIamPolicy()).ToDataRes(types.Array(types.Resource("gcp.resourcemanager.binding")))
+	},
+	"gcp.project.vertexaiService.featureGroup.public": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceFeatureGroup).GetPublic()).ToDataRes(types.Bool)
 	},
 	"gcp.project.vertexaiService.persistentResource.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectVertexaiServicePersistentResource).GetName()).ToDataRes(types.String)
@@ -37473,6 +37536,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectWorkbenchServiceInstance).UpdateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
+	"gcp.project.workbenchService.instance.iamPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectWorkbenchServiceInstance).IamPolicy, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.workbenchService.instance.public": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectWorkbenchServiceInstance).Public, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"gcp.project.notebooksService.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectNotebooksService).__id, ok = v.Value.(string)
 		return
@@ -40281,6 +40352,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectVertexaiServiceEndpoint).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
+	"gcp.project.vertexaiService.endpoint.iamPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceEndpoint).IamPolicy, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.endpoint.public": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceEndpoint).Public, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"gcp.project.vertexaiService.endpoint.deployment.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectVertexaiServiceEndpointDeployment).__id, ok = v.Value.(string)
 		return
@@ -40523,6 +40602,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.vertexaiService.featureOnlineStore.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.iamPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).IamPolicy, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.public": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).Public, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"gcp.project.vertexaiService.tensorboard.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -41113,6 +41200,50 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectVertexaiServiceReasoningEngine).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
+	"gcp.project.vertexaiService.reasoningEngine.iamPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceReasoningEngine).IamPolicy, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.reasoningEngine.public": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceReasoningEngine).Public, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.reasoningEngine.secrets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceReasoningEngine).Secrets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.reasoningEngine.envVarNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceReasoningEngine).EnvVarNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.reasoningEngine.networkAttachment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceReasoningEngine).NetworkAttachment, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.reasoningEngine.minInstances": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceReasoningEngine).MinInstances, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.reasoningEngine.maxInstances": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceReasoningEngine).MaxInstances, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.reasoningEngine.sourceRepository": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceReasoningEngine).SourceRepository, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.reasoningEngine.revision": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceReasoningEngine).Revision, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.reasoningEngine.containerImage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceReasoningEngine).ContainerImage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.reasoningEngine.pythonVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceReasoningEngine).PythonVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"gcp.project.vertexaiService.ragCorpus.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectVertexaiServiceRagCorpus).__id, ok = v.Value.(string)
 		return
@@ -41169,6 +41300,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectVertexaiServiceRagCorpus).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
+	"gcp.project.vertexaiService.ragCorpus.vectorSearchIndex": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceRagCorpus).VectorSearchIndex, ok = plugin.RawToTValue[*mqlGcpProjectVertexaiServiceIndex](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.ragCorpus.vectorSearchIndexEndpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceRagCorpus).VectorSearchIndexEndpoint, ok = plugin.RawToTValue[*mqlGcpProjectVertexaiServiceIndexEndpoint](v.Value, v.Error)
+		return
+	},
 	"gcp.project.vertexaiService.featureGroup.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectVertexaiServiceFeatureGroup).__id, ok = v.Value.(string)
 		return
@@ -41199,6 +41338,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.vertexaiService.featureGroup.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectVertexaiServiceFeatureGroup).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.featureGroup.iamPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceFeatureGroup).IamPolicy, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.featureGroup.public": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceFeatureGroup).Public, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"gcp.project.vertexaiService.persistentResource.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -87419,6 +87566,8 @@ type mqlGcpProjectWorkbenchServiceInstance struct {
 	DisablePublicIp          plugin.TValue[bool]
 	CreateTime               plugin.TValue[*time.Time]
 	UpdateTime               plugin.TValue[*time.Time]
+	IamPolicy                plugin.TValue[[]any]
+	Public                   plugin.TValue[bool]
 }
 
 // createGcpProjectWorkbenchServiceInstance creates a new instance of this resource
@@ -87516,6 +87665,28 @@ func (c *mqlGcpProjectWorkbenchServiceInstance) GetCreateTime() *plugin.TValue[*
 
 func (c *mqlGcpProjectWorkbenchServiceInstance) GetUpdateTime() *plugin.TValue[*time.Time] {
 	return &c.UpdateTime
+}
+
+func (c *mqlGcpProjectWorkbenchServiceInstance) GetIamPolicy() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.IamPolicy, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.workbenchService.instance", c.__id, "iamPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.iamPolicy()
+	})
+}
+
+func (c *mqlGcpProjectWorkbenchServiceInstance) GetPublic() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Public, func() (bool, error) {
+		return c.public()
+	})
 }
 
 // mqlGcpProjectNotebooksService for the gcp.project.notebooksService resource
@@ -94233,6 +94404,8 @@ type mqlGcpProjectVertexaiServiceEndpoint struct {
 	Etag                                 plugin.TValue[string]
 	CreatedAt                            plugin.TValue[*time.Time]
 	UpdatedAt                            plugin.TValue[*time.Time]
+	IamPolicy                            plugin.TValue[[]any]
+	Public                               plugin.TValue[bool]
 }
 
 // createGcpProjectVertexaiServiceEndpoint creates a new instance of this resource
@@ -94390,6 +94563,28 @@ func (c *mqlGcpProjectVertexaiServiceEndpoint) GetCreatedAt() *plugin.TValue[*ti
 
 func (c *mqlGcpProjectVertexaiServiceEndpoint) GetUpdatedAt() *plugin.TValue[*time.Time] {
 	return &c.UpdatedAt
+}
+
+func (c *mqlGcpProjectVertexaiServiceEndpoint) GetIamPolicy() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.IamPolicy, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.vertexaiService.endpoint", c.__id, "iamPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.iamPolicy()
+	})
+}
+
+func (c *mqlGcpProjectVertexaiServiceEndpoint) GetPublic() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Public, func() (bool, error) {
+		return c.public()
+	})
 }
 
 // mqlGcpProjectVertexaiServiceEndpointDeployment for the gcp.project.vertexaiService.endpoint.deployment resource
@@ -94843,6 +95038,8 @@ type mqlGcpProjectVertexaiServiceFeatureOnlineStore struct {
 	SatisfiesPzi             plugin.TValue[bool]
 	CreatedAt                plugin.TValue[*time.Time]
 	UpdatedAt                plugin.TValue[*time.Time]
+	IamPolicy                plugin.TValue[[]any]
+	Public                   plugin.TValue[bool]
 }
 
 // createGcpProjectVertexaiServiceFeatureOnlineStore creates a new instance of this resource
@@ -94944,6 +95141,28 @@ func (c *mqlGcpProjectVertexaiServiceFeatureOnlineStore) GetCreatedAt() *plugin.
 
 func (c *mqlGcpProjectVertexaiServiceFeatureOnlineStore) GetUpdatedAt() *plugin.TValue[*time.Time] {
 	return &c.UpdatedAt
+}
+
+func (c *mqlGcpProjectVertexaiServiceFeatureOnlineStore) GetIamPolicy() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.IamPolicy, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.vertexaiService.featureOnlineStore", c.__id, "iamPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.iamPolicy()
+	})
+}
+
+func (c *mqlGcpProjectVertexaiServiceFeatureOnlineStore) GetPublic() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Public, func() (bool, error) {
+		return c.public()
+	})
 }
 
 // mqlGcpProjectVertexaiServiceTensorboard for the gcp.project.vertexaiService.tensorboard resource
@@ -96148,6 +96367,17 @@ type mqlGcpProjectVertexaiServiceReasoningEngine struct {
 	Etag                plugin.TValue[string]
 	CreatedAt           plugin.TValue[*time.Time]
 	UpdatedAt           plugin.TValue[*time.Time]
+	IamPolicy           plugin.TValue[[]any]
+	Public              plugin.TValue[bool]
+	Secrets             plugin.TValue[[]any]
+	EnvVarNames         plugin.TValue[[]any]
+	NetworkAttachment   plugin.TValue[string]
+	MinInstances        plugin.TValue[int64]
+	MaxInstances        plugin.TValue[int64]
+	SourceRepository    plugin.TValue[string]
+	Revision            plugin.TValue[string]
+	ContainerImage      plugin.TValue[string]
+	PythonVersion       plugin.TValue[string]
 }
 
 // createGcpProjectVertexaiServiceReasoningEngine creates a new instance of this resource
@@ -96263,6 +96493,76 @@ func (c *mqlGcpProjectVertexaiServiceReasoningEngine) GetUpdatedAt() *plugin.TVa
 	return &c.UpdatedAt
 }
 
+func (c *mqlGcpProjectVertexaiServiceReasoningEngine) GetIamPolicy() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.IamPolicy, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.vertexaiService.reasoningEngine", c.__id, "iamPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.iamPolicy()
+	})
+}
+
+func (c *mqlGcpProjectVertexaiServiceReasoningEngine) GetPublic() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Public, func() (bool, error) {
+		return c.public()
+	})
+}
+
+func (c *mqlGcpProjectVertexaiServiceReasoningEngine) GetSecrets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Secrets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.vertexaiService.reasoningEngine", c.__id, "secrets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.secrets()
+	})
+}
+
+func (c *mqlGcpProjectVertexaiServiceReasoningEngine) GetEnvVarNames() *plugin.TValue[[]any] {
+	return &c.EnvVarNames
+}
+
+func (c *mqlGcpProjectVertexaiServiceReasoningEngine) GetNetworkAttachment() *plugin.TValue[string] {
+	return &c.NetworkAttachment
+}
+
+func (c *mqlGcpProjectVertexaiServiceReasoningEngine) GetMinInstances() *plugin.TValue[int64] {
+	return &c.MinInstances
+}
+
+func (c *mqlGcpProjectVertexaiServiceReasoningEngine) GetMaxInstances() *plugin.TValue[int64] {
+	return &c.MaxInstances
+}
+
+func (c *mqlGcpProjectVertexaiServiceReasoningEngine) GetSourceRepository() *plugin.TValue[string] {
+	return &c.SourceRepository
+}
+
+func (c *mqlGcpProjectVertexaiServiceReasoningEngine) GetRevision() *plugin.TValue[string] {
+	return &c.Revision
+}
+
+func (c *mqlGcpProjectVertexaiServiceReasoningEngine) GetContainerImage() *plugin.TValue[string] {
+	return &c.ContainerImage
+}
+
+func (c *mqlGcpProjectVertexaiServiceReasoningEngine) GetPythonVersion() *plugin.TValue[string] {
+	return &c.PythonVersion
+}
+
 // mqlGcpProjectVertexaiServiceRagCorpus for the gcp.project.vertexaiService.ragCorpus resource
 type mqlGcpProjectVertexaiServiceRagCorpus struct {
 	MqlRuntime *plugin.Runtime
@@ -96281,6 +96581,8 @@ type mqlGcpProjectVertexaiServiceRagCorpus struct {
 	KmsKey                      plugin.TValue[*mqlGcpProjectKmsServiceKeyringCryptokey]
 	CreatedAt                   plugin.TValue[*time.Time]
 	UpdatedAt                   plugin.TValue[*time.Time]
+	VectorSearchIndex           plugin.TValue[*mqlGcpProjectVertexaiServiceIndex]
+	VectorSearchIndexEndpoint   plugin.TValue[*mqlGcpProjectVertexaiServiceIndexEndpoint]
 }
 
 // createGcpProjectVertexaiServiceRagCorpus creates a new instance of this resource
@@ -96396,6 +96698,38 @@ func (c *mqlGcpProjectVertexaiServiceRagCorpus) GetUpdatedAt() *plugin.TValue[*t
 	return &c.UpdatedAt
 }
 
+func (c *mqlGcpProjectVertexaiServiceRagCorpus) GetVectorSearchIndex() *plugin.TValue[*mqlGcpProjectVertexaiServiceIndex] {
+	return plugin.GetOrCompute[*mqlGcpProjectVertexaiServiceIndex](&c.VectorSearchIndex, func() (*mqlGcpProjectVertexaiServiceIndex, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.vertexaiService.ragCorpus", c.__id, "vectorSearchIndex")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectVertexaiServiceIndex), nil
+			}
+		}
+
+		return c.vectorSearchIndex()
+	})
+}
+
+func (c *mqlGcpProjectVertexaiServiceRagCorpus) GetVectorSearchIndexEndpoint() *plugin.TValue[*mqlGcpProjectVertexaiServiceIndexEndpoint] {
+	return plugin.GetOrCompute[*mqlGcpProjectVertexaiServiceIndexEndpoint](&c.VectorSearchIndexEndpoint, func() (*mqlGcpProjectVertexaiServiceIndexEndpoint, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.vertexaiService.ragCorpus", c.__id, "vectorSearchIndexEndpoint")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectVertexaiServiceIndexEndpoint), nil
+			}
+		}
+
+		return c.vectorSearchIndexEndpoint()
+	})
+}
+
 // mqlGcpProjectVertexaiServiceFeatureGroup for the gcp.project.vertexaiService.featureGroup resource
 type mqlGcpProjectVertexaiServiceFeatureGroup struct {
 	MqlRuntime *plugin.Runtime
@@ -96408,6 +96742,8 @@ type mqlGcpProjectVertexaiServiceFeatureGroup struct {
 	Labels      plugin.TValue[map[string]any]
 	CreatedAt   plugin.TValue[*time.Time]
 	UpdatedAt   plugin.TValue[*time.Time]
+	IamPolicy   plugin.TValue[[]any]
+	Public      plugin.TValue[bool]
 }
 
 // createGcpProjectVertexaiServiceFeatureGroup creates a new instance of this resource
@@ -96473,6 +96809,28 @@ func (c *mqlGcpProjectVertexaiServiceFeatureGroup) GetCreatedAt() *plugin.TValue
 
 func (c *mqlGcpProjectVertexaiServiceFeatureGroup) GetUpdatedAt() *plugin.TValue[*time.Time] {
 	return &c.UpdatedAt
+}
+
+func (c *mqlGcpProjectVertexaiServiceFeatureGroup) GetIamPolicy() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.IamPolicy, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.vertexaiService.featureGroup", c.__id, "iamPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.iamPolicy()
+	})
+}
+
+func (c *mqlGcpProjectVertexaiServiceFeatureGroup) GetPublic() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Public, func() (bool, error) {
+		return c.public()
+	})
 }
 
 // mqlGcpProjectVertexaiServicePersistentResource for the gcp.project.vertexaiService.persistentResource resource

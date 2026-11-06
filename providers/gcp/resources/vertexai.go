@@ -2264,12 +2264,21 @@ func (g *mqlGcpProjectVertexaiService) reasoningEngines() ([]any, error) {
 				return nil, false, err
 			}
 
+			deployment := reasoningEngineDeploymentOf(engine.Spec, projectId)
 			mqlEngine, err := CreateResource(g.MqlRuntime, "gcp.project.vertexaiService.reasoningEngine", map[string]*llx.RawData{
 				"name":                llx.StringData(engine.Name),
 				"displayName":         llx.StringData(engine.DisplayName),
 				"description":         llx.StringData(engine.Description),
 				"serviceAccountEmail": llx.StringData(engine.GetSpec().GetServiceAccount()),
 				"agentFramework":      llx.StringData(engine.GetSpec().GetAgentFramework()),
+				"envVarNames":         llx.ArrayData(convert.SliceAnyToInterface(deployment.envVarNames), types.String),
+				"networkAttachment":   llx.StringData(deployment.networkAttachment),
+				"minInstances":        llx.IntDataPtr(deployment.minInstances),
+				"maxInstances":        llx.IntDataPtr(deployment.maxInstances),
+				"sourceRepository":    llx.StringData(deployment.sourceRepository),
+				"revision":            llx.StringData(deployment.revision),
+				"containerImage":      llx.StringData(deployment.containerImage),
+				"pythonVersion":       llx.StringData(deployment.pythonVersion),
 				"spec":                llx.DictData(spec),
 				"encryptionSpec":      llx.DictData(encryptionSpec),
 				"labels":              llx.MapData(convert.MapToInterfaceMap(engine.Labels), types.String),
@@ -2283,6 +2292,7 @@ func (g *mqlGcpProjectVertexaiService) reasoningEngines() ([]any, error) {
 			mqlEngineRes := mqlEngine.(*mqlGcpProjectVertexaiServiceReasoningEngine)
 			mqlEngineRes.cacheKmsKeyName = engine.GetEncryptionSpec().GetKmsKeyName()
 			mqlEngineRes.cacheProjectId = projectId
+			mqlEngineRes.cacheSecrets = deployment.secrets
 			items = append(items, mqlEngine)
 		}
 		return items, false, nil
@@ -2392,6 +2402,8 @@ func (g *mqlGcpProjectVertexaiService) ragCorpora() ([]any, error) {
 			}
 			mqlCorpus.(*mqlGcpProjectVertexaiServiceRagCorpus).cacheKmsKeyName = corpus.GetEncryptionSpec().GetKmsKeyName()
 			mqlCorpus.(*mqlGcpProjectVertexaiServiceRagCorpus).cacheApiKeySecret = backend.apiKeySecret
+			mqlCorpus.(*mqlGcpProjectVertexaiServiceRagCorpus).cacheVectorSearchIndex = backend.vectorSearchIndex
+			mqlCorpus.(*mqlGcpProjectVertexaiServiceRagCorpus).cacheVectorSearchIndexEndpoint = backend.vectorSearchIndexEndpoint
 			items = append(items, mqlCorpus)
 		}
 		return items, false, nil
@@ -3405,11 +3417,7 @@ func (a *mqlGcpProjectVertexaiServiceModel) iamPolicy() ([]any, error) {
 }
 
 func (a *mqlGcpProjectVertexaiServiceModel) public() (bool, error) {
-	bindings := a.GetIamPolicy()
-	if bindings.Error != nil {
-		return false, bindings.Error
-	}
-	return iamPolicyHasPublicMember(bindings.Data)
+	return publicFromIamPolicy(&a.Public, a.GetIamPolicy())
 }
 
 func (a *mqlGcpProjectVertexaiServiceModel) originalModel() (*mqlGcpProjectVertexaiServiceModel, error) {
@@ -3614,11 +3622,7 @@ func (a *mqlGcpProjectVertexaiServiceNotebookRuntimeTemplate) iamPolicy() ([]any
 }
 
 func (a *mqlGcpProjectVertexaiServiceNotebookRuntimeTemplate) public() (bool, error) {
-	bindings := a.GetIamPolicy()
-	if bindings.Error != nil {
-		return false, bindings.Error
-	}
-	return iamPolicyHasPublicMember(bindings.Data)
+	return publicFromIamPolicy(&a.Public, a.GetIamPolicy())
 }
 
 // vertexaiIamPolicyBindings maps a fetched resource-level IAM policy to
@@ -3626,14 +3630,143 @@ func (a *mqlGcpProjectVertexaiServiceNotebookRuntimeTemplate) public() (bool, er
 // (the Model and Notebook clients share the google.iam.v1 mixin), returning nil
 // on access-denied so a scan without getIamPolicy permission degrades
 // gracefully rather than erroring.
-func vertexaiIamPolicyBindings(runtime *plugin.Runtime, name string, policy *iampb.Policy, err error) ([]any, error) {
+// vertexaiIamPolicyBindings maps a GetIamPolicy answer to bindings. A refused
+// call is Forbidden, and a resource type that has no IAM policy
+// (Unimplemented) is NotApplicable; through v14 both read as null, as a
+// refusal did in v13.
+func vertexaiIamPolicyBindings(runtime *plugin.Runtime, name string, policy *iampb.Policy, err error, permissions ...string) ([]any, error) {
 	if err != nil {
-		if s, ok := status.FromError(err); ok && s.Code() == codes.PermissionDenied {
+		s, isStatus := status.FromError(err)
+		unimplemented := isStatus && s.Code() == codes.Unimplemented
+		if !plugin.StructuredErrors() && isStatus && (s.Code() == codes.PermissionDenied || unimplemented) {
 			return nil, nil
+		}
+		if rerr := classifyRefusal(err, permissions...); rerr != nil {
+			return nil, rerr
+		}
+		if unimplemented {
+			return nil, llx.NotApplicable(err)
 		}
 		return nil, err
 	}
-	return iampbBindingsToMql(runtime, name, policy.Bindings)
+	return iampbBindingsToMql(runtime, name, policy.GetBindings())
+}
+
+// vertexaiIamPolicyRequest asks for policy version 3 so conditional bindings
+// come back with their conditions.
+func vertexaiIamPolicyRequest(name string) *iampb.GetIamPolicyRequest {
+	return &iampb.GetIamPolicyRequest{
+		Resource: name,
+		Options:  &iampb.GetPolicyOptions{RequestedPolicyVersion: 3},
+	}
+}
+
+func (a *mqlGcpProjectVertexaiServiceEndpoint) iamPolicy() ([]any, error) {
+	if a.Name.Error != nil {
+		return nil, a.Name.Error
+	}
+	name := a.Name.Data
+	conn := a.MqlRuntime.Connection.(*connection.GcpConnection)
+	creds, err := conn.Credentials(aiplatform.DefaultAuthScopes()...)
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	client, err := aiplatform.NewEndpointClient(ctx,
+		option.WithCredentials(creds), connection.GRPCClientTraceOption(),
+		option.WithEndpoint(vertexaiEndpoint(vertexaiRegionFromName(name))),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+	policy, err := client.GetIamPolicy(ctx, vertexaiIamPolicyRequest(name))
+	return vertexaiIamPolicyBindings(a.MqlRuntime, name, policy, err, "aiplatform.endpoints.getIamPolicy")
+}
+
+func (a *mqlGcpProjectVertexaiServiceEndpoint) public() (bool, error) {
+	return publicFromIamPolicy(&a.Public, a.GetIamPolicy())
+}
+
+func (a *mqlGcpProjectVertexaiServiceReasoningEngine) iamPolicy() ([]any, error) {
+	if a.Name.Error != nil {
+		return nil, a.Name.Error
+	}
+	name := a.Name.Data
+	conn := a.MqlRuntime.Connection.(*connection.GcpConnection)
+	creds, err := conn.Credentials(aiplatform.DefaultAuthScopes()...)
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	client, err := aiplatform.NewReasoningEngineClient(ctx,
+		option.WithCredentials(creds), connection.GRPCClientTraceOption(),
+		option.WithEndpoint(vertexaiEndpoint(vertexaiRegionFromName(name))),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+	policy, err := client.GetIamPolicy(ctx, vertexaiIamPolicyRequest(name))
+	return vertexaiIamPolicyBindings(a.MqlRuntime, name, policy, err, "aiplatform.reasoningEngines.getIamPolicy")
+}
+
+func (a *mqlGcpProjectVertexaiServiceReasoningEngine) public() (bool, error) {
+	return publicFromIamPolicy(&a.Public, a.GetIamPolicy())
+}
+
+func (a *mqlGcpProjectVertexaiServiceFeatureOnlineStore) iamPolicy() ([]any, error) {
+	if a.Name.Error != nil {
+		return nil, a.Name.Error
+	}
+	name := a.Name.Data
+	conn := a.MqlRuntime.Connection.(*connection.GcpConnection)
+	creds, err := conn.Credentials(aiplatform.DefaultAuthScopes()...)
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	client, err := aiplatform.NewFeatureOnlineStoreAdminClient(ctx,
+		option.WithCredentials(creds), connection.GRPCClientTraceOption(),
+		option.WithEndpoint(vertexaiEndpoint(vertexaiRegionFromName(name))),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+	policy, err := client.GetIamPolicy(ctx, vertexaiIamPolicyRequest(name))
+	return vertexaiIamPolicyBindings(a.MqlRuntime, name, policy, err, "aiplatform.featureOnlineStores.getIamPolicy")
+}
+
+func (a *mqlGcpProjectVertexaiServiceFeatureOnlineStore) public() (bool, error) {
+	return publicFromIamPolicy(&a.Public, a.GetIamPolicy())
+}
+
+func (a *mqlGcpProjectVertexaiServiceFeatureGroup) iamPolicy() ([]any, error) {
+	if a.Name.Error != nil {
+		return nil, a.Name.Error
+	}
+	name := a.Name.Data
+	conn := a.MqlRuntime.Connection.(*connection.GcpConnection)
+	creds, err := conn.Credentials(aiplatform.DefaultAuthScopes()...)
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	client, err := aiplatform.NewFeatureRegistryClient(ctx,
+		option.WithCredentials(creds), connection.GRPCClientTraceOption(),
+		option.WithEndpoint(vertexaiEndpoint(vertexaiRegionFromName(name))),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+	policy, err := client.GetIamPolicy(ctx, vertexaiIamPolicyRequest(name))
+	return vertexaiIamPolicyBindings(a.MqlRuntime, name, policy, err, "aiplatform.featureGroups.getIamPolicy")
+}
+
+func (a *mqlGcpProjectVertexaiServiceFeatureGroup) public() (bool, error) {
+	return publicFromIamPolicy(&a.Public, a.GetIamPolicy())
 }
 
 func (a *mqlGcpProjectVertexaiServiceNotebookRuntimeTemplate) serviceAccount() (*mqlGcpProjectIamServiceServiceAccount, error) {
@@ -3734,6 +3867,118 @@ func (a *mqlGcpProjectVertexaiServiceNotebookExecutionJob) managedBy() (string, 
 type mqlGcpProjectVertexaiServiceReasoningEngineInternal struct {
 	cacheKmsKeyName string
 	cacheProjectId  string
+	cacheSecrets    []reasoningEngineSecretRef
+}
+
+// reasoningEngineSecretRef is a Secret Manager secret a reasoning engine
+// deployment exposes as an environment variable.
+type reasoningEngineSecretRef struct {
+	project string
+	secret  string
+}
+
+// reasoningEngineDeployment is the typed view of a reasoning engine spec.
+type reasoningEngineDeployment struct {
+	envVarNames       []string
+	secrets           []reasoningEngineSecretRef
+	networkAttachment string
+	minInstances      *int64
+	maxInstances      *int64
+	sourceRepository  string
+	revision          string
+	containerImage    string
+	pythonVersion     string
+}
+
+// reasoningEngineDeploymentOf reads the deployment settings of a reasoning
+// engine spec. Secret references name a secret in the engine's own project
+// unless they carry a full projects/{p}/secrets/{s} name; each secret is
+// listed once.
+func reasoningEngineDeploymentOf(spec *aiplatformpb.ReasoningEngineSpec, projectId string) reasoningEngineDeployment {
+	var d reasoningEngineDeployment
+	dep := spec.GetDeploymentSpec()
+	d.envVarNames = make([]string, 0, len(dep.GetEnv()))
+	for _, e := range dep.GetEnv() {
+		d.envVarNames = append(d.envVarNames, e.GetName())
+	}
+	seen := map[reasoningEngineSecretRef]bool{}
+	for _, se := range dep.GetSecretEnv() {
+		ref := parseReasoningEngineSecret(se.GetSecretRef().GetSecret(), projectId)
+		if ref.secret == "" || seen[ref] {
+			continue
+		}
+		seen[ref] = true
+		d.secrets = append(d.secrets, ref)
+	}
+	d.networkAttachment = dep.GetPscInterfaceConfig().GetNetworkAttachment()
+	if dep != nil && dep.MinInstances != nil {
+		v := int64(*dep.MinInstances)
+		d.minInstances = &v
+	}
+	if dep != nil && dep.MaxInstances != nil {
+		v := int64(*dep.MaxInstances)
+		d.maxInstances = &v
+	}
+	src := spec.GetSourceCodeSpec()
+	if cfg := src.GetDeveloperConnectSource().GetConfig(); cfg != nil {
+		d.sourceRepository = cfg.GetGitRepositoryLink()
+		d.revision = cfg.GetRevision()
+	}
+	d.containerImage = spec.GetContainerSpec().GetImageUri()
+	d.pythonVersion = src.GetPythonSpec().GetVersion()
+	if d.pythonVersion == "" {
+		d.pythonVersion = spec.GetPackageSpec().GetPythonVersion()
+	}
+	return d
+}
+
+// parseReasoningEngineSecret reads a SecretRef.secret value: a bare secret
+// name in the engine's project, or a full projects/{p}/secrets/{s} name.
+func parseReasoningEngineSecret(secret, projectId string) reasoningEngineSecretRef {
+	parts := strings.Split(secret, "/")
+	if len(parts) == 4 && parts[0] == "projects" && parts[2] == "secrets" {
+		return reasoningEngineSecretRef{project: parts[1], secret: parts[3]}
+	}
+	if secret == "" || strings.Contains(secret, "/") {
+		return reasoningEngineSecretRef{}
+	}
+	return reasoningEngineSecretRef{project: projectId, secret: secret}
+}
+
+func (a *mqlGcpProjectVertexaiServiceReasoningEngine) secrets() ([]any, error) {
+	res := []any{}
+	byProject := map[string][]any{}
+	for _, ref := range a.cacheSecrets {
+		list, ok := byProject[ref.project]
+		if !ok {
+			svc, err := NewResource(a.MqlRuntime, "gcp.project.secretmanagerService", map[string]*llx.RawData{
+				"projectId": llx.StringData(ref.project),
+			})
+			if err != nil {
+				return nil, err
+			}
+			secrets := svc.(*mqlGcpProjectSecretmanagerService).GetSecrets()
+			if secrets.Error != nil {
+				return nil, secrets.Error
+			}
+			list = secrets.Data
+			byProject[ref.project] = list
+		}
+		found := false
+		for _, s := range list {
+			secret := s.(*mqlGcpProjectSecretmanagerServiceSecret)
+			if secret.Name.Data == ref.secret && secret.Location.Data == "" {
+				res = append(res, secret)
+				found = true
+				break
+			}
+		}
+		if !found {
+			log.Debug().Str("secret", ref.secret).Str("project", ref.project).
+				Msg("vertexai: reasoning engine references a secret that is not listed, skipping")
+		}
+	}
+	return res, nil
 }
 
 func (a *mqlGcpProjectVertexaiServiceReasoningEngine) kmsKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
@@ -3741,8 +3986,78 @@ func (a *mqlGcpProjectVertexaiServiceReasoningEngine) kmsKey() (*mqlGcpProjectKm
 }
 
 type mqlGcpProjectVertexaiServiceRagCorpusInternal struct {
-	cacheKmsKeyName   string
-	cacheApiKeySecret secretVersionRef
+	cacheKmsKeyName                string
+	cacheApiKeySecret              secretVersionRef
+	cacheVectorSearchIndex         string
+	cacheVectorSearchIndexEndpoint string
+}
+
+func (a *mqlGcpProjectVertexaiServiceRagCorpus) vectorSearchIndex() (*mqlGcpProjectVertexaiServiceIndex, error) {
+	match, err := findVertexaiResource(a.MqlRuntime, a.cacheVectorSearchIndex, func(svc *mqlGcpProjectVertexaiService) ([]any, error) {
+		l := svc.GetIndexes()
+		return l.Data, l.Error
+	}, func(r any) string { return r.(*mqlGcpProjectVertexaiServiceIndex).Name.Data })
+	if err != nil {
+		return nil, err
+	}
+	if match == nil {
+		a.VectorSearchIndex.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return match.(*mqlGcpProjectVertexaiServiceIndex), nil
+}
+
+func (a *mqlGcpProjectVertexaiServiceRagCorpus) vectorSearchIndexEndpoint() (*mqlGcpProjectVertexaiServiceIndexEndpoint, error) {
+	match, err := findVertexaiResource(a.MqlRuntime, a.cacheVectorSearchIndexEndpoint, func(svc *mqlGcpProjectVertexaiService) ([]any, error) {
+		l := svc.GetIndexEndpoints()
+		return l.Data, l.Error
+	}, func(r any) string { return r.(*mqlGcpProjectVertexaiServiceIndexEndpoint).Name.Data })
+	if err != nil {
+		return nil, err
+	}
+	if match == nil {
+		a.VectorSearchIndexEndpoint.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return match.(*mqlGcpProjectVertexaiServiceIndexEndpoint), nil
+}
+
+// findVertexaiResource finds the Vertex AI resource named name in its
+// project's already-listed collection. Names are compared without the project
+// segment, since the API lists resources under the project number while a
+// reference may carry the project ID. An empty or unmatched name yields nil.
+func findVertexaiResource(runtime *plugin.Runtime, name string, list func(*mqlGcpProjectVertexaiService) ([]any, error), nameOf func(any) string) (any, error) {
+	project := vertexaiProjectFromName(name)
+	if project == "" {
+		return nil, nil
+	}
+	svc, err := NewResource(runtime, "gcp.project.vertexaiService", map[string]*llx.RawData{
+		"projectId": llx.StringData(project),
+	})
+	if err != nil {
+		return nil, err
+	}
+	items, err := list(svc.(*mqlGcpProjectVertexaiService))
+	if err != nil {
+		return nil, err
+	}
+	want := vertexaiNameWithoutProject(name)
+	for _, item := range items {
+		if vertexaiNameWithoutProject(nameOf(item)) == want {
+			return item, nil
+		}
+	}
+	return nil, nil
+}
+
+// vertexaiNameWithoutProject drops the projects/{project}/ prefix of a
+// Vertex AI resource name, leaving locations/{l}/{collection}/{id}.
+func vertexaiNameWithoutProject(name string) string {
+	parts := strings.SplitN(name, "/", 3)
+	if len(parts) == 3 && parts[0] == "projects" {
+		return parts[2]
+	}
+	return name
 }
 
 func (a *mqlGcpProjectVertexaiServiceRagCorpus) kmsKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
@@ -3794,6 +4109,9 @@ type ragCorpusBackend struct {
 	pineconeIndexName string
 	apiKeySecret      secretVersionRef
 	servingConfig     string
+	// Vector Search index and index endpoint resource names
+	vectorSearchIndex         string
+	vectorSearchIndexEndpoint string
 }
 
 // ragCorpusBackendOf reads which backend stores a RAG corpus: one of the
@@ -3818,6 +4136,8 @@ func ragCorpusBackendOf(corpus *aiplatformpb.RagCorpus) ragCorpusBackend {
 		b.pineconeIndexName = db.GetPinecone().GetIndexName()
 	case db.GetVertexVectorSearch() != nil:
 		b.backendType = "vertexVectorSearch"
+		b.vectorSearchIndex = db.GetVertexVectorSearch().GetIndex()
+		b.vectorSearchIndexEndpoint = db.GetVertexVectorSearch().GetIndexEndpoint()
 	}
 	b.apiKeySecret = parseSecretVersionName(db.GetApiAuth().GetApiKeyConfig().GetApiKeySecretVersion())
 	return b
