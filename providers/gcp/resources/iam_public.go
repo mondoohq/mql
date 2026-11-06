@@ -3,6 +3,8 @@
 
 package resources
 
+import "go.mondoo.com/mql/providers-sdk/v1/plugin"
+
 const (
 	publicMemberAllUsers              = "allUsers"
 	publicMemberAllAuthenticatedUsers = "allAuthenticatedUsers"
@@ -69,4 +71,20 @@ func (b *mqlGcpResourcemanagerBinding) grantsImpersonation() (bool, error) {
 		return true, nil
 	}
 	return false, nil
+}
+
+// publicFromIamPolicy derives a public() field from its resource's
+// iamPolicy(). A policy that could not be read (null, as a refused
+// GetIamPolicy reads without structured errors) makes public null too: a
+// refusal must not read as "not public". An empty policy is a real answer
+// and reads false.
+func publicFromIamPolicy(field *plugin.TValue[bool], bindings *plugin.TValue[[]any]) (bool, error) {
+	if bindings.Error != nil {
+		return false, bindings.Error
+	}
+	if bindings.Data == nil {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return iamPolicyHasPublicMember(bindings.Data)
 }

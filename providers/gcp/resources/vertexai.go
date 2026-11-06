@@ -3417,11 +3417,7 @@ func (a *mqlGcpProjectVertexaiServiceModel) iamPolicy() ([]any, error) {
 }
 
 func (a *mqlGcpProjectVertexaiServiceModel) public() (bool, error) {
-	bindings := a.GetIamPolicy()
-	if bindings.Error != nil {
-		return false, bindings.Error
-	}
-	return iamPolicyHasPublicMember(bindings.Data)
+	return publicFromIamPolicy(&a.Public, a.GetIamPolicy())
 }
 
 func (a *mqlGcpProjectVertexaiServiceModel) originalModel() (*mqlGcpProjectVertexaiServiceModel, error) {
@@ -3626,11 +3622,7 @@ func (a *mqlGcpProjectVertexaiServiceNotebookRuntimeTemplate) iamPolicy() ([]any
 }
 
 func (a *mqlGcpProjectVertexaiServiceNotebookRuntimeTemplate) public() (bool, error) {
-	bindings := a.GetIamPolicy()
-	if bindings.Error != nil {
-		return false, bindings.Error
-	}
-	return iamPolicyHasPublicMember(bindings.Data)
+	return publicFromIamPolicy(&a.Public, a.GetIamPolicy())
 }
 
 // vertexaiIamPolicyBindings maps a fetched resource-level IAM policy to
@@ -3693,11 +3685,7 @@ func (a *mqlGcpProjectVertexaiServiceEndpoint) iamPolicy() ([]any, error) {
 }
 
 func (a *mqlGcpProjectVertexaiServiceEndpoint) public() (bool, error) {
-	bindings := a.GetIamPolicy()
-	if bindings.Error != nil {
-		return false, bindings.Error
-	}
-	return iamPolicyHasPublicMember(bindings.Data)
+	return publicFromIamPolicy(&a.Public, a.GetIamPolicy())
 }
 
 func (a *mqlGcpProjectVertexaiServiceReasoningEngine) iamPolicy() ([]any, error) {
@@ -3724,11 +3712,7 @@ func (a *mqlGcpProjectVertexaiServiceReasoningEngine) iamPolicy() ([]any, error)
 }
 
 func (a *mqlGcpProjectVertexaiServiceReasoningEngine) public() (bool, error) {
-	bindings := a.GetIamPolicy()
-	if bindings.Error != nil {
-		return false, bindings.Error
-	}
-	return iamPolicyHasPublicMember(bindings.Data)
+	return publicFromIamPolicy(&a.Public, a.GetIamPolicy())
 }
 
 func (a *mqlGcpProjectVertexaiServiceFeatureOnlineStore) iamPolicy() ([]any, error) {
@@ -3755,11 +3739,7 @@ func (a *mqlGcpProjectVertexaiServiceFeatureOnlineStore) iamPolicy() ([]any, err
 }
 
 func (a *mqlGcpProjectVertexaiServiceFeatureOnlineStore) public() (bool, error) {
-	bindings := a.GetIamPolicy()
-	if bindings.Error != nil {
-		return false, bindings.Error
-	}
-	return iamPolicyHasPublicMember(bindings.Data)
+	return publicFromIamPolicy(&a.Public, a.GetIamPolicy())
 }
 
 func (a *mqlGcpProjectVertexaiServiceFeatureGroup) iamPolicy() ([]any, error) {
@@ -3786,11 +3766,7 @@ func (a *mqlGcpProjectVertexaiServiceFeatureGroup) iamPolicy() ([]any, error) {
 }
 
 func (a *mqlGcpProjectVertexaiServiceFeatureGroup) public() (bool, error) {
-	bindings := a.GetIamPolicy()
-	if bindings.Error != nil {
-		return false, bindings.Error
-	}
-	return iamPolicyHasPublicMember(bindings.Data)
+	return publicFromIamPolicy(&a.Public, a.GetIamPolicy())
 }
 
 func (a *mqlGcpProjectVertexaiServiceNotebookRuntimeTemplate) serviceAccount() (*mqlGcpProjectIamServiceServiceAccount, error) {

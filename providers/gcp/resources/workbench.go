@@ -227,11 +227,7 @@ func (g *mqlGcpProjectWorkbenchServiceInstance) iamPolicy() ([]any, error) {
 }
 
 func (g *mqlGcpProjectWorkbenchServiceInstance) public() (bool, error) {
-	bindings := g.GetIamPolicy()
-	if bindings.Error != nil {
-		return false, bindings.Error
-	}
-	return iamPolicyHasPublicMember(bindings.Data)
+	return publicFromIamPolicy(&g.Public, g.GetIamPolicy())
 }
 
 // workbenchBindingsToIampb converts the Notebooks REST bindings to the iampb
