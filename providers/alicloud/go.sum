@@ -33,6 +33,8 @@ github.com/alecthomas/participle/v2 v2.1.4 h1:W/H79S8Sat/krZ3el6sQMvMaahJ+XcM9WS
 github.com/alecthomas/participle/v2 v2.1.4/go.mod h1:8tqVbpTX20Ru4NfYQgZf4mP18eXPTBViyMWiArNEgGI=
 github.com/alibabacloud-go/actiontrail-20200706/v3 v3.5.0 h1:kZUNq10O6rQZZcENR2/fCcDZFWVxbcapaV+qTSXR1GI=
 github.com/alibabacloud-go/actiontrail-20200706/v3 v3.5.0/go.mod h1:LOd2yrz7IqiuUOg3HocYJJri4XKjKq8//lUqHlzJTgE=
+github.com/alibabacloud-go/aiworkspace-20210204/v6 v6.3.6 h1:AVuZPMrJTW7US5cUCbCH5gJXFUwC1I6D8nUvEsJXgQs=
+github.com/alibabacloud-go/aiworkspace-20210204/v6 v6.3.6/go.mod h1:ba6tFe/LohlCdiKK0UxNfXvdoRxgYfoiFZNAHKb8/yw=
 github.com/alibabacloud-go/alb-20200616/v2 v2.3.2 h1:LjuxqJrTgO+2uOWYjlXZggVVd1Z0mQjz4ZLxu8EqXFQ=
 github.com/alibabacloud-go/alb-20200616/v2 v2.3.2/go.mod h1:NEVpBC/sr9dZV/PNyHVbvL27DbL9J6XWJyQmDgjPvo8=
 github.com/alibabacloud-go/alibabacloud-gateway-pop v0.0.6/go.mod h1:4EUIoxs/do24zMOGGqYVWgw0s9NtiylnJglOeEB5UJo=
@@ -86,6 +88,8 @@ github.com/alibabacloud-go/debug v0.0.0-20190504072949-9472017b5c68/go.mod h1:6p
 github.com/alibabacloud-go/debug v1.0.0/go.mod h1:8gfgZCCAC3+SCzjWtY053FrOcd4/qlH6IHTI4QyICOc=
 github.com/alibabacloud-go/debug v1.0.1 h1:MsW9SmUtbb1Fnt3ieC6NNZi6aEwrXfDksD4QA6GSbPg=
 github.com/alibabacloud-go/debug v1.0.1/go.mod h1:8gfgZCCAC3+SCzjWtY053FrOcd4/qlH6IHTI4QyICOc=
+github.com/alibabacloud-go/eas-20210701/v7 v7.10.0 h1:Fvi/Vy61nioHjHuxsKNXz7/3OuQp5p/TD0vkwjpioSo=
+github.com/alibabacloud-go/eas-20210701/v7 v7.10.0/go.mod h1:e3/pF5wWRHg21MFSCpagjhbKCxNRqSQbFFUHSD5cqUk=
 github.com/alibabacloud-go/ecs-20140526/v7 v7.11.7 h1:mvXNgFXX1M0wgzuYInBPCpA9okvyGXM1ITii+PjJ5tk=
 github.com/alibabacloud-go/ecs-20140526/v7 v7.11.7/go.mod h1:k60ZRBAI7mnXMFi2H13zJGd00Km0iNh3iSHtLrRWPVk=
 github.com/alibabacloud-go/elasticsearch-20170613/v6 v6.4.2 h1:D1GVizGvJOWDLVhO7qIbXR3qg9x+EN6cIsgeMzhSktk=

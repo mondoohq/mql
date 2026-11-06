@@ -195,6 +195,11 @@ const (
 	ResourceAlicloudPrivatelinkEndpointService    string = "alicloud.privatelink.endpointService"
 	ResourceAlicloudPrivatelinkEndpointConnection string = "alicloud.privatelink.endpointConnection"
 	ResourceAlicloudPrivatelinkEndpoint           string = "alicloud.privatelink.endpoint"
+	ResourceAlicloudPai                           string = "alicloud.pai"
+	ResourceAlicloudPaiWorkspace                  string = "alicloud.pai.workspace"
+	ResourceAlicloudPaiWorkspaceMember            string = "alicloud.pai.workspace.member"
+	ResourceAlicloudPaiEasService                 string = "alicloud.pai.easService"
+	ResourceAlicloudPaiEasGateway                 string = "alicloud.pai.easGateway"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -916,6 +921,26 @@ func init() {
 		"alicloud.privatelink.endpoint": {
 			// to override args, implement: initAlicloudPrivatelinkEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAlicloudPrivatelinkEndpoint,
+		},
+		"alicloud.pai": {
+			// to override args, implement: initAlicloudPai(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAlicloudPai,
+		},
+		"alicloud.pai.workspace": {
+			Init:   initAlicloudPaiWorkspace,
+			Create: createAlicloudPaiWorkspace,
+		},
+		"alicloud.pai.workspace.member": {
+			// to override args, implement: initAlicloudPaiWorkspaceMember(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAlicloudPaiWorkspaceMember,
+		},
+		"alicloud.pai.easService": {
+			Init:   initAlicloudPaiEasService,
+			Create: createAlicloudPaiEasService,
+		},
+		"alicloud.pai.easGateway": {
+			Init:   initAlicloudPaiEasGateway,
+			Create: createAlicloudPaiEasGateway,
 		},
 	}
 }
@@ -8889,6 +8914,228 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"alicloud.privatelink.endpoint.securityGroups": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudPrivatelinkEndpoint).GetSecurityGroups()).ToDataRes(types.Array(types.Resource("alicloud.ecs.securitygroup")))
+	},
+	"alicloud.pai.workspaces": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPai).GetWorkspaces()).ToDataRes(types.Array(types.Resource("alicloud.pai.workspace")))
+	},
+	"alicloud.pai.easServices": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPai).GetEasServices()).ToDataRes(types.Array(types.Resource("alicloud.pai.easService")))
+	},
+	"alicloud.pai.easGateways": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPai).GetEasGateways()).ToDataRes(types.Array(types.Resource("alicloud.pai.easGateway")))
+	},
+	"alicloud.pai.workspace.regionId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiWorkspace).GetRegionId()).ToDataRes(types.String)
+	},
+	"alicloud.pai.workspace.workspaceId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiWorkspace).GetWorkspaceId()).ToDataRes(types.String)
+	},
+	"alicloud.pai.workspace.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiWorkspace).GetName()).ToDataRes(types.String)
+	},
+	"alicloud.pai.workspace.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiWorkspace).GetDisplayName()).ToDataRes(types.String)
+	},
+	"alicloud.pai.workspace.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiWorkspace).GetDescription()).ToDataRes(types.String)
+	},
+	"alicloud.pai.workspace.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiWorkspace).GetStatus()).ToDataRes(types.String)
+	},
+	"alicloud.pai.workspace.creator": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiWorkspace).GetCreator()).ToDataRes(types.String)
+	},
+	"alicloud.pai.workspace.adminNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiWorkspace).GetAdminNames()).ToDataRes(types.Array(types.String))
+	},
+	"alicloud.pai.workspace.isDefault": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiWorkspace).GetIsDefault()).ToDataRes(types.Bool)
+	},
+	"alicloud.pai.workspace.envTypes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiWorkspace).GetEnvTypes()).ToDataRes(types.Array(types.String))
+	},
+	"alicloud.pai.workspace.createTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiWorkspace).GetCreateTime()).ToDataRes(types.Time)
+	},
+	"alicloud.pai.workspace.modifiedTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiWorkspace).GetModifiedTime()).ToDataRes(types.Time)
+	},
+	"alicloud.pai.workspace.resourceGroupId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiWorkspace).GetResourceGroupId()).ToDataRes(types.String)
+	},
+	"alicloud.pai.workspace.resourceGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiWorkspace).GetResourceGroup()).ToDataRes(types.Resource("alicloud.resourceManager.resourceGroup"))
+	},
+	"alicloud.pai.workspace.members": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiWorkspace).GetMembers()).ToDataRes(types.Array(types.Resource("alicloud.pai.workspace.member")))
+	},
+	"alicloud.pai.workspace.member.memberId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiWorkspaceMember).GetMemberId()).ToDataRes(types.String)
+	},
+	"alicloud.pai.workspace.member.accountName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiWorkspaceMember).GetAccountName()).ToDataRes(types.String)
+	},
+	"alicloud.pai.workspace.member.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiWorkspaceMember).GetDisplayName()).ToDataRes(types.String)
+	},
+	"alicloud.pai.workspace.member.accountType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiWorkspaceMember).GetAccountType()).ToDataRes(types.String)
+	},
+	"alicloud.pai.workspace.member.roles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiWorkspaceMember).GetRoles()).ToDataRes(types.Array(types.String))
+	},
+	"alicloud.pai.workspace.member.createTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiWorkspaceMember).GetCreateTime()).ToDataRes(types.Time)
+	},
+	"alicloud.pai.easService.regionId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetRegionId()).ToDataRes(types.String)
+	},
+	"alicloud.pai.easService.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetName()).ToDataRes(types.String)
+	},
+	"alicloud.pai.easService.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetId()).ToDataRes(types.String)
+	},
+	"alicloud.pai.easService.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetStatus()).ToDataRes(types.String)
+	},
+	"alicloud.pai.easService.reason": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetReason()).ToDataRes(types.String)
+	},
+	"alicloud.pai.easService.message": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetMessage()).ToDataRes(types.String)
+	},
+	"alicloud.pai.easService.image": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetImage()).ToDataRes(types.String)
+	},
+	"alicloud.pai.easService.source": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetSource()).ToDataRes(types.String)
+	},
+	"alicloud.pai.easService.role": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetRole()).ToDataRes(types.String)
+	},
+	"alicloud.pai.easService.appType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetAppType()).ToDataRes(types.String)
+	},
+	"alicloud.pai.easService.safetyLock": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetSafetyLock()).ToDataRes(types.String)
+	},
+	"alicloud.pai.easService.serviceGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetServiceGroup()).ToDataRes(types.String)
+	},
+	"alicloud.pai.easService.trafficState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetTrafficState()).ToDataRes(types.String)
+	},
+	"alicloud.pai.easService.cpu": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetCpu()).ToDataRes(types.Int)
+	},
+	"alicloud.pai.easService.memory": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetMemory()).ToDataRes(types.Int)
+	},
+	"alicloud.pai.easService.gpu": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetGpu()).ToDataRes(types.Int)
+	},
+	"alicloud.pai.easService.totalInstance": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetTotalInstance()).ToDataRes(types.Int)
+	},
+	"alicloud.pai.easService.runningInstance": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetRunningInstance()).ToDataRes(types.Int)
+	},
+	"alicloud.pai.easService.autoscalerEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetAutoscalerEnabled()).ToDataRes(types.Bool)
+	},
+	"alicloud.pai.easService.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"alicloud.pai.easService.createTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetCreateTime()).ToDataRes(types.Time)
+	},
+	"alicloud.pai.easService.updateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetUpdateTime()).ToDataRes(types.Time)
+	},
+	"alicloud.pai.easService.callerUid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetCallerUid()).ToDataRes(types.String)
+	},
+	"alicloud.pai.easService.workspace": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetWorkspace()).ToDataRes(types.Resource("alicloud.pai.workspace"))
+	},
+	"alicloud.pai.easService.gateway": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetGateway()).ToDataRes(types.Resource("alicloud.pai.easGateway"))
+	},
+	"alicloud.pai.easService.internetEndpoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetInternetEndpoint()).ToDataRes(types.String)
+	},
+	"alicloud.pai.easService.intranetEndpoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetIntranetEndpoint()).ToDataRes(types.String)
+	},
+	"alicloud.pai.easService.secondaryInternetEndpoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetSecondaryInternetEndpoint()).ToDataRes(types.String)
+	},
+	"alicloud.pai.easService.secondaryIntranetEndpoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetSecondaryIntranetEndpoint()).ToDataRes(types.String)
+	},
+	"alicloud.pai.easService.isPublic": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetIsPublic()).ToDataRes(types.Bool)
+	},
+	"alicloud.pai.easService.vpc": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetVpc()).ToDataRes(types.Resource("alicloud.vpc.network"))
+	},
+	"alicloud.pai.easService.vswitch": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetVswitch()).ToDataRes(types.Resource("alicloud.vpc.vswitch"))
+	},
+	"alicloud.pai.easService.securityGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasService).GetSecurityGroup()).ToDataRes(types.Resource("alicloud.ecs.securitygroup"))
+	},
+	"alicloud.pai.easGateway.regionId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasGateway).GetRegionId()).ToDataRes(types.String)
+	},
+	"alicloud.pai.easGateway.gatewayId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasGateway).GetGatewayId()).ToDataRes(types.String)
+	},
+	"alicloud.pai.easGateway.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasGateway).GetName()).ToDataRes(types.String)
+	},
+	"alicloud.pai.easGateway.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasGateway).GetStatus()).ToDataRes(types.String)
+	},
+	"alicloud.pai.easGateway.instanceType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasGateway).GetInstanceType()).ToDataRes(types.String)
+	},
+	"alicloud.pai.easGateway.replicas": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasGateway).GetReplicas()).ToDataRes(types.Int)
+	},
+	"alicloud.pai.easGateway.chargeType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasGateway).GetChargeType()).ToDataRes(types.String)
+	},
+	"alicloud.pai.easGateway.isDefault": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasGateway).GetIsDefault()).ToDataRes(types.Bool)
+	},
+	"alicloud.pai.easGateway.internetEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasGateway).GetInternetEnabled()).ToDataRes(types.Bool)
+	},
+	"alicloud.pai.easGateway.internetDomain": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasGateway).GetInternetDomain()).ToDataRes(types.String)
+	},
+	"alicloud.pai.easGateway.intranetEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasGateway).GetIntranetEnabled()).ToDataRes(types.Bool)
+	},
+	"alicloud.pai.easGateway.intranetDomain": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasGateway).GetIntranetDomain()).ToDataRes(types.String)
+	},
+	"alicloud.pai.easGateway.sslRedirectionEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasGateway).GetSslRedirectionEnabled()).ToDataRes(types.Bool)
+	},
+	"alicloud.pai.easGateway.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasGateway).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"alicloud.pai.easGateway.createTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasGateway).GetCreateTime()).ToDataRes(types.Time)
+	},
+	"alicloud.pai.easGateway.updateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasGateway).GetUpdateTime()).ToDataRes(types.Time)
+	},
+	"alicloud.pai.easGateway.internetAcl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiEasGateway).GetInternetAcl()).ToDataRes(types.Array(types.Dict))
 	},
 }
 
@@ -20152,6 +20399,322 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"alicloud.privatelink.endpoint.securityGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAlicloudPrivatelinkEndpoint).SecurityGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPai).__id, ok = v.Value.(string)
+		return
+	},
+	"alicloud.pai.workspaces": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPai).Workspaces, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easServices": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPai).EasServices, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easGateways": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPai).EasGateways, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.workspace.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiWorkspace).__id, ok = v.Value.(string)
+		return
+	},
+	"alicloud.pai.workspace.regionId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiWorkspace).RegionId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.workspace.workspaceId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiWorkspace).WorkspaceId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.workspace.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiWorkspace).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.workspace.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiWorkspace).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.workspace.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiWorkspace).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.workspace.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiWorkspace).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.workspace.creator": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiWorkspace).Creator, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.workspace.adminNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiWorkspace).AdminNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.workspace.isDefault": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiWorkspace).IsDefault, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.workspace.envTypes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiWorkspace).EnvTypes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.workspace.createTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiWorkspace).CreateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.workspace.modifiedTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiWorkspace).ModifiedTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.workspace.resourceGroupId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiWorkspace).ResourceGroupId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.workspace.resourceGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiWorkspace).ResourceGroup, ok = plugin.RawToTValue[*mqlAlicloudResourceManagerResourceGroup](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.workspace.members": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiWorkspace).Members, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.workspace.member.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiWorkspaceMember).__id, ok = v.Value.(string)
+		return
+	},
+	"alicloud.pai.workspace.member.memberId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiWorkspaceMember).MemberId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.workspace.member.accountName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiWorkspaceMember).AccountName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.workspace.member.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiWorkspaceMember).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.workspace.member.accountType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiWorkspaceMember).AccountType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.workspace.member.roles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiWorkspaceMember).Roles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.workspace.member.createTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiWorkspaceMember).CreateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).__id, ok = v.Value.(string)
+		return
+	},
+	"alicloud.pai.easService.regionId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).RegionId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.reason": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).Reason, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.message": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).Message, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.image": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).Image, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.role": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).Role, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.appType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).AppType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.safetyLock": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).SafetyLock, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.serviceGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).ServiceGroup, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.trafficState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).TrafficState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.cpu": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).Cpu, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.memory": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).Memory, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.gpu": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).Gpu, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.totalInstance": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).TotalInstance, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.runningInstance": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).RunningInstance, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.autoscalerEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).AutoscalerEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.createTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).CreateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.updateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).UpdateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.callerUid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).CallerUid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.workspace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).Workspace, ok = plugin.RawToTValue[*mqlAlicloudPaiWorkspace](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.gateway": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).Gateway, ok = plugin.RawToTValue[*mqlAlicloudPaiEasGateway](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.internetEndpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).InternetEndpoint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.intranetEndpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).IntranetEndpoint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.secondaryInternetEndpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).SecondaryInternetEndpoint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.secondaryIntranetEndpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).SecondaryIntranetEndpoint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.isPublic": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).IsPublic, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.vpc": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).Vpc, ok = plugin.RawToTValue[*mqlAlicloudVpcNetwork](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.vswitch": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).Vswitch, ok = plugin.RawToTValue[*mqlAlicloudVpcVswitch](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easService.securityGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasService).SecurityGroup, ok = plugin.RawToTValue[*mqlAlicloudEcsSecuritygroup](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easGateway.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasGateway).__id, ok = v.Value.(string)
+		return
+	},
+	"alicloud.pai.easGateway.regionId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasGateway).RegionId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easGateway.gatewayId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasGateway).GatewayId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easGateway.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasGateway).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easGateway.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasGateway).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easGateway.instanceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasGateway).InstanceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easGateway.replicas": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasGateway).Replicas, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easGateway.chargeType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasGateway).ChargeType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easGateway.isDefault": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasGateway).IsDefault, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easGateway.internetEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasGateway).InternetEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easGateway.internetDomain": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasGateway).InternetDomain, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easGateway.intranetEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasGateway).IntranetEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easGateway.intranetDomain": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasGateway).IntranetDomain, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easGateway.sslRedirectionEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasGateway).SslRedirectionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easGateway.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasGateway).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easGateway.createTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasGateway).CreateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easGateway.updateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasGateway).UpdateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.easGateway.internetAcl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiEasGateway).InternetAcl, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 }
@@ -46253,5 +46816,722 @@ func (c *mqlAlicloudPrivatelinkEndpoint) GetSecurityGroups() *plugin.TValue[[]an
 		}
 
 		return c.securityGroups()
+	})
+}
+
+// mqlAlicloudPai for the alicloud.pai resource
+type mqlAlicloudPai struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAlicloudPaiInternal it will be used here
+	Workspaces  plugin.TValue[[]any]
+	EasServices plugin.TValue[[]any]
+	EasGateways plugin.TValue[[]any]
+}
+
+// createAlicloudPai creates a new instance of this resource
+func createAlicloudPai(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAlicloudPai{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("alicloud.pai", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAlicloudPai) MqlName() string {
+	return "alicloud.pai"
+}
+
+func (c *mqlAlicloudPai) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAlicloudPai) GetWorkspaces() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Workspaces, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.pai", c.__id, "workspaces")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.workspaces()
+	})
+}
+
+func (c *mqlAlicloudPai) GetEasServices() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EasServices, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.pai", c.__id, "easServices")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.easServices()
+	})
+}
+
+func (c *mqlAlicloudPai) GetEasGateways() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EasGateways, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.pai", c.__id, "easGateways")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.easGateways()
+	})
+}
+
+// mqlAlicloudPaiWorkspace for the alicloud.pai.workspace resource
+type mqlAlicloudPaiWorkspace struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAlicloudPaiWorkspaceInternal it will be used here
+	RegionId        plugin.TValue[string]
+	WorkspaceId     plugin.TValue[string]
+	Name            plugin.TValue[string]
+	DisplayName     plugin.TValue[string]
+	Description     plugin.TValue[string]
+	Status          plugin.TValue[string]
+	Creator         plugin.TValue[string]
+	AdminNames      plugin.TValue[[]any]
+	IsDefault       plugin.TValue[bool]
+	EnvTypes        plugin.TValue[[]any]
+	CreateTime      plugin.TValue[*time.Time]
+	ModifiedTime    plugin.TValue[*time.Time]
+	ResourceGroupId plugin.TValue[string]
+	ResourceGroup   plugin.TValue[*mqlAlicloudResourceManagerResourceGroup]
+	Members         plugin.TValue[[]any]
+}
+
+// createAlicloudPaiWorkspace creates a new instance of this resource
+func createAlicloudPaiWorkspace(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAlicloudPaiWorkspace{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("alicloud.pai.workspace", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAlicloudPaiWorkspace) MqlName() string {
+	return "alicloud.pai.workspace"
+}
+
+func (c *mqlAlicloudPaiWorkspace) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAlicloudPaiWorkspace) GetRegionId() *plugin.TValue[string] {
+	return &c.RegionId
+}
+
+func (c *mqlAlicloudPaiWorkspace) GetWorkspaceId() *plugin.TValue[string] {
+	return &c.WorkspaceId
+}
+
+func (c *mqlAlicloudPaiWorkspace) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAlicloudPaiWorkspace) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlAlicloudPaiWorkspace) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlAlicloudPaiWorkspace) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlAlicloudPaiWorkspace) GetCreator() *plugin.TValue[string] {
+	return &c.Creator
+}
+
+func (c *mqlAlicloudPaiWorkspace) GetAdminNames() *plugin.TValue[[]any] {
+	return &c.AdminNames
+}
+
+func (c *mqlAlicloudPaiWorkspace) GetIsDefault() *plugin.TValue[bool] {
+	return &c.IsDefault
+}
+
+func (c *mqlAlicloudPaiWorkspace) GetEnvTypes() *plugin.TValue[[]any] {
+	return &c.EnvTypes
+}
+
+func (c *mqlAlicloudPaiWorkspace) GetCreateTime() *plugin.TValue[*time.Time] {
+	return &c.CreateTime
+}
+
+func (c *mqlAlicloudPaiWorkspace) GetModifiedTime() *plugin.TValue[*time.Time] {
+	return &c.ModifiedTime
+}
+
+func (c *mqlAlicloudPaiWorkspace) GetResourceGroupId() *plugin.TValue[string] {
+	return &c.ResourceGroupId
+}
+
+func (c *mqlAlicloudPaiWorkspace) GetResourceGroup() *plugin.TValue[*mqlAlicloudResourceManagerResourceGroup] {
+	return plugin.GetOrCompute[*mqlAlicloudResourceManagerResourceGroup](&c.ResourceGroup, func() (*mqlAlicloudResourceManagerResourceGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.pai.workspace", c.__id, "resourceGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAlicloudResourceManagerResourceGroup), nil
+			}
+		}
+
+		return c.resourceGroup()
+	})
+}
+
+func (c *mqlAlicloudPaiWorkspace) GetMembers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Members, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.pai.workspace", c.__id, "members")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.members()
+	})
+}
+
+// mqlAlicloudPaiWorkspaceMember for the alicloud.pai.workspace.member resource
+type mqlAlicloudPaiWorkspaceMember struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAlicloudPaiWorkspaceMemberInternal it will be used here
+	MemberId    plugin.TValue[string]
+	AccountName plugin.TValue[string]
+	DisplayName plugin.TValue[string]
+	AccountType plugin.TValue[string]
+	Roles       plugin.TValue[[]any]
+	CreateTime  plugin.TValue[*time.Time]
+}
+
+// createAlicloudPaiWorkspaceMember creates a new instance of this resource
+func createAlicloudPaiWorkspaceMember(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAlicloudPaiWorkspaceMember{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("alicloud.pai.workspace.member", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAlicloudPaiWorkspaceMember) MqlName() string {
+	return "alicloud.pai.workspace.member"
+}
+
+func (c *mqlAlicloudPaiWorkspaceMember) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAlicloudPaiWorkspaceMember) GetMemberId() *plugin.TValue[string] {
+	return &c.MemberId
+}
+
+func (c *mqlAlicloudPaiWorkspaceMember) GetAccountName() *plugin.TValue[string] {
+	return &c.AccountName
+}
+
+func (c *mqlAlicloudPaiWorkspaceMember) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlAlicloudPaiWorkspaceMember) GetAccountType() *plugin.TValue[string] {
+	return &c.AccountType
+}
+
+func (c *mqlAlicloudPaiWorkspaceMember) GetRoles() *plugin.TValue[[]any] {
+	return &c.Roles
+}
+
+func (c *mqlAlicloudPaiWorkspaceMember) GetCreateTime() *plugin.TValue[*time.Time] {
+	return &c.CreateTime
+}
+
+// mqlAlicloudPaiEasService for the alicloud.pai.easService resource
+type mqlAlicloudPaiEasService struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAlicloudPaiEasServiceInternal
+	RegionId                  plugin.TValue[string]
+	Name                      plugin.TValue[string]
+	Id                        plugin.TValue[string]
+	Status                    plugin.TValue[string]
+	Reason                    plugin.TValue[string]
+	Message                   plugin.TValue[string]
+	Image                     plugin.TValue[string]
+	Source                    plugin.TValue[string]
+	Role                      plugin.TValue[string]
+	AppType                   plugin.TValue[string]
+	SafetyLock                plugin.TValue[string]
+	ServiceGroup              plugin.TValue[string]
+	TrafficState              plugin.TValue[string]
+	Cpu                       plugin.TValue[int64]
+	Memory                    plugin.TValue[int64]
+	Gpu                       plugin.TValue[int64]
+	TotalInstance             plugin.TValue[int64]
+	RunningInstance           plugin.TValue[int64]
+	AutoscalerEnabled         plugin.TValue[bool]
+	Labels                    plugin.TValue[map[string]any]
+	CreateTime                plugin.TValue[*time.Time]
+	UpdateTime                plugin.TValue[*time.Time]
+	CallerUid                 plugin.TValue[string]
+	Workspace                 plugin.TValue[*mqlAlicloudPaiWorkspace]
+	Gateway                   plugin.TValue[*mqlAlicloudPaiEasGateway]
+	InternetEndpoint          plugin.TValue[string]
+	IntranetEndpoint          plugin.TValue[string]
+	SecondaryInternetEndpoint plugin.TValue[string]
+	SecondaryIntranetEndpoint plugin.TValue[string]
+	IsPublic                  plugin.TValue[bool]
+	Vpc                       plugin.TValue[*mqlAlicloudVpcNetwork]
+	Vswitch                   plugin.TValue[*mqlAlicloudVpcVswitch]
+	SecurityGroup             plugin.TValue[*mqlAlicloudEcsSecuritygroup]
+}
+
+// createAlicloudPaiEasService creates a new instance of this resource
+func createAlicloudPaiEasService(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAlicloudPaiEasService{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("alicloud.pai.easService", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAlicloudPaiEasService) MqlName() string {
+	return "alicloud.pai.easService"
+}
+
+func (c *mqlAlicloudPaiEasService) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAlicloudPaiEasService) GetRegionId() *plugin.TValue[string] {
+	return &c.RegionId
+}
+
+func (c *mqlAlicloudPaiEasService) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAlicloudPaiEasService) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAlicloudPaiEasService) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlAlicloudPaiEasService) GetReason() *plugin.TValue[string] {
+	return &c.Reason
+}
+
+func (c *mqlAlicloudPaiEasService) GetMessage() *plugin.TValue[string] {
+	return &c.Message
+}
+
+func (c *mqlAlicloudPaiEasService) GetImage() *plugin.TValue[string] {
+	return &c.Image
+}
+
+func (c *mqlAlicloudPaiEasService) GetSource() *plugin.TValue[string] {
+	return &c.Source
+}
+
+func (c *mqlAlicloudPaiEasService) GetRole() *plugin.TValue[string] {
+	return &c.Role
+}
+
+func (c *mqlAlicloudPaiEasService) GetAppType() *plugin.TValue[string] {
+	return &c.AppType
+}
+
+func (c *mqlAlicloudPaiEasService) GetSafetyLock() *plugin.TValue[string] {
+	return &c.SafetyLock
+}
+
+func (c *mqlAlicloudPaiEasService) GetServiceGroup() *plugin.TValue[string] {
+	return &c.ServiceGroup
+}
+
+func (c *mqlAlicloudPaiEasService) GetTrafficState() *plugin.TValue[string] {
+	return &c.TrafficState
+}
+
+func (c *mqlAlicloudPaiEasService) GetCpu() *plugin.TValue[int64] {
+	return &c.Cpu
+}
+
+func (c *mqlAlicloudPaiEasService) GetMemory() *plugin.TValue[int64] {
+	return &c.Memory
+}
+
+func (c *mqlAlicloudPaiEasService) GetGpu() *plugin.TValue[int64] {
+	return &c.Gpu
+}
+
+func (c *mqlAlicloudPaiEasService) GetTotalInstance() *plugin.TValue[int64] {
+	return &c.TotalInstance
+}
+
+func (c *mqlAlicloudPaiEasService) GetRunningInstance() *plugin.TValue[int64] {
+	return &c.RunningInstance
+}
+
+func (c *mqlAlicloudPaiEasService) GetAutoscalerEnabled() *plugin.TValue[bool] {
+	return &c.AutoscalerEnabled
+}
+
+func (c *mqlAlicloudPaiEasService) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlAlicloudPaiEasService) GetCreateTime() *plugin.TValue[*time.Time] {
+	return &c.CreateTime
+}
+
+func (c *mqlAlicloudPaiEasService) GetUpdateTime() *plugin.TValue[*time.Time] {
+	return &c.UpdateTime
+}
+
+func (c *mqlAlicloudPaiEasService) GetCallerUid() *plugin.TValue[string] {
+	return &c.CallerUid
+}
+
+func (c *mqlAlicloudPaiEasService) GetWorkspace() *plugin.TValue[*mqlAlicloudPaiWorkspace] {
+	return plugin.GetOrCompute[*mqlAlicloudPaiWorkspace](&c.Workspace, func() (*mqlAlicloudPaiWorkspace, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.pai.easService", c.__id, "workspace")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAlicloudPaiWorkspace), nil
+			}
+		}
+
+		return c.workspace()
+	})
+}
+
+func (c *mqlAlicloudPaiEasService) GetGateway() *plugin.TValue[*mqlAlicloudPaiEasGateway] {
+	return plugin.GetOrCompute[*mqlAlicloudPaiEasGateway](&c.Gateway, func() (*mqlAlicloudPaiEasGateway, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.pai.easService", c.__id, "gateway")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAlicloudPaiEasGateway), nil
+			}
+		}
+
+		return c.gateway()
+	})
+}
+
+func (c *mqlAlicloudPaiEasService) GetInternetEndpoint() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.InternetEndpoint, func() (string, error) {
+		return c.internetEndpoint()
+	})
+}
+
+func (c *mqlAlicloudPaiEasService) GetIntranetEndpoint() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.IntranetEndpoint, func() (string, error) {
+		return c.intranetEndpoint()
+	})
+}
+
+func (c *mqlAlicloudPaiEasService) GetSecondaryInternetEndpoint() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SecondaryInternetEndpoint, func() (string, error) {
+		return c.secondaryInternetEndpoint()
+	})
+}
+
+func (c *mqlAlicloudPaiEasService) GetSecondaryIntranetEndpoint() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SecondaryIntranetEndpoint, func() (string, error) {
+		return c.secondaryIntranetEndpoint()
+	})
+}
+
+func (c *mqlAlicloudPaiEasService) GetIsPublic() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.IsPublic, func() (bool, error) {
+		return c.isPublic()
+	})
+}
+
+func (c *mqlAlicloudPaiEasService) GetVpc() *plugin.TValue[*mqlAlicloudVpcNetwork] {
+	return plugin.GetOrCompute[*mqlAlicloudVpcNetwork](&c.Vpc, func() (*mqlAlicloudVpcNetwork, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.pai.easService", c.__id, "vpc")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAlicloudVpcNetwork), nil
+			}
+		}
+
+		return c.vpc()
+	})
+}
+
+func (c *mqlAlicloudPaiEasService) GetVswitch() *plugin.TValue[*mqlAlicloudVpcVswitch] {
+	return plugin.GetOrCompute[*mqlAlicloudVpcVswitch](&c.Vswitch, func() (*mqlAlicloudVpcVswitch, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.pai.easService", c.__id, "vswitch")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAlicloudVpcVswitch), nil
+			}
+		}
+
+		return c.vswitch()
+	})
+}
+
+func (c *mqlAlicloudPaiEasService) GetSecurityGroup() *plugin.TValue[*mqlAlicloudEcsSecuritygroup] {
+	return plugin.GetOrCompute[*mqlAlicloudEcsSecuritygroup](&c.SecurityGroup, func() (*mqlAlicloudEcsSecuritygroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.pai.easService", c.__id, "securityGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAlicloudEcsSecuritygroup), nil
+			}
+		}
+
+		return c.securityGroup()
+	})
+}
+
+// mqlAlicloudPaiEasGateway for the alicloud.pai.easGateway resource
+type mqlAlicloudPaiEasGateway struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAlicloudPaiEasGatewayInternal it will be used here
+	RegionId              plugin.TValue[string]
+	GatewayId             plugin.TValue[string]
+	Name                  plugin.TValue[string]
+	Status                plugin.TValue[string]
+	InstanceType          plugin.TValue[string]
+	Replicas              plugin.TValue[int64]
+	ChargeType            plugin.TValue[string]
+	IsDefault             plugin.TValue[bool]
+	InternetEnabled       plugin.TValue[bool]
+	InternetDomain        plugin.TValue[string]
+	IntranetEnabled       plugin.TValue[bool]
+	IntranetDomain        plugin.TValue[string]
+	SslRedirectionEnabled plugin.TValue[bool]
+	Labels                plugin.TValue[map[string]any]
+	CreateTime            plugin.TValue[*time.Time]
+	UpdateTime            plugin.TValue[*time.Time]
+	InternetAcl           plugin.TValue[[]any]
+}
+
+// createAlicloudPaiEasGateway creates a new instance of this resource
+func createAlicloudPaiEasGateway(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAlicloudPaiEasGateway{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("alicloud.pai.easGateway", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAlicloudPaiEasGateway) MqlName() string {
+	return "alicloud.pai.easGateway"
+}
+
+func (c *mqlAlicloudPaiEasGateway) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAlicloudPaiEasGateway) GetRegionId() *plugin.TValue[string] {
+	return &c.RegionId
+}
+
+func (c *mqlAlicloudPaiEasGateway) GetGatewayId() *plugin.TValue[string] {
+	return &c.GatewayId
+}
+
+func (c *mqlAlicloudPaiEasGateway) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAlicloudPaiEasGateway) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlAlicloudPaiEasGateway) GetInstanceType() *plugin.TValue[string] {
+	return &c.InstanceType
+}
+
+func (c *mqlAlicloudPaiEasGateway) GetReplicas() *plugin.TValue[int64] {
+	return &c.Replicas
+}
+
+func (c *mqlAlicloudPaiEasGateway) GetChargeType() *plugin.TValue[string] {
+	return &c.ChargeType
+}
+
+func (c *mqlAlicloudPaiEasGateway) GetIsDefault() *plugin.TValue[bool] {
+	return &c.IsDefault
+}
+
+func (c *mqlAlicloudPaiEasGateway) GetInternetEnabled() *plugin.TValue[bool] {
+	return &c.InternetEnabled
+}
+
+func (c *mqlAlicloudPaiEasGateway) GetInternetDomain() *plugin.TValue[string] {
+	return &c.InternetDomain
+}
+
+func (c *mqlAlicloudPaiEasGateway) GetIntranetEnabled() *plugin.TValue[bool] {
+	return &c.IntranetEnabled
+}
+
+func (c *mqlAlicloudPaiEasGateway) GetIntranetDomain() *plugin.TValue[string] {
+	return &c.IntranetDomain
+}
+
+func (c *mqlAlicloudPaiEasGateway) GetSslRedirectionEnabled() *plugin.TValue[bool] {
+	return &c.SslRedirectionEnabled
+}
+
+func (c *mqlAlicloudPaiEasGateway) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlAlicloudPaiEasGateway) GetCreateTime() *plugin.TValue[*time.Time] {
+	return &c.CreateTime
+}
+
+func (c *mqlAlicloudPaiEasGateway) GetUpdateTime() *plugin.TValue[*time.Time] {
+	return &c.UpdateTime
+}
+
+func (c *mqlAlicloudPaiEasGateway) GetInternetAcl() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.InternetAcl, func() ([]any, error) {
+		return c.internetAcl()
 	})
 }

@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	actiontrailclient "github.com/alibabacloud-go/actiontrail-20200706/v3/client"
+	aiworkspaceclient "github.com/alibabacloud-go/aiworkspace-20210204/v6/client"
 	albclient "github.com/alibabacloud-go/alb-20200616/v2/client"
 	casclient "github.com/alibabacloud-go/cas-20200407/v4/client"
 	cbnclient "github.com/alibabacloud-go/cbn-20170912/v2/client"
@@ -21,6 +22,7 @@ import (
 	openapi "github.com/alibabacloud-go/darabonba-openapi/v2/client"
 	ddoscooclient "github.com/alibabacloud-go/ddoscoo-20200101/v5/client"
 	ddsclient "github.com/alibabacloud-go/dds-20151201/v10/client"
+	easclient "github.com/alibabacloud-go/eas-20210701/v7/client"
 	ecsclient "github.com/alibabacloud-go/ecs-20140526/v7/client"
 	esclient "github.com/alibabacloud-go/elasticsearch-20170613/v6/client"
 	essclient "github.com/alibabacloud-go/ess-20220222/v2/client"
@@ -53,7 +55,7 @@ import (
 // global (region-less), Cloud Config is a center service reached through
 // cn-shanghai, Certificate Management Service answers its China center on the
 // bare cas host, and Log Service (SLS) puts the region ahead of a fixed log
-// host.
+// host. PAI Elastic Algorithm Service (eas) answers on pai-eas.<region>.
 func endpoint(service, region string) string {
 	switch service {
 	case "ram", "ims", "actiontrail", "resourcemanager", "cbn":
@@ -68,6 +70,8 @@ func endpoint(service, region string) string {
 		return "config.cn-shanghai.aliyuncs.com"
 	case "sls":
 		return region + ".log.aliyuncs.com"
+	case "eas":
+		return "pai-eas." + region + ".aliyuncs.com"
 	}
 	return fmt.Sprintf("%s.%s.aliyuncs.com", service, region)
 }
@@ -522,6 +526,56 @@ func (c *AlicloudConnection) ResourceManagerClient() (*rmclient.Client, error) {
 		return nil, err
 	}
 	return client.(*rmclient.Client), nil
+}
+
+// EasClient returns a PAI Elastic Algorithm Service (EAS) client for a region.
+func (c *AlicloudConnection) EasClient(region string) (*easclient.Client, error) {
+	client, err := c.cachedClient("eas/"+region, func() (any, error) {
+		return easclient.NewClient(c.config("eas", region))
+	})
+	if err != nil {
+		return nil, err
+	}
+	return client.(*easclient.Client), nil
+}
+
+// AiWorkspaceClient returns a PAI AI workspace client for a region.
+func (c *AlicloudConnection) AiWorkspaceClient(region string) (*aiworkspaceclient.Client, error) {
+	client, err := c.cachedClient("aiworkspace/"+region, func() (any, error) {
+		return aiworkspaceclient.NewClient(c.config("aiworkspace", region))
+	})
+	if err != nil {
+		return nil, err
+	}
+	return client.(*aiworkspaceclient.Client), nil
+}
+
+// PaiRegions returns the scanned regions that offer Platform for AI. PAI runs
+// in a subset of the regions enabled on an account, and a region without it
+// has no PAI endpoint to call, so the list is narrowed to the regions the EAS
+// SDK publishes an endpoint for.
+func (c *AlicloudConnection) PaiRegions() ([]string, error) {
+	regions, err := c.GetRegions()
+	if err != nil {
+		return nil, err
+	}
+	client, err := c.EasClient(c.region)
+	if err != nil {
+		return nil, err
+	}
+	return regionsWithEndpoint(regions, client.EndpointMap), nil
+}
+
+// regionsWithEndpoint keeps the regions that have an entry in a service's
+// endpoint map, preserving their order.
+func regionsWithEndpoint(regions []string, endpoints map[string]*string) []string {
+	res := []string{}
+	for _, r := range regions {
+		if ep, ok := endpoints[r]; ok && ep != nil && *ep != "" {
+			res = append(res, r)
+		}
+	}
+	return res
 }
 
 // GetRegions returns the region IDs to scan. When the caller pinned a region
