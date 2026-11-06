@@ -253,8 +253,8 @@ func hostedAgentConnectionProviders(ctx context.Context, svc godo.HostedAgentTri
 }
 
 // listHostedAgentConnections walks the page/per_page pagination of one
-// provider's connection list. It stops on an empty page or once the reported
-// total is reached. A page that adds no connection not already seen means the
+// provider's connection list. It stops on an empty page, once the reported
+// total is reached, or, when the response carries no total, on a short page. A page that adds no connection not already seen means the
 // endpoint ignores the page parameter, which would otherwise loop forever.
 func listHostedAgentConnections(ctx context.Context, svc godo.HostedAgentsService, provider string) ([]godo.HostedAgentConnection, error) {
 	var all []godo.HostedAgentConnection
@@ -279,7 +279,12 @@ func listHostedAgentConnections(ctx context.Context, svc godo.HostedAgentsServic
 		if added == 0 {
 			return nil, fmt.Errorf("hosted agent connections for %s: page %d repeated earlier connections, so the endpoint is repeating a page", provider, page)
 		}
-		if len(all) >= int(resp.Pagination.Total) {
+		// A response without a pagination total ends on a short page.
+		if total := int(resp.Pagination.Total); total > 0 {
+			if len(all) >= total {
+				return all, nil
+			}
+		} else if len(resp.Connections) < hostedAgentConnectionPageSize {
 			return all, nil
 		}
 	}

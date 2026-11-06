@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/digitalocean/godo"
@@ -339,4 +340,38 @@ func TestHostedAgentConnectionArgs_NoOAuth(t *testing.T) {
 func TestHostedAgentConnectionArgs_EmptyIDRejected(t *testing.T) {
 	_, err := hostedAgentConnectionArgs(&godo.HostedAgentConnection{Provider: "github"})
 	require.Error(t, err)
+}
+
+func TestListHostedAgentConnections_NoPaginationBlock(t *testing.T) {
+	// Synthetic: a response without a pagination block (total 0) must not
+	// stop after a full first page.
+	client := newTestGodoClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("page") == "1" {
+			conns := make([]string, 0, hostedAgentConnectionPageSize)
+			for i := 0; i < hostedAgentConnectionPageSize; i++ {
+				conns = append(conns, fmt.Sprintf(`{"id":"c-%d"}`, i))
+			}
+			fmt.Fprintf(w, `{"connections":[%s]}`, strings.Join(conns, ","))
+			return
+		}
+		fmt.Fprint(w, `{"connections":[{"id":"last"}]}`)
+	})
+	conns, err := listHostedAgentConnections(context.Background(), client.HostedAgents, "github")
+	require.NoError(t, err)
+	assert.Len(t, conns, hostedAgentConnectionPageSize+1)
+}
+
+func TestListHostedAgentConnections_NoPaginationShortPage(t *testing.T) {
+	// Synthetic: without a total, a short page is the last one.
+	calls := 0
+	client := newTestGodoClient(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"connections":[{"id":"c-1"}]}`)
+	})
+	conns, err := listHostedAgentConnections(context.Background(), client.HostedAgents, "github")
+	require.NoError(t, err)
+	assert.Len(t, conns, 1)
+	assert.Equal(t, 1, calls)
 }
