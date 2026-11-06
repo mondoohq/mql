@@ -9,6 +9,7 @@ import (
 
 	"github.com/digitalocean/godo"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/types"
 )
 
 // mqlDigitaloceanFirewallInternal caches the raw rule set and protected
@@ -82,8 +83,8 @@ func (r *mqlDigitaloceanFirewall) ingressRules() ([]any, error) {
 			"ports":           llx.StringData(rule.PortRange),
 			"action":          llx.StringData(firewallRuleAction(rule.Action)),
 			"openToInternet":  llx.BoolData(openToInternet(rule.Action, addresses)),
-			"sourceAddresses": llx.ArrayData(toStringSlice(addresses), "\x02"),
-			"sourceTags":      llx.ArrayData(toStringSlice(tags), "\x02"),
+			"sourceAddresses": llx.ArrayData(toStringSlice(addresses), types.String),
+			"sourceTags":      llx.ArrayData(toStringSlice(tags), types.String),
 		})
 		if err != nil {
 			return nil, err
@@ -116,8 +117,8 @@ func (r *mqlDigitaloceanFirewall) egressRules() ([]any, error) {
 			"ports":                llx.StringData(rule.PortRange),
 			"action":               llx.StringData(firewallRuleAction(rule.Action)),
 			"openToInternet":       llx.BoolData(openToInternet(rule.Action, addresses)),
-			"destinationAddresses": llx.ArrayData(toStringSlice(addresses), "\x02"),
-			"destinationTags":      llx.ArrayData(toStringSlice(tags), "\x02"),
+			"destinationAddresses": llx.ArrayData(toStringSlice(addresses), types.String),
+			"destinationTags":      llx.ArrayData(toStringSlice(tags), types.String),
 		})
 		if err != nil {
 			return nil, err

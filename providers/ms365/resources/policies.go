@@ -348,7 +348,7 @@ func (a *mqlMicrosoftPolicies) adminConsentRequestPolicy() (*mqlMicrosoftAdminCo
 
 	data := map[string]*llx.RawData{
 		"__id":                  llx.StringData(pId),
-		"reviewers":             llx.ArrayData(reviewers, "microsoft.graph.accessReviewReviewerScope"),
+		"reviewers":             llx.ArrayData(reviewers, types.Resource("microsoft.graph.accessReviewReviewerScope")),
 		"isEnabled":             llx.BoolDataPtr(adminConsentRequestPolicy.GetIsEnabled()),
 		"notifyReviewers":       llx.BoolDataPtr(adminConsentRequestPolicy.GetNotifyReviewers()),
 		"remindersEnabled":      llx.BoolDataPtr(adminConsentRequestPolicy.GetRemindersEnabled()),

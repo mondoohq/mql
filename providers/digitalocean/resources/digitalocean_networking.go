@@ -66,7 +66,7 @@ func (r *mqlDigitalocean) vpcNatGateways() ([]any, error) {
 				"region":                 llx.StringData(g.Region),
 				"size":                   llx.IntData(int64(g.Size)),
 				"ingressVpcs":            llx.ArrayData(ingressVpcs, types.Dict),
-				"egressPublicGatewayIps": llx.ArrayData(egressIPs, "\x02"),
+				"egressPublicGatewayIps": llx.ArrayData(egressIPs, types.String),
 				"udpTimeoutSeconds":      llx.IntData(int64(g.UDPTimeoutSeconds)),
 				"icmpTimeoutSeconds":     llx.IntData(int64(g.ICMPTimeoutSeconds)),
 				"tcpTimeoutSeconds":      llx.IntData(int64(g.TCPTimeoutSeconds)),

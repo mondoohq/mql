@@ -14,6 +14,7 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/datadog/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // isNotFound reports a 404, which the restriction policy endpoint returns for a
@@ -75,7 +76,7 @@ func restrictionPolicyFor(runtime *plugin.Runtime, resourceType, resourceId stri
 
 	res, err := CreateResource(runtime, "datadog.restrictionPolicy", map[string]*llx.RawData{
 		"id":       llx.StringData(data.GetId()),
-		"bindings": llx.ArrayData(bindings, "\x13"),
+		"bindings": llx.ArrayData(bindings, types.Dict),
 	})
 	if err != nil {
 		return nil, err
@@ -137,8 +138,8 @@ func (r *mqlDatadogDashboard) sharedDashboards() ([]any, error) {
 			"publicUrl":         llx.StringData(attrs.GetUrl()),
 			"shareType":         llx.StringData(string(attrs.GetShareType())),
 			"status":            llx.StringData(string(attrs.GetStatus())),
-			"embeddableDomains": llx.ArrayData(toAnyStrings(attrs.GetEmbeddableDomains()), "\x02"),
-			"invitees":          llx.ArrayData(invitees, "\x02"),
+			"embeddableDomains": llx.ArrayData(toAnyStrings(attrs.GetEmbeddableDomains()), types.String),
+			"invitees":          llx.ArrayData(invitees, types.String),
 			"expiration":        llx.TimeDataPtr(timePtr(attrs.GetExpiration())),
 			"lastAccessed":      llx.TimeDataPtr(timePtr(attrs.GetLastAccessed())),
 			"createdAt":         llx.TimeDataPtr(timePtr(attrs.GetCreatedAt())),
@@ -372,7 +373,7 @@ func (r *mqlDatadog) logsPipelines() ([]any, error) {
 			"isEnabled":   llx.BoolData(pipeline.GetIsEnabled()),
 			"isReadOnly":  llx.BoolData(pipeline.GetIsReadOnly()),
 			"filterQuery": llx.StringData(filterQuery),
-			"tags":        llx.ArrayData(toAnyStrings(pipeline.GetTags()), "\x02"),
+			"tags":        llx.ArrayData(toAnyStrings(pipeline.GetTags()), types.String),
 		})
 		if err != nil {
 			return nil, err
@@ -416,7 +417,7 @@ func (r *mqlDatadog) logsCustomDestinations() ([]any, error) {
 			"authType":                       llx.StringData(forwarder.authType),
 			"indexName":                      llx.StringData(forwarder.indexName),
 			"forwardTags":                    llx.BoolData(attrs.GetForwardTags()),
-			"forwardTagsRestrictionList":     llx.ArrayData(toAnyStrings(attrs.GetForwardTagsRestrictionList()), "\x02"),
+			"forwardTagsRestrictionList":     llx.ArrayData(toAnyStrings(attrs.GetForwardTagsRestrictionList()), types.String),
 			"forwardTagsRestrictionListType": llx.StringData(string(attrs.GetForwardTagsRestrictionListType())),
 		})
 		if err != nil {

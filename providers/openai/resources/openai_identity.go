@@ -10,6 +10,7 @@ import (
 	"github.com/openai/openai-go/v3"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 // roleArgs builds the resource args for an openai.role. The organization role
@@ -22,7 +23,7 @@ func roleArgs(id, name, description, resourceType string, permissions []string, 
 		"id":           llx.StringData(id),
 		"name":         llx.StringData(name),
 		"description":  llx.StringData(description),
-		"permissions":  llx.ArrayData(convertStringSlice(permissions), "string"),
+		"permissions":  llx.ArrayData(convertStringSlice(permissions), types.String),
 		"isPredefined": llx.BoolData(predefined),
 		"resourceType": llx.StringData(resourceType),
 	}

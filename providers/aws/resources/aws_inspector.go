@@ -621,9 +621,9 @@ func (a *mqlAwsInspectorFinding) packageVulnerability() (*mqlAwsInspectorFinding
 			"vendorCreatedAt":        llx.TimeDataPtr(pvd.VendorCreatedAt),
 			"vendorUpdatedAt":        llx.TimeDataPtr(pvd.VendorUpdatedAt),
 			"cvssScores":             llx.ArrayData(cvssScores, llxtypes.Resource("aws.inspector.finding.packageVulnerability.cvssScore")),
-			"referenceUrls":          llx.ArrayData(llx.TArr2Raw(pvd.ReferenceUrls), "string"),
-			"relatedVulnerabilities": llx.ArrayData(llx.TArr2Raw(pvd.RelatedVulnerabilities), "string"),
-			"vulnerablePackages":     llx.ArrayData(vulnPkgs, "aws.inspector.finding.vulnerablePackage"),
+			"referenceUrls":          llx.ArrayData(llx.TArr2Raw(pvd.ReferenceUrls), llxtypes.String),
+			"relatedVulnerabilities": llx.ArrayData(llx.TArr2Raw(pvd.RelatedVulnerabilities), llxtypes.String),
+			"vulnerablePackages":     llx.ArrayData(vulnPkgs, llxtypes.Resource("aws.inspector.finding.vulnerablePackage")),
 		})
 	if err != nil {
 		return nil, err
@@ -679,7 +679,7 @@ func (a *mqlAwsInspectorFinding) networkReachability() (*mqlAwsInspectorFindingN
 			"protocol":      llx.StringData(string(nrd.Protocol)),
 			"openPortStart": llx.IntData(portStart),
 			"openPortEnd":   llx.IntData(portEnd),
-			"networkPath":   llx.ArrayData(networkPath, "dict"),
+			"networkPath":   llx.ArrayData(networkPath, llxtypes.Dict),
 		})
 	if err != nil {
 		return nil, err
@@ -707,12 +707,12 @@ func (a *mqlAwsInspectorFinding) codeVulnerability() (*mqlAwsInspectorFindingCod
 	mqlCv, err := CreateResource(a.MqlRuntime, "aws.inspector.finding.codeVulnerability",
 		map[string]*llx.RawData{
 			"__id":                 llx.StringData(findingArn + "/codeVulnerability"),
-			"cwes":                 llx.ArrayData(llx.TArr2Raw(cvd.Cwes), "string"),
+			"cwes":                 llx.ArrayData(llx.TArr2Raw(cvd.Cwes), llxtypes.String),
 			"detectorId":           llx.StringDataPtr(cvd.DetectorId),
 			"detectorName":         llx.StringDataPtr(cvd.DetectorName),
-			"detectorTags":         llx.ArrayData(llx.TArr2Raw(cvd.DetectorTags), "string"),
+			"detectorTags":         llx.ArrayData(llx.TArr2Raw(cvd.DetectorTags), llxtypes.String),
 			"filePath":             llx.DictData(filePath),
-			"referenceUrls":        llx.ArrayData(llx.TArr2Raw(cvd.ReferenceUrls), "string"),
+			"referenceUrls":        llx.ArrayData(llx.TArr2Raw(cvd.ReferenceUrls), llxtypes.String),
 			"ruleId":               llx.StringDataPtr(cvd.RuleId),
 			"sourceLambdaLayerArn": llx.StringDataPtr(cvd.SourceLambdaLayerArn),
 		})

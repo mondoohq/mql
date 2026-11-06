@@ -9,6 +9,7 @@ import (
 
 	"github.com/openai/openai-go/v3"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/types"
 )
 
 // certificateArgs builds the resource args for an openai.certificate. The same
@@ -123,7 +124,7 @@ func (r *mqlOpenai) containers() ([]any, error) {
 		var allowedDomains *llx.RawData
 		if c.JSON.NetworkPolicy.Valid() {
 			networkPolicyType = &c.NetworkPolicy.Type
-			allowedDomains = llx.ArrayData(convertStringSlice(c.NetworkPolicy.AllowedDomains), "string")
+			allowedDomains = llx.ArrayData(convertStringSlice(c.NetworkPolicy.AllowedDomains), types.String)
 		} else {
 			allowedDomains = llx.NilData
 		}

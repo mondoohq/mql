@@ -45,7 +45,7 @@ func (r *mqlDatadog) integrationGcpAccounts() ([]any, error) {
 		res, err := CreateResource(r.MqlRuntime, "datadog.integration.gcp", map[string]*llx.RawData{
 			"id":                                   llx.StringData(acc.GetId()),
 			"clientEmail":                          llx.StringData(attrs.GetClientEmail()),
-			"accessibleProjects":                   llx.ArrayData(toAnyStrings(meta.GetAccessibleProjects()), "\x02"),
+			"accessibleProjects":                   llx.ArrayData(toAnyStrings(meta.GetAccessibleProjects()), types.String),
 			"isCspmEnabled":                        llx.BoolData(attrs.GetIsCspmEnabled()),
 			"isSecurityCommandCenterEnabled":       llx.BoolData(attrs.GetIsSecurityCommandCenterEnabled()),
 			"resourceCollectionEnabled":            llx.BoolData(attrs.GetResourceCollectionEnabled()),
@@ -54,10 +54,10 @@ func (r *mqlDatadog) integrationGcpAccounts() ([]any, error) {
 			"isGlobalLocationEnabled":              llx.BoolData(attrs.GetIsGlobalLocationEnabled()),
 			"isOrgFolderResourceCollectionEnabled": llx.BoolDataPtr(attrs.IsOrgFolderResourceCollectionEnabled),
 			"automute":                             llx.BoolData(attrs.GetAutomute()),
-			"hostFilters":                          llx.ArrayData(toAnyStrings(attrs.GetHostFilters()), "\x02"),
-			"cloudRunRevisionFilters":              llx.ArrayData(toAnyStrings(attrs.GetCloudRunRevisionFilters()), "\x02"),
-			"regionFilterConfigs":                  llx.ArrayData(toAnyStrings(attrs.GetRegionFilterConfigs()), "\x02"),
-			"accountTags":                          llx.ArrayData(toAnyStrings(attrs.GetAccountTags()), "\x02"),
+			"hostFilters":                          llx.ArrayData(toAnyStrings(attrs.GetHostFilters()), types.String),
+			"cloudRunRevisionFilters":              llx.ArrayData(toAnyStrings(attrs.GetCloudRunRevisionFilters()), types.String),
+			"regionFilterConfigs":                  llx.ArrayData(toAnyStrings(attrs.GetRegionFilterConfigs()), types.String),
+			"accountTags":                          llx.ArrayData(toAnyStrings(attrs.GetAccountTags()), types.String),
 		})
 		if err != nil {
 			return nil, err
@@ -108,7 +108,7 @@ func (r *mqlDatadog) integrationAzureAccounts() ([]any, error) {
 			"hostFilters":               llx.StringData(acc.GetHostFilters()),
 			"appServicePlanFilters":     llx.StringData(acc.GetAppServicePlanFilters()),
 			"containerAppFilters":       llx.StringData(acc.GetContainerAppFilters()),
-			"errors":                    llx.ArrayData(toAnyStrings(acc.GetErrors()), "\x02"),
+			"errors":                    llx.ArrayData(toAnyStrings(acc.GetErrors()), types.String),
 		})
 		if err != nil {
 			return nil, err
@@ -179,8 +179,8 @@ func (r *mqlDatadog) integrationCloudflareAccounts() ([]any, error) {
 			"id":        llx.StringData(acc.GetId()),
 			"name":      llx.StringData(attrs.GetName()),
 			"email":     llx.StringData(attrs.GetEmail()),
-			"resources": llx.ArrayData(toAnyStrings(attrs.GetResources()), "\x02"),
-			"zones":     llx.ArrayData(toAnyStrings(attrs.GetZones()), "\x02"),
+			"resources": llx.ArrayData(toAnyStrings(attrs.GetResources()), types.String),
+			"zones":     llx.ArrayData(toAnyStrings(attrs.GetZones()), types.String),
 		})
 		if err != nil {
 			return nil, err
@@ -227,7 +227,7 @@ func (r *mqlDatadog) integrationFastlyAccounts() ([]any, error) {
 		res, err := CreateResource(r.MqlRuntime, "datadog.integration.fastly", map[string]*llx.RawData{
 			"id":       llx.StringData(acc.GetId()),
 			"name":     llx.StringData(attrs.GetName()),
-			"services": llx.ArrayData(services, "\x13"),
+			"services": llx.ArrayData(services, types.Dict),
 		})
 		if err != nil {
 			return nil, err
@@ -273,8 +273,8 @@ func (r *mqlDatadog) integrationConfluentAccounts() ([]any, error) {
 
 		res, err := CreateResource(r.MqlRuntime, "datadog.integration.confluent", map[string]*llx.RawData{
 			"id":        llx.StringData(acc.GetId()),
-			"tags":      llx.ArrayData(toAnyStrings(attrs.GetTags()), "\x02"),
-			"resources": llx.ArrayData(resources, "\x13"),
+			"tags":      llx.ArrayData(toAnyStrings(attrs.GetTags()), types.String),
+			"resources": llx.ArrayData(resources, types.Dict),
 		})
 		if err != nil {
 			return nil, err

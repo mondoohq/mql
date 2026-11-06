@@ -12,6 +12,7 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/digitalocean/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // --- Sizes (droplet size catalog) ---
@@ -56,7 +57,7 @@ func newMqlDigitaloceanSize(runtime *plugin.Runtime, size godo.Size) (*mqlDigita
 		"priceHourly":  llx.FloatData(size.PriceHourly),
 		"transfer":     llx.FloatData(size.Transfer),
 		"available":    llx.BoolData(size.Available),
-		"regions":      llx.ArrayData(regions, "\x02"),
+		"regions":      llx.ArrayData(regions, types.String),
 		"description":  llx.StringData(size.Description),
 		"gpuInfo":      llx.DictData(gpuInfo),
 	})
