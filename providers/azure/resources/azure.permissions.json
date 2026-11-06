@@ -1,7 +1,7 @@
 {
   "provider": "azure",
-  "version": "14.5.3",
-  "generated_at": "2026-10-28T12:37:06-07:00",
+  "version": "14.6.4",
+  "generated_at": "2026-11-06T17:21:42Z",
   "permissions": [
     "Microsoft.Advisor/recommendations/read",
     "Microsoft.ApiManagement/service/apis/policies/read",
@@ -165,6 +165,7 @@
     "Microsoft.Kusto/clusters/privateEndpointConnections/read",
     "Microsoft.Kusto/clusters/read",
     "Microsoft.Logic/workflows/read",
+    "Microsoft.MachineLearningServices/registries/read",
     "Microsoft.MachineLearningServices/workspaces/batchEndpoints/deployments/read",
     "Microsoft.MachineLearningServices/workspaces/batchEndpoints/read",
     "Microsoft.MachineLearningServices/workspaces/computes/read",
@@ -1348,6 +1349,12 @@
       "service": "Microsoft.Logic",
       "action": "NewListBySubscriptionPager",
       "source_file": "logic.go"
+    },
+    {
+      "permission": "Microsoft.MachineLearningServices/registries/read",
+      "service": "Microsoft.MachineLearningServices",
+      "action": "NewListBySubscriptionPager",
+      "source_file": "machinelearning_registries.go"
     },
     {
       "permission": "Microsoft.MachineLearningServices/workspaces/batchEndpoints/deployments/read",

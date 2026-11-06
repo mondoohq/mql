@@ -350,6 +350,7 @@ const (
 	ResourceAzureSubscriptionCloudDefenderServiceDefenderForStorageAccounts                             string = "azure.subscription.cloudDefenderService.defenderForStorageAccounts"
 	ResourceAzureSubscriptionCloudDefenderServiceDefenderForKeyVaults                                   string = "azure.subscription.cloudDefenderService.defenderForKeyVaults"
 	ResourceAzureSubscriptionCloudDefenderServiceDefenderForAIServices                                  string = "azure.subscription.cloudDefenderService.defenderForAIServices"
+	ResourceAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension                         string = "azure.subscription.cloudDefenderService.defenderForAIServices.extension"
 	ResourceAzureSubscriptionCloudDefenderServiceDefenderForResourceManager                             string = "azure.subscription.cloudDefenderService.defenderForResourceManager"
 	ResourceAzureSubscriptionCloudDefenderServiceDefenderForContainers                                  string = "azure.subscription.cloudDefenderService.defenderForContainers"
 	ResourceAzureSubscriptionCloudDefenderServiceDefenderForContainersExtension                         string = "azure.subscription.cloudDefenderService.defenderForContainers.extension"
@@ -538,6 +539,8 @@ const (
 	ResourceAzureSubscriptionLighthouseServiceRegistrationDefinitionAuthorization                       string = "azure.subscription.lighthouseService.registrationDefinition.authorization"
 	ResourceAzureSubscriptionLighthouseServiceRegistrationAssignment                                    string = "azure.subscription.lighthouseService.registrationAssignment"
 	ResourceAzureSubscriptionMachineLearningService                                                     string = "azure.subscription.machineLearningService"
+	ResourceAzureSubscriptionMachineLearningServiceRegistry                                             string = "azure.subscription.machineLearningService.registry"
+	ResourceAzureSubscriptionMachineLearningServiceRegistryRegion                                       string = "azure.subscription.machineLearningService.registry.region"
 	ResourceAzureSubscriptionMachineLearningServiceWorkspace                                            string = "azure.subscription.machineLearningService.workspace"
 	ResourceAzureSubscriptionMachineLearningServiceWorkspaceManagedNetworkOutboundRule                  string = "azure.subscription.machineLearningService.workspace.managedNetworkOutboundRule"
 	ResourceAzureSubscriptionMachineLearningServiceWorkspaceOnlineEndpoint                              string = "azure.subscription.machineLearningService.workspace.onlineEndpoint"
@@ -1975,6 +1978,10 @@ func init() {
 			// to override args, implement: initAzureSubscriptionCloudDefenderServiceDefenderForAIServices(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAzureSubscriptionCloudDefenderServiceDefenderForAIServices,
 		},
+		"azure.subscription.cloudDefenderService.defenderForAIServices.extension": {
+			// to override args, implement: initAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension,
+		},
 		"azure.subscription.cloudDefenderService.defenderForResourceManager": {
 			// to override args, implement: initAzureSubscriptionCloudDefenderServiceDefenderForResourceManager(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAzureSubscriptionCloudDefenderServiceDefenderForResourceManager,
@@ -2726,6 +2733,14 @@ func init() {
 		"azure.subscription.machineLearningService": {
 			Init:   initAzureSubscriptionMachineLearningService,
 			Create: createAzureSubscriptionMachineLearningService,
+		},
+		"azure.subscription.machineLearningService.registry": {
+			// to override args, implement: initAzureSubscriptionMachineLearningServiceRegistry(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionMachineLearningServiceRegistry,
+		},
+		"azure.subscription.machineLearningService.registry.region": {
+			// to override args, implement: initAzureSubscriptionMachineLearningServiceRegistryRegion(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionMachineLearningServiceRegistryRegion,
 		},
 		"azure.subscription.machineLearningService.workspace": {
 			// to override args, implement: initAzureSubscriptionMachineLearningServiceWorkspace(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -15793,6 +15808,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.cloudDefenderService.defenderForAIServices.resourcesCoverageStatus": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).GetResourcesCoverageStatus()).ToDataRes(types.String)
 	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.extensions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).GetExtensions()).ToDataRes(types.Array(types.Resource("azure.subscription.cloudDefenderService.defenderForAIServices.extension")))
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.extension.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension).GetName()).ToDataRes(types.String)
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.extension.isEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension).GetIsEnabled()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.extension.additionalProperties": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension).GetAdditionalProperties()).ToDataRes(types.Dict)
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.extension.operationStatusCode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension).GetOperationStatusCode()).ToDataRes(types.String)
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.extension.operationStatusMessage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension).GetOperationStatusMessage()).ToDataRes(types.String)
+	},
 	"azure.subscription.cloudDefenderService.defenderForResourceManager.subscriptionId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForResourceManager).GetSubscriptionId()).ToDataRes(types.String)
 	},
@@ -21627,6 +21660,63 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.machineLearningService.workspaces": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionMachineLearningService).GetWorkspaces()).ToDataRes(types.Array(types.Resource("azure.subscription.machineLearningService.workspace")))
+	},
+	"azure.subscription.machineLearningService.registries": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningService).GetRegistries()).ToDataRes(types.Array(types.Resource("azure.subscription.machineLearningService.registry")))
+	},
+	"azure.subscription.machineLearningService.registry.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).GetId()).ToDataRes(types.String)
+	},
+	"azure.subscription.machineLearningService.registry.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).GetName()).ToDataRes(types.String)
+	},
+	"azure.subscription.machineLearningService.registry.location": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).GetLocation()).ToDataRes(types.String)
+	},
+	"azure.subscription.machineLearningService.registry.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"azure.subscription.machineLearningService.registry.kind": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).GetKind()).ToDataRes(types.String)
+	},
+	"azure.subscription.machineLearningService.registry.skuData": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).GetSkuData()).ToDataRes(types.Resource("azure.subscription.resourceSku"))
+	},
+	"azure.subscription.machineLearningService.registry.resourceIdentity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).GetResourceIdentity()).ToDataRes(types.Resource("azure.subscription.resourceIdentity"))
+	},
+	"azure.subscription.machineLearningService.registry.publicNetworkAccess": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).GetPublicNetworkAccess()).ToDataRes(types.String)
+	},
+	"azure.subscription.machineLearningService.registry.intellectualPropertyPublisher": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).GetIntellectualPropertyPublisher()).ToDataRes(types.String)
+	},
+	"azure.subscription.machineLearningService.registry.discoveryUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).GetDiscoveryUrl()).ToDataRes(types.String)
+	},
+	"azure.subscription.machineLearningService.registry.mlFlowRegistryUri": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).GetMlFlowRegistryUri()).ToDataRes(types.String)
+	},
+	"azure.subscription.machineLearningService.registry.privateEndpointConnections": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).GetPrivateEndpointConnections()).ToDataRes(types.Array(types.Resource("azure.subscription.privateEndpointConnection")))
+	},
+	"azure.subscription.machineLearningService.registry.regions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).GetRegions()).ToDataRes(types.Array(types.Resource("azure.subscription.machineLearningService.registry.region")))
+	},
+	"azure.subscription.machineLearningService.registry.roleAssignments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).GetRoleAssignments()).ToDataRes(types.Array(types.Resource("azure.subscription.authorizationService.roleAssignment")))
+	},
+	"azure.subscription.machineLearningService.registry.systemMetadata": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).GetSystemMetadata()).ToDataRes(types.Resource("azure.subscription.systemData"))
+	},
+	"azure.subscription.machineLearningService.registry.region.location": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceRegistryRegion).GetLocation()).ToDataRes(types.String)
+	},
+	"azure.subscription.machineLearningService.registry.region.containerRegistries": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceRegistryRegion).GetContainerRegistries()).ToDataRes(types.Array(types.Resource("azure.subscription.containerRegistryService.registry")))
+	},
+	"azure.subscription.machineLearningService.registry.region.storageAccounts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceRegistryRegion).GetStorageAccounts()).ToDataRes(types.Array(types.Resource("azure.subscription.storageService.account")))
 	},
 	"azure.subscription.machineLearningService.workspace.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).GetId()).ToDataRes(types.String)
@@ -43423,6 +43513,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).ResourcesCoverageStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.extensions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).Extensions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.extension.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.extension.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.extension.isEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension).IsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.extension.additionalProperties": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension).AdditionalProperties, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.extension.operationStatusCode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension).OperationStatusCode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.extension.operationStatusMessage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension).OperationStatusMessage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.cloudDefenderService.defenderForResourceManager.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForResourceManager).__id, ok = v.Value.(string)
 		return
@@ -51953,6 +52071,90 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.machineLearningService.workspaces": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionMachineLearningService).Workspaces, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.registries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningService).Registries, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.registry.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.subscription.machineLearningService.registry.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.registry.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.registry.location": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).Location, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.registry.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.registry.kind": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).Kind, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.registry.skuData": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).SkuData, ok = plugin.RawToTValue[*mqlAzureSubscriptionResourceSku](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.registry.resourceIdentity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).ResourceIdentity, ok = plugin.RawToTValue[*mqlAzureSubscriptionResourceIdentity](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.registry.publicNetworkAccess": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).PublicNetworkAccess, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.registry.intellectualPropertyPublisher": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).IntellectualPropertyPublisher, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.registry.discoveryUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).DiscoveryUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.registry.mlFlowRegistryUri": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).MlFlowRegistryUri, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.registry.privateEndpointConnections": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).PrivateEndpointConnections, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.registry.regions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).Regions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.registry.roleAssignments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).RoleAssignments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.registry.systemMetadata": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceRegistry).SystemMetadata, ok = plugin.RawToTValue[*mqlAzureSubscriptionSystemData](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.registry.region.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceRegistryRegion).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.subscription.machineLearningService.registry.region.location": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceRegistryRegion).Location, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.registry.region.containerRegistries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceRegistryRegion).ContainerRegistries, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.registry.region.storageAccounts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceRegistryRegion).StorageAccounts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.machineLearningService.workspace.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -100454,7 +100656,7 @@ func (c *mqlAzureSubscriptionCloudDefenderServiceDefenderForKeyVaults) GetResour
 type mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesInternal it will be used here
+	mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesInternal
 	SubscriptionId          plugin.TValue[string]
 	Enabled                 plugin.TValue[bool]
 	PricingTier             plugin.TValue[string]
@@ -100467,6 +100669,7 @@ type mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices struct {
 	InheritedFrom           plugin.TValue[string]
 	ReplacedBy              plugin.TValue[[]any]
 	ResourcesCoverageStatus plugin.TValue[string]
+	Extensions              plugin.TValue[[]any]
 }
 
 // createAzureSubscriptionCloudDefenderServiceDefenderForAIServices creates a new instance of this resource
@@ -100552,6 +100755,91 @@ func (c *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices) GetRepla
 
 func (c *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices) GetResourcesCoverageStatus() *plugin.TValue[string] {
 	return &c.ResourcesCoverageStatus
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices) GetExtensions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Extensions, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.cloudDefenderService.defenderForAIServices", c.__id, "extensions")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.extensions()
+	})
+}
+
+// mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension for the azure.subscription.cloudDefenderService.defenderForAIServices.extension resource
+type mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtensionInternal it will be used here
+	Name                   plugin.TValue[string]
+	IsEnabled              plugin.TValue[bool]
+	AdditionalProperties   plugin.TValue[any]
+	OperationStatusCode    plugin.TValue[string]
+	OperationStatusMessage plugin.TValue[string]
+}
+
+// createAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension creates a new instance of this resource
+func createAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.subscription.cloudDefenderService.defenderForAIServices.extension", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension) MqlName() string {
+	return "azure.subscription.cloudDefenderService.defenderForAIServices.extension"
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension) GetIsEnabled() *plugin.TValue[bool] {
+	return &c.IsEnabled
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension) GetAdditionalProperties() *plugin.TValue[any] {
+	return &c.AdditionalProperties
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension) GetOperationStatusCode() *plugin.TValue[string] {
+	return &c.OperationStatusCode
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension) GetOperationStatusMessage() *plugin.TValue[string] {
+	return &c.OperationStatusMessage
 }
 
 // mqlAzureSubscriptionCloudDefenderServiceDefenderForResourceManager for the azure.subscription.cloudDefenderService.defenderForResourceManager resource
@@ -121745,6 +122033,7 @@ type mqlAzureSubscriptionMachineLearningService struct {
 	// optional: if you define mqlAzureSubscriptionMachineLearningServiceInternal it will be used here
 	SubscriptionId plugin.TValue[string]
 	Workspaces     plugin.TValue[[]any]
+	Registries     plugin.TValue[[]any]
 }
 
 // createAzureSubscriptionMachineLearningService creates a new instance of this resource
@@ -121801,6 +122090,267 @@ func (c *mqlAzureSubscriptionMachineLearningService) GetWorkspaces() *plugin.TVa
 		}
 
 		return c.workspaces()
+	})
+}
+
+func (c *mqlAzureSubscriptionMachineLearningService) GetRegistries() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Registries, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.machineLearningService", c.__id, "registries")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.registries()
+	})
+}
+
+// mqlAzureSubscriptionMachineLearningServiceRegistry for the azure.subscription.machineLearningService.registry resource
+type mqlAzureSubscriptionMachineLearningServiceRegistry struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAzureSubscriptionMachineLearningServiceRegistryInternal
+	Id                            plugin.TValue[string]
+	Name                          plugin.TValue[string]
+	Location                      plugin.TValue[string]
+	Tags                          plugin.TValue[map[string]any]
+	Kind                          plugin.TValue[string]
+	SkuData                       plugin.TValue[*mqlAzureSubscriptionResourceSku]
+	ResourceIdentity              plugin.TValue[*mqlAzureSubscriptionResourceIdentity]
+	PublicNetworkAccess           plugin.TValue[string]
+	IntellectualPropertyPublisher plugin.TValue[string]
+	DiscoveryUrl                  plugin.TValue[string]
+	MlFlowRegistryUri             plugin.TValue[string]
+	PrivateEndpointConnections    plugin.TValue[[]any]
+	Regions                       plugin.TValue[[]any]
+	RoleAssignments               plugin.TValue[[]any]
+	SystemMetadata                plugin.TValue[*mqlAzureSubscriptionSystemData]
+}
+
+// createAzureSubscriptionMachineLearningServiceRegistry creates a new instance of this resource
+func createAzureSubscriptionMachineLearningServiceRegistry(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionMachineLearningServiceRegistry{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.subscription.machineLearningService.registry", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceRegistry) MqlName() string {
+	return "azure.subscription.machineLearningService.registry"
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceRegistry) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceRegistry) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceRegistry) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceRegistry) GetLocation() *plugin.TValue[string] {
+	return &c.Location
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceRegistry) GetTags() *plugin.TValue[map[string]any] {
+	return &c.Tags
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceRegistry) GetKind() *plugin.TValue[string] {
+	return &c.Kind
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceRegistry) GetSkuData() *plugin.TValue[*mqlAzureSubscriptionResourceSku] {
+	return &c.SkuData
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceRegistry) GetResourceIdentity() *plugin.TValue[*mqlAzureSubscriptionResourceIdentity] {
+	return &c.ResourceIdentity
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceRegistry) GetPublicNetworkAccess() *plugin.TValue[string] {
+	return &c.PublicNetworkAccess
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceRegistry) GetIntellectualPropertyPublisher() *plugin.TValue[string] {
+	return &c.IntellectualPropertyPublisher
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceRegistry) GetDiscoveryUrl() *plugin.TValue[string] {
+	return &c.DiscoveryUrl
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceRegistry) GetMlFlowRegistryUri() *plugin.TValue[string] {
+	return &c.MlFlowRegistryUri
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceRegistry) GetPrivateEndpointConnections() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PrivateEndpointConnections, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.machineLearningService.registry", c.__id, "privateEndpointConnections")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.privateEndpointConnections()
+	})
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceRegistry) GetRegions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Regions, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.machineLearningService.registry", c.__id, "regions")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.regions()
+	})
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceRegistry) GetRoleAssignments() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.RoleAssignments, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.machineLearningService.registry", c.__id, "roleAssignments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.roleAssignments()
+	})
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceRegistry) GetSystemMetadata() *plugin.TValue[*mqlAzureSubscriptionSystemData] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionSystemData](&c.SystemMetadata, func() (*mqlAzureSubscriptionSystemData, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.machineLearningService.registry", c.__id, "systemMetadata")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionSystemData), nil
+			}
+		}
+
+		return c.systemMetadata()
+	})
+}
+
+// mqlAzureSubscriptionMachineLearningServiceRegistryRegion for the azure.subscription.machineLearningService.registry.region resource
+type mqlAzureSubscriptionMachineLearningServiceRegistryRegion struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAzureSubscriptionMachineLearningServiceRegistryRegionInternal
+	Location            plugin.TValue[string]
+	ContainerRegistries plugin.TValue[[]any]
+	StorageAccounts     plugin.TValue[[]any]
+}
+
+// createAzureSubscriptionMachineLearningServiceRegistryRegion creates a new instance of this resource
+func createAzureSubscriptionMachineLearningServiceRegistryRegion(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionMachineLearningServiceRegistryRegion{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.subscription.machineLearningService.registry.region", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceRegistryRegion) MqlName() string {
+	return "azure.subscription.machineLearningService.registry.region"
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceRegistryRegion) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceRegistryRegion) GetLocation() *plugin.TValue[string] {
+	return &c.Location
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceRegistryRegion) GetContainerRegistries() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ContainerRegistries, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.machineLearningService.registry.region", c.__id, "containerRegistries")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.containerRegistries()
+	})
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceRegistryRegion) GetStorageAccounts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.StorageAccounts, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.machineLearningService.registry.region", c.__id, "storageAccounts")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.storageAccounts()
 	})
 }
 

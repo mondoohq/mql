@@ -163,7 +163,12 @@ func azurePrivateEndpointConnectionToMql(runtime *plugin.Runtime, entry any) (pl
 		if provState, _ := props["provisioningState"].(string); provState != "" {
 			args["provisioningState"] = llx.StringData(provState)
 		}
-		if cs, ok := props["privateLinkServiceConnectionState"].(map[string]any); ok && cs != nil {
+		cs, ok := props["privateLinkServiceConnectionState"].(map[string]any)
+		if !ok {
+			// Machine Learning registries name the same object differently.
+			cs, ok = props["registryPrivateLinkServiceConnectionState"].(map[string]any)
+		}
+		if ok && cs != nil {
 			// Through the same helper the per-SDK callers use. Building the args
 			// here instead is what left an absent field unset rather than null:
 			// a key that never lands in args crosses the plugin boundary as an
