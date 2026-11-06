@@ -3856,6 +3856,100 @@ aws.sagemaker {
   lineageGroups() []aws.sagemaker.lineageGroup
   // List of SageMaker JumpStart hubs
   hubs() []aws.sagemaker.hub
+  // Managed MLflow tracking servers in the account
+  mlflowTrackingServers() []aws.sagemaker.mlflowTrackingServer
+  // Partner AI apps provisioned in the account
+  partnerApps() []aws.sagemaker.partnerApp
+}
+
+// Amazon SageMaker managed MLflow tracking server
+//
+// MLflow tracking server that records experiments, runs, and model artifacts.
+// `url` is the server's endpoint, `iamRole` the role it assumes to write to
+// `artifactStoreBucket`, and `automaticModelRegistration` whether logged
+// models are registered in the SageMaker Model Registry without review. The
+// `arn` field selects a tracking server.
+private aws.sagemaker.mlflowTrackingServer @defaults("name status mlflowVersion") {
+  // ARN of the tracking server
+  arn string
+  // Name of the tracking server
+  name string
+  // Region where the tracking server exists
+  region string
+  // Current status of the tracking server
+  status string
+  // Whether the tracking server is running
+  isActive bool
+  // MLflow version the tracking server runs
+  mlflowVersion string
+  // Time the tracking server was created
+  createdAt time
+  // Time the tracking server was last modified
+  updatedAt time
+  // URL of the tracking server
+  url() string
+  // IAM role the tracking server assumes to access the artifact store
+  iamRole() aws.iam.role
+  // S3 URI where the tracking server stores artifacts
+  artifactStoreUri() string
+  // S3 bucket where the tracking server stores artifacts
+  artifactStoreBucket() aws.s3.bucket
+  // Whether models logged to the tracking server are registered in the SageMaker Model Registry automatically
+  automaticModelRegistration() bool
+  // Size of the tracking server
+  //
+  // One of Small, Medium, or Large.
+  size() string
+  // Weekly maintenance window start, as day and time in UTC
+  weeklyMaintenanceWindowStart() string
+}
+
+// Amazon SageMaker partner AI app
+//
+// Third-party AI application, such as an LLM evaluation or guardrail tool,
+// that SageMaker runs in the account. `authType` reports whether users sign in
+// with IAM or IAM Identity Center, `iamRole` the role the app runs as, `kmsKey`
+// the key encrypting its data, and `adminUsers` who administers it. The `arn`
+// field selects an app.
+private aws.sagemaker.partnerApp @defaults("name type status") {
+  // ARN of the partner app
+  arn string
+  // Name of the partner app
+  name string
+  // Region where the partner app exists
+  region string
+  // Partner application type
+  //
+  // For example lakera-guard, comet, deepchecks-llm-evaluation, or fiddler.
+  type string
+  // Current status of the partner app
+  status string
+  // Time the partner app was created
+  createdAt time
+  // How users authenticate to the app
+  //
+  // IAM or IDC.
+  authType() string
+  // IAM role the app runs as
+  iamRole() aws.iam.role
+  // Customer-managed KMS key encrypting the app's data
+  //
+  // Null when the app uses an AWS-owned key.
+  kmsKey() aws.kms.key
+  // Whether IAM session-based identity is enabled for the app
+  enableIamSessionBasedIdentity() bool
+  // User names of the app's administrators
+  adminUsers() []string
+  // URL users reach the app at
+  baseUrl() string
+  // Version of the app
+  version() string
+  // Date support for the app's current version ends
+  currentVersionEolDate() time
+  // Whether minor version upgrades are applied automatically
+  autoMinorVersionUpgrade() bool
+  // Tier of the app
+  tier() string
 }
 
 // AWS SageMaker notebook instance

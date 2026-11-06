@@ -137,6 +137,8 @@ const (
 	ResourceAwsPersonalizeFilter                                                string = "aws.personalize.filter"
 	ResourceAwsPersonalizeSchema                                                string = "aws.personalize.schema"
 	ResourceAwsSagemaker                                                        string = "aws.sagemaker"
+	ResourceAwsSagemakerMlflowTrackingServer                                    string = "aws.sagemaker.mlflowTrackingServer"
+	ResourceAwsSagemakerPartnerApp                                              string = "aws.sagemaker.partnerApp"
 	ResourceAwsSagemakerNotebookinstance                                        string = "aws.sagemaker.notebookinstance"
 	ResourceAwsSagemakerNotebookinstancedetails                                 string = "aws.sagemaker.notebookinstancedetails"
 	ResourceAwsSagemakerEndpoint                                                string = "aws.sagemaker.endpoint"
@@ -1575,6 +1577,14 @@ func init() {
 		"aws.sagemaker": {
 			// to override args, implement: initAwsSagemaker(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAwsSagemaker,
+		},
+		"aws.sagemaker.mlflowTrackingServer": {
+			// to override args, implement: initAwsSagemakerMlflowTrackingServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsSagemakerMlflowTrackingServer,
+		},
+		"aws.sagemaker.partnerApp": {
+			// to override args, implement: initAwsSagemakerPartnerApp(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsSagemakerPartnerApp,
 		},
 		"aws.sagemaker.notebookinstance": {
 			Init:   initAwsSagemakerNotebookinstance,
@@ -8826,6 +8836,105 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.sagemaker.hubs": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsSagemaker).GetHubs()).ToDataRes(types.Array(types.Resource("aws.sagemaker.hub")))
+	},
+	"aws.sagemaker.mlflowTrackingServers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemaker).GetMlflowTrackingServers()).ToDataRes(types.Array(types.Resource("aws.sagemaker.mlflowTrackingServer")))
+	},
+	"aws.sagemaker.partnerApps": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemaker).GetPartnerApps()).ToDataRes(types.Array(types.Resource("aws.sagemaker.partnerApp")))
+	},
+	"aws.sagemaker.mlflowTrackingServer.arn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerMlflowTrackingServer).GetArn()).ToDataRes(types.String)
+	},
+	"aws.sagemaker.mlflowTrackingServer.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerMlflowTrackingServer).GetName()).ToDataRes(types.String)
+	},
+	"aws.sagemaker.mlflowTrackingServer.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerMlflowTrackingServer).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.sagemaker.mlflowTrackingServer.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerMlflowTrackingServer).GetStatus()).ToDataRes(types.String)
+	},
+	"aws.sagemaker.mlflowTrackingServer.isActive": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerMlflowTrackingServer).GetIsActive()).ToDataRes(types.Bool)
+	},
+	"aws.sagemaker.mlflowTrackingServer.mlflowVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerMlflowTrackingServer).GetMlflowVersion()).ToDataRes(types.String)
+	},
+	"aws.sagemaker.mlflowTrackingServer.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerMlflowTrackingServer).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"aws.sagemaker.mlflowTrackingServer.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerMlflowTrackingServer).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"aws.sagemaker.mlflowTrackingServer.url": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerMlflowTrackingServer).GetUrl()).ToDataRes(types.String)
+	},
+	"aws.sagemaker.mlflowTrackingServer.iamRole": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerMlflowTrackingServer).GetIamRole()).ToDataRes(types.Resource("aws.iam.role"))
+	},
+	"aws.sagemaker.mlflowTrackingServer.artifactStoreUri": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerMlflowTrackingServer).GetArtifactStoreUri()).ToDataRes(types.String)
+	},
+	"aws.sagemaker.mlflowTrackingServer.artifactStoreBucket": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerMlflowTrackingServer).GetArtifactStoreBucket()).ToDataRes(types.Resource("aws.s3.bucket"))
+	},
+	"aws.sagemaker.mlflowTrackingServer.automaticModelRegistration": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerMlflowTrackingServer).GetAutomaticModelRegistration()).ToDataRes(types.Bool)
+	},
+	"aws.sagemaker.mlflowTrackingServer.size": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerMlflowTrackingServer).GetSize()).ToDataRes(types.String)
+	},
+	"aws.sagemaker.mlflowTrackingServer.weeklyMaintenanceWindowStart": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerMlflowTrackingServer).GetWeeklyMaintenanceWindowStart()).ToDataRes(types.String)
+	},
+	"aws.sagemaker.partnerApp.arn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerPartnerApp).GetArn()).ToDataRes(types.String)
+	},
+	"aws.sagemaker.partnerApp.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerPartnerApp).GetName()).ToDataRes(types.String)
+	},
+	"aws.sagemaker.partnerApp.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerPartnerApp).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.sagemaker.partnerApp.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerPartnerApp).GetType()).ToDataRes(types.String)
+	},
+	"aws.sagemaker.partnerApp.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerPartnerApp).GetStatus()).ToDataRes(types.String)
+	},
+	"aws.sagemaker.partnerApp.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerPartnerApp).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"aws.sagemaker.partnerApp.authType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerPartnerApp).GetAuthType()).ToDataRes(types.String)
+	},
+	"aws.sagemaker.partnerApp.iamRole": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerPartnerApp).GetIamRole()).ToDataRes(types.Resource("aws.iam.role"))
+	},
+	"aws.sagemaker.partnerApp.kmsKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerPartnerApp).GetKmsKey()).ToDataRes(types.Resource("aws.kms.key"))
+	},
+	"aws.sagemaker.partnerApp.enableIamSessionBasedIdentity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerPartnerApp).GetEnableIamSessionBasedIdentity()).ToDataRes(types.Bool)
+	},
+	"aws.sagemaker.partnerApp.adminUsers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerPartnerApp).GetAdminUsers()).ToDataRes(types.Array(types.String))
+	},
+	"aws.sagemaker.partnerApp.baseUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerPartnerApp).GetBaseUrl()).ToDataRes(types.String)
+	},
+	"aws.sagemaker.partnerApp.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerPartnerApp).GetVersion()).ToDataRes(types.String)
+	},
+	"aws.sagemaker.partnerApp.currentVersionEolDate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerPartnerApp).GetCurrentVersionEolDate()).ToDataRes(types.Time)
+	},
+	"aws.sagemaker.partnerApp.autoMinorVersionUpgrade": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerPartnerApp).GetAutoMinorVersionUpgrade()).ToDataRes(types.Bool)
+	},
+	"aws.sagemaker.partnerApp.tier": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerPartnerApp).GetTier()).ToDataRes(types.String)
 	},
 	"aws.sagemaker.notebookinstance.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsSagemakerNotebookinstance).GetArn()).ToDataRes(types.String)
@@ -45369,6 +45478,146 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.sagemaker.hubs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsSagemaker).Hubs, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.mlflowTrackingServers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemaker).MlflowTrackingServers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.partnerApps": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemaker).PartnerApps, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.mlflowTrackingServer.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerMlflowTrackingServer).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.sagemaker.mlflowTrackingServer.arn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerMlflowTrackingServer).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.mlflowTrackingServer.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerMlflowTrackingServer).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.mlflowTrackingServer.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerMlflowTrackingServer).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.mlflowTrackingServer.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerMlflowTrackingServer).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.mlflowTrackingServer.isActive": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerMlflowTrackingServer).IsActive, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.mlflowTrackingServer.mlflowVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerMlflowTrackingServer).MlflowVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.mlflowTrackingServer.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerMlflowTrackingServer).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.mlflowTrackingServer.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerMlflowTrackingServer).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.mlflowTrackingServer.url": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerMlflowTrackingServer).Url, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.mlflowTrackingServer.iamRole": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerMlflowTrackingServer).IamRole, ok = plugin.RawToTValue[*mqlAwsIamRole](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.mlflowTrackingServer.artifactStoreUri": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerMlflowTrackingServer).ArtifactStoreUri, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.mlflowTrackingServer.artifactStoreBucket": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerMlflowTrackingServer).ArtifactStoreBucket, ok = plugin.RawToTValue[*mqlAwsS3Bucket](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.mlflowTrackingServer.automaticModelRegistration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerMlflowTrackingServer).AutomaticModelRegistration, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.mlflowTrackingServer.size": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerMlflowTrackingServer).Size, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.mlflowTrackingServer.weeklyMaintenanceWindowStart": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerMlflowTrackingServer).WeeklyMaintenanceWindowStart, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.partnerApp.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerPartnerApp).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.sagemaker.partnerApp.arn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerPartnerApp).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.partnerApp.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerPartnerApp).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.partnerApp.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerPartnerApp).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.partnerApp.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerPartnerApp).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.partnerApp.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerPartnerApp).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.partnerApp.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerPartnerApp).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.partnerApp.authType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerPartnerApp).AuthType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.partnerApp.iamRole": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerPartnerApp).IamRole, ok = plugin.RawToTValue[*mqlAwsIamRole](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.partnerApp.kmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerPartnerApp).KmsKey, ok = plugin.RawToTValue[*mqlAwsKmsKey](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.partnerApp.enableIamSessionBasedIdentity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerPartnerApp).EnableIamSessionBasedIdentity, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.partnerApp.adminUsers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerPartnerApp).AdminUsers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.partnerApp.baseUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerPartnerApp).BaseUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.partnerApp.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerPartnerApp).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.partnerApp.currentVersionEolDate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerPartnerApp).CurrentVersionEolDate, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.partnerApp.autoMinorVersionUpgrade": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerPartnerApp).AutoMinorVersionUpgrade, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.partnerApp.tier": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerPartnerApp).Tier, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.sagemaker.notebookinstance.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -104524,6 +104773,8 @@ type mqlAwsSagemaker struct {
 	Associations                      plugin.TValue[[]any]
 	LineageGroups                     plugin.TValue[[]any]
 	Hubs                              plugin.TValue[[]any]
+	MlflowTrackingServers             plugin.TValue[[]any]
+	PartnerApps                       plugin.TValue[[]any]
 }
 
 // createAwsSagemaker creates a new instance of this resource
@@ -105328,6 +105579,345 @@ func (c *mqlAwsSagemaker) GetHubs() *plugin.TValue[[]any] {
 		}
 
 		return c.hubs()
+	})
+}
+
+func (c *mqlAwsSagemaker) GetMlflowTrackingServers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MlflowTrackingServers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.sagemaker", c.__id, "mlflowTrackingServers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.mlflowTrackingServers()
+	})
+}
+
+func (c *mqlAwsSagemaker) GetPartnerApps() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PartnerApps, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.sagemaker", c.__id, "partnerApps")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.partnerApps()
+	})
+}
+
+// mqlAwsSagemakerMlflowTrackingServer for the aws.sagemaker.mlflowTrackingServer resource
+type mqlAwsSagemakerMlflowTrackingServer struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsSagemakerMlflowTrackingServerInternal
+	Arn                          plugin.TValue[string]
+	Name                         plugin.TValue[string]
+	Region                       plugin.TValue[string]
+	Status                       plugin.TValue[string]
+	IsActive                     plugin.TValue[bool]
+	MlflowVersion                plugin.TValue[string]
+	CreatedAt                    plugin.TValue[*time.Time]
+	UpdatedAt                    plugin.TValue[*time.Time]
+	Url                          plugin.TValue[string]
+	IamRole                      plugin.TValue[*mqlAwsIamRole]
+	ArtifactStoreUri             plugin.TValue[string]
+	ArtifactStoreBucket          plugin.TValue[*mqlAwsS3Bucket]
+	AutomaticModelRegistration   plugin.TValue[bool]
+	Size                         plugin.TValue[string]
+	WeeklyMaintenanceWindowStart plugin.TValue[string]
+}
+
+// createAwsSagemakerMlflowTrackingServer creates a new instance of this resource
+func createAwsSagemakerMlflowTrackingServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsSagemakerMlflowTrackingServer{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.sagemaker.mlflowTrackingServer", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsSagemakerMlflowTrackingServer) MqlName() string {
+	return "aws.sagemaker.mlflowTrackingServer"
+}
+
+func (c *mqlAwsSagemakerMlflowTrackingServer) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsSagemakerMlflowTrackingServer) GetArn() *plugin.TValue[string] {
+	return &c.Arn
+}
+
+func (c *mqlAwsSagemakerMlflowTrackingServer) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAwsSagemakerMlflowTrackingServer) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlAwsSagemakerMlflowTrackingServer) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlAwsSagemakerMlflowTrackingServer) GetIsActive() *plugin.TValue[bool] {
+	return &c.IsActive
+}
+
+func (c *mqlAwsSagemakerMlflowTrackingServer) GetMlflowVersion() *plugin.TValue[string] {
+	return &c.MlflowVersion
+}
+
+func (c *mqlAwsSagemakerMlflowTrackingServer) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlAwsSagemakerMlflowTrackingServer) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlAwsSagemakerMlflowTrackingServer) GetUrl() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Url, func() (string, error) {
+		return c.url()
+	})
+}
+
+func (c *mqlAwsSagemakerMlflowTrackingServer) GetIamRole() *plugin.TValue[*mqlAwsIamRole] {
+	return plugin.GetOrCompute[*mqlAwsIamRole](&c.IamRole, func() (*mqlAwsIamRole, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.sagemaker.mlflowTrackingServer", c.__id, "iamRole")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsIamRole), nil
+			}
+		}
+
+		return c.iamRole()
+	})
+}
+
+func (c *mqlAwsSagemakerMlflowTrackingServer) GetArtifactStoreUri() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ArtifactStoreUri, func() (string, error) {
+		return c.artifactStoreUri()
+	})
+}
+
+func (c *mqlAwsSagemakerMlflowTrackingServer) GetArtifactStoreBucket() *plugin.TValue[*mqlAwsS3Bucket] {
+	return plugin.GetOrCompute[*mqlAwsS3Bucket](&c.ArtifactStoreBucket, func() (*mqlAwsS3Bucket, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.sagemaker.mlflowTrackingServer", c.__id, "artifactStoreBucket")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsS3Bucket), nil
+			}
+		}
+
+		return c.artifactStoreBucket()
+	})
+}
+
+func (c *mqlAwsSagemakerMlflowTrackingServer) GetAutomaticModelRegistration() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AutomaticModelRegistration, func() (bool, error) {
+		return c.automaticModelRegistration()
+	})
+}
+
+func (c *mqlAwsSagemakerMlflowTrackingServer) GetSize() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Size, func() (string, error) {
+		return c.size()
+	})
+}
+
+func (c *mqlAwsSagemakerMlflowTrackingServer) GetWeeklyMaintenanceWindowStart() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.WeeklyMaintenanceWindowStart, func() (string, error) {
+		return c.weeklyMaintenanceWindowStart()
+	})
+}
+
+// mqlAwsSagemakerPartnerApp for the aws.sagemaker.partnerApp resource
+type mqlAwsSagemakerPartnerApp struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsSagemakerPartnerAppInternal
+	Arn                           plugin.TValue[string]
+	Name                          plugin.TValue[string]
+	Region                        plugin.TValue[string]
+	Type                          plugin.TValue[string]
+	Status                        plugin.TValue[string]
+	CreatedAt                     plugin.TValue[*time.Time]
+	AuthType                      plugin.TValue[string]
+	IamRole                       plugin.TValue[*mqlAwsIamRole]
+	KmsKey                        plugin.TValue[*mqlAwsKmsKey]
+	EnableIamSessionBasedIdentity plugin.TValue[bool]
+	AdminUsers                    plugin.TValue[[]any]
+	BaseUrl                       plugin.TValue[string]
+	Version                       plugin.TValue[string]
+	CurrentVersionEolDate         plugin.TValue[*time.Time]
+	AutoMinorVersionUpgrade       plugin.TValue[bool]
+	Tier                          plugin.TValue[string]
+}
+
+// createAwsSagemakerPartnerApp creates a new instance of this resource
+func createAwsSagemakerPartnerApp(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsSagemakerPartnerApp{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.sagemaker.partnerApp", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsSagemakerPartnerApp) MqlName() string {
+	return "aws.sagemaker.partnerApp"
+}
+
+func (c *mqlAwsSagemakerPartnerApp) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsSagemakerPartnerApp) GetArn() *plugin.TValue[string] {
+	return &c.Arn
+}
+
+func (c *mqlAwsSagemakerPartnerApp) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAwsSagemakerPartnerApp) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlAwsSagemakerPartnerApp) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlAwsSagemakerPartnerApp) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlAwsSagemakerPartnerApp) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlAwsSagemakerPartnerApp) GetAuthType() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.AuthType, func() (string, error) {
+		return c.authType()
+	})
+}
+
+func (c *mqlAwsSagemakerPartnerApp) GetIamRole() *plugin.TValue[*mqlAwsIamRole] {
+	return plugin.GetOrCompute[*mqlAwsIamRole](&c.IamRole, func() (*mqlAwsIamRole, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.sagemaker.partnerApp", c.__id, "iamRole")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsIamRole), nil
+			}
+		}
+
+		return c.iamRole()
+	})
+}
+
+func (c *mqlAwsSagemakerPartnerApp) GetKmsKey() *plugin.TValue[*mqlAwsKmsKey] {
+	return plugin.GetOrCompute[*mqlAwsKmsKey](&c.KmsKey, func() (*mqlAwsKmsKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.sagemaker.partnerApp", c.__id, "kmsKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsKmsKey), nil
+			}
+		}
+
+		return c.kmsKey()
+	})
+}
+
+func (c *mqlAwsSagemakerPartnerApp) GetEnableIamSessionBasedIdentity() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.EnableIamSessionBasedIdentity, func() (bool, error) {
+		return c.enableIamSessionBasedIdentity()
+	})
+}
+
+func (c *mqlAwsSagemakerPartnerApp) GetAdminUsers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AdminUsers, func() ([]any, error) {
+		return c.adminUsers()
+	})
+}
+
+func (c *mqlAwsSagemakerPartnerApp) GetBaseUrl() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.BaseUrl, func() (string, error) {
+		return c.baseUrl()
+	})
+}
+
+func (c *mqlAwsSagemakerPartnerApp) GetVersion() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Version, func() (string, error) {
+		return c.version()
+	})
+}
+
+func (c *mqlAwsSagemakerPartnerApp) GetCurrentVersionEolDate() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.CurrentVersionEolDate, func() (*time.Time, error) {
+		return c.currentVersionEolDate()
+	})
+}
+
+func (c *mqlAwsSagemakerPartnerApp) GetAutoMinorVersionUpgrade() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AutoMinorVersionUpgrade, func() (bool, error) {
+		return c.autoMinorVersionUpgrade()
+	})
+}
+
+func (c *mqlAwsSagemakerPartnerApp) GetTier() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Tier, func() (string, error) {
+		return c.tier()
 	})
 }
 

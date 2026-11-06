@@ -4568,3 +4568,38 @@ func initAwsSagemakerProcessingjob(runtime *plugin.Runtime, args map[string]*llx
 	}
 	return nil, nil, errors.New("sagemaker processing job does not exist")
 }
+
+// sagemakerRegionList fans collect out over the connection's regions. A region
+// that refuses the call or doesn't offer it is logged and skipped.
+func sagemakerRegionList(conn *connection.AwsConnection, collect func(svc *sagemaker.Client, region string) ([]any, error)) ([]any, error) {
+	regions, err := conn.Regions()
+	if err != nil {
+		return nil, err
+	}
+	tasks := make([]*jobpool.Job, 0, len(regions))
+	for _, region := range regions {
+		tasks = append(tasks, jobpool.NewJob(func() (jobpool.JobResult, error) {
+			res, err := collect(conn.Sagemaker(region), region)
+			if err != nil {
+				if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
+					log.Warn().Str("region", region).Msg("error accessing region for AWS API")
+					return []any{}, nil
+				}
+				return nil, err
+			}
+			return jobpool.JobResult(res), nil
+		}))
+	}
+	pool := jobpool.CreatePool(tasks, 5)
+	pool.Run()
+	if pool.HasErrors() {
+		return nil, pool.GetErrors()
+	}
+	res := []any{}
+	for i := range pool.Jobs {
+		if pool.Jobs[i].Result != nil {
+			res = append(res, pool.Jobs[i].Result.([]any)...)
+		}
+	}
+	return res, nil
+}

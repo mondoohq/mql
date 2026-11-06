@@ -1,7 +1,7 @@
 {
   "provider": "aws",
   "version": "14.6.4",
-  "generated_at": "2026-11-06T17:21:42Z",
+  "generated_at": "2026-11-06T12:20:41-08:00",
   "permissions": [
     "access-analyzer:GetFinding",
     "access-analyzer:ListAnalyzers",
@@ -913,6 +913,7 @@
     "sagemaker:DescribeInferenceComponent",
     "sagemaker:DescribeLabelingJob",
     "sagemaker:DescribeLineageGroup",
+    "sagemaker:DescribeMlflowTrackingServer",
     "sagemaker:DescribeModel",
     "sagemaker:DescribeModelBiasJobDefinition",
     "sagemaker:DescribeModelCard",
@@ -923,6 +924,7 @@
     "sagemaker:DescribeMonitoringSchedule",
     "sagemaker:DescribeNotebookInstance",
     "sagemaker:DescribeNotebookInstanceLifecycleConfig",
+    "sagemaker:DescribePartnerApp",
     "sagemaker:DescribePipeline",
     "sagemaker:DescribeProcessingJob",
     "sagemaker:DescribeProject",
@@ -962,6 +964,7 @@
     "sagemaker:ListInferenceComponents",
     "sagemaker:ListLabelingJobs",
     "sagemaker:ListLineageGroups",
+    "sagemaker:ListMlflowTrackingServers",
     "sagemaker:ListModelBiasJobDefinitions",
     "sagemaker:ListModelCards",
     "sagemaker:ListModelExplainabilityJobDefinitions",
@@ -972,6 +975,7 @@
     "sagemaker:ListMonitoringSchedules",
     "sagemaker:ListNotebookInstanceLifecycleConfigs",
     "sagemaker:ListNotebookInstances",
+    "sagemaker:ListPartnerApps",
     "sagemaker:ListPipelines",
     "sagemaker:ListProcessingJobs",
     "sagemaker:ListProjects",
@@ -6867,6 +6871,12 @@
       "source_file": "aws_sagemaker_lineage.go"
     },
     {
+      "permission": "sagemaker:DescribeMlflowTrackingServer",
+      "service": "sagemaker",
+      "action": "DescribeMlflowTrackingServer",
+      "source_file": "aws_sagemaker_mlflow.go"
+    },
+    {
       "permission": "sagemaker:DescribeModel",
       "service": "sagemaker",
       "action": "DescribeModel",
@@ -6925,6 +6935,12 @@
       "service": "sagemaker",
       "action": "DescribeNotebookInstanceLifecycleConfig",
       "source_file": "aws_sagemaker_infra.go"
+    },
+    {
+      "permission": "sagemaker:DescribePartnerApp",
+      "service": "sagemaker",
+      "action": "DescribePartnerApp",
+      "source_file": "aws_sagemaker_mlflow.go"
     },
     {
       "permission": "sagemaker:DescribePipeline",
@@ -7161,6 +7177,12 @@
       "source_file": "aws_sagemaker_lineage.go"
     },
     {
+      "permission": "sagemaker:ListMlflowTrackingServers",
+      "service": "sagemaker",
+      "action": "ListMlflowTrackingServers",
+      "source_file": "aws_sagemaker_mlflow.go"
+    },
+    {
       "permission": "sagemaker:ListModelBiasJobDefinitions",
       "service": "sagemaker",
       "action": "ListModelBiasJobDefinitions",
@@ -7219,6 +7241,12 @@
       "service": "sagemaker",
       "action": "ListNotebookInstances",
       "source_file": "aws_sagemaker.go"
+    },
+    {
+      "permission": "sagemaker:ListPartnerApps",
+      "service": "sagemaker",
+      "action": "ListPartnerApps",
+      "source_file": "aws_sagemaker_mlflow.go"
     },
     {
       "permission": "sagemaker:ListPipelines",
