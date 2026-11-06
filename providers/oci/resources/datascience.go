@@ -285,6 +285,162 @@ func (o *mqlOciAiDataScienceModel) modelVersionSet() (*mqlOciAiDataScienceModelV
 	return r.(*mqlOciAiDataScienceModelVersionSet), nil
 }
 
+// signatures lists the signatures made over the model's artifact. The list
+// API is keyed by model, so this is one call per model, made only when the
+// field is read.
+func (o *mqlOciAiDataScienceModel) signatures() ([]any, error) {
+	region := ociRegionFromOCID(o.Id.Data)
+	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
+	svc, err := conn.DataScienceClient(region)
+	if err != nil {
+		return nil, err
+	}
+	compartmentID := o.CompartmentID.Data
+	ctx := context.Background()
+	items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]datascience.ModelArtifactSignatureSummary, *string, error) {
+		resp, err := svc.ListModelArtifactSignatures(ctx, datascience.ListModelArtifactSignaturesRequest{
+			ModelId:       new(o.Id.Data),
+			CompartmentId: new(compartmentID),
+			Page:          page,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		return resp.Items, resp.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	res := make([]any, 0, len(items))
+	for i := range items {
+		s := items[i]
+		mqlSig, err := createOciResourceInCompartment(o.MqlRuntime, "oci.ai.dataScience.modelArtifactSignature", stringValue(s.CompartmentId), map[string]*llx.RawData{
+			"id":           llx.StringDataPtr(s.Id),
+			"name":         llx.StringDataPtr(s.DisplayName),
+			"digest":       llx.StringDataPtr(s.Digest),
+			"state":        llx.StringData(string(s.LifecycleState)),
+			"createdBy":    llx.StringDataPtr(s.CreatedBy),
+			"created":      sdkTimeData(s.TimeCreated),
+			"timeUpdated":  sdkTimeData(s.TimeUpdated),
+			"freeformTags": llx.MapData(strMapToAny(s.FreeformTags), types.String),
+			"definedTags":  llx.MapData(definedTagsToAny(s.DefinedTags), types.Any),
+		})
+		if err != nil {
+			return nil, err
+		}
+		sig := mqlSig.(*mqlOciAiDataScienceModelArtifactSignature)
+		sig.cacheModelID = stringValue(s.ModelId)
+		sig.cacheRegion = region
+		res = append(res, sig)
+	}
+	return res, nil
+}
+
+// ----- model artifact signatures -----
+
+type mqlOciAiDataScienceModelArtifactSignatureInternal struct {
+	ociCompartmentRef
+	cacheModelID string
+	cacheRegion  string
+	details      ociLazy[*datascience.ModelArtifactSignature]
+}
+
+func (o *mqlOciAiDataScienceModelArtifactSignature) id() (string, error) {
+	return "oci.ai.dataScience.modelArtifactSignature/" + o.Id.Data, nil
+}
+
+func (o *mqlOciAiDataScienceModelArtifactSignature) compartment() (*mqlOciCompartment, error) {
+	return resolveOciCompartment(o.MqlRuntime, o.cacheCompartmentID, &o.Compartment)
+}
+
+func (o *mqlOciAiDataScienceModelArtifactSignature) model() (*mqlOciAiDataScienceModel, error) {
+	return resolveRef(o.MqlRuntime, "oci.ai.dataScience.model", o.cacheModelID, &o.Model)
+}
+
+// getDetails reads the signature record. The list API's summary does not
+// carry the KMS key, key version, or signing algorithm.
+func (o *mqlOciAiDataScienceModelArtifactSignature) getDetails() (*datascience.ModelArtifactSignature, error) {
+	return o.details.get(func() (*datascience.ModelArtifactSignature, error) {
+		region := o.cacheRegion
+		if region == "" {
+			region = ociRegionFromOCID(o.Id.Data)
+		}
+		conn := o.MqlRuntime.Connection.(*connection.OciConnection)
+		svc, err := conn.DataScienceClient(region)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := svc.GetModelArtifactSignature(context.Background(), datascience.GetModelArtifactSignatureRequest{
+			ModelId:             new(o.cacheModelID),
+			ArtifactSignatureId: new(o.Id.Data),
+		})
+		if err != nil {
+			return nil, err
+		}
+		return &resp.ModelArtifactSignature, nil
+	})
+}
+
+func (o *mqlOciAiDataScienceModelArtifactSignature) signingAlgorithm() (string, error) {
+	d, err := o.getDetails()
+	if err != nil {
+		return "", err
+	}
+	return string(d.SigningAlgorithm), nil
+}
+
+func (o *mqlOciAiDataScienceModelArtifactSignature) kmsKey() (*mqlOciKmsKey, error) {
+	d, err := o.getDetails()
+	if err != nil {
+		return nil, err
+	}
+	return resolveOciKmsKey(o.MqlRuntime, ocidOrEmpty(stringValue(d.KmsKeyId)), &o.KmsKey)
+}
+
+// kmsKeyVersion finds the signing key version among the key's versions: key
+// versions have no lookup of their own.
+func (o *mqlOciAiDataScienceModelArtifactSignature) kmsKeyVersion() (*mqlOciKmsKeyVersion, error) {
+	d, err := o.getDetails()
+	if err != nil {
+		return nil, err
+	}
+	versionID := stringValue(d.KmsKeyVersionId)
+	if versionID == "" {
+		o.KmsKeyVersion.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	key := o.GetKmsKey()
+	if key.Error != nil {
+		return nil, key.Error
+	}
+	if key.Data == nil {
+		o.KmsKeyVersion.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	versions := key.Data.GetKeyVersions()
+	if versions.Error != nil {
+		return nil, versions.Error
+	}
+	if v := ociKeyVersionByID(versions.Data, versionID); v != nil {
+		return v, nil
+	}
+	o.KmsKeyVersion.State = plugin.StateIsSet | plugin.StateIsNull
+	return nil, nil
+}
+
+// ociKeyVersionByID picks the key version with the given OCID out of a key's
+// listed versions, or nil when none matches.
+func ociKeyVersionByID(items []any, id string) *mqlOciKmsKeyVersion {
+	for _, raw := range items {
+		v, ok := raw.(*mqlOciKmsKeyVersion)
+		if ok && v.Id.Data == id {
+			return v
+		}
+	}
+	return nil
+}
+
 // ----- model version sets -----
 
 func (o *mqlOciAiDataScience) modelVersionSets() ([]any, error) {
