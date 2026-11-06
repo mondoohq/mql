@@ -127,6 +127,11 @@ func cognitiveServicesAccountToMql(runtime *plugin.Runtime, account *armcognitiv
 	userOwnedStorage := []any{}
 	networkInjections := []any{}
 	commitmentPlanAssociations := []any{}
+	// Rule, storage and injection entries carry another resource's ARM id
+	// (a subnet, a storage account), which any number of accounts can share.
+	// Their cache keys are qualified by the owning account so two accounts
+	// naming the same subnet do not resolve to one cached entry.
+	accountId := *orZero(account.ID)
 	multiRegionSettings := []any{}
 
 	if p := account.Properties; p != nil {
@@ -174,6 +179,7 @@ func cognitiveServicesAccountToMql(runtime *plugin.Runtime, account *armcognitiv
 					ignore = *vr.IgnoreMissingVnetServiceEndpoint
 				}
 				mqlVr, err := CreateResource(runtime, "azure.subscription.cognitiveServicesService.account.virtualNetworkRule", map[string]*llx.RawData{
+					"__id":                             llx.StringData(subResourceCacheID(nil, accountId, "virtualNetworkRules", *vr.ID)),
 					"id":                               llx.StringDataPtr(vr.ID),
 					"state":                            llx.StringData(state),
 					"ignoreMissingVnetServiceEndpoint": llx.BoolData(ignore),
@@ -245,6 +251,7 @@ func cognitiveServicesAccountToMql(runtime *plugin.Runtime, account *armcognitiv
 				identityClientId = *uos.IdentityClientID
 			}
 			mqlUos, err := CreateResource(runtime, "azure.subscription.cognitiveServicesService.account.userOwnedStorage", map[string]*llx.RawData{
+				"__id":             llx.StringData(subResourceCacheID(nil, accountId, "userOwnedStorage", *uos.ResourceID)),
 				"id":               llx.StringDataPtr(uos.ResourceID),
 				"identityClientId": llx.StringData(identityClientId),
 			})
@@ -292,10 +299,10 @@ func cognitiveServicesAccountToMql(runtime *plugin.Runtime, account *armcognitiv
 			}
 			mqlNi, err := CreateResource(runtime, "azure.subscription.cognitiveServicesService.account.networkInjection", map[string]*llx.RawData{
 				// The subnet ARM ID alone is not unique: the same subnet can back
-				// more than one injection scenario. Key the cache on subnet+scenario
-				// while keeping the user-facing id the bare subnet ID so subnet()
-				// still resolves.
-				"__id":                       llx.StringData(*ni.SubnetArmID + "/" + scenario),
+				// more than one injection scenario, and more than one account. Key
+				// the cache on account+subnet+scenario while keeping the user-facing
+				// id the bare subnet ID so subnet() still resolves.
+				"__id":                       llx.StringData(subResourceCacheID(nil, accountId, "networkInjections", *ni.SubnetArmID+"/"+scenario)),
 				"id":                         llx.StringDataPtr(ni.SubnetArmID),
 				"scenario":                   llx.StringData(scenario),
 				"useMicrosoftManagedNetwork": llx.BoolData(useMSFT),
@@ -525,12 +532,15 @@ func (a *mqlAzureSubscriptionCognitiveServicesServiceAccount) defenderForAIEnabl
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			var respErr *azcore.ResponseError
-			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden {
+			// A refused read says nothing about the setting, so it must not
+			// report false ("off"). Legacy mode answers null, structured errors
+			// a Forbidden naming the permission.
+			if isAzureAccessDenied(err) && !plugin.StructuredErrors() {
 				log.Warn().Err(err).Msg("could not read Defender for AI settings due to access denied")
+				a.DefenderForAIEnabled.State = plugin.StateIsSet | plugin.StateIsNull
 				return false, nil
 			}
-			return false, err
+			return false, classifyAzureRefusal(err, "Microsoft.CognitiveServices/accounts/defenderForAISettings/read")
 		}
 		for _, s := range page.Value {
 			if s == nil || s.Properties == nil || s.Properties.State == nil {
