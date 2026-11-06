@@ -122,6 +122,46 @@ snowflake.account {
   // region), and region-group values such as AWS_US, AWS_EU, AWS_APJ, AZURE_US,
   // or AWS_US_ANY. Empty when the parameter is unset.
   cortexEnabledCrossRegion() string
+  // Value of the account's CORTEX_MODELS_ALLOWLIST parameter
+  //
+  // Comma-separated list of the models Cortex AI functions may call, or `All`
+  // to allow every model and `None` to block them. Empty when the parameter is
+  // unset.
+  cortexModelsAllowlist() string
+  // Whether Cortex Analyst is enabled for the account
+  //
+  // Value of the ENABLE_CORTEX_ANALYST parameter. Null when the parameter is
+  // not reported.
+  enableCortexAnalyst() bool
+  // Daily estimated credit limit per user for Cortex Code CLI
+  //
+  // Value of the CORTEX_CODE_CLI_DAILY_EST_CREDIT_LIMIT_PER_USER parameter: -1
+  // for no limit, 0 to block usage, or the credits a user may spend over a
+  // rolling 24 hours. Null when the parameter is not reported.
+  cortexCodeCliDailyEstCreditLimitPerUser() int
+  // Daily estimated credit limit per user for Cortex Code in the desktop app
+  //
+  // Value of the CORTEX_CODE_DESKTOP_DAILY_EST_CREDIT_LIMIT_PER_USER
+  // parameter: -1 for no limit, 0 to block usage, or the credits a user may
+  // spend over a rolling 24 hours. Null when the parameter is not reported.
+  cortexCodeDesktopDailyEstCreditLimitPerUser() int
+  // Daily estimated credit limit per user for Cortex Code in Snowsight
+  //
+  // Value of the CORTEX_CODE_SNOWSIGHT_DAILY_EST_CREDIT_LIMIT_PER_USER
+  // parameter: -1 for no limit, 0 to block usage, or the credits a user may
+  // spend over a rolling 24 hours. Null when the parameter is not reported.
+  cortexCodeSnowsightDailyEstCreditLimitPerUser() int
+  // Database role SNOWFLAKE.CORTEX_USER
+  //
+  // The role that allows calling Cortex AI functions. Its `grantees` lists the
+  // roles that hold it; Snowflake grants it to PUBLIC by default, which lets
+  // every user call Cortex. Null when the role is not visible to the scanning
+  // role.
+  cortexUserRole() snowflake.databaseRole
+  // Cortex Agents in the account
+  cortexAgents() []snowflake.cortexAgent
+  // Snowflake-managed MCP servers in the account
+  mcpServers() []snowflake.mcpServer
   // Tables in the account
   tables() []snowflake.table
   // External tables in the account (tables backed by data in external storage)
@@ -870,6 +910,8 @@ snowflake.grant @defaults("privilege grantedOn name granteeName") {
   // Object type the privilege is on (e.g., DATABASE, SCHEMA, TABLE, ROLE)
   grantedOn string
   // Fully qualified name of the object the privilege is on
+  //
+  // For a grant listed by a role's `grantees`, the role that was granted.
   name string
   // Type of grantee (ROLE, USER, SHARE, DATABASE_ROLE, APPLICATION_ROLE, APPLICATION)
   grantedTo string
@@ -1927,6 +1969,136 @@ snowflake.cortexSearchService @defaults("name databaseName schemaName") {
   definition() string
   // URL clients call to query the service
   serviceQueryUrl() string
+}
+
+// Snowflake Cortex Agent
+//
+// A Cortex Agent in the account, which answers requests by orchestrating a
+// model over a set of tools: Cortex Analyst over semantic views, Cortex Search
+// services, and custom functions or procedures. Covers the owner, the
+// orchestration model and budget, and the tools with the search services and
+// warehouses they use. Select an agent by name, for example
+// `snowflake.account.cortexAgents.where(name == "SALES_AGENT")`.
+snowflake.cortexAgent @defaults("name databaseName schemaName") {
+  // Agent name
+  name string
+  // Name of the database that contains the agent
+  databaseName string
+  // Name of the schema that contains the agent
+  schemaName string
+  // Database that contains the agent
+  database() snowflake.database
+  // Schema that contains the agent
+  schema() snowflake.schema
+  // Role that owns the agent
+  ownerRole() snowflake.role
+  // Comment on the agent
+  comment string
+  // Name shown to users of the agent
+  displayName string
+  // Time the agent was created
+  createdAt time
+  // Model that orchestrates the agent
+  //
+  // Empty when the specification does not name one and Snowflake picks the
+  // model.
+  orchestrationModel() string
+  // Time budget for one request, in seconds
+  //
+  // Null when no budget is set.
+  budgetSeconds() int
+  // Token budget for one request
+  //
+  // Null when no budget is set.
+  budgetTokens() int
+  // Tools the agent can call
+  tools() []snowflake.cortexAgent.tool
+}
+
+// Snowflake Cortex Agent tool
+snowflake.cortexAgent.tool @defaults("name type") {
+  // Tool name, unique within the agent
+  name string
+  // Tool type, for example cortex_analyst_text_to_sql, cortex_search, or generic
+  type string
+  // Description the model reads when choosing the tool
+  description string
+  // Settings for the tool from the agent's tool_resources
+  //
+  // The keys depend on the tool type, for example `semantic_view` for Cortex
+  // Analyst, `search_service` and `max_results` for Cortex Search, or
+  // `identifier` and `execution_environment` for a custom tool.
+  resources dict
+  // Cortex Search service the tool queries
+  //
+  // Null for a tool that does not use a search service, and when the service
+  // is not one the scanning role can list.
+  searchService() snowflake.cortexSearchService
+  // Warehouse the tool runs on
+  //
+  // Null for a tool without an execution environment, and when the warehouse
+  // is not one the scanning role can list.
+  warehouse() snowflake.warehouse
+}
+
+// Snowflake MCP server
+//
+// A Snowflake-managed Model Context Protocol server, which exposes Snowflake
+// objects as tools to outside MCP clients and agents. Covers the owner and each
+// tool with what it exposes. A `SYSTEM_EXECUTE_SQL` tool lets a client run any
+// SQL the calling role may run. Select a server by name, for example
+// `snowflake.account.mcpServers.where(name == "ANALYTICS_MCP")`.
+snowflake.mcpServer @defaults("name databaseName schemaName") {
+  // MCP server name
+  name string
+  // Name of the database that contains the server
+  databaseName string
+  // Name of the schema that contains the server
+  schemaName string
+  // Database that contains the server
+  database() snowflake.database
+  // Schema that contains the server
+  schema() snowflake.schema
+  // Role that owns the server
+  ownerRole() snowflake.role
+  // Comment on the server
+  comment string
+  // Time the server was created
+  createdAt time
+  // Tools the server exposes
+  tools() []snowflake.mcpServer.tool
+}
+
+// Snowflake MCP server tool
+snowflake.mcpServer.tool @defaults("name type") {
+  // Tool name, unique within the server
+  name string
+  // Title shown to MCP clients
+  title string
+  // Tool type
+  //
+  // For example CORTEX_SEARCH_SERVICE_QUERY, CORTEX_ANALYST_MESSAGE,
+  // CORTEX_AGENT_RUN, SYSTEM_EXECUTE_SQL, or GENERIC.
+  type string
+  // Description MCP clients read when choosing the tool
+  description string
+  // Fully qualified name of the object the tool exposes
+  //
+  // A search service, semantic view, agent, function, or procedure, depending
+  // on `type`. Empty for SYSTEM_EXECUTE_SQL.
+  identifier string
+  // Tool settings, such as the warehouse a custom tool runs on
+  config dict
+  // Cortex Search service the tool exposes
+  //
+  // Null for a tool of another type, and when the service is not one the
+  // scanning role can list.
+  searchService() snowflake.cortexSearchService
+  // Cortex Agent the tool exposes
+  //
+  // Null for a tool of another type, and when the agent is not one the
+  // scanning role can list.
+  cortexAgent() snowflake.cortexAgent
 }
 
 // Snowflake table

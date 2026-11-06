@@ -5,6 +5,7 @@ package resources
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -120,6 +121,95 @@ func (r *mqlSnowflakeAccount) cortexEnabledCrossRegion() (string, error) {
 		return "", err
 	}
 	return findParameterValue(parameters, "CORTEX_ENABLED_CROSS_REGION"), nil
+}
+
+func (r *mqlSnowflakeAccount) cortexModelsAllowlist() (string, error) {
+	parameters, err := r.showAccountParameters()
+	if err != nil {
+		return "", err
+	}
+	return findParameterValue(parameters, "CORTEX_MODELS_ALLOWLIST"), nil
+}
+
+func (r *mqlSnowflakeAccount) enableCortexAnalyst() (bool, error) {
+	parameters, err := r.showAccountParameters()
+	if err != nil {
+		return false, err
+	}
+	v, ok := parameterBool(parameters, "ENABLE_CORTEX_ANALYST")
+	if !ok {
+		r.EnableCortexAnalyst.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return v, nil
+}
+
+func (r *mqlSnowflakeAccount) cortexCodeCliDailyEstCreditLimitPerUser() (int64, error) {
+	return r.accountIntParameter("CORTEX_CODE_CLI_DAILY_EST_CREDIT_LIMIT_PER_USER", &r.CortexCodeCliDailyEstCreditLimitPerUser)
+}
+
+func (r *mqlSnowflakeAccount) cortexCodeDesktopDailyEstCreditLimitPerUser() (int64, error) {
+	return r.accountIntParameter("CORTEX_CODE_DESKTOP_DAILY_EST_CREDIT_LIMIT_PER_USER", &r.CortexCodeDesktopDailyEstCreditLimitPerUser)
+}
+
+func (r *mqlSnowflakeAccount) cortexCodeSnowsightDailyEstCreditLimitPerUser() (int64, error) {
+	return r.accountIntParameter("CORTEX_CODE_SNOWSIGHT_DAILY_EST_CREDIT_LIMIT_PER_USER", &r.CortexCodeSnowsightDailyEstCreditLimitPerUser)
+}
+
+// accountIntParameter reads an integer account parameter, reporting the field
+// as null when the account does not report the parameter or its value is not
+// an integer.
+func (r *mqlSnowflakeAccount) accountIntParameter(key string, field *plugin.TValue[int64]) (int64, error) {
+	parameters, err := r.showAccountParameters()
+	if err != nil {
+		return 0, err
+	}
+	v, ok := parameterInt(parameters, key)
+	if !ok {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return v, nil
+}
+
+// findParameter returns the parameter whose key matches the given key
+// (case-insensitively), or nil when the account does not report it.
+func findParameter(parameters []*sdk.Parameter, key string) *sdk.Parameter {
+	for _, p := range parameters {
+		if p != nil && strings.EqualFold(p.Key, key) {
+			return p
+		}
+	}
+	return nil
+}
+
+// parameterBool parses a boolean parameter. It reports false for the second
+// result when the parameter is absent or its value is not a boolean, so the
+// caller can return null rather than claim the setting is off.
+func parameterBool(parameters []*sdk.Parameter, key string) (bool, bool) {
+	p := findParameter(parameters, key)
+	if p == nil {
+		return false, false
+	}
+	v, err := strconv.ParseBool(strings.TrimSpace(p.Value))
+	if err != nil {
+		return false, false
+	}
+	return v, true
+}
+
+// parameterInt parses an integer parameter, with the same absent and
+// malformed handling as parameterBool.
+func parameterInt(parameters []*sdk.Parameter, key string) (int64, bool) {
+	p := findParameter(parameters, key)
+	if p == nil {
+		return 0, false
+	}
+	v, err := strconv.ParseInt(strings.TrimSpace(p.Value), 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return v, true
 }
 
 // newMqlSnowflakeParameter builds a parameter resource. scope qualifies the
