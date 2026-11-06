@@ -90,7 +90,7 @@ func (g *mqlGcpProjectDiscoveryEngineService) isEnabled() (bool, error) {
 // returned only when every location failed.
 func listAcrossDiscoveryEngineLocations(kind string, locations []string, fn func(location string) ([]any, error)) ([]any, error) {
 	var (
-		items    []any
+		items    = []any{}
 		firstErr error
 		failed   int
 	)

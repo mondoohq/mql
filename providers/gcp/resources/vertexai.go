@@ -118,6 +118,8 @@ func (g *mqlGcpProjectVertexaiService) candidateRegions() []string {
 
 // listVertexaiLocations lists the project's Vertex AI locations through the
 // location mixin on a regional endpoint, which answers for every region.
+// us-central1 is used because it is Vertex AI's default region, where every
+// service is offered; if the call fails, the static list is used instead.
 func listVertexaiLocations(ctx context.Context, conn *connection.GcpConnection, projectId string) ([]string, error) {
 	creds, err := conn.Credentials(aiplatform.DefaultAuthScopes()...)
 	if err != nil {
