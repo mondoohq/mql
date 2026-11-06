@@ -200,6 +200,11 @@ const (
 	ResourceAlicloudPaiWorkspaceMember            string = "alicloud.pai.workspace.member"
 	ResourceAlicloudPaiEasService                 string = "alicloud.pai.easService"
 	ResourceAlicloudPaiEasGateway                 string = "alicloud.pai.easGateway"
+	ResourceAlicloudPaiDswInstance                string = "alicloud.pai.dswInstance"
+	ResourceAlicloudPaiDswInstanceForwardInfo     string = "alicloud.pai.dswInstance.forwardInfo"
+	ResourceAlicloudModelStudio                   string = "alicloud.modelStudio"
+	ResourceAlicloudModelStudioWorkspace          string = "alicloud.modelStudio.workspace"
+	ResourceAlicloudModelStudioApiKey             string = "alicloud.modelStudio.apiKey"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -941,6 +946,26 @@ func init() {
 		"alicloud.pai.easGateway": {
 			Init:   initAlicloudPaiEasGateway,
 			Create: createAlicloudPaiEasGateway,
+		},
+		"alicloud.pai.dswInstance": {
+			Init:   initAlicloudPaiDswInstance,
+			Create: createAlicloudPaiDswInstance,
+		},
+		"alicloud.pai.dswInstance.forwardInfo": {
+			// to override args, implement: initAlicloudPaiDswInstanceForwardInfo(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAlicloudPaiDswInstanceForwardInfo,
+		},
+		"alicloud.modelStudio": {
+			// to override args, implement: initAlicloudModelStudio(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAlicloudModelStudio,
+		},
+		"alicloud.modelStudio.workspace": {
+			Init:   initAlicloudModelStudioWorkspace,
+			Create: createAlicloudModelStudioWorkspace,
+		},
+		"alicloud.modelStudio.apiKey": {
+			// to override args, implement: initAlicloudModelStudioApiKey(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAlicloudModelStudioApiKey,
 		},
 	}
 }
@@ -8924,6 +8949,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"alicloud.pai.easGateways": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudPai).GetEasGateways()).ToDataRes(types.Array(types.Resource("alicloud.pai.easGateway")))
 	},
+	"alicloud.pai.dswInstances": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPai).GetDswInstances()).ToDataRes(types.Array(types.Resource("alicloud.pai.dswInstance")))
+	},
 	"alicloud.pai.workspace.regionId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudPaiWorkspace).GetRegionId()).ToDataRes(types.String)
 	},
@@ -9136,6 +9164,201 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"alicloud.pai.easGateway.internetAcl": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudPaiEasGateway).GetInternetAcl()).ToDataRes(types.Array(types.Dict))
+	},
+	"alicloud.pai.dswInstance.regionId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetRegionId()).ToDataRes(types.String)
+	},
+	"alicloud.pai.dswInstance.instanceId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetInstanceId()).ToDataRes(types.String)
+	},
+	"alicloud.pai.dswInstance.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetName()).ToDataRes(types.String)
+	},
+	"alicloud.pai.dswInstance.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetStatus()).ToDataRes(types.String)
+	},
+	"alicloud.pai.dswInstance.accessibility": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetAccessibility()).ToDataRes(types.String)
+	},
+	"alicloud.pai.dswInstance.userName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetUserName()).ToDataRes(types.String)
+	},
+	"alicloud.pai.dswInstance.workspace": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetWorkspace()).ToDataRes(types.Resource("alicloud.pai.workspace"))
+	},
+	"alicloud.pai.dswInstance.ecsSpec": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetEcsSpec()).ToDataRes(types.String)
+	},
+	"alicloud.pai.dswInstance.acceleratorType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetAcceleratorType()).ToDataRes(types.String)
+	},
+	"alicloud.pai.dswInstance.paymentType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetPaymentType()).ToDataRes(types.String)
+	},
+	"alicloud.pai.dswInstance.imageName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetImageName()).ToDataRes(types.String)
+	},
+	"alicloud.pai.dswInstance.imageId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetImageId()).ToDataRes(types.String)
+	},
+	"alicloud.pai.dswInstance.imageUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetImageUrl()).ToDataRes(types.String)
+	},
+	"alicloud.pai.dswInstance.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"alicloud.pai.dswInstance.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"alicloud.pai.dswInstance.environmentVariableNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetEnvironmentVariableNames()).ToDataRes(types.Array(types.String))
+	},
+	"alicloud.pai.dswInstance.createTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetCreateTime()).ToDataRes(types.Time)
+	},
+	"alicloud.pai.dswInstance.modifiedTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetModifiedTime()).ToDataRes(types.Time)
+	},
+	"alicloud.pai.dswInstance.vpc": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetVpc()).ToDataRes(types.Resource("alicloud.vpc.network"))
+	},
+	"alicloud.pai.dswInstance.vswitch": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetVswitch()).ToDataRes(types.Resource("alicloud.vpc.vswitch"))
+	},
+	"alicloud.pai.dswInstance.securityGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetSecurityGroup()).ToDataRes(types.Resource("alicloud.ecs.securitygroup"))
+	},
+	"alicloud.pai.dswInstance.defaultRoute": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetDefaultRoute()).ToDataRes(types.String)
+	},
+	"alicloud.pai.dswInstance.extendedCidrs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetExtendedCidrs()).ToDataRes(types.Array(types.String))
+	},
+	"alicloud.pai.dswInstance.forwardInfos": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetForwardInfos()).ToDataRes(types.Array(types.Resource("alicloud.pai.dswInstance.forwardInfo")))
+	},
+	"alicloud.pai.dswInstance.hasInternetForwarding": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetHasInternetForwarding()).ToDataRes(types.Bool)
+	},
+	"alicloud.pai.dswInstance.credentialConfigEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetCredentialConfigEnabled()).ToDataRes(types.Bool)
+	},
+	"alicloud.pai.dswInstance.ramRoleArns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetRamRoleArns()).ToDataRes(types.Array(types.String))
+	},
+	"alicloud.pai.dswInstance.ramRoles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetRamRoles()).ToDataRes(types.Array(types.Resource("alicloud.ram.role")))
+	},
+	"alicloud.pai.dswInstance.idleCullerEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetIdleCullerEnabled()).ToDataRes(types.Bool)
+	},
+	"alicloud.pai.dswInstance.idleCullerMaxIdleTimeInMinutes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetIdleCullerMaxIdleTimeInMinutes()).ToDataRes(types.Int)
+	},
+	"alicloud.pai.dswInstance.idleCullerCpuPercentThreshold": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetIdleCullerCpuPercentThreshold()).ToDataRes(types.Int)
+	},
+	"alicloud.pai.dswInstance.idleCullerGpuPercentThreshold": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetIdleCullerGpuPercentThreshold()).ToDataRes(types.Int)
+	},
+	"alicloud.pai.dswInstance.shutdownTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstance).GetShutdownTime()).ToDataRes(types.Time)
+	},
+	"alicloud.pai.dswInstance.forwardInfo.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstanceForwardInfo).GetName()).ToDataRes(types.String)
+	},
+	"alicloud.pai.dswInstance.forwardInfo.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstanceForwardInfo).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"alicloud.pai.dswInstance.forwardInfo.accessTypes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstanceForwardInfo).GetAccessTypes()).ToDataRes(types.Array(types.String))
+	},
+	"alicloud.pai.dswInstance.forwardInfo.forwardPort": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstanceForwardInfo).GetForwardPort()).ToDataRes(types.String)
+	},
+	"alicloud.pai.dswInstance.forwardInfo.externalPort": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstanceForwardInfo).GetExternalPort()).ToDataRes(types.String)
+	},
+	"alicloud.pai.dswInstance.forwardInfo.internetEndpoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstanceForwardInfo).GetInternetEndpoint()).ToDataRes(types.String)
+	},
+	"alicloud.pai.dswInstance.forwardInfo.internetPort": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstanceForwardInfo).GetInternetPort()).ToDataRes(types.String)
+	},
+	"alicloud.pai.dswInstance.forwardInfo.intranetEndpoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstanceForwardInfo).GetIntranetEndpoint()).ToDataRes(types.String)
+	},
+	"alicloud.pai.dswInstance.forwardInfo.intranetPort": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstanceForwardInfo).GetIntranetPort()).ToDataRes(types.String)
+	},
+	"alicloud.pai.dswInstance.forwardInfo.phase": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstanceForwardInfo).GetPhase()).ToDataRes(types.String)
+	},
+	"alicloud.pai.dswInstance.forwardInfo.natGateway": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstanceForwardInfo).GetNatGateway()).ToDataRes(types.Resource("alicloud.vpc.natGateway"))
+	},
+	"alicloud.pai.dswInstance.forwardInfo.eip": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPaiDswInstanceForwardInfo).GetEip()).ToDataRes(types.Resource("alicloud.vpc.eipAddress"))
+	},
+	"alicloud.modelStudio.workspaces": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudModelStudio).GetWorkspaces()).ToDataRes(types.Array(types.Resource("alicloud.modelStudio.workspace")))
+	},
+	"alicloud.modelStudio.apiKeys": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudModelStudio).GetApiKeys()).ToDataRes(types.Array(types.Resource("alicloud.modelStudio.apiKey")))
+	},
+	"alicloud.modelStudio.workspace.regionId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudModelStudioWorkspace).GetRegionId()).ToDataRes(types.String)
+	},
+	"alicloud.modelStudio.workspace.workspaceId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudModelStudioWorkspace).GetWorkspaceId()).ToDataRes(types.String)
+	},
+	"alicloud.modelStudio.workspace.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudModelStudioWorkspace).GetName()).ToDataRes(types.String)
+	},
+	"alicloud.modelStudio.workspace.serviceSite": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudModelStudioWorkspace).GetServiceSite()).ToDataRes(types.String)
+	},
+	"alicloud.modelStudio.workspace.apiHost": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudModelStudioWorkspace).GetApiHost()).ToDataRes(types.String)
+	},
+	"alicloud.modelStudio.workspace.createTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudModelStudioWorkspace).GetCreateTime()).ToDataRes(types.Time)
+	},
+	"alicloud.modelStudio.workspace.apiKeys": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudModelStudioWorkspace).GetApiKeys()).ToDataRes(types.Array(types.Resource("alicloud.modelStudio.apiKey")))
+	},
+	"alicloud.modelStudio.apiKey.regionId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudModelStudioApiKey).GetRegionId()).ToDataRes(types.String)
+	},
+	"alicloud.modelStudio.apiKey.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudModelStudioApiKey).GetId()).ToDataRes(types.Int)
+	},
+	"alicloud.modelStudio.apiKey.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudModelStudioApiKey).GetDescription()).ToDataRes(types.String)
+	},
+	"alicloud.modelStudio.apiKey.createdBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudModelStudioApiKey).GetCreatedBy()).ToDataRes(types.String)
+	},
+	"alicloud.modelStudio.apiKey.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudModelStudioApiKey).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"alicloud.modelStudio.apiKey.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudModelStudioApiKey).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"alicloud.modelStudio.apiKey.workspace": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudModelStudioApiKey).GetWorkspace()).ToDataRes(types.Resource("alicloud.modelStudio.workspace"))
+	},
+	"alicloud.modelStudio.apiKey.authType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudModelStudioApiKey).GetAuthType()).ToDataRes(types.String)
+	},
+	"alicloud.modelStudio.apiKey.accessIps": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudModelStudioApiKey).GetAccessIps()).ToDataRes(types.Array(types.String))
+	},
+	"alicloud.modelStudio.apiKey.allowAllModels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudModelStudioApiKey).GetAllowAllModels()).ToDataRes(types.Bool)
+	},
+	"alicloud.modelStudio.apiKey.accessibleModels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudModelStudioApiKey).GetAccessibleModels()).ToDataRes(types.Array(types.String))
 	},
 }
 
@@ -20417,6 +20640,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAlicloudPai).EasGateways, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"alicloud.pai.dswInstances": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPai).DswInstances, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"alicloud.pai.workspace.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAlicloudPaiWorkspace).__id, ok = v.Value.(string)
 		return
@@ -20715,6 +20942,286 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"alicloud.pai.easGateway.internetAcl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAlicloudPaiEasGateway).InternetAcl, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).__id, ok = v.Value.(string)
+		return
+	},
+	"alicloud.pai.dswInstance.regionId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).RegionId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.instanceId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).InstanceId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.accessibility": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).Accessibility, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.userName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).UserName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.workspace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).Workspace, ok = plugin.RawToTValue[*mqlAlicloudPaiWorkspace](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.ecsSpec": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).EcsSpec, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.acceleratorType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).AcceleratorType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.paymentType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).PaymentType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.imageName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).ImageName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.imageId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).ImageId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.imageUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).ImageUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.environmentVariableNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).EnvironmentVariableNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.createTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).CreateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.modifiedTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).ModifiedTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.vpc": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).Vpc, ok = plugin.RawToTValue[*mqlAlicloudVpcNetwork](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.vswitch": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).Vswitch, ok = plugin.RawToTValue[*mqlAlicloudVpcVswitch](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.securityGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).SecurityGroup, ok = plugin.RawToTValue[*mqlAlicloudEcsSecuritygroup](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.defaultRoute": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).DefaultRoute, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.extendedCidrs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).ExtendedCidrs, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.forwardInfos": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).ForwardInfos, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.hasInternetForwarding": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).HasInternetForwarding, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.credentialConfigEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).CredentialConfigEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.ramRoleArns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).RamRoleArns, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.ramRoles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).RamRoles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.idleCullerEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).IdleCullerEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.idleCullerMaxIdleTimeInMinutes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).IdleCullerMaxIdleTimeInMinutes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.idleCullerCpuPercentThreshold": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).IdleCullerCpuPercentThreshold, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.idleCullerGpuPercentThreshold": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).IdleCullerGpuPercentThreshold, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.shutdownTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstance).ShutdownTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.forwardInfo.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstanceForwardInfo).__id, ok = v.Value.(string)
+		return
+	},
+	"alicloud.pai.dswInstance.forwardInfo.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstanceForwardInfo).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.forwardInfo.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstanceForwardInfo).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.forwardInfo.accessTypes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstanceForwardInfo).AccessTypes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.forwardInfo.forwardPort": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstanceForwardInfo).ForwardPort, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.forwardInfo.externalPort": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstanceForwardInfo).ExternalPort, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.forwardInfo.internetEndpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstanceForwardInfo).InternetEndpoint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.forwardInfo.internetPort": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstanceForwardInfo).InternetPort, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.forwardInfo.intranetEndpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstanceForwardInfo).IntranetEndpoint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.forwardInfo.intranetPort": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstanceForwardInfo).IntranetPort, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.forwardInfo.phase": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstanceForwardInfo).Phase, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.forwardInfo.natGateway": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstanceForwardInfo).NatGateway, ok = plugin.RawToTValue[*mqlAlicloudVpcNatGateway](v.Value, v.Error)
+		return
+	},
+	"alicloud.pai.dswInstance.forwardInfo.eip": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPaiDswInstanceForwardInfo).Eip, ok = plugin.RawToTValue[*mqlAlicloudVpcEipAddress](v.Value, v.Error)
+		return
+	},
+	"alicloud.modelStudio.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudModelStudio).__id, ok = v.Value.(string)
+		return
+	},
+	"alicloud.modelStudio.workspaces": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudModelStudio).Workspaces, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.modelStudio.apiKeys": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudModelStudio).ApiKeys, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.modelStudio.workspace.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudModelStudioWorkspace).__id, ok = v.Value.(string)
+		return
+	},
+	"alicloud.modelStudio.workspace.regionId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudModelStudioWorkspace).RegionId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.modelStudio.workspace.workspaceId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudModelStudioWorkspace).WorkspaceId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.modelStudio.workspace.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudModelStudioWorkspace).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.modelStudio.workspace.serviceSite": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudModelStudioWorkspace).ServiceSite, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.modelStudio.workspace.apiHost": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudModelStudioWorkspace).ApiHost, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.modelStudio.workspace.createTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudModelStudioWorkspace).CreateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"alicloud.modelStudio.workspace.apiKeys": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudModelStudioWorkspace).ApiKeys, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.modelStudio.apiKey.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudModelStudioApiKey).__id, ok = v.Value.(string)
+		return
+	},
+	"alicloud.modelStudio.apiKey.regionId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudModelStudioApiKey).RegionId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.modelStudio.apiKey.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudModelStudioApiKey).Id, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.modelStudio.apiKey.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudModelStudioApiKey).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.modelStudio.apiKey.createdBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudModelStudioApiKey).CreatedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.modelStudio.apiKey.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudModelStudioApiKey).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"alicloud.modelStudio.apiKey.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudModelStudioApiKey).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.modelStudio.apiKey.workspace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudModelStudioApiKey).Workspace, ok = plugin.RawToTValue[*mqlAlicloudModelStudioWorkspace](v.Value, v.Error)
+		return
+	},
+	"alicloud.modelStudio.apiKey.authType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudModelStudioApiKey).AuthType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.modelStudio.apiKey.accessIps": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudModelStudioApiKey).AccessIps, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.modelStudio.apiKey.allowAllModels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudModelStudioApiKey).AllowAllModels, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.modelStudio.apiKey.accessibleModels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudModelStudioApiKey).AccessibleModels, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 }
@@ -46824,9 +47331,10 @@ type mqlAlicloudPai struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlAlicloudPaiInternal it will be used here
-	Workspaces  plugin.TValue[[]any]
-	EasServices plugin.TValue[[]any]
-	EasGateways plugin.TValue[[]any]
+	Workspaces   plugin.TValue[[]any]
+	EasServices  plugin.TValue[[]any]
+	EasGateways  plugin.TValue[[]any]
+	DswInstances plugin.TValue[[]any]
 }
 
 // createAlicloudPai creates a new instance of this resource
@@ -46911,6 +47419,22 @@ func (c *mqlAlicloudPai) GetEasGateways() *plugin.TValue[[]any] {
 		}
 
 		return c.easGateways()
+	})
+}
+
+func (c *mqlAlicloudPai) GetDswInstances() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DswInstances, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.pai", c.__id, "dswInstances")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.dswInstances()
 	})
 }
 
@@ -47534,4 +48058,690 @@ func (c *mqlAlicloudPaiEasGateway) GetInternetAcl() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.InternetAcl, func() ([]any, error) {
 		return c.internetAcl()
 	})
+}
+
+// mqlAlicloudPaiDswInstance for the alicloud.pai.dswInstance resource
+type mqlAlicloudPaiDswInstance struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAlicloudPaiDswInstanceInternal
+	RegionId                       plugin.TValue[string]
+	InstanceId                     plugin.TValue[string]
+	Name                           plugin.TValue[string]
+	Status                         plugin.TValue[string]
+	Accessibility                  plugin.TValue[string]
+	UserName                       plugin.TValue[string]
+	Workspace                      plugin.TValue[*mqlAlicloudPaiWorkspace]
+	EcsSpec                        plugin.TValue[string]
+	AcceleratorType                plugin.TValue[string]
+	PaymentType                    plugin.TValue[string]
+	ImageName                      plugin.TValue[string]
+	ImageId                        plugin.TValue[string]
+	ImageUrl                       plugin.TValue[string]
+	Labels                         plugin.TValue[map[string]any]
+	Tags                           plugin.TValue[map[string]any]
+	EnvironmentVariableNames       plugin.TValue[[]any]
+	CreateTime                     plugin.TValue[*time.Time]
+	ModifiedTime                   plugin.TValue[*time.Time]
+	Vpc                            plugin.TValue[*mqlAlicloudVpcNetwork]
+	Vswitch                        plugin.TValue[*mqlAlicloudVpcVswitch]
+	SecurityGroup                  plugin.TValue[*mqlAlicloudEcsSecuritygroup]
+	DefaultRoute                   plugin.TValue[string]
+	ExtendedCidrs                  plugin.TValue[[]any]
+	ForwardInfos                   plugin.TValue[[]any]
+	HasInternetForwarding          plugin.TValue[bool]
+	CredentialConfigEnabled        plugin.TValue[bool]
+	RamRoleArns                    plugin.TValue[[]any]
+	RamRoles                       plugin.TValue[[]any]
+	IdleCullerEnabled              plugin.TValue[bool]
+	IdleCullerMaxIdleTimeInMinutes plugin.TValue[int64]
+	IdleCullerCpuPercentThreshold  plugin.TValue[int64]
+	IdleCullerGpuPercentThreshold  plugin.TValue[int64]
+	ShutdownTime                   plugin.TValue[*time.Time]
+}
+
+// createAlicloudPaiDswInstance creates a new instance of this resource
+func createAlicloudPaiDswInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAlicloudPaiDswInstance{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("alicloud.pai.dswInstance", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAlicloudPaiDswInstance) MqlName() string {
+	return "alicloud.pai.dswInstance"
+}
+
+func (c *mqlAlicloudPaiDswInstance) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetRegionId() *plugin.TValue[string] {
+	return &c.RegionId
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetInstanceId() *plugin.TValue[string] {
+	return &c.InstanceId
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetAccessibility() *plugin.TValue[string] {
+	return &c.Accessibility
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetUserName() *plugin.TValue[string] {
+	return &c.UserName
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetWorkspace() *plugin.TValue[*mqlAlicloudPaiWorkspace] {
+	return plugin.GetOrCompute[*mqlAlicloudPaiWorkspace](&c.Workspace, func() (*mqlAlicloudPaiWorkspace, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.pai.dswInstance", c.__id, "workspace")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAlicloudPaiWorkspace), nil
+			}
+		}
+
+		return c.workspace()
+	})
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetEcsSpec() *plugin.TValue[string] {
+	return &c.EcsSpec
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetAcceleratorType() *plugin.TValue[string] {
+	return &c.AcceleratorType
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetPaymentType() *plugin.TValue[string] {
+	return &c.PaymentType
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetImageName() *plugin.TValue[string] {
+	return &c.ImageName
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetImageId() *plugin.TValue[string] {
+	return &c.ImageId
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetImageUrl() *plugin.TValue[string] {
+	return &c.ImageUrl
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetTags() *plugin.TValue[map[string]any] {
+	return &c.Tags
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetEnvironmentVariableNames() *plugin.TValue[[]any] {
+	return &c.EnvironmentVariableNames
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetCreateTime() *plugin.TValue[*time.Time] {
+	return &c.CreateTime
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetModifiedTime() *plugin.TValue[*time.Time] {
+	return &c.ModifiedTime
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetVpc() *plugin.TValue[*mqlAlicloudVpcNetwork] {
+	return plugin.GetOrCompute[*mqlAlicloudVpcNetwork](&c.Vpc, func() (*mqlAlicloudVpcNetwork, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.pai.dswInstance", c.__id, "vpc")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAlicloudVpcNetwork), nil
+			}
+		}
+
+		return c.vpc()
+	})
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetVswitch() *plugin.TValue[*mqlAlicloudVpcVswitch] {
+	return plugin.GetOrCompute[*mqlAlicloudVpcVswitch](&c.Vswitch, func() (*mqlAlicloudVpcVswitch, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.pai.dswInstance", c.__id, "vswitch")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAlicloudVpcVswitch), nil
+			}
+		}
+
+		return c.vswitch()
+	})
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetSecurityGroup() *plugin.TValue[*mqlAlicloudEcsSecuritygroup] {
+	return plugin.GetOrCompute[*mqlAlicloudEcsSecuritygroup](&c.SecurityGroup, func() (*mqlAlicloudEcsSecuritygroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.pai.dswInstance", c.__id, "securityGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAlicloudEcsSecuritygroup), nil
+			}
+		}
+
+		return c.securityGroup()
+	})
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetDefaultRoute() *plugin.TValue[string] {
+	return &c.DefaultRoute
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetExtendedCidrs() *plugin.TValue[[]any] {
+	return &c.ExtendedCidrs
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetForwardInfos() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ForwardInfos, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.pai.dswInstance", c.__id, "forwardInfos")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.forwardInfos()
+	})
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetHasInternetForwarding() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.HasInternetForwarding, func() (bool, error) {
+		return c.hasInternetForwarding()
+	})
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetCredentialConfigEnabled() *plugin.TValue[bool] {
+	return &c.CredentialConfigEnabled
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetRamRoleArns() *plugin.TValue[[]any] {
+	return &c.RamRoleArns
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetRamRoles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.RamRoles, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.pai.dswInstance", c.__id, "ramRoles")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.ramRoles()
+	})
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetIdleCullerEnabled() *plugin.TValue[bool] {
+	return &c.IdleCullerEnabled
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetIdleCullerMaxIdleTimeInMinutes() *plugin.TValue[int64] {
+	return &c.IdleCullerMaxIdleTimeInMinutes
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetIdleCullerCpuPercentThreshold() *plugin.TValue[int64] {
+	return &c.IdleCullerCpuPercentThreshold
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetIdleCullerGpuPercentThreshold() *plugin.TValue[int64] {
+	return &c.IdleCullerGpuPercentThreshold
+}
+
+func (c *mqlAlicloudPaiDswInstance) GetShutdownTime() *plugin.TValue[*time.Time] {
+	return &c.ShutdownTime
+}
+
+// mqlAlicloudPaiDswInstanceForwardInfo for the alicloud.pai.dswInstance.forwardInfo resource
+type mqlAlicloudPaiDswInstanceForwardInfo struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAlicloudPaiDswInstanceForwardInfoInternal
+	Name             plugin.TValue[string]
+	Enabled          plugin.TValue[bool]
+	AccessTypes      plugin.TValue[[]any]
+	ForwardPort      plugin.TValue[string]
+	ExternalPort     plugin.TValue[string]
+	InternetEndpoint plugin.TValue[string]
+	InternetPort     plugin.TValue[string]
+	IntranetEndpoint plugin.TValue[string]
+	IntranetPort     plugin.TValue[string]
+	Phase            plugin.TValue[string]
+	NatGateway       plugin.TValue[*mqlAlicloudVpcNatGateway]
+	Eip              plugin.TValue[*mqlAlicloudVpcEipAddress]
+}
+
+// createAlicloudPaiDswInstanceForwardInfo creates a new instance of this resource
+func createAlicloudPaiDswInstanceForwardInfo(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAlicloudPaiDswInstanceForwardInfo{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("alicloud.pai.dswInstance.forwardInfo", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAlicloudPaiDswInstanceForwardInfo) MqlName() string {
+	return "alicloud.pai.dswInstance.forwardInfo"
+}
+
+func (c *mqlAlicloudPaiDswInstanceForwardInfo) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAlicloudPaiDswInstanceForwardInfo) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAlicloudPaiDswInstanceForwardInfo) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlAlicloudPaiDswInstanceForwardInfo) GetAccessTypes() *plugin.TValue[[]any] {
+	return &c.AccessTypes
+}
+
+func (c *mqlAlicloudPaiDswInstanceForwardInfo) GetForwardPort() *plugin.TValue[string] {
+	return &c.ForwardPort
+}
+
+func (c *mqlAlicloudPaiDswInstanceForwardInfo) GetExternalPort() *plugin.TValue[string] {
+	return &c.ExternalPort
+}
+
+func (c *mqlAlicloudPaiDswInstanceForwardInfo) GetInternetEndpoint() *plugin.TValue[string] {
+	return &c.InternetEndpoint
+}
+
+func (c *mqlAlicloudPaiDswInstanceForwardInfo) GetInternetPort() *plugin.TValue[string] {
+	return &c.InternetPort
+}
+
+func (c *mqlAlicloudPaiDswInstanceForwardInfo) GetIntranetEndpoint() *plugin.TValue[string] {
+	return &c.IntranetEndpoint
+}
+
+func (c *mqlAlicloudPaiDswInstanceForwardInfo) GetIntranetPort() *plugin.TValue[string] {
+	return &c.IntranetPort
+}
+
+func (c *mqlAlicloudPaiDswInstanceForwardInfo) GetPhase() *plugin.TValue[string] {
+	return &c.Phase
+}
+
+func (c *mqlAlicloudPaiDswInstanceForwardInfo) GetNatGateway() *plugin.TValue[*mqlAlicloudVpcNatGateway] {
+	return plugin.GetOrCompute[*mqlAlicloudVpcNatGateway](&c.NatGateway, func() (*mqlAlicloudVpcNatGateway, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.pai.dswInstance.forwardInfo", c.__id, "natGateway")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAlicloudVpcNatGateway), nil
+			}
+		}
+
+		return c.natGateway()
+	})
+}
+
+func (c *mqlAlicloudPaiDswInstanceForwardInfo) GetEip() *plugin.TValue[*mqlAlicloudVpcEipAddress] {
+	return plugin.GetOrCompute[*mqlAlicloudVpcEipAddress](&c.Eip, func() (*mqlAlicloudVpcEipAddress, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.pai.dswInstance.forwardInfo", c.__id, "eip")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAlicloudVpcEipAddress), nil
+			}
+		}
+
+		return c.eip()
+	})
+}
+
+// mqlAlicloudModelStudio for the alicloud.modelStudio resource
+type mqlAlicloudModelStudio struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAlicloudModelStudioInternal it will be used here
+	Workspaces plugin.TValue[[]any]
+	ApiKeys    plugin.TValue[[]any]
+}
+
+// createAlicloudModelStudio creates a new instance of this resource
+func createAlicloudModelStudio(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAlicloudModelStudio{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("alicloud.modelStudio", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAlicloudModelStudio) MqlName() string {
+	return "alicloud.modelStudio"
+}
+
+func (c *mqlAlicloudModelStudio) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAlicloudModelStudio) GetWorkspaces() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Workspaces, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.modelStudio", c.__id, "workspaces")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.workspaces()
+	})
+}
+
+func (c *mqlAlicloudModelStudio) GetApiKeys() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ApiKeys, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.modelStudio", c.__id, "apiKeys")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.apiKeys()
+	})
+}
+
+// mqlAlicloudModelStudioWorkspace for the alicloud.modelStudio.workspace resource
+type mqlAlicloudModelStudioWorkspace struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAlicloudModelStudioWorkspaceInternal it will be used here
+	RegionId    plugin.TValue[string]
+	WorkspaceId plugin.TValue[string]
+	Name        plugin.TValue[string]
+	ServiceSite plugin.TValue[string]
+	ApiHost     plugin.TValue[string]
+	CreateTime  plugin.TValue[*time.Time]
+	ApiKeys     plugin.TValue[[]any]
+}
+
+// createAlicloudModelStudioWorkspace creates a new instance of this resource
+func createAlicloudModelStudioWorkspace(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAlicloudModelStudioWorkspace{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("alicloud.modelStudio.workspace", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAlicloudModelStudioWorkspace) MqlName() string {
+	return "alicloud.modelStudio.workspace"
+}
+
+func (c *mqlAlicloudModelStudioWorkspace) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAlicloudModelStudioWorkspace) GetRegionId() *plugin.TValue[string] {
+	return &c.RegionId
+}
+
+func (c *mqlAlicloudModelStudioWorkspace) GetWorkspaceId() *plugin.TValue[string] {
+	return &c.WorkspaceId
+}
+
+func (c *mqlAlicloudModelStudioWorkspace) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAlicloudModelStudioWorkspace) GetServiceSite() *plugin.TValue[string] {
+	return &c.ServiceSite
+}
+
+func (c *mqlAlicloudModelStudioWorkspace) GetApiHost() *plugin.TValue[string] {
+	return &c.ApiHost
+}
+
+func (c *mqlAlicloudModelStudioWorkspace) GetCreateTime() *plugin.TValue[*time.Time] {
+	return &c.CreateTime
+}
+
+func (c *mqlAlicloudModelStudioWorkspace) GetApiKeys() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ApiKeys, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.modelStudio.workspace", c.__id, "apiKeys")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.apiKeys()
+	})
+}
+
+// mqlAlicloudModelStudioApiKey for the alicloud.modelStudio.apiKey resource
+type mqlAlicloudModelStudioApiKey struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAlicloudModelStudioApiKeyInternal
+	RegionId         plugin.TValue[string]
+	Id               plugin.TValue[int64]
+	Description      plugin.TValue[string]
+	CreatedBy        plugin.TValue[string]
+	CreatedAt        plugin.TValue[*time.Time]
+	Enabled          plugin.TValue[bool]
+	Workspace        plugin.TValue[*mqlAlicloudModelStudioWorkspace]
+	AuthType         plugin.TValue[string]
+	AccessIps        plugin.TValue[[]any]
+	AllowAllModels   plugin.TValue[bool]
+	AccessibleModels plugin.TValue[[]any]
+}
+
+// createAlicloudModelStudioApiKey creates a new instance of this resource
+func createAlicloudModelStudioApiKey(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAlicloudModelStudioApiKey{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("alicloud.modelStudio.apiKey", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAlicloudModelStudioApiKey) MqlName() string {
+	return "alicloud.modelStudio.apiKey"
+}
+
+func (c *mqlAlicloudModelStudioApiKey) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAlicloudModelStudioApiKey) GetRegionId() *plugin.TValue[string] {
+	return &c.RegionId
+}
+
+func (c *mqlAlicloudModelStudioApiKey) GetId() *plugin.TValue[int64] {
+	return &c.Id
+}
+
+func (c *mqlAlicloudModelStudioApiKey) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlAlicloudModelStudioApiKey) GetCreatedBy() *plugin.TValue[string] {
+	return &c.CreatedBy
+}
+
+func (c *mqlAlicloudModelStudioApiKey) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlAlicloudModelStudioApiKey) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlAlicloudModelStudioApiKey) GetWorkspace() *plugin.TValue[*mqlAlicloudModelStudioWorkspace] {
+	return plugin.GetOrCompute[*mqlAlicloudModelStudioWorkspace](&c.Workspace, func() (*mqlAlicloudModelStudioWorkspace, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.modelStudio.apiKey", c.__id, "workspace")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAlicloudModelStudioWorkspace), nil
+			}
+		}
+
+		return c.workspace()
+	})
+}
+
+func (c *mqlAlicloudModelStudioApiKey) GetAuthType() *plugin.TValue[string] {
+	return &c.AuthType
+}
+
+func (c *mqlAlicloudModelStudioApiKey) GetAccessIps() *plugin.TValue[[]any] {
+	return &c.AccessIps
+}
+
+func (c *mqlAlicloudModelStudioApiKey) GetAllowAllModels() *plugin.TValue[bool] {
+	return &c.AllowAllModels
+}
+
+func (c *mqlAlicloudModelStudioApiKey) GetAccessibleModels() *plugin.TValue[[]any] {
+	return &c.AccessibleModels
 }

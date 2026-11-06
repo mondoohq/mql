@@ -29,8 +29,10 @@ import (
 	fcclient "github.com/alibabacloud-go/fc-20230330/v4/client"
 	imsclient "github.com/alibabacloud-go/ims-20190815/v4/client"
 	kmsclient "github.com/alibabacloud-go/kms-20160120/v4/client"
+	modelstudioclient "github.com/alibabacloud-go/modelstudio-20260210/v2/client"
 	nasclient "github.com/alibabacloud-go/nas-20170626/v4/client"
 	nlbclient "github.com/alibabacloud-go/nlb-20220430/v4/client"
+	dswclient "github.com/alibabacloud-go/pai-dsw-20220101/v2/client"
 	polardbclient "github.com/alibabacloud-go/polardb-20170801/v10/client"
 	privatelinkclient "github.com/alibabacloud-go/privatelink-20200415/v5/client"
 	rkvclient "github.com/alibabacloud-go/r-kvstore-20150101/v8/client"
@@ -548,6 +550,50 @@ func (c *AlicloudConnection) AiWorkspaceClient(region string) (*aiworkspaceclien
 		return nil, err
 	}
 	return client.(*aiworkspaceclient.Client), nil
+}
+
+// DswClient returns a PAI Data Science Workshop (DSW) client for a region.
+func (c *AlicloudConnection) DswClient(region string) (*dswclient.Client, error) {
+	client, err := c.cachedClient("pai-dsw/"+region, func() (any, error) {
+		return dswclient.NewClient(c.config("pai-dsw", region))
+	})
+	if err != nil {
+		return nil, err
+	}
+	return client.(*dswclient.Client), nil
+}
+
+// ModelStudioClient returns a Model Studio client for a region.
+func (c *AlicloudConnection) ModelStudioClient(region string) (*modelstudioclient.Client, error) {
+	client, err := c.cachedClient("modelstudio/"+region, func() (any, error) {
+		return modelstudioclient.NewClient(c.config("modelstudio", region))
+	})
+	if err != nil {
+		return nil, err
+	}
+	return client.(*modelstudioclient.Client), nil
+}
+
+// modelStudioRegions are the regions Alibaba Cloud publishes a Model Studio
+// OpenAPI endpoint for. The SDK carries no endpoint map, so the list is kept
+// here. Source: the ModelStudio endpoint list in Alibaba Cloud's OpenAPI
+// metadata (api.aliyun.com/meta/v1/products/ModelStudio/endpoints.json), read
+// November 2026. Review it when Model Studio opens a new region: a region
+// missing here is never scanned.
+var modelStudioRegions = []string{"cn-beijing", "cn-hongkong", "ap-southeast-1", "us-east-1", "eu-central-1"}
+
+// ModelStudioRegions returns the scanned regions that offer Model Studio.
+func (c *AlicloudConnection) ModelStudioRegions() ([]string, error) {
+	regions, err := c.GetRegions()
+	if err != nil {
+		return nil, err
+	}
+	endpoints := map[string]*string{}
+	for _, r := range modelStudioRegions {
+		ep := endpoint("modelstudio", r)
+		endpoints[r] = &ep
+	}
+	return regionsWithEndpoint(regions, endpoints), nil
 }
 
 // PaiRegions returns the scanned regions that offer Platform for AI. PAI runs
