@@ -83,6 +83,8 @@ type aiGatewaySpendLimitRule struct {
 	ID        string                    `json:"id"`
 	Enabled   bool                      `json:"enabled"`
 	Limit     float64                   `json:"limit"`
+	// camelCase on the wire, unlike the rest of the record; cloudflare-go's
+	// generated type uses the same tag.
 	LimitType string                    `json:"limitType"`
 	Window    int64                     `json:"window"`
 	Technique string                    `json:"technique"`
