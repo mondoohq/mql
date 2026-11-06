@@ -2693,6 +2693,10 @@ aws.iam {
   oidcProviders() []aws.iam.oidcProvider
   // Account alias for the AWS account (empty string if none)
   accountAlias() string
+  // Long-term Amazon Bedrock API keys issued to IAM users in the account
+  //
+  // Service-specific credentials for bedrock.amazonaws.com, across all users. An Active key with no expiration is a permanent bearer token for Bedrock.
+  bedrockApiKeys() []aws.iam.user.serviceSpecificCredential
 }
 
 // AWS IAM account password policy
@@ -32130,6 +32134,109 @@ aws.bedrock {
   marketplaceModelEndpoints() []aws.bedrock.marketplaceModelEndpoint
   // AgentCore namespace for agentic-AI infrastructure (gateways, runtimes, memory, tools, and identity)
   agentCore() aws.bedrock.agentCore
+  // Prompt routers that pick a model per request in the account
+  promptRouters() []aws.bedrock.promptRouter
+  // Automated Reasoning policies that guardrails use to check responses in the account
+  automatedReasoningPolicies() []aws.bedrock.automatedReasoningPolicy
+  // On-demand deployments of custom models in the account
+  customModelDeployments() []aws.bedrock.customModelDeployment
+}
+
+// Amazon Bedrock prompt router
+//
+// Router that sends each request to one of several models based on the
+// predicted response quality, falling back to `fallbackModelArn`.
+// `modelArns` lists the models it may route to and `type` whether it is an
+// AWS-provided default router or a custom one. The `arn` field selects a
+// router.
+private aws.bedrock.promptRouter @defaults("name type status") {
+  // ARN of the prompt router
+  arn string
+  // Name of the prompt router
+  name string
+  // Region where the prompt router exists
+  region string
+  // Whether the router is AWS-provided or created in the account
+  //
+  // `default` or `custom`.
+  type string
+  // Current status of the prompt router
+  status string
+  // Description of the prompt router
+  description string
+  // ARNs of the models the router may send requests to
+  //
+  // Each is a foundation model or inference profile ARN.
+  modelArns []string
+  // ARN of the model used when no routing decision applies
+  //
+  // A foundation model or inference profile ARN.
+  fallbackModelArn string
+  // Response quality difference, in percent, that must be expected before the router picks a cheaper model
+  responseQualityDifference float
+  // Time the prompt router was created
+  createdAt time
+  // Time the prompt router was last updated
+  updatedAt time
+}
+
+// Amazon Bedrock Automated Reasoning policy
+//
+// Formal rule set that a guardrail's Automated Reasoning check validates model
+// responses against. `kmsKey` is the customer-managed key encrypting the
+// policy, and `definitionHash` identifies the policy definition version in
+// effect. The `arn` field selects a policy.
+private aws.bedrock.automatedReasoningPolicy @defaults("name version") {
+  // ARN of the policy
+  arn string
+  // Unique identifier of the policy
+  id string
+  // Name of the policy
+  name string
+  // Region where the policy exists
+  region string
+  // Version of the policy
+  version string
+  // Description of the policy
+  description string
+  // Time the policy was created
+  createdAt time
+  // Time the policy was last updated
+  updatedAt time
+  // Hash of the policy definition
+  definitionHash() string
+  // Customer-managed KMS key encrypting the policy
+  //
+  // Null when the policy uses an AWS-owned key.
+  kmsKey() aws.kms.key
+}
+
+// Amazon Bedrock custom model deployment
+//
+// On-demand deployment that serves a custom model for inference without
+// provisioned throughput. `customModel` is the model it serves and `status`
+// whether it is serving.
+private aws.bedrock.customModelDeployment @defaults("name status") {
+  // ARN of the deployment
+  arn string
+  // Name of the deployment
+  name string
+  // Region where the deployment exists
+  region string
+  // Current status of the deployment
+  //
+  // One of Creating, Active, or Failed.
+  status string
+  // Reason the deployment failed
+  failureMessage string
+  // Time the deployment was created
+  createdAt time
+  // Time the deployment was last updated
+  updatedAt time
+  // Description of the deployment
+  description() string
+  // Custom model the deployment serves
+  customModel() aws.bedrock.customModel
 }
 
 // Amazon Bedrock account-wide enforced guardrail
@@ -33804,6 +33911,16 @@ private aws.bedrock.foundationModel @defaults("modelId modelName providerName") 
   responseStreamingSupported bool
   // Model lifecycle status (e.g., ACTIVE, LEGACY)
   modelLifecycleStatus string
+  // Whether the account is authorized to invoke the model
+  accessAuthorized() bool
+  // Whether the account is entitled to use the model
+  entitlementAvailable() bool
+  // Whether the model is available in the model's region
+  availableInRegion() bool
+  // Status of the model's end-user license agreement for the account
+  //
+  // One of AVAILABLE, PENDING, NOT_AVAILABLE, or ERROR.
+  agreementStatus() string
 }
 
 // Amazon Bedrock custom model
