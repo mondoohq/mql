@@ -151,6 +151,13 @@ func TestListAcrossModelArmorLocations(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, []any{"t1"}, got)
 
+	// Synthetic: locations run concurrently but results keep location order.
+	got, err = listAcrossModelArmorLocations([]string{"us", "eu", "us-central1"}, func(l string) ([]any, error) {
+		return []any{l}, nil
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, []any{"us", "eu", "us-central1"}, got)
+
 	// Synthetic: every location refuses; Forbidden under structured errors.
 	plugin.ReadFeatures([]byte(mql.Features{byte(mql.StructuredErrors)}))
 	_, err = listAcrossModelArmorLocations(locations, func(string) ([]any, error) {

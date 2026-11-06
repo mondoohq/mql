@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	dlp "cloud.google.com/go/dlp/apiv2"
 	"cloud.google.com/go/dlp/apiv2/dlppb"
@@ -19,6 +20,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/providers/gcp/connection"
 	"go.mondoo.com/mql/types"
+	googleoauth "golang.org/x/oauth2/google"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	locationpb "google.golang.org/genproto/googleapis/cloud/location"
@@ -28,6 +30,10 @@ import (
 
 type mqlGcpProjectModelArmorServiceInternal struct {
 	serviceGate
+	// SDP templates referenced by the project's templates, resolved once.
+	sdpOnce sync.Once
+	sdp     *modelArmorSdpTemplates
+	sdpErr  error
 }
 
 func (g *mqlGcpProject) modelArmor() (*mqlGcpProjectModelArmorService, error) {
@@ -88,6 +94,9 @@ var modelArmorLocations = []string{
 	"europe-southwest1", "europe-west1", "europe-west2", "europe-west3", "europe-west4", "europe-west9",
 }
 
+// modelArmorMaxConcurrency bounds how many locations are listed at once.
+const modelArmorMaxConcurrency = 10
+
 // modelArmorEndpoint returns the regional or multi-regional endpoint that
 // serves templates in a location. The global endpoint only serves floor
 // settings, so templates must be read through the endpoint of their location.
@@ -115,26 +124,74 @@ func modelArmorTemplateLocations(ids []string) []string {
 // still reported; when every location fails, the first error is returned,
 // classified if it is a refusal.
 func listAcrossModelArmorLocations(locations []string, fn func(location string) ([]any, error)) ([]any, error) {
+	type result struct {
+		items []any
+		err   error
+	}
+	results := make([]result, len(locations))
+	sem := make(chan struct{}, modelArmorMaxConcurrency)
+	var wg sync.WaitGroup
+	for i, location := range locations {
+		wg.Add(1)
+		go func(i int, location string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			items, err := fn(location)
+			results[i] = result{items: items, err: err}
+		}(i, location)
+	}
+	wg.Wait()
+
 	res := []any{}
 	var firstErr error
 	failed := 0
-	for _, location := range locations {
-		items, err := fn(location)
-		if err != nil {
+	for i, r := range results {
+		if r.err != nil {
 			failed++
 			if firstErr == nil {
-				firstErr = err
+				firstErr = r.err
 			}
-			log.Warn().Err(err).Str("location", location).
+			log.Warn().Err(r.err).Str("location", locations[i]).
 				Msg("model armor template listing failed, continuing with the remaining locations")
 			continue
 		}
-		res = append(res, items...)
+		res = append(res, r.items...)
 	}
 	if len(locations) > 0 && failed == len(locations) {
 		return listRefusal(firstErr, "cannot list model armor templates", "modelarmor.templates.list")
 	}
 	return res, nil
+}
+
+// listModelArmorLocations returns the project's template locations from
+// ListLocations on the global endpoint, or the built-in list when that call
+// fails or names none.
+func listModelArmorLocations(ctx context.Context, creds *googleoauth.Credentials, projectId string) []string {
+	client, err := modelarmor.NewClient(ctx, option.WithCredentials(creds), connection.GRPCClientTraceOption())
+	if err != nil {
+		log.Debug().Err(err).Msg("model armor: could not create client, using the built-in location list")
+		return modelArmorLocations
+	}
+	defer client.Close()
+
+	var ids []string
+	it := client.ListLocations(ctx, &locationpb.ListLocationsRequest{Name: "projects/" + projectId})
+	for {
+		l, err := it.Next()
+		if errors.Is(err, iterator.Done) {
+			break
+		}
+		if err != nil {
+			log.Debug().Err(err).Msg("model armor: could not list locations, using the built-in location list")
+			return modelArmorLocations
+		}
+		ids = append(ids, l.GetLocationId())
+	}
+	if found := modelArmorTemplateLocations(ids); len(found) > 0 {
+		return found
+	}
+	return modelArmorLocations
 }
 
 func (g *mqlGcpProjectModelArmorService) templates() ([]any, error) {
@@ -158,26 +215,7 @@ func (g *mqlGcpProjectModelArmorService) templates() ([]any, error) {
 	}
 
 	ctx := context.Background()
-	locations := modelArmorLocations
-	if globalClient, err := modelarmor.NewClient(ctx, option.WithCredentials(creds), connection.GRPCClientTraceOption()); err == nil {
-		var ids []string
-		it := globalClient.ListLocations(ctx, &locationpb.ListLocationsRequest{Name: "projects/" + projectId})
-		for {
-			l, err := it.Next()
-			if errors.Is(err, iterator.Done) {
-				if found := modelArmorTemplateLocations(ids); len(found) > 0 {
-					locations = found
-				}
-				break
-			}
-			if err != nil {
-				log.Debug().Err(err).Msg("model armor: could not list locations, using the built-in location list")
-				break
-			}
-			ids = append(ids, l.GetLocationId())
-		}
-		globalClient.Close()
-	}
+	locations := listModelArmorLocations(ctx, creds, projectId)
 
 	return listAcrossModelArmorLocations(locations, func(location string) ([]any, error) {
 		client, err := modelarmor.NewClient(ctx, option.WithCredentials(creds), connection.GRPCClientTraceOption(),
@@ -343,41 +381,18 @@ func (g *mqlGcpProjectModelArmorServiceTemplate) inspectTemplate() (*mqlGcpProje
 		g.InspectTemplate.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
-	creds, err := conn.Credentials(dlp.DefaultAuthScopes()...)
+	sdp, err := g.sdpTemplates()
 	if err != nil {
 		return nil, err
 	}
-	ctx := context.Background()
-	client, err := dlp.NewClient(ctx, option.WithCredentials(creds), connection.GRPCClientTraceOption())
-	if err != nil {
+	if err := sdp.errs[g.cacheInspectTemplate]; err != nil {
 		return nil, err
 	}
-	defer client.Close()
-	tmpl, err := client.GetInspectTemplate(ctx, &dlppb.GetInspectTemplateRequest{Name: g.cacheInspectTemplate})
-	if err != nil {
-		if s, ok := status.FromError(err); ok && s.Code() == codes.NotFound {
-			g.InspectTemplate.State = plugin.StateIsSet | plugin.StateIsNull
-			return nil, nil
-		}
-		return nil, err
+	t := sdp.inspect[g.cacheInspectTemplate]
+	if t == nil {
+		g.InspectTemplate.State = plugin.StateIsSet | plugin.StateIsNull
 	}
-	inspectConfig, err := protoToDict(tmpl.InspectConfig)
-	if err != nil {
-		return nil, err
-	}
-	res, err := CreateResource(g.MqlRuntime, "gcp.project.dlpService.inspectTemplate", map[string]*llx.RawData{
-		"name":          llx.StringData(tmpl.Name),
-		"displayName":   llx.StringData(tmpl.DisplayName),
-		"description":   llx.StringData(tmpl.Description),
-		"inspectConfig": llx.DictData(inspectConfig),
-		"created":       llx.TimeDataPtr(timestampAsTimePtr(tmpl.CreateTime)),
-		"updated":       llx.TimeDataPtr(timestampAsTimePtr(tmpl.UpdateTime)),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*mqlGcpProjectDlpServiceInspectTemplate), nil
+	return t, nil
 }
 
 func (g *mqlGcpProjectModelArmorServiceTemplate) deidentifyTemplate() (*mqlGcpProjectDlpServiceDeidentifyTemplate, error) {
@@ -385,41 +400,155 @@ func (g *mqlGcpProjectModelArmorServiceTemplate) deidentifyTemplate() (*mqlGcpPr
 		g.DeidentifyTemplate.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
-	creds, err := conn.Credentials(dlp.DefaultAuthScopes()...)
+	sdp, err := g.sdpTemplates()
 	if err != nil {
 		return nil, err
 	}
-	ctx := context.Background()
-	client, err := dlp.NewClient(ctx, option.WithCredentials(creds), connection.GRPCClientTraceOption())
-	if err != nil {
+	if err := sdp.errs[g.cacheDeidentifyTemplate]; err != nil {
 		return nil, err
 	}
-	defer client.Close()
-	tmpl, err := client.GetDeidentifyTemplate(ctx, &dlppb.GetDeidentifyTemplateRequest{Name: g.cacheDeidentifyTemplate})
-	if err != nil {
-		if s, ok := status.FromError(err); ok && s.Code() == codes.NotFound {
-			g.DeidentifyTemplate.State = plugin.StateIsSet | plugin.StateIsNull
-			return nil, nil
-		}
-		return nil, err
+	t := sdp.deidentify[g.cacheDeidentifyTemplate]
+	if t == nil {
+		g.DeidentifyTemplate.State = plugin.StateIsSet | plugin.StateIsNull
 	}
-	deidentifyConfig, err := protoToDict(tmpl.DeidentifyConfig)
-	if err != nil {
-		return nil, err
-	}
-	res, err := CreateResource(g.MqlRuntime, "gcp.project.dlpService.deidentifyTemplate", map[string]*llx.RawData{
-		"name":             llx.StringData(tmpl.Name),
-		"displayName":      llx.StringData(tmpl.DisplayName),
-		"description":      llx.StringData(tmpl.Description),
-		"deidentifyConfig": llx.DictData(deidentifyConfig),
-		"created":          llx.TimeDataPtr(timestampAsTimePtr(tmpl.CreateTime)),
-		"updated":          llx.TimeDataPtr(timestampAsTimePtr(tmpl.UpdateTime)),
+	return t, nil
+}
+
+// sdpTemplates returns the Sensitive Data Protection templates referenced by
+// the templates of this template's project, resolved once per project.
+func (g *mqlGcpProjectModelArmorServiceTemplate) sdpTemplates() (*modelArmorSdpTemplates, error) {
+	svc, err := NewResource(g.MqlRuntime, "gcp.project.modelArmorService", map[string]*llx.RawData{
+		"projectId": llx.StringData(g.ProjectId.Data),
 	})
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlGcpProjectDlpServiceDeidentifyTemplate), nil
+	return svc.(*mqlGcpProjectModelArmorService).resolveSdpTemplates([]string{g.cacheInspectTemplate}, []string{g.cacheDeidentifyTemplate})
+}
+
+// modelArmorSdpTemplates holds the SDP templates Model Armor templates
+// reference, by resource name. A name that was not found has no entry; a
+// name whose lookup failed has its error in errs.
+type modelArmorSdpTemplates struct {
+	inspect    map[string]*mqlGcpProjectDlpServiceInspectTemplate
+	deidentify map[string]*mqlGcpProjectDlpServiceDeidentifyTemplate
+	errs       map[string]error
+}
+
+// resolveSdpTemplates fetches every SDP template the project's Model Armor
+// templates reference, through one DLP client, once per project. The extra
+// names cover a template that was resolved on its own (a discovered asset)
+// rather than through the list.
+func (g *mqlGcpProjectModelArmorService) resolveSdpTemplates(extraInspect, extraDeidentify []string) (*modelArmorSdpTemplates, error) {
+	g.sdpOnce.Do(func() {
+		inspectNames, deidentifyNames := map[string]bool{}, map[string]bool{}
+		for _, n := range extraInspect {
+			inspectNames[n] = n != ""
+		}
+		for _, n := range extraDeidentify {
+			deidentifyNames[n] = n != ""
+		}
+		templates := g.GetTemplates()
+		if templates.Error != nil {
+			g.sdpErr = templates.Error
+			return
+		}
+		for _, t := range templates.Data {
+			mt := t.(*mqlGcpProjectModelArmorServiceTemplate)
+			if mt.cacheInspectTemplate != "" {
+				inspectNames[mt.cacheInspectTemplate] = true
+			}
+			if mt.cacheDeidentifyTemplate != "" {
+				deidentifyNames[mt.cacheDeidentifyTemplate] = true
+			}
+		}
+
+		res := &modelArmorSdpTemplates{
+			inspect:    map[string]*mqlGcpProjectDlpServiceInspectTemplate{},
+			deidentify: map[string]*mqlGcpProjectDlpServiceDeidentifyTemplate{},
+			errs:       map[string]error{},
+		}
+		g.sdp = res
+		if len(inspectNames) == 0 && len(deidentifyNames) == 0 {
+			return
+		}
+
+		conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
+		creds, err := conn.Credentials(dlp.DefaultAuthScopes()...)
+		if err != nil {
+			g.sdpErr = err
+			return
+		}
+		ctx := context.Background()
+		client, err := dlp.NewClient(ctx, option.WithCredentials(creds), connection.GRPCClientTraceOption())
+		if err != nil {
+			g.sdpErr = err
+			return
+		}
+		defer client.Close()
+
+		for name, ok := range inspectNames {
+			if !ok {
+				continue
+			}
+			tmpl, err := client.GetInspectTemplate(ctx, &dlppb.GetInspectTemplateRequest{Name: name})
+			if err != nil {
+				if s, ok := status.FromError(err); !ok || s.Code() != codes.NotFound {
+					res.errs[name] = err
+				}
+				continue
+			}
+			inspectConfig, err := protoToDict(tmpl.InspectConfig)
+			if err != nil {
+				res.errs[name] = err
+				continue
+			}
+			r, err := CreateResource(g.MqlRuntime, "gcp.project.dlpService.inspectTemplate", map[string]*llx.RawData{
+				"name":          llx.StringData(tmpl.Name),
+				"displayName":   llx.StringData(tmpl.DisplayName),
+				"description":   llx.StringData(tmpl.Description),
+				"inspectConfig": llx.DictData(inspectConfig),
+				"created":       llx.TimeDataPtr(timestampAsTimePtr(tmpl.CreateTime)),
+				"updated":       llx.TimeDataPtr(timestampAsTimePtr(tmpl.UpdateTime)),
+			})
+			if err != nil {
+				res.errs[name] = err
+				continue
+			}
+			res.inspect[name] = r.(*mqlGcpProjectDlpServiceInspectTemplate)
+		}
+		for name, ok := range deidentifyNames {
+			if !ok {
+				continue
+			}
+			tmpl, err := client.GetDeidentifyTemplate(ctx, &dlppb.GetDeidentifyTemplateRequest{Name: name})
+			if err != nil {
+				if s, ok := status.FromError(err); !ok || s.Code() != codes.NotFound {
+					res.errs[name] = err
+				}
+				continue
+			}
+			deidentifyConfig, err := protoToDict(tmpl.DeidentifyConfig)
+			if err != nil {
+				res.errs[name] = err
+				continue
+			}
+			r, err := CreateResource(g.MqlRuntime, "gcp.project.dlpService.deidentifyTemplate", map[string]*llx.RawData{
+				"name":             llx.StringData(tmpl.Name),
+				"displayName":      llx.StringData(tmpl.DisplayName),
+				"description":      llx.StringData(tmpl.Description),
+				"deidentifyConfig": llx.DictData(deidentifyConfig),
+				"created":          llx.TimeDataPtr(timestampAsTimePtr(tmpl.CreateTime)),
+				"updated":          llx.TimeDataPtr(timestampAsTimePtr(tmpl.UpdateTime)),
+			})
+			if err != nil {
+				res.errs[name] = err
+				continue
+			}
+			res.deidentify[name] = r.(*mqlGcpProjectDlpServiceDeidentifyTemplate)
+		}
+	})
+	return g.sdp, g.sdpErr
 }
 
 // initGcpProjectModelArmorServiceTemplate resolves a single Model Armor template.
