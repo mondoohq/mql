@@ -69,9 +69,9 @@ func NewSlackConnection(id uint32, asset *inventory.Asset, conf *inventory.Confi
 	var teamInfo *slack.TeamInfo
 	var err error
 	if teamID != "" {
-		teamInfo, err = client.GetOtherTeamInfoContext(ctx, teamID)
+		teamInfo, err = client.GetOtherTeamInfoContext(ctx, teamID, slack.GetTeamInfoOptionIncludeSlackbotAvailability(true))
 	} else {
-		teamInfo, err = client.GetTeamInfoContext(ctx)
+		teamInfo, err = client.GetTeamInfoContext(ctx, slack.GetTeamInfoOptionIncludeSlackbotAvailability(true))
 	}
 	if err != nil {
 		return nil, err

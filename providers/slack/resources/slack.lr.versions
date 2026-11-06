@@ -101,6 +101,7 @@ slack.team.domain 9.0.0
 slack.team.emailDomain 9.0.0
 slack.team.id 9.0.0
 slack.team.name 9.0.0
+slack.team.slackbotAvailability 14.1.10
 slack.user 9.0.0
 slack.user.color 9.0.0
 slack.user.deleted 9.0.0
