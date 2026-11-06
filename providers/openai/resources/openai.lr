@@ -80,6 +80,8 @@ openai @defaults("organization") @maturity("preview") @root {
   certificates() []openai.certificate
   // Customer-managed encryption keys registered with the organization (requires admin API key)
   externalKeys() []openai.externalKey
+  // External identity providers whose tokens the organization accepts in place of API keys (requires admin API key)
+  workloadIdentityProviders() []openai.workloadIdentityProvider
   // Code interpreter containers
   containers() []openai.container
   // Batch jobs submitted to the Batch API
@@ -698,6 +700,18 @@ openai.project @defaults("id name status") @maturity("preview") {
   webSearchEnabled() bool
   // Per-model rate limits for this project (requires admin API key)
   rateLimits() []openai.project.rateLimit
+  // Service tier for requests that name none or ask for auto (requires admin API key)
+  //
+  // For example standard, fast, or scale. Null when the project reports no
+  // service tier settings.
+  defaultServiceTier() string
+  // Service tiers the project may request in addition to standard (requires admin API key)
+  //
+  // For example flex, fast, or ultrafast. The single value all admits every
+  // tier, including tiers OpenAI adds later. An empty list allows only the
+  // standard tier. Organization policy and model eligibility still apply.
+  // Null when the project reports no service tier settings.
+  enabledServiceTiers() []string
   // Hard spend limit in cents, null when no limit is set (requires admin API key)
   spendLimitAmount() int
   // Currency of the hard spend limit, null when no limit is set
@@ -833,6 +847,112 @@ openai.project.serviceAccount @defaults("id name role") @maturity("preview") {
   role string
   // Creation timestamp
   createdAt time
+  // Federation rules that let an external workload act as this service account (requires admin API key)
+  //
+  // Each rule names the workload identity provider whose tokens it accepts.
+  // An empty list means no external workload can act as the service account
+  // through workload identity federation.
+  federationRules() []openai.workloadIdentityProvider.federationRule
+}
+
+// OpenAI workload identity provider
+//
+// External OpenID Connect issuer the organization trusts, so that workloads
+// such as CI pipelines or jobs in another cloud exchange the issuer's tokens
+// for OpenAI access instead of holding an API key. The `issuer` and
+// `audience` fields name the tokens the provider accepts,
+// `verificationType` says where the keys that check token signatures come
+// from, and `federationRules` lists which project service account a matching
+// token may act as and with which permissions.
+openai.workloadIdentityProvider @defaults("name issuer enabled") @maturity("preview") {
+  // Workload identity provider identifier
+  id string
+  // Display name
+  name string
+  // Description
+  description string
+  // Whether the provider accepts tokens
+  enabled bool
+  // Protocol of the provider
+  //
+  // Currently always oidc.
+  type string
+  // Issuer URL a token must carry in its iss claim
+  issuer string
+  // Audience a token must carry in its aud claim
+  audience string
+  // Source of the keys that verify token signatures
+  //
+  // One of discovery, where the keys are read from the issuer's discovery
+  // document at discoveryUrl, or uploaded_jwks, where the keys were uploaded
+  // to OpenAI and are listed in jwks.
+  verificationType string
+  // OpenID discovery document URL, null when the signing keys were uploaded
+  discoveryUrl string
+  // Uploaded JSON Web Key Set, null when the signing keys come from discovery
+  //
+  // Holds public keys only.
+  jwks dict
+  // Attribute transformations applied to incoming tokens, keyed by attribute name
+  //
+  // Each value is the expression that derives the attribute from the
+  // token's claims. Federation rules match on the derived attributes.
+  attributeTransformations map[string]string
+  // Creation timestamp
+  createdAt time
+  // Last update timestamp
+  updatedAt time
+  // Rules mapping this provider's tokens to project service accounts (requires admin API key)
+  federationRules() []openai.workloadIdentityProvider.federationRule
+}
+
+// OpenAI workload identity federation rule
+//
+// Rule that lets tokens from one workload identity provider act as one
+// project service account. A token qualifies when its attributes carry the
+// values listed in `attributeMatchers`, and `permissionType` with
+// `permissionScopes` bounds what the exchanged credential may do. The
+// `serviceAccount` and `project` fields name the identity a qualifying
+// workload receives, so enabled rules with few matchers or with the service
+// account's full permissions show which external workloads can reach a
+// project.
+openai.workloadIdentityProvider.federationRule @defaults("name enabled permissionType") @maturity("preview") {
+  // Federation rule identifier
+  id string
+  // Display name
+  name string
+  // Description
+  description string
+  // Whether the rule accepts tokens
+  enabled bool
+  // Attribute values a token must carry, keyed by attribute name
+  //
+  // Values are strings, booleans, or numbers.
+  attributeMatchers dict
+  // Permissions the exchanged credential carries
+  //
+  // One of service_account_default, where the credential carries every
+  // permission of the service account, or restricted, where it is limited
+  // to permissionScopes.
+  permissionType string
+  // Scopes the exchanged credential is limited to
+  //
+  // Null unless permissionType is restricted.
+  permissionScopes []string
+  // Creation timestamp
+  createdAt time
+  // Last update timestamp
+  updatedAt time
+  // Workload identity provider whose tokens the rule accepts
+  workloadIdentityProvider() openai.workloadIdentityProvider
+  // Project that holds the service account
+  //
+  // Null when the project no longer exists.
+  project() openai.project
+  // Service account a qualifying token acts as
+  //
+  // Null when the service account no longer exists.
+  serviceAccount() openai.project.serviceAccount
 }
 
 // OpenAI organization user
