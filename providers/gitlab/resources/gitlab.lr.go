@@ -9434,11 +9434,15 @@ func (c *mqlGitlabGroup) GetTwoFactorGracePeriod() *plugin.TValue[int64] {
 }
 
 func (c *mqlGitlabGroup) GetMembershipLock() *plugin.TValue[bool] {
-	return &c.MembershipLock
+	return plugin.GetOrCompute[bool](&c.MembershipLock, func() (bool, error) {
+		return c.membershipLock()
+	})
 }
 
 func (c *mqlGitlabGroup) GetPreventForkingOutsideGroup() *plugin.TValue[bool] {
-	return &c.PreventForkingOutsideGroup
+	return plugin.GetOrCompute[bool](&c.PreventForkingOutsideGroup, func() (bool, error) {
+		return c.preventForkingOutsideGroup()
+	})
 }
 
 func (c *mqlGitlabGroup) GetEmailsEnabled() *plugin.TValue[bool] {
@@ -9490,7 +9494,9 @@ func (c *mqlGitlabGroup) GetProjects() *plugin.TValue[[]any] {
 }
 
 func (c *mqlGitlabGroup) GetAllowedEmailDomainsList() *plugin.TValue[string] {
-	return &c.AllowedEmailDomainsList
+	return plugin.GetOrCompute[string](&c.AllowedEmailDomainsList, func() (string, error) {
+		return c.allowedEmailDomainsList()
+	})
 }
 
 func (c *mqlGitlabGroup) GetLfsEnabled() *plugin.TValue[bool] {
@@ -9498,11 +9504,15 @@ func (c *mqlGitlabGroup) GetLfsEnabled() *plugin.TValue[bool] {
 }
 
 func (c *mqlGitlabGroup) GetIpRestrictionRanges() *plugin.TValue[string] {
-	return &c.IpRestrictionRanges
+	return plugin.GetOrCompute[string](&c.IpRestrictionRanges, func() (string, error) {
+		return c.ipRestrictionRanges()
+	})
 }
 
 func (c *mqlGitlabGroup) GetSharedWithGroups() *plugin.TValue[[]any] {
-	return &c.SharedWithGroups
+	return plugin.GetOrCompute[[]any](&c.SharedWithGroups, func() ([]any, error) {
+		return c.sharedWithGroups()
+	})
 }
 
 func (c *mqlGitlabGroup) GetShareWithGroupLock() *plugin.TValue[bool] {
