@@ -34195,6 +34195,95 @@ private aws.qBusiness.application @defaults("name status identityType") {
   webExperiences() []aws.qBusiness.webExperience
   // Tags assigned to the application
   tags() map[string]string
+  // Whether end users can upload files in chat
+  attachmentsEnabled() bool
+  // Whether end users can create and use Amazon Q Apps
+  qAppsEnabled() bool
+  // Whether responses are personalized with the user's profile information
+  personalizationEnabled() bool
+  // Whether users are subscribed automatically when they first sign in
+  autoSubscribeEnabled() bool
+  // Subscription tier assigned to automatically subscribed users
+  //
+  // Q_LITE or Q_BUSINESS.
+  defaultSubscriptionType() string
+  // IAM Identity Center application that authenticates end users
+  //
+  // Null unless the identity type is AWS_IAM_IDC or the application is not found.
+  identityCenterApplication() aws.identitycenter.application
+  // IAM SAML identity provider that authenticates end users
+  //
+  // Null unless the identity type is AWS_IAM_IDP_SAML.
+  iamSamlProvider() aws.iam.samlProvider
+  // IAM OpenID Connect identity provider that authenticates end users
+  //
+  // Null unless the identity type is AWS_IAM_IDP_OIDC.
+  iamOidcProvider() aws.iam.oidcProvider
+  // OIDC client IDs accepted for the application
+  clientIdsForOidc() []string
+  // Sources the assistant may draw answers from
+  //
+  // ENTERPRISE_CONTENT_ONLY limits answers to indexed content, EXTENDED_KNOWLEDGE_ENABLED also allows the model's general knowledge.
+  chatResponseScope() string
+  // Phrases the assistant blocks in chat
+  chatBlockedPhrases() []string
+  // Names of the topic-specific chat rules configured for the application
+  chatTopicNames() []string
+  // Whether creator mode, which answers from the model's general knowledge, is available to users
+  chatCreatorModeEnabled() bool
+  // Whether hallucination reduction checks responses against retrieved content
+  chatHallucinationReductionEnabled() bool
+  // Whether chat requests are routed to plugins automatically
+  chatOrchestrationEnabled() bool
+  // Resource-based policy document granting other principals access to the application
+  //
+  // Null when no policy is attached or the policy could not be read.
+  policy() string
+  // Parsed statements of the resource-based policy
+  //
+  // Empty when no policy is attached. Null when the policy could not be read.
+  policyStatements() []aws.iam.policyStatement
+  // Whether the resource-based policy grants access to any principal
+  //
+  // True when a statement allows a wildcard principal without a condition that scopes the caller. Null when the policy could not be read.
+  isPublic() bool
+  // Data accessors that let independent software vendors query the application's content
+  dataAccessors() []aws.qBusiness.dataAccessor
+}
+
+// Amazon Q Business data accessor
+//
+// Grant that lets an independent software vendor (ISV) call the Q Business
+// APIs of an application on behalf of its users. `principal` is the ISV's IAM
+// role, often in another account, `actions` the API actions the grant allows,
+// and `authenticationType` how the ISV authenticates users.
+private aws.qBusiness.dataAccessor @defaults("name principal") {
+  // ARN of the data accessor
+  arn string
+  // Unique identifier of the data accessor
+  id string
+  // Identifier of the application the data accessor reads from
+  applicationId string
+  // Display name of the data accessor
+  name string
+  // Region where the data accessor exists
+  region string
+  // ARN of the IAM role the ISV uses to call the application
+  //
+  // The role usually belongs to the ISV's own account, outside the one being scanned.
+  principal string
+  // How the ISV authenticates users
+  //
+  // AWS_IAM_IDC_TTI or AWS_IAM_IDC_AUTH_CODE.
+  authenticationType string
+  // ARN of the IAM Identity Center application created for the data accessor
+  idcApplicationArn string
+  // Time the data accessor was created
+  createdAt time
+  // Time the data accessor was last updated
+  updatedAt time
+  // Q Business API actions the data accessor may call
+  actions() []string
 }
 
 // Amazon Q Business index
@@ -34314,6 +34403,10 @@ private aws.qBusiness.plugin @defaults("name type state") {
   state string
   // Build status of the plugin
   buildStatus string
+  // How the plugin authenticates to the external system
+  //
+  // One of `basicAuth`, `oAuth2ClientCredential`, `idcAuth`, or `noAuth`.
+  authType() string
   // Time the plugin was created
   createdAt time
   // Time the plugin was last updated
@@ -34336,6 +34429,20 @@ private aws.qBusiness.webExperience @defaults("id status") {
   region string
   // Default endpoint URL serving the web experience
   defaultEndpoint string
+  // ARN of the web experience
+  arn() string
+  // Website domains allowed to embed the web experience
+  origins() []string
+  // IAM role the web experience assumes to call the application
+  iamRole() aws.iam.role
+  // Kind of identity provider end users sign in with
+  //
+  // `saml` or `openIdConnect`. Null when the application authenticates through IAM Identity Center.
+  identityProviderType() string
+  // Browser extensions enabled for the web experience
+  //
+  // Each one of CHROME or FIREFOX.
+  browserExtensions() []string
   // Current status of the web experience
   status string
   // Time the web experience was created
