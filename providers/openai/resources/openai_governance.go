@@ -5,6 +5,7 @@ package resources
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -212,6 +213,107 @@ type mqlOpenaiProjectInternal struct {
 	spendLimitFetched atomic.Bool
 	spendLimitLock    sync.Mutex
 	spendLimit        *openai.ProjectSpendLimit
+
+	serviceTiersFetched atomic.Bool
+	serviceTiersLock    sync.Mutex
+	serviceTiers        *openai.ProjectServiceTierSettings
+}
+
+// fetchServiceTierSettings reads the project service tier settings once and
+// shares them across the default and enabled tier fields. A nil result with a
+// nil error means the project reports no settings.
+func (r *mqlOpenaiProject) fetchServiceTierSettings() (*openai.ProjectServiceTierSettings, error) {
+	if r.serviceTiersFetched.Load() {
+		return r.serviceTiers, nil
+	}
+	r.serviceTiersLock.Lock()
+	defer r.serviceTiersLock.Unlock()
+	if r.serviceTiersFetched.Load() {
+		return r.serviceTiers, nil
+	}
+
+	conn := openaiConn(r.MqlRuntime)
+	client, err := adminPlaneClient(conn, "openai.project.serviceTierSettings")
+	if err != nil {
+		return nil, err
+	}
+	if client == nil {
+		r.serviceTiersFetched.Store(true)
+		return nil, nil
+	}
+
+	settings, err := client.Admin.Organization.Projects.ServiceTierSettings.Get(context.Background(), r.Id.Data)
+	if err != nil {
+		if isNotFound(err) {
+			r.serviceTiersFetched.Store(true)
+			return nil, nil
+		}
+		return nil, classifyReportError(err, "service tier settings of project "+r.Id.Data)
+	}
+	r.serviceTiers = settings
+	r.serviceTiersFetched.Store(true)
+	return settings, nil
+}
+
+func (r *mqlOpenaiProject) defaultServiceTier() (string, error) {
+	settings, err := r.fetchServiceTierSettings()
+	if err != nil {
+		return "", err
+	}
+	if settings == nil || settings.Default == "" {
+		r.DefaultServiceTier.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return string(settings.Default), nil
+}
+
+func (r *mqlOpenaiProject) enabledServiceTiers() ([]any, error) {
+	settings, err := r.fetchServiceTierSettings()
+	if err != nil {
+		return nil, err
+	}
+	if settings == nil {
+		r.EnabledServiceTiers.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	tiers, ok, err := enabledServiceTierValues(settings.EnabledTiers.RawJSON())
+	if err != nil {
+		return nil, fmt.Errorf("failed to read the enabled service tiers of project %s: %w", r.Id.Data, err)
+	}
+	if !ok {
+		r.EnabledServiceTiers.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return tiers, nil
+}
+
+// enabledServiceTierValues reads the enabled tiers, which the API sends either
+// as the string "all" or as a list of tier names. The string becomes a
+// one-element list, so a policy reads both shapes the same way. ok is false
+// when the response carried no value.
+func enabledServiceTierValues(raw string) ([]any, bool, error) {
+	if raw == "" || raw == "null" {
+		return nil, false, nil
+	}
+	var v any
+	if err := json.Unmarshal([]byte(raw), &v); err != nil {
+		return nil, false, err
+	}
+	switch t := v.(type) {
+	case string:
+		return []any{t}, true, nil
+	case []any:
+		res := make([]any, 0, len(t))
+		for _, item := range t {
+			s, ok := item.(string)
+			if !ok {
+				return nil, false, fmt.Errorf("unexpected service tier %v", item)
+			}
+			res = append(res, s)
+		}
+		return res, true, nil
+	}
+	return nil, false, fmt.Errorf("unexpected enabled service tiers %s", raw)
 }
 
 // fetchHostedToolPermissions reads the project hosted tool policy once and

@@ -167,6 +167,7 @@ func (r *mqlOpenaiProject) serviceAccounts() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		mqlSA.(*mqlOpenaiProjectServiceAccount).cacheProjectId = r.Id.Data
 		res = append(res, mqlSA)
 	}
 	if err := iter.Err(); err != nil {
@@ -345,17 +346,38 @@ func (r *mqlOpenaiProjectApiKey) owner() (*mqlOpenaiOrganizationUser, error) {
 }
 
 func (r *mqlOpenaiProjectApiKey) serviceAccount() (*mqlOpenaiProjectServiceAccount, error) {
-	if r.OwnerType.Data != "service_account" || r.cacheOwnerId == "" || r.cacheProjectId == "" {
+	if r.OwnerType.Data != "service_account" {
 		r.ServiceAccount.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
+	sa, err := findProjectServiceAccount(r.MqlRuntime, r.cacheProjectId, r.cacheOwnerId)
+	if err != nil {
+		return nil, err
+	}
+	if sa == nil {
+		r.ServiceAccount.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return sa, nil
+}
 
-	project, err := resolveProject(r.MqlRuntime, r.cacheProjectId)
+type mqlOpenaiProjectServiceAccountInternal struct {
+	cacheProjectId string
+}
+
+// findProjectServiceAccount finds a service account in its project's service
+// account list, so a reference costs no call per referring object. A project
+// or service account that no longer exists is reported as (nil, nil) for the
+// caller to null.
+func findProjectServiceAccount(runtime *plugin.Runtime, projectID, serviceAccountID string) (*mqlOpenaiProjectServiceAccount, error) {
+	if projectID == "" || serviceAccountID == "" {
+		return nil, nil
+	}
+	project, err := resolveProject(runtime, projectID)
 	if err != nil {
 		return nil, err
 	}
 	if project == nil {
-		r.ServiceAccount.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	accounts := project.GetServiceAccounts()
@@ -364,13 +386,9 @@ func (r *mqlOpenaiProjectApiKey) serviceAccount() (*mqlOpenaiProjectServiceAccou
 	}
 	for i := range accounts.Data {
 		sa, ok := accounts.Data[i].(*mqlOpenaiProjectServiceAccount)
-		if !ok {
-			continue
-		}
-		if sa.Id.Data == r.cacheOwnerId {
+		if ok && sa.Id.Data == serviceAccountID {
 			return sa, nil
 		}
 	}
-	r.ServiceAccount.State = plugin.StateIsSet | plugin.StateIsNull
 	return nil, nil
 }
