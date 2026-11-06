@@ -12377,7 +12377,10 @@ oci.artifacts {
 // controls are set. `isPublic` reports whether the repository can be pulled
 // anonymously from the internet, and `isImmutable` whether a published tag
 // can be moved to point at different content. A mutable tag means an image
-// verified once is not necessarily the image that runs next.
+// verified once is not necessarily the image that runs next. A
+// `repositoryType` of PULL_THROUGH marks a cache of an external registry:
+// `upstreamUrl` names that registry, and `upstreamUsername` and
+// `upstreamSecret` the credential the cache pulls with.
 private oci.artifacts.containerRepository @defaults("name isPublic imageCount") {
   // Container repository OCID
   id string
@@ -12419,6 +12422,41 @@ private oci.artifacts.containerRepository @defaults("name isPublic imageCount") 
   // `Oracle-Tags` namespace records the creating principal in `CreatedBy`
   // and the creation time in `CreatedOn`.
   systemTags map[string]dict
+  // Repository type
+  //
+  // One of STANDARD, PULL_THROUGH, or MULTI_REGION. A PULL_THROUGH repository
+  // caches images from the external registry in upstreamUrl, so its content
+  // is whatever that registry serves. A MULTI_REGION repository is replicated
+  // across the regions in multiRegionPeers. Null when the service reports no
+  // type.
+  repositoryType string
+  // Whether the repository is top-level
+  //
+  // A top-level repository reserves its name as a prefix in the namespace and
+  // holds images under child paths of that prefix. Null when the service
+  // reports no value.
+  isTopLevel bool
+  // Upstream registry URL of a pull-through repository
+  //
+  // The external registry this repository caches images from. Null for
+  // repositories that are not pull-through caches.
+  upstreamUrl() string
+  // Username a pull-through repository authenticates to the upstream registry with
+  //
+  // Null when the repository pulls anonymously or is not a pull-through cache.
+  upstreamUsername() string
+  // Vault secret holding the upstream registry password
+  //
+  // The secret a pull-through repository reads to authenticate to
+  // upstreamUrl. Null when the repository pulls anonymously or is not a
+  // pull-through cache.
+  upstreamSecret() oci.vault.secret
+  // Peer regions of a multi-region repository
+  //
+  // Canonical region names, for example `us-phoenix-1`, including the region
+  // the repository was created in. Empty for repositories that are not
+  // multi-region.
+  multiRegionPeers() []string
 }
 
 // Oracle Cloud Infrastructure (OCI) container image

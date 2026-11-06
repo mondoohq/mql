@@ -116,21 +116,7 @@ func (o *mqlOciArtifacts) containerRepositories() ([]any, error) {
 			for i := range items {
 				repository := items[i]
 
-				mqlRepository, err := CreateResource(o.MqlRuntime, "oci.artifacts.containerRepository", map[string]*llx.RawData{
-					"id":                llx.StringDataPtr(repository.Id),
-					"name":              llx.StringDataPtr(repository.DisplayName),
-					"namespace":         llx.StringDataPtr(repository.Namespace),
-					"isPublic":          llx.BoolDataPtr(repository.IsPublic),
-					"imageCount":        ociOptionalInt(repository.ImageCount),
-					"layerCount":        ociOptionalInt(repository.LayerCount),
-					"layersSizeInBytes": llx.IntDataPtr(repository.LayersSizeInBytes),
-					"billableSizeInGBs": llx.IntDataPtr(repository.BillableSizeInGBs),
-					"state":             llx.StringData(string(repository.LifecycleState)),
-					"created":           sdkTimeData(repository.TimeCreated),
-					"freeformTags":      llx.MapData(strMapToAny(repository.FreeformTags), types.String),
-					"definedTags":       llx.MapData(definedTagsToAny(repository.DefinedTags), types.Any),
-					"systemTags":        llx.MapData(definedTagsToAny(repository.SystemTags), types.Dict),
-				})
+				mqlRepository, err := CreateResource(o.MqlRuntime, "oci.artifacts.containerRepository", ociContainerRepositoryFields(repository))
 				if err != nil {
 					return nil, err
 				}
@@ -141,6 +127,37 @@ func (o *mqlOciArtifacts) containerRepositories() ([]any, error) {
 			}
 			return res, nil
 		})
+}
+
+// ociContainerRepositoryFields flattens a repository listing entry into the
+// resource's static fields.
+func ociContainerRepositoryFields(repository artifacts.ContainerRepositorySummary) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"id":                llx.StringDataPtr(repository.Id),
+		"name":              llx.StringDataPtr(repository.DisplayName),
+		"namespace":         llx.StringDataPtr(repository.Namespace),
+		"isPublic":          llx.BoolDataPtr(repository.IsPublic),
+		"imageCount":        ociOptionalInt(repository.ImageCount),
+		"layerCount":        ociOptionalInt(repository.LayerCount),
+		"layersSizeInBytes": llx.IntDataPtr(repository.LayersSizeInBytes),
+		"billableSizeInGBs": llx.IntDataPtr(repository.BillableSizeInGBs),
+		"state":             llx.StringData(string(repository.LifecycleState)),
+		"created":           sdkTimeData(repository.TimeCreated),
+		"freeformTags":      llx.MapData(strMapToAny(repository.FreeformTags), types.String),
+		"definedTags":       llx.MapData(definedTagsToAny(repository.DefinedTags), types.Any),
+		"systemTags":        llx.MapData(definedTagsToAny(repository.SystemTags), types.Dict),
+		"repositoryType":    ociContainerRepositoryTypeData(repository.RepositoryType),
+		"isTopLevel":        llx.BoolDataPtr(repository.IsTopLevel),
+	}
+}
+
+// ociContainerRepositoryTypeData reports the repository type, null when the
+// service omits it. An empty string would read as a type no repository has.
+func ociContainerRepositoryTypeData(t artifacts.ContainerRepositoryRepositoryTypeEnum) *llx.RawData {
+	if t == "" {
+		return llx.NilData
+	}
+	return llx.StringData(string(t))
 }
 
 func (o *mqlOciArtifactsContainerRepository) id() (string, error) {
@@ -203,6 +220,59 @@ func (o *mqlOciArtifactsContainerRepository) timeLastPushed() (*time.Time, error
 		return nil, nil
 	}
 	return &detail.TimeLastPushed.Time, nil
+}
+
+// ociOptionalStringField reports v, marking field null when the service
+// returned no value. Only pull-through repositories carry upstream settings,
+// and "" on every other repository would make an empty string mean both
+// "not a cache" and "a cache with no URL".
+func ociOptionalStringField(field *plugin.TValue[string], v *string) string {
+	if v == nil || *v == "" {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return ""
+	}
+	return *v
+}
+
+func (o *mqlOciArtifactsContainerRepository) upstreamUrl() (string, error) {
+	detail, err := o.fetchDetail()
+	if err != nil {
+		return "", err
+	}
+	return ociOptionalStringField(&o.UpstreamUrl, detail.UpstreamUrl), nil
+}
+
+func (o *mqlOciArtifactsContainerRepository) upstreamUsername() (string, error) {
+	detail, err := o.fetchDetail()
+	if err != nil {
+		return "", err
+	}
+	return ociOptionalStringField(&o.UpstreamUsername, detail.UpstreamUsername), nil
+}
+
+func (o *mqlOciArtifactsContainerRepository) upstreamSecret() (*mqlOciVaultSecret, error) {
+	detail, err := o.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	return resolveRef(o.MqlRuntime, "oci.vault.secret", ociContainerRepositoryUpstreamSecretID(detail), &o.UpstreamSecret)
+}
+
+// ociContainerRepositoryUpstreamSecretID reports the OCID of the vault secret
+// holding the upstream password, or "" when there is none to resolve.
+func ociContainerRepositoryUpstreamSecretID(detail *artifacts.ContainerRepository) string {
+	if detail == nil {
+		return ""
+	}
+	return ocidOrEmpty(stringValue(detail.UpstreamSecretId))
+}
+
+func (o *mqlOciArtifactsContainerRepository) multiRegionPeers() ([]any, error) {
+	detail, err := o.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	return stringsToAny(detail.MultiRegionPeers), nil
 }
 
 // images returns the images stored in this repository.
