@@ -574,6 +574,17 @@ private cloudflare.apiToken @defaults("name status expiresOn") {
 	// For an OAuth-provisioned token this is the OAuth client identifier. Null
 	// when provisionerType is null or the identifier is unavailable.
 	provisionerId string
+	// Prefix of the token value, before the first underscore
+	//
+	// Together with tokenSuffix it identifies which token a leaked or found
+	// token string belongs to, without the secret itself. Null for a token
+	// created or last rolled before Cloudflare started recording it.
+	tokenPrefix string
+	// Last 4 characters of the token value
+	//
+	// Not unique on its own; match it together with tokenPrefix. Null for a
+	// token created or last rolled before Cloudflare started recording it.
+	tokenSuffix string
 }
 
 // Account settings
@@ -933,6 +944,211 @@ private cloudflare.one {
 	// raises a finding of a given type: which remediations run and which
 	// webhooks are notified.
 	casbPosturePolicies() []cloudflare.one.casbPosturePolicy
+	// Cloud Web Security configuration
+	//
+	// Rego policies, policy sets, workloads, domain ACLs, basic-auth
+	// credentials and the deployments that tie them together.
+	cws() cloudflare.one.cws
+}
+
+// Cloudflare Cloud Web Security configuration
+//
+// Account-wide Cloud Web Security (CWS) setup. `deployments` are the enforced
+// entry points: each carries a default mode for unmatched traffic, the
+// `policySets` it evaluates, an optional domain ACL and the basic-auth
+// credentials clients present. `policySets` group `policies` (inline Rego
+// evaluated against matched requests) and scope them with include and exclude
+// `workloads`. `domainAcls` list per-domain allow and block decisions, and
+// `basicAuthCredentials` the usernames that can authenticate to a deployment.
+// Every list is empty for an account without Cloud Web Security.
+private cloudflare.one.cws {
+	// Deployments
+	deployments() []cloudflare.one.cws.deployment
+	// Policy sets
+	policySets() []cloudflare.one.cws.policySet
+	// Rego policies
+	policies() []cloudflare.one.cws.policy
+	// Workloads, the reusable request selectors policy sets target
+	workloads() []cloudflare.one.cws.workload
+	// Domain access control lists
+	domainAcls() []cloudflare.one.cws.domainAcl
+	// Basic-auth credentials (usernames only, never secrets)
+	basicAuthCredentials() []cloudflare.one.cws.basicAuthCredential
+}
+
+// Cloud Web Security deployment
+//
+// Enforcement entry point selected by `id`. `defaultMode` is the decision for
+// traffic no policy set matches, so `ALLOW` means anything outside the policy
+// sets passes. `onErrorAction` decides whether a request is blocked or the
+// policy skipped when an enforcing policy fails at runtime, so `SKIP` lets
+// traffic through on a broken policy. `policySets`, `domainAcl` and
+// `basicAuthCredentials` are the resources attached to it.
+private cloudflare.one.cws.deployment @defaults("name defaultMode") {
+	// Deployment identifier
+	id string
+	// Deployment name, unique in the account
+	name string
+	// Free-form description
+	description string
+	// Decision for traffic no policy set matches (ALLOW or BLOCK)
+	defaultMode string
+	// Action when an enforcing policy has a runtime Rego error (BLOCK or SKIP)
+	onErrorAction string
+	// Whether OPA builtin failures are raised as runtime evaluation errors
+	regoRaiseError bool
+	// Tags attached to the deployment
+	tags map[string]string
+	// Policy sets attached to the deployment
+	policySets() []cloudflare.one.cws.policySet
+	// Domain ACL attached to the deployment
+	//
+	// Null when the deployment has no domain ACL.
+	domainAcl() cloudflare.one.cws.domainAcl
+	// Basic-auth credentials attached to the deployment
+	basicAuthCredentials() []cloudflare.one.cws.basicAuthCredential
+	// Time the deployment was created
+	createdAt time
+	// Time the deployment was last updated
+	updatedAt time
+}
+
+// Cloud Web Security policy set
+//
+// Group of Rego policies applied to the requests its workloads select,
+// selected by `id`. `members` lists each policy with whether it enforces or
+// only evaluates. `includeWorkloads` selects the requests the set applies to
+// (empty means every request) and `excludeWorkloads` removes requests from it,
+// with exclusions taking precedence. `deployments` lists where the set is
+// attached, so an empty list finds a set that enforces nothing.
+private cloudflare.one.cws.policySet @defaults("name") {
+	// Policy set identifier
+	id string
+	// Policy set name, unique in the account
+	name string
+	// Free-form description
+	description string
+	// Tags attached to the policy set
+	tags map[string]string
+	// Member policies with their enforcement mode
+	members() []cloudflare.one.cws.policySetMember
+	// Workloads whose requests the set applies to
+	//
+	// Empty means the set applies to every request before exclusions.
+	includeWorkloads() []cloudflare.one.cws.workload
+	// Workloads whose requests are excluded from the set
+	excludeWorkloads() []cloudflare.one.cws.workload
+	// Deployments the policy set is attached to
+	deployments() []cloudflare.one.cws.deployment
+	// Time the policy set was created
+	createdAt time
+	// Time the policy set was last updated
+	updatedAt time
+}
+
+// Membership of a policy in a Cloud Web Security policy set
+private cloudflare.one.cws.policySetMember @defaults("enforce") {
+	// Member policy
+	policy() cloudflare.one.cws.policy
+	// Whether the policy enforces when it matches
+	//
+	// False keeps the policy attached for evaluation only, so its decision is
+	// recorded but not applied.
+	enforce bool
+}
+
+// Cloud Web Security Rego policy
+//
+// Inline Rego policy selected by `id`. `filter` decides which requests the
+// policy applies to, `regoSource` holds the Rego module, and evaluation reads
+// the rule `data.<packagePath>.<entrypoint>`. `policySets` lists the sets the
+// policy belongs to, so an empty list finds a policy that never runs.
+private cloudflare.one.cws.policy @defaults("name packagePath") {
+	// Policy identifier
+	id string
+	// Policy name, unique in the account
+	name string
+	// Free-form description
+	description string
+	// Rule in regoSource whose value is the decision
+	entrypoint string
+	// Filter expression deciding whether the policy applies to a request
+	filter string
+	// Dotted package path declared in regoSource, beginning with `policy.`
+	packagePath string
+	// Rego source of the policy
+	regoSource string
+	// Tags attached to the policy
+	tags map[string]string
+	// Policy sets the policy belongs to
+	policySets() []cloudflare.one.cws.policySet
+	// Time the policy was created
+	createdAt time
+	// Time the policy was last updated
+	updatedAt time
+}
+
+// Cloud Web Security workload
+//
+// Reusable request selector selected by `id`. `filter` is the expression that
+// decides which requests the workload matches; policy sets reference
+// workloads to include or exclude traffic.
+private cloudflare.one.cws.workload @defaults("name") {
+	// Workload identifier
+	id string
+	// Workload name, unique in the account
+	name string
+	// Free-form description
+	description string
+	// Filter expression selecting the requests the workload matches
+	filter string
+	// Tags attached to the workload
+	tags map[string]string
+	// Time the workload was created
+	createdAt time
+	// Time the workload was last updated
+	updatedAt time
+}
+
+// Cloud Web Security domain ACL
+//
+// Per-domain access control list selected by `id`. `defaultAction` applies to
+// a domain no entry names, so `ALLOW` turns the list into a blocklist and
+// `BLOCK` into an allowlist. `entries` maps each listed domain to its action.
+// `deployments` lists where the ACL is attached.
+private cloudflare.one.cws.domainAcl @defaults("name defaultAction") {
+	// Domain ACL identifier
+	id string
+	// Domain ACL name, unique in the account
+	name string
+	// Action for a domain no entry matches (ALLOW or BLOCK)
+	defaultAction string
+	// Per-domain actions, keyed by hostname or domain pattern (ALLOW or BLOCK)
+	entries map[string]string
+	// Deployments the domain ACL is attached to
+	deployments() []cloudflare.one.cws.deployment
+	// Time the domain ACL was created
+	createdAt time
+	// Time the domain ACL was last updated
+	updatedAt time
+}
+
+// Cloud Web Security basic-auth credential
+//
+// Username a client presents to authenticate to a deployment, selected by
+// `id`. Secrets are never read. `deployments` lists where the credential is
+// accepted, so an empty list finds a credential that can be removed.
+private cloudflare.one.cws.basicAuthCredential @defaults("username") {
+	// Credential identifier
+	id string
+	// Username presented by the client
+	username string
+	// Deployments that accept the credential
+	deployments() []cloudflare.one.cws.deployment
+	// Time the credential was created
+	createdAt time
+	// Time the credential was last updated
+	updatedAt time
 }
 
 // Cloudflare One application
@@ -1179,6 +1395,12 @@ private cloudflare.one.organization @defaults("name authDomain") {
 	// receives a CF_Authorization cookie. Null when the organization does not
 	// report the setting.
 	strictServiceTokenAuth bool
+	// Whether end users are prevented from creating their own Access applications
+	//
+	// When false, users can add applications to the organization themselves,
+	// outside the review of an administrator. Null when the organization does
+	// not report the setting.
+	disableEndUserAppCreation bool
 }
 
 // Cloudflare One CASB posture policy
@@ -1399,6 +1621,12 @@ private cloudflare.one.location @defaults("name") {
 	clientDefault bool
 	// Whether ECS (EDNS Client Subnet) is supported
 	ecsSupport bool
+	// Whether DNS64 synthesis is enabled for DNS queries matched to this location
+	//
+	// When true, Gateway synthesizes AAAA records for IPv4-only destinations so
+	// IPv6-only clients can reach them through NAT64. Null when the location
+	// does not report the setting.
+	dns64Enabled bool
 	// Time the location was created
 	createdAt time
 	// Time the location was last updated
@@ -2788,34 +3016,66 @@ private cloudflare.zone.aiAudit.userAgent @defaults("userAgent") {
 	contentSignalSearch string
 }
 
-// Cloudflare Precursor enforcement for a zone
+// Cloudflare Precursor configuration for a zone
 //
-// Enforcement posture Precursor applies to requests arriving at the zone.
-// `defaultMode` is the mode used for any request that matches no rule:
-// `off` disables enforcement entirely, `min-friction` favors letting
-// visitors through, and `max-security` favors challenging or blocking them.
-// `enforcementRules` is the ordered list of overrides evaluated ahead of
-// that default. Use it to find zones left with enforcement off, or rules
-// that relax the posture for a subset of traffic.
-private cloudflare.zone.precursor @defaults("defaultMode") {
+// Precursor detection settings for the zone. `mode` reports whether detection
+// is `off`, only records detections (`monitor`), or lets detections affect bot
+// scores (`arm`). `showInterstitial` decides whether an interstitial is shown
+// when Precursor acts on a request, and `rules` is the ordered list of
+// overrides for matching requests. Use it to find zones with detection off or
+// left in monitor mode.
+private cloudflare.zone.precursor @defaults("mode") {
+	// Precursor detection mode for the zone
+	//
+	// One of `off`, `monitor`, or `arm`. Only `arm` lets detections affect bot
+	// scores.
+	mode string
+	// Whether Precursor shows an interstitial when it acts on a request
+	showInterstitial bool
+	// Ordered list of Precursor rules for matching requests
+	//
+	// Empty when the zone relies on `mode` and `showInterstitial` alone.
+	rules []cloudflare.zone.precursor.rule
 	// Enforcement mode applied to requests matching no enforcement rule
 	//
-	// One of `off`, `min-friction`, or `max-security`.
-	defaultMode string
+	// Deprecated in favor of mode. Cloudflare retired the enforcement-mode
+	// model, so this is null when the zone reports only the current
+	// configuration.
+	defaultMode @maturity("deprecated") string
 	// Ordered list of rules that override the default enforcement mode
 	//
-	// Empty when the zone relies on `defaultMode` alone. Cloudflare
-	// evaluates the rules in the order returned.
-	enforcementRules []cloudflare.zone.precursor.enforcementRule
+	// Deprecated in favor of rules. Empty when the zone reports only the
+	// current configuration.
+	enforcementRules @maturity("deprecated") []cloudflare.zone.precursor.enforcementRule
+}
+
+// Cloudflare Precursor rule
+//
+// A single override in a zone's Precursor rule list. `expression` is the
+// filter that decides which requests the rule matches and `showInterstitial`
+// the response for them. `enabled` reports whether the rule is evaluated at
+// all.
+private cloudflare.zone.precursor.rule @defaults("expression enabled") {
+	// Rule identifier assigned by Cloudflare
+	id string
+	// Filter expression deciding which requests the rule matches
+	expression string
+	// Whether Precursor shows an interstitial for matching requests
+	showInterstitial bool
+	// Description of the rule
+	//
+	// Null when none was provided.
+	description string
+	// Whether the rule is currently evaluated
+	enabled bool
 }
 
 // Cloudflare Precursor enforcement rule
 //
-// A single override in a zone's Precursor rule list. `expression` is the
-// filter that decides which requests the rule matches and `mode` is the
-// enforcement applied to them. `enabled` reports whether the rule is
-// evaluated at all, so a rule that appears to tighten the posture may be
-// inert.
+// Deprecated in favor of cloudflare.zone.precursor.rule. A single override in
+// the retired enforcement-mode rule list. `expression` is the filter that
+// decides which requests the rule matches and `mode` is the enforcement
+// applied to them.
 private cloudflare.zone.precursor.enforcementRule @defaults("mode expression enabled") {
 	// Rule identifier assigned by Cloudflare
 	id string

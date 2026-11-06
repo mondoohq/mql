@@ -35,6 +35,9 @@ func TestAccountAPITokens(t *testing.T) {
 	assert.Equal(t, "ci-owner@example.com", ci.CreatorEmail.Data)
 	assert.Equal(t, "oauth", ci.ProvisionerType.Data)
 	assert.Equal(t, "3f1c9a7e2b5d4e8f", ci.ProvisionerId.Data)
+	// Synthetic: token_prefix/token_suffix values; no live token was read.
+	assert.Equal(t, "cfat", ci.TokenPrefix.Data)
+	assert.Equal(t, "x9Qz", ci.TokenSuffix.Data)
 
 	require.Len(t, ci.Policies.Data, 1)
 	policy := ci.Policies.Data[0].(map[string]any)
@@ -57,6 +60,9 @@ func TestAccountAPITokens(t *testing.T) {
 	assert.True(t, stale.CreatorEmail.IsNull(), "an absent creator email must read null, not empty")
 	assert.True(t, stale.ProvisionerType.IsNull())
 	assert.True(t, stale.ProvisionerId.IsNull(), "an explicit null provisioner_id must read null")
+	// A token created before Cloudflare recorded prefix and suffix omits both.
+	assert.True(t, stale.TokenPrefix.IsNull(), "an absent token prefix must read null, not empty")
+	assert.True(t, stale.TokenSuffix.IsNull())
 }
 
 func TestAccountAPITokens_degradesWhenUnavailable(t *testing.T) {

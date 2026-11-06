@@ -269,3 +269,41 @@ func TestOrganizationStrictServiceTokenAuth(t *testing.T) {
 		})
 	}
 }
+
+// Synthetic: disable_end_user_app_creation is optional on the organization
+// payload. An absent value stays null; false would claim end users are known
+// to be allowed to create applications.
+func TestOrganizationDisableEndUserAppCreation(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		field    string
+		wantData bool
+		wantNull bool
+	}{
+		{name: "disabled for end users", field: `,"disable_end_user_app_creation":true`, wantData: true},
+		{name: "allowed for end users", field: `,"disable_end_user_app_creation":false`, wantData: false},
+		{name: "absent", field: ``, wantNull: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := setupTestEnv(t)
+			one := createTestOne(t, env)
+
+			env.Mux.HandleFunc(fmt.Sprintf("/accounts/%s/access/organizations", testAccountID), func(w http.ResponseWriter, r *http.Request) {
+				jsonResponse(w, fmt.Sprintf(
+					`{"success":true,"result":{"name":"My Organization","auth_domain":"myorg.cloudflareaccess.com"%s}}`,
+					tc.field))
+			})
+
+			result, err := one.organization()
+			require.NoError(t, err)
+			require.NotNil(t, result)
+
+			if tc.wantNull {
+				assert.True(t, result.DisableEndUserAppCreation.IsNull())
+				return
+			}
+			assert.False(t, result.DisableEndUserAppCreation.IsNull())
+			assert.Equal(t, tc.wantData, result.DisableEndUserAppCreation.Data)
+		})
+	}
+}

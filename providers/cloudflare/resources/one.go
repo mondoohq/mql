@@ -101,6 +101,7 @@ type (
 		AllowAuthenticateViaWarp       *bool      `json:"allow_authenticate_via_warp"`
 		WarpAuthNonBrowser401          *bool      `json:"warp_auth_non_browser_401"`
 		StrictServiceTokenAuth         *bool      `json:"strict_service_token_auth"`
+		DisableEndUserAppCreation      *bool      `json:"disable_end_user_app_creation"`
 		CreatedAt                      *time.Time `json:"created_at"`
 		UpdatedAt                      *time.Time `json:"updated_at"`
 		// ServiceTokenInactivity is nil when the organization does not report
@@ -470,6 +471,7 @@ func (c *mqlCloudflareOne) organization() (*mqlCloudflareOneOrganization, error)
 		"serviceTokenInactivityAction":        llx.StringDataPtr(inactivity.Action),
 		"serviceTokenInactivityThresholdDays": llx.IntDataPtr(inactivity.InactivityThresholdDays),
 		"strictServiceTokenAuth":              llx.BoolDataPtr(org.StrictServiceTokenAuth),
+		"disableEndUserAppCreation":           llx.BoolDataPtr(org.DisableEndUserAppCreation),
 	})
 	if err != nil {
 		return nil, err

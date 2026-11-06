@@ -90,6 +90,10 @@ func newAPITokenResource(runtime *plugin.Runtime, cacheKey, accountID string, t 
 		"creatorEmail":    tokenStringOrNil(t.CreatorEmailAtCreation, t.JSON.CreatorEmailAtCreation.IsNull()),
 		"provisionerType": tokenStringOrNil(t.ProvisionerType, t.JSON.ProvisionerType.IsNull()),
 		"provisionerId":   tokenStringOrNil(t.ProvisionerID, t.JSON.ProvisionerID.IsNull()),
+		// Only tokens created or rolled after Cloudflare began recording these
+		// carry them; older tokens read null.
+		"tokenPrefix": tokenStringOrNil(t.TokenPrefix, t.JSON.TokenPrefix.IsNull()),
+		"tokenSuffix": tokenStringOrNil(t.TokenSuffix, t.JSON.TokenSuffix.IsNull()),
 	})
 }
 

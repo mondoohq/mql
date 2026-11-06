@@ -40,6 +40,14 @@ const (
 	ResourceCloudflareWorkersWorkerBinding                            string = "cloudflare.workers.worker.binding"
 	ResourceCloudflareWorkersPage                                     string = "cloudflare.workers.page"
 	ResourceCloudflareOne                                             string = "cloudflare.one"
+	ResourceCloudflareOneCws                                          string = "cloudflare.one.cws"
+	ResourceCloudflareOneCwsDeployment                                string = "cloudflare.one.cws.deployment"
+	ResourceCloudflareOneCwsPolicySet                                 string = "cloudflare.one.cws.policySet"
+	ResourceCloudflareOneCwsPolicySetMember                           string = "cloudflare.one.cws.policySetMember"
+	ResourceCloudflareOneCwsPolicy                                    string = "cloudflare.one.cws.policy"
+	ResourceCloudflareOneCwsWorkload                                  string = "cloudflare.one.cws.workload"
+	ResourceCloudflareOneCwsDomainAcl                                 string = "cloudflare.one.cws.domainAcl"
+	ResourceCloudflareOneCwsBasicAuthCredential                       string = "cloudflare.one.cws.basicAuthCredential"
 	ResourceCloudflareOneApp                                          string = "cloudflare.one.app"
 	ResourceCloudflareCorsHeaders                                     string = "cloudflare.corsHeaders"
 	ResourceCloudflareOneIdp                                          string = "cloudflare.one.idp"
@@ -103,6 +111,7 @@ const (
 	ResourceCloudflareZoneAiAudit                                     string = "cloudflare.zone.aiAudit"
 	ResourceCloudflareZoneAiAuditUserAgent                            string = "cloudflare.zone.aiAudit.userAgent"
 	ResourceCloudflareZonePrecursor                                   string = "cloudflare.zone.precursor"
+	ResourceCloudflareZonePrecursorRule                               string = "cloudflare.zone.precursor.rule"
 	ResourceCloudflareZonePrecursorEnforcementRule                    string = "cloudflare.zone.precursor.enforcementRule"
 	ResourceCloudflareZoneSecurityTxt                                 string = "cloudflare.zone.securityTxt"
 	ResourceCloudflareTurnstileWidget                                 string = "cloudflare.turnstile.widget"
@@ -207,6 +216,38 @@ func init() {
 		"cloudflare.one": {
 			// to override args, implement: initCloudflareOne(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createCloudflareOne,
+		},
+		"cloudflare.one.cws": {
+			// to override args, implement: initCloudflareOneCws(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCloudflareOneCws,
+		},
+		"cloudflare.one.cws.deployment": {
+			// to override args, implement: initCloudflareOneCwsDeployment(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCloudflareOneCwsDeployment,
+		},
+		"cloudflare.one.cws.policySet": {
+			// to override args, implement: initCloudflareOneCwsPolicySet(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCloudflareOneCwsPolicySet,
+		},
+		"cloudflare.one.cws.policySetMember": {
+			// to override args, implement: initCloudflareOneCwsPolicySetMember(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCloudflareOneCwsPolicySetMember,
+		},
+		"cloudflare.one.cws.policy": {
+			// to override args, implement: initCloudflareOneCwsPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCloudflareOneCwsPolicy,
+		},
+		"cloudflare.one.cws.workload": {
+			// to override args, implement: initCloudflareOneCwsWorkload(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCloudflareOneCwsWorkload,
+		},
+		"cloudflare.one.cws.domainAcl": {
+			// to override args, implement: initCloudflareOneCwsDomainAcl(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCloudflareOneCwsDomainAcl,
+		},
+		"cloudflare.one.cws.basicAuthCredential": {
+			// to override args, implement: initCloudflareOneCwsBasicAuthCredential(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCloudflareOneCwsBasicAuthCredential,
 		},
 		"cloudflare.one.app": {
 			// to override args, implement: initCloudflareOneApp(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -459,6 +500,10 @@ func init() {
 		"cloudflare.zone.precursor": {
 			// to override args, implement: initCloudflareZonePrecursor(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createCloudflareZonePrecursor,
+		},
+		"cloudflare.zone.precursor.rule": {
+			// to override args, implement: initCloudflareZonePrecursorRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCloudflareZonePrecursorRule,
 		},
 		"cloudflare.zone.precursor.enforcementRule": {
 			// to override args, implement: initCloudflareZonePrecursorEnforcementRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -975,6 +1020,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"cloudflare.apiToken.provisionerId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareApiToken).GetProvisionerId()).ToDataRes(types.String)
 	},
+	"cloudflare.apiToken.tokenPrefix": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareApiToken).GetTokenPrefix()).ToDataRes(types.String)
+	},
+	"cloudflare.apiToken.tokenSuffix": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareApiToken).GetTokenSuffix()).ToDataRes(types.String)
+	},
 	"cloudflare.account.settings.enforceTwoFactor": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareAccountSettings).GetEnforceTwoFactor()).ToDataRes(types.Bool)
 	},
@@ -1215,6 +1266,189 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"cloudflare.one.casbPosturePolicies": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareOne).GetCasbPosturePolicies()).ToDataRes(types.Array(types.Resource("cloudflare.one.casbPosturePolicy")))
 	},
+	"cloudflare.one.cws": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOne).GetCws()).ToDataRes(types.Resource("cloudflare.one.cws"))
+	},
+	"cloudflare.one.cws.deployments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCws).GetDeployments()).ToDataRes(types.Array(types.Resource("cloudflare.one.cws.deployment")))
+	},
+	"cloudflare.one.cws.policySets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCws).GetPolicySets()).ToDataRes(types.Array(types.Resource("cloudflare.one.cws.policySet")))
+	},
+	"cloudflare.one.cws.policies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCws).GetPolicies()).ToDataRes(types.Array(types.Resource("cloudflare.one.cws.policy")))
+	},
+	"cloudflare.one.cws.workloads": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCws).GetWorkloads()).ToDataRes(types.Array(types.Resource("cloudflare.one.cws.workload")))
+	},
+	"cloudflare.one.cws.domainAcls": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCws).GetDomainAcls()).ToDataRes(types.Array(types.Resource("cloudflare.one.cws.domainAcl")))
+	},
+	"cloudflare.one.cws.basicAuthCredentials": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCws).GetBasicAuthCredentials()).ToDataRes(types.Array(types.Resource("cloudflare.one.cws.basicAuthCredential")))
+	},
+	"cloudflare.one.cws.deployment.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsDeployment).GetId()).ToDataRes(types.String)
+	},
+	"cloudflare.one.cws.deployment.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsDeployment).GetName()).ToDataRes(types.String)
+	},
+	"cloudflare.one.cws.deployment.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsDeployment).GetDescription()).ToDataRes(types.String)
+	},
+	"cloudflare.one.cws.deployment.defaultMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsDeployment).GetDefaultMode()).ToDataRes(types.String)
+	},
+	"cloudflare.one.cws.deployment.onErrorAction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsDeployment).GetOnErrorAction()).ToDataRes(types.String)
+	},
+	"cloudflare.one.cws.deployment.regoRaiseError": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsDeployment).GetRegoRaiseError()).ToDataRes(types.Bool)
+	},
+	"cloudflare.one.cws.deployment.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsDeployment).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"cloudflare.one.cws.deployment.policySets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsDeployment).GetPolicySets()).ToDataRes(types.Array(types.Resource("cloudflare.one.cws.policySet")))
+	},
+	"cloudflare.one.cws.deployment.domainAcl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsDeployment).GetDomainAcl()).ToDataRes(types.Resource("cloudflare.one.cws.domainAcl"))
+	},
+	"cloudflare.one.cws.deployment.basicAuthCredentials": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsDeployment).GetBasicAuthCredentials()).ToDataRes(types.Array(types.Resource("cloudflare.one.cws.basicAuthCredential")))
+	},
+	"cloudflare.one.cws.deployment.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsDeployment).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"cloudflare.one.cws.deployment.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsDeployment).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"cloudflare.one.cws.policySet.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsPolicySet).GetId()).ToDataRes(types.String)
+	},
+	"cloudflare.one.cws.policySet.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsPolicySet).GetName()).ToDataRes(types.String)
+	},
+	"cloudflare.one.cws.policySet.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsPolicySet).GetDescription()).ToDataRes(types.String)
+	},
+	"cloudflare.one.cws.policySet.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsPolicySet).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"cloudflare.one.cws.policySet.members": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsPolicySet).GetMembers()).ToDataRes(types.Array(types.Resource("cloudflare.one.cws.policySetMember")))
+	},
+	"cloudflare.one.cws.policySet.includeWorkloads": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsPolicySet).GetIncludeWorkloads()).ToDataRes(types.Array(types.Resource("cloudflare.one.cws.workload")))
+	},
+	"cloudflare.one.cws.policySet.excludeWorkloads": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsPolicySet).GetExcludeWorkloads()).ToDataRes(types.Array(types.Resource("cloudflare.one.cws.workload")))
+	},
+	"cloudflare.one.cws.policySet.deployments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsPolicySet).GetDeployments()).ToDataRes(types.Array(types.Resource("cloudflare.one.cws.deployment")))
+	},
+	"cloudflare.one.cws.policySet.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsPolicySet).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"cloudflare.one.cws.policySet.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsPolicySet).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"cloudflare.one.cws.policySetMember.policy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsPolicySetMember).GetPolicy()).ToDataRes(types.Resource("cloudflare.one.cws.policy"))
+	},
+	"cloudflare.one.cws.policySetMember.enforce": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsPolicySetMember).GetEnforce()).ToDataRes(types.Bool)
+	},
+	"cloudflare.one.cws.policy.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsPolicy).GetId()).ToDataRes(types.String)
+	},
+	"cloudflare.one.cws.policy.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsPolicy).GetName()).ToDataRes(types.String)
+	},
+	"cloudflare.one.cws.policy.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsPolicy).GetDescription()).ToDataRes(types.String)
+	},
+	"cloudflare.one.cws.policy.entrypoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsPolicy).GetEntrypoint()).ToDataRes(types.String)
+	},
+	"cloudflare.one.cws.policy.filter": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsPolicy).GetFilter()).ToDataRes(types.String)
+	},
+	"cloudflare.one.cws.policy.packagePath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsPolicy).GetPackagePath()).ToDataRes(types.String)
+	},
+	"cloudflare.one.cws.policy.regoSource": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsPolicy).GetRegoSource()).ToDataRes(types.String)
+	},
+	"cloudflare.one.cws.policy.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsPolicy).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"cloudflare.one.cws.policy.policySets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsPolicy).GetPolicySets()).ToDataRes(types.Array(types.Resource("cloudflare.one.cws.policySet")))
+	},
+	"cloudflare.one.cws.policy.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsPolicy).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"cloudflare.one.cws.policy.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsPolicy).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"cloudflare.one.cws.workload.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsWorkload).GetId()).ToDataRes(types.String)
+	},
+	"cloudflare.one.cws.workload.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsWorkload).GetName()).ToDataRes(types.String)
+	},
+	"cloudflare.one.cws.workload.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsWorkload).GetDescription()).ToDataRes(types.String)
+	},
+	"cloudflare.one.cws.workload.filter": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsWorkload).GetFilter()).ToDataRes(types.String)
+	},
+	"cloudflare.one.cws.workload.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsWorkload).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"cloudflare.one.cws.workload.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsWorkload).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"cloudflare.one.cws.workload.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsWorkload).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"cloudflare.one.cws.domainAcl.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsDomainAcl).GetId()).ToDataRes(types.String)
+	},
+	"cloudflare.one.cws.domainAcl.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsDomainAcl).GetName()).ToDataRes(types.String)
+	},
+	"cloudflare.one.cws.domainAcl.defaultAction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsDomainAcl).GetDefaultAction()).ToDataRes(types.String)
+	},
+	"cloudflare.one.cws.domainAcl.entries": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsDomainAcl).GetEntries()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"cloudflare.one.cws.domainAcl.deployments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsDomainAcl).GetDeployments()).ToDataRes(types.Array(types.Resource("cloudflare.one.cws.deployment")))
+	},
+	"cloudflare.one.cws.domainAcl.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsDomainAcl).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"cloudflare.one.cws.domainAcl.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsDomainAcl).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"cloudflare.one.cws.basicAuthCredential.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsBasicAuthCredential).GetId()).ToDataRes(types.String)
+	},
+	"cloudflare.one.cws.basicAuthCredential.username": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsBasicAuthCredential).GetUsername()).ToDataRes(types.String)
+	},
+	"cloudflare.one.cws.basicAuthCredential.deployments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsBasicAuthCredential).GetDeployments()).ToDataRes(types.Array(types.Resource("cloudflare.one.cws.deployment")))
+	},
+	"cloudflare.one.cws.basicAuthCredential.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsBasicAuthCredential).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"cloudflare.one.cws.basicAuthCredential.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCwsBasicAuthCredential).GetUpdatedAt()).ToDataRes(types.Time)
+	},
 	"cloudflare.one.app.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareOneApp).GetId()).ToDataRes(types.String)
 	},
@@ -1446,6 +1680,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"cloudflare.one.organization.strictServiceTokenAuth": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareOneOrganization).GetStrictServiceTokenAuth()).ToDataRes(types.Bool)
 	},
+	"cloudflare.one.organization.disableEndUserAppCreation": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneOrganization).GetDisableEndUserAppCreation()).ToDataRes(types.Bool)
+	},
 	"cloudflare.one.casbPosturePolicy.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareOneCasbPosturePolicy).GetId()).ToDataRes(types.String)
 	},
@@ -1634,6 +1871,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"cloudflare.one.location.ecsSupport": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareOneLocation).GetEcsSupport()).ToDataRes(types.Bool)
+	},
+	"cloudflare.one.location.dns64Enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneLocation).GetDns64Enabled()).ToDataRes(types.Bool)
 	},
 	"cloudflare.one.location.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareOneLocation).GetCreatedAt()).ToDataRes(types.Time)
@@ -2781,11 +3021,35 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"cloudflare.zone.aiAudit.userAgent.contentSignalSearch": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareZoneAiAuditUserAgent).GetContentSignalSearch()).ToDataRes(types.String)
 	},
+	"cloudflare.zone.precursor.mode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareZonePrecursor).GetMode()).ToDataRes(types.String)
+	},
+	"cloudflare.zone.precursor.showInterstitial": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareZonePrecursor).GetShowInterstitial()).ToDataRes(types.Bool)
+	},
+	"cloudflare.zone.precursor.rules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareZonePrecursor).GetRules()).ToDataRes(types.Array(types.Resource("cloudflare.zone.precursor.rule")))
+	},
 	"cloudflare.zone.precursor.defaultMode": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareZonePrecursor).GetDefaultMode()).ToDataRes(types.String)
 	},
 	"cloudflare.zone.precursor.enforcementRules": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareZonePrecursor).GetEnforcementRules()).ToDataRes(types.Array(types.Resource("cloudflare.zone.precursor.enforcementRule")))
+	},
+	"cloudflare.zone.precursor.rule.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareZonePrecursorRule).GetId()).ToDataRes(types.String)
+	},
+	"cloudflare.zone.precursor.rule.expression": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareZonePrecursorRule).GetExpression()).ToDataRes(types.String)
+	},
+	"cloudflare.zone.precursor.rule.showInterstitial": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareZonePrecursorRule).GetShowInterstitial()).ToDataRes(types.Bool)
+	},
+	"cloudflare.zone.precursor.rule.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareZonePrecursorRule).GetDescription()).ToDataRes(types.String)
+	},
+	"cloudflare.zone.precursor.rule.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareZonePrecursorRule).GetEnabled()).ToDataRes(types.Bool)
 	},
 	"cloudflare.zone.precursor.enforcementRule.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareZonePrecursorEnforcementRule).GetId()).ToDataRes(types.String)
@@ -3498,6 +3762,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlCloudflareApiToken).ProvisionerId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"cloudflare.apiToken.tokenPrefix": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareApiToken).TokenPrefix, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.apiToken.tokenSuffix": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareApiToken).TokenSuffix, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"cloudflare.account.settings.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCloudflareAccountSettings).__id, ok = v.Value.(string)
 		return
@@ -3866,6 +4138,282 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlCloudflareOne).CasbPosturePolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"cloudflare.one.cws": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOne).Cws, ok = plugin.RawToTValue[*mqlCloudflareOneCws](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCws).__id, ok = v.Value.(string)
+		return
+	},
+	"cloudflare.one.cws.deployments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCws).Deployments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.policySets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCws).PolicySets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.policies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCws).Policies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.workloads": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCws).Workloads, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.domainAcls": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCws).DomainAcls, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.basicAuthCredentials": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCws).BasicAuthCredentials, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.deployment.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsDeployment).__id, ok = v.Value.(string)
+		return
+	},
+	"cloudflare.one.cws.deployment.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsDeployment).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.deployment.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsDeployment).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.deployment.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsDeployment).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.deployment.defaultMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsDeployment).DefaultMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.deployment.onErrorAction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsDeployment).OnErrorAction, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.deployment.regoRaiseError": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsDeployment).RegoRaiseError, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.deployment.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsDeployment).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.deployment.policySets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsDeployment).PolicySets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.deployment.domainAcl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsDeployment).DomainAcl, ok = plugin.RawToTValue[*mqlCloudflareOneCwsDomainAcl](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.deployment.basicAuthCredentials": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsDeployment).BasicAuthCredentials, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.deployment.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsDeployment).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.deployment.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsDeployment).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.policySet.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsPolicySet).__id, ok = v.Value.(string)
+		return
+	},
+	"cloudflare.one.cws.policySet.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsPolicySet).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.policySet.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsPolicySet).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.policySet.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsPolicySet).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.policySet.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsPolicySet).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.policySet.members": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsPolicySet).Members, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.policySet.includeWorkloads": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsPolicySet).IncludeWorkloads, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.policySet.excludeWorkloads": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsPolicySet).ExcludeWorkloads, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.policySet.deployments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsPolicySet).Deployments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.policySet.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsPolicySet).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.policySet.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsPolicySet).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.policySetMember.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsPolicySetMember).__id, ok = v.Value.(string)
+		return
+	},
+	"cloudflare.one.cws.policySetMember.policy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsPolicySetMember).Policy, ok = plugin.RawToTValue[*mqlCloudflareOneCwsPolicy](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.policySetMember.enforce": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsPolicySetMember).Enforce, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.policy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsPolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"cloudflare.one.cws.policy.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsPolicy).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.policy.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsPolicy).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.policy.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsPolicy).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.policy.entrypoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsPolicy).Entrypoint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.policy.filter": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsPolicy).Filter, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.policy.packagePath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsPolicy).PackagePath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.policy.regoSource": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsPolicy).RegoSource, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.policy.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsPolicy).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.policy.policySets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsPolicy).PolicySets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.policy.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsPolicy).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.policy.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsPolicy).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.workload.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsWorkload).__id, ok = v.Value.(string)
+		return
+	},
+	"cloudflare.one.cws.workload.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsWorkload).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.workload.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsWorkload).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.workload.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsWorkload).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.workload.filter": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsWorkload).Filter, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.workload.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsWorkload).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.workload.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsWorkload).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.workload.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsWorkload).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.domainAcl.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsDomainAcl).__id, ok = v.Value.(string)
+		return
+	},
+	"cloudflare.one.cws.domainAcl.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsDomainAcl).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.domainAcl.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsDomainAcl).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.domainAcl.defaultAction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsDomainAcl).DefaultAction, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.domainAcl.entries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsDomainAcl).Entries, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.domainAcl.deployments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsDomainAcl).Deployments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.domainAcl.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsDomainAcl).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.domainAcl.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsDomainAcl).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.basicAuthCredential.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsBasicAuthCredential).__id, ok = v.Value.(string)
+		return
+	},
+	"cloudflare.one.cws.basicAuthCredential.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsBasicAuthCredential).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.basicAuthCredential.username": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsBasicAuthCredential).Username, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.basicAuthCredential.deployments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsBasicAuthCredential).Deployments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.basicAuthCredential.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsBasicAuthCredential).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.cws.basicAuthCredential.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCwsBasicAuthCredential).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
 	"cloudflare.one.app.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCloudflareOneApp).__id, ok = v.Value.(string)
 		return
@@ -4202,6 +4750,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlCloudflareOneOrganization).StrictServiceTokenAuth, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"cloudflare.one.organization.disableEndUserAppCreation": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneOrganization).DisableEndUserAppCreation, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"cloudflare.one.casbPosturePolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCloudflareOneCasbPosturePolicy).__id, ok = v.Value.(string)
 		return
@@ -4480,6 +5032,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"cloudflare.one.location.ecsSupport": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCloudflareOneLocation).EcsSupport, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.location.dns64Enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneLocation).Dns64Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"cloudflare.one.location.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -6206,12 +6762,48 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlCloudflareZonePrecursor).__id, ok = v.Value.(string)
 		return
 	},
+	"cloudflare.zone.precursor.mode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareZonePrecursor).Mode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.zone.precursor.showInterstitial": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareZonePrecursor).ShowInterstitial, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cloudflare.zone.precursor.rules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareZonePrecursor).Rules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"cloudflare.zone.precursor.defaultMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCloudflareZonePrecursor).DefaultMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"cloudflare.zone.precursor.enforcementRules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCloudflareZonePrecursor).EnforcementRules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.zone.precursor.rule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareZonePrecursorRule).__id, ok = v.Value.(string)
+		return
+	},
+	"cloudflare.zone.precursor.rule.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareZonePrecursorRule).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.zone.precursor.rule.expression": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareZonePrecursorRule).Expression, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.zone.precursor.rule.showInterstitial": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareZonePrecursorRule).ShowInterstitial, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cloudflare.zone.precursor.rule.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareZonePrecursorRule).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.zone.precursor.rule.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareZonePrecursorRule).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"cloudflare.zone.precursor.enforcementRule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -8077,6 +8669,8 @@ type mqlCloudflareApiToken struct {
 	CreatorEmail    plugin.TValue[string]
 	ProvisionerType plugin.TValue[string]
 	ProvisionerId   plugin.TValue[string]
+	TokenPrefix     plugin.TValue[string]
+	TokenSuffix     plugin.TValue[string]
 }
 
 // createCloudflareApiToken creates a new instance of this resource
@@ -8174,6 +8768,14 @@ func (c *mqlCloudflareApiToken) GetProvisionerType() *plugin.TValue[string] {
 
 func (c *mqlCloudflareApiToken) GetProvisionerId() *plugin.TValue[string] {
 	return &c.ProvisionerId
+}
+
+func (c *mqlCloudflareApiToken) GetTokenPrefix() *plugin.TValue[string] {
+	return &c.TokenPrefix
+}
+
+func (c *mqlCloudflareApiToken) GetTokenSuffix() *plugin.TValue[string] {
+	return &c.TokenSuffix
 }
 
 // mqlCloudflareAccountSettings for the cloudflare.account.settings resource
@@ -9064,6 +9666,7 @@ type mqlCloudflareOne struct {
 	DevicePostureRules        plugin.TValue[[]any]
 	DevicePostureIntegrations plugin.TValue[[]any]
 	CasbPosturePolicies       plugin.TValue[[]any]
+	Cws                       plugin.TValue[*mqlCloudflareOneCws]
 }
 
 // createCloudflareOne creates a new instance of this resource
@@ -9336,6 +9939,838 @@ func (c *mqlCloudflareOne) GetCasbPosturePolicies() *plugin.TValue[[]any] {
 
 		return c.casbPosturePolicies()
 	})
+}
+
+func (c *mqlCloudflareOne) GetCws() *plugin.TValue[*mqlCloudflareOneCws] {
+	return plugin.GetOrCompute[*mqlCloudflareOneCws](&c.Cws, func() (*mqlCloudflareOneCws, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cloudflare.one", c.__id, "cws")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlCloudflareOneCws), nil
+			}
+		}
+
+		return c.cws()
+	})
+}
+
+// mqlCloudflareOneCws for the cloudflare.one.cws resource
+type mqlCloudflareOneCws struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlCloudflareOneCwsInternal
+	Deployments          plugin.TValue[[]any]
+	PolicySets           plugin.TValue[[]any]
+	Policies             plugin.TValue[[]any]
+	Workloads            plugin.TValue[[]any]
+	DomainAcls           plugin.TValue[[]any]
+	BasicAuthCredentials plugin.TValue[[]any]
+}
+
+// createCloudflareOneCws creates a new instance of this resource
+func createCloudflareOneCws(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCloudflareOneCws{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("cloudflare.one.cws", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCloudflareOneCws) MqlName() string {
+	return "cloudflare.one.cws"
+}
+
+func (c *mqlCloudflareOneCws) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCloudflareOneCws) GetDeployments() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Deployments, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cloudflare.one.cws", c.__id, "deployments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.deployments()
+	})
+}
+
+func (c *mqlCloudflareOneCws) GetPolicySets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PolicySets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cloudflare.one.cws", c.__id, "policySets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.policySets()
+	})
+}
+
+func (c *mqlCloudflareOneCws) GetPolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Policies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cloudflare.one.cws", c.__id, "policies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.policies()
+	})
+}
+
+func (c *mqlCloudflareOneCws) GetWorkloads() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Workloads, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cloudflare.one.cws", c.__id, "workloads")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.workloads()
+	})
+}
+
+func (c *mqlCloudflareOneCws) GetDomainAcls() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DomainAcls, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cloudflare.one.cws", c.__id, "domainAcls")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.domainAcls()
+	})
+}
+
+func (c *mqlCloudflareOneCws) GetBasicAuthCredentials() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.BasicAuthCredentials, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cloudflare.one.cws", c.__id, "basicAuthCredentials")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.basicAuthCredentials()
+	})
+}
+
+// mqlCloudflareOneCwsDeployment for the cloudflare.one.cws.deployment resource
+type mqlCloudflareOneCwsDeployment struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlCloudflareOneCwsDeploymentInternal
+	Id                   plugin.TValue[string]
+	Name                 plugin.TValue[string]
+	Description          plugin.TValue[string]
+	DefaultMode          plugin.TValue[string]
+	OnErrorAction        plugin.TValue[string]
+	RegoRaiseError       plugin.TValue[bool]
+	Tags                 plugin.TValue[map[string]any]
+	PolicySets           plugin.TValue[[]any]
+	DomainAcl            plugin.TValue[*mqlCloudflareOneCwsDomainAcl]
+	BasicAuthCredentials plugin.TValue[[]any]
+	CreatedAt            plugin.TValue[*time.Time]
+	UpdatedAt            plugin.TValue[*time.Time]
+}
+
+// createCloudflareOneCwsDeployment creates a new instance of this resource
+func createCloudflareOneCwsDeployment(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCloudflareOneCwsDeployment{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("cloudflare.one.cws.deployment", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCloudflareOneCwsDeployment) MqlName() string {
+	return "cloudflare.one.cws.deployment"
+}
+
+func (c *mqlCloudflareOneCwsDeployment) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCloudflareOneCwsDeployment) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlCloudflareOneCwsDeployment) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlCloudflareOneCwsDeployment) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlCloudflareOneCwsDeployment) GetDefaultMode() *plugin.TValue[string] {
+	return &c.DefaultMode
+}
+
+func (c *mqlCloudflareOneCwsDeployment) GetOnErrorAction() *plugin.TValue[string] {
+	return &c.OnErrorAction
+}
+
+func (c *mqlCloudflareOneCwsDeployment) GetRegoRaiseError() *plugin.TValue[bool] {
+	return &c.RegoRaiseError
+}
+
+func (c *mqlCloudflareOneCwsDeployment) GetTags() *plugin.TValue[map[string]any] {
+	return &c.Tags
+}
+
+func (c *mqlCloudflareOneCwsDeployment) GetPolicySets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PolicySets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cloudflare.one.cws.deployment", c.__id, "policySets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.policySets()
+	})
+}
+
+func (c *mqlCloudflareOneCwsDeployment) GetDomainAcl() *plugin.TValue[*mqlCloudflareOneCwsDomainAcl] {
+	return plugin.GetOrCompute[*mqlCloudflareOneCwsDomainAcl](&c.DomainAcl, func() (*mqlCloudflareOneCwsDomainAcl, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cloudflare.one.cws.deployment", c.__id, "domainAcl")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlCloudflareOneCwsDomainAcl), nil
+			}
+		}
+
+		return c.domainAcl()
+	})
+}
+
+func (c *mqlCloudflareOneCwsDeployment) GetBasicAuthCredentials() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.BasicAuthCredentials, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cloudflare.one.cws.deployment", c.__id, "basicAuthCredentials")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.basicAuthCredentials()
+	})
+}
+
+func (c *mqlCloudflareOneCwsDeployment) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlCloudflareOneCwsDeployment) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+// mqlCloudflareOneCwsPolicySet for the cloudflare.one.cws.policySet resource
+type mqlCloudflareOneCwsPolicySet struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlCloudflareOneCwsPolicySetInternal
+	Id               plugin.TValue[string]
+	Name             plugin.TValue[string]
+	Description      plugin.TValue[string]
+	Tags             plugin.TValue[map[string]any]
+	Members          plugin.TValue[[]any]
+	IncludeWorkloads plugin.TValue[[]any]
+	ExcludeWorkloads plugin.TValue[[]any]
+	Deployments      plugin.TValue[[]any]
+	CreatedAt        plugin.TValue[*time.Time]
+	UpdatedAt        plugin.TValue[*time.Time]
+}
+
+// createCloudflareOneCwsPolicySet creates a new instance of this resource
+func createCloudflareOneCwsPolicySet(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCloudflareOneCwsPolicySet{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("cloudflare.one.cws.policySet", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCloudflareOneCwsPolicySet) MqlName() string {
+	return "cloudflare.one.cws.policySet"
+}
+
+func (c *mqlCloudflareOneCwsPolicySet) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCloudflareOneCwsPolicySet) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlCloudflareOneCwsPolicySet) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlCloudflareOneCwsPolicySet) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlCloudflareOneCwsPolicySet) GetTags() *plugin.TValue[map[string]any] {
+	return &c.Tags
+}
+
+func (c *mqlCloudflareOneCwsPolicySet) GetMembers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Members, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cloudflare.one.cws.policySet", c.__id, "members")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.members()
+	})
+}
+
+func (c *mqlCloudflareOneCwsPolicySet) GetIncludeWorkloads() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.IncludeWorkloads, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cloudflare.one.cws.policySet", c.__id, "includeWorkloads")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.includeWorkloads()
+	})
+}
+
+func (c *mqlCloudflareOneCwsPolicySet) GetExcludeWorkloads() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ExcludeWorkloads, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cloudflare.one.cws.policySet", c.__id, "excludeWorkloads")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.excludeWorkloads()
+	})
+}
+
+func (c *mqlCloudflareOneCwsPolicySet) GetDeployments() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Deployments, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cloudflare.one.cws.policySet", c.__id, "deployments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.deployments()
+	})
+}
+
+func (c *mqlCloudflareOneCwsPolicySet) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlCloudflareOneCwsPolicySet) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+// mqlCloudflareOneCwsPolicySetMember for the cloudflare.one.cws.policySetMember resource
+type mqlCloudflareOneCwsPolicySetMember struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlCloudflareOneCwsPolicySetMemberInternal
+	Policy  plugin.TValue[*mqlCloudflareOneCwsPolicy]
+	Enforce plugin.TValue[bool]
+}
+
+// createCloudflareOneCwsPolicySetMember creates a new instance of this resource
+func createCloudflareOneCwsPolicySetMember(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCloudflareOneCwsPolicySetMember{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("cloudflare.one.cws.policySetMember", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCloudflareOneCwsPolicySetMember) MqlName() string {
+	return "cloudflare.one.cws.policySetMember"
+}
+
+func (c *mqlCloudflareOneCwsPolicySetMember) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCloudflareOneCwsPolicySetMember) GetPolicy() *plugin.TValue[*mqlCloudflareOneCwsPolicy] {
+	return plugin.GetOrCompute[*mqlCloudflareOneCwsPolicy](&c.Policy, func() (*mqlCloudflareOneCwsPolicy, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cloudflare.one.cws.policySetMember", c.__id, "policy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlCloudflareOneCwsPolicy), nil
+			}
+		}
+
+		return c.policy()
+	})
+}
+
+func (c *mqlCloudflareOneCwsPolicySetMember) GetEnforce() *plugin.TValue[bool] {
+	return &c.Enforce
+}
+
+// mqlCloudflareOneCwsPolicy for the cloudflare.one.cws.policy resource
+type mqlCloudflareOneCwsPolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlCloudflareOneCwsPolicyInternal
+	Id          plugin.TValue[string]
+	Name        plugin.TValue[string]
+	Description plugin.TValue[string]
+	Entrypoint  plugin.TValue[string]
+	Filter      plugin.TValue[string]
+	PackagePath plugin.TValue[string]
+	RegoSource  plugin.TValue[string]
+	Tags        plugin.TValue[map[string]any]
+	PolicySets  plugin.TValue[[]any]
+	CreatedAt   plugin.TValue[*time.Time]
+	UpdatedAt   plugin.TValue[*time.Time]
+}
+
+// createCloudflareOneCwsPolicy creates a new instance of this resource
+func createCloudflareOneCwsPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCloudflareOneCwsPolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("cloudflare.one.cws.policy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCloudflareOneCwsPolicy) MqlName() string {
+	return "cloudflare.one.cws.policy"
+}
+
+func (c *mqlCloudflareOneCwsPolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCloudflareOneCwsPolicy) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlCloudflareOneCwsPolicy) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlCloudflareOneCwsPolicy) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlCloudflareOneCwsPolicy) GetEntrypoint() *plugin.TValue[string] {
+	return &c.Entrypoint
+}
+
+func (c *mqlCloudflareOneCwsPolicy) GetFilter() *plugin.TValue[string] {
+	return &c.Filter
+}
+
+func (c *mqlCloudflareOneCwsPolicy) GetPackagePath() *plugin.TValue[string] {
+	return &c.PackagePath
+}
+
+func (c *mqlCloudflareOneCwsPolicy) GetRegoSource() *plugin.TValue[string] {
+	return &c.RegoSource
+}
+
+func (c *mqlCloudflareOneCwsPolicy) GetTags() *plugin.TValue[map[string]any] {
+	return &c.Tags
+}
+
+func (c *mqlCloudflareOneCwsPolicy) GetPolicySets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PolicySets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cloudflare.one.cws.policy", c.__id, "policySets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.policySets()
+	})
+}
+
+func (c *mqlCloudflareOneCwsPolicy) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlCloudflareOneCwsPolicy) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+// mqlCloudflareOneCwsWorkload for the cloudflare.one.cws.workload resource
+type mqlCloudflareOneCwsWorkload struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlCloudflareOneCwsWorkloadInternal it will be used here
+	Id          plugin.TValue[string]
+	Name        plugin.TValue[string]
+	Description plugin.TValue[string]
+	Filter      plugin.TValue[string]
+	Tags        plugin.TValue[map[string]any]
+	CreatedAt   plugin.TValue[*time.Time]
+	UpdatedAt   plugin.TValue[*time.Time]
+}
+
+// createCloudflareOneCwsWorkload creates a new instance of this resource
+func createCloudflareOneCwsWorkload(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCloudflareOneCwsWorkload{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("cloudflare.one.cws.workload", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCloudflareOneCwsWorkload) MqlName() string {
+	return "cloudflare.one.cws.workload"
+}
+
+func (c *mqlCloudflareOneCwsWorkload) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCloudflareOneCwsWorkload) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlCloudflareOneCwsWorkload) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlCloudflareOneCwsWorkload) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlCloudflareOneCwsWorkload) GetFilter() *plugin.TValue[string] {
+	return &c.Filter
+}
+
+func (c *mqlCloudflareOneCwsWorkload) GetTags() *plugin.TValue[map[string]any] {
+	return &c.Tags
+}
+
+func (c *mqlCloudflareOneCwsWorkload) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlCloudflareOneCwsWorkload) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+// mqlCloudflareOneCwsDomainAcl for the cloudflare.one.cws.domainAcl resource
+type mqlCloudflareOneCwsDomainAcl struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlCloudflareOneCwsDomainAclInternal
+	Id            plugin.TValue[string]
+	Name          plugin.TValue[string]
+	DefaultAction plugin.TValue[string]
+	Entries       plugin.TValue[map[string]any]
+	Deployments   plugin.TValue[[]any]
+	CreatedAt     plugin.TValue[*time.Time]
+	UpdatedAt     plugin.TValue[*time.Time]
+}
+
+// createCloudflareOneCwsDomainAcl creates a new instance of this resource
+func createCloudflareOneCwsDomainAcl(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCloudflareOneCwsDomainAcl{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("cloudflare.one.cws.domainAcl", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCloudflareOneCwsDomainAcl) MqlName() string {
+	return "cloudflare.one.cws.domainAcl"
+}
+
+func (c *mqlCloudflareOneCwsDomainAcl) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCloudflareOneCwsDomainAcl) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlCloudflareOneCwsDomainAcl) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlCloudflareOneCwsDomainAcl) GetDefaultAction() *plugin.TValue[string] {
+	return &c.DefaultAction
+}
+
+func (c *mqlCloudflareOneCwsDomainAcl) GetEntries() *plugin.TValue[map[string]any] {
+	return &c.Entries
+}
+
+func (c *mqlCloudflareOneCwsDomainAcl) GetDeployments() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Deployments, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cloudflare.one.cws.domainAcl", c.__id, "deployments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.deployments()
+	})
+}
+
+func (c *mqlCloudflareOneCwsDomainAcl) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlCloudflareOneCwsDomainAcl) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+// mqlCloudflareOneCwsBasicAuthCredential for the cloudflare.one.cws.basicAuthCredential resource
+type mqlCloudflareOneCwsBasicAuthCredential struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlCloudflareOneCwsBasicAuthCredentialInternal
+	Id          plugin.TValue[string]
+	Username    plugin.TValue[string]
+	Deployments plugin.TValue[[]any]
+	CreatedAt   plugin.TValue[*time.Time]
+	UpdatedAt   plugin.TValue[*time.Time]
+}
+
+// createCloudflareOneCwsBasicAuthCredential creates a new instance of this resource
+func createCloudflareOneCwsBasicAuthCredential(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCloudflareOneCwsBasicAuthCredential{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("cloudflare.one.cws.basicAuthCredential", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCloudflareOneCwsBasicAuthCredential) MqlName() string {
+	return "cloudflare.one.cws.basicAuthCredential"
+}
+
+func (c *mqlCloudflareOneCwsBasicAuthCredential) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCloudflareOneCwsBasicAuthCredential) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlCloudflareOneCwsBasicAuthCredential) GetUsername() *plugin.TValue[string] {
+	return &c.Username
+}
+
+func (c *mqlCloudflareOneCwsBasicAuthCredential) GetDeployments() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Deployments, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cloudflare.one.cws.basicAuthCredential", c.__id, "deployments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.deployments()
+	})
+}
+
+func (c *mqlCloudflareOneCwsBasicAuthCredential) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlCloudflareOneCwsBasicAuthCredential) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
 }
 
 // mqlCloudflareOneApp for the cloudflare.one.app resource
@@ -9939,6 +11374,7 @@ type mqlCloudflareOneOrganization struct {
 	ServiceTokenInactivityAction        plugin.TValue[string]
 	ServiceTokenInactivityThresholdDays plugin.TValue[int64]
 	StrictServiceTokenAuth              plugin.TValue[bool]
+	DisableEndUserAppCreation           plugin.TValue[bool]
 }
 
 // createCloudflareOneOrganization creates a new instance of this resource
@@ -10031,6 +11467,10 @@ func (c *mqlCloudflareOneOrganization) GetServiceTokenInactivityThresholdDays() 
 
 func (c *mqlCloudflareOneOrganization) GetStrictServiceTokenAuth() *plugin.TValue[bool] {
 	return &c.StrictServiceTokenAuth
+}
+
+func (c *mqlCloudflareOneOrganization) GetDisableEndUserAppCreation() *plugin.TValue[bool] {
+	return &c.DisableEndUserAppCreation
 }
 
 // mqlCloudflareOneCasbPosturePolicy for the cloudflare.one.casbPosturePolicy resource
@@ -10584,6 +12024,7 @@ type mqlCloudflareOneLocation struct {
 	AnonymizedLogsEnabled plugin.TValue[bool]
 	ClientDefault         plugin.TValue[bool]
 	EcsSupport            plugin.TValue[bool]
+	Dns64Enabled          plugin.TValue[bool]
 	CreatedAt             plugin.TValue[*time.Time]
 	UpdatedAt             plugin.TValue[*time.Time]
 }
@@ -10651,6 +12092,10 @@ func (c *mqlCloudflareOneLocation) GetClientDefault() *plugin.TValue[bool] {
 
 func (c *mqlCloudflareOneLocation) GetEcsSupport() *plugin.TValue[bool] {
 	return &c.EcsSupport
+}
+
+func (c *mqlCloudflareOneLocation) GetDns64Enabled() *plugin.TValue[bool] {
+	return &c.Dns64Enabled
 }
 
 func (c *mqlCloudflareOneLocation) GetCreatedAt() *plugin.TValue[*time.Time] {
@@ -14746,6 +16191,9 @@ type mqlCloudflareZonePrecursor struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlCloudflareZonePrecursorInternal it will be used here
+	Mode             plugin.TValue[string]
+	ShowInterstitial plugin.TValue[bool]
+	Rules            plugin.TValue[[]any]
 	DefaultMode      plugin.TValue[string]
 	EnforcementRules plugin.TValue[[]any]
 }
@@ -14782,12 +16230,88 @@ func (c *mqlCloudflareZonePrecursor) MqlID() string {
 	return c.__id
 }
 
+func (c *mqlCloudflareZonePrecursor) GetMode() *plugin.TValue[string] {
+	return &c.Mode
+}
+
+func (c *mqlCloudflareZonePrecursor) GetShowInterstitial() *plugin.TValue[bool] {
+	return &c.ShowInterstitial
+}
+
+func (c *mqlCloudflareZonePrecursor) GetRules() *plugin.TValue[[]any] {
+	return &c.Rules
+}
+
 func (c *mqlCloudflareZonePrecursor) GetDefaultMode() *plugin.TValue[string] {
 	return &c.DefaultMode
 }
 
 func (c *mqlCloudflareZonePrecursor) GetEnforcementRules() *plugin.TValue[[]any] {
 	return &c.EnforcementRules
+}
+
+// mqlCloudflareZonePrecursorRule for the cloudflare.zone.precursor.rule resource
+type mqlCloudflareZonePrecursorRule struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlCloudflareZonePrecursorRuleInternal it will be used here
+	Id               plugin.TValue[string]
+	Expression       plugin.TValue[string]
+	ShowInterstitial plugin.TValue[bool]
+	Description      plugin.TValue[string]
+	Enabled          plugin.TValue[bool]
+}
+
+// createCloudflareZonePrecursorRule creates a new instance of this resource
+func createCloudflareZonePrecursorRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCloudflareZonePrecursorRule{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("cloudflare.zone.precursor.rule", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCloudflareZonePrecursorRule) MqlName() string {
+	return "cloudflare.zone.precursor.rule"
+}
+
+func (c *mqlCloudflareZonePrecursorRule) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCloudflareZonePrecursorRule) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlCloudflareZonePrecursorRule) GetExpression() *plugin.TValue[string] {
+	return &c.Expression
+}
+
+func (c *mqlCloudflareZonePrecursorRule) GetShowInterstitial() *plugin.TValue[bool] {
+	return &c.ShowInterstitial
+}
+
+func (c *mqlCloudflareZonePrecursorRule) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlCloudflareZonePrecursorRule) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
 }
 
 // mqlCloudflareZonePrecursorEnforcementRule for the cloudflare.zone.precursor.enforcementRule resource
