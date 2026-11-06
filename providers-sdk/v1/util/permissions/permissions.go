@@ -1454,6 +1454,9 @@ var gcpPermissionOverrides = map[string]map[string]string{
 		"ListDiscoveryConfigs": "dlp.jobTriggers.list",
 		// The singular Get derives "contentPolicy"; the permission is plural.
 		"GetContentPolicy": "dlp.contentPolicies.get",
+		// Same singular derivation for the inspect and de-identify templates.
+		"GetInspectTemplate":    "dlp.inspectTemplates.get",
+		"GetDeidentifyTemplate": "dlp.deidentifyTemplates.get",
 	},
 	"memorystore": {
 		"GetInstance":         "memorystore.instances.get",

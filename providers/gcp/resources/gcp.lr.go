@@ -465,6 +465,7 @@ const (
 	ResourceGcpProjectAgentIdentityServiceAuthProvider                                 string = "gcp.project.agentIdentityService.authProvider"
 	ResourceGcpProjectModelArmorService                                                string = "gcp.project.modelArmorService"
 	ResourceGcpProjectModelArmorServiceTemplate                                        string = "gcp.project.modelArmorService.template"
+	ResourceGcpProjectModelArmorServiceTemplateRaiFilter                               string = "gcp.project.modelArmorService.template.raiFilter"
 	ResourceGcpProjectModelArmorServiceFloorSetting                                    string = "gcp.project.modelArmorService.floorSetting"
 	ResourceGcpProjectIdentityPlatformService                                          string = "gcp.project.identityPlatformService"
 	ResourceGcpProjectIdentityPlatformServiceConfig                                    string = "gcp.project.identityPlatformService.config"
@@ -2377,6 +2378,10 @@ func init() {
 		"gcp.project.modelArmorService.template": {
 			Init:   initGcpProjectModelArmorServiceTemplate,
 			Create: createGcpProjectModelArmorServiceTemplate,
+		},
+		"gcp.project.modelArmorService.template.raiFilter": {
+			// to override args, implement: initGcpProjectModelArmorServiceTemplateRaiFilter(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectModelArmorServiceTemplateRaiFilter,
 		},
 		"gcp.project.modelArmorService.floorSetting": {
 			// to override args, implement: initGcpProjectModelArmorServiceFloorSetting(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -18057,6 +18062,48 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.modelArmorService.template.templateMetadata": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectModelArmorServiceTemplate).GetTemplateMetadata()).ToDataRes(types.Dict)
+	},
+	"gcp.project.modelArmorService.template.location": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectModelArmorServiceTemplate).GetLocation()).ToDataRes(types.String)
+	},
+	"gcp.project.modelArmorService.template.sdpBasicEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectModelArmorServiceTemplate).GetSdpBasicEnabled()).ToDataRes(types.Bool)
+	},
+	"gcp.project.modelArmorService.template.inspectTemplate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectModelArmorServiceTemplate).GetInspectTemplate()).ToDataRes(types.Resource("gcp.project.dlpService.inspectTemplate"))
+	},
+	"gcp.project.modelArmorService.template.deidentifyTemplate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectModelArmorServiceTemplate).GetDeidentifyTemplate()).ToDataRes(types.Resource("gcp.project.dlpService.deidentifyTemplate"))
+	},
+	"gcp.project.modelArmorService.template.piAndJailbreakFilterEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectModelArmorServiceTemplate).GetPiAndJailbreakFilterEnabled()).ToDataRes(types.Bool)
+	},
+	"gcp.project.modelArmorService.template.piAndJailbreakConfidenceLevel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectModelArmorServiceTemplate).GetPiAndJailbreakConfidenceLevel()).ToDataRes(types.String)
+	},
+	"gcp.project.modelArmorService.template.maliciousUriFilterEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectModelArmorServiceTemplate).GetMaliciousUriFilterEnabled()).ToDataRes(types.Bool)
+	},
+	"gcp.project.modelArmorService.template.csamFilterEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectModelArmorServiceTemplate).GetCsamFilterEnabled()).ToDataRes(types.Bool)
+	},
+	"gcp.project.modelArmorService.template.raiFilters": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectModelArmorServiceTemplate).GetRaiFilters()).ToDataRes(types.Array(types.Resource("gcp.project.modelArmorService.template.raiFilter")))
+	},
+	"gcp.project.modelArmorService.template.enforcementType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectModelArmorServiceTemplate).GetEnforcementType()).ToDataRes(types.String)
+	},
+	"gcp.project.modelArmorService.template.logSanitizeOperations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectModelArmorServiceTemplate).GetLogSanitizeOperations()).ToDataRes(types.Bool)
+	},
+	"gcp.project.modelArmorService.template.logTemplateOperations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectModelArmorServiceTemplate).GetLogTemplateOperations()).ToDataRes(types.Bool)
+	},
+	"gcp.project.modelArmorService.template.raiFilter.filterType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectModelArmorServiceTemplateRaiFilter).GetFilterType()).ToDataRes(types.String)
+	},
+	"gcp.project.modelArmorService.template.raiFilter.confidenceLevel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectModelArmorServiceTemplateRaiFilter).GetConfidenceLevel()).ToDataRes(types.String)
 	},
 	"gcp.project.modelArmorService.floorSetting.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectModelArmorServiceFloorSetting).GetName()).ToDataRes(types.String)
@@ -42997,6 +43044,66 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.modelArmorService.template.templateMetadata": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectModelArmorServiceTemplate).TemplateMetadata, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.modelArmorService.template.location": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectModelArmorServiceTemplate).Location, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.modelArmorService.template.sdpBasicEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectModelArmorServiceTemplate).SdpBasicEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.modelArmorService.template.inspectTemplate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectModelArmorServiceTemplate).InspectTemplate, ok = plugin.RawToTValue[*mqlGcpProjectDlpServiceInspectTemplate](v.Value, v.Error)
+		return
+	},
+	"gcp.project.modelArmorService.template.deidentifyTemplate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectModelArmorServiceTemplate).DeidentifyTemplate, ok = plugin.RawToTValue[*mqlGcpProjectDlpServiceDeidentifyTemplate](v.Value, v.Error)
+		return
+	},
+	"gcp.project.modelArmorService.template.piAndJailbreakFilterEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectModelArmorServiceTemplate).PiAndJailbreakFilterEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.modelArmorService.template.piAndJailbreakConfidenceLevel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectModelArmorServiceTemplate).PiAndJailbreakConfidenceLevel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.modelArmorService.template.maliciousUriFilterEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectModelArmorServiceTemplate).MaliciousUriFilterEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.modelArmorService.template.csamFilterEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectModelArmorServiceTemplate).CsamFilterEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.modelArmorService.template.raiFilters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectModelArmorServiceTemplate).RaiFilters, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.modelArmorService.template.enforcementType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectModelArmorServiceTemplate).EnforcementType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.modelArmorService.template.logSanitizeOperations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectModelArmorServiceTemplate).LogSanitizeOperations, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.modelArmorService.template.logTemplateOperations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectModelArmorServiceTemplate).LogTemplateOperations, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.modelArmorService.template.raiFilter.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectModelArmorServiceTemplateRaiFilter).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.modelArmorService.template.raiFilter.filterType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectModelArmorServiceTemplateRaiFilter).FilterType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.modelArmorService.template.raiFilter.confidenceLevel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectModelArmorServiceTemplateRaiFilter).ConfidenceLevel, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"gcp.project.modelArmorService.floorSetting.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -100800,14 +100907,26 @@ func (c *mqlGcpProjectModelArmorService) GetFloorSetting() *plugin.TValue[*mqlGc
 type mqlGcpProjectModelArmorServiceTemplate struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlGcpProjectModelArmorServiceTemplateInternal it will be used here
-	Name             plugin.TValue[string]
-	ProjectId        plugin.TValue[string]
-	CreatedAt        plugin.TValue[*time.Time]
-	UpdatedAt        plugin.TValue[*time.Time]
-	Labels           plugin.TValue[map[string]any]
-	FilterConfig     plugin.TValue[any]
-	TemplateMetadata plugin.TValue[any]
+	mqlGcpProjectModelArmorServiceTemplateInternal
+	Name                          plugin.TValue[string]
+	ProjectId                     plugin.TValue[string]
+	CreatedAt                     plugin.TValue[*time.Time]
+	UpdatedAt                     plugin.TValue[*time.Time]
+	Labels                        plugin.TValue[map[string]any]
+	FilterConfig                  plugin.TValue[any]
+	TemplateMetadata              plugin.TValue[any]
+	Location                      plugin.TValue[string]
+	SdpBasicEnabled               plugin.TValue[bool]
+	InspectTemplate               plugin.TValue[*mqlGcpProjectDlpServiceInspectTemplate]
+	DeidentifyTemplate            plugin.TValue[*mqlGcpProjectDlpServiceDeidentifyTemplate]
+	PiAndJailbreakFilterEnabled   plugin.TValue[bool]
+	PiAndJailbreakConfidenceLevel plugin.TValue[string]
+	MaliciousUriFilterEnabled     plugin.TValue[bool]
+	CsamFilterEnabled             plugin.TValue[bool]
+	RaiFilters                    plugin.TValue[[]any]
+	EnforcementType               plugin.TValue[string]
+	LogSanitizeOperations         plugin.TValue[bool]
+	LogTemplateOperations         plugin.TValue[bool]
 }
 
 // createGcpProjectModelArmorServiceTemplate creates a new instance of this resource
@@ -100873,6 +100992,139 @@ func (c *mqlGcpProjectModelArmorServiceTemplate) GetFilterConfig() *plugin.TValu
 
 func (c *mqlGcpProjectModelArmorServiceTemplate) GetTemplateMetadata() *plugin.TValue[any] {
 	return &c.TemplateMetadata
+}
+
+func (c *mqlGcpProjectModelArmorServiceTemplate) GetLocation() *plugin.TValue[string] {
+	return &c.Location
+}
+
+func (c *mqlGcpProjectModelArmorServiceTemplate) GetSdpBasicEnabled() *plugin.TValue[bool] {
+	return &c.SdpBasicEnabled
+}
+
+func (c *mqlGcpProjectModelArmorServiceTemplate) GetInspectTemplate() *plugin.TValue[*mqlGcpProjectDlpServiceInspectTemplate] {
+	return plugin.GetOrCompute[*mqlGcpProjectDlpServiceInspectTemplate](&c.InspectTemplate, func() (*mqlGcpProjectDlpServiceInspectTemplate, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.modelArmorService.template", c.__id, "inspectTemplate")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectDlpServiceInspectTemplate), nil
+			}
+		}
+
+		return c.inspectTemplate()
+	})
+}
+
+func (c *mqlGcpProjectModelArmorServiceTemplate) GetDeidentifyTemplate() *plugin.TValue[*mqlGcpProjectDlpServiceDeidentifyTemplate] {
+	return plugin.GetOrCompute[*mqlGcpProjectDlpServiceDeidentifyTemplate](&c.DeidentifyTemplate, func() (*mqlGcpProjectDlpServiceDeidentifyTemplate, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.modelArmorService.template", c.__id, "deidentifyTemplate")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectDlpServiceDeidentifyTemplate), nil
+			}
+		}
+
+		return c.deidentifyTemplate()
+	})
+}
+
+func (c *mqlGcpProjectModelArmorServiceTemplate) GetPiAndJailbreakFilterEnabled() *plugin.TValue[bool] {
+	return &c.PiAndJailbreakFilterEnabled
+}
+
+func (c *mqlGcpProjectModelArmorServiceTemplate) GetPiAndJailbreakConfidenceLevel() *plugin.TValue[string] {
+	return &c.PiAndJailbreakConfidenceLevel
+}
+
+func (c *mqlGcpProjectModelArmorServiceTemplate) GetMaliciousUriFilterEnabled() *plugin.TValue[bool] {
+	return &c.MaliciousUriFilterEnabled
+}
+
+func (c *mqlGcpProjectModelArmorServiceTemplate) GetCsamFilterEnabled() *plugin.TValue[bool] {
+	return &c.CsamFilterEnabled
+}
+
+func (c *mqlGcpProjectModelArmorServiceTemplate) GetRaiFilters() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.RaiFilters, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.modelArmorService.template", c.__id, "raiFilters")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.raiFilters()
+	})
+}
+
+func (c *mqlGcpProjectModelArmorServiceTemplate) GetEnforcementType() *plugin.TValue[string] {
+	return &c.EnforcementType
+}
+
+func (c *mqlGcpProjectModelArmorServiceTemplate) GetLogSanitizeOperations() *plugin.TValue[bool] {
+	return &c.LogSanitizeOperations
+}
+
+func (c *mqlGcpProjectModelArmorServiceTemplate) GetLogTemplateOperations() *plugin.TValue[bool] {
+	return &c.LogTemplateOperations
+}
+
+// mqlGcpProjectModelArmorServiceTemplateRaiFilter for the gcp.project.modelArmorService.template.raiFilter resource
+type mqlGcpProjectModelArmorServiceTemplateRaiFilter struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGcpProjectModelArmorServiceTemplateRaiFilterInternal it will be used here
+	FilterType      plugin.TValue[string]
+	ConfidenceLevel plugin.TValue[string]
+}
+
+// createGcpProjectModelArmorServiceTemplateRaiFilter creates a new instance of this resource
+func createGcpProjectModelArmorServiceTemplateRaiFilter(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectModelArmorServiceTemplateRaiFilter{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.modelArmorService.template.raiFilter", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectModelArmorServiceTemplateRaiFilter) MqlName() string {
+	return "gcp.project.modelArmorService.template.raiFilter"
+}
+
+func (c *mqlGcpProjectModelArmorServiceTemplateRaiFilter) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectModelArmorServiceTemplateRaiFilter) GetFilterType() *plugin.TValue[string] {
+	return &c.FilterType
+}
+
+func (c *mqlGcpProjectModelArmorServiceTemplateRaiFilter) GetConfidenceLevel() *plugin.TValue[string] {
+	return &c.ConfidenceLevel
 }
 
 // mqlGcpProjectModelArmorServiceFloorSetting for the gcp.project.modelArmorService.floorSetting resource

@@ -239,8 +239,10 @@ var validatedGCPPermissions = []string{
 	// to produce the documented name, so no override is needed.
 	"dlp.contentPolicies.get",
 	"dlp.contentPolicies.list",
+	"dlp.deidentifyTemplates.get",
 	"dlp.deidentifyTemplates.list",
 	"dlp.fileStoreProfiles.list",
+	"dlp.inspectTemplates.get",
 	"dlp.inspectTemplates.list",
 	"dlp.jobTriggers.list",
 	"dlp.jobs.list",
@@ -299,6 +301,7 @@ var validatedGCPPermissions = []string{
 	"memorystore.instances.get",
 	"memorystore.instances.list",
 	"modelarmor.floorSettings.get",
+	"modelarmor.locations.list",
 	"modelarmor.templates.get",
 	"modelarmor.templates.list",
 	"monitoring.alertPolicies.list",

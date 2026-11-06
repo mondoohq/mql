@@ -191,8 +191,10 @@
     "dlp.connections.list",
     "dlp.contentPolicies.get",
     "dlp.contentPolicies.list",
+    "dlp.deidentifyTemplates.get",
     "dlp.deidentifyTemplates.list",
     "dlp.fileStoreProfiles.list",
+    "dlp.inspectTemplates.get",
     "dlp.inspectTemplates.list",
     "dlp.jobTriggers.list",
     "dlp.jobs.list",
@@ -246,6 +248,7 @@
     "memorystore.instances.get",
     "memorystore.instances.list",
     "modelarmor.floorSettings.get",
+    "modelarmor.locations.list",
     "modelarmor.templates.get",
     "modelarmor.templates.list",
     "monitoring.alertPolicies.list",
@@ -1551,6 +1554,12 @@
       "source_file": "dlp.go"
     },
     {
+      "permission": "dlp.deidentifyTemplates.get",
+      "service": "dlp",
+      "action": "GetDeidentifyTemplate",
+      "source_file": "modelarmor.go"
+    },
+    {
       "permission": "dlp.deidentifyTemplates.list",
       "service": "dlp",
       "action": "ListDeidentifyTemplates",
@@ -1561,6 +1570,12 @@
       "service": "dlp",
       "action": "ListFileStoreDataProfiles",
       "source_file": "dlp.go"
+    },
+    {
+      "permission": "dlp.inspectTemplates.get",
+      "service": "dlp",
+      "action": "GetInspectTemplate",
+      "source_file": "modelarmor.go"
     },
     {
       "permission": "dlp.inspectTemplates.list",
@@ -1898,6 +1913,12 @@
       "permission": "modelarmor.floorSettings.get",
       "service": "modelarmor",
       "action": "GetFloorSetting",
+      "source_file": "modelarmor.go"
+    },
+    {
+      "permission": "modelarmor.locations.list",
+      "service": "modelarmor",
+      "action": "ListLocations",
       "source_file": "modelarmor.go"
     },
     {

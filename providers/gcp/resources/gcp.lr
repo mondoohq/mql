@@ -17499,8 +17499,11 @@ private gcp.project.modelArmorService {
 // safety policies. A template combines a filter configuration (responsible-AI
 // settings, Sensitive Data Protection settings, prompt-injection and jailbreak
 // filter, malicious-URI filter) with template metadata (enforcement type,
-// error handling, multi-language detection). The `name` field is the full
-// resource path of the template.
+// error handling, multi-language detection). The typed fields read the same
+// configuration: which filters are enabled and at what confidence, the
+// Sensitive Data Protection templates used, the enforcement type and whether
+// operations are logged. The `name` field is the full resource path of the
+// template.
 private gcp.project.modelArmorService.template @defaults("name") {
   // Full resource name
   name string
@@ -17524,6 +17527,40 @@ private gcp.project.modelArmorService.template @defaults("name") {
   // and dataResidencyCompliant (false when the template bypasses data
   // residency compliance checks).
   templateMetadata dict
+  // Location of the template, for example `us` or `us-central1`
+  location string
+  // Whether basic Sensitive Data Protection screening is enabled
+  sdpBasicEnabled bool
+  // Sensitive Data Protection inspect template used for advanced screening; null when not set
+  inspectTemplate() gcp.project.dlpService.inspectTemplate
+  // Sensitive Data Protection de-identify template used for advanced screening; null when not set
+  deidentifyTemplate() gcp.project.dlpService.deidentifyTemplate
+  // Whether the prompt injection and jailbreak filter is enabled
+  piAndJailbreakFilterEnabled bool
+  // Confidence level at which the prompt injection and jailbreak filter triggers
+  //
+  // One of LOW_AND_ABOVE, MEDIUM_AND_ABOVE or HIGH. Empty when not set.
+  piAndJailbreakConfidenceLevel string
+  // Whether the malicious URI filter is enabled
+  maliciousUriFilterEnabled bool
+  // Whether the child sexual abuse material (CSAM) filter is enabled
+  csamFilterEnabled bool
+  // Responsible AI filters configured on the template
+  raiFilters() []gcp.project.modelArmorService.template.raiFilter
+  // Enforcement type (INSPECT_ONLY or INSPECT_AND_BLOCK); empty when not set
+  enforcementType string
+  // Whether sanitize operations are written to Cloud Logging
+  logSanitizeOperations bool
+  // Whether template create, update and delete operations are written to Cloud Logging
+  logTemplateOperations bool
+}
+
+// Google Cloud (GCP) Model Armor responsible AI filter
+private gcp.project.modelArmorService.template.raiFilter @defaults("filterType confidenceLevel") {
+  // Category the filter screens for (SEXUALLY_EXPLICIT, HATE_SPEECH, HARASSMENT or DANGEROUS)
+  filterType string
+  // Confidence level at which the filter triggers (LOW_AND_ABOVE, MEDIUM_AND_ABOVE or HIGH)
+  confidenceLevel string
 }
 
 // Google Cloud (GCP) Model Armor floor setting
