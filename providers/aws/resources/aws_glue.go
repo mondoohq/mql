@@ -336,29 +336,34 @@ func newMqlAwsGlueJob(runtime *plugin.Runtime, region string, accountID string, 
 		maxCapacity = *job.MaxCapacity
 	}
 
+	autoUpgrade := glueJobAutoUpgradeFields(job.AutoUpgradeMetadata)
 	resource, err := CreateResource(runtime, "aws.glue.job",
 		map[string]*llx.RawData{
-			"__id":                  llx.StringData(arn),
-			"arn":                   llx.StringData(arn),
-			"name":                  llx.StringDataPtr(job.Name),
-			"description":           llx.StringDataPtr(job.Description),
-			"role":                  llx.StringDataPtr(job.Role),
-			"command":               llx.DictData(command),
-			"maxRetries":            llx.IntData(int64(job.MaxRetries)),
-			"timeout":               llx.IntDataDefault(job.Timeout, 0),
-			"glueVersion":           llx.StringDataPtr(job.GlueVersion),
-			"numberOfWorkers":       llx.IntDataDefault(job.NumberOfWorkers, 0),
-			"workerType":            llx.StringData(string(job.WorkerType)),
-			"maxCapacity":           llx.FloatData(maxCapacity),
-			"executionProperty":     llx.DictData(executionProperty),
-			"notificationProperty":  llx.DictData(notificationProperty),
-			"connections":           llx.ArrayData(connections, types.String),
-			"defaultArguments":      llx.MapData(toInterfaceMap(job.DefaultArguments), types.String),
-			"securityConfiguration": llx.StringDataPtr(job.SecurityConfiguration),
-			"executionClass":        llx.StringData(string(job.ExecutionClass)),
-			"createdAt":             llx.TimeDataPtr(job.CreatedOn),
-			"updatedAt":             llx.TimeDataPtr(job.LastModifiedOn),
-			"region":                llx.StringData(region),
+			"__id":                     llx.StringData(arn),
+			"arn":                      llx.StringData(arn),
+			"name":                     llx.StringDataPtr(job.Name),
+			"description":              llx.StringDataPtr(job.Description),
+			"role":                     llx.StringDataPtr(job.Role),
+			"command":                  llx.DictData(command),
+			"maxRetries":               llx.IntData(int64(job.MaxRetries)),
+			"timeout":                  llx.IntDataDefault(job.Timeout, 0),
+			"glueVersion":              llx.StringDataPtr(job.GlueVersion),
+			"numberOfWorkers":          llx.IntDataDefault(job.NumberOfWorkers, 0),
+			"workerType":               llx.StringData(string(job.WorkerType)),
+			"maxCapacity":              llx.FloatData(maxCapacity),
+			"executionProperty":        llx.DictData(executionProperty),
+			"notificationProperty":     llx.DictData(notificationProperty),
+			"connections":              llx.ArrayData(connections, types.String),
+			"defaultArguments":         llx.MapData(toInterfaceMap(job.DefaultArguments), types.String),
+			"securityConfiguration":    llx.StringDataPtr(job.SecurityConfiguration),
+			"executionClass":           llx.StringData(string(job.ExecutionClass)),
+			"createdAt":                llx.TimeDataPtr(job.CreatedOn),
+			"updatedAt":                llx.TimeDataPtr(job.LastModifiedOn),
+			"region":                   llx.StringData(region),
+			"autoUpgradeStatus":        autoUpgrade.status,
+			"autoUpgradeSourceVersion": autoUpgrade.sourceVersion,
+			"autoUpgradeTargetVersion": autoUpgrade.targetVersion,
+			"autoUpgradeAnalysisId":    autoUpgrade.analysisId,
 		})
 	if err != nil {
 		return nil, err
@@ -367,6 +372,32 @@ func newMqlAwsGlueJob(runtime *plugin.Runtime, region string, accountID string, 
 	mqlJob.cacheRoleArn = job.Role
 	mqlJob.cacheSecurityConfigurationName = job.SecurityConfiguration
 	return mqlJob, nil
+}
+
+type glueJobAutoUpgrade struct {
+	status        *llx.RawData
+	sourceVersion *llx.RawData
+	targetVersion *llx.RawData
+	analysisId    *llx.RawData
+}
+
+// glueJobAutoUpgradeFields flattens a job's auto-upgrade metadata. Every field
+// is null when the job carries no metadata, which is the case for any job that
+// does not use glueVersion auto.
+func glueJobAutoUpgradeFields(m *glue_types.AutoUpgradeMetadata) glueJobAutoUpgrade {
+	if m == nil {
+		return glueJobAutoUpgrade{llx.NilData, llx.NilData, llx.NilData, llx.NilData}
+	}
+	status := llx.NilData
+	if m.Status != "" {
+		status = llx.StringData(string(m.Status))
+	}
+	return glueJobAutoUpgrade{
+		status:        status,
+		sourceVersion: llx.StringDataPtr(m.SourceVersion),
+		targetVersion: llx.StringDataPtr(m.TargetVersion),
+		analysisId:    llx.StringDataPtr(m.AnalysisId),
+	}
 }
 
 func (a *mqlAwsGlueJob) iamRole() (*mqlAwsIamRole, error) {

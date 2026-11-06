@@ -484,6 +484,180 @@ func (a *mqlAwsDatasyncAgent) createdAt() (*time.Time, error) {
 
 type mqlAwsDatasyncLocationInternal struct {
 	lazyTags
+	authFetched bool
+	authLock    sync.Mutex
+	auth        datasyncLocationAuth
+}
+
+// datasyncLocationAuth is how DataSync authenticates to an azure-blob or
+// object-storage location, read from the per-type Describe call.
+type datasyncLocationAuth struct {
+	authenticationType *string
+	secretArn          string
+	roleArn            string
+	federatedIdentity  map[string]any
+}
+
+// datasyncSecretArn returns the Secrets Manager secret that holds a location's
+// credential. A location carries at most one of the three secret configs.
+func datasyncSecretArn(managed *datasynctypes.ManagedSecretConfig, cmk *datasynctypes.CmkSecretConfig, custom *datasynctypes.CustomSecretConfig) string {
+	if custom != nil && custom.SecretArn != nil && *custom.SecretArn != "" {
+		return *custom.SecretArn
+	}
+	if cmk != nil && cmk.SecretArn != nil && *cmk.SecretArn != "" {
+		return *cmk.SecretArn
+	}
+	if managed != nil && managed.SecretArn != nil && *managed.SecretArn != "" {
+		return *managed.SecretArn
+	}
+	return ""
+}
+
+func azureBlobLocationAuth(out *datasync.DescribeLocationAzureBlobOutput) datasyncLocationAuth {
+	res := datasyncLocationAuth{}
+	if out == nil {
+		return res
+	}
+	if out.AuthenticationType != "" {
+		t := string(out.AuthenticationType)
+		res.authenticationType = &t
+	}
+	res.secretArn = datasyncSecretArn(out.ManagedSecretConfig, out.CmkSecretConfig, out.CustomSecretConfig)
+	if fi := out.FederatedIdentity; fi != nil {
+		res.roleArn = convert.ToValue(fi.AwsIamRole)
+		if fi.AzureOidc != nil {
+			res.federatedIdentity = map[string]any{
+				"azureOidc": map[string]any{
+					"clientId": convert.ToValue(fi.AzureOidc.ClientId),
+					"tenantId": convert.ToValue(fi.AzureOidc.TenantId),
+				},
+			}
+		}
+	}
+	return res
+}
+
+func objectStorageLocationAuth(out *datasync.DescribeLocationObjectStorageOutput) datasyncLocationAuth {
+	res := datasyncLocationAuth{}
+	if out == nil {
+		return res
+	}
+	res.secretArn = datasyncSecretArn(out.ManagedSecretConfig, out.CmkSecretConfig, out.CustomSecretConfig)
+	if fi := out.FederatedIdentity; fi != nil {
+		res.roleArn = convert.ToValue(fi.AwsIamRole)
+		if fi.ExternalIdentity != nil && fi.ExternalIdentity.GoogleOidc != nil {
+			g := fi.ExternalIdentity.GoogleOidc
+			res.federatedIdentity = map[string]any{
+				"googleOidc": map[string]any{
+					"identityPoolName":     convert.ToValue(g.IdentityPoolName),
+					"identityProviderName": convert.ToValue(g.IdentityProviderName),
+					"projectName":          convert.ToValue(g.ProjectName),
+					"projectNumber":        convert.ToValue(g.ProjectNumber),
+				},
+			}
+		}
+	}
+	return res
+}
+
+// fetchAuth calls the Describe operation for the location's type. Only
+// azure-blob and object-storage locations carry these settings; every other
+// type answers with an empty result and no API call.
+func (a *mqlAwsDatasyncLocation) fetchAuth() (datasyncLocationAuth, error) {
+	if a.authFetched {
+		return a.auth, nil
+	}
+	a.authLock.Lock()
+	defer a.authLock.Unlock()
+	if a.authFetched {
+		return a.auth, nil
+	}
+
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	locArn := a.Arn.Data
+	ctx := context.Background()
+	var auth datasyncLocationAuth
+	switch a.LocationType.Data {
+	case "azure-blob":
+		out, err := conn.DataSync(a.Region.Data).DescribeLocationAzureBlob(ctx, &datasync.DescribeLocationAzureBlobInput{LocationArn: &locArn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				return auth, llx.Forbidden(err, llx.WithPermissions("datasync:DescribeLocationAzureBlob"))
+			}
+			return auth, err
+		}
+		auth = azureBlobLocationAuth(out)
+	case "object-storage":
+		out, err := conn.DataSync(a.Region.Data).DescribeLocationObjectStorage(ctx, &datasync.DescribeLocationObjectStorageInput{LocationArn: &locArn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				return auth, llx.Forbidden(err, llx.WithPermissions("datasync:DescribeLocationObjectStorage"))
+			}
+			return auth, err
+		}
+		auth = objectStorageLocationAuth(out)
+	}
+	a.auth = auth
+	a.authFetched = true
+	return auth, nil
+}
+
+func (a *mqlAwsDatasyncLocation) authenticationType() (string, error) {
+	auth, err := a.fetchAuth()
+	if err != nil {
+		return "", err
+	}
+	if auth.authenticationType == nil {
+		a.AuthenticationType.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *auth.authenticationType, nil
+}
+
+func (a *mqlAwsDatasyncLocation) credentialSecret() (*mqlAwsSecretsmanagerSecret, error) {
+	auth, err := a.fetchAuth()
+	if err != nil {
+		return nil, err
+	}
+	if auth.secretArn == "" {
+		a.CredentialSecret.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "aws.secretsmanager.secret",
+		map[string]*llx.RawData{"arn": llx.StringData(auth.secretArn)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsSecretsmanagerSecret), nil
+}
+
+func (a *mqlAwsDatasyncLocation) federatedIdentityRole() (*mqlAwsIamRole, error) {
+	auth, err := a.fetchAuth()
+	if err != nil {
+		return nil, err
+	}
+	if auth.roleArn == "" {
+		a.FederatedIdentityRole.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "aws.iam.role",
+		map[string]*llx.RawData{"arn": llx.StringData(auth.roleArn)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsIamRole), nil
+}
+
+func (a *mqlAwsDatasyncLocation) federatedIdentity() (any, error) {
+	auth, err := a.fetchAuth()
+	if err != nil {
+		return nil, err
+	}
+	if auth.federatedIdentity == nil {
+		a.FederatedIdentity.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return auth.federatedIdentity, nil
 }
 
 func (a *mqlAwsDatasyncTask) tags() (map[string]any, error) {

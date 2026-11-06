@@ -1,7 +1,7 @@
 {
   "provider": "aws",
-  "version": "14.6.2",
-  "generated_at": "2026-11-02T11:54:14-08:00",
+  "version": "14.6.3",
+  "generated_at": "2026-11-05T20:59:06-08:00",
   "permissions": [
     "access-analyzer:GetFinding",
     "access-analyzer:ListAnalyzers",
@@ -276,6 +276,8 @@
     "controltower:ListLandingZones",
     "controltower:ListTagsForResource",
     "datasync:DescribeAgent",
+    "datasync:DescribeLocationAzureBlob",
+    "datasync:DescribeLocationObjectStorage",
     "datasync:DescribeTask",
     "datasync:ListAgents",
     "datasync:ListLocations",
@@ -986,6 +988,8 @@
     "securityhub:GetFindings",
     "securityhub:GetInsightResults",
     "securityhub:GetInsights",
+    "securityhub:GetSoftwareResourcesV2",
+    "securityhub:GetSoftwareV2",
     "securityhub:ListAutomationRules",
     "securityhub:ListConfigurationPolicies",
     "securityhub:ListConfigurationPolicyAssociations",
@@ -2807,6 +2811,18 @@
       "permission": "datasync:DescribeAgent",
       "service": "datasync",
       "action": "DescribeAgent",
+      "source_file": "aws_datasync.go"
+    },
+    {
+      "permission": "datasync:DescribeLocationAzureBlob",
+      "service": "datasync",
+      "action": "DescribeLocationAzureBlob",
+      "source_file": "aws_datasync.go"
+    },
+    {
+      "permission": "datasync:DescribeLocationObjectStorage",
+      "service": "datasync",
+      "action": "DescribeLocationObjectStorage",
       "source_file": "aws_datasync.go"
     },
     {
@@ -7284,6 +7300,18 @@
       "service": "securityhub",
       "action": "GetInsights",
       "source_file": "aws_securityhub.go"
+    },
+    {
+      "permission": "securityhub:GetSoftwareResourcesV2",
+      "service": "securityhub",
+      "action": "GetSoftwareResourcesV2",
+      "source_file": "aws_securityhub_software.go"
+    },
+    {
+      "permission": "securityhub:GetSoftwareV2",
+      "service": "securityhub",
+      "action": "GetSoftwareV2",
+      "source_file": "aws_securityhub_software.go"
     },
     {
       "permission": "securityhub:ListAutomationRules",

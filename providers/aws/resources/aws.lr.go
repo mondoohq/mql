@@ -314,6 +314,8 @@ const (
 	ResourceAwsSecurityhubInsightResult                                         string = "aws.securityhub.insightResult"
 	ResourceAwsSecurityhubMember                                                string = "aws.securityhub.member"
 	ResourceAwsSecurityhubEnabledProduct                                        string = "aws.securityhub.enabledProduct"
+	ResourceAwsSecurityhubSoftwarePackage                                       string = "aws.securityhub.softwarePackage"
+	ResourceAwsSecurityhubSoftwareResource                                      string = "aws.securityhub.softwareResource"
 	ResourceAwsShield                                                           string = "aws.shield"
 	ResourceAwsShieldSubscription                                               string = "aws.shield.subscription"
 	ResourceAwsShieldProtection                                                 string = "aws.shield.protection"
@@ -2275,6 +2277,14 @@ func init() {
 		"aws.securityhub.enabledProduct": {
 			// to override args, implement: initAwsSecurityhubEnabledProduct(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAwsSecurityhubEnabledProduct,
+		},
+		"aws.securityhub.softwarePackage": {
+			// to override args, implement: initAwsSecurityhubSoftwarePackage(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsSecurityhubSoftwarePackage,
+		},
+		"aws.securityhub.softwareResource": {
+			// to override args, implement: initAwsSecurityhubSoftwareResource(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsSecurityhubSoftwareResource,
 		},
 		"aws.shield": {
 			// to override args, implement: initAwsShield(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -14238,6 +14248,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.securityhub.configurationPolicies": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsSecurityhub).GetConfigurationPolicies()).ToDataRes(types.Array(types.Resource("aws.securityhub.configurationPolicy")))
 	},
+	"aws.securityhub.softwarePackages": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhub).GetSoftwarePackages()).ToDataRes(types.Array(types.Resource("aws.securityhub.softwarePackage")))
+	},
 	"aws.securityhub.hub.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsSecurityhubHub).GetArn()).ToDataRes(types.String)
 	},
@@ -14567,6 +14580,57 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.securityhub.enabledProduct.region": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsSecurityhubEnabledProduct).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.securityhub.softwarePackage.packageName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubSoftwarePackage).GetPackageName()).ToDataRes(types.String)
+	},
+	"aws.securityhub.softwarePackage.packageType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubSoftwarePackage).GetPackageType()).ToDataRes(types.String)
+	},
+	"aws.securityhub.softwarePackage.packageVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubSoftwarePackage).GetPackageVersion()).ToDataRes(types.String)
+	},
+	"aws.securityhub.softwarePackage.resourceCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubSoftwarePackage).GetResourceCount()).ToDataRes(types.Int)
+	},
+	"aws.securityhub.softwarePackage.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubSoftwarePackage).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.securityhub.softwarePackage.resources": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubSoftwarePackage).GetResources()).ToDataRes(types.Array(types.Resource("aws.securityhub.softwareResource")))
+	},
+	"aws.securityhub.softwareResource.resourceId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubSoftwareResource).GetResourceId()).ToDataRes(types.String)
+	},
+	"aws.securityhub.softwareResource.resourceType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubSoftwareResource).GetResourceType()).ToDataRes(types.String)
+	},
+	"aws.securityhub.softwareResource.resourceProvider": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubSoftwareResource).GetResourceProvider()).ToDataRes(types.String)
+	},
+	"aws.securityhub.softwareResource.resourceRegion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubSoftwareResource).GetResourceRegion()).ToDataRes(types.String)
+	},
+	"aws.securityhub.softwareResource.resourceCloudPartition": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubSoftwareResource).GetResourceCloudPartition()).ToDataRes(types.String)
+	},
+	"aws.securityhub.softwareResource.resourceOwnerAccountId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubSoftwareResource).GetResourceOwnerAccountId()).ToDataRes(types.String)
+	},
+	"aws.securityhub.softwareResource.resourceOwnerOrgId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubSoftwareResource).GetResourceOwnerOrgId()).ToDataRes(types.String)
+	},
+	"aws.securityhub.softwareResource.accountId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubSoftwareResource).GetAccountId()).ToDataRes(types.String)
+	},
+	"aws.securityhub.softwareResource.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubSoftwareResource).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.securityhub.softwareResource.ec2Instance": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubSoftwareResource).GetEc2Instance()).ToDataRes(types.Resource("aws.ec2.instance"))
+	},
+	"aws.securityhub.softwareResource.lambdaFunction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubSoftwareResource).GetLambdaFunction()).ToDataRes(types.Resource("aws.lambda.function"))
 	},
 	"aws.shield.subscriptionState": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsShield).GetSubscriptionState()).ToDataRes(types.String)
@@ -15992,6 +16056,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.emr.cluster.step.executionRole": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEmrClusterStep).GetExecutionRole()).ToDataRes(types.Resource("aws.iam.role"))
+	},
+	"aws.emr.cluster.step.resourceManager": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEmrClusterStep).GetResourceManager()).ToDataRes(types.String)
+	},
+	"aws.emr.cluster.step.resourceManagerApplicationIds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEmrClusterStep).GetResourceManagerApplicationIds()).ToDataRes(types.Array(types.String))
 	},
 	"aws.emr.cluster.instanceGroup.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEmrClusterInstanceGroup).GetId()).ToDataRes(types.String)
@@ -19943,6 +20013,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.rds.optionGroup.sourceAccountId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsRdsOptionGroup).GetSourceAccountId()).ToDataRes(types.String)
+	},
+	"aws.rds.optionGroup.sourceRegion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRdsOptionGroup).GetSourceRegion()).ToDataRes(types.String)
 	},
 	"aws.rds.optionGroup.sourceOptionGroup": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsRdsOptionGroup).GetSourceOptionGroup()).ToDataRes(types.String)
@@ -32025,6 +32098,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.glue.job.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsGlueJob).GetTags()).ToDataRes(types.Map(types.String, types.String))
 	},
+	"aws.glue.job.autoUpgradeStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsGlueJob).GetAutoUpgradeStatus()).ToDataRes(types.String)
+	},
+	"aws.glue.job.autoUpgradeSourceVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsGlueJob).GetAutoUpgradeSourceVersion()).ToDataRes(types.String)
+	},
+	"aws.glue.job.autoUpgradeTargetVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsGlueJob).GetAutoUpgradeTargetVersion()).ToDataRes(types.String)
+	},
+	"aws.glue.job.autoUpgradeAnalysisId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsGlueJob).GetAutoUpgradeAnalysisId()).ToDataRes(types.String)
+	},
 	"aws.glue.catalogExportEncryption.region": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsGlueCatalogExportEncryption).GetRegion()).ToDataRes(types.String)
 	},
@@ -39002,6 +39087,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.datasync.location.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsDatasyncLocation).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"aws.datasync.location.authenticationType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsDatasyncLocation).GetAuthenticationType()).ToDataRes(types.String)
+	},
+	"aws.datasync.location.credentialSecret": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsDatasyncLocation).GetCredentialSecret()).ToDataRes(types.Resource("aws.secretsmanager.secret"))
+	},
+	"aws.datasync.location.federatedIdentityRole": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsDatasyncLocation).GetFederatedIdentityRole()).ToDataRes(types.Resource("aws.iam.role"))
+	},
+	"aws.datasync.location.federatedIdentity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsDatasyncLocation).GetFederatedIdentity()).ToDataRes(types.Dict)
 	},
 	"aws.datasync.agent.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsDatasyncAgent).GetArn()).ToDataRes(types.String)
@@ -52853,6 +52950,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsSecurityhub).ConfigurationPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"aws.securityhub.softwarePackages": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhub).SoftwarePackages, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"aws.securityhub.hub.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsSecurityhubHub).__id, ok = v.Value.(string)
 		return
@@ -53343,6 +53444,82 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.securityhub.enabledProduct.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsSecurityhubEnabledProduct).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.softwarePackage.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubSoftwarePackage).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.securityhub.softwarePackage.packageName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubSoftwarePackage).PackageName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.softwarePackage.packageType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubSoftwarePackage).PackageType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.softwarePackage.packageVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubSoftwarePackage).PackageVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.softwarePackage.resourceCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubSoftwarePackage).ResourceCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.softwarePackage.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubSoftwarePackage).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.softwarePackage.resources": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubSoftwarePackage).Resources, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.softwareResource.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubSoftwareResource).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.securityhub.softwareResource.resourceId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubSoftwareResource).ResourceId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.softwareResource.resourceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubSoftwareResource).ResourceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.softwareResource.resourceProvider": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubSoftwareResource).ResourceProvider, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.softwareResource.resourceRegion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubSoftwareResource).ResourceRegion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.softwareResource.resourceCloudPartition": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubSoftwareResource).ResourceCloudPartition, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.softwareResource.resourceOwnerAccountId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubSoftwareResource).ResourceOwnerAccountId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.softwareResource.resourceOwnerOrgId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubSoftwareResource).ResourceOwnerOrgId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.softwareResource.accountId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubSoftwareResource).AccountId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.softwareResource.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubSoftwareResource).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.softwareResource.ec2Instance": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubSoftwareResource).Ec2Instance, ok = plugin.RawToTValue[*mqlAwsEc2Instance](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.softwareResource.lambdaFunction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubSoftwareResource).LambdaFunction, ok = plugin.RawToTValue[*mqlAwsLambdaFunction](v.Value, v.Error)
 		return
 	},
 	"aws.shield.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -55435,6 +55612,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.emr.cluster.step.executionRole": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsEmrClusterStep).ExecutionRole, ok = plugin.RawToTValue[*mqlAwsIamRole](v.Value, v.Error)
+		return
+	},
+	"aws.emr.cluster.step.resourceManager": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEmrClusterStep).ResourceManager, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.emr.cluster.step.resourceManagerApplicationIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEmrClusterStep).ResourceManagerApplicationIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"aws.emr.cluster.instanceGroup.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -61295,6 +61480,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.rds.optionGroup.sourceAccountId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsRdsOptionGroup).SourceAccountId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.rds.optionGroup.sourceRegion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRdsOptionGroup).SourceRegion, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.rds.optionGroup.sourceOptionGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -78721,6 +78910,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsGlueJob).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
+	"aws.glue.job.autoUpgradeStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsGlueJob).AutoUpgradeStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.glue.job.autoUpgradeSourceVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsGlueJob).AutoUpgradeSourceVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.glue.job.autoUpgradeTargetVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsGlueJob).AutoUpgradeTargetVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.glue.job.autoUpgradeAnalysisId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsGlueJob).AutoUpgradeAnalysisId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"aws.glue.catalogExportEncryption.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsGlueCatalogExportEncryption).__id, ok = v.Value.(string)
 		return
@@ -88867,6 +89072,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.datasync.location.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsDatasyncLocation).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aws.datasync.location.authenticationType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsDatasyncLocation).AuthenticationType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.datasync.location.credentialSecret": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsDatasyncLocation).CredentialSecret, ok = plugin.RawToTValue[*mqlAwsSecretsmanagerSecret](v.Value, v.Error)
+		return
+	},
+	"aws.datasync.location.federatedIdentityRole": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsDatasyncLocation).FederatedIdentityRole, ok = plugin.RawToTValue[*mqlAwsIamRole](v.Value, v.Error)
+		return
+	},
+	"aws.datasync.location.federatedIdentity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsDatasyncLocation).FederatedIdentity, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
 	"aws.datasync.agent.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -124696,6 +124917,7 @@ type mqlAwsSecurityhub struct {
 	// optional: if you define mqlAwsSecurityhubInternal it will be used here
 	Hubs                  plugin.TValue[[]any]
 	ConfigurationPolicies plugin.TValue[[]any]
+	SoftwarePackages      plugin.TValue[[]any]
 }
 
 // createAwsSecurityhub creates a new instance of this resource
@@ -124764,6 +124986,22 @@ func (c *mqlAwsSecurityhub) GetConfigurationPolicies() *plugin.TValue[[]any] {
 		}
 
 		return c.configurationPolicies()
+	})
+}
+
+func (c *mqlAwsSecurityhub) GetSoftwarePackages() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SoftwarePackages, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.securityhub", c.__id, "softwarePackages")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.softwarePackages()
 	})
 }
 
@@ -126047,6 +126285,215 @@ func (c *mqlAwsSecurityhubEnabledProduct) GetProductArn() *plugin.TValue[string]
 
 func (c *mqlAwsSecurityhubEnabledProduct) GetRegion() *plugin.TValue[string] {
 	return &c.Region
+}
+
+// mqlAwsSecurityhubSoftwarePackage for the aws.securityhub.softwarePackage resource
+type mqlAwsSecurityhubSoftwarePackage struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsSecurityhubSoftwarePackageInternal
+	PackageName    plugin.TValue[string]
+	PackageType    plugin.TValue[string]
+	PackageVersion plugin.TValue[string]
+	ResourceCount  plugin.TValue[int64]
+	Region         plugin.TValue[string]
+	Resources      plugin.TValue[[]any]
+}
+
+// createAwsSecurityhubSoftwarePackage creates a new instance of this resource
+func createAwsSecurityhubSoftwarePackage(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsSecurityhubSoftwarePackage{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.securityhub.softwarePackage", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsSecurityhubSoftwarePackage) MqlName() string {
+	return "aws.securityhub.softwarePackage"
+}
+
+func (c *mqlAwsSecurityhubSoftwarePackage) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsSecurityhubSoftwarePackage) GetPackageName() *plugin.TValue[string] {
+	return &c.PackageName
+}
+
+func (c *mqlAwsSecurityhubSoftwarePackage) GetPackageType() *plugin.TValue[string] {
+	return &c.PackageType
+}
+
+func (c *mqlAwsSecurityhubSoftwarePackage) GetPackageVersion() *plugin.TValue[string] {
+	return &c.PackageVersion
+}
+
+func (c *mqlAwsSecurityhubSoftwarePackage) GetResourceCount() *plugin.TValue[int64] {
+	return &c.ResourceCount
+}
+
+func (c *mqlAwsSecurityhubSoftwarePackage) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlAwsSecurityhubSoftwarePackage) GetResources() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Resources, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.securityhub.softwarePackage", c.__id, "resources")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.resources()
+	})
+}
+
+// mqlAwsSecurityhubSoftwareResource for the aws.securityhub.softwareResource resource
+type mqlAwsSecurityhubSoftwareResource struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAwsSecurityhubSoftwareResourceInternal it will be used here
+	ResourceId             plugin.TValue[string]
+	ResourceType           plugin.TValue[string]
+	ResourceProvider       plugin.TValue[string]
+	ResourceRegion         plugin.TValue[string]
+	ResourceCloudPartition plugin.TValue[string]
+	ResourceOwnerAccountId plugin.TValue[string]
+	ResourceOwnerOrgId     plugin.TValue[string]
+	AccountId              plugin.TValue[string]
+	Region                 plugin.TValue[string]
+	Ec2Instance            plugin.TValue[*mqlAwsEc2Instance]
+	LambdaFunction         plugin.TValue[*mqlAwsLambdaFunction]
+}
+
+// createAwsSecurityhubSoftwareResource creates a new instance of this resource
+func createAwsSecurityhubSoftwareResource(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsSecurityhubSoftwareResource{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.securityhub.softwareResource", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsSecurityhubSoftwareResource) MqlName() string {
+	return "aws.securityhub.softwareResource"
+}
+
+func (c *mqlAwsSecurityhubSoftwareResource) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsSecurityhubSoftwareResource) GetResourceId() *plugin.TValue[string] {
+	return &c.ResourceId
+}
+
+func (c *mqlAwsSecurityhubSoftwareResource) GetResourceType() *plugin.TValue[string] {
+	return &c.ResourceType
+}
+
+func (c *mqlAwsSecurityhubSoftwareResource) GetResourceProvider() *plugin.TValue[string] {
+	return &c.ResourceProvider
+}
+
+func (c *mqlAwsSecurityhubSoftwareResource) GetResourceRegion() *plugin.TValue[string] {
+	return &c.ResourceRegion
+}
+
+func (c *mqlAwsSecurityhubSoftwareResource) GetResourceCloudPartition() *plugin.TValue[string] {
+	return &c.ResourceCloudPartition
+}
+
+func (c *mqlAwsSecurityhubSoftwareResource) GetResourceOwnerAccountId() *plugin.TValue[string] {
+	return &c.ResourceOwnerAccountId
+}
+
+func (c *mqlAwsSecurityhubSoftwareResource) GetResourceOwnerOrgId() *plugin.TValue[string] {
+	return &c.ResourceOwnerOrgId
+}
+
+func (c *mqlAwsSecurityhubSoftwareResource) GetAccountId() *plugin.TValue[string] {
+	return &c.AccountId
+}
+
+func (c *mqlAwsSecurityhubSoftwareResource) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlAwsSecurityhubSoftwareResource) GetEc2Instance() *plugin.TValue[*mqlAwsEc2Instance] {
+	return plugin.GetOrCompute[*mqlAwsEc2Instance](&c.Ec2Instance, func() (*mqlAwsEc2Instance, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.securityhub.softwareResource", c.__id, "ec2Instance")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsEc2Instance), nil
+			}
+		}
+
+		return c.ec2Instance()
+	})
+}
+
+func (c *mqlAwsSecurityhubSoftwareResource) GetLambdaFunction() *plugin.TValue[*mqlAwsLambdaFunction] {
+	return plugin.GetOrCompute[*mqlAwsLambdaFunction](&c.LambdaFunction, func() (*mqlAwsLambdaFunction, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.securityhub.softwareResource", c.__id, "lambdaFunction")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsLambdaFunction), nil
+			}
+		}
+
+		return c.lambdaFunction()
+	})
 }
 
 // mqlAwsShield for the aws.shield resource
@@ -131605,21 +132052,23 @@ type mqlAwsEmrClusterStep struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAwsEmrClusterStepInternal
-	Id                plugin.TValue[string]
-	Name              plugin.TValue[string]
-	ActionOnFailure   plugin.TValue[string]
-	Status            plugin.TValue[string]
-	Jar               plugin.TValue[string]
-	MainClass         plugin.TValue[string]
-	Properties        plugin.TValue[map[string]any]
-	Args              plugin.TValue[[]any]
-	CreatedAt         plugin.TValue[*time.Time]
-	StartedAt         plugin.TValue[*time.Time]
-	EndedAt           plugin.TValue[*time.Time]
-	StateChangeReason plugin.TValue[string]
-	FailureDetails    plugin.TValue[any]
-	LogUri            plugin.TValue[string]
-	ExecutionRole     plugin.TValue[*mqlAwsIamRole]
+	Id                            plugin.TValue[string]
+	Name                          plugin.TValue[string]
+	ActionOnFailure               plugin.TValue[string]
+	Status                        plugin.TValue[string]
+	Jar                           plugin.TValue[string]
+	MainClass                     plugin.TValue[string]
+	Properties                    plugin.TValue[map[string]any]
+	Args                          plugin.TValue[[]any]
+	CreatedAt                     plugin.TValue[*time.Time]
+	StartedAt                     plugin.TValue[*time.Time]
+	EndedAt                       plugin.TValue[*time.Time]
+	StateChangeReason             plugin.TValue[string]
+	FailureDetails                plugin.TValue[any]
+	LogUri                        plugin.TValue[string]
+	ExecutionRole                 plugin.TValue[*mqlAwsIamRole]
+	ResourceManager               plugin.TValue[string]
+	ResourceManagerApplicationIds plugin.TValue[[]any]
 }
 
 // createAwsEmrClusterStep creates a new instance of this resource
@@ -131729,6 +132178,14 @@ func (c *mqlAwsEmrClusterStep) GetExecutionRole() *plugin.TValue[*mqlAwsIamRole]
 
 		return c.executionRole()
 	})
+}
+
+func (c *mqlAwsEmrClusterStep) GetResourceManager() *plugin.TValue[string] {
+	return &c.ResourceManager
+}
+
+func (c *mqlAwsEmrClusterStep) GetResourceManagerApplicationIds() *plugin.TValue[[]any] {
+	return &c.ResourceManagerApplicationIds
 }
 
 // mqlAwsEmrClusterInstanceGroup for the aws.emr.cluster.instanceGroup resource
@@ -147863,6 +148320,7 @@ type mqlAwsRdsOptionGroup struct {
 	AllowsVpcAndNonVpcInstanceMemberships plugin.TValue[bool]
 	Vpc                                   plugin.TValue[*mqlAwsVpc]
 	SourceAccountId                       plugin.TValue[string]
+	SourceRegion                          plugin.TValue[string]
 	SourceOptionGroup                     plugin.TValue[string]
 	CopyTimestamp                         plugin.TValue[*time.Time]
 	Options                               plugin.TValue[[]any]
@@ -147947,6 +148405,10 @@ func (c *mqlAwsRdsOptionGroup) GetVpc() *plugin.TValue[*mqlAwsVpc] {
 
 func (c *mqlAwsRdsOptionGroup) GetSourceAccountId() *plugin.TValue[string] {
 	return &c.SourceAccountId
+}
+
+func (c *mqlAwsRdsOptionGroup) GetSourceRegion() *plugin.TValue[string] {
+	return &c.SourceRegion
 }
 
 func (c *mqlAwsRdsOptionGroup) GetSourceOptionGroup() *plugin.TValue[string] {
@@ -190797,6 +191259,10 @@ type mqlAwsGlueJob struct {
 	UpdatedAt                 plugin.TValue[*time.Time]
 	Region                    plugin.TValue[string]
 	Tags                      plugin.TValue[map[string]any]
+	AutoUpgradeStatus         plugin.TValue[string]
+	AutoUpgradeSourceVersion  plugin.TValue[string]
+	AutoUpgradeTargetVersion  plugin.TValue[string]
+	AutoUpgradeAnalysisId     plugin.TValue[string]
 }
 
 // createAwsGlueJob creates a new instance of this resource
@@ -190947,6 +191413,22 @@ func (c *mqlAwsGlueJob) GetTags() *plugin.TValue[map[string]any] {
 	return plugin.GetOrCompute[map[string]any](&c.Tags, func() (map[string]any, error) {
 		return c.tags()
 	})
+}
+
+func (c *mqlAwsGlueJob) GetAutoUpgradeStatus() *plugin.TValue[string] {
+	return &c.AutoUpgradeStatus
+}
+
+func (c *mqlAwsGlueJob) GetAutoUpgradeSourceVersion() *plugin.TValue[string] {
+	return &c.AutoUpgradeSourceVersion
+}
+
+func (c *mqlAwsGlueJob) GetAutoUpgradeTargetVersion() *plugin.TValue[string] {
+	return &c.AutoUpgradeTargetVersion
+}
+
+func (c *mqlAwsGlueJob) GetAutoUpgradeAnalysisId() *plugin.TValue[string] {
+	return &c.AutoUpgradeAnalysisId
 }
 
 // mqlAwsGlueCatalogExportEncryption for the aws.glue.catalogExportEncryption resource
@@ -217097,11 +217579,15 @@ type mqlAwsDatasyncLocation struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAwsDatasyncLocationInternal
-	Arn          plugin.TValue[string]
-	LocationUri  plugin.TValue[string]
-	LocationType plugin.TValue[string]
-	Region       plugin.TValue[string]
-	Tags         plugin.TValue[map[string]any]
+	Arn                   plugin.TValue[string]
+	LocationUri           plugin.TValue[string]
+	LocationType          plugin.TValue[string]
+	Region                plugin.TValue[string]
+	Tags                  plugin.TValue[map[string]any]
+	AuthenticationType    plugin.TValue[string]
+	CredentialSecret      plugin.TValue[*mqlAwsSecretsmanagerSecret]
+	FederatedIdentityRole plugin.TValue[*mqlAwsIamRole]
+	FederatedIdentity     plugin.TValue[any]
 }
 
 // createAwsDatasyncLocation creates a new instance of this resource
@@ -217160,6 +217646,50 @@ func (c *mqlAwsDatasyncLocation) GetRegion() *plugin.TValue[string] {
 func (c *mqlAwsDatasyncLocation) GetTags() *plugin.TValue[map[string]any] {
 	return plugin.GetOrCompute[map[string]any](&c.Tags, func() (map[string]any, error) {
 		return c.tags()
+	})
+}
+
+func (c *mqlAwsDatasyncLocation) GetAuthenticationType() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.AuthenticationType, func() (string, error) {
+		return c.authenticationType()
+	})
+}
+
+func (c *mqlAwsDatasyncLocation) GetCredentialSecret() *plugin.TValue[*mqlAwsSecretsmanagerSecret] {
+	return plugin.GetOrCompute[*mqlAwsSecretsmanagerSecret](&c.CredentialSecret, func() (*mqlAwsSecretsmanagerSecret, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.datasync.location", c.__id, "credentialSecret")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsSecretsmanagerSecret), nil
+			}
+		}
+
+		return c.credentialSecret()
+	})
+}
+
+func (c *mqlAwsDatasyncLocation) GetFederatedIdentityRole() *plugin.TValue[*mqlAwsIamRole] {
+	return plugin.GetOrCompute[*mqlAwsIamRole](&c.FederatedIdentityRole, func() (*mqlAwsIamRole, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.datasync.location", c.__id, "federatedIdentityRole")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsIamRole), nil
+			}
+		}
+
+		return c.federatedIdentityRole()
+	})
+}
+
+func (c *mqlAwsDatasyncLocation) GetFederatedIdentity() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.FederatedIdentity, func() (any, error) {
+		return c.federatedIdentity()
 	})
 }
 
