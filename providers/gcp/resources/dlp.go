@@ -19,6 +19,7 @@ import (
 	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -1560,72 +1561,7 @@ func (g *mqlGcpProjectDlpService) contentPolicies() ([]any, error) {
 				return nil, err
 			}
 
-			mqlRules := make([]any, 0, len(cp.Rules))
-			for i, rule := range cp.Rules {
-				ruleId := fmt.Sprintf("%s/rules/%d", cp.Name, i)
-
-				mqlConditions := make([]any, 0, len(rule.GetConditions()))
-				for j, cond := range rule.GetConditions() {
-					mqlCond, err := newMqlDlpContentPolicyCondition(g.MqlRuntime,
-						fmt.Sprintf("%s/conditions/%d", ruleId, j), cond)
-					if err != nil {
-						return nil, err
-					}
-					mqlConditions = append(mqlConditions, mqlCond)
-				}
-
-				mqlRule, err := CreateResource(g.MqlRuntime, "gcp.project.dlpService.contentPolicy.rule", map[string]*llx.RawData{
-					"__id":       llx.StringData(ruleId),
-					"verdict":    llx.StringDataPtr(dlpPolicyActionVerdict(rule.GetAction())),
-					"conditions": llx.ArrayData(mqlConditions, types.Resource("gcp.project.dlpService.contentPolicy.rule.condition")),
-				})
-				if err != nil {
-					return nil, err
-				}
-				mqlRules = append(mqlRules, mqlRule)
-			}
-
-			mqlLoggingConfigs := make([]any, 0, len(cp.LoggingConfigs))
-			for i, lc := range cp.LoggingConfigs {
-				destination, bqProject, bqDataset, bqTable := dlpLoggingDestination(lc)
-
-				mqlLc, err := CreateResource(g.MqlRuntime, "gcp.project.dlpService.contentPolicy.loggingConfig", map[string]*llx.RawData{
-					"__id":        llx.StringData(fmt.Sprintf("%s/loggingConfigs/%d", cp.Name, i)),
-					"destination": llx.StringData(destination),
-				})
-				if err != nil {
-					return nil, err
-				}
-				lcRes := mqlLc.(*mqlGcpProjectDlpServiceContentPolicyLoggingConfig)
-				lcRes.cacheProjectId = bqProject
-				lcRes.cacheDatasetId = bqDataset
-				lcRes.cacheTableId = bqTable
-				mqlLoggingConfigs = append(mqlLoggingConfigs, mqlLc)
-			}
-
-			inspectConfig, err := protoToDict(cp.InspectConfig)
-			if err != nil {
-				return nil, err
-			}
-			errs, err := dlpProtoSliceToDict(cp.Errors)
-			if err != nil {
-				return nil, err
-			}
-
-			mqlCp, err := CreateResource(g.MqlRuntime, "gcp.project.dlpService.contentPolicy", map[string]*llx.RawData{
-				"name":                                 llx.StringData(cp.Name),
-				"displayName":                          llx.StringData(cp.DisplayName),
-				"rules":                                llx.ArrayData(mqlRules, types.Resource("gcp.project.dlpService.contentPolicy.rule")),
-				"defaultVerdict":                       llx.StringData(dlpDefaultVerdict(cp.DefaultAction)),
-				"unsupportedFileTypeVerdict":           llx.StringDataPtr(dlpPolicyActionVerdict(cp.UnsupportedFileType)),
-				"inputTooLargeVerdict":                 llx.StringDataPtr(dlpPolicyActionVerdict(cp.InputTooLarge)),
-				"failedToScanSupportedFileTypeVerdict": llx.StringDataPtr(dlpPolicyActionVerdict(cp.FailedToScanSupportedFileType)),
-				"inspectConfig":                        llx.DictData(inspectConfig),
-				"loggingConfigs":                       llx.ArrayData(mqlLoggingConfigs, types.Resource("gcp.project.dlpService.contentPolicy.loggingConfig")),
-				"errors":                               llx.ArrayData(errs, types.Dict),
-				"created":                              llx.TimeDataPtr(timestampAsTimePtr(cp.CreateTime)),
-				"updated":                              llx.TimeDataPtr(timestampAsTimePtr(cp.UpdateTime)),
-			})
+			mqlCp, err := newMqlDlpContentPolicy(g.MqlRuntime, cp)
 			if err != nil {
 				return nil, err
 			}
@@ -1634,4 +1570,130 @@ func (g *mqlGcpProjectDlpService) contentPolicies() ([]any, error) {
 	}
 
 	return res, nil
+}
+
+// newMqlDlpContentPolicy builds a content policy resource with its rules and
+// logging configurations. Shared by the contentPolicies() lister and by
+// references that resolve a policy by name.
+func newMqlDlpContentPolicy(runtime *plugin.Runtime, cp *dlppb.ContentPolicy) (plugin.Resource, error) {
+	mqlRules := make([]any, 0, len(cp.Rules))
+	for i, rule := range cp.Rules {
+		ruleId := fmt.Sprintf("%s/rules/%d", cp.Name, i)
+
+		mqlConditions := make([]any, 0, len(rule.GetConditions()))
+		for j, cond := range rule.GetConditions() {
+			mqlCond, err := newMqlDlpContentPolicyCondition(runtime,
+				fmt.Sprintf("%s/conditions/%d", ruleId, j), cond)
+			if err != nil {
+				return nil, err
+			}
+			mqlConditions = append(mqlConditions, mqlCond)
+		}
+
+		mqlRule, err := CreateResource(runtime, "gcp.project.dlpService.contentPolicy.rule", map[string]*llx.RawData{
+			"__id":       llx.StringData(ruleId),
+			"verdict":    llx.StringDataPtr(dlpPolicyActionVerdict(rule.GetAction())),
+			"conditions": llx.ArrayData(mqlConditions, types.Resource("gcp.project.dlpService.contentPolicy.rule.condition")),
+		})
+		if err != nil {
+			return nil, err
+		}
+		mqlRules = append(mqlRules, mqlRule)
+	}
+
+	mqlLoggingConfigs := make([]any, 0, len(cp.LoggingConfigs))
+	for i, lc := range cp.LoggingConfigs {
+		destination, bqProject, bqDataset, bqTable := dlpLoggingDestination(lc)
+
+		mqlLc, err := CreateResource(runtime, "gcp.project.dlpService.contentPolicy.loggingConfig", map[string]*llx.RawData{
+			"__id":        llx.StringData(fmt.Sprintf("%s/loggingConfigs/%d", cp.Name, i)),
+			"destination": llx.StringData(destination),
+		})
+		if err != nil {
+			return nil, err
+		}
+		lcRes := mqlLc.(*mqlGcpProjectDlpServiceContentPolicyLoggingConfig)
+		lcRes.cacheProjectId = bqProject
+		lcRes.cacheDatasetId = bqDataset
+		lcRes.cacheTableId = bqTable
+		mqlLoggingConfigs = append(mqlLoggingConfigs, mqlLc)
+	}
+
+	inspectConfig, err := protoToDict(cp.InspectConfig)
+	if err != nil {
+		return nil, err
+	}
+	errs, err := dlpProtoSliceToDict(cp.Errors)
+	if err != nil {
+		return nil, err
+	}
+
+	return CreateResource(runtime, "gcp.project.dlpService.contentPolicy", map[string]*llx.RawData{
+		"name":                                 llx.StringData(cp.Name),
+		"displayName":                          llx.StringData(cp.DisplayName),
+		"rules":                                llx.ArrayData(mqlRules, types.Resource("gcp.project.dlpService.contentPolicy.rule")),
+		"defaultVerdict":                       llx.StringData(dlpDefaultVerdict(cp.DefaultAction)),
+		"unsupportedFileTypeVerdict":           llx.StringDataPtr(dlpPolicyActionVerdict(cp.UnsupportedFileType)),
+		"inputTooLargeVerdict":                 llx.StringDataPtr(dlpPolicyActionVerdict(cp.InputTooLarge)),
+		"failedToScanSupportedFileTypeVerdict": llx.StringDataPtr(dlpPolicyActionVerdict(cp.FailedToScanSupportedFileType)),
+		"inspectConfig":                        llx.DictData(inspectConfig),
+		"loggingConfigs":                       llx.ArrayData(mqlLoggingConfigs, types.Resource("gcp.project.dlpService.contentPolicy.loggingConfig")),
+		"errors":                               llx.ArrayData(errs, types.Dict),
+		"created":                              llx.TimeDataPtr(timestampAsTimePtr(cp.CreateTime)),
+		"updated":                              llx.TimeDataPtr(timestampAsTimePtr(cp.UpdateTime)),
+	})
+}
+
+// getDlpContentPolicyByName resolves a content policy from its resource name.
+// The project's contentPolicies() listing is consulted first, so references
+// share one listing; a policy outside the listed locations is read directly.
+// A policy that no longer exists is nil.
+func getDlpContentPolicyByName(runtime *plugin.Runtime, name string) (*mqlGcpProjectDlpServiceContentPolicy, error) {
+	projectId := projectFromResourceName(name)
+	if projectId == "" {
+		return nil, nil
+	}
+	obj, err := NewResource(runtime, "gcp.project.dlpService", map[string]*llx.RawData{
+		"projectId": llx.StringData(projectId),
+	})
+	if err != nil {
+		return nil, err
+	}
+	policies := obj.(*mqlGcpProjectDlpService).GetContentPolicies()
+	if policies.Error == nil {
+		for _, p := range policies.Data {
+			cp, ok := p.(*mqlGcpProjectDlpServiceContentPolicy)
+			if ok && cp.Name.Data == name {
+				return cp, nil
+			}
+		}
+	}
+
+	conn := runtime.Connection.(*connection.GcpConnection)
+	creds, err := conn.Credentials(dlp.DefaultAuthScopes()...)
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	client, err := dlp.NewClient(ctx, option.WithCredentials(creds), connection.GRPCClientTraceOption())
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+
+	cp, err := client.GetContentPolicy(ctx, &dlppb.GetContentPolicyRequest{Name: name})
+	if err != nil {
+		if s, ok := grpcStatusOf(err); ok && s.Code() == codes.NotFound {
+			return nil, nil
+		}
+		if rerr := classifyRefusal(err, "dlp.contentPolicies.get"); rerr != nil {
+			return nil, rerr
+		}
+		return nil, err
+	}
+	res, err := newMqlDlpContentPolicy(runtime, cp)
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGcpProjectDlpServiceContentPolicy), nil
 }

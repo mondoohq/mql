@@ -1095,6 +1095,13 @@ gcp.project @defaults("name number") {
   deleteTime() time
   // Project number
   number() string
+  // Kind of management project
+  //
+  // One of SELF_MANAGED (a management project that is its own boundary) or
+  // HUB (a hub project that manages resources across a boundary), or
+  // MANAGEMENT_TYPE_UNSPECIFIED. Null when the project is not a management
+  // project.
+  managementType() string
   // IAM policy
   iamPolicy() []gcp.resourcemanager.binding
   // Whether the project's IAM policy grants any role to allUsers or allAuthenticatedUsers
@@ -13393,7 +13400,7 @@ private gcp.project.appEngineService.service @defaults("id") {
 // Deployed App Engine version, covering its serving status (SERVING,
 // STOPPED), runtime (e.g., "python39", "go121", "nodejs20"), execution
 // environment (standard or flex), runtime API version, VPC access connector
-// configuration, URL handlers with their HTTPS enforcement and login
+// configuration, direct VPC egress through `networkInterfaces`, URL handlers with their HTTPS enforcement and login
 // requirements, and creation timestamp.
 private gcp.project.appEngineService.version @defaults("id servingStatus") {
   // Project ID
@@ -13420,6 +13427,18 @@ private gcp.project.appEngineService.version @defaults("id servingStatus") {
   // the version routes egress through) and `egressSetting` (which traffic
   // uses the connector: ALL_TRAFFIC or PRIVATE_IP_RANGES).
   vpcAccessConnector dict
+  // Traffic sent through the direct VPC network interfaces
+  //
+  // One of ALL_TRAFFIC (every outbound request leaves through the VPC),
+  // PRIVATE_IP_RANGES (only private IP destinations do), or
+  // VPC_EGRESS_UNSPECIFIED. Null when the version does not use direct VPC
+  // egress.
+  vpcEgress string
+  // Direct VPC network interfaces the version sends traffic through
+  //
+  // Empty when the version uses a Serverless VPC Access connector
+  // (`vpcAccessConnector`) or no VPC access at all.
+  networkInterfaces []gcp.project.appEngineService.version.networkInterface
   // URL handlers
   //
   // Ordered URL routing rules for the version. Keys per handler include
@@ -13445,6 +13464,22 @@ private gcp.project.appEngineService.version @defaults("id servingStatus") {
   // BUNDLED_SERVICE_TYPE_TASKQUEUES, BUNDLED_SERVICE_TYPE_URLFETCH,
   // BUNDLED_SERVICE_TYPE_USERS, or BUNDLED_SERVICE_TYPE_UNSPECIFIED.
   appEngineBundledServices []string
+}
+
+// Google Cloud (GCP) App Engine version direct VPC network interface
+//
+// VPC network and subnetwork an App Engine version sends egress traffic
+// through, with the network tags it presents to firewall rules. When the
+// version names only a network, the subnetwork with the same name is used;
+// when it names only a subnetwork, the network is the one that subnetwork
+// belongs to.
+private gcp.project.appEngineService.version.networkInterface @defaults("tags") {
+  // VPC network the version sends traffic to
+  network() gcp.project.computeService.network
+  // VPC subnetwork the version takes its IP addresses from
+  subnetwork() gcp.project.computeService.subnetwork
+  // Network tags applied to the version's traffic
+  tags []string
 }
 
 // Google Cloud (GCP) API Gateway
@@ -15168,8 +15203,9 @@ private gcp.project.artifactRegistryService.repository.upstreamPolicy @defaults(
 //
 // Backup and DR Service configuration for the project, the entry point to
 // the `managementServers`, the `backupVaults` that store immutable backups,
-// and the `backupPlans` that schedule them. Retention and enforcement
-// settings surface here for data-protection audits.
+// the `backupPlans` that schedule them, and the `restoreVerificationPlans`
+// and `restoreTemplates` that test-restore those backups. Retention and
+// enforcement settings surface here for data-protection audits.
 private gcp.project.backupdrService {
   // Project ID
   projectId string
@@ -15179,6 +15215,131 @@ private gcp.project.backupdrService {
   backupVaults() []gcp.project.backupdrService.backupVault
   // List of backup plans
   backupPlans() []gcp.project.backupdrService.backupPlan
+  // Restore verification plans that schedule automated test restores
+  restoreVerificationPlans() []gcp.project.backupdrService.restoreVerificationPlan
+  // Restore templates that define how a backup is restored and checked
+  restoreTemplates() []gcp.project.backupdrService.restoreTemplate
+}
+
+// Google Cloud (GCP) Backup and DR restore verification plan
+//
+// Schedule on which Backup and DR restores protected workloads from their
+// backups to prove the backups can be recovered. `schedule` is a cron
+// expression read in `timeZone`, `state` reports whether the plan is usable,
+// and the cleanup fields report whether resources restored by a passing or a
+// failing verification are removed afterwards. `associations` lists the
+// workloads the plan verifies, each with the time and outcome of its most
+// recent run.
+private gcp.project.backupdrService.restoreVerificationPlan @defaults("name state schedule") {
+  // Full resource name (projects/P/locations/L/restoreVerificationPlans/N)
+  name string
+  // Human-readable description of the plan
+  description string
+  // Lifecycle state
+  //
+  // One of CREATING, ACTIVE, DELETING, INACTIVE, UPDATING, ERROR, or
+  // STATE_UNSPECIFIED. ERROR means a configuration issue stops the plan from
+  // running.
+  state string
+  // Cron schedule on which restore verifications run
+  schedule string
+  // Time zone the schedule is read in, e.g. "UTC" or "America/New_York"
+  timeZone string
+  // Seconds restored resources are kept after a successful verification
+  successCleanupDelaySeconds int
+  // Whether resources restored by a successful verification are left in place
+  //
+  // Null when the plan does not set it.
+  successCleanupSkipped bool
+  // Seconds restored resources are kept after a failed verification
+  failureCleanupDelaySeconds int
+  // Whether resources restored by a failed verification are left in place
+  //
+  // Null when the plan does not set it.
+  failureCleanupSkipped bool
+  // User-defined key/value labels for organizing the resource
+  labels map[string]string
+  // Workloads this plan verifies
+  associations() []gcp.project.backupdrService.restoreVerificationPlan.association
+  // Creation time
+  createdAt time
+  // Last update time
+  updatedAt time
+}
+
+// Google Cloud (GCP) Backup and DR restore verification plan association
+//
+// Workload bound to a restore verification plan through a restore template.
+// `lastTriggerTime` reports when a verification last started,
+// `lastTriggerError` why the last one failed to start, and
+// `nextTriggerTime` when the next one is due, so a policy can check that
+// backups of a workload are test-restored on schedule.
+private gcp.project.backupdrService.restoreVerificationPlan.association @defaults("name state resourceType") {
+  // Full resource name (projects/P/locations/L/restoreVerificationPlans/N/associations/A)
+  name string
+  // Human-readable description of the association
+  description string
+  // Lifecycle state
+  //
+  // One of CREATING, ACTIVE, DELETING, INACTIVE, UPDATING, ERROR, or
+  // STATE_UNSPECIFIED.
+  state string
+  // Type of the workload verified, e.g. compute.googleapis.com/Instance
+  resourceType string
+  // Restore template used to restore and check the workload
+  restoreTemplate() gcp.project.backupdrService.restoreTemplate
+  // Time the most recent verification started
+  lastTriggerTime time
+  // Time the next verification is scheduled to start
+  nextTriggerTime time
+  // Error message from the most recent verification that failed to start
+  //
+  // Null when the last start succeeded or no verification has run yet.
+  lastTriggerError string
+  // Resource name of the most recent restore template execution
+  lastVerificationExecution string
+  // User-defined key/value labels for organizing the resource
+  labels map[string]string
+  // Creation time
+  createdAt time
+  // Last update time
+  updatedAt time
+}
+
+// Google Cloud (GCP) Backup and DR restore template
+//
+// Recipe for restoring one protected workload from its backups: the
+// `dataSource` whose backups are restored, the `resourceType` restored, and
+// the outcome of its most recent run in `lastExecutionState`. A template
+// whose last execution FAILED is a backup that could not be recovered.
+private gcp.project.backupdrService.restoreTemplate @defaults("name state lastExecutionState") {
+  // Full resource name (projects/P/locations/L/restoreTemplates/N)
+  name string
+  // Human-readable description of the template
+  description string
+  // Lifecycle state
+  //
+  // One of CREATING, ACTIVE, UPDATING, DELETING, or STATE_UNSPECIFIED.
+  state string
+  // Type of the workload restored, e.g. compute.googleapis.com/Instance
+  resourceType string
+  // Backup and DR data source whose backups the template restores
+  dataSource() gcp.project.backupdrService.dataSource
+  // Resource name of the most recent execution
+  //
+  // Null when the template has never run.
+  lastExecution string
+  // State of the most recent execution
+  //
+  // One of RUNNING, SUCCEEDED, FAILED, DELETING, or
+  // EXECUTION_STATE_UNSPECIFIED. Null when the template has never run.
+  lastExecutionState string
+  // User-defined key/value labels for organizing the resource
+  labels map[string]string
+  // Creation time
+  createdAt time
+  // Last update time
+  updatedAt time
 }
 
 // Google Cloud (GCP) Backup and DR management server
@@ -17369,6 +17530,12 @@ private gcp.project.discoveryEngineService.dataStore @defaults("displayName indu
   workspaceSuperAdminServiceAccount() gcp.project.iamService.serviceAccount
   // Email address of the Google Workspace super admin used to generate access tokens for the Workspace source
   workspaceSuperAdminEmail string
+  // Sensitive Data Protection content policy applied to the data store
+  //
+  // The content policy that decides whether content from the data store's
+  // source is allowed or blocked. Null when the data store sets no data
+  // protection policy.
+  sensitiveDataProtectionPolicy() gcp.project.dlpService.contentPolicy
   // Creation time
   createdAt time
 }

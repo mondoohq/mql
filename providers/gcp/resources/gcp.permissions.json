@@ -1,7 +1,7 @@
 {
   "provider": "gcp",
-  "version": "14.7.1",
-  "generated_at": "2026-10-30T13:57:03-07:00",
+  "version": "14.7.3",
+  "generated_at": "2026-11-05T20:59:06-08:00",
   "permissions": [
     "accessapproval.settings.get",
     "aiplatform.batchPredictionJobs.list",
@@ -49,6 +49,9 @@
     "backupdr.backupVaults.list",
     "backupdr.bvdataSources.list",
     "backupdr.managementServers.list",
+    "backupdr.restoreTemplates.list",
+    "backupdr.restoreVerificationPlanAssociations.list",
+    "backupdr.restoreVerificationPlans.list",
     "batch.jobs.list",
     "bigquery.connections.list",
     "bigquery.reservations.list",
@@ -170,6 +173,7 @@
     "discoveryengine.engines.list",
     "dlp.columnDataProfiles.list",
     "dlp.connections.list",
+    "dlp.contentPolicies.get",
     "dlp.contentPolicies.list",
     "dlp.deidentifyTemplates.list",
     "dlp.fileStoreProfiles.list",
@@ -602,6 +606,24 @@
       "permission": "backupdr.managementServers.list",
       "service": "backupdr",
       "action": "ListManagementServers",
+      "source_file": "backupdr.go"
+    },
+    {
+      "permission": "backupdr.restoreTemplates.list",
+      "service": "backupdr",
+      "action": "ListRestoreTemplates",
+      "source_file": "backupdr.go"
+    },
+    {
+      "permission": "backupdr.restoreVerificationPlanAssociations.list",
+      "service": "backupdr",
+      "action": "ListRestoreVerificationPlanAssociations",
+      "source_file": "backupdr.go"
+    },
+    {
+      "permission": "backupdr.restoreVerificationPlans.list",
+      "service": "backupdr",
+      "action": "ListRestoreVerificationPlans",
       "source_file": "backupdr.go"
     },
     {
@@ -1400,6 +1422,12 @@
       "permission": "dlp.connections.list",
       "service": "dlp",
       "action": "ListConnections",
+      "source_file": "dlp.go"
+    },
+    {
+      "permission": "dlp.contentPolicies.get",
+      "service": "dlp",
+      "action": "GetContentPolicy",
       "source_file": "dlp.go"
     },
     {
