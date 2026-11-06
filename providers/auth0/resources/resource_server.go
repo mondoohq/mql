@@ -90,6 +90,7 @@ func newMqlAuth0ResourceServer(runtime *plugin.Runtime, rs *management.ResourceS
 		"clientPolicy":                          llx.StringDataPtr(clientPolicy),
 		"anonymousUserPolicy":                   llx.StringDataPtr(anonymousUserPolicy),
 		"accessTokenCustomClaims":               accessTokenCustomClaims(rs.AccessToken),
+		"type":                                  llx.StringDataPtr(rs.Type),
 	})
 	if err != nil {
 		return nil, err

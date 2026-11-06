@@ -148,3 +148,62 @@ func TestTenantSessionSettings(t *testing.T) {
 	assert.Nil(t, lifetime)
 	assert.Nil(t, cookie)
 }
+
+func TestClientMetadataDocumentDecode(t *testing.T) {
+	// Synthetic: self-registered CIMD client linked to an agent; no target showed this.
+	var cimd management.Client
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"client_id": "https://app.example.com/client.json",
+		"agent_id": "agt_1",
+		"external_client_id": "https://app.example.com/client.json",
+		"external_metadata_type": "cimd",
+		"external_metadata_created_by": "client",
+		"external_metadata_status": "unavailable"
+	}`), &cimd))
+	assert.Equal(t, "agt_1", cimd.GetAgentID())
+	assert.Equal(t, "https://app.example.com/client.json", cimd.GetExternalClientID())
+	assert.Equal(t, "cimd", cimd.GetExternalMetadataType())
+	assert.Equal(t, "client", cimd.GetExternalMetadataCreatedBy())
+	assert.Equal(t, "unavailable", cimd.GetExternalMetadataStatus())
+
+	// Synthetic: client created in the tenant; the CIMD fields stay null.
+	var regular management.Client
+	require.NoError(t, json.Unmarshal([]byte(`{"client_id": "abc"}`), &regular))
+	assert.Nil(t, regular.AgentID)
+	assert.Nil(t, regular.ExternalClientID)
+	assert.Nil(t, regular.ExternalMetadataType)
+	assert.Nil(t, regular.ExternalMetadataCreatedBy)
+	assert.Nil(t, regular.ExternalMetadataStatus)
+}
+
+func TestTenantClientIDMetadataDocumentDecode(t *testing.T) {
+	// Synthetic: tenant supporting CIMD without self-registration; no target showed this.
+	var on management.Tenant
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"client_id_metadata_document_supported": true,
+		"client_id_metadata_document_dynamic_registration_supported": false
+	}`), &on))
+	require.NotNil(t, on.ClientIDMetadataDocumentSupported)
+	assert.True(t, *on.ClientIDMetadataDocumentSupported)
+	require.NotNil(t, on.ClientIDMetadataDocumentDynamicRegistrationSupported)
+	assert.False(t, *on.ClientIDMetadataDocumentDynamicRegistrationSupported)
+
+	// Synthetic: feature not enabled, the keys are absent and read as null.
+	var absent management.Tenant
+	require.NoError(t, json.Unmarshal([]byte(`{"friendly_name": "t"}`), &absent))
+	assert.Nil(t, absent.ClientIDMetadataDocumentSupported)
+	assert.Nil(t, absent.ClientIDMetadataDocumentDynamicRegistrationSupported)
+}
+
+func TestResourceServerTypeDecode(t *testing.T) {
+	// Synthetic: UCP resource server; no target showed this.
+	var ucp management.ResourceServer
+	require.NoError(t, json.Unmarshal([]byte(`{"id": "rs_1", "type": "universal_commerce_protocol_server"}`), &ucp))
+	require.NotNil(t, ucp.Type)
+	assert.Equal(t, "universal_commerce_protocol_server", *ucp.Type)
+
+	// Synthetic: regular API, type is null.
+	var regular management.ResourceServer
+	require.NoError(t, json.Unmarshal([]byte(`{"id": "rs_2"}`), &regular))
+	assert.Nil(t, regular.Type)
+}

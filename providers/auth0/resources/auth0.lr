@@ -85,6 +85,19 @@ auth0.tenant @defaults("friendlyName") @maturity("experimental") {
   //
   // Null when anonymous sessions are not enabled for the tenant.
   anonymousSessionCookieEnabled bool
+  // Whether applications can be registered from a Client ID Metadata Document
+  //
+  // When true, an application can be identified by the URL of a Client ID
+  // Metadata Document (CIMD) instead of a client ID issued by Auth0. Null when
+  // the API does not return the setting.
+  clientIdMetadataDocumentSupported bool
+  // Whether applications can register themselves from their Client ID Metadata Document
+  //
+  // When true, any application that presents a Client ID Metadata Document URL
+  // at runtime is registered in the tenant without an administrator creating
+  // it first. Requires clientIdMetadataDocumentSupported. Early Access: null
+  // when the feature is not enabled for the tenant.
+  clientIdMetadataDocumentDynamicRegistrationSupported bool
 }
 
 // Auth0 application
@@ -188,6 +201,34 @@ auth0.client @defaults("name appType") @maturity("experimental") {
   // or assign permissions to themselves (enforceSelfAssignmentRestriction).
   // Null when the feature is not configured for the application.
   myOrganization auth0.client.myOrganizationConfiguration
+  // Identifier of the agent this application is linked to
+  //
+  // An application is linked to at most one agent. Early Access: null when the
+  // application is not linked to an agent or the feature is not enabled for
+  // the tenant.
+  agentId string
+  // URL of the Client ID Metadata Document that identifies this application
+  //
+  // Null unless the application was registered from a Client ID Metadata
+  // Document (CIMD).
+  metadataDocumentUrl string
+  // Type of external metadata the application was registered from
+  //
+  // cimd for an application registered from a Client ID Metadata Document.
+  // Null for applications created in the tenant.
+  externalMetadataType string
+  // Who registered the application from its Client ID Metadata Document
+  //
+  // One of admin (created through the Management API), client (the
+  // application registered itself), or unknown. Null for applications not
+  // registered from a Client ID Metadata Document.
+  externalMetadataCreatedBy string
+  // Whether Auth0 can currently resolve the application's Client ID Metadata Document
+  //
+  // One of available or unavailable. Early Access: null for applications not
+  // registered from a Client ID Metadata Document or when the feature is not
+  // enabled for the tenant.
+  externalMetadataStatus string
 }
 
 // Self-service organization settings for an Auth0 application
@@ -267,6 +308,30 @@ auth0.connection @defaults("name strategy") @maturity("experimental") {
   options dict
   // Applications enabled on this connection
   enabledClients() []auth0.client
+  // Number of digits in one-time passwords sent by email
+  //
+  // Database (auth0 strategy) connections only. Early Access: null when the
+  // feature is not enabled for the tenant or the email channel is not
+  // configured, in which case Auth0 uses 6 digits.
+  otpEmailLength int
+  // Seconds before a one-time password sent by email expires
+  //
+  // Database (auth0 strategy) connections only. Early Access: null when the
+  // feature is not enabled for the tenant or the email channel is not
+  // configured, in which case Auth0 uses 900 seconds.
+  otpEmailExpiry int
+  // Number of digits in one-time passwords sent by phone
+  //
+  // Database (auth0 strategy) connections only. Early Access: null when the
+  // feature is not enabled for the tenant or the phone channel is not
+  // configured, in which case Auth0 uses 6 digits.
+  otpPhoneLength int
+  // Seconds before a one-time password sent by phone expires
+  //
+  // Database (auth0 strategy) connections only. Early Access: null when the
+  // feature is not enabled for the tenant or the phone channel is not
+  // configured, in which case Auth0 uses 900 seconds.
+  otpPhoneExpiry int
 }
 
 // Auth0 user
@@ -614,6 +679,12 @@ auth0.resourceServer @defaults("name identifier") @maturity("experimental") {
   // Keyed by claim name, with the expression that resolves the claim value.
   // Null when the feature is not enabled for the tenant.
   accessTokenCustomClaims map[string]string
+  // Resource server type
+  //
+  // universal_commerce_protocol_server for the tenant's Universal Commerce
+  // Protocol (UCP) server, the only API that accepts dev.ucp scopes. A tenant
+  // has at most one such API. Null for a regular API.
+  type string
 }
 
 // Auth0 client grant

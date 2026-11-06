@@ -232,6 +232,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"auth0.tenant.anonymousSessionCookieEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAuth0Tenant).GetAnonymousSessionCookieEnabled()).ToDataRes(types.Bool)
 	},
+	"auth0.tenant.clientIdMetadataDocumentSupported": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuth0Tenant).GetClientIdMetadataDocumentSupported()).ToDataRes(types.Bool)
+	},
+	"auth0.tenant.clientIdMetadataDocumentDynamicRegistrationSupported": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuth0Tenant).GetClientIdMetadataDocumentDynamicRegistrationSupported()).ToDataRes(types.Bool)
+	},
 	"auth0.client.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAuth0Client).GetId()).ToDataRes(types.String)
 	},
@@ -310,6 +316,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"auth0.client.myOrganization": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAuth0Client).GetMyOrganization()).ToDataRes(types.Resource("auth0.client.myOrganizationConfiguration"))
 	},
+	"auth0.client.agentId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuth0Client).GetAgentId()).ToDataRes(types.String)
+	},
+	"auth0.client.metadataDocumentUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuth0Client).GetMetadataDocumentUrl()).ToDataRes(types.String)
+	},
+	"auth0.client.externalMetadataType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuth0Client).GetExternalMetadataType()).ToDataRes(types.String)
+	},
+	"auth0.client.externalMetadataCreatedBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuth0Client).GetExternalMetadataCreatedBy()).ToDataRes(types.String)
+	},
+	"auth0.client.externalMetadataStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuth0Client).GetExternalMetadataStatus()).ToDataRes(types.String)
+	},
 	"auth0.client.myOrganizationConfiguration.enforcePermissionCeiling": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAuth0ClientMyOrganizationConfiguration).GetEnforcePermissionCeiling()).ToDataRes(types.Bool)
 	},
@@ -372,6 +393,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"auth0.connection.enabledClients": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAuth0Connection).GetEnabledClients()).ToDataRes(types.Array(types.Resource("auth0.client")))
+	},
+	"auth0.connection.otpEmailLength": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuth0Connection).GetOtpEmailLength()).ToDataRes(types.Int)
+	},
+	"auth0.connection.otpEmailExpiry": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuth0Connection).GetOtpEmailExpiry()).ToDataRes(types.Int)
+	},
+	"auth0.connection.otpPhoneLength": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuth0Connection).GetOtpPhoneLength()).ToDataRes(types.Int)
+	},
+	"auth0.connection.otpPhoneExpiry": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuth0Connection).GetOtpPhoneExpiry()).ToDataRes(types.Int)
 	},
 	"auth0.user.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAuth0User).GetId()).ToDataRes(types.String)
@@ -622,6 +655,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"auth0.resourceServer.accessTokenCustomClaims": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAuth0ResourceServer).GetAccessTokenCustomClaims()).ToDataRes(types.Map(types.String, types.String))
 	},
+	"auth0.resourceServer.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuth0ResourceServer).GetType()).ToDataRes(types.String)
+	},
 	"auth0.clientGrant.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAuth0ClientGrant).GetId()).ToDataRes(types.String)
 	},
@@ -782,6 +818,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAuth0Tenant).AnonymousSessionCookieEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"auth0.tenant.clientIdMetadataDocumentSupported": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuth0Tenant).ClientIdMetadataDocumentSupported, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"auth0.tenant.clientIdMetadataDocumentDynamicRegistrationSupported": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuth0Tenant).ClientIdMetadataDocumentDynamicRegistrationSupported, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"auth0.client.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAuth0Client).__id, ok = v.Value.(string)
 		return
@@ -890,6 +934,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAuth0Client).MyOrganization, ok = plugin.RawToTValue[*mqlAuth0ClientMyOrganizationConfiguration](v.Value, v.Error)
 		return
 	},
+	"auth0.client.agentId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuth0Client).AgentId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"auth0.client.metadataDocumentUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuth0Client).MetadataDocumentUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"auth0.client.externalMetadataType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuth0Client).ExternalMetadataType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"auth0.client.externalMetadataCreatedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuth0Client).ExternalMetadataCreatedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"auth0.client.externalMetadataStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuth0Client).ExternalMetadataStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"auth0.client.myOrganizationConfiguration.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAuth0ClientMyOrganizationConfiguration).__id, ok = v.Value.(string)
 		return
@@ -980,6 +1044,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"auth0.connection.enabledClients": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAuth0Connection).EnabledClients, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"auth0.connection.otpEmailLength": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuth0Connection).OtpEmailLength, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"auth0.connection.otpEmailExpiry": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuth0Connection).OtpEmailExpiry, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"auth0.connection.otpPhoneLength": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuth0Connection).OtpPhoneLength, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"auth0.connection.otpPhoneExpiry": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuth0Connection).OtpPhoneExpiry, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"auth0.user.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1342,6 +1422,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAuth0ResourceServer).AccessTokenCustomClaims, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
+	"auth0.resourceServer.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuth0ResourceServer).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"auth0.clientGrant.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAuth0ClientGrant).__id, ok = v.Value.(string)
 		return
@@ -1640,20 +1724,22 @@ type mqlAuth0Tenant struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlAuth0TenantInternal it will be used here
-	FriendlyName                  plugin.TValue[string]
-	SupportEmail                  plugin.TValue[string]
-	SupportUrl                    plugin.TValue[string]
-	PictureUrl                    plugin.TValue[string]
-	AllowedLogoutUrls             plugin.TValue[[]any]
-	SessionLifetime               plugin.TValue[float64]
-	IdleSessionLifetime           plugin.TValue[float64]
-	DefaultAudience               plugin.TValue[string]
-	DefaultDirectory              plugin.TValue[string]
-	EnabledLocales                plugin.TValue[[]any]
-	Flags                         plugin.TValue[any]
-	OidcLogoutPromptEnabled       plugin.TValue[bool]
-	AnonymousSessionLifetime      plugin.TValue[int64]
-	AnonymousSessionCookieEnabled plugin.TValue[bool]
+	FriendlyName                                         plugin.TValue[string]
+	SupportEmail                                         plugin.TValue[string]
+	SupportUrl                                           plugin.TValue[string]
+	PictureUrl                                           plugin.TValue[string]
+	AllowedLogoutUrls                                    plugin.TValue[[]any]
+	SessionLifetime                                      plugin.TValue[float64]
+	IdleSessionLifetime                                  plugin.TValue[float64]
+	DefaultAudience                                      plugin.TValue[string]
+	DefaultDirectory                                     plugin.TValue[string]
+	EnabledLocales                                       plugin.TValue[[]any]
+	Flags                                                plugin.TValue[any]
+	OidcLogoutPromptEnabled                              plugin.TValue[bool]
+	AnonymousSessionLifetime                             plugin.TValue[int64]
+	AnonymousSessionCookieEnabled                        plugin.TValue[bool]
+	ClientIdMetadataDocumentSupported                    plugin.TValue[bool]
+	ClientIdMetadataDocumentDynamicRegistrationSupported plugin.TValue[bool]
 }
 
 // createAuth0Tenant creates a new instance of this resource
@@ -1744,6 +1830,14 @@ func (c *mqlAuth0Tenant) GetAnonymousSessionCookieEnabled() *plugin.TValue[bool]
 	return &c.AnonymousSessionCookieEnabled
 }
 
+func (c *mqlAuth0Tenant) GetClientIdMetadataDocumentSupported() *plugin.TValue[bool] {
+	return &c.ClientIdMetadataDocumentSupported
+}
+
+func (c *mqlAuth0Tenant) GetClientIdMetadataDocumentDynamicRegistrationSupported() *plugin.TValue[bool] {
+	return &c.ClientIdMetadataDocumentDynamicRegistrationSupported
+}
+
 // mqlAuth0Client for the auth0.client resource
 type mqlAuth0Client struct {
 	MqlRuntime *plugin.Runtime
@@ -1775,6 +1869,11 @@ type mqlAuth0Client struct {
 	EnabledConnections         plugin.TValue[[]any]
 	AnonymousSessionsEnabled   plugin.TValue[bool]
 	MyOrganization             plugin.TValue[*mqlAuth0ClientMyOrganizationConfiguration]
+	AgentId                    plugin.TValue[string]
+	MetadataDocumentUrl        plugin.TValue[string]
+	ExternalMetadataType       plugin.TValue[string]
+	ExternalMetadataCreatedBy  plugin.TValue[string]
+	ExternalMetadataStatus     plugin.TValue[string]
 }
 
 // createAuth0Client creates a new instance of this resource
@@ -1930,6 +2029,26 @@ func (c *mqlAuth0Client) GetMyOrganization() *plugin.TValue[*mqlAuth0ClientMyOrg
 	return &c.MyOrganization
 }
 
+func (c *mqlAuth0Client) GetAgentId() *plugin.TValue[string] {
+	return &c.AgentId
+}
+
+func (c *mqlAuth0Client) GetMetadataDocumentUrl() *plugin.TValue[string] {
+	return &c.MetadataDocumentUrl
+}
+
+func (c *mqlAuth0Client) GetExternalMetadataType() *plugin.TValue[string] {
+	return &c.ExternalMetadataType
+}
+
+func (c *mqlAuth0Client) GetExternalMetadataCreatedBy() *plugin.TValue[string] {
+	return &c.ExternalMetadataCreatedBy
+}
+
+func (c *mqlAuth0Client) GetExternalMetadataStatus() *plugin.TValue[string] {
+	return &c.ExternalMetadataStatus
+}
+
 // mqlAuth0ClientMyOrganizationConfiguration for the auth0.client.myOrganizationConfiguration resource
 type mqlAuth0ClientMyOrganizationConfiguration struct {
 	MqlRuntime *plugin.Runtime
@@ -2027,6 +2146,10 @@ type mqlAuth0Connection struct {
 	BruteForceProtection      plugin.TValue[bool]
 	Options                   plugin.TValue[any]
 	EnabledClients            plugin.TValue[[]any]
+	OtpEmailLength            plugin.TValue[int64]
+	OtpEmailExpiry            plugin.TValue[int64]
+	OtpPhoneLength            plugin.TValue[int64]
+	OtpPhoneExpiry            plugin.TValue[int64]
 }
 
 // createAuth0Connection creates a new instance of this resource
@@ -2140,6 +2263,22 @@ func (c *mqlAuth0Connection) GetEnabledClients() *plugin.TValue[[]any] {
 
 		return c.enabledClients()
 	})
+}
+
+func (c *mqlAuth0Connection) GetOtpEmailLength() *plugin.TValue[int64] {
+	return &c.OtpEmailLength
+}
+
+func (c *mqlAuth0Connection) GetOtpEmailExpiry() *plugin.TValue[int64] {
+	return &c.OtpEmailExpiry
+}
+
+func (c *mqlAuth0Connection) GetOtpPhoneLength() *plugin.TValue[int64] {
+	return &c.OtpPhoneLength
+}
+
+func (c *mqlAuth0Connection) GetOtpPhoneExpiry() *plugin.TValue[int64] {
+	return &c.OtpPhoneExpiry
 }
 
 // mqlAuth0User for the auth0.user resource
@@ -2762,6 +2901,7 @@ type mqlAuth0ResourceServer struct {
 	ClientPolicy                              plugin.TValue[string]
 	AnonymousUserPolicy                       plugin.TValue[string]
 	AccessTokenCustomClaims                   plugin.TValue[map[string]any]
+	Type                                      plugin.TValue[string]
 }
 
 // createAuth0ResourceServer creates a new instance of this resource
@@ -2879,6 +3019,10 @@ func (c *mqlAuth0ResourceServer) GetAnonymousUserPolicy() *plugin.TValue[string]
 
 func (c *mqlAuth0ResourceServer) GetAccessTokenCustomClaims() *plugin.TValue[map[string]any] {
 	return &c.AccessTokenCustomClaims
+}
+
+func (c *mqlAuth0ResourceServer) GetType() *plugin.TValue[string] {
+	return &c.Type
 }
 
 // mqlAuth0ClientGrant for the auth0.clientGrant resource

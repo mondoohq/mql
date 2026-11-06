@@ -54,6 +54,8 @@ func initAuth0Tenant(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 	args["oidcLogoutPromptEnabled"] = llx.BoolDataPtr(oidcPrompt)
 	args["anonymousSessionLifetime"] = llx.IntDataPtr(anonLifetime)
 	args["anonymousSessionCookieEnabled"] = llx.BoolDataPtr(anonCookie)
+	args["clientIdMetadataDocumentSupported"] = llx.BoolDataPtr(t.ClientIDMetadataDocumentSupported)
+	args["clientIdMetadataDocumentDynamicRegistrationSupported"] = llx.BoolDataPtr(t.ClientIDMetadataDocumentDynamicRegistrationSupported)
 	return args, nil, nil
 }
 
