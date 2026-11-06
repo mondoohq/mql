@@ -326,6 +326,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"slack.team.emailDomain": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSlackTeam).GetEmailDomain()).ToDataRes(types.String)
 	},
+	"slack.team.slackbotAvailability": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackTeam).GetSlackbotAvailability()).ToDataRes(types.String)
+	},
 	"slack.users.bots": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSlackUsers).GetBots()).ToDataRes(types.Array(types.Resource("slack.user")))
 	},
@@ -849,6 +852,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"slack.team.emailDomain": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlSlackTeam).EmailDomain, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"slack.team.slackbotAvailability": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackTeam).SlackbotAvailability, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"slack.users.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1944,10 +1951,11 @@ type mqlSlackTeam struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlSlackTeamInternal it will be used here
-	Id          plugin.TValue[string]
-	Name        plugin.TValue[string]
-	Domain      plugin.TValue[string]
-	EmailDomain plugin.TValue[string]
+	Id                   plugin.TValue[string]
+	Name                 plugin.TValue[string]
+	Domain               plugin.TValue[string]
+	EmailDomain          plugin.TValue[string]
+	SlackbotAvailability plugin.TValue[string]
 }
 
 // createSlackTeam creates a new instance of this resource
@@ -2001,6 +2009,10 @@ func (c *mqlSlackTeam) GetDomain() *plugin.TValue[string] {
 
 func (c *mqlSlackTeam) GetEmailDomain() *plugin.TValue[string] {
 	return &c.EmailDomain
+}
+
+func (c *mqlSlackTeam) GetSlackbotAvailability() *plugin.TValue[string] {
+	return &c.SlackbotAvailability
 }
 
 // mqlSlackUsers for the slack.users resource

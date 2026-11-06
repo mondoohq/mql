@@ -6,6 +6,7 @@ package resources
 import (
 	"errors"
 
+	"github.com/slack-go/slack"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/slack/connection"
@@ -23,11 +24,21 @@ func initSlackTeam(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[s
 		return nil, nil, errors.New("cannot retrieve new data while using a mock connection")
 	}
 
-	teamInfo := conn.TeamInfo()
+	setTeamArgs(args, conn.TeamInfo())
+	return args, nil, nil
+}
+
+// setTeamArgs copies the team.info response into the slack.team args.
+// Slack omits slackbot_availability for external teams, so an empty value
+// becomes null rather than "".
+func setTeamArgs(args map[string]*llx.RawData, teamInfo *slack.TeamInfo) {
 	args["id"] = llx.StringData(teamInfo.ID)
 	args["name"] = llx.StringData(teamInfo.Name)
 	args["domain"] = llx.StringData(teamInfo.Domain)
 	args["emailDomain"] = llx.StringData(teamInfo.EmailDomain)
-
-	return args, nil, nil
+	var slackbotAvailability *string
+	if teamInfo.SlackbotAvailability != "" {
+		slackbotAvailability = &teamInfo.SlackbotAvailability
+	}
+	args["slackbotAvailability"] = llx.StringDataPtr(slackbotAvailability)
 }

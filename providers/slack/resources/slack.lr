@@ -215,7 +215,9 @@ slack.conversations {
 // `name`, `domain` (the `<domain>.slack.com` host), and the
 // `emailDomain` that new members' email addresses are expected to
 // match. Use it to confirm which workspace a scan is running against
-// and to pin domain-based enrollment policies.
+// and to pin domain-based enrollment policies. `slackbotAvailability`
+// reports whether Slackbot is available to the workspace, or limited by
+// plan or admin setting.
 slack.team @defaults("id domain") {
   // ID of the team
   id string
@@ -225,6 +227,14 @@ slack.team @defaults("id domain") {
   domain string
   // Email domain of the team
   emailDomain string
+  // Slackbot availability for the workspace
+  //
+  // Advisory availability of Slackbot for the workspace or organization as
+  // a whole, as Slack reports it, for example `available` or `restricted`.
+  // It doesn't guarantee that a given member can use Slackbot. Null when
+  // Slack doesn't report it, which includes external teams such as Slack
+  // Connect teams selected with the team-id option.
+  slackbotAvailability string
 }
 
 // Slack workspace users
