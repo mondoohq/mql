@@ -11356,6 +11356,45 @@ private oci.ai.dataScience.model @defaults("name state") {
   freeformTags map[string]string
   // Defined tags for governance and cost tracking
   definedTags map[string]map[string]string
+  // Signatures made over the model's artifact
+  signatures() []oci.ai.dataScience.modelArtifactSignature
+}
+
+// Oracle Cloud Infrastructure (OCI) Data Science model artifact signature
+//
+// Signature over a Data Science model's artifact, made with a KMS key so the
+// artifact can be checked for tampering before it is deployed. The signature
+// reports the model it signs, the artifact digest, the KMS key and key
+// version that made it, and the signing algorithm.
+private oci.ai.dataScience.modelArtifactSignature @defaults("name state signingAlgorithm") {
+  // Signature OCID
+  id string
+  // Signature display name
+  name string
+  // Compartment containing the signature
+  compartment() oci.compartment
+  // Model whose artifact is signed
+  model() oci.ai.dataScience.model
+  // Digest of the signed model artifact
+  digest string
+  // KMS key that made the signature
+  kmsKey() oci.kms.key
+  // KMS key version that made the signature
+  kmsKeyVersion() oci.kms.keyVersion
+  // Signing algorithm (e.g., SHA_256_RSA_PKCS_PSS, SHA_384_RSA_PKCS_PSS, SHA_512_RSA_PKCS_PSS)
+  signingAlgorithm() string
+  // Lifecycle state (e.g., CREATING, ACTIVE, DELETED, FAILED)
+  state string
+  // OCID of the principal that created the signature
+  createdBy string
+  // Creation time
+  created time
+  // Last update time
+  timeUpdated time
+  // Free-form tags for resource management
+  freeformTags map[string]string
+  // Defined tags for governance and cost tracking
+  definedTags map[string]map[string]string
 }
 
 // Oracle Cloud Infrastructure (OCI) Data Science model version set
@@ -11584,7 +11623,12 @@ private oci.ai.dataScience.privateEndpoint @defaults("name dataScienceResourceTy
 // capacity that hosts or fine-tunes models, `models` are the pretrained
 // and custom (fine-tuned) models available in the compartment, and
 // `endpoints` are the model-serving endpoints, each reporting its content
-// moderation, prompt-injection, and PII-detection guardrails.
+// moderation, prompt-injection, and PII-detection guardrails. The
+// `hostedApplications` are the agents and apps Generative AI runs, with
+// their inbound authentication and network exposure, `apiKeys` are the keys
+// callers use with their expiry and last use, `projects` hold the
+// conversation retention and code sandbox settings, and `importedModels` are
+// the models brought in from Hugging Face or Object Storage.
 oci.ai.generativeAi {
   // Dedicated AI clusters
   dedicatedAiClusters() []oci.ai.generativeAi.dedicatedAiCluster
@@ -11594,6 +11638,14 @@ oci.ai.generativeAi {
   endpoints() []oci.ai.generativeAi.endpoint
   // Private endpoints that make Generative AI reachable from a customer subnet
   privateEndpoints() []oci.ai.generativeAi.privateEndpoint
+  // Hosted applications (containerized agents and apps served by Generative AI)
+  hostedApplications() []oci.ai.generativeAi.hostedApplication
+  // API keys for calling Generative AI models
+  apiKeys() []oci.ai.generativeAi.apiKey
+  // Projects holding conversation, memory, and code sandbox settings
+  projects() []oci.ai.generativeAi.project
+  // Models imported from Hugging Face or Object Storage
+  importedModels() []oci.ai.generativeAi.importedModel
 }
 
 // Oracle Cloud Infrastructure (OCI) Generative AI dedicated AI cluster
@@ -11797,6 +11849,278 @@ private oci.ai.generativeAi.privateEndpoint @defaults("name state") {
   //
   // One of ENDPOINT or APPLICATION.
   resourceType string
+  // Lifecycle state (e.g., CREATING, ACTIVE, UPDATING, DELETING, DELETED, FAILED)
+  state string
+  // Detail message describing the current lifecycle state
+  lifecycleDetails string
+  // Creation time
+  created time
+  // Last update time
+  timeUpdated time
+  // Free-form tags for resource management
+  freeformTags map[string]string
+  // Defined tags for governance and cost tracking
+  definedTags map[string]map[string]string
+}
+
+// Oracle Cloud Infrastructure (OCI) Generative AI hosted application
+//
+// Containerized agent or application that Generative AI runs and serves on
+// an application endpoint. Select a hosted application by its OCID, for
+// example
+// `oci.ai.generativeAi.hostedApplication(id: "ocid1.generativeaihostedapplication.oc1...")`.
+// The application reports how callers authenticate (inboundAuthType),
+// whether its endpoint is public or behind a private endpoint, the subnet
+// and network security groups its outbound traffic uses, the request paths
+// open without authentication, and the names of its environment variables,
+// split into those read from a vault. Use isPublic to find applications
+// reachable from the internet with no authentication.
+private oci.ai.generativeAi.hostedApplication @defaults("name state endpointMode inboundAuthType") {
+  init(id? string)
+  // Hosted application OCID
+  id string
+  // Hosted application display name
+  name string
+  // Compartment containing the hosted application
+  compartment() oci.compartment
+  // Description of the hosted application
+  description string
+  // Lifecycle state (e.g., CREATING, ACTIVE, UPDATING, DELETING, DELETED, FAILED)
+  state string
+  // Detail message describing the current lifecycle state
+  lifecycleDetails() string
+  // How callers authenticate to the application
+  //
+  // One of NO_AUTH_CONFIG, IDCS_AUTH_CONFIG, or IDCS_SESSION_AUTH_CONFIG.
+  inboundAuthType() string
+  // Whether the application endpoint is reachable publicly or only through a private endpoint
+  //
+  // One of PUBLIC or PRIVATE.
+  endpointMode() string
+  // Generative AI private endpoint that serves the application
+  //
+  // Null when the endpoint mode is PUBLIC.
+  privateEndpoint() oci.ai.generativeAi.privateEndpoint
+  // How the application's outbound traffic is networked
+  //
+  // One of MANAGED (Oracle-managed network) or CUSTOM (a customer subnet).
+  outboundNetworkMode() string
+  // Customer subnet the application's outbound traffic leaves from
+  //
+  // Null when the outbound network mode is MANAGED.
+  subnet() oci.network.subnet
+  // Network security groups applied to the application's outbound traffic
+  networkSecurityGroups() []oci.network.networkSecurityGroup
+  // Request path patterns that are served without inbound authentication
+  publicAccessPathPatterns() []string
+  // URL of the application endpoint
+  applicationEndpoint() string
+  // Names of every environment variable set on the application
+  //
+  // Values are never read.
+  environmentVariableNames() []string
+  // Names of the environment variables whose values are read from a vault secret
+  vaultEnvironmentVariableNames() []string
+  // Whether the application is reachable from the internet without authentication
+  //
+  // True when the endpoint mode is PUBLIC and the inbound authentication type
+  // is NO_AUTH_CONFIG.
+  isPublic() bool
+  // Deployments of the application
+  hostedDeployments() []oci.ai.generativeAi.hostedDeployment
+  // Creation time
+  created time
+  // Last update time
+  timeUpdated time
+  // Free-form tags for resource management
+  freeformTags map[string]string
+  // Defined tags for governance and cost tracking
+  definedTags map[string]map[string]string
+}
+
+// Oracle Cloud Infrastructure (OCI) Generative AI hosted deployment
+//
+// Deployment of a hosted application, reporting the container image it
+// runs. The activeArtifactContainerUri and activeArtifactTag fields name the
+// image of the active artifact, and activeArtifactVulnerabilityScanRequired
+// reports whether that image had to pass a vulnerability scan.
+private oci.ai.generativeAi.hostedDeployment @defaults("id state activeArtifactContainerUri activeArtifactTag") {
+  // Hosted deployment OCID
+  id string
+  // Lifecycle state (e.g., CREATING, ACTIVE, NEEDS_ATTENTION, INACTIVE, UPDATING, DELETING, DELETED, FAILED)
+  state string
+  // Type of the active artifact (e.g., SIMPLE_DOCKER_ARTIFACT)
+  activeArtifactType string
+  // Status of the active artifact (e.g., ACTIVE, INACTIVE, UPDATING, FAILED)
+  activeArtifactStatus string
+  // Container image URI of the active artifact
+  activeArtifactContainerUri string
+  // Container image tag of the active artifact
+  activeArtifactTag string
+  // Whether the active artifact's image must pass a vulnerability scan before it runs
+  activeArtifactVulnerabilityScanRequired bool
+  // Creation time
+  created time
+  // Last update time
+  timeUpdated time
+  // Free-form tags for resource management
+  freeformTags map[string]string
+  // Defined tags for governance and cost tracking
+  definedTags map[string]map[string]string
+}
+
+// Oracle Cloud Infrastructure (OCI) Generative AI API key
+//
+// API key resource that holds the keys callers use to reach Generative AI
+// models. The keys field lists each key by name with its state and its
+// creation, activation, expiry, last-use, and revocation times, which find
+// keys that never expire or have gone unused. Key values are never read.
+private oci.ai.generativeAi.apiKey @defaults("name state") {
+  // API key OCID
+  id string
+  // API key display name
+  name string
+  // Compartment containing the API key
+  compartment() oci.compartment
+  // Description of the API key
+  description string
+  // Lifecycle state (e.g., CREATING, ACTIVE, INACTIVE, UPDATING, DELETING, DELETED, FAILED)
+  state string
+  // Detail message describing the current lifecycle state
+  lifecycleDetails string
+  // Keys held by the API key
+  keys []oci.ai.generativeAi.apiKey.key
+  // Creation time
+  created time
+  // Last update time
+  timeUpdated time
+  // Free-form tags for resource management
+  freeformTags map[string]string
+  // Defined tags for governance and cost tracking
+  definedTags map[string]map[string]string
+}
+
+// Key held by a Generative AI API key
+private oci.ai.generativeAi.apiKey.key @defaults("name state timeExpiry") {
+  // Key name
+  name string
+  // Key state (e.g., ACTIVE, INACTIVE, REVOKED, EXPIRED, DELETED)
+  state string
+  // Creation time
+  created time
+  // Time the key expires
+  timeExpiry time
+  // Time the key was activated
+  timeActivated time
+  // Time the key was deactivated
+  timeDeactivated time
+  // Time the key was revoked
+  timeRevoked time
+  // Time the key was last used
+  timeLastUsed time
+}
+
+// Oracle Cloud Infrastructure (OCI) Generative AI project
+//
+// Project that holds the conversation, memory, and code sandbox settings for
+// Generative AI responses and agents. The project reports how long responses
+// and conversations are retained, whether the code sandbox is enabled and
+// keeps state between runs, how the sandbox's outbound traffic is
+// networked and restricted, and the labels of the credential profiles the
+// sandbox can inject into outbound requests.
+private oci.ai.generativeAi.project @defaults("name state") {
+  // Project OCID
+  id string
+  // Project display name
+  name string
+  // Compartment containing the project
+  compartment() oci.compartment
+  // Description of the project
+  description string
+  // Lifecycle state (e.g., CREATING, ACTIVE, UPDATING, DELETING, DELETED, FAILED)
+  state string
+  // Detail message describing the current lifecycle state
+  lifecycleDetails string
+  // Hours a stored response is retained
+  responsesRetentionInHours() int
+  // Hours a stored conversation is retained
+  conversationsRetentionInHours() int
+  // Whether short-term memory optimization (conversation condensing) is enabled
+  shortTermMemoryOptimizationEnabled() bool
+  // Whether the code sandbox is enabled
+  sandboxEnabled() bool
+  // Whether the code sandbox keeps state between runs
+  sandboxPersistenceEnabled() bool
+  // How the code sandbox's outbound traffic is networked
+  //
+  // One of MANAGED (Oracle-managed network) or CUSTOM (a customer subnet).
+  sandboxOutboundNetworkMode() string
+  // Outbound network policy of a managed code sandbox
+  //
+  // One of DENY_ALL, ALLOW_ALL, or ALLOW (only listed domains). Null when the
+  // sandbox uses a customer subnet.
+  sandboxNetworkPolicyMode() string
+  // Customer subnet the code sandbox's outbound traffic leaves from
+  //
+  // Null when the sandbox outbound network mode is MANAGED.
+  sandboxSubnet() oci.network.subnet
+  // Network security groups applied to the code sandbox's outbound traffic
+  sandboxNetworkSecurityGroups() []oci.network.networkSecurityGroup
+  // Labels of the credential profiles the code sandbox can inject into outbound requests
+  sandboxCredentialProfileLabels() []string
+  // Creation time
+  created time
+  // Last update time
+  timeUpdated time
+  // Free-form tags for resource management
+  freeformTags map[string]string
+  // Defined tags for governance and cost tracking
+  definedTags map[string]map[string]string
+}
+
+// Oracle Cloud Infrastructure (OCI) Generative AI imported model
+//
+// Model imported into Generative AI from Hugging Face or Object Storage.
+// Select an imported model by its OCID, for example
+// `oci.ai.generativeAi.importedModel(id: "ocid1.generativeaiimportedmodel.oc1...")`.
+// The model reports its vendor, version, and capabilities, and where its
+// weights came from: the Hugging Face model, branch, and commit, or the
+// Object Storage bucket and prefix.
+private oci.ai.generativeAi.importedModel @defaults("name vendor version state") {
+  init(id? string)
+  // Imported model OCID
+  id string
+  // Imported model display name
+  name string
+  // Compartment containing the imported model
+  compartment() oci.compartment
+  // Description of the imported model
+  description string
+  // Vendor of the model
+  vendor string
+  // Model version
+  version string
+  // Model capabilities
+  //
+  // Values include TEXT_TO_TEXT, IMAGE_TEXT_TO_TEXT, EMBEDDING, RERANK, and the
+  // image, audio, and video modalities.
+  capabilities []string
+  // Where the model weights were imported from
+  //
+  // One of HUGGING_FACE_MODEL or OBJECT_STORAGE_OBJECT.
+  sourceType string
+  // Hugging Face model ID the weights were imported from, when the source is Hugging Face
+  huggingFaceModelId string
+  // Hugging Face branch the weights were imported from
+  huggingFaceBranch string
+  // Hugging Face commit the weights were imported from
+  huggingFaceCommit string
+  // Object Storage bucket the weights were imported from
+  //
+  // Null when the source is Hugging Face.
+  bucket() oci.objectStorage.bucket
+  // Object Storage object prefix the weights were imported from
+  objectStoragePrefix string
   // Lifecycle state (e.g., CREATING, ACTIVE, UPDATING, DELETING, DELETED, FAILED)
   state string
   // Detail message describing the current lifecycle state

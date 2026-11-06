@@ -10,6 +10,7 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/datascience"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // decodeModelDeploymentSummary runs a list-API record through the SDK's own
@@ -164,4 +165,15 @@ func TestOciModelDeploymentLogs(t *testing.T) {
 		assert.Equal(t, ociLogRef{}, access)
 		assert.Equal(t, ociLogRef{}, predict)
 	})
+}
+
+func TestOciKeyVersionByID(t *testing.T) {
+	// Synthetic: key versions as keyVersions() lists them.
+	v1 := &mqlOciKmsKeyVersion{Id: plugin.TValue[string]{Data: "ocid1.keyversion.oc1.iad.v1"}}
+	v2 := &mqlOciKmsKeyVersion{Id: plugin.TValue[string]{Data: "ocid1.keyversion.oc1.iad.v2"}}
+	items := []any{v1, v2}
+
+	assert.Same(t, v2, ociKeyVersionByID(items, "ocid1.keyversion.oc1.iad.v2"))
+	assert.Nil(t, ociKeyVersionByID(items, "ocid1.keyversion.oc1.iad.v3"))
+	assert.Nil(t, ociKeyVersionByID(nil, "ocid1.keyversion.oc1.iad.v1"))
 }
