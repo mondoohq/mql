@@ -209,6 +209,7 @@ const (
 	ResourceAzureSubscriptionWebServiceAppRuntimeStack                                                  string = "azure.subscription.webService.appRuntimeStack"
 	ResourceAzureSubscriptionWebServiceAppsite                                                          string = "azure.subscription.webService.appsite"
 	ResourceAzureSubscriptionWebServiceAppsiteOutboundVnetRouting                                       string = "azure.subscription.webService.appsite.outboundVnetRouting"
+	ResourceAzureSubscriptionNetworkSecurityPerimeterConfiguration                                      string = "azure.subscription.networkSecurityPerimeterConfiguration"
 	ResourceAzureSubscriptionPrivateEndpointConnection                                                  string = "azure.subscription.privateEndpointConnection"
 	ResourceAzureSubscriptionPrivateEndpointConnectionConnectionState                                   string = "azure.subscription.privateEndpointConnection.connectionState"
 	ResourceAzureSubscriptionWebServiceAppslot                                                          string = "azure.subscription.webService.appslot"
@@ -533,12 +534,14 @@ const (
 	ResourceAzureSubscriptionPurviewServiceAccount                                                      string = "azure.subscription.purviewService.account"
 	ResourceAzureSubscriptionSearchService                                                              string = "azure.subscription.searchService"
 	ResourceAzureSubscriptionSearchServiceService                                                       string = "azure.subscription.searchService.service"
+	ResourceAzureSubscriptionSearchServiceServiceSharedPrivateLink                                      string = "azure.subscription.searchService.service.sharedPrivateLink"
 	ResourceAzureSubscriptionLighthouseService                                                          string = "azure.subscription.lighthouseService"
 	ResourceAzureSubscriptionLighthouseServiceRegistrationDefinition                                    string = "azure.subscription.lighthouseService.registrationDefinition"
 	ResourceAzureSubscriptionLighthouseServiceRegistrationDefinitionAuthorization                       string = "azure.subscription.lighthouseService.registrationDefinition.authorization"
 	ResourceAzureSubscriptionLighthouseServiceRegistrationAssignment                                    string = "azure.subscription.lighthouseService.registrationAssignment"
 	ResourceAzureSubscriptionMachineLearningService                                                     string = "azure.subscription.machineLearningService"
 	ResourceAzureSubscriptionMachineLearningServiceWorkspace                                            string = "azure.subscription.machineLearningService.workspace"
+	ResourceAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLink                           string = "azure.subscription.machineLearningService.workspace.sharedPrivateLink"
 	ResourceAzureSubscriptionMachineLearningServiceWorkspaceManagedNetworkOutboundRule                  string = "azure.subscription.machineLearningService.workspace.managedNetworkOutboundRule"
 	ResourceAzureSubscriptionMachineLearningServiceWorkspaceOnlineEndpoint                              string = "azure.subscription.machineLearningService.workspace.onlineEndpoint"
 	ResourceAzureSubscriptionMachineLearningServiceWorkspaceOnlineEndpointDeployment                    string = "azure.subscription.machineLearningService.workspace.onlineEndpoint.deployment"
@@ -1410,6 +1413,10 @@ func init() {
 		"azure.subscription.webService.appsite.outboundVnetRouting": {
 			// to override args, implement: initAzureSubscriptionWebServiceAppsiteOutboundVnetRouting(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAzureSubscriptionWebServiceAppsiteOutboundVnetRouting,
+		},
+		"azure.subscription.networkSecurityPerimeterConfiguration": {
+			// to override args, implement: initAzureSubscriptionNetworkSecurityPerimeterConfiguration(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionNetworkSecurityPerimeterConfiguration,
 		},
 		"azure.subscription.privateEndpointConnection": {
 			// to override args, implement: initAzureSubscriptionPrivateEndpointConnection(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -2707,6 +2714,10 @@ func init() {
 			// to override args, implement: initAzureSubscriptionSearchServiceService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAzureSubscriptionSearchServiceService,
 		},
+		"azure.subscription.searchService.service.sharedPrivateLink": {
+			// to override args, implement: initAzureSubscriptionSearchServiceServiceSharedPrivateLink(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionSearchServiceServiceSharedPrivateLink,
+		},
 		"azure.subscription.lighthouseService": {
 			Init:   initAzureSubscriptionLighthouseService,
 			Create: createAzureSubscriptionLighthouseService,
@@ -2730,6 +2741,10 @@ func init() {
 		"azure.subscription.machineLearningService.workspace": {
 			// to override args, implement: initAzureSubscriptionMachineLearningServiceWorkspace(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAzureSubscriptionMachineLearningServiceWorkspace,
+		},
+		"azure.subscription.machineLearningService.workspace.sharedPrivateLink": {
+			// to override args, implement: initAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLink(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLink,
 		},
 		"azure.subscription.machineLearningService.workspace.managedNetworkOutboundRule": {
 			// to override args, implement: initAzureSubscriptionMachineLearningServiceWorkspaceManagedNetworkOutboundRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -10998,6 +11013,54 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.webService.appsite.outboundVnetRouting.imagePullTrafficEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionWebServiceAppsiteOutboundVnetRouting).GetImagePullTrafficEnabled()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).GetId()).ToDataRes(types.String)
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).GetName()).ToDataRes(types.String)
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).GetType()).ToDataRes(types.String)
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.provisioningState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).GetProvisioningState()).ToDataRes(types.String)
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.perimeterId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).GetPerimeterId()).ToDataRes(types.String)
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.perimeterLocation": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).GetPerimeterLocation()).ToDataRes(types.String)
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.perimeterGuid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).GetPerimeterGuid()).ToDataRes(types.String)
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.profileName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).GetProfileName()).ToDataRes(types.String)
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.accessRulesVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).GetAccessRulesVersion()).ToDataRes(types.Int)
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.diagnosticSettingsVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).GetDiagnosticSettingsVersion()).ToDataRes(types.Int)
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.enabledLogCategories": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).GetEnabledLogCategories()).ToDataRes(types.Array(types.String))
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.accessRules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).GetAccessRules()).ToDataRes(types.Array(types.Dict))
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.associationName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).GetAssociationName()).ToDataRes(types.String)
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.associationAccessMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).GetAssociationAccessMode()).ToDataRes(types.String)
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.provisioningIssues": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).GetProvisioningIssues()).ToDataRes(types.Array(types.Dict))
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.systemMetadata": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).GetSystemMetadata()).ToDataRes(types.Resource("azure.subscription.systemData"))
 	},
 	"azure.subscription.privateEndpointConnection.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionPrivateEndpointConnection).GetId()).ToDataRes(types.String)
@@ -21541,8 +21604,41 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.searchService.service.roleAssignments": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionSearchServiceService).GetRoleAssignments()).ToDataRes(types.Array(types.Resource("azure.subscription.authorizationService.roleAssignment")))
 	},
+	"azure.subscription.searchService.service.privateEndpointConnections": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSearchServiceService).GetPrivateEndpointConnections()).ToDataRes(types.Array(types.Resource("azure.subscription.privateEndpointConnection")))
+	},
+	"azure.subscription.searchService.service.sharedPrivateLinks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSearchServiceService).GetSharedPrivateLinks()).ToDataRes(types.Array(types.Resource("azure.subscription.searchService.service.sharedPrivateLink")))
+	},
+	"azure.subscription.searchService.service.networkSecurityPerimeterConfigurations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSearchServiceService).GetNetworkSecurityPerimeterConfigurations()).ToDataRes(types.Array(types.Resource("azure.subscription.networkSecurityPerimeterConfiguration")))
+	},
 	"azure.subscription.searchService.service.systemMetadata": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionSearchServiceService).GetSystemMetadata()).ToDataRes(types.Resource("azure.subscription.systemData"))
+	},
+	"azure.subscription.searchService.service.sharedPrivateLink.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink).GetId()).ToDataRes(types.String)
+	},
+	"azure.subscription.searchService.service.sharedPrivateLink.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink).GetName()).ToDataRes(types.String)
+	},
+	"azure.subscription.searchService.service.sharedPrivateLink.groupId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink).GetGroupId()).ToDataRes(types.String)
+	},
+	"azure.subscription.searchService.service.sharedPrivateLink.privateLinkResourceId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink).GetPrivateLinkResourceId()).ToDataRes(types.String)
+	},
+	"azure.subscription.searchService.service.sharedPrivateLink.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink).GetStatus()).ToDataRes(types.String)
+	},
+	"azure.subscription.searchService.service.sharedPrivateLink.provisioningState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink).GetProvisioningState()).ToDataRes(types.String)
+	},
+	"azure.subscription.searchService.service.sharedPrivateLink.resourceRegion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink).GetResourceRegion()).ToDataRes(types.String)
+	},
+	"azure.subscription.searchService.service.sharedPrivateLink.requestMessage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink).GetRequestMessage()).ToDataRes(types.String)
 	},
 	"azure.subscription.lighthouseService.subscriptionId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionLighthouseService).GetSubscriptionId()).ToDataRes(types.String)
@@ -21673,6 +21769,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.machineLearningService.workspace.managedNetworkIsolationMode": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).GetManagedNetworkIsolationMode()).ToDataRes(types.String)
 	},
+	"azure.subscription.machineLearningService.workspace.managedNetworkStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).GetManagedNetworkStatus()).ToDataRes(types.String)
+	},
+	"azure.subscription.machineLearningService.workspace.managedNetworkSparkReady": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).GetManagedNetworkSparkReady()).ToDataRes(types.Bool)
+	},
 	"azure.subscription.machineLearningService.workspace.hbiWorkspace": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).GetHbiWorkspace()).ToDataRes(types.Bool)
 	},
@@ -21723,6 +21825,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.machineLearningService.workspace.privateEndpointConnections": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).GetPrivateEndpointConnections()).ToDataRes(types.Array(types.Dict))
+	},
+	"azure.subscription.machineLearningService.workspace.privateLinkConnections": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).GetPrivateLinkConnections()).ToDataRes(types.Array(types.Resource("azure.subscription.privateEndpointConnection")))
+	},
+	"azure.subscription.machineLearningService.workspace.sharedPrivateLinks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).GetSharedPrivateLinks()).ToDataRes(types.Array(types.Resource("azure.subscription.machineLearningService.workspace.sharedPrivateLink")))
 	},
 	"azure.subscription.machineLearningService.workspace.encryptionKey": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).GetEncryptionKey()).ToDataRes(types.Resource("azure.subscription.keyVaultService.key"))
@@ -21783,6 +21891,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.machineLearningService.workspace.systemMetadata": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).GetSystemMetadata()).ToDataRes(types.Resource("azure.subscription.systemData"))
+	},
+	"azure.subscription.machineLearningService.workspace.sharedPrivateLink.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLink).GetName()).ToDataRes(types.String)
+	},
+	"azure.subscription.machineLearningService.workspace.sharedPrivateLink.groupId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLink).GetGroupId()).ToDataRes(types.String)
+	},
+	"azure.subscription.machineLearningService.workspace.sharedPrivateLink.privateLinkResourceId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLink).GetPrivateLinkResourceId()).ToDataRes(types.String)
+	},
+	"azure.subscription.machineLearningService.workspace.sharedPrivateLink.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLink).GetStatus()).ToDataRes(types.String)
+	},
+	"azure.subscription.machineLearningService.workspace.sharedPrivateLink.requestMessage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLink).GetRequestMessage()).ToDataRes(types.String)
 	},
 	"azure.subscription.machineLearningService.workspace.managedNetworkOutboundRule.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceManagedNetworkOutboundRule).GetName()).ToDataRes(types.String)
@@ -22494,6 +22617,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.cognitiveServicesService.account.privateEndpointConnections": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionCognitiveServicesServiceAccount).GetPrivateEndpointConnections()).ToDataRes(types.Array(types.Resource("azure.subscription.privateEndpointConnection")))
+	},
+	"azure.subscription.cognitiveServicesService.account.networkSecurityPerimeterConfigurations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCognitiveServicesServiceAccount).GetNetworkSecurityPerimeterConfigurations()).ToDataRes(types.Array(types.Resource("azure.subscription.networkSecurityPerimeterConfiguration")))
 	},
 	"azure.subscription.cognitiveServicesService.account.roleAssignments": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionCognitiveServicesServiceAccount).GetRoleAssignments()).ToDataRes(types.Array(types.Resource("azure.subscription.authorizationService.roleAssignment")))
@@ -36465,6 +36591,74 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.webService.appsite.outboundVnetRouting.imagePullTrafficEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionWebServiceAppsiteOutboundVnetRouting).ImagePullTrafficEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.provisioningState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).ProvisioningState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.perimeterId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).PerimeterId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.perimeterLocation": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).PerimeterLocation, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.perimeterGuid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).PerimeterGuid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.profileName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).ProfileName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.accessRulesVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).AccessRulesVersion, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.diagnosticSettingsVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).DiagnosticSettingsVersion, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.enabledLogCategories": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).EnabledLogCategories, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.accessRules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).AccessRules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.associationName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).AssociationName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.associationAccessMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).AssociationAccessMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.provisioningIssues": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).ProvisioningIssues, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkSecurityPerimeterConfiguration.systemMetadata": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration).SystemMetadata, ok = plugin.RawToTValue[*mqlAzureSubscriptionSystemData](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.privateEndpointConnection.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -51819,8 +52013,56 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionSearchServiceService).RoleAssignments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.searchService.service.privateEndpointConnections": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSearchServiceService).PrivateEndpointConnections, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.searchService.service.sharedPrivateLinks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSearchServiceService).SharedPrivateLinks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.searchService.service.networkSecurityPerimeterConfigurations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSearchServiceService).NetworkSecurityPerimeterConfigurations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.searchService.service.systemMetadata": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionSearchServiceService).SystemMetadata, ok = plugin.RawToTValue[*mqlAzureSubscriptionSystemData](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.searchService.service.sharedPrivateLink.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.subscription.searchService.service.sharedPrivateLink.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.searchService.service.sharedPrivateLink.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.searchService.service.sharedPrivateLink.groupId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink).GroupId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.searchService.service.sharedPrivateLink.privateLinkResourceId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink).PrivateLinkResourceId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.searchService.service.sharedPrivateLink.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.searchService.service.sharedPrivateLink.provisioningState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink).ProvisioningState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.searchService.service.sharedPrivateLink.resourceRegion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink).ResourceRegion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.searchService.service.sharedPrivateLink.requestMessage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink).RequestMessage, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.lighthouseService.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -52019,6 +52261,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).ManagedNetworkIsolationMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.machineLearningService.workspace.managedNetworkStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).ManagedNetworkStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.workspace.managedNetworkSparkReady": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).ManagedNetworkSparkReady, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.machineLearningService.workspace.hbiWorkspace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).HbiWorkspace, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
@@ -52085,6 +52335,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.machineLearningService.workspace.privateEndpointConnections": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).PrivateEndpointConnections, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.workspace.privateLinkConnections": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).PrivateLinkConnections, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.workspace.sharedPrivateLinks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).SharedPrivateLinks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.machineLearningService.workspace.encryptionKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -52165,6 +52423,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.machineLearningService.workspace.systemMetadata": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).SystemMetadata, ok = plugin.RawToTValue[*mqlAzureSubscriptionSystemData](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.workspace.sharedPrivateLink.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLink).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.subscription.machineLearningService.workspace.sharedPrivateLink.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLink).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.workspace.sharedPrivateLink.groupId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLink).GroupId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.workspace.sharedPrivateLink.privateLinkResourceId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLink).PrivateLinkResourceId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.workspace.sharedPrivateLink.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLink).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.workspace.sharedPrivateLink.requestMessage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLink).RequestMessage, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.machineLearningService.workspace.managedNetworkOutboundRule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -53169,6 +53451,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.cognitiveServicesService.account.privateEndpointConnections": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionCognitiveServicesServiceAccount).PrivateEndpointConnections, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.cognitiveServicesService.account.networkSecurityPerimeterConfigurations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCognitiveServicesServiceAccount).NetworkSecurityPerimeterConfigurations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.cognitiveServicesService.account.roleAssignments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -83617,6 +83903,142 @@ func (c *mqlAzureSubscriptionWebServiceAppsiteOutboundVnetRouting) GetContentSha
 
 func (c *mqlAzureSubscriptionWebServiceAppsiteOutboundVnetRouting) GetImagePullTrafficEnabled() *plugin.TValue[bool] {
 	return &c.ImagePullTrafficEnabled
+}
+
+// mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration for the azure.subscription.networkSecurityPerimeterConfiguration resource
+type mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAzureSubscriptionNetworkSecurityPerimeterConfigurationInternal
+	Id                        plugin.TValue[string]
+	Name                      plugin.TValue[string]
+	Type                      plugin.TValue[string]
+	ProvisioningState         plugin.TValue[string]
+	PerimeterId               plugin.TValue[string]
+	PerimeterLocation         plugin.TValue[string]
+	PerimeterGuid             plugin.TValue[string]
+	ProfileName               plugin.TValue[string]
+	AccessRulesVersion        plugin.TValue[int64]
+	DiagnosticSettingsVersion plugin.TValue[int64]
+	EnabledLogCategories      plugin.TValue[[]any]
+	AccessRules               plugin.TValue[[]any]
+	AssociationName           plugin.TValue[string]
+	AssociationAccessMode     plugin.TValue[string]
+	ProvisioningIssues        plugin.TValue[[]any]
+	SystemMetadata            plugin.TValue[*mqlAzureSubscriptionSystemData]
+}
+
+// createAzureSubscriptionNetworkSecurityPerimeterConfiguration creates a new instance of this resource
+func createAzureSubscriptionNetworkSecurityPerimeterConfiguration(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.subscription.networkSecurityPerimeterConfiguration", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration) MqlName() string {
+	return "azure.subscription.networkSecurityPerimeterConfiguration"
+}
+
+func (c *mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration) GetProvisioningState() *plugin.TValue[string] {
+	return &c.ProvisioningState
+}
+
+func (c *mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration) GetPerimeterId() *plugin.TValue[string] {
+	return &c.PerimeterId
+}
+
+func (c *mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration) GetPerimeterLocation() *plugin.TValue[string] {
+	return &c.PerimeterLocation
+}
+
+func (c *mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration) GetPerimeterGuid() *plugin.TValue[string] {
+	return &c.PerimeterGuid
+}
+
+func (c *mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration) GetProfileName() *plugin.TValue[string] {
+	return &c.ProfileName
+}
+
+func (c *mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration) GetAccessRulesVersion() *plugin.TValue[int64] {
+	return &c.AccessRulesVersion
+}
+
+func (c *mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration) GetDiagnosticSettingsVersion() *plugin.TValue[int64] {
+	return &c.DiagnosticSettingsVersion
+}
+
+func (c *mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration) GetEnabledLogCategories() *plugin.TValue[[]any] {
+	return &c.EnabledLogCategories
+}
+
+func (c *mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration) GetAccessRules() *plugin.TValue[[]any] {
+	return &c.AccessRules
+}
+
+func (c *mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration) GetAssociationName() *plugin.TValue[string] {
+	return &c.AssociationName
+}
+
+func (c *mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration) GetAssociationAccessMode() *plugin.TValue[string] {
+	return &c.AssociationAccessMode
+}
+
+func (c *mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration) GetProvisioningIssues() *plugin.TValue[[]any] {
+	return &c.ProvisioningIssues
+}
+
+func (c *mqlAzureSubscriptionNetworkSecurityPerimeterConfiguration) GetSystemMetadata() *plugin.TValue[*mqlAzureSubscriptionSystemData] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionSystemData](&c.SystemMetadata, func() (*mqlAzureSubscriptionSystemData, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.networkSecurityPerimeterConfiguration", c.__id, "systemMetadata")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionSystemData), nil
+			}
+		}
+
+		return c.systemMetadata()
+	})
 }
 
 // mqlAzureSubscriptionPrivateEndpointConnection for the azure.subscription.privateEndpointConnection resource
@@ -121138,36 +121560,39 @@ type mqlAzureSubscriptionSearchServiceService struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAzureSubscriptionSearchServiceServiceInternal
-	Id                            plugin.TValue[string]
-	Name                          plugin.TValue[string]
-	Location                      plugin.TValue[string]
-	Tags                          plugin.TValue[map[string]any]
-	Sku                           plugin.TValue[any]
-	SkuData                       plugin.TValue[*mqlAzureSubscriptionResourceSku]
-	Identity                      plugin.TValue[any]
-	ResourceIdentity              plugin.TValue[*mqlAzureSubscriptionResourceIdentity]
-	PublicNetworkAccess           plugin.TValue[string]
-	DisableLocalAuth              plugin.TValue[bool]
-	AuthMode                      plugin.TValue[string]
-	AadAuthFailureMode            plugin.TValue[string]
-	DataExfiltrationProtections   plugin.TValue[[]any]
-	ComputeType                   plugin.TValue[string]
-	SemanticSearch                plugin.TValue[string]
-	UpgradeAvailable              plugin.TValue[string]
-	ServiceUpgradedAt             plugin.TValue[*time.Time]
-	CmkEnforcement                plugin.TValue[string]
-	CmkEncryptionComplianceStatus plugin.TValue[string]
-	ReplicaCount                  plugin.TValue[int64]
-	PartitionCount                plugin.TValue[int64]
-	HostingMode                   plugin.TValue[string]
-	Endpoint                      plugin.TValue[string]
-	ProvisioningState             plugin.TValue[string]
-	Status                        plugin.TValue[string]
-	NetworkRuleSet                plugin.TValue[any]
-	InternetReachable             plugin.TValue[bool]
-	DiagnosticSettings            plugin.TValue[[]any]
-	RoleAssignments               plugin.TValue[[]any]
-	SystemMetadata                plugin.TValue[*mqlAzureSubscriptionSystemData]
+	Id                                     plugin.TValue[string]
+	Name                                   plugin.TValue[string]
+	Location                               plugin.TValue[string]
+	Tags                                   plugin.TValue[map[string]any]
+	Sku                                    plugin.TValue[any]
+	SkuData                                plugin.TValue[*mqlAzureSubscriptionResourceSku]
+	Identity                               plugin.TValue[any]
+	ResourceIdentity                       plugin.TValue[*mqlAzureSubscriptionResourceIdentity]
+	PublicNetworkAccess                    plugin.TValue[string]
+	DisableLocalAuth                       plugin.TValue[bool]
+	AuthMode                               plugin.TValue[string]
+	AadAuthFailureMode                     plugin.TValue[string]
+	DataExfiltrationProtections            plugin.TValue[[]any]
+	ComputeType                            plugin.TValue[string]
+	SemanticSearch                         plugin.TValue[string]
+	UpgradeAvailable                       plugin.TValue[string]
+	ServiceUpgradedAt                      plugin.TValue[*time.Time]
+	CmkEnforcement                         plugin.TValue[string]
+	CmkEncryptionComplianceStatus          plugin.TValue[string]
+	ReplicaCount                           plugin.TValue[int64]
+	PartitionCount                         plugin.TValue[int64]
+	HostingMode                            plugin.TValue[string]
+	Endpoint                               plugin.TValue[string]
+	ProvisioningState                      plugin.TValue[string]
+	Status                                 plugin.TValue[string]
+	NetworkRuleSet                         plugin.TValue[any]
+	InternetReachable                      plugin.TValue[bool]
+	DiagnosticSettings                     plugin.TValue[[]any]
+	RoleAssignments                        plugin.TValue[[]any]
+	PrivateEndpointConnections             plugin.TValue[[]any]
+	SharedPrivateLinks                     plugin.TValue[[]any]
+	NetworkSecurityPerimeterConfigurations plugin.TValue[[]any]
+	SystemMetadata                         plugin.TValue[*mqlAzureSubscriptionSystemData]
 }
 
 // createAzureSubscriptionSearchServiceService creates a new instance of this resource
@@ -121349,6 +121774,54 @@ func (c *mqlAzureSubscriptionSearchServiceService) GetRoleAssignments() *plugin.
 	})
 }
 
+func (c *mqlAzureSubscriptionSearchServiceService) GetPrivateEndpointConnections() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PrivateEndpointConnections, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.searchService.service", c.__id, "privateEndpointConnections")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.privateEndpointConnections()
+	})
+}
+
+func (c *mqlAzureSubscriptionSearchServiceService) GetSharedPrivateLinks() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SharedPrivateLinks, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.searchService.service", c.__id, "sharedPrivateLinks")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.sharedPrivateLinks()
+	})
+}
+
+func (c *mqlAzureSubscriptionSearchServiceService) GetNetworkSecurityPerimeterConfigurations() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.NetworkSecurityPerimeterConfigurations, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.searchService.service", c.__id, "networkSecurityPerimeterConfigurations")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.networkSecurityPerimeterConfigurations()
+	})
+}
+
 func (c *mqlAzureSubscriptionSearchServiceService) GetSystemMetadata() *plugin.TValue[*mqlAzureSubscriptionSystemData] {
 	return plugin.GetOrCompute[*mqlAzureSubscriptionSystemData](&c.SystemMetadata, func() (*mqlAzureSubscriptionSystemData, error) {
 		if c.MqlRuntime.HasRecording {
@@ -121363,6 +121836,90 @@ func (c *mqlAzureSubscriptionSearchServiceService) GetSystemMetadata() *plugin.T
 
 		return c.systemMetadata()
 	})
+}
+
+// mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink for the azure.subscription.searchService.service.sharedPrivateLink resource
+type mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzureSubscriptionSearchServiceServiceSharedPrivateLinkInternal it will be used here
+	Id                    plugin.TValue[string]
+	Name                  plugin.TValue[string]
+	GroupId               plugin.TValue[string]
+	PrivateLinkResourceId plugin.TValue[string]
+	Status                plugin.TValue[string]
+	ProvisioningState     plugin.TValue[string]
+	ResourceRegion        plugin.TValue[string]
+	RequestMessage        plugin.TValue[string]
+}
+
+// createAzureSubscriptionSearchServiceServiceSharedPrivateLink creates a new instance of this resource
+func createAzureSubscriptionSearchServiceServiceSharedPrivateLink(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.subscription.searchService.service.sharedPrivateLink", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink) MqlName() string {
+	return "azure.subscription.searchService.service.sharedPrivateLink"
+}
+
+func (c *mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink) GetGroupId() *plugin.TValue[string] {
+	return &c.GroupId
+}
+
+func (c *mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink) GetPrivateLinkResourceId() *plugin.TValue[string] {
+	return &c.PrivateLinkResourceId
+}
+
+func (c *mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink) GetProvisioningState() *plugin.TValue[string] {
+	return &c.ProvisioningState
+}
+
+func (c *mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink) GetResourceRegion() *plugin.TValue[string] {
+	return &c.ResourceRegion
+}
+
+func (c *mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink) GetRequestMessage() *plugin.TValue[string] {
+	return &c.RequestMessage
 }
 
 // mqlAzureSubscriptionLighthouseService for the azure.subscription.lighthouseService resource
@@ -121824,6 +122381,8 @@ type mqlAzureSubscriptionMachineLearningServiceWorkspace struct {
 	ProvisioningState               plugin.TValue[string]
 	PublicNetworkAccess             plugin.TValue[string]
 	ManagedNetworkIsolationMode     plugin.TValue[string]
+	ManagedNetworkStatus            plugin.TValue[string]
+	ManagedNetworkSparkReady        plugin.TValue[bool]
 	HbiWorkspace                    plugin.TValue[bool]
 	AllowPublicAccessWhenBehindVnet plugin.TValue[bool]
 	V1LegacyMode                    plugin.TValue[bool]
@@ -121841,6 +122400,8 @@ type mqlAzureSubscriptionMachineLearningServiceWorkspace struct {
 	ImageBuildCompute               plugin.TValue[string]
 	EncryptionStatus                plugin.TValue[string]
 	PrivateEndpointConnections      plugin.TValue[[]any]
+	PrivateLinkConnections          plugin.TValue[[]any]
+	SharedPrivateLinks              plugin.TValue[[]any]
 	EncryptionKey                   plugin.TValue[*mqlAzureSubscriptionKeyVaultServiceKey]
 	KeyVaultId                      plugin.TValue[string]
 	KeyVault                        plugin.TValue[*mqlAzureSubscriptionKeyVaultServiceVault]
@@ -121960,6 +122521,14 @@ func (c *mqlAzureSubscriptionMachineLearningServiceWorkspace) GetManagedNetworkI
 	return &c.ManagedNetworkIsolationMode
 }
 
+func (c *mqlAzureSubscriptionMachineLearningServiceWorkspace) GetManagedNetworkStatus() *plugin.TValue[string] {
+	return &c.ManagedNetworkStatus
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceWorkspace) GetManagedNetworkSparkReady() *plugin.TValue[bool] {
+	return &c.ManagedNetworkSparkReady
+}
+
 func (c *mqlAzureSubscriptionMachineLearningServiceWorkspace) GetHbiWorkspace() *plugin.TValue[bool] {
 	return &c.HbiWorkspace
 }
@@ -122050,6 +122619,38 @@ func (c *mqlAzureSubscriptionMachineLearningServiceWorkspace) GetEncryptionStatu
 
 func (c *mqlAzureSubscriptionMachineLearningServiceWorkspace) GetPrivateEndpointConnections() *plugin.TValue[[]any] {
 	return &c.PrivateEndpointConnections
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceWorkspace) GetPrivateLinkConnections() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PrivateLinkConnections, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.machineLearningService.workspace", c.__id, "privateLinkConnections")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.privateLinkConnections()
+	})
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceWorkspace) GetSharedPrivateLinks() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SharedPrivateLinks, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.machineLearningService.workspace", c.__id, "sharedPrivateLinks")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.sharedPrivateLinks()
+	})
 }
 
 func (c *mqlAzureSubscriptionMachineLearningServiceWorkspace) GetEncryptionKey() *plugin.TValue[*mqlAzureSubscriptionKeyVaultServiceKey] {
@@ -122322,6 +122923,70 @@ func (c *mqlAzureSubscriptionMachineLearningServiceWorkspace) GetSystemMetadata(
 
 		return c.systemMetadata()
 	})
+}
+
+// mqlAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLink for the azure.subscription.machineLearningService.workspace.sharedPrivateLink resource
+type mqlAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLink struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLinkInternal it will be used here
+	Name                  plugin.TValue[string]
+	GroupId               plugin.TValue[string]
+	PrivateLinkResourceId plugin.TValue[string]
+	Status                plugin.TValue[string]
+	RequestMessage        plugin.TValue[string]
+}
+
+// createAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLink creates a new instance of this resource
+func createAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLink(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLink{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.subscription.machineLearningService.workspace.sharedPrivateLink", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLink) MqlName() string {
+	return "azure.subscription.machineLearningService.workspace.sharedPrivateLink"
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLink) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLink) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLink) GetGroupId() *plugin.TValue[string] {
+	return &c.GroupId
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLink) GetPrivateLinkResourceId() *plugin.TValue[string] {
+	return &c.PrivateLinkResourceId
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLink) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLink) GetRequestMessage() *plugin.TValue[string] {
+	return &c.RequestMessage
 }
 
 // mqlAzureSubscriptionMachineLearningServiceWorkspaceManagedNetworkOutboundRule for the azure.subscription.machineLearningService.workspace.managedNetworkOutboundRule resource
@@ -124027,62 +124692,63 @@ type mqlAzureSubscriptionCognitiveServicesServiceAccount struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAzureSubscriptionCognitiveServicesServiceAccountInternal
-	Id                              plugin.TValue[string]
-	Name                            plugin.TValue[string]
-	Location                        plugin.TValue[string]
-	Kind                            plugin.TValue[string]
-	Tags                            plugin.TValue[map[string]any]
-	Sku                             plugin.TValue[any]
-	SkuData                         plugin.TValue[*mqlAzureSubscriptionResourceSku]
-	Identity                        plugin.TValue[any]
-	ResourceIdentity                plugin.TValue[*mqlAzureSubscriptionResourceIdentity]
-	PublicNetworkAccess             plugin.TValue[string]
-	DisableLocalAuth                plugin.TValue[bool]
-	RestrictOutboundNetworkAccess   plugin.TValue[bool]
-	CustomSubDomainName             plugin.TValue[string]
-	NetworkAcls                     plugin.TValue[any]
-	NetworkAclsDefaultAction        plugin.TValue[string]
-	NetworkAclsBypass               plugin.TValue[string]
-	CmkKeySource                    plugin.TValue[string]
-	CmkKeyName                      plugin.TValue[string]
-	CmkKeyVaultUri                  plugin.TValue[string]
-	CmkKey                          plugin.TValue[*mqlAzureSubscriptionKeyVaultServiceKey]
-	InternetReachable               plugin.TValue[bool]
-	DiagnosticSettings              plugin.TValue[[]any]
-	Endpoint                        plugin.TValue[string]
-	ProvisioningState               plugin.TValue[string]
-	StoredCompletionsDisabled       plugin.TValue[bool]
-	AllowProjectManagement          plugin.TValue[bool]
-	AssociatedProjects              plugin.TValue[[]any]
-	CreationTime                    plugin.TValue[*time.Time]
-	AllowedFqdnList                 plugin.TValue[[]any]
-	IpRules                         plugin.TValue[[]any]
-	VirtualNetworkRules             plugin.TValue[[]any]
-	AbusePenaltyAction              plugin.TValue[string]
-	AbusePenaltyExpiration          plugin.TValue[*time.Time]
-	AbusePenaltyRateLimitPercentage plugin.TValue[float64]
-	CmkKeyVersion                   plugin.TValue[string]
-	CmkIdentityClientId             plugin.TValue[string]
-	UserOwnedStorageAccounts        plugin.TValue[[]any]
-	RaiMonitorAdxStorageResourceId  plugin.TValue[string]
-	RaiMonitorIdentityClientId      plugin.TValue[string]
-	CommitmentPlanAssociations      plugin.TValue[[]any]
-	MultiRegionSettings             plugin.TValue[[]any]
-	MultiRegionRoutingMethod        plugin.TValue[string]
-	NetworkInjections               plugin.TValue[[]any]
-	DefenderForAIEnabled            plugin.TValue[bool]
-	RaiPolicies                     plugin.TValue[[]any]
-	RaiTopics                       plugin.TValue[[]any]
-	Deployments                     plugin.TValue[[]any]
-	Projects                        plugin.TValue[[]any]
-	Connections                     plugin.TValue[[]any]
-	Models                          plugin.TValue[[]any]
-	RaiBlocklists                   plugin.TValue[[]any]
-	EncryptionScopes                plugin.TValue[[]any]
-	CapabilityHosts                 plugin.TValue[[]any]
-	PrivateEndpointConnections      plugin.TValue[[]any]
-	RoleAssignments                 plugin.TValue[[]any]
-	SystemMetadata                  plugin.TValue[*mqlAzureSubscriptionSystemData]
+	Id                                     plugin.TValue[string]
+	Name                                   plugin.TValue[string]
+	Location                               plugin.TValue[string]
+	Kind                                   plugin.TValue[string]
+	Tags                                   plugin.TValue[map[string]any]
+	Sku                                    plugin.TValue[any]
+	SkuData                                plugin.TValue[*mqlAzureSubscriptionResourceSku]
+	Identity                               plugin.TValue[any]
+	ResourceIdentity                       plugin.TValue[*mqlAzureSubscriptionResourceIdentity]
+	PublicNetworkAccess                    plugin.TValue[string]
+	DisableLocalAuth                       plugin.TValue[bool]
+	RestrictOutboundNetworkAccess          plugin.TValue[bool]
+	CustomSubDomainName                    plugin.TValue[string]
+	NetworkAcls                            plugin.TValue[any]
+	NetworkAclsDefaultAction               plugin.TValue[string]
+	NetworkAclsBypass                      plugin.TValue[string]
+	CmkKeySource                           plugin.TValue[string]
+	CmkKeyName                             plugin.TValue[string]
+	CmkKeyVaultUri                         plugin.TValue[string]
+	CmkKey                                 plugin.TValue[*mqlAzureSubscriptionKeyVaultServiceKey]
+	InternetReachable                      plugin.TValue[bool]
+	DiagnosticSettings                     plugin.TValue[[]any]
+	Endpoint                               plugin.TValue[string]
+	ProvisioningState                      plugin.TValue[string]
+	StoredCompletionsDisabled              plugin.TValue[bool]
+	AllowProjectManagement                 plugin.TValue[bool]
+	AssociatedProjects                     plugin.TValue[[]any]
+	CreationTime                           plugin.TValue[*time.Time]
+	AllowedFqdnList                        plugin.TValue[[]any]
+	IpRules                                plugin.TValue[[]any]
+	VirtualNetworkRules                    plugin.TValue[[]any]
+	AbusePenaltyAction                     plugin.TValue[string]
+	AbusePenaltyExpiration                 plugin.TValue[*time.Time]
+	AbusePenaltyRateLimitPercentage        plugin.TValue[float64]
+	CmkKeyVersion                          plugin.TValue[string]
+	CmkIdentityClientId                    plugin.TValue[string]
+	UserOwnedStorageAccounts               plugin.TValue[[]any]
+	RaiMonitorAdxStorageResourceId         plugin.TValue[string]
+	RaiMonitorIdentityClientId             plugin.TValue[string]
+	CommitmentPlanAssociations             plugin.TValue[[]any]
+	MultiRegionSettings                    plugin.TValue[[]any]
+	MultiRegionRoutingMethod               plugin.TValue[string]
+	NetworkInjections                      plugin.TValue[[]any]
+	DefenderForAIEnabled                   plugin.TValue[bool]
+	RaiPolicies                            plugin.TValue[[]any]
+	RaiTopics                              plugin.TValue[[]any]
+	Deployments                            plugin.TValue[[]any]
+	Projects                               plugin.TValue[[]any]
+	Connections                            plugin.TValue[[]any]
+	Models                                 plugin.TValue[[]any]
+	RaiBlocklists                          plugin.TValue[[]any]
+	EncryptionScopes                       plugin.TValue[[]any]
+	CapabilityHosts                        plugin.TValue[[]any]
+	PrivateEndpointConnections             plugin.TValue[[]any]
+	NetworkSecurityPerimeterConfigurations plugin.TValue[[]any]
+	RoleAssignments                        plugin.TValue[[]any]
+	SystemMetadata                         plugin.TValue[*mqlAzureSubscriptionSystemData]
 }
 
 // createAzureSubscriptionCognitiveServicesServiceAccount creates a new instance of this resource
@@ -124483,6 +125149,22 @@ func (c *mqlAzureSubscriptionCognitiveServicesServiceAccount) GetPrivateEndpoint
 		}
 
 		return c.privateEndpointConnections()
+	})
+}
+
+func (c *mqlAzureSubscriptionCognitiveServicesServiceAccount) GetNetworkSecurityPerimeterConfigurations() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.NetworkSecurityPerimeterConfigurations, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.cognitiveServicesService.account", c.__id, "networkSecurityPerimeterConfigurations")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.networkSecurityPerimeterConfigurations()
 	})
 }
 

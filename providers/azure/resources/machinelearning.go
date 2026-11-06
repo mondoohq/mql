@@ -30,6 +30,42 @@ type mqlAzureSubscriptionMachineLearningServiceWorkspaceInternal struct {
 	cacheOutboundRules                 map[string]ml.OutboundRuleClassification
 	cacheServerlessComputeSubnetId     *string
 	cachePrimaryUserAssignedIdentityId *string
+	cachePrivateEndpointConnections    []*ml.PrivateEndpointConnection
+	cacheSharedPrivateLinks            []*ml.SharedPrivateLinkResource
+}
+
+func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) privateLinkConnections() ([]any, error) {
+	return azurePrivateEndpointConnectionsToMql(a.MqlRuntime, a.cachePrivateEndpointConnections)
+}
+
+func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) sharedPrivateLinks() ([]any, error) {
+	return mlSharedPrivateLinksToMql(a.MqlRuntime, a.Id.Data, a.cacheSharedPrivateLinks)
+}
+
+// mlSharedPrivateLinksToMql builds the shared private link resources of a
+// workspace. The API returns them by name only, so the cache key is the
+// workspace id plus the link name; an entry without a name is skipped.
+func mlSharedPrivateLinksToMql(runtime *plugin.Runtime, workspaceId string, links []*ml.SharedPrivateLinkResource) ([]any, error) {
+	res := make([]any, 0, len(links))
+	for _, l := range links {
+		if l == nil || l.Name == nil || *l.Name == "" {
+			continue
+		}
+		p := orZero(l.Properties)
+		r, err := CreateResource(runtime, ResourceAzureSubscriptionMachineLearningServiceWorkspaceSharedPrivateLink, map[string]*llx.RawData{
+			"__id":                  llx.StringData(subResourceCacheID(nil, workspaceId, "sharedPrivateLinks", *l.Name)),
+			"name":                  llx.StringDataPtr(l.Name),
+			"groupId":               llx.StringDataPtr(p.GroupID),
+			"privateLinkResourceId": llx.StringDataPtr(p.PrivateLinkResourceID),
+			"status":                llx.StringDataPtr(stringEnumPtr(p.Status)),
+			"requestMessage":        llx.StringDataPtr(p.RequestMessage),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, r)
+	}
+	return res, nil
 }
 
 // serverlessComputeSubnet resolves the subnet serverless jobs attach to. Null
@@ -211,11 +247,17 @@ func machineLearningWorkspaceToMql(runtime *plugin.Runtime, ws *ml.Workspace) (*
 		provisioningState = string(*props.ProvisioningState)
 	}
 	var outboundRules map[string]ml.OutboundRuleClassification
+	var managedNetworkStatus *string
+	var managedNetworkSparkReady *bool
 	if props.ManagedNetwork != nil {
 		if props.ManagedNetwork.IsolationMode != nil {
 			managedNetworkIsolationMode = string(*props.ManagedNetwork.IsolationMode)
 		}
 		outboundRules = props.ManagedNetwork.OutboundRules
+		if st := props.ManagedNetwork.Status; st != nil {
+			managedNetworkStatus = stringEnumPtr(st.Status)
+			managedNetworkSparkReady = st.SparkReady
+		}
 	}
 
 	var encryptionStatus, encryptionKeyUri string
@@ -257,6 +299,8 @@ func machineLearningWorkspaceToMql(runtime *plugin.Runtime, ws *ml.Workspace) (*
 		"provisioningState":               llx.StringData(provisioningState),
 		"publicNetworkAccess":             llx.StringData(publicNetworkAccess),
 		"managedNetworkIsolationMode":     llx.StringData(managedNetworkIsolationMode),
+		"managedNetworkStatus":            llx.StringDataPtr(managedNetworkStatus),
+		"managedNetworkSparkReady":        llx.BoolDataPtr(managedNetworkSparkReady),
 		"hbiWorkspace":                    llx.BoolDataPtr(props.HbiWorkspace),
 		"allowPublicAccessWhenBehindVnet": llx.BoolDataPtr(props.AllowPublicAccessWhenBehindVnet),
 		"v1LegacyMode":                    llx.BoolDataPtr(props.V1LegacyMode),
@@ -297,6 +341,8 @@ func machineLearningWorkspaceToMql(runtime *plugin.Runtime, ws *ml.Workspace) (*
 	mqlWs.cacheOutboundRules = outboundRules
 	mqlWs.cacheServerlessComputeSubnetId = serverlessComputeSubnetId
 	mqlWs.cachePrimaryUserAssignedIdentityId = props.PrimaryUserAssignedIdentity
+	mqlWs.cachePrivateEndpointConnections = props.PrivateEndpointConnections
+	mqlWs.cacheSharedPrivateLinks = props.SharedPrivateLinkResources
 	sysData, err := convert.JsonToDict(ws.SystemData)
 	if err != nil {
 		return nil, err
