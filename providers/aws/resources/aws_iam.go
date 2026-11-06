@@ -1458,24 +1458,74 @@ func (a *mqlAwsIamUser) serviceSpecificCredentials() ([]any, error) {
 		}
 
 		for _, cred := range resp.ServiceSpecificCredentials {
-			mqlCred, err := CreateResource(a.MqlRuntime, "aws.iam.user.serviceSpecificCredential",
-				map[string]*llx.RawData{
-					"__id":                   llx.StringDataPtr(cred.ServiceSpecificCredentialId),
-					"id":                     llx.StringDataPtr(cred.ServiceSpecificCredentialId),
-					"username":               llx.StringDataPtr(cred.UserName),
-					"serviceName":            llx.StringDataPtr(cred.ServiceName),
-					"serviceUsername":        llx.StringDataPtr(cred.ServiceUserName),
-					"serviceCredentialAlias": llx.StringDataPtr(cred.ServiceCredentialAlias),
-					"status":                 llx.StringData(string(cred.Status)),
-					"createdAt":              llx.TimeDataPtr(cred.CreateDate),
-					"expiresAt":              llx.TimeDataPtr(cred.ExpirationDate),
-				})
+			mqlCred, err := newServiceSpecificCredential(a.MqlRuntime, cred)
 			if err != nil {
 				return nil, err
 			}
 			res = append(res, mqlCred)
 		}
 
+		if !resp.IsTruncated || resp.Marker == nil {
+			break
+		}
+		marker = resp.Marker
+	}
+	return res, nil
+}
+
+func newServiceSpecificCredential(runtime *plugin.Runtime, cred iamtypes.ServiceSpecificCredentialMetadata) (plugin.Resource, error) {
+	return CreateResource(runtime, "aws.iam.user.serviceSpecificCredential",
+		map[string]*llx.RawData{
+			"__id":                   llx.StringDataPtr(cred.ServiceSpecificCredentialId),
+			"id":                     llx.StringDataPtr(cred.ServiceSpecificCredentialId),
+			"username":               llx.StringDataPtr(cred.UserName),
+			"serviceName":            llx.StringDataPtr(cred.ServiceName),
+			"serviceUsername":        llx.StringDataPtr(cred.ServiceUserName),
+			"serviceCredentialAlias": llx.StringDataPtr(cred.ServiceCredentialAlias),
+			"status":                 llx.StringData(string(cred.Status)),
+			"createdAt":              llx.TimeDataPtr(cred.CreateDate),
+			"expiresAt":              llx.TimeDataPtr(cred.ExpirationDate),
+		})
+}
+
+// bedrockApiKeyServiceName is the service a long-term Amazon Bedrock API key is
+// issued for.
+const bedrockApiKeyServiceName = "bedrock.amazonaws.com"
+
+// bedrockApiKeys returns the long-term Bedrock API keys of every IAM user in
+// the account with one ListServiceSpecificCredentials call chain, rather than
+// one call per user. The ids match the per-user list, so a key found here and
+// through aws.iam.user.serviceSpecificCredentials is the same resource.
+func (a *mqlAwsIam) bedrockApiKeys() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.Iam("")
+	ctx := context.Background()
+	serviceName := bedrockApiKeyServiceName
+	allUsers := true
+
+	res := []any{}
+	var marker *string
+	for {
+		resp, err := svc.ListServiceSpecificCredentials(ctx, &iam.ListServiceSpecificCredentialsInput{
+			AllUsers:    &allUsers,
+			ServiceName: &serviceName,
+			Marker:      marker,
+		})
+		if err != nil {
+			// A new field has no v13 behavior to keep: an empty list would
+			// claim the account has no keys.
+			if Is400AccessDeniedError(err) {
+				return nil, llx.Forbidden(err, llx.WithPermissions("iam:ListServiceSpecificCredentials"))
+			}
+			return nil, err
+		}
+		for _, cred := range resp.ServiceSpecificCredentials {
+			mqlCred, err := newServiceSpecificCredential(a.MqlRuntime, cred)
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, mqlCred)
+		}
 		if !resp.IsTruncated || resp.Marker == nil {
 			break
 		}

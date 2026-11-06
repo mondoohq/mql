@@ -1,7 +1,7 @@
 {
   "provider": "aws",
   "version": "14.6.4",
-  "generated_at": "2026-11-06T12:20:41-08:00",
+  "generated_at": "2026-11-06T12:42:14-08:00",
   "permissions": [
     "access-analyzer:GetFinding",
     "access-analyzer:ListAnalyzers",
@@ -143,11 +143,14 @@
     "bedrock:GetAgent",
     "bedrock:GetAgentActionGroup",
     "bedrock:GetAgentAlias",
+    "bedrock:GetAutomatedReasoningPolicy",
     "bedrock:GetCustomModel",
+    "bedrock:GetCustomModelDeployment",
     "bedrock:GetDataSource",
     "bedrock:GetEvaluationJob",
     "bedrock:GetFlow",
     "bedrock:GetFoundationModel",
+    "bedrock:GetFoundationModelAvailability",
     "bedrock:GetGuardrail",
     "bedrock:GetImportedModel",
     "bedrock:GetKnowledgeBase",
@@ -162,6 +165,8 @@
     "bedrock:ListAgentCollaborators",
     "bedrock:ListAgentKnowledgeBases",
     "bedrock:ListAgents",
+    "bedrock:ListAutomatedReasoningPolicies",
+    "bedrock:ListCustomModelDeployments",
     "bedrock:ListCustomModels",
     "bedrock:ListDataSources",
     "bedrock:ListEnforcedGuardrailsConfiguration",
@@ -177,6 +182,7 @@
     "bedrock:ListModelCustomizationJobs",
     "bedrock:ListModelImportJobs",
     "bedrock:ListModelInvocationJobs",
+    "bedrock:ListPromptRouters",
     "bedrock:ListPrompts",
     "bedrock:ListProvisionedModelThroughputs",
     "bedrock:ListTagsForResource",
@@ -2023,10 +2029,22 @@
       "source_file": "aws_bedrock_enrichment.go"
     },
     {
+      "permission": "bedrock:GetAutomatedReasoningPolicy",
+      "service": "bedrock",
+      "action": "GetAutomatedReasoningPolicy",
+      "source_file": "aws_bedrock_model_access.go"
+    },
+    {
       "permission": "bedrock:GetCustomModel",
       "service": "bedrock",
       "action": "GetCustomModel",
       "source_file": "aws_bedrock.go"
+    },
+    {
+      "permission": "bedrock:GetCustomModelDeployment",
+      "service": "bedrock",
+      "action": "GetCustomModelDeployment",
+      "source_file": "aws_bedrock_model_access.go"
     },
     {
       "permission": "bedrock:GetDataSource",
@@ -2051,6 +2069,12 @@
       "service": "bedrock",
       "action": "GetFoundationModel",
       "source_file": "aws_bedrock.go"
+    },
+    {
+      "permission": "bedrock:GetFoundationModelAvailability",
+      "service": "bedrock",
+      "action": "GetFoundationModelAvailability",
+      "source_file": "aws_bedrock_model_access.go"
     },
     {
       "permission": "bedrock:GetGuardrail",
@@ -2149,6 +2173,18 @@
       "source_file": "aws_bedrock.go"
     },
     {
+      "permission": "bedrock:ListAutomatedReasoningPolicies",
+      "service": "bedrock",
+      "action": "ListAutomatedReasoningPolicies",
+      "source_file": "aws_bedrock_model_access.go"
+    },
+    {
+      "permission": "bedrock:ListCustomModelDeployments",
+      "service": "bedrock",
+      "action": "ListCustomModelDeployments",
+      "source_file": "aws_bedrock_model_access.go"
+    },
+    {
       "permission": "bedrock:ListCustomModels",
       "service": "bedrock",
       "action": "ListCustomModels",
@@ -2243,6 +2279,12 @@
       "service": "bedrock",
       "action": "ListModelInvocationJobs",
       "source_file": "aws_bedrock.go"
+    },
+    {
+      "permission": "bedrock:ListPromptRouters",
+      "service": "bedrock",
+      "action": "ListPromptRouters",
+      "source_file": "aws_bedrock_model_access.go"
     },
     {
       "permission": "bedrock:ListPrompts",

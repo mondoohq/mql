@@ -984,6 +984,9 @@ const (
 	ResourceAwsControltowerLandingZone                                          string = "aws.controltower.landingZone"
 	ResourceAwsControltowerEnabledBaseline                                      string = "aws.controltower.enabledBaseline"
 	ResourceAwsBedrock                                                          string = "aws.bedrock"
+	ResourceAwsBedrockPromptRouter                                              string = "aws.bedrock.promptRouter"
+	ResourceAwsBedrockAutomatedReasoningPolicy                                  string = "aws.bedrock.automatedReasoningPolicy"
+	ResourceAwsBedrockCustomModelDeployment                                     string = "aws.bedrock.customModelDeployment"
 	ResourceAwsBedrockEnforcedGuardrail                                         string = "aws.bedrock.enforcedGuardrail"
 	ResourceAwsBedrockDataRetentionConfiguration                                string = "aws.bedrock.dataRetentionConfiguration"
 	ResourceAwsBedrockModelCustomizationJob                                     string = "aws.bedrock.modelCustomizationJob"
@@ -4971,6 +4974,18 @@ func init() {
 			// to override args, implement: initAwsBedrock(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAwsBedrock,
 		},
+		"aws.bedrock.promptRouter": {
+			// to override args, implement: initAwsBedrockPromptRouter(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsBedrockPromptRouter,
+		},
+		"aws.bedrock.automatedReasoningPolicy": {
+			// to override args, implement: initAwsBedrockAutomatedReasoningPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsBedrockAutomatedReasoningPolicy,
+		},
+		"aws.bedrock.customModelDeployment": {
+			// to override args, implement: initAwsBedrockCustomModelDeployment(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsBedrockCustomModelDeployment,
+		},
 		"aws.bedrock.enforcedGuardrail": {
 			// to override args, implement: initAwsBedrockEnforcedGuardrail(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAwsBedrockEnforcedGuardrail,
@@ -7808,6 +7823,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.iam.accountAlias": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsIam).GetAccountAlias()).ToDataRes(types.String)
+	},
+	"aws.iam.bedrockApiKeys": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsIam).GetBedrockApiKeys()).ToDataRes(types.Array(types.Resource("aws.iam.user.serviceSpecificCredential")))
 	},
 	"aws.iam.passwordPolicy.exists": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsIamPasswordPolicy).GetExists()).ToDataRes(types.Bool)
@@ -36855,6 +36873,117 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.bedrock.agentCore": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrock).GetAgentCore()).ToDataRes(types.Resource("aws.bedrock.agentCore"))
 	},
+	"aws.bedrock.promptRouters": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrock).GetPromptRouters()).ToDataRes(types.Array(types.Resource("aws.bedrock.promptRouter")))
+	},
+	"aws.bedrock.automatedReasoningPolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrock).GetAutomatedReasoningPolicies()).ToDataRes(types.Array(types.Resource("aws.bedrock.automatedReasoningPolicy")))
+	},
+	"aws.bedrock.customModelDeployments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrock).GetCustomModelDeployments()).ToDataRes(types.Array(types.Resource("aws.bedrock.customModelDeployment")))
+	},
+	"aws.bedrock.promptRouter.arn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockPromptRouter).GetArn()).ToDataRes(types.String)
+	},
+	"aws.bedrock.promptRouter.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockPromptRouter).GetName()).ToDataRes(types.String)
+	},
+	"aws.bedrock.promptRouter.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockPromptRouter).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.bedrock.promptRouter.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockPromptRouter).GetType()).ToDataRes(types.String)
+	},
+	"aws.bedrock.promptRouter.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockPromptRouter).GetStatus()).ToDataRes(types.String)
+	},
+	"aws.bedrock.promptRouter.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockPromptRouter).GetDescription()).ToDataRes(types.String)
+	},
+	"aws.bedrock.promptRouter.modelArns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockPromptRouter).GetModelArns()).ToDataRes(types.Array(types.String))
+	},
+	"aws.bedrock.promptRouter.foundationModels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockPromptRouter).GetFoundationModels()).ToDataRes(types.Array(types.Resource("aws.bedrock.foundationModel")))
+	},
+	"aws.bedrock.promptRouter.inferenceProfiles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockPromptRouter).GetInferenceProfiles()).ToDataRes(types.Array(types.Resource("aws.bedrock.inferenceProfile")))
+	},
+	"aws.bedrock.promptRouter.fallbackModelArn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockPromptRouter).GetFallbackModelArn()).ToDataRes(types.String)
+	},
+	"aws.bedrock.promptRouter.fallbackFoundationModel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockPromptRouter).GetFallbackFoundationModel()).ToDataRes(types.Resource("aws.bedrock.foundationModel"))
+	},
+	"aws.bedrock.promptRouter.fallbackInferenceProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockPromptRouter).GetFallbackInferenceProfile()).ToDataRes(types.Resource("aws.bedrock.inferenceProfile"))
+	},
+	"aws.bedrock.promptRouter.responseQualityDifference": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockPromptRouter).GetResponseQualityDifference()).ToDataRes(types.Float)
+	},
+	"aws.bedrock.promptRouter.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockPromptRouter).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"aws.bedrock.promptRouter.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockPromptRouter).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"aws.bedrock.automatedReasoningPolicy.arn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAutomatedReasoningPolicy).GetArn()).ToDataRes(types.String)
+	},
+	"aws.bedrock.automatedReasoningPolicy.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAutomatedReasoningPolicy).GetId()).ToDataRes(types.String)
+	},
+	"aws.bedrock.automatedReasoningPolicy.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAutomatedReasoningPolicy).GetName()).ToDataRes(types.String)
+	},
+	"aws.bedrock.automatedReasoningPolicy.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAutomatedReasoningPolicy).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.bedrock.automatedReasoningPolicy.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAutomatedReasoningPolicy).GetVersion()).ToDataRes(types.String)
+	},
+	"aws.bedrock.automatedReasoningPolicy.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAutomatedReasoningPolicy).GetDescription()).ToDataRes(types.String)
+	},
+	"aws.bedrock.automatedReasoningPolicy.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAutomatedReasoningPolicy).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"aws.bedrock.automatedReasoningPolicy.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAutomatedReasoningPolicy).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"aws.bedrock.automatedReasoningPolicy.definitionHash": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAutomatedReasoningPolicy).GetDefinitionHash()).ToDataRes(types.String)
+	},
+	"aws.bedrock.automatedReasoningPolicy.kmsKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAutomatedReasoningPolicy).GetKmsKey()).ToDataRes(types.Resource("aws.kms.key"))
+	},
+	"aws.bedrock.customModelDeployment.arn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockCustomModelDeployment).GetArn()).ToDataRes(types.String)
+	},
+	"aws.bedrock.customModelDeployment.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockCustomModelDeployment).GetName()).ToDataRes(types.String)
+	},
+	"aws.bedrock.customModelDeployment.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockCustomModelDeployment).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.bedrock.customModelDeployment.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockCustomModelDeployment).GetStatus()).ToDataRes(types.String)
+	},
+	"aws.bedrock.customModelDeployment.failureMessage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockCustomModelDeployment).GetFailureMessage()).ToDataRes(types.String)
+	},
+	"aws.bedrock.customModelDeployment.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockCustomModelDeployment).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"aws.bedrock.customModelDeployment.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockCustomModelDeployment).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"aws.bedrock.customModelDeployment.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockCustomModelDeployment).GetDescription()).ToDataRes(types.String)
+	},
+	"aws.bedrock.customModelDeployment.customModel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockCustomModelDeployment).GetCustomModel()).ToDataRes(types.Resource("aws.bedrock.customModel"))
+	},
 	"aws.bedrock.enforcedGuardrail.configId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockEnforcedGuardrail).GetConfigId()).ToDataRes(types.String)
 	},
@@ -38306,6 +38435,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.bedrock.foundationModel.modelLifecycleStatus": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockFoundationModel).GetModelLifecycleStatus()).ToDataRes(types.String)
+	},
+	"aws.bedrock.foundationModel.accessAuthorized": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockFoundationModel).GetAccessAuthorized()).ToDataRes(types.Bool)
+	},
+	"aws.bedrock.foundationModel.entitlementAvailable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockFoundationModel).GetEntitlementAvailable()).ToDataRes(types.Bool)
+	},
+	"aws.bedrock.foundationModel.availableInRegion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockFoundationModel).GetAvailableInRegion()).ToDataRes(types.Bool)
+	},
+	"aws.bedrock.foundationModel.agreementStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockFoundationModel).GetAgreementStatus()).ToDataRes(types.String)
 	},
 	"aws.bedrock.customModel.modelArn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockCustomModel).GetModelArn()).ToDataRes(types.String)
@@ -44188,6 +44329,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.iam.accountAlias": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsIam).AccountAlias, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.iam.bedrockApiKeys": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsIam).BedrockApiKeys, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"aws.iam.passwordPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -86442,6 +86587,166 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsBedrock).AgentCore, ok = plugin.RawToTValue[*mqlAwsBedrockAgentCore](v.Value, v.Error)
 		return
 	},
+	"aws.bedrock.promptRouters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrock).PromptRouters, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.automatedReasoningPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrock).AutomatedReasoningPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.customModelDeployments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrock).CustomModelDeployments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.promptRouter.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockPromptRouter).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.bedrock.promptRouter.arn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockPromptRouter).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.promptRouter.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockPromptRouter).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.promptRouter.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockPromptRouter).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.promptRouter.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockPromptRouter).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.promptRouter.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockPromptRouter).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.promptRouter.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockPromptRouter).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.promptRouter.modelArns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockPromptRouter).ModelArns, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.promptRouter.foundationModels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockPromptRouter).FoundationModels, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.promptRouter.inferenceProfiles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockPromptRouter).InferenceProfiles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.promptRouter.fallbackModelArn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockPromptRouter).FallbackModelArn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.promptRouter.fallbackFoundationModel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockPromptRouter).FallbackFoundationModel, ok = plugin.RawToTValue[*mqlAwsBedrockFoundationModel](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.promptRouter.fallbackInferenceProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockPromptRouter).FallbackInferenceProfile, ok = plugin.RawToTValue[*mqlAwsBedrockInferenceProfile](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.promptRouter.responseQualityDifference": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockPromptRouter).ResponseQualityDifference, ok = plugin.RawToTValue[float64](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.promptRouter.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockPromptRouter).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.promptRouter.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockPromptRouter).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.automatedReasoningPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAutomatedReasoningPolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.bedrock.automatedReasoningPolicy.arn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAutomatedReasoningPolicy).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.automatedReasoningPolicy.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAutomatedReasoningPolicy).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.automatedReasoningPolicy.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAutomatedReasoningPolicy).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.automatedReasoningPolicy.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAutomatedReasoningPolicy).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.automatedReasoningPolicy.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAutomatedReasoningPolicy).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.automatedReasoningPolicy.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAutomatedReasoningPolicy).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.automatedReasoningPolicy.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAutomatedReasoningPolicy).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.automatedReasoningPolicy.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAutomatedReasoningPolicy).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.automatedReasoningPolicy.definitionHash": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAutomatedReasoningPolicy).DefinitionHash, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.automatedReasoningPolicy.kmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAutomatedReasoningPolicy).KmsKey, ok = plugin.RawToTValue[*mqlAwsKmsKey](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.customModelDeployment.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockCustomModelDeployment).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.bedrock.customModelDeployment.arn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockCustomModelDeployment).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.customModelDeployment.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockCustomModelDeployment).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.customModelDeployment.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockCustomModelDeployment).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.customModelDeployment.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockCustomModelDeployment).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.customModelDeployment.failureMessage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockCustomModelDeployment).FailureMessage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.customModelDeployment.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockCustomModelDeployment).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.customModelDeployment.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockCustomModelDeployment).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.customModelDeployment.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockCustomModelDeployment).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.customModelDeployment.customModel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockCustomModelDeployment).CustomModel, ok = plugin.RawToTValue[*mqlAwsBedrockCustomModel](v.Value, v.Error)
+		return
+	},
 	"aws.bedrock.enforcedGuardrail.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsBedrockEnforcedGuardrail).__id, ok = v.Value.(string)
 		return
@@ -88528,6 +88833,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.bedrock.foundationModel.modelLifecycleStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsBedrockFoundationModel).ModelLifecycleStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.foundationModel.accessAuthorized": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockFoundationModel).AccessAuthorized, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.foundationModel.entitlementAvailable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockFoundationModel).EntitlementAvailable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.foundationModel.availableInRegion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockFoundationModel).AvailableInRegion, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.foundationModel.agreementStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockFoundationModel).AgreementStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.bedrock.customModel.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -101418,6 +101739,7 @@ type mqlAwsIam struct {
 	SamlProviders      plugin.TValue[[]any]
 	OidcProviders      plugin.TValue[[]any]
 	AccountAlias       plugin.TValue[string]
+	BedrockApiKeys     plugin.TValue[[]any]
 }
 
 // createAwsIam creates a new instance of this resource
@@ -101664,6 +101986,22 @@ func (c *mqlAwsIam) GetOidcProviders() *plugin.TValue[[]any] {
 func (c *mqlAwsIam) GetAccountAlias() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.AccountAlias, func() (string, error) {
 		return c.accountAlias()
+	})
+}
+
+func (c *mqlAwsIam) GetBedrockApiKeys() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.BedrockApiKeys, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.iam", c.__id, "bedrockApiKeys")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.bedrockApiKeys()
 	})
 }
 
@@ -209935,6 +210273,9 @@ type mqlAwsBedrock struct {
 	ModelCopyJobs                        plugin.TValue[[]any]
 	MarketplaceModelEndpoints            plugin.TValue[[]any]
 	AgentCore                            plugin.TValue[*mqlAwsBedrockAgentCore]
+	PromptRouters                        plugin.TValue[[]any]
+	AutomatedReasoningPolicies           plugin.TValue[[]any]
+	CustomModelDeployments               plugin.TValue[[]any]
 }
 
 // createAwsBedrock creates a new instance of this resource
@@ -210307,6 +210648,417 @@ func (c *mqlAwsBedrock) GetAgentCore() *plugin.TValue[*mqlAwsBedrockAgentCore] {
 		}
 
 		return c.agentCore()
+	})
+}
+
+func (c *mqlAwsBedrock) GetPromptRouters() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PromptRouters, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock", c.__id, "promptRouters")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.promptRouters()
+	})
+}
+
+func (c *mqlAwsBedrock) GetAutomatedReasoningPolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AutomatedReasoningPolicies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock", c.__id, "automatedReasoningPolicies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.automatedReasoningPolicies()
+	})
+}
+
+func (c *mqlAwsBedrock) GetCustomModelDeployments() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.CustomModelDeployments, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock", c.__id, "customModelDeployments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.customModelDeployments()
+	})
+}
+
+// mqlAwsBedrockPromptRouter for the aws.bedrock.promptRouter resource
+type mqlAwsBedrockPromptRouter struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAwsBedrockPromptRouterInternal it will be used here
+	Arn                       plugin.TValue[string]
+	Name                      plugin.TValue[string]
+	Region                    plugin.TValue[string]
+	Type                      plugin.TValue[string]
+	Status                    plugin.TValue[string]
+	Description               plugin.TValue[string]
+	ModelArns                 plugin.TValue[[]any]
+	FoundationModels          plugin.TValue[[]any]
+	InferenceProfiles         plugin.TValue[[]any]
+	FallbackModelArn          plugin.TValue[string]
+	FallbackFoundationModel   plugin.TValue[*mqlAwsBedrockFoundationModel]
+	FallbackInferenceProfile  plugin.TValue[*mqlAwsBedrockInferenceProfile]
+	ResponseQualityDifference plugin.TValue[float64]
+	CreatedAt                 plugin.TValue[*time.Time]
+	UpdatedAt                 plugin.TValue[*time.Time]
+}
+
+// createAwsBedrockPromptRouter creates a new instance of this resource
+func createAwsBedrockPromptRouter(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsBedrockPromptRouter{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.bedrock.promptRouter", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsBedrockPromptRouter) MqlName() string {
+	return "aws.bedrock.promptRouter"
+}
+
+func (c *mqlAwsBedrockPromptRouter) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsBedrockPromptRouter) GetArn() *plugin.TValue[string] {
+	return &c.Arn
+}
+
+func (c *mqlAwsBedrockPromptRouter) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAwsBedrockPromptRouter) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlAwsBedrockPromptRouter) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlAwsBedrockPromptRouter) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlAwsBedrockPromptRouter) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlAwsBedrockPromptRouter) GetModelArns() *plugin.TValue[[]any] {
+	return &c.ModelArns
+}
+
+func (c *mqlAwsBedrockPromptRouter) GetFoundationModels() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.FoundationModels, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.promptRouter", c.__id, "foundationModels")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.foundationModels()
+	})
+}
+
+func (c *mqlAwsBedrockPromptRouter) GetInferenceProfiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.InferenceProfiles, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.promptRouter", c.__id, "inferenceProfiles")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.inferenceProfiles()
+	})
+}
+
+func (c *mqlAwsBedrockPromptRouter) GetFallbackModelArn() *plugin.TValue[string] {
+	return &c.FallbackModelArn
+}
+
+func (c *mqlAwsBedrockPromptRouter) GetFallbackFoundationModel() *plugin.TValue[*mqlAwsBedrockFoundationModel] {
+	return plugin.GetOrCompute[*mqlAwsBedrockFoundationModel](&c.FallbackFoundationModel, func() (*mqlAwsBedrockFoundationModel, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.promptRouter", c.__id, "fallbackFoundationModel")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsBedrockFoundationModel), nil
+			}
+		}
+
+		return c.fallbackFoundationModel()
+	})
+}
+
+func (c *mqlAwsBedrockPromptRouter) GetFallbackInferenceProfile() *plugin.TValue[*mqlAwsBedrockInferenceProfile] {
+	return plugin.GetOrCompute[*mqlAwsBedrockInferenceProfile](&c.FallbackInferenceProfile, func() (*mqlAwsBedrockInferenceProfile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.promptRouter", c.__id, "fallbackInferenceProfile")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsBedrockInferenceProfile), nil
+			}
+		}
+
+		return c.fallbackInferenceProfile()
+	})
+}
+
+func (c *mqlAwsBedrockPromptRouter) GetResponseQualityDifference() *plugin.TValue[float64] {
+	return &c.ResponseQualityDifference
+}
+
+func (c *mqlAwsBedrockPromptRouter) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlAwsBedrockPromptRouter) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+// mqlAwsBedrockAutomatedReasoningPolicy for the aws.bedrock.automatedReasoningPolicy resource
+type mqlAwsBedrockAutomatedReasoningPolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsBedrockAutomatedReasoningPolicyInternal
+	Arn            plugin.TValue[string]
+	Id             plugin.TValue[string]
+	Name           plugin.TValue[string]
+	Region         plugin.TValue[string]
+	Version        plugin.TValue[string]
+	Description    plugin.TValue[string]
+	CreatedAt      plugin.TValue[*time.Time]
+	UpdatedAt      plugin.TValue[*time.Time]
+	DefinitionHash plugin.TValue[string]
+	KmsKey         plugin.TValue[*mqlAwsKmsKey]
+}
+
+// createAwsBedrockAutomatedReasoningPolicy creates a new instance of this resource
+func createAwsBedrockAutomatedReasoningPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsBedrockAutomatedReasoningPolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.bedrock.automatedReasoningPolicy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsBedrockAutomatedReasoningPolicy) MqlName() string {
+	return "aws.bedrock.automatedReasoningPolicy"
+}
+
+func (c *mqlAwsBedrockAutomatedReasoningPolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsBedrockAutomatedReasoningPolicy) GetArn() *plugin.TValue[string] {
+	return &c.Arn
+}
+
+func (c *mqlAwsBedrockAutomatedReasoningPolicy) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAwsBedrockAutomatedReasoningPolicy) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAwsBedrockAutomatedReasoningPolicy) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlAwsBedrockAutomatedReasoningPolicy) GetVersion() *plugin.TValue[string] {
+	return &c.Version
+}
+
+func (c *mqlAwsBedrockAutomatedReasoningPolicy) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlAwsBedrockAutomatedReasoningPolicy) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlAwsBedrockAutomatedReasoningPolicy) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlAwsBedrockAutomatedReasoningPolicy) GetDefinitionHash() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.DefinitionHash, func() (string, error) {
+		return c.definitionHash()
+	})
+}
+
+func (c *mqlAwsBedrockAutomatedReasoningPolicy) GetKmsKey() *plugin.TValue[*mqlAwsKmsKey] {
+	return plugin.GetOrCompute[*mqlAwsKmsKey](&c.KmsKey, func() (*mqlAwsKmsKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.automatedReasoningPolicy", c.__id, "kmsKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsKmsKey), nil
+			}
+		}
+
+		return c.kmsKey()
+	})
+}
+
+// mqlAwsBedrockCustomModelDeployment for the aws.bedrock.customModelDeployment resource
+type mqlAwsBedrockCustomModelDeployment struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsBedrockCustomModelDeploymentInternal
+	Arn            plugin.TValue[string]
+	Name           plugin.TValue[string]
+	Region         plugin.TValue[string]
+	Status         plugin.TValue[string]
+	FailureMessage plugin.TValue[string]
+	CreatedAt      plugin.TValue[*time.Time]
+	UpdatedAt      plugin.TValue[*time.Time]
+	Description    plugin.TValue[string]
+	CustomModel    plugin.TValue[*mqlAwsBedrockCustomModel]
+}
+
+// createAwsBedrockCustomModelDeployment creates a new instance of this resource
+func createAwsBedrockCustomModelDeployment(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsBedrockCustomModelDeployment{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.bedrock.customModelDeployment", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsBedrockCustomModelDeployment) MqlName() string {
+	return "aws.bedrock.customModelDeployment"
+}
+
+func (c *mqlAwsBedrockCustomModelDeployment) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsBedrockCustomModelDeployment) GetArn() *plugin.TValue[string] {
+	return &c.Arn
+}
+
+func (c *mqlAwsBedrockCustomModelDeployment) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAwsBedrockCustomModelDeployment) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlAwsBedrockCustomModelDeployment) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlAwsBedrockCustomModelDeployment) GetFailureMessage() *plugin.TValue[string] {
+	return &c.FailureMessage
+}
+
+func (c *mqlAwsBedrockCustomModelDeployment) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlAwsBedrockCustomModelDeployment) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlAwsBedrockCustomModelDeployment) GetDescription() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Description, func() (string, error) {
+		return c.description()
+	})
+}
+
+func (c *mqlAwsBedrockCustomModelDeployment) GetCustomModel() *plugin.TValue[*mqlAwsBedrockCustomModel] {
+	return plugin.GetOrCompute[*mqlAwsBedrockCustomModel](&c.CustomModel, func() (*mqlAwsBedrockCustomModel, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.customModelDeployment", c.__id, "customModel")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsBedrockCustomModel), nil
+			}
+		}
+
+		return c.customModel()
 	})
 }
 
@@ -215686,7 +216438,7 @@ func (c *mqlAwsBedrockAdvancedPromptOptimizationJob) GetTags() *plugin.TValue[ma
 type mqlAwsBedrockFoundationModel struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlAwsBedrockFoundationModelInternal it will be used here
+	mqlAwsBedrockFoundationModelInternal
 	ModelArn                   plugin.TValue[string]
 	ModelId                    plugin.TValue[string]
 	ModelName                  plugin.TValue[string]
@@ -215697,6 +216449,10 @@ type mqlAwsBedrockFoundationModel struct {
 	InferenceTypesSupported    plugin.TValue[[]any]
 	ResponseStreamingSupported plugin.TValue[bool]
 	ModelLifecycleStatus       plugin.TValue[string]
+	AccessAuthorized           plugin.TValue[bool]
+	EntitlementAvailable       plugin.TValue[bool]
+	AvailableInRegion          plugin.TValue[bool]
+	AgreementStatus            plugin.TValue[string]
 }
 
 // createAwsBedrockFoundationModel creates a new instance of this resource
@@ -215774,6 +216530,30 @@ func (c *mqlAwsBedrockFoundationModel) GetResponseStreamingSupported() *plugin.T
 
 func (c *mqlAwsBedrockFoundationModel) GetModelLifecycleStatus() *plugin.TValue[string] {
 	return &c.ModelLifecycleStatus
+}
+
+func (c *mqlAwsBedrockFoundationModel) GetAccessAuthorized() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AccessAuthorized, func() (bool, error) {
+		return c.accessAuthorized()
+	})
+}
+
+func (c *mqlAwsBedrockFoundationModel) GetEntitlementAvailable() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.EntitlementAvailable, func() (bool, error) {
+		return c.entitlementAvailable()
+	})
+}
+
+func (c *mqlAwsBedrockFoundationModel) GetAvailableInRegion() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AvailableInRegion, func() (bool, error) {
+		return c.availableInRegion()
+	})
+}
+
+func (c *mqlAwsBedrockFoundationModel) GetAgreementStatus() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.AgreementStatus, func() (string, error) {
+		return c.agreementStatus()
+	})
 }
 
 // mqlAwsBedrockCustomModel for the aws.bedrock.customModel resource
