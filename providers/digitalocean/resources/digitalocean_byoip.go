@@ -12,6 +12,7 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/digitalocean/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // --- BYOIP prefixes ---
@@ -155,10 +156,10 @@ func partnerAttachmentArgs(p *godo.PartnerAttachment) map[string]*llx.RawData {
 		"region":                    llx.StringData(p.Region),
 		"naasProvider":              llx.StringData(p.NaaSProvider),
 		"redundancyZone":            llx.StringData(p.RedundancyZone),
-		"vpcIds":                    llx.ArrayData(vpcIds, "\x02"),
+		"vpcIds":                    llx.ArrayData(vpcIds, types.String),
 		"bgp":                       llx.DictData(bgp),
 		"parentUuid":                llx.StringData(p.ParentUuid),
-		"children":                  llx.ArrayData(children, "\x02"),
+		"children":                  llx.ArrayData(children, types.String),
 		"createdAt":                 llx.TimeData(p.CreatedAt),
 	}
 }

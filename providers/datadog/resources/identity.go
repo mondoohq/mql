@@ -16,6 +16,7 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/datadog/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // datadogRoot returns the cached datadog singleton. It owns the once-fetched
@@ -520,7 +521,7 @@ func (r *mqlDatadog) org() (*mqlDatadogOrganization, error) {
 		"samlIdpEndpoint":              llx.StringData(settings.GetSamlIdpEndpoint()),
 		"samlLoginUrl":                 llx.StringData(settings.GetSamlLoginUrl()),
 		"samlAutocreateUsersEnabled":   llx.BoolData(autocreate.GetEnabled()),
-		"samlAutocreateUsersDomains":   llx.ArrayData(toAnyStrings(autocreate.GetDomains()), "\x02"),
+		"samlAutocreateUsersDomains":   llx.ArrayData(toAnyStrings(autocreate.GetDomains()), types.String),
 		"samlAutocreateAccessRole":     llx.StringData(string(settings.GetSamlAutocreateAccessRole())),
 		"privateWidgetShare":           llx.BoolData(settings.GetPrivateWidgetShare()),
 	})

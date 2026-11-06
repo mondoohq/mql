@@ -149,11 +149,11 @@ func (a *mqlAwsNetworkfirewall) getFirewalls(conn *connection.AwsConnection) []*
 						"subnetChangeProtection":         llx.BoolData(f.SubnetChangeProtection),
 						"firewallPolicyChangeProtection": llx.BoolData(f.FirewallPolicyChangeProtection),
 						"firewallPolicyArn":              llx.StringDataPtr(f.FirewallPolicyArn),
-						"subnetMappings":                 llx.ArrayData(subnetMappings, "dict"),
+						"subnetMappings":                 llx.ArrayData(subnetMappings, types.Dict),
 						"encryptionType":                 llx.StringData(encryptionType),
 						"noSourcePreservation":           llx.BoolData(f.NoSourcePreservation),
-						"proxyListeners":                 llx.ArrayData(proxyListeners, "dict"),
-						"tags":                           llx.MapData(tags, "string"),
+						"proxyListeners":                 llx.ArrayData(proxyListeners, types.Dict),
+						"tags":                           llx.MapData(tags, types.String),
 					})
 				if err != nil {
 					return nil, err
@@ -614,20 +614,20 @@ func networkfirewallPolicyToMql(runtime *plugin.Runtime, policyResp *nftypes.Fir
 			"consumedStatelessRuleCapacity":       llx.IntData(consumedStatelessRule),
 			"consumedStatefulRuleCapacity":        llx.IntData(consumedStatefulRule),
 			"lastModifiedTime":                    llx.TimeDataPtr(policyResp.LastModifiedTime),
-			"statelessDefaultActions":             llx.ArrayData(llx.TArr2Raw(policy.StatelessDefaultActions), "string"),
-			"statelessFragmentDefaultActions":     llx.ArrayData(llx.TArr2Raw(policy.StatelessFragmentDefaultActions), "string"),
-			"statelessCustomActions":              llx.ArrayData(statelessCustomActions, "dict"),
-			"statelessRuleGroupReferences":        llx.ArrayData(statelessRuleGroupRefs, "dict"),
-			"statefulDefaultActions":              llx.ArrayData(llx.TArr2Raw(policy.StatefulDefaultActions), "string"),
-			"statefulRuleGroupReferences":         llx.ArrayData(statefulRuleGroupRefs, "dict"),
+			"statelessDefaultActions":             llx.ArrayData(llx.TArr2Raw(policy.StatelessDefaultActions), types.String),
+			"statelessFragmentDefaultActions":     llx.ArrayData(llx.TArr2Raw(policy.StatelessFragmentDefaultActions), types.String),
+			"statelessCustomActions":              llx.ArrayData(statelessCustomActions, types.Dict),
+			"statelessRuleGroupReferences":        llx.ArrayData(statelessRuleGroupRefs, types.Dict),
+			"statefulDefaultActions":              llx.ArrayData(llx.TArr2Raw(policy.StatefulDefaultActions), types.String),
+			"statefulRuleGroupReferences":         llx.ArrayData(statefulRuleGroupRefs, types.Dict),
 			"statefulEngineOptions":               llx.DictData(statefulEngineOpts),
 			"statefulEngineRuleOrder":             llx.StringData(statefulEngineRuleOrder),
 			"statefulEngineStreamExceptionPolicy": llx.StringData(streamExceptionPolicy),
-			"policyVariables":                     llx.ArrayData(policyVariables, "dict"),
+			"policyVariables":                     llx.ArrayData(policyVariables, types.Dict),
 			"tlsInspectionConfigurationArn":       llx.StringDataPtr(policy.TLSInspectionConfigurationArn),
 			"consumedStatefulDomainCapacity":      llx.IntData(consumedStatefulDomain),
 			"encryptionType":                      llx.StringData(encryptionType),
-			"tags":                                llx.MapData(tags, "string"),
+			"tags":                                llx.MapData(tags, types.String),
 		})
 	if err != nil {
 		return nil, err
@@ -969,12 +969,12 @@ func networkfirewallRuleGroupToMql(runtime *plugin.Runtime, resp *nftypes.RuleGr
 			"ruleGroupStatus":      llx.StringData(string(resp.RuleGroupStatus)),
 			"rules":                llx.DictData(rules),
 			"rulesString":          llx.StringData(rulesString),
-			"referenceSets":        llx.ArrayData(referenceSets, "dict"),
-			"ruleVariables":        llx.ArrayData(ruleVariables, "dict"),
+			"referenceSets":        llx.ArrayData(referenceSets, types.Dict),
+			"ruleVariables":        llx.ArrayData(ruleVariables, types.Dict),
 			"statefulRuleOrder":    llx.StringData(statefulRuleOrder),
-			"sourceMetadata":       llx.ArrayData(sourceMetadata, "dict"),
+			"sourceMetadata":       llx.ArrayData(sourceMetadata, types.Dict),
 			"encryptionType":       llx.StringData(encryptionType),
-			"tags":                 llx.MapData(tags, "string"),
+			"tags":                 llx.MapData(tags, types.String),
 		})
 	if err != nil {
 		return nil, err
@@ -1161,11 +1161,11 @@ func networkfirewallTLSInspectionConfigToMql(runtime *plugin.Runtime, resp *nfty
 			"status":                          llx.StringData(string(resp.TLSInspectionConfigurationStatus)),
 			"numberOfAssociations":            llx.IntData(numberOfAssociations),
 			"lastModifiedTime":                llx.TimeDataPtr(resp.LastModifiedTime),
-			"serverCertificateConfigurations": llx.ArrayData(serverCertConfigs, "dict"),
-			"scopes":                          llx.ArrayData(scopes, "dict"),
-			"certificateAuthorityArns":        llx.ArrayData(caArnsAny, "string"),
+			"serverCertificateConfigurations": llx.ArrayData(serverCertConfigs, types.Dict),
+			"scopes":                          llx.ArrayData(scopes, types.Dict),
+			"certificateAuthorityArns":        llx.ArrayData(caArnsAny, types.String),
 			"encryptionType":                  llx.StringData(encryptionType),
-			"tags":                            llx.MapData(tags, "string"),
+			"tags":                            llx.MapData(tags, types.String),
 		})
 	if err != nil {
 		return nil, err

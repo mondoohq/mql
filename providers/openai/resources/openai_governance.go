@@ -14,6 +14,7 @@ import (
 	"github.com/openai/openai-go/v3"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 // isNotFound reports whether the API answered "this is not configured". The
@@ -164,7 +165,7 @@ func spendAlertArgs(scope, id string, threshold int64, currency, interval, notif
 		"currency":                  llx.StringData(currency),
 		"interval":                  llx.StringData(interval),
 		"notificationType":          llx.StringData(notificationType),
-		"notificationRecipients":    llx.ArrayData(convertStringSlice(recipients), "string"),
+		"notificationRecipients":    llx.ArrayData(convertStringSlice(recipients), types.String),
 		"notificationSubjectPrefix": llx.StringData(subjectPrefix),
 	}
 }

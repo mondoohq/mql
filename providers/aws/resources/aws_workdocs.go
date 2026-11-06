@@ -17,6 +17,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
 	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 type mqlAwsWorkdocsInternal struct {
@@ -272,7 +273,7 @@ func newWorkdocsFolderShell(runtime *plugin.Runtime, region, organizationId, fol
 		"latestVersionSize": llx.IntData(0),
 		"size":              llx.IntData(0),
 		"signature":         llx.StringData(""),
-		"labels":            llx.ArrayData([]any{}, "string"),
+		"labels":            llx.ArrayData([]any{}, types.String),
 		"region":            llx.StringData(region),
 		"organizationId":    llx.StringData(organizationId),
 	})
@@ -311,7 +312,7 @@ func newMqlAwsWorkdocsFolder(runtime *plugin.Runtime, region, organizationId str
 		"latestVersionSize": llx.IntData(latestVersionSize),
 		"size":              llx.IntData(size),
 		"signature":         llx.StringDataPtr(fm.Signature),
-		"labels":            llx.ArrayData(labels, "string"),
+		"labels":            llx.ArrayData(labels, types.String),
 		"region":            llx.StringData(region),
 		"organizationId":    llx.StringData(organizationId),
 	}
@@ -350,7 +351,7 @@ func newMqlAwsWorkdocsDocument(runtime *plugin.Runtime, region, organizationId s
 		"modifiedTimestamp":     llx.TimeDataPtr(dm.ModifiedTimestamp),
 		"resourceState":         llx.StringData(string(dm.ResourceState)),
 		"latestVersionMetadata": llx.DictData(latestVersion),
-		"labels":                llx.ArrayData(labels, "string"),
+		"labels":                llx.ArrayData(labels, types.String),
 		"region":                llx.StringData(region),
 		"organizationId":        llx.StringData(organizationId),
 	}

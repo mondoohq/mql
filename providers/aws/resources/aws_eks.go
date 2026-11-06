@@ -19,6 +19,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
 	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsEks) id() (string, error) {
@@ -1395,7 +1396,7 @@ func (a *mqlAwsEksAccessEntry) accessPolicies() ([]any, error) {
 					"__id":         llx.StringData(fmt.Sprintf("aws.eks.accessPolicy/%s/%s/%s/%s", a.region, a.clusterName, a.PrincipalArn.Data, convert.ToValue(policy.PolicyArn))),
 					"policyArn":    llx.StringDataPtr(policy.PolicyArn),
 					"scopeType":    llx.StringData(scopeType),
-					"namespaces":   llx.ArrayData(namespaces, "\x02"),
+					"namespaces":   llx.ArrayData(namespaces, types.String),
 					"associatedAt": llx.TimeDataPtr(policy.AssociatedAt),
 					"modifiedAt":   llx.TimeDataPtr(policy.ModifiedAt),
 					"clusterName":  llx.StringData(a.clusterName),
@@ -2154,8 +2155,8 @@ func (a *mqlAwsEksCluster) availableAddonVersions() ([]any, error) {
 						"__id":                   llx.StringData(fmt.Sprintf("aws.eks.addonVersion/%s/%s/%s", regionVal, addonName, version)),
 						"addonName":              llx.StringData(addonName),
 						"addonVersion":           llx.StringData(version),
-						"architectures":          llx.ArrayData(archs, "\x02"),
-						"computeTypes":           llx.ArrayData(computeTypes, "\x02"),
+						"architectures":          llx.ArrayData(archs, types.String),
+						"computeTypes":           llx.ArrayData(computeTypes, types.String),
 						"requiresConfiguration":  llx.BoolData(versionInfo.RequiresConfiguration),
 						"requiresIamPermissions": llx.BoolData(versionInfo.RequiresIamPermissions),
 					})

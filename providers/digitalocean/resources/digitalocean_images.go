@@ -12,6 +12,7 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/digitalocean/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // --- Images ---
@@ -34,13 +35,13 @@ func newMqlDigitaloceanImage(runtime *plugin.Runtime, img godo.Image) (*mqlDigit
 		"distribution":  llx.StringData(img.Distribution),
 		"slug":          llx.StringData(img.Slug),
 		"public":        llx.BoolData(img.Public),
-		"regions":       llx.ArrayData(regions, "\x02"),
+		"regions":       llx.ArrayData(regions, types.String),
 		"minDiskSize":   llx.IntData(int64(img.MinDiskSize)),
 		"sizeGigabytes": llx.FloatData(img.SizeGigaBytes),
 		"description":   llx.StringData(img.Description),
 		"status":        llx.StringData(img.Status),
 		"errorMessage":  llx.StringData(img.ErrorMessage),
-		"tags":          llx.ArrayData(tags, "\x02"),
+		"tags":          llx.ArrayData(tags, types.String),
 		"createdAt":     llx.TimeDataPtr(parseDoTime(img.Created)),
 	})
 	if err != nil {
@@ -103,10 +104,10 @@ func (r *mqlDigitalocean) snapshots() ([]any, error) {
 			"name":          llx.StringData(s.Name),
 			"resourceId":    llx.StringData(s.ResourceID),
 			"resourceType":  llx.StringData(s.ResourceType),
-			"regions":       llx.ArrayData(regions, "\x02"),
+			"regions":       llx.ArrayData(regions, types.String),
 			"minDiskSize":   llx.IntData(int64(s.MinDiskSize)),
 			"sizeGigabytes": llx.FloatData(s.SizeGigaBytes),
-			"tags":          llx.ArrayData(tags, "\x02"),
+			"tags":          llx.ArrayData(tags, types.String),
 			"createdAt":     llx.TimeDataPtr(parseDoTime(s.Created)),
 		})
 		if err != nil {

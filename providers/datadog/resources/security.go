@@ -15,6 +15,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers/datadog/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // --- Sensitive Data Scanner Groups ---
@@ -56,7 +57,7 @@ func (r *mqlDatadog) sensitiveDataScannerGroups() ([]any, error) {
 			"name":        llx.StringData(attrs.GetName()),
 			"description": llx.StringData(attrs.GetDescription()),
 			"isEnabled":   llx.BoolData(attrs.GetIsEnabled()),
-			"productList": llx.ArrayData(productList, "\x02"),
+			"productList": llx.ArrayData(productList, types.String),
 			"filter":      llx.StringData(filterQuery),
 		})
 		if err != nil {
@@ -262,7 +263,7 @@ func (r *mqlDatadog) logsArchives() ([]any, error) {
 			"state":                      llx.StringData(state),
 			"includeTags":                llx.BoolData(includeTags),
 			"rehydrationMaxScanSizeInGb": llx.IntData(rehydrationMaxScan),
-			"rehydrationTags":            llx.ArrayData(rehydrationTags, "\x02"),
+			"rehydrationTags":            llx.ArrayData(rehydrationTags, types.String),
 			"destinationType":            llx.StringData(destType),
 			"destination":                llx.DictData(dest),
 		})
@@ -348,7 +349,7 @@ func (r *mqlDatadog) syntheticsGlobalVariables() ([]any, error) {
 			"id":                llx.StringData(v.GetId()),
 			"name":              llx.StringData(v.GetName()),
 			"description":       llx.StringData(v.GetDescription()),
-			"tags":              llx.ArrayData(tags, "\x02"),
+			"tags":              llx.ArrayData(tags, types.String),
 			"isTotp":            llx.BoolData(v.GetIsTotp()),
 			"isFido":            llx.BoolData(v.GetIsFido()),
 			"parseTestPublicId": llx.StringData(parseTestId),

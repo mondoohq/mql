@@ -10,6 +10,7 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/proxmox/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // mqlProxmoxUserInternal caches the inline token list from
@@ -55,7 +56,7 @@ func (r *mqlProxmox) groups() ([]any, error) {
 		res, err := CreateResource(r.MqlRuntime, "proxmox.group", map[string]*llx.RawData{
 			"id":        llx.StringData(g.GroupID),
 			"comment":   llx.StringData(g.Comment),
-			"memberIds": llx.ArrayData(memberIds, "\x02"),
+			"memberIds": llx.ArrayData(memberIds, types.String),
 		})
 		if err != nil {
 			return nil, err

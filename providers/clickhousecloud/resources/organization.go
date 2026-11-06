@@ -9,6 +9,7 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/clickhousecloud/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func initClickhousecloudOrganization(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -102,7 +103,7 @@ func (r *mqlClickhousecloudOrganization) apiKeys() ([]any, error) {
 			"id":           llx.StringData(k.ID),
 			"name":         llx.StringData(k.Name),
 			"state":        llx.StringData(k.State),
-			"roles":        llx.ArrayData(toAnySlice(roleNames(k.AssignedRoles)), "string"),
+			"roles":        llx.ArrayData(toAnySlice(roleNames(k.AssignedRoles)), types.String),
 			"neverExpires": llx.BoolData(k.ExpireAt == ""),
 			"expiresAt":    timeData(k.ExpireAt),
 			"usedAt":       timeData(k.UsedAt),

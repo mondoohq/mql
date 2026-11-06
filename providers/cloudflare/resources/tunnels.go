@@ -216,7 +216,7 @@ func fetchTunnels(runtime *plugin.Runtime, accountID string) ([]any, error) {
 			"remoteConfig": llx.BoolData(string(rec.ConfigSrc) == "cloudflare"),
 			"createdAt":    timeOrNil(rec.CreatedAt),
 			"deletedAt":    timeOrNil(rec.DeletedAt),
-			"connections":  llx.ArrayData(connections, "cloudflare.tunnel.connection"),
+			"connections":  llx.ArrayData(connections, types.Resource("cloudflare.tunnel.connection")),
 		})
 		if err != nil {
 			return nil, err
