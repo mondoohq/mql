@@ -9,6 +9,7 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/artifacts"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // ----- selecting a collection's members by owner -----
@@ -156,4 +157,95 @@ func TestOciContainerImageSigningAlgorithmCoverage(t *testing.T) {
 			"artifacts.ContainerImageSignatureSummarySigningAlgorithm %q is missing from the "+
 				"signingAlgorithm documentation in oci.lr", value)
 	}
+}
+
+// ----- container repositories -----
+
+func TestOciContainerRepositoryFields(t *testing.T) {
+	t.Run("a pull-through repository reports its type and top-level flag", func(t *testing.T) {
+		// Synthetic: field shapes from the v65.129.0 SDK model; no live
+		// pull-through repository was available.
+		fields := ociContainerRepositoryFields(artifacts.ContainerRepositorySummary{
+			Id:             new("ocid1.containerrepo.oc1..aaa"),
+			DisplayName:    new("dockerhub"),
+			IsPublic:       new(false),
+			RepositoryType: artifacts.ContainerRepositoryRepositoryTypePullThrough,
+			IsTopLevel:     new(true),
+			LifecycleState: artifacts.ContainerRepositoryLifecycleStateAvailable,
+		})
+		assert.Equal(t, "ocid1.containerrepo.oc1..aaa", fields["id"].Value)
+		assert.Equal(t, "dockerhub", fields["name"].Value)
+		assert.Equal(t, "PULL_THROUGH", fields["repositoryType"].Value)
+		assert.Equal(t, true, fields["isTopLevel"].Value)
+		assert.Equal(t, false, fields["isPublic"].Value)
+	})
+
+	t.Run("a repository that is not top-level reads false, not null", func(t *testing.T) {
+		// Synthetic: explicit false from the service.
+		fields := ociContainerRepositoryFields(artifacts.ContainerRepositorySummary{
+			RepositoryType: artifacts.ContainerRepositoryRepositoryTypeStandard,
+			IsTopLevel:     new(false),
+		})
+		assert.Equal(t, "STANDARD", fields["repositoryType"].Value)
+		assert.Equal(t, false, fields["isTopLevel"].Value)
+	})
+
+	t.Run("a listing without the new fields reports them null", func(t *testing.T) {
+		// Synthetic: a record that carries neither field.
+		fields := ociContainerRepositoryFields(artifacts.ContainerRepositorySummary{})
+		assert.Nil(t, fields["repositoryType"].Value)
+		assert.Nil(t, fields["isTopLevel"].Value)
+	})
+}
+
+func TestOciContainerRepositoryTypeCoverage(t *testing.T) {
+	// repositoryType is passed through verbatim and oci.lr lists the values,
+	// so a fourth type would make the documented list wrong.
+	documented := map[string]bool{"STANDARD": true, "PULL_THROUGH": true, "MULTI_REGION": true}
+
+	values := artifacts.GetContainerRepositoryRepositoryTypeEnumStringValues()
+	require.NotEmpty(t, values, "the SDK enum helper returned nothing; the drift check would pass vacuously")
+	for _, value := range values {
+		assert.Truef(t, documented[value],
+			"artifacts.ContainerRepositoryRepositoryType %q is missing from the repositoryType documentation in oci.lr", value)
+	}
+}
+
+func TestOciContainerRepositoryUpstreamSecretID(t *testing.T) {
+	t.Run("a pull-through repository resolves its vault secret", func(t *testing.T) {
+		// Synthetic: no live pull-through repository was available.
+		id := ociContainerRepositoryUpstreamSecretID(&artifacts.ContainerRepository{
+			UpstreamSecretId: new("ocid1.vaultsecret.oc1.iad.aaa"),
+		})
+		assert.Equal(t, "ocid1.vaultsecret.oc1.iad.aaa", id)
+	})
+
+	t.Run("an anonymous or standard repository has no secret", func(t *testing.T) {
+		// Synthetic: absent and empty upstreamSecretId.
+		assert.Empty(t, ociContainerRepositoryUpstreamSecretID(&artifacts.ContainerRepository{}))
+		assert.Empty(t, ociContainerRepositoryUpstreamSecretID(&artifacts.ContainerRepository{UpstreamSecretId: new("")}))
+		assert.Empty(t, ociContainerRepositoryUpstreamSecretID(nil))
+	})
+
+	t.Run("a value that is not an OCID is not resolved", func(t *testing.T) {
+		// Synthetic: passing a placeholder to the secret init would surface a
+		// not-found error instead of null.
+		assert.Empty(t, ociContainerRepositoryUpstreamSecretID(&artifacts.ContainerRepository{UpstreamSecretId: new("none")}))
+	})
+}
+
+func TestOciOptionalStringField(t *testing.T) {
+	t.Run("a value is reported and the field is left unmarked", func(t *testing.T) {
+		field := &plugin.TValue[string]{}
+		assert.Equal(t, "https://registry.example.com", ociOptionalStringField(field, new("https://registry.example.com")))
+		assert.Zero(t, field.State&plugin.StateIsNull)
+	})
+
+	t.Run("absent and empty values mark the field null", func(t *testing.T) {
+		for _, v := range []*string{nil, new("")} {
+			field := &plugin.TValue[string]{}
+			assert.Equal(t, "", ociOptionalStringField(field, v))
+			assert.Equal(t, plugin.StateIsSet|plugin.StateIsNull, field.State)
+		}
+	})
 }

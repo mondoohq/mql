@@ -12538,6 +12538,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"oci.artifacts.containerRepository.systemTags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciArtifactsContainerRepository).GetSystemTags()).ToDataRes(types.Map(types.String, types.Dict))
 	},
+	"oci.artifacts.containerRepository.repositoryType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciArtifactsContainerRepository).GetRepositoryType()).ToDataRes(types.String)
+	},
+	"oci.artifacts.containerRepository.isTopLevel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciArtifactsContainerRepository).GetIsTopLevel()).ToDataRes(types.Bool)
+	},
+	"oci.artifacts.containerRepository.upstreamUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciArtifactsContainerRepository).GetUpstreamUrl()).ToDataRes(types.String)
+	},
+	"oci.artifacts.containerRepository.upstreamUsername": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciArtifactsContainerRepository).GetUpstreamUsername()).ToDataRes(types.String)
+	},
+	"oci.artifacts.containerRepository.upstreamSecret": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciArtifactsContainerRepository).GetUpstreamSecret()).ToDataRes(types.Resource("oci.vault.secret"))
+	},
+	"oci.artifacts.containerRepository.multiRegionPeers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciArtifactsContainerRepository).GetMultiRegionPeers()).ToDataRes(types.Array(types.String))
+	},
 	"oci.artifacts.containerImage.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciArtifactsContainerImage).GetId()).ToDataRes(types.String)
 	},
@@ -29653,6 +29671,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"oci.artifacts.containerRepository.systemTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciArtifactsContainerRepository).SystemTags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"oci.artifacts.containerRepository.repositoryType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciArtifactsContainerRepository).RepositoryType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.artifacts.containerRepository.isTopLevel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciArtifactsContainerRepository).IsTopLevel, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"oci.artifacts.containerRepository.upstreamUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciArtifactsContainerRepository).UpstreamUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.artifacts.containerRepository.upstreamUsername": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciArtifactsContainerRepository).UpstreamUsername, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.artifacts.containerRepository.upstreamSecret": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciArtifactsContainerRepository).UpstreamSecret, ok = plugin.RawToTValue[*mqlOciVaultSecret](v.Value, v.Error)
+		return
+	},
+	"oci.artifacts.containerRepository.multiRegionPeers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciArtifactsContainerRepository).MultiRegionPeers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"oci.artifacts.containerImage.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -71833,6 +71875,12 @@ type mqlOciArtifactsContainerRepository struct {
 	FreeformTags      plugin.TValue[map[string]any]
 	DefinedTags       plugin.TValue[map[string]any]
 	SystemTags        plugin.TValue[map[string]any]
+	RepositoryType    plugin.TValue[string]
+	IsTopLevel        plugin.TValue[bool]
+	UpstreamUrl       plugin.TValue[string]
+	UpstreamUsername  plugin.TValue[string]
+	UpstreamSecret    plugin.TValue[*mqlOciVaultSecret]
+	MultiRegionPeers  plugin.TValue[[]any]
 }
 
 // createOciArtifactsContainerRepository creates a new instance of this resource
@@ -71972,6 +72020,48 @@ func (c *mqlOciArtifactsContainerRepository) GetDefinedTags() *plugin.TValue[map
 
 func (c *mqlOciArtifactsContainerRepository) GetSystemTags() *plugin.TValue[map[string]any] {
 	return &c.SystemTags
+}
+
+func (c *mqlOciArtifactsContainerRepository) GetRepositoryType() *plugin.TValue[string] {
+	return &c.RepositoryType
+}
+
+func (c *mqlOciArtifactsContainerRepository) GetIsTopLevel() *plugin.TValue[bool] {
+	return &c.IsTopLevel
+}
+
+func (c *mqlOciArtifactsContainerRepository) GetUpstreamUrl() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.UpstreamUrl, func() (string, error) {
+		return c.upstreamUrl()
+	})
+}
+
+func (c *mqlOciArtifactsContainerRepository) GetUpstreamUsername() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.UpstreamUsername, func() (string, error) {
+		return c.upstreamUsername()
+	})
+}
+
+func (c *mqlOciArtifactsContainerRepository) GetUpstreamSecret() *plugin.TValue[*mqlOciVaultSecret] {
+	return plugin.GetOrCompute[*mqlOciVaultSecret](&c.UpstreamSecret, func() (*mqlOciVaultSecret, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.artifacts.containerRepository", c.__id, "upstreamSecret")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciVaultSecret), nil
+			}
+		}
+
+		return c.upstreamSecret()
+	})
+}
+
+func (c *mqlOciArtifactsContainerRepository) GetMultiRegionPeers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MultiRegionPeers, func() ([]any, error) {
+		return c.multiRegionPeers()
+	})
 }
 
 // mqlOciArtifactsContainerImage for the oci.artifacts.containerImage resource
