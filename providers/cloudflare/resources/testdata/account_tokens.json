@@ -15,6 +15,8 @@
       "creator_email_at_creation": "ci-owner@example.com",
       "provisioner_type": "oauth",
       "provisioner_id": "3f1c9a7e2b5d4e8f",
+      "token_prefix": "cfat",
+      "token_suffix": "x9Qz",
       "condition": {
         "request_ip": {
           "in": ["203.0.113.0/24"],

@@ -76,6 +76,22 @@ func TestLocations(t *testing.T) {
 	assert.Equal(t, "203.0.113.1", loc.Ip.Data)
 	assert.True(t, loc.ClientDefault.Data)
 	assert.True(t, loc.EcsSupport.Data)
+	assert.True(t, loc.Dns64Enabled.Data)
+}
+
+// Synthetic: a location payload without dns64_enabled reports null, not false.
+func TestLocationsDns64Absent(t *testing.T) {
+	env := setupTestEnv(t)
+	one := createTestOne(t, env)
+
+	env.Mux.HandleFunc(fmt.Sprintf("/accounts/%s/gateway/locations", testAccountID), func(w http.ResponseWriter, r *http.Request) {
+		jsonResponse(w, `{"success":true,"result":[{"id":"loc-002","name":"Branch"}],"result_info":{"page":1,"total_pages":1}}`)
+	})
+
+	result, err := one.locations()
+	require.NoError(t, err)
+	require.Len(t, result, 1)
+	assert.True(t, result[0].(*mqlCloudflareOneLocation).Dns64Enabled.IsNull())
 }
 
 func TestDlpProfiles(t *testing.T) {

@@ -107,3 +107,67 @@ func TestPrecursorUnavailableIsNull(t *testing.T) {
 	assert.Nil(t, p)
 	assert.Equal(t, plugin.StateIsNull|plugin.StateIsSet, zone.Precursor.State)
 }
+
+// Synthetic: the current configuration shape returned under Cloudflare-Version
+// 1.0 (cloudflare-go v7.14.0); no zone with Precursor was available.
+func TestPrecursorCurrentShape(t *testing.T) {
+	env := setupTestEnv(t)
+	zone := createTestZone(t, env)
+	handlePrecursor(env, http.StatusOK, `{"success":true,"result":{
+		"mode":"monitor","show_interstitial":true,
+		"rules":[
+			{"id":"r-1","expression":"http.request.uri.path contains \"/login\"","show_interstitial":false,"description":"no interstitial on login","enabled":true},
+			{"expression":"http.host eq \"a.example.com\"","show_interstitial":true,"enabled":false},
+			{"expression":"http.host eq \"b.example.com\"","show_interstitial":true,"enabled":true}
+		]}}`)
+
+	p, err := zone.precursor()
+	require.NoError(t, err)
+	require.NotNil(t, p)
+	assert.Equal(t, "monitor", p.Mode.Data)
+	assert.True(t, p.ShowInterstitial.Data)
+	require.Len(t, p.Rules.Data, 3)
+
+	first := p.Rules.Data[0].(*mqlCloudflareZonePrecursorRule)
+	assert.Equal(t, "r-1", first.Id.Data)
+	assert.False(t, first.ShowInterstitial.Data)
+	assert.Equal(t, "no interstitial on login", first.Description.Data)
+	assert.True(t, first.Enabled.Data)
+
+	second := p.Rules.Data[1].(*mqlCloudflareZonePrecursorRule)
+	third := p.Rules.Data[2].(*mqlCloudflareZonePrecursorRule)
+	assert.True(t, second.Description.IsNull(), "an absent description must read null")
+	assert.False(t, second.Enabled.Data)
+	assert.NotEqual(t, second.MqlID(), third.MqlID(), "rules without ids must not share a cache entry")
+	assert.Contains(t, third.Expression.Data, "b.example.com")
+
+	// The retired fields are not in this shape: null and empty, not "off".
+	assert.True(t, p.DefaultMode.IsNull())
+	assert.Empty(t, p.EnforcementRules.Data)
+}
+
+// Synthetic: a body with no show_interstitial key reports null rather than
+// false, which would read as a measured "no interstitial".
+func TestPrecursorShowInterstitialAbsentIsNull(t *testing.T) {
+	env := setupTestEnv(t)
+	zone := createTestZone(t, env)
+	handlePrecursor(env, http.StatusOK, `{"success":true,"result":{"mode":"arm","rules":[]}}`)
+
+	p, err := zone.precursor()
+	require.NoError(t, err)
+	assert.Equal(t, "arm", p.Mode.Data)
+	assert.True(t, p.ShowInterstitial.IsNull())
+	assert.Empty(t, p.Rules.Data)
+}
+
+func TestDecodePrecursorLegacy(t *testing.T) {
+	legacy := decodePrecursorLegacy(`{"default_mode":"max-security","enforcement_rules":[{"id":"x","mode":"min-friction"}]}`)
+	require.NotNil(t, legacy.DefaultMode)
+	assert.Equal(t, "max-security", *legacy.DefaultMode)
+	require.Len(t, legacy.EnforcementRules, 1)
+	assert.Equal(t, "min-friction", legacy.EnforcementRules[0].Mode)
+
+	assert.Nil(t, decodePrecursorLegacy(`{"mode":"arm"}`).DefaultMode)
+	assert.Nil(t, decodePrecursorLegacy(`not json`).DefaultMode)
+	assert.Nil(t, decodePrecursorLegacy("").DefaultMode)
+}

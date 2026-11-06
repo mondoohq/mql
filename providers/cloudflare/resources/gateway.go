@@ -208,6 +208,7 @@ type gatewayLocation struct {
 	AnonymizedLogsEnabled bool      `json:"anonymized_logs_enabled"`
 	ClientDefault         bool      `json:"client_default"`
 	ECSSupport            bool      `json:"ecs_support"`
+	DNS64Enabled          *bool     `json:"dns64_enabled"`
 	CreatedAt             time.Time `json:"created_at"`
 	UpdatedAt             time.Time `json:"updated_at"`
 }
@@ -232,6 +233,7 @@ func (c *mqlCloudflareOne) locations() ([]any, error) {
 			"anonymizedLogsEnabled": llx.BoolData(rec.AnonymizedLogsEnabled),
 			"clientDefault":         llx.BoolData(rec.ClientDefault),
 			"ecsSupport":            llx.BoolData(rec.ECSSupport),
+			"dns64Enabled":          llx.BoolDataPtr(rec.DNS64Enabled),
 			"createdAt":             timeOrNil(rec.CreatedAt),
 			"updatedAt":             timeOrNil(rec.UpdatedAt),
 		})
