@@ -7,6 +7,7 @@ import (
 	"errors"
 	"slices"
 	"strconv"
+	"sync"
 	"time"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
@@ -209,6 +210,7 @@ func initGitlabGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 			return nil, nil, err
 		}
 		populateGroupArgs(args, grp)
+		populateGroupDetailArgs(args, grp)
 		return args, nil, nil
 	}
 
@@ -218,7 +220,69 @@ func initGitlabGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 	}
 
 	populateGroupArgs(args, grp)
+	populateGroupDetailArgs(args, grp)
 	return args, nil, nil
+}
+
+// populateGroupDetailArgs sets the fields GitLab returns only on the
+// single-group endpoint (GET /groups/:id). The list and subgroup endpoints
+// omit them, so a *gitlab.Group decoded from a listing would read false for
+// a group that has them turned on; those groups resolve the fields through
+// groupDetail instead.
+func populateGroupDetailArgs(args map[string]*llx.RawData, grp *gitlab.Group) {
+	args["requireShaForMerge"] = llx.BoolData(grp.RequireSHAForMerge)
+	args["lockRequireShaForMerge"] = llx.BoolData(grp.LockRequireSHAForMerge)
+}
+
+type mqlGitlabGroupInternal struct {
+	detailLock sync.Mutex
+	detail     *gitlab.Group
+}
+
+// groupDetail fetches the group from the single-group endpoint once and
+// caches it, so one call feeds every field that only that endpoint returns.
+func (g *mqlGitlabGroup) groupDetail() (*gitlab.Group, error) {
+	g.detailLock.Lock()
+	defer g.detailLock.Unlock()
+	if g.detail != nil {
+		return g.detail, nil
+	}
+	conn := g.MqlRuntime.Connection.(*connection.GitLabConnection)
+	grp, err := getGroupDetail(conn.Client(), g.Id.Data)
+	if err != nil {
+		return nil, err
+	}
+	g.detail = grp
+	return grp, nil
+}
+
+// getGroupDetail reads a group from GET /groups/:id. A 403 is a refusal and
+// comes back as llx.Forbidden.
+func getGroupDetail(client *gitlab.Client, id int64) (*gitlab.Group, error) {
+	grp, _, err := client.Groups.GetGroup(int(id), nil)
+	if err != nil {
+		if isGitlabStatus(err, 403) {
+			return nil, llx.Forbidden(err)
+		}
+		return nil, err
+	}
+	return grp, nil
+}
+
+func (g *mqlGitlabGroup) requireShaForMerge() (bool, error) {
+	grp, err := g.groupDetail()
+	if err != nil {
+		return false, err
+	}
+	return grp.RequireSHAForMerge, nil
+}
+
+func (g *mqlGitlabGroup) lockRequireShaForMerge() (bool, error) {
+	grp, err := g.groupDetail()
+	if err != nil {
+		return false, err
+	}
+	return grp.LockRequireSHAForMerge, nil
 }
 
 // populateGroupArgs fills the args map from a *gitlab.Group. Shared between
