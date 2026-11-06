@@ -576,7 +576,10 @@ func (c *AlicloudConnection) ModelStudioClient(region string) (*modelstudioclien
 
 // modelStudioRegions are the regions Alibaba Cloud publishes a Model Studio
 // OpenAPI endpoint for. The SDK carries no endpoint map, so the list is kept
-// here.
+// here. Source: the ModelStudio endpoint list in Alibaba Cloud's OpenAPI
+// metadata (api.aliyun.com/meta/v1/products/ModelStudio/endpoints.json), read
+// November 2026. Review it when Model Studio opens a new region: a region
+// missing here is never scanned.
 var modelStudioRegions = []string{"cn-beijing", "cn-hongkong", "ap-southeast-1", "us-east-1", "eu-central-1"}
 
 // ModelStudioRegions returns the scanned regions that offer Model Studio.
