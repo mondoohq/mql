@@ -17391,7 +17391,7 @@ private gcp.project.agentRegistryService.endpoint @defaults("displayName") {
 
 // Google Cloud (GCP) Agent Registry binding
 //
-// Connects a source (usually an agent) to a target it may call, optionally
+// Link from a source (usually an agent) to a target it may call, optionally
 // through an Agent Identity auth provider with the OAuth scopes it may
 // request. `source` and `target` are the registry identifiers of the two
 // ends.
