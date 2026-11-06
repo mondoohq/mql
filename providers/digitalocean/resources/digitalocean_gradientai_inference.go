@@ -5,6 +5,7 @@ package resources
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/digitalocean/godo"
@@ -374,4 +375,97 @@ func parseBatchTime(s *string) *time.Time {
 		return nil
 	}
 	return parseBatchTimeStr(*s)
+}
+
+// ----- Inference routers -----
+
+func (r *mqlDigitaloceanGradientai) inferenceRouters() ([]any, error) {
+	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
+	client := conn.Client()
+	ctx := context.Background()
+
+	summaries, err := paginate(ctx, client.AgentPlatform.ListInferenceRouters)
+	if err != nil {
+		if isDoForbidden(err) {
+			return nil, llx.Forbidden(err)
+		}
+		return nil, err
+	}
+
+	all := make([]any, 0, len(summaries))
+	for _, s := range summaries {
+		if s == nil || s.UUID == "" {
+			continue
+		}
+		// The list returns summaries only; the routing config comes from
+		// the per-router read.
+		router, _, err := client.AgentPlatform.GetInferenceRouter(ctx, s.UUID)
+		if err != nil {
+			if isDoNotFound(err) {
+				// Deleted between the list and the read.
+				continue
+			}
+			if isDoForbidden(err) {
+				return nil, llx.Forbidden(err)
+			}
+			return nil, err
+		}
+		if router == nil {
+			continue
+		}
+		args, err := inferenceRouterArgs(router)
+		if err != nil {
+			return nil, err
+		}
+		res, err := CreateResource(r.MqlRuntime, "digitalocean.gradientai.inferenceRouter", args)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, res)
+	}
+	return all, nil
+}
+
+func inferenceRouterArgs(ir *godo.InferenceRouter) (map[string]*llx.RawData, error) {
+	fallback := []any{}
+	policies := llx.NilData
+	if ir.Config != nil {
+		for _, m := range ir.Config.FallbackModels {
+			fallback = append(fallback, m)
+		}
+		p, err := rawJSONDict(ir.Config.Policies)
+		if err != nil {
+			return nil, llx.MalformedData(err)
+		}
+		if p != nil {
+			policies = llx.DictData(p)
+		}
+	}
+	return map[string]*llx.RawData{
+		"__id":           llx.StringData("digitalocean.gradientai.inferenceRouter/" + ir.UUID),
+		"uuid":           llx.StringData(ir.UUID),
+		"name":           llx.StringData(ir.Name),
+		"description":    llx.StringData(ir.Description),
+		"fallbackModels": llx.ArrayData(fallback, types.String),
+		"policies":       policies,
+		"createdAt":      llx.TimeDataPtr(gradientaiTime(ir.CreatedAt)),
+		"updatedAt":      llx.TimeDataPtr(gradientaiTime(ir.UpdatedAt)),
+	}, nil
+}
+
+// rawJSONDict decodes a raw JSON value for a dict field. An absent value or a
+// JSON null decodes to nil so the field reads as null.
+func rawJSONDict(raw json.RawMessage) (any, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var out any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (r *mqlDigitaloceanGradientaiInferenceRouter) id() (string, error) {
+	return "digitalocean.gradientai.inferenceRouter/" + r.Uuid.Data, nil
 }
