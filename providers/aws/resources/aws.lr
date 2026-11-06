@@ -32255,6 +32255,8 @@ private aws.bedrock.agentCore {
   gateways() []aws.bedrock.agentCore.gateway
   // Hosted agent runtimes in the account
   runtimes() []aws.bedrock.agentCore.runtime
+  // Managed agent harnesses in the account
+  harnesses() @maturity("preview") []aws.bedrock.agentCore.harness
   // Memory stores in the account
   memories() []aws.bedrock.agentCore.memory
   // Browser tool sandboxes in the account
@@ -32689,6 +32691,140 @@ private aws.bedrock.agentCore.gatewayTarget @defaults("name status") {
   targetConfiguration() dict
   // Credential provider configurations governing outbound authentication to the target
   credentialProviderConfigurations() []dict
+}
+
+// Amazon Bedrock AgentCore harness
+//
+// Managed agent that AgentCore runs from a declared model, tool set, and
+// memory, without customer agent code. `modelProvider` and `modelId` name the
+// model the harness calls, with `modelApiBase` and `apiKeyCredentialProvider`
+// for models served outside Amazon Bedrock. `iamRole` is the role the harness
+// assumes, `authorizerType` with the JWT allow lists controls who may invoke
+// it, `toolTypes`, `allowedTools`, `gateways`, and `remoteMcpServerUrls`
+// describe the tools it can call, and `networkMode` with `subnets` and
+// `securityGroups` where it runs. `endpoints` lists the addressable endpoints
+// that serve invocations. The `arn` field selects a harness.
+private aws.bedrock.agentCore.harness @defaults("name status modelProvider") @maturity("preview") {
+  // ARN of the harness
+  arn string
+  // Unique identifier of the harness
+  id string
+  // Name of the harness
+  name string
+  // Region where the harness exists
+  region string
+  // Current status of the harness
+  //
+  // One of CREATING, CREATE_FAILED, UPDATING, UPDATE_FAILED, READY, DELETING, or DELETE_FAILED.
+  status string
+  // Current version of the harness
+  version string
+  // Time the harness was created
+  createdAt time
+  // Time the harness was last updated
+  updatedAt time
+  // Reason the last create or update failed
+  failureReason() string
+  // IAM role the harness assumes to call models, tools, and memory
+  iamRole() aws.iam.role
+  // Inbound authorizer type controlling who may invoke the harness
+  //
+  // CUSTOM_JWT when a JWT authorizer is configured. Null when callers authenticate with IAM SigV4.
+  authorizerType() string
+  // Discovery URL of the OpenID Connect provider whose JWTs the harness accepts
+  //
+  // Null when the harness does not use a custom JWT authorizer.
+  authorizerDiscoveryUrl() string
+  // Client IDs a caller's JWT must carry to invoke the harness
+  //
+  // Null when the harness does not use a custom JWT authorizer. Empty when the authorizer does not restrict clients.
+  allowedClients() []string
+  // Audiences a caller's JWT must carry to invoke the harness
+  //
+  // Null when the harness does not use a custom JWT authorizer. Empty when the authorizer does not restrict audiences.
+  allowedAudiences() []string
+  // Scopes a caller's JWT must carry to invoke the harness
+  //
+  // Null when the harness does not use a custom JWT authorizer. Empty when the authorizer does not restrict scopes.
+  allowedScopes() []string
+  // Provider serving the model the harness calls
+  //
+  // One of `bedrock`, `openAi`, `gemini`, or `liteLlm`.
+  modelProvider() string
+  // Identifier of the model the harness calls
+  modelId() string
+  // Base URL of the model API, for OpenAI-compatible and LiteLLM models
+  //
+  // Null when the provider's default endpoint is used.
+  modelApiBase() string
+  // API-key credential provider holding the key the harness presents to the model provider
+  //
+  // Null for Amazon Bedrock models, which are called with the harness's IAM role.
+  apiKeyCredentialProvider() aws.bedrock.agentCore.apiKeyCredentialProvider
+  // Types of tools configured on the harness
+  //
+  // Each one of remote_mcp, agentcore_browser, agentcore_gateway, inline_function, or agentcore_code_interpreter.
+  toolTypes() []string
+  // Names of the tools the harness may call
+  //
+  // Empty when every configured tool is allowed.
+  allowedTools() []string
+  // AgentCore gateways the harness calls tools through
+  gateways() []aws.bedrock.agentCore.gateway
+  // URLs of remote MCP servers the harness calls tools on
+  remoteMcpServerUrls() []string
+  // AgentCore runtime that hosts the harness
+  agentRuntime() aws.bedrock.agentCore.runtime
+  // Network mode of the harness environment
+  //
+  // PUBLIC or VPC.
+  networkMode() string
+  // Subnets the harness runs in when the network mode is VPC
+  subnets() []aws.vpc.subnet
+  // Security groups attached to the harness when the network mode is VPC
+  securityGroups() []aws.ec2.securitygroup
+  // Kind of memory the harness keeps
+  //
+  // `agentCoreMemory` for an existing memory store, `managedMemory` for one AgentCore manages, or `disabled`.
+  memoryType() string
+  // Memory store the harness reads and writes
+  //
+  // Null when memory is disabled or the store is not found.
+  memory() aws.bedrock.agentCore.memory
+  // Names of the environment variables set for the harness
+  //
+  // Values are not exposed because they may carry secrets.
+  environmentVariableNames() []string
+  // Maximum number of model and tool iterations per invocation
+  maxIterations() int
+  // Maximum number of tokens per invocation
+  maxTokens() int
+  // Maximum duration of an invocation in seconds
+  timeoutSeconds() int
+  // Endpoints that serve invocations of the harness
+  endpoints() []aws.bedrock.agentCore.harnessEndpoint
+}
+
+// Amazon Bedrock AgentCore harness endpoint
+private aws.bedrock.agentCore.harnessEndpoint @defaults("name status liveVersion") @maturity("preview") {
+  // ARN of the endpoint
+  arn string
+  // Name of the endpoint
+  name string
+  // Current status of the endpoint
+  status string
+  // Description of the endpoint
+  description string
+  // Harness version the endpoint serves
+  liveVersion string
+  // Harness version the endpoint is moving to
+  targetVersion string
+  // Reason the last update of the endpoint failed
+  failureReason string
+  // Time the endpoint was created
+  createdAt time
+  // Time the endpoint was last updated
+  updatedAt time
 }
 
 // Amazon Bedrock AgentCore runtime
