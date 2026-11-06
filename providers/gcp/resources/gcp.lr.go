@@ -99905,7 +99905,7 @@ func (c *mqlGcpProjectIdentityPlatformServiceTenant) GetTestPhoneNumbers() *plug
 type mqlGcpProjectDiscoveryEngineService struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlGcpProjectDiscoveryEngineServiceInternal it will be used here
+	mqlGcpProjectDiscoveryEngineServiceInternal
 	ProjectId  plugin.TValue[string]
 	DataStores plugin.TValue[[]any]
 	Engines    plugin.TValue[[]any]

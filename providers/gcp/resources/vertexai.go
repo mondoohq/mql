@@ -21,13 +21,14 @@ import (
 	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
+	locationpb "google.golang.org/genproto/googleapis/cloud/location"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
-// vertexaiRegions lists the known Vertex AI regions to iterate when listing resources.
-// TODO: Replace with a dynamic location listing API call when available to avoid
-// missing resources in newly added GCP regions. Last updated: 2026-03.
+// vertexaiRegions is the fallback list of Vertex AI regions, used only when the
+// project's ListLocations call fails. The live list comes from
+// vertexaiService.candidateRegions. Last updated: 2026-03.
 // See: https://docs.cloud.google.com/gemini-enterprise-agent-platform/machine-learning/general/locations
 var vertexaiRegions = []string{
 	"us-central1",
@@ -82,19 +83,100 @@ type mqlGcpProjectVertexaiServiceInternal struct {
 	// every other one — silently truncating models, endpoints and jobs.
 	skippedRegions map[string]map[string]bool
 	lock           sync.Mutex
+
+	// regions is the project's Vertex AI location list, read once per
+	// service resource by candidateRegions.
+	regionsOnce sync.Once
+	regions     []string
+}
+
+// candidateRegions returns the Vertex AI regions to fan out over. It asks the
+// API once (ListLocations on the project) so regions added after the static
+// list was written are scanned too, and falls back to vertexaiRegions when
+// the call fails or returns nothing usable.
+func (g *mqlGcpProjectVertexaiService) candidateRegions() []string {
+	g.regionsOnce.Do(func() {
+		g.regions = vertexaiRegions
+		if g.MqlRuntime == nil || g.ProjectId.Error != nil || g.ProjectId.Data == "" {
+			return
+		}
+		conn, ok := g.MqlRuntime.Connection.(*connection.GcpConnection)
+		if !ok {
+			return
+		}
+		regions, err := listVertexaiLocations(context.Background(), conn, g.ProjectId.Data)
+		if err != nil {
+			log.Debug().Err(err).Msg("vertexai: could not list locations, using the built-in region list")
+			return
+		}
+		if len(regions) > 0 {
+			g.regions = regions
+		}
+	})
+	return g.regions
+}
+
+// listVertexaiLocations lists the project's Vertex AI locations through the
+// location mixin on a regional endpoint, which answers for every region.
+func listVertexaiLocations(ctx context.Context, conn *connection.GcpConnection, projectId string) ([]string, error) {
+	creds, err := conn.Credentials(aiplatform.DefaultAuthScopes()...)
+	if err != nil {
+		return nil, err
+	}
+	client, err := aiplatform.NewEndpointClient(ctx,
+		option.WithCredentials(creds), connection.GRPCClientTraceOption(),
+		option.WithEndpoint(vertexaiEndpoint("us-central1")),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+
+	it := client.ListLocations(ctx, &locationpb.ListLocationsRequest{
+		Name: fmt.Sprintf("projects/%s", projectId),
+	})
+	var ids []string
+	for {
+		l, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, l.GetLocationId())
+	}
+	return vertexaiRegionalLocations(ids), nil
+}
+
+// vertexaiRegionalLocations keeps the location IDs that have a regional
+// endpoint (<region>-aiplatform.googleapis.com), dropping "global" and
+// multi-regions such as "us" or "eu", and removes duplicates.
+func vertexaiRegionalLocations(ids []string) []string {
+	seen := make(map[string]bool, len(ids))
+	res := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if !strings.Contains(id, "-") || seen[id] {
+			continue
+		}
+		seen[id] = true
+		res = append(res, id)
+	}
+	return res
 }
 
 // getRegions returns the list of candidate regions for one resource kind,
 // excluding any that kind has previously marked as skipped.
 func (g *mqlGcpProjectVertexaiService) getRegions(kind string) []string {
+	all := g.candidateRegions()
 	g.lock.Lock()
 	defer g.lock.Unlock()
 	skipped := g.skippedRegions[kind]
 	if len(skipped) == 0 {
-		return vertexaiRegions
+		return all
 	}
-	regions := make([]string, 0, len(vertexaiRegions))
-	for _, r := range vertexaiRegions {
+	regions := make([]string, 0, len(all))
+	for _, r := range all {
 		if !skipped[r] {
 			regions = append(regions, r)
 		}

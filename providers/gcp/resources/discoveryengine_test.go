@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,4 +21,24 @@ func TestServiceAccountProjectFromEmail(t *testing.T) {
 	// Synthetic: a user address and an empty value.
 	assert.Empty(t, serviceAccountProjectFromEmail("admin@example.com"))
 	assert.Empty(t, serviceAccountProjectFromEmail(""))
+}
+
+func TestListAcrossDiscoveryEngineLocations(t *testing.T) {
+	locations := []string{"global", "us", "eu"}
+
+	// Synthetic: one location refuses, the others still report.
+	got, err := listAcrossDiscoveryEngineLocations("engines", locations, func(location string) ([]any, error) {
+		if location == "us" {
+			return nil, errors.New("unavailable")
+		}
+		return []any{location}, nil
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, []any{"global", "eu"}, got)
+
+	// Synthetic: every location fails, so the error surfaces.
+	_, err = listAcrossDiscoveryEngineLocations("engines", locations, func(location string) ([]any, error) {
+		return nil, errors.New("denied " + location)
+	})
+	assert.EqualError(t, err, "denied global")
 }

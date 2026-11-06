@@ -18,6 +18,7 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
@@ -213,7 +214,7 @@ func protoToDict(msg proto.Message) (map[string]any, error) {
 	if v := reflect.ValueOf(msg); v.Kind() == reflect.Pointer && v.IsNil() {
 		return nil, nil
 	}
-	data, err := protojson.Marshal(msg)
+	data, err := protojson.Marshal(redactSecretFields(msg))
 	if err != nil {
 		return nil, err
 	}
@@ -684,4 +685,87 @@ func cachedResource(runtime *plugin.Runtime, resourceName, id string) plugin.Res
 		return res
 	}
 	return nil
+}
+
+// secretProtoFields names, per protobuf message type, the fields that hold
+// secret material and never reach a dict: environment variable values (the
+// names stay), inline source archives, and container build argument values
+// (the keys stay).
+var secretProtoFields = map[protoreflect.FullName][]protoreflect.Name{
+	"google.cloud.aiplatform.v1.EnvVar":                                          {"value"},
+	"google.cloud.aiplatform.v1.ReasoningEngineSpec.SourceCodeSpec.InlineSource": {"source_archive"},
+	"google.cloud.aiplatform.v1.ReasoningEngineSpec.SourceCodeSpec.ImageSpec":    {"build_args"},
+}
+
+// redactSecretFields returns msg with the fields in secretProtoFields
+// cleared, anywhere in the message tree. msg itself is never modified: when
+// something has to go, a clone is redacted and returned.
+func redactSecretFields(msg proto.Message) proto.Message {
+	if !walkSecretFields(msg.ProtoReflect(), false) {
+		return msg
+	}
+	c := proto.Clone(msg)
+	walkSecretFields(c.ProtoReflect(), true)
+	return c
+}
+
+// walkSecretFields reports whether m holds any populated secret field. With
+// redact set, it also clears them: a string map keeps its keys with empty
+// values, every other field is cleared.
+func walkSecretFields(m protoreflect.Message, redact bool) bool {
+	found := false
+	if names, ok := secretProtoFields[m.Descriptor().FullName()]; ok {
+		fields := m.Descriptor().Fields()
+		for _, name := range names {
+			fd := fields.ByName(name)
+			if fd == nil || !m.Has(fd) {
+				continue
+			}
+			found = true
+			if !redact {
+				return true
+			}
+			if fd.IsMap() && fd.MapValue().Kind() == protoreflect.StringKind {
+				mp := m.Mutable(fd).Map()
+				var keys []protoreflect.MapKey
+				mp.Range(func(k protoreflect.MapKey, _ protoreflect.Value) bool {
+					keys = append(keys, k)
+					return true
+				})
+				for _, k := range keys {
+					mp.Set(k, protoreflect.ValueOfString(""))
+				}
+				continue
+			}
+			m.Clear(fd)
+		}
+	}
+
+	var children []protoreflect.Message
+	m.Range(func(fd protoreflect.FieldDescriptor, v protoreflect.Value) bool {
+		switch {
+		case fd.IsList() && fd.Message() != nil:
+			l := v.List()
+			for i := 0; i < l.Len(); i++ {
+				children = append(children, l.Get(i).Message())
+			}
+		case fd.IsMap() && fd.MapValue().Message() != nil:
+			v.Map().Range(func(_ protoreflect.MapKey, mv protoreflect.Value) bool {
+				children = append(children, mv.Message())
+				return true
+			})
+		case !fd.IsList() && !fd.IsMap() && fd.Message() != nil:
+			children = append(children, v.Message())
+		}
+		return true
+	})
+	for _, c := range children {
+		if walkSecretFields(c, redact) {
+			found = true
+			if !redact {
+				return true
+			}
+		}
+	}
+	return found
 }

@@ -76,6 +76,17 @@ func (g *mqlGcpProjectNotebooksServiceInstance) id() (string, error) {
 	return g.Name.Data, g.Name.Error
 }
 
+// workbenchDisablePublicIp reads disablePublicIp from an instance's GCE
+// setup. Without a GCE setup the API said nothing about public IPs, so the
+// result is nil (null), not false.
+func workbenchDisablePublicIp(gs *notebooksv2.GceSetup) *bool {
+	if gs == nil {
+		return nil
+	}
+	v := gs.DisablePublicIp
+	return &v
+}
+
 func (g *mqlGcpProjectWorkbenchService) instances() ([]any, error) {
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
@@ -103,11 +114,6 @@ func (g *mqlGcpProjectWorkbenchService) instances() ([]any, error) {
 				return err
 			}
 
-			disablePublicIp := false
-			if i.GceSetup != nil {
-				disablePublicIp = i.GceSetup.DisablePublicIp
-			}
-
 			mqlInstance, err := CreateResource(g.MqlRuntime, "gcp.project.workbenchService.instance", map[string]*llx.RawData{
 				"projectId":                llx.StringData(projectId),
 				"name":                     llx.StringData(i.Name),
@@ -121,7 +127,7 @@ func (g *mqlGcpProjectWorkbenchService) instances() ([]any, error) {
 				"enableThirdPartyIdentity": llx.BoolData(i.EnableThirdPartyIdentity),
 				"labels":                   llx.MapData(convert.MapToInterfaceMap(i.Labels), types.String),
 				"gceSetup":                 llx.DictData(gceSetup),
-				"disablePublicIp":          llx.BoolData(disablePublicIp),
+				"disablePublicIp":          llx.BoolDataPtr(workbenchDisablePublicIp(i.GceSetup)),
 				"createTime":               llx.TimeDataPtr(parseTime(i.CreateTime)),
 				"updateTime":               llx.TimeDataPtr(parseTime(i.UpdateTime)),
 			})
