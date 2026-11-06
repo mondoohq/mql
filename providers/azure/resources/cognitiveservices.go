@@ -380,6 +380,43 @@ func (a *mqlAzureSubscriptionCognitiveServicesServiceAccount) privateEndpointCon
 	return azurePrivateEndpointConnectionsToMql(a.MqlRuntime, a.cachePrivateEndpointConnections)
 }
 
+func (a *mqlAzureSubscriptionCognitiveServicesServiceAccount) networkSecurityPerimeterConfigurations() ([]any, error) {
+	conn, ok := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	if !ok {
+		return nil, errors.New("invalid connection provided, it is not an Azure connection")
+	}
+	parsed, err := ParseResourceID(a.Id.Data)
+	if err != nil {
+		return nil, err
+	}
+	accountName, err := parsed.Component("accounts")
+	if err != nil {
+		return nil, err
+	}
+	client, err := armcognitiveservices.NewNetworkSecurityPerimeterConfigurationsClient(parsed.SubscriptionID, conn.Token(), &arm.ClientOptions{
+		ClientOptions: conn.ClientOptions(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	pager := client.NewListPager(parsed.ResourceGroup, accountName, nil)
+	res := []any{}
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return nspConfigurationsFailure(err, "cognitive services account",
+				"Microsoft.CognitiveServices/accounts/networkSecurityPerimeterConfigurations/read")
+		}
+		items, err := nspConfigurationsToMql(a.MqlRuntime, page.Value)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, items...)
+	}
+	return res, nil
+}
+
 // roleAssignments returns the effective Microsoft Entra role assignments at the
 // account scope. NewListForScopePager with no filter returns assignments at the
 // scope and inherited from the resource group, subscription, and management-

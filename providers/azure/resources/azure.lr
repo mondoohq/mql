@@ -8161,6 +8161,64 @@ private azure.subscription.webService.appsite.outboundVnetRouting @defaults("all
   imagePullTrafficEnabled bool
 }
 
+// Network security perimeter configuration of an Azure resource
+//
+// Association between a resource (an AI Services account, an AI Search
+// service) and an Azure Network Security Perimeter. `associationAccessMode`
+// reports "Learning", "Audit", or "Enforced"; only "Enforced" blocks traffic
+// that violates the perimeter rules. `accessRules` lists the inbound and
+// outbound rules of the profile in effect, `enabledLogCategories` the
+// categories shipped to diagnostics, and `provisioningIssues` any errors that
+// prevented the configuration from propagating.
+private azure.subscription.networkSecurityPerimeterConfiguration @defaults("name associationAccessMode provisioningState") {
+  // NSP configuration resource ID
+  id string
+  // NSP configuration name
+  name string
+  // Resource type
+  type string
+  // Provisioning state of the NSP configuration ("Accepted", "Canceled", "Deleting", "Failed", or "Succeeded")
+  provisioningState string
+  // ARM resource ID of the network security perimeter
+  perimeterId string
+  // Location of the network security perimeter
+  perimeterLocation string
+  // Universal unique ID of the network security perimeter
+  perimeterGuid string
+  // Profile name on the perimeter
+  profileName string
+  // Current access rules version
+  accessRulesVersion int
+  // Current diagnostic settings version
+  diagnosticSettingsVersion int
+  // Log categories enabled on the profile
+  enabledLogCategories []string
+  // Access rules attached to the profile
+  //
+  // Each entry has keys: name; direction ("Inbound" or "Outbound");
+  // addressPrefixes (inbound CIDRs); subscriptions (inbound, each with an
+  // ARM subscription id); fullyQualifiedDomainNames (outbound FQDNs);
+  // networkSecurityPerimeters (inbound, each with id, location, perimeterGuid);
+  // and, on AI Search, emailAddresses and phoneNumbers (outbound).
+  accessRules []dict
+  // Resource association name
+  associationName string
+  // Resource association access mode
+  //
+  // One of "Learning", "Audit", or "Enforced". "Learning" and "Audit" only
+  // log access that violates the perimeter rules; "Enforced" blocks it.
+  associationAccessMode string
+  // Issues that prevented the configuration from propagating
+  //
+  // Each entry has keys: name; issueType ("ConfigurationPropagationFailure",
+  // "MissingPerimeterConfiguration", "MissingIdentityConfiguration", or
+  // "Unknown"); severity ("Error" or "Warning"); description;
+  // suggestedAccessRules; and suggestedResourceIds.
+  provisioningIssues []dict
+  // Creation and last-modification provenance recorded by Azure Resource Manager
+  systemMetadata() azure.subscription.systemData
+}
+
 // Azure private endpoint connection
 private azure.subscription.privateEndpointConnection @defaults("id name type") {
   // Private endpoint connection ID
@@ -19136,8 +19194,41 @@ azure.subscription.searchService.service @defaults("id name location publicNetwo
   // write index content through Entra ID (for example who holds Search Index
   // Data Reader or Search Service Contributor).
   roleAssignments() []azure.subscription.authorizationService.roleAssignment
+  // Private endpoint connections to the service
+  privateEndpointConnections() []azure.subscription.privateEndpointConnection
+  // Shared private links the service uses to reach its data sources
+  //
+  // Outbound private endpoints the service creates so indexers and skillsets
+  // reach a data source (a storage account, a SQL server, a Key Vault) over
+  // the Microsoft backbone instead of its public endpoint.
+  sharedPrivateLinks() []azure.subscription.searchService.service.sharedPrivateLink
+  // Network security perimeter configurations associated with the service
+  //
+  // Relevant when publicNetworkAccess is securedByPerimeter: the perimeter's
+  // access rules, not the service's IP rules, then decide who may connect.
+  networkSecurityPerimeterConfigurations() []azure.subscription.networkSecurityPerimeterConfiguration
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
+}
+
+// Shared private link of an Azure AI Search service
+private azure.subscription.searchService.service.sharedPrivateLink @defaults("name groupId status") {
+  // Shared private link resource ID
+  id string
+  // Shared private link name
+  name string
+  // Sub-resource (group ID) of the target the link connects to, such as blob or sqlServer
+  groupId string
+  // ARM resource ID of the resource the link connects to
+  privateLinkResourceId string
+  // Approval status of the link ("Pending", "Approved", "Rejected", or "Disconnected")
+  status string
+  // Provisioning state of the link ("Updating", "Deleting", "Failed", "Succeeded", or "Incomplete")
+  provisioningState string
+  // Region of the target resource, set only for targets with regional DNS
+  resourceRegion string
+  // Message sent to the target resource's owner with the approval request
+  requestMessage string
 }
 
 // Azure Lighthouse
@@ -19321,6 +19412,14 @@ azure.subscription.machineLearningService.workspace @defaults("id name location 
   //
   // One of "Disabled", "AllowInternetOutbound", or "AllowOnlyApprovedOutbound".
   managedNetworkIsolationMode string
+  // Provisioning status of the managed virtual network ("Active" or "Inactive")
+  //
+  // An isolation mode other than "Disabled" only confines compute once the
+  // managed network is "Active". Empty when the workspace has no managed
+  // network.
+  managedNetworkStatus string
+  // Whether Spark jobs are ready to run inside the managed virtual network
+  managedNetworkSparkReady bool
   // Whether the workspace is flagged high-business-impact, which limits the diagnostic data Microsoft collects
   hbiWorkspace bool
   // Whether public network access is allowed even when the workspace is behind a virtual network
@@ -19377,11 +19476,13 @@ azure.subscription.machineLearningService.workspace @defaults("id name location 
   encryptionStatus string
   // Private endpoint connections to the workspace
   //
-  // Each entry carries `id`, `name`, `type`, and a `properties` object holding
-  // `provisioningState`, `privateEndpoint` (with the connected private
-  // endpoint's `id`), and `privateLinkServiceConnectionState` (with `status`,
-  // `description`, and `actionsRequired`).
-  privateEndpointConnections []dict
+  // Deprecated in favor of privateLinkConnections, which carries the
+  // connections as typed resources.
+  privateEndpointConnections @maturity("deprecated") @replaced_by("azure.subscription.machineLearningService.workspace.privateLinkConnections") []dict
+  // Private endpoint connections to the workspace
+  privateLinkConnections() []azure.subscription.privateEndpointConnection
+  // Shared private links the workspace uses to reach other resources
+  sharedPrivateLinks() []azure.subscription.machineLearningService.workspace.sharedPrivateLink
   // Customer-managed Key Vault key encrypting workspace data (null when Microsoft-managed)
   encryptionKey() azure.subscription.keyVaultService.key
   // Resource ID of the linked Key Vault
@@ -19435,6 +19536,20 @@ azure.subscription.machineLearningService.workspace @defaults("id name location 
   roleAssignments() []azure.subscription.authorizationService.roleAssignment
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
+}
+
+// Shared private link of an Azure Machine Learning workspace
+private azure.subscription.machineLearningService.workspace.sharedPrivateLink @defaults("name groupId status") {
+  // Shared private link name
+  name string
+  // Sub-resource (group ID) of the target the link connects to
+  groupId string
+  // ARM resource ID of the resource the link connects to
+  privateLinkResourceId string
+  // Approval status of the link ("Pending", "Approved", "Rejected", "Disconnected", or "Timeout")
+  status string
+  // Message sent to the target resource's owner with the approval request
+  requestMessage string
 }
 
 // Machine Learning workspace managed-network outbound rule
@@ -20192,6 +20307,12 @@ azure.subscription.cognitiveServicesService.account @defaults("id name location 
   capabilityHosts() []azure.subscription.cognitiveServicesService.account.capabilityHost
   // Private endpoint connections to the account
   privateEndpointConnections() []azure.subscription.privateEndpointConnection
+  // Network security perimeter configurations associated with the account
+  //
+  // An account in a perimeter whose association accessMode is "Enforced"
+  // only accepts the traffic the perimeter's access rules admit; "Learning"
+  // and "Audit" log violations without blocking them.
+  networkSecurityPerimeterConfigurations() []azure.subscription.networkSecurityPerimeterConfiguration
   // Microsoft Entra role assignments granting access to the account
   //
   // The effective role assignments at the account scope, including those

@@ -4,9 +4,12 @@
 package resources
 
 import (
+	"encoding/json"
 	"testing"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/search/armsearch"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSearchServiceInternetReachable(t *testing.T) {
@@ -39,4 +42,79 @@ func TestSearchServiceInternetReachable(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+// searchServiceWithLinks is a search service list entry carrying a private
+// endpoint connection and two shared private links.
+// Synthetic: shaped after the Microsoft.Search 2025-05-01 REST reference; no target showed this.
+const searchServiceWithLinks = `{
+  "id": "/subscriptions/s/resourceGroups/rg/providers/Microsoft.Search/searchServices/srch",
+  "name": "srch",
+  "location": "eastus",
+  "properties": {
+    "publicNetworkAccess": "disabled",
+    "privateEndpointConnections": [{
+      "id": "/subscriptions/s/resourceGroups/rg/providers/Microsoft.Search/searchServices/srch/privateEndpointConnections/pe1",
+      "name": "pe1",
+      "properties": {
+        "privateEndpoint": {"id": "/subscriptions/s/resourceGroups/rg/providers/Microsoft.Network/privateEndpoints/pe1"},
+        "privateLinkServiceConnectionState": {"status": "Approved", "description": "ok", "actionsRequired": "None"},
+        "provisioningState": "Succeeded"
+      }
+    }],
+    "sharedPrivateLinkResources": [{
+      "id": "/subscriptions/s/resourceGroups/rg/providers/Microsoft.Search/searchServices/srch/sharedPrivateLinkResources/blob",
+      "name": "blob",
+      "properties": {
+        "groupId": "blob",
+        "privateLinkResourceId": "/subscriptions/s/resourceGroups/rg/providers/Microsoft.Storage/storageAccounts/docs",
+        "requestMessage": "indexer access",
+        "status": "Approved",
+        "provisioningState": "Succeeded"
+      }
+    }, {
+      "name": "no-id",
+      "properties": {"groupId": "sqlServer"}
+    }, {
+      "id": "/subscriptions/s/resourceGroups/rg/providers/Microsoft.Search/searchServices/srch/sharedPrivateLinkResources/aks",
+      "name": "aks",
+      "properties": {
+        "groupId": "management",
+        "privateLinkResourceId": "/subscriptions/s/resourceGroups/rg/providers/Microsoft.ContainerService/managedClusters/k",
+        "resourceRegion": "westus2",
+        "status": "Pending"
+      }
+    }]
+  }
+}`
+
+func TestSearchServicePrivateLinks(t *testing.T) {
+	var svc armsearch.Service
+	require.NoError(t, json.Unmarshal([]byte(searchServiceWithLinks), &svc))
+	mqlSvc, err := searchServiceToMql(cacheIDTestRuntime(), &svc)
+	require.NoError(t, err)
+
+	pecs, err := mqlSvc.privateEndpointConnections()
+	require.NoError(t, err)
+	require.Len(t, pecs, 1)
+	pec := pecs[0].(*mqlAzureSubscriptionPrivateEndpointConnection)
+	assert.Equal(t, "pe1", pec.Name.Data)
+	assert.Equal(t, "/subscriptions/s/resourceGroups/rg/providers/Microsoft.Network/privateEndpoints/pe1", pec.cachePrivateEndpointId)
+
+	links, err := mqlSvc.sharedPrivateLinks()
+	require.NoError(t, err)
+	// The id-less entry is skipped.
+	require.Len(t, links, 2)
+	blob := links[0].(*mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink)
+	assert.Equal(t, "blob", blob.GroupId.Data)
+	assert.Equal(t, "/subscriptions/s/resourceGroups/rg/providers/Microsoft.Storage/storageAccounts/docs", blob.PrivateLinkResourceId.Data)
+	assert.Equal(t, "Approved", blob.Status.Data)
+	assert.Equal(t, "Succeeded", blob.ProvisioningState.Data)
+	assert.Equal(t, "indexer access", blob.RequestMessage.Data)
+	assert.True(t, blob.ResourceRegion.IsNull())
+
+	aks := links[1].(*mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink)
+	assert.Equal(t, "westus2", aks.ResourceRegion.Data)
+	assert.Equal(t, "Pending", aks.Status.Data)
+	assert.True(t, aks.ProvisioningState.IsNull())
 }

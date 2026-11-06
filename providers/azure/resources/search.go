@@ -220,12 +220,95 @@ func searchServiceToMql(runtime *plugin.Runtime, svc *armsearch.Service) (*mqlAz
 	}
 	mqlService.cacheSystemData = sysData
 	mqlService.cacheIpRules = ipRules
+	if svc.Properties != nil {
+		mqlService.cachePrivateEndpointConnections = svc.Properties.PrivateEndpointConnections
+		mqlService.cacheSharedPrivateLinks = svc.Properties.SharedPrivateLinkResources
+	}
 	return mqlService, nil
 }
 
 type mqlAzureSubscriptionSearchServiceServiceInternal struct {
-	cacheSystemData any
-	cacheIpRules    []string
+	cacheSystemData                 any
+	cacheIpRules                    []string
+	cachePrivateEndpointConnections []*armsearch.PrivateEndpointConnection
+	cacheSharedPrivateLinks         []*armsearch.SharedPrivateLinkResource
+}
+
+func (a *mqlAzureSubscriptionSearchServiceService) privateEndpointConnections() ([]any, error) {
+	return azurePrivateEndpointConnectionsToMql(a.MqlRuntime, a.cachePrivateEndpointConnections)
+}
+
+func (a *mqlAzureSubscriptionSearchServiceService) sharedPrivateLinks() ([]any, error) {
+	return searchSharedPrivateLinksToMql(a.MqlRuntime, a.cacheSharedPrivateLinks)
+}
+
+// searchSharedPrivateLinksToMql builds the shared private link resources of a
+// search service. Each link has its own ARM id under the service, which is the
+// cache key; an entry without one is skipped.
+func searchSharedPrivateLinksToMql(runtime *plugin.Runtime, links []*armsearch.SharedPrivateLinkResource) ([]any, error) {
+	res := make([]any, 0, len(links))
+	for _, l := range links {
+		if l == nil || l.ID == nil || *l.ID == "" {
+			continue
+		}
+		p := orZero(l.Properties)
+		r, err := CreateResource(runtime, ResourceAzureSubscriptionSearchServiceServiceSharedPrivateLink, map[string]*llx.RawData{
+			"id":                    llx.StringDataPtr(l.ID),
+			"name":                  llx.StringDataPtr(l.Name),
+			"groupId":               llx.StringDataPtr(p.GroupID),
+			"privateLinkResourceId": llx.StringDataPtr(p.PrivateLinkResourceID),
+			"status":                llx.StringDataPtr(stringEnumPtr(p.Status)),
+			"provisioningState":     llx.StringDataPtr(stringEnumPtr(p.ProvisioningState)),
+			"resourceRegion":        llx.StringDataPtr(p.ResourceRegion),
+			"requestMessage":        llx.StringDataPtr(p.RequestMessage),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, r)
+	}
+	return res, nil
+}
+
+func (a *mqlAzureSubscriptionSearchServiceServiceSharedPrivateLink) id() (string, error) {
+	return a.Id.Data, nil
+}
+
+func (a *mqlAzureSubscriptionSearchServiceService) networkSecurityPerimeterConfigurations() ([]any, error) {
+	conn, ok := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	if !ok {
+		return nil, errors.New("invalid connection provided, it is not an Azure connection")
+	}
+	parsed, err := ParseResourceID(a.Id.Data)
+	if err != nil {
+		return nil, err
+	}
+	serviceName, err := parsed.Component("searchServices")
+	if err != nil {
+		return nil, err
+	}
+	client, err := armsearch.NewNetworkSecurityPerimeterConfigurationsClient(parsed.SubscriptionID, conn.Token(), &arm.ClientOptions{
+		ClientOptions: conn.ClientOptions(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	pager := client.NewListByServicePager(parsed.ResourceGroup, serviceName, nil)
+	res := []any{}
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return nspConfigurationsFailure(err, "search service",
+				"Microsoft.Search/searchServices/networkSecurityPerimeterConfigurations/read")
+		}
+		items, err := nspConfigurationsToMql(a.MqlRuntime, page.Value)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, items...)
+	}
+	return res, nil
 }
 
 // searchServiceInternetReachable reports whether any internet address can reach
