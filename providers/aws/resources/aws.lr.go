@@ -988,6 +988,11 @@ const (
 	ResourceAwsBedrockModelCopyJob                                              string = "aws.bedrock.modelCopyJob"
 	ResourceAwsBedrockMarketplaceModelEndpoint                                  string = "aws.bedrock.marketplaceModelEndpoint"
 	ResourceAwsBedrockAgentCore                                                 string = "aws.bedrock.agentCore"
+	ResourceAwsBedrockAgentCoreRegistry                                         string = "aws.bedrock.agentCore.registry"
+	ResourceAwsBedrockAgentCoreRegistryRecord                                   string = "aws.bedrock.agentCore.registryRecord"
+	ResourceAwsBedrockAgentCorePolicyEngine                                     string = "aws.bedrock.agentCore.policyEngine"
+	ResourceAwsBedrockAgentCorePolicy                                           string = "aws.bedrock.agentCore.policy"
+	ResourceAwsBedrockAgentCoreTokenVault                                       string = "aws.bedrock.agentCore.tokenVault"
 	ResourceAwsBedrockAgentCorePaymentManager                                   string = "aws.bedrock.agentCore.paymentManager"
 	ResourceAwsBedrockAgentCorePaymentConnector                                 string = "aws.bedrock.agentCore.paymentConnector"
 	ResourceAwsBedrockAgentCorePaymentCredentialProvider                        string = "aws.bedrock.agentCore.paymentCredentialProvider"
@@ -4979,6 +4984,26 @@ func init() {
 		"aws.bedrock.agentCore": {
 			// to override args, implement: initAwsBedrockAgentCore(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAwsBedrockAgentCore,
+		},
+		"aws.bedrock.agentCore.registry": {
+			// to override args, implement: initAwsBedrockAgentCoreRegistry(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsBedrockAgentCoreRegistry,
+		},
+		"aws.bedrock.agentCore.registryRecord": {
+			// to override args, implement: initAwsBedrockAgentCoreRegistryRecord(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsBedrockAgentCoreRegistryRecord,
+		},
+		"aws.bedrock.agentCore.policyEngine": {
+			// to override args, implement: initAwsBedrockAgentCorePolicyEngine(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsBedrockAgentCorePolicyEngine,
+		},
+		"aws.bedrock.agentCore.policy": {
+			// to override args, implement: initAwsBedrockAgentCorePolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsBedrockAgentCorePolicy,
+		},
+		"aws.bedrock.agentCore.tokenVault": {
+			// to override args, implement: initAwsBedrockAgentCoreTokenVault(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsBedrockAgentCoreTokenVault,
 		},
 		"aws.bedrock.agentCore.paymentManager": {
 			// to override args, implement: initAwsBedrockAgentCorePaymentManager(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -36943,6 +36968,174 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.bedrock.agentCore.paymentCredentialProviders": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockAgentCore).GetPaymentCredentialProviders()).ToDataRes(types.Array(types.Resource("aws.bedrock.agentCore.paymentCredentialProvider")))
 	},
+	"aws.bedrock.agentCore.policyEngines": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCore).GetPolicyEngines()).ToDataRes(types.Array(types.Resource("aws.bedrock.agentCore.policyEngine")))
+	},
+	"aws.bedrock.agentCore.tokenVaults": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCore).GetTokenVaults()).ToDataRes(types.Array(types.Resource("aws.bedrock.agentCore.tokenVault")))
+	},
+	"aws.bedrock.agentCore.registries": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCore).GetRegistries()).ToDataRes(types.Array(types.Resource("aws.bedrock.agentCore.registry")))
+	},
+	"aws.bedrock.agentCore.registry.arn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRegistry).GetArn()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.registry.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRegistry).GetId()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.registry.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRegistry).GetName()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.registry.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRegistry).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.registry.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRegistry).GetStatus()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.registry.statusReason": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRegistry).GetStatusReason()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.registry.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRegistry).GetDescription()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.registry.authorizerType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRegistry).GetAuthorizerType()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.registry.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRegistry).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"aws.bedrock.agentCore.registry.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRegistry).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"aws.bedrock.agentCore.registry.autoApproval": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRegistry).GetAutoApproval()).ToDataRes(types.Bool)
+	},
+	"aws.bedrock.agentCore.registry.authorizerDiscoveryUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRegistry).GetAuthorizerDiscoveryUrl()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.registry.allowedClients": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRegistry).GetAllowedClients()).ToDataRes(types.Array(types.String))
+	},
+	"aws.bedrock.agentCore.registry.allowedAudiences": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRegistry).GetAllowedAudiences()).ToDataRes(types.Array(types.String))
+	},
+	"aws.bedrock.agentCore.registry.allowedScopes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRegistry).GetAllowedScopes()).ToDataRes(types.Array(types.String))
+	},
+	"aws.bedrock.agentCore.registry.records": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRegistry).GetRecords()).ToDataRes(types.Array(types.Resource("aws.bedrock.agentCore.registryRecord")))
+	},
+	"aws.bedrock.agentCore.registryRecord.arn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRegistryRecord).GetArn()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.registryRecord.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRegistryRecord).GetId()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.registryRecord.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRegistryRecord).GetName()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.registryRecord.descriptorType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRegistryRecord).GetDescriptorType()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.registryRecord.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRegistryRecord).GetStatus()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.registryRecord.recordVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRegistryRecord).GetRecordVersion()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.registryRecord.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRegistryRecord).GetDescription()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.registryRecord.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRegistryRecord).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"aws.bedrock.agentCore.registryRecord.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRegistryRecord).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"aws.bedrock.agentCore.policyEngine.arn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCorePolicyEngine).GetArn()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.policyEngine.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCorePolicyEngine).GetId()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.policyEngine.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCorePolicyEngine).GetName()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.policyEngine.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCorePolicyEngine).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.policyEngine.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCorePolicyEngine).GetStatus()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.policyEngine.statusReasons": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCorePolicyEngine).GetStatusReasons()).ToDataRes(types.Array(types.String))
+	},
+	"aws.bedrock.agentCore.policyEngine.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCorePolicyEngine).GetDescription()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.policyEngine.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCorePolicyEngine).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"aws.bedrock.agentCore.policyEngine.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCorePolicyEngine).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"aws.bedrock.agentCore.policyEngine.kmsKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCorePolicyEngine).GetKmsKey()).ToDataRes(types.Resource("aws.kms.key"))
+	},
+	"aws.bedrock.agentCore.policyEngine.policies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCorePolicyEngine).GetPolicies()).ToDataRes(types.Array(types.Resource("aws.bedrock.agentCore.policy")))
+	},
+	"aws.bedrock.agentCore.policy.arn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCorePolicy).GetArn()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.policy.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCorePolicy).GetId()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.policy.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCorePolicy).GetName()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.policy.policyEngineId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCorePolicy).GetPolicyEngineId()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.policy.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCorePolicy).GetStatus()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.policy.statusReasons": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCorePolicy).GetStatusReasons()).ToDataRes(types.Array(types.String))
+	},
+	"aws.bedrock.agentCore.policy.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCorePolicy).GetDescription()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.policy.enforcementMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCorePolicy).GetEnforcementMode()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.policy.definitionType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCorePolicy).GetDefinitionType()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.policy.statement": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCorePolicy).GetStatement()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.policy.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCorePolicy).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"aws.bedrock.agentCore.policy.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCorePolicy).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"aws.bedrock.agentCore.tokenVault.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreTokenVault).GetId()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.tokenVault.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreTokenVault).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.tokenVault.keyType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreTokenVault).GetKeyType()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.tokenVault.kmsKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreTokenVault).GetKmsKey()).ToDataRes(types.Resource("aws.kms.key"))
+	},
+	"aws.bedrock.agentCore.tokenVault.lastModifiedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreTokenVault).GetLastModifiedAt()).ToDataRes(types.Time)
+	},
 	"aws.bedrock.agentCore.paymentManager.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockAgentCorePaymentManager).GetArn()).ToDataRes(types.String)
 	},
@@ -37113,6 +37306,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.bedrock.agentCore.gateway.policyEngineArn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockAgentCoreGateway).GetPolicyEngineArn()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.gateway.policyEngine": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreGateway).GetPolicyEngine()).ToDataRes(types.Resource("aws.bedrock.agentCore.policyEngine"))
 	},
 	"aws.bedrock.agentCore.gateway.policyEngineMode": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockAgentCoreGateway).GetPolicyEngineMode()).ToDataRes(types.String)
@@ -37290,6 +37486,60 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.bedrock.agentCore.gatewayTarget.credentialProviderConfigurations": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockAgentCoreGatewayTarget).GetCredentialProviderConfigurations()).ToDataRes(types.Array(types.Dict))
+	},
+	"aws.bedrock.agentCore.gatewayTarget.protocolType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreGatewayTarget).GetProtocolType()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.gatewayTarget.statusReasons": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreGatewayTarget).GetStatusReasons()).ToDataRes(types.Array(types.String))
+	},
+	"aws.bedrock.agentCore.gatewayTarget.lastSynchronizedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreGatewayTarget).GetLastSynchronizedAt()).ToDataRes(types.Time)
+	},
+	"aws.bedrock.agentCore.gatewayTarget.configurationType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreGatewayTarget).GetConfigurationType()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.gatewayTarget.targetType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreGatewayTarget).GetTargetType()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.gatewayTarget.endpoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreGatewayTarget).GetEndpoint()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.gatewayTarget.lambdaFunction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreGatewayTarget).GetLambdaFunction()).ToDataRes(types.Resource("aws.lambda.function"))
+	},
+	"aws.bedrock.agentCore.gatewayTarget.apiGateway": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreGatewayTarget).GetApiGateway()).ToDataRes(types.Resource("aws.apigateway.restapi"))
+	},
+	"aws.bedrock.agentCore.gatewayTarget.apiGatewayStage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreGatewayTarget).GetApiGatewayStage()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.gatewayTarget.agentRuntime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreGatewayTarget).GetAgentRuntime()).ToDataRes(types.Resource("aws.bedrock.agentCore.runtime"))
+	},
+	"aws.bedrock.agentCore.gatewayTarget.privateEndpointType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreGatewayTarget).GetPrivateEndpointType()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.gatewayTarget.privateEndpointVpc": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreGatewayTarget).GetPrivateEndpointVpc()).ToDataRes(types.Resource("aws.vpc"))
+	},
+	"aws.bedrock.agentCore.gatewayTarget.privateEndpointSubnets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreGatewayTarget).GetPrivateEndpointSubnets()).ToDataRes(types.Array(types.Resource("aws.vpc.subnet")))
+	},
+	"aws.bedrock.agentCore.gatewayTarget.privateEndpointSecurityGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreGatewayTarget).GetPrivateEndpointSecurityGroups()).ToDataRes(types.Array(types.Resource("aws.ec2.securitygroup")))
+	},
+	"aws.bedrock.agentCore.gatewayTarget.credentialProviderTypes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreGatewayTarget).GetCredentialProviderTypes()).ToDataRes(types.Array(types.String))
+	},
+	"aws.bedrock.agentCore.gatewayTarget.oauth2CredentialProviders": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreGatewayTarget).GetOauth2CredentialProviders()).ToDataRes(types.Array(types.Resource("aws.bedrock.agentCore.oauth2CredentialProvider")))
+	},
+	"aws.bedrock.agentCore.gatewayTarget.oauthScopes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreGatewayTarget).GetOauthScopes()).ToDataRes(types.Array(types.String))
+	},
+	"aws.bedrock.agentCore.gatewayTarget.apiKeyCredentialProviders": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreGatewayTarget).GetApiKeyCredentialProviders()).ToDataRes(types.Array(types.Resource("aws.bedrock.agentCore.apiKeyCredentialProvider")))
 	},
 	"aws.bedrock.agentCore.harness.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockAgentCoreHarness).GetArn()).ToDataRes(types.String)
@@ -86263,6 +86513,250 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsBedrockAgentCore).PaymentCredentialProviders, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"aws.bedrock.agentCore.policyEngines": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCore).PolicyEngines, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.tokenVaults": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCore).TokenVaults, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.registries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCore).Registries, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.registry.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRegistry).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.bedrock.agentCore.registry.arn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRegistry).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.registry.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRegistry).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.registry.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRegistry).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.registry.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRegistry).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.registry.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRegistry).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.registry.statusReason": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRegistry).StatusReason, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.registry.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRegistry).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.registry.authorizerType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRegistry).AuthorizerType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.registry.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRegistry).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.registry.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRegistry).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.registry.autoApproval": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRegistry).AutoApproval, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.registry.authorizerDiscoveryUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRegistry).AuthorizerDiscoveryUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.registry.allowedClients": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRegistry).AllowedClients, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.registry.allowedAudiences": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRegistry).AllowedAudiences, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.registry.allowedScopes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRegistry).AllowedScopes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.registry.records": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRegistry).Records, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.registryRecord.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRegistryRecord).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.bedrock.agentCore.registryRecord.arn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRegistryRecord).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.registryRecord.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRegistryRecord).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.registryRecord.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRegistryRecord).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.registryRecord.descriptorType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRegistryRecord).DescriptorType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.registryRecord.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRegistryRecord).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.registryRecord.recordVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRegistryRecord).RecordVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.registryRecord.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRegistryRecord).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.registryRecord.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRegistryRecord).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.registryRecord.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRegistryRecord).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.policyEngine.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCorePolicyEngine).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.bedrock.agentCore.policyEngine.arn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCorePolicyEngine).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.policyEngine.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCorePolicyEngine).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.policyEngine.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCorePolicyEngine).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.policyEngine.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCorePolicyEngine).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.policyEngine.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCorePolicyEngine).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.policyEngine.statusReasons": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCorePolicyEngine).StatusReasons, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.policyEngine.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCorePolicyEngine).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.policyEngine.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCorePolicyEngine).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.policyEngine.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCorePolicyEngine).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.policyEngine.kmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCorePolicyEngine).KmsKey, ok = plugin.RawToTValue[*mqlAwsKmsKey](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.policyEngine.policies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCorePolicyEngine).Policies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.policy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCorePolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.bedrock.agentCore.policy.arn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCorePolicy).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.policy.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCorePolicy).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.policy.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCorePolicy).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.policy.policyEngineId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCorePolicy).PolicyEngineId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.policy.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCorePolicy).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.policy.statusReasons": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCorePolicy).StatusReasons, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.policy.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCorePolicy).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.policy.enforcementMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCorePolicy).EnforcementMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.policy.definitionType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCorePolicy).DefinitionType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.policy.statement": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCorePolicy).Statement, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.policy.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCorePolicy).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.policy.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCorePolicy).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.tokenVault.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreTokenVault).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.bedrock.agentCore.tokenVault.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreTokenVault).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.tokenVault.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreTokenVault).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.tokenVault.keyType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreTokenVault).KeyType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.tokenVault.kmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreTokenVault).KmsKey, ok = plugin.RawToTValue[*mqlAwsKmsKey](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.tokenVault.lastModifiedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreTokenVault).LastModifiedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
 	"aws.bedrock.agentCore.paymentManager.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsBedrockAgentCorePaymentManager).__id, ok = v.Value.(string)
 		return
@@ -86505,6 +86999,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.bedrock.agentCore.gateway.policyEngineArn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsBedrockAgentCoreGateway).PolicyEngineArn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.gateway.policyEngine": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreGateway).PolicyEngine, ok = plugin.RawToTValue[*mqlAwsBedrockAgentCorePolicyEngine](v.Value, v.Error)
 		return
 	},
 	"aws.bedrock.agentCore.gateway.policyEngineMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -86761,6 +87259,78 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.bedrock.agentCore.gatewayTarget.credentialProviderConfigurations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsBedrockAgentCoreGatewayTarget).CredentialProviderConfigurations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.gatewayTarget.protocolType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreGatewayTarget).ProtocolType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.gatewayTarget.statusReasons": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreGatewayTarget).StatusReasons, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.gatewayTarget.lastSynchronizedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreGatewayTarget).LastSynchronizedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.gatewayTarget.configurationType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreGatewayTarget).ConfigurationType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.gatewayTarget.targetType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreGatewayTarget).TargetType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.gatewayTarget.endpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreGatewayTarget).Endpoint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.gatewayTarget.lambdaFunction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreGatewayTarget).LambdaFunction, ok = plugin.RawToTValue[*mqlAwsLambdaFunction](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.gatewayTarget.apiGateway": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreGatewayTarget).ApiGateway, ok = plugin.RawToTValue[*mqlAwsApigatewayRestapi](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.gatewayTarget.apiGatewayStage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreGatewayTarget).ApiGatewayStage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.gatewayTarget.agentRuntime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreGatewayTarget).AgentRuntime, ok = plugin.RawToTValue[*mqlAwsBedrockAgentCoreRuntime](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.gatewayTarget.privateEndpointType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreGatewayTarget).PrivateEndpointType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.gatewayTarget.privateEndpointVpc": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreGatewayTarget).PrivateEndpointVpc, ok = plugin.RawToTValue[*mqlAwsVpc](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.gatewayTarget.privateEndpointSubnets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreGatewayTarget).PrivateEndpointSubnets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.gatewayTarget.privateEndpointSecurityGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreGatewayTarget).PrivateEndpointSecurityGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.gatewayTarget.credentialProviderTypes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreGatewayTarget).CredentialProviderTypes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.gatewayTarget.oauth2CredentialProviders": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreGatewayTarget).Oauth2CredentialProviders, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.gatewayTarget.oauthScopes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreGatewayTarget).OauthScopes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.gatewayTarget.apiKeyCredentialProviders": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreGatewayTarget).ApiKeyCredentialProviders, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"aws.bedrock.agentCore.harness.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -209843,6 +210413,9 @@ type mqlAwsBedrockAgentCore struct {
 	ConsentPortals             plugin.TValue[[]any]
 	PaymentManagers            plugin.TValue[[]any]
 	PaymentCredentialProviders plugin.TValue[[]any]
+	PolicyEngines              plugin.TValue[[]any]
+	TokenVaults                plugin.TValue[[]any]
+	Registries                 plugin.TValue[[]any]
 }
 
 // createAwsBedrockAgentCore creates a new instance of this resource
@@ -210088,6 +210661,572 @@ func (c *mqlAwsBedrockAgentCore) GetPaymentCredentialProviders() *plugin.TValue[
 
 		return c.paymentCredentialProviders()
 	})
+}
+
+func (c *mqlAwsBedrockAgentCore) GetPolicyEngines() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PolicyEngines, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore", c.__id, "policyEngines")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.policyEngines()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCore) GetTokenVaults() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TokenVaults, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore", c.__id, "tokenVaults")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.tokenVaults()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCore) GetRegistries() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Registries, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore", c.__id, "registries")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.registries()
+	})
+}
+
+// mqlAwsBedrockAgentCoreRegistry for the aws.bedrock.agentCore.registry resource
+type mqlAwsBedrockAgentCoreRegistry struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsBedrockAgentCoreRegistryInternal
+	Arn                    plugin.TValue[string]
+	Id                     plugin.TValue[string]
+	Name                   plugin.TValue[string]
+	Region                 plugin.TValue[string]
+	Status                 plugin.TValue[string]
+	StatusReason           plugin.TValue[string]
+	Description            plugin.TValue[string]
+	AuthorizerType         plugin.TValue[string]
+	CreatedAt              plugin.TValue[*time.Time]
+	UpdatedAt              plugin.TValue[*time.Time]
+	AutoApproval           plugin.TValue[bool]
+	AuthorizerDiscoveryUrl plugin.TValue[string]
+	AllowedClients         plugin.TValue[[]any]
+	AllowedAudiences       plugin.TValue[[]any]
+	AllowedScopes          plugin.TValue[[]any]
+	Records                plugin.TValue[[]any]
+}
+
+// createAwsBedrockAgentCoreRegistry creates a new instance of this resource
+func createAwsBedrockAgentCoreRegistry(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsBedrockAgentCoreRegistry{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.bedrock.agentCore.registry", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistry) MqlName() string {
+	return "aws.bedrock.agentCore.registry"
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistry) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistry) GetArn() *plugin.TValue[string] {
+	return &c.Arn
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistry) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistry) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistry) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistry) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistry) GetStatusReason() *plugin.TValue[string] {
+	return &c.StatusReason
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistry) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistry) GetAuthorizerType() *plugin.TValue[string] {
+	return &c.AuthorizerType
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistry) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistry) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistry) GetAutoApproval() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AutoApproval, func() (bool, error) {
+		return c.autoApproval()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistry) GetAuthorizerDiscoveryUrl() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.AuthorizerDiscoveryUrl, func() (string, error) {
+		return c.authorizerDiscoveryUrl()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistry) GetAllowedClients() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AllowedClients, func() ([]any, error) {
+		return c.allowedClients()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistry) GetAllowedAudiences() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AllowedAudiences, func() ([]any, error) {
+		return c.allowedAudiences()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistry) GetAllowedScopes() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AllowedScopes, func() ([]any, error) {
+		return c.allowedScopes()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistry) GetRecords() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Records, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.registry", c.__id, "records")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.records()
+	})
+}
+
+// mqlAwsBedrockAgentCoreRegistryRecord for the aws.bedrock.agentCore.registryRecord resource
+type mqlAwsBedrockAgentCoreRegistryRecord struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAwsBedrockAgentCoreRegistryRecordInternal it will be used here
+	Arn            plugin.TValue[string]
+	Id             plugin.TValue[string]
+	Name           plugin.TValue[string]
+	DescriptorType plugin.TValue[string]
+	Status         plugin.TValue[string]
+	RecordVersion  plugin.TValue[string]
+	Description    plugin.TValue[string]
+	CreatedAt      plugin.TValue[*time.Time]
+	UpdatedAt      plugin.TValue[*time.Time]
+}
+
+// createAwsBedrockAgentCoreRegistryRecord creates a new instance of this resource
+func createAwsBedrockAgentCoreRegistryRecord(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsBedrockAgentCoreRegistryRecord{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.bedrock.agentCore.registryRecord", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistryRecord) MqlName() string {
+	return "aws.bedrock.agentCore.registryRecord"
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistryRecord) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistryRecord) GetArn() *plugin.TValue[string] {
+	return &c.Arn
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistryRecord) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistryRecord) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistryRecord) GetDescriptorType() *plugin.TValue[string] {
+	return &c.DescriptorType
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistryRecord) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistryRecord) GetRecordVersion() *plugin.TValue[string] {
+	return &c.RecordVersion
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistryRecord) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistryRecord) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlAwsBedrockAgentCoreRegistryRecord) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+// mqlAwsBedrockAgentCorePolicyEngine for the aws.bedrock.agentCore.policyEngine resource
+type mqlAwsBedrockAgentCorePolicyEngine struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsBedrockAgentCorePolicyEngineInternal
+	Arn           plugin.TValue[string]
+	Id            plugin.TValue[string]
+	Name          plugin.TValue[string]
+	Region        plugin.TValue[string]
+	Status        plugin.TValue[string]
+	StatusReasons plugin.TValue[[]any]
+	Description   plugin.TValue[string]
+	CreatedAt     plugin.TValue[*time.Time]
+	UpdatedAt     plugin.TValue[*time.Time]
+	KmsKey        plugin.TValue[*mqlAwsKmsKey]
+	Policies      plugin.TValue[[]any]
+}
+
+// createAwsBedrockAgentCorePolicyEngine creates a new instance of this resource
+func createAwsBedrockAgentCorePolicyEngine(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsBedrockAgentCorePolicyEngine{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.bedrock.agentCore.policyEngine", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsBedrockAgentCorePolicyEngine) MqlName() string {
+	return "aws.bedrock.agentCore.policyEngine"
+}
+
+func (c *mqlAwsBedrockAgentCorePolicyEngine) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsBedrockAgentCorePolicyEngine) GetArn() *plugin.TValue[string] {
+	return &c.Arn
+}
+
+func (c *mqlAwsBedrockAgentCorePolicyEngine) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAwsBedrockAgentCorePolicyEngine) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAwsBedrockAgentCorePolicyEngine) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlAwsBedrockAgentCorePolicyEngine) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlAwsBedrockAgentCorePolicyEngine) GetStatusReasons() *plugin.TValue[[]any] {
+	return &c.StatusReasons
+}
+
+func (c *mqlAwsBedrockAgentCorePolicyEngine) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlAwsBedrockAgentCorePolicyEngine) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlAwsBedrockAgentCorePolicyEngine) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlAwsBedrockAgentCorePolicyEngine) GetKmsKey() *plugin.TValue[*mqlAwsKmsKey] {
+	return plugin.GetOrCompute[*mqlAwsKmsKey](&c.KmsKey, func() (*mqlAwsKmsKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.policyEngine", c.__id, "kmsKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsKmsKey), nil
+			}
+		}
+
+		return c.kmsKey()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCorePolicyEngine) GetPolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Policies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.policyEngine", c.__id, "policies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.policies()
+	})
+}
+
+// mqlAwsBedrockAgentCorePolicy for the aws.bedrock.agentCore.policy resource
+type mqlAwsBedrockAgentCorePolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAwsBedrockAgentCorePolicyInternal it will be used here
+	Arn             plugin.TValue[string]
+	Id              plugin.TValue[string]
+	Name            plugin.TValue[string]
+	PolicyEngineId  plugin.TValue[string]
+	Status          plugin.TValue[string]
+	StatusReasons   plugin.TValue[[]any]
+	Description     plugin.TValue[string]
+	EnforcementMode plugin.TValue[string]
+	DefinitionType  plugin.TValue[string]
+	Statement       plugin.TValue[string]
+	CreatedAt       plugin.TValue[*time.Time]
+	UpdatedAt       plugin.TValue[*time.Time]
+}
+
+// createAwsBedrockAgentCorePolicy creates a new instance of this resource
+func createAwsBedrockAgentCorePolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsBedrockAgentCorePolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.bedrock.agentCore.policy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsBedrockAgentCorePolicy) MqlName() string {
+	return "aws.bedrock.agentCore.policy"
+}
+
+func (c *mqlAwsBedrockAgentCorePolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsBedrockAgentCorePolicy) GetArn() *plugin.TValue[string] {
+	return &c.Arn
+}
+
+func (c *mqlAwsBedrockAgentCorePolicy) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAwsBedrockAgentCorePolicy) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAwsBedrockAgentCorePolicy) GetPolicyEngineId() *plugin.TValue[string] {
+	return &c.PolicyEngineId
+}
+
+func (c *mqlAwsBedrockAgentCorePolicy) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlAwsBedrockAgentCorePolicy) GetStatusReasons() *plugin.TValue[[]any] {
+	return &c.StatusReasons
+}
+
+func (c *mqlAwsBedrockAgentCorePolicy) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlAwsBedrockAgentCorePolicy) GetEnforcementMode() *plugin.TValue[string] {
+	return &c.EnforcementMode
+}
+
+func (c *mqlAwsBedrockAgentCorePolicy) GetDefinitionType() *plugin.TValue[string] {
+	return &c.DefinitionType
+}
+
+func (c *mqlAwsBedrockAgentCorePolicy) GetStatement() *plugin.TValue[string] {
+	return &c.Statement
+}
+
+func (c *mqlAwsBedrockAgentCorePolicy) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlAwsBedrockAgentCorePolicy) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+// mqlAwsBedrockAgentCoreTokenVault for the aws.bedrock.agentCore.tokenVault resource
+type mqlAwsBedrockAgentCoreTokenVault struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsBedrockAgentCoreTokenVaultInternal
+	Id             plugin.TValue[string]
+	Region         plugin.TValue[string]
+	KeyType        plugin.TValue[string]
+	KmsKey         plugin.TValue[*mqlAwsKmsKey]
+	LastModifiedAt plugin.TValue[*time.Time]
+}
+
+// createAwsBedrockAgentCoreTokenVault creates a new instance of this resource
+func createAwsBedrockAgentCoreTokenVault(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsBedrockAgentCoreTokenVault{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.bedrock.agentCore.tokenVault", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsBedrockAgentCoreTokenVault) MqlName() string {
+	return "aws.bedrock.agentCore.tokenVault"
+}
+
+func (c *mqlAwsBedrockAgentCoreTokenVault) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsBedrockAgentCoreTokenVault) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAwsBedrockAgentCoreTokenVault) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlAwsBedrockAgentCoreTokenVault) GetKeyType() *plugin.TValue[string] {
+	return &c.KeyType
+}
+
+func (c *mqlAwsBedrockAgentCoreTokenVault) GetKmsKey() *plugin.TValue[*mqlAwsKmsKey] {
+	return plugin.GetOrCompute[*mqlAwsKmsKey](&c.KmsKey, func() (*mqlAwsKmsKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.tokenVault", c.__id, "kmsKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsKmsKey), nil
+			}
+		}
+
+		return c.kmsKey()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreTokenVault) GetLastModifiedAt() *plugin.TValue[*time.Time] {
+	return &c.LastModifiedAt
 }
 
 // mqlAwsBedrockAgentCorePaymentManager for the aws.bedrock.agentCore.paymentManager resource
@@ -210467,6 +211606,7 @@ type mqlAwsBedrockAgentCoreGateway struct {
 	WebAcl                 plugin.TValue[*mqlAwsWafAcl]
 	WafFailureMode         plugin.TValue[string]
 	PolicyEngineArn        plugin.TValue[string]
+	PolicyEngine           plugin.TValue[*mqlAwsBedrockAgentCorePolicyEngine]
 	PolicyEngineMode       plugin.TValue[string]
 	Interceptors           plugin.TValue[[]any]
 	ResourcePolicy         plugin.TValue[string]
@@ -210703,6 +211843,22 @@ func (c *mqlAwsBedrockAgentCoreGateway) GetWafFailureMode() *plugin.TValue[strin
 func (c *mqlAwsBedrockAgentCoreGateway) GetPolicyEngineArn() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.PolicyEngineArn, func() (string, error) {
 		return c.policyEngineArn()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreGateway) GetPolicyEngine() *plugin.TValue[*mqlAwsBedrockAgentCorePolicyEngine] {
+	return plugin.GetOrCompute[*mqlAwsBedrockAgentCorePolicyEngine](&c.PolicyEngine, func() (*mqlAwsBedrockAgentCorePolicyEngine, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.gateway", c.__id, "policyEngine")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsBedrockAgentCorePolicyEngine), nil
+			}
+		}
+
+		return c.policyEngine()
 	})
 }
 
@@ -211278,6 +212434,24 @@ type mqlAwsBedrockAgentCoreGatewayTarget struct {
 	UpdatedAt                        plugin.TValue[*time.Time]
 	TargetConfiguration              plugin.TValue[any]
 	CredentialProviderConfigurations plugin.TValue[[]any]
+	ProtocolType                     plugin.TValue[string]
+	StatusReasons                    plugin.TValue[[]any]
+	LastSynchronizedAt               plugin.TValue[*time.Time]
+	ConfigurationType                plugin.TValue[string]
+	TargetType                       plugin.TValue[string]
+	Endpoint                         plugin.TValue[string]
+	LambdaFunction                   plugin.TValue[*mqlAwsLambdaFunction]
+	ApiGateway                       plugin.TValue[*mqlAwsApigatewayRestapi]
+	ApiGatewayStage                  plugin.TValue[string]
+	AgentRuntime                     plugin.TValue[*mqlAwsBedrockAgentCoreRuntime]
+	PrivateEndpointType              plugin.TValue[string]
+	PrivateEndpointVpc               plugin.TValue[*mqlAwsVpc]
+	PrivateEndpointSubnets           plugin.TValue[[]any]
+	PrivateEndpointSecurityGroups    plugin.TValue[[]any]
+	CredentialProviderTypes          plugin.TValue[[]any]
+	Oauth2CredentialProviders        plugin.TValue[[]any]
+	OauthScopes                      plugin.TValue[[]any]
+	ApiKeyCredentialProviders        plugin.TValue[[]any]
 }
 
 // createAwsBedrockAgentCoreGatewayTarget creates a new instance of this resource
@@ -211358,6 +212532,194 @@ func (c *mqlAwsBedrockAgentCoreGatewayTarget) GetTargetConfiguration() *plugin.T
 func (c *mqlAwsBedrockAgentCoreGatewayTarget) GetCredentialProviderConfigurations() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.CredentialProviderConfigurations, func() ([]any, error) {
 		return c.credentialProviderConfigurations()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreGatewayTarget) GetProtocolType() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ProtocolType, func() (string, error) {
+		return c.protocolType()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreGatewayTarget) GetStatusReasons() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.StatusReasons, func() ([]any, error) {
+		return c.statusReasons()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreGatewayTarget) GetLastSynchronizedAt() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.LastSynchronizedAt, func() (*time.Time, error) {
+		return c.lastSynchronizedAt()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreGatewayTarget) GetConfigurationType() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ConfigurationType, func() (string, error) {
+		return c.configurationType()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreGatewayTarget) GetTargetType() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.TargetType, func() (string, error) {
+		return c.targetType()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreGatewayTarget) GetEndpoint() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Endpoint, func() (string, error) {
+		return c.endpoint()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreGatewayTarget) GetLambdaFunction() *plugin.TValue[*mqlAwsLambdaFunction] {
+	return plugin.GetOrCompute[*mqlAwsLambdaFunction](&c.LambdaFunction, func() (*mqlAwsLambdaFunction, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.gatewayTarget", c.__id, "lambdaFunction")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsLambdaFunction), nil
+			}
+		}
+
+		return c.lambdaFunction()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreGatewayTarget) GetApiGateway() *plugin.TValue[*mqlAwsApigatewayRestapi] {
+	return plugin.GetOrCompute[*mqlAwsApigatewayRestapi](&c.ApiGateway, func() (*mqlAwsApigatewayRestapi, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.gatewayTarget", c.__id, "apiGateway")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsApigatewayRestapi), nil
+			}
+		}
+
+		return c.apiGateway()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreGatewayTarget) GetApiGatewayStage() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ApiGatewayStage, func() (string, error) {
+		return c.apiGatewayStage()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreGatewayTarget) GetAgentRuntime() *plugin.TValue[*mqlAwsBedrockAgentCoreRuntime] {
+	return plugin.GetOrCompute[*mqlAwsBedrockAgentCoreRuntime](&c.AgentRuntime, func() (*mqlAwsBedrockAgentCoreRuntime, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.gatewayTarget", c.__id, "agentRuntime")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsBedrockAgentCoreRuntime), nil
+			}
+		}
+
+		return c.agentRuntime()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreGatewayTarget) GetPrivateEndpointType() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.PrivateEndpointType, func() (string, error) {
+		return c.privateEndpointType()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreGatewayTarget) GetPrivateEndpointVpc() *plugin.TValue[*mqlAwsVpc] {
+	return plugin.GetOrCompute[*mqlAwsVpc](&c.PrivateEndpointVpc, func() (*mqlAwsVpc, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.gatewayTarget", c.__id, "privateEndpointVpc")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsVpc), nil
+			}
+		}
+
+		return c.privateEndpointVpc()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreGatewayTarget) GetPrivateEndpointSubnets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PrivateEndpointSubnets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.gatewayTarget", c.__id, "privateEndpointSubnets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.privateEndpointSubnets()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreGatewayTarget) GetPrivateEndpointSecurityGroups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PrivateEndpointSecurityGroups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.gatewayTarget", c.__id, "privateEndpointSecurityGroups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.privateEndpointSecurityGroups()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreGatewayTarget) GetCredentialProviderTypes() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.CredentialProviderTypes, func() ([]any, error) {
+		return c.credentialProviderTypes()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreGatewayTarget) GetOauth2CredentialProviders() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Oauth2CredentialProviders, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.gatewayTarget", c.__id, "oauth2CredentialProviders")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.oauth2CredentialProviders()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreGatewayTarget) GetOauthScopes() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.OauthScopes, func() ([]any, error) {
+		return c.oauthScopes()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreGatewayTarget) GetApiKeyCredentialProviders() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ApiKeyCredentialProviders, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.gatewayTarget", c.__id, "apiKeyCredentialProviders")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.apiKeyCredentialProviders()
 	})
 }
 

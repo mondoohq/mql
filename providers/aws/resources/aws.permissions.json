@@ -112,7 +112,9 @@
     "bedrock-agentcore:GetMemory",
     "bedrock-agentcore:GetPaymentConnector",
     "bedrock-agentcore:GetPaymentManager",
+    "bedrock-agentcore:GetRegistry",
     "bedrock-agentcore:GetResourcePolicy",
+    "bedrock-agentcore:GetTokenVault",
     "bedrock-agentcore:ListAgentRuntimeEndpoints",
     "bedrock-agentcore:ListAgentRuntimeVersions",
     "bedrock-agentcore:ListAgentRuntimes",
@@ -131,6 +133,10 @@
     "bedrock-agentcore:ListPaymentConnectors",
     "bedrock-agentcore:ListPaymentCredentialProviders",
     "bedrock-agentcore:ListPaymentManagers",
+    "bedrock-agentcore:ListPolicies",
+    "bedrock-agentcore:ListPolicyEngines",
+    "bedrock-agentcore:ListRegistries",
+    "bedrock-agentcore:ListRegistryRecords",
     "bedrock-agentcore:ListTagsForResource",
     "bedrock-agentcore:ListWorkloadIdentities",
     "bedrock:GetAccountDataRetention",
@@ -1821,10 +1827,22 @@
       "source_file": "aws_bedrock_agentcore_payments.go"
     },
     {
+      "permission": "bedrock-agentcore:GetRegistry",
+      "service": "bedrock-agentcore",
+      "action": "GetRegistry",
+      "source_file": "aws_bedrock_agentcore_governance.go"
+    },
+    {
       "permission": "bedrock-agentcore:GetResourcePolicy",
       "service": "bedrock-agentcore",
       "action": "GetResourcePolicy",
       "source_file": "aws_bedrock_agentcore_access.go"
+    },
+    {
+      "permission": "bedrock-agentcore:GetTokenVault",
+      "service": "bedrock-agentcore",
+      "action": "GetTokenVault",
+      "source_file": "aws_bedrock_agentcore_governance.go"
     },
     {
       "permission": "bedrock-agentcore:ListAgentRuntimeEndpoints",
@@ -1933,6 +1951,30 @@
       "service": "bedrock-agentcore",
       "action": "ListPaymentManagers",
       "source_file": "aws_bedrock_agentcore_payments.go"
+    },
+    {
+      "permission": "bedrock-agentcore:ListPolicies",
+      "service": "bedrock-agentcore",
+      "action": "ListPolicies",
+      "source_file": "aws_bedrock_agentcore_governance.go"
+    },
+    {
+      "permission": "bedrock-agentcore:ListPolicyEngines",
+      "service": "bedrock-agentcore",
+      "action": "ListPolicyEngines",
+      "source_file": "aws_bedrock_agentcore_governance.go"
+    },
+    {
+      "permission": "bedrock-agentcore:ListRegistries",
+      "service": "bedrock-agentcore",
+      "action": "ListRegistries",
+      "source_file": "aws_bedrock_agentcore_governance.go"
+    },
+    {
+      "permission": "bedrock-agentcore:ListRegistryRecords",
+      "service": "bedrock-agentcore",
+      "action": "ListRegistryRecords",
+      "source_file": "aws_bedrock_agentcore_governance.go"
     },
     {
       "permission": "bedrock-agentcore:ListTagsForResource",

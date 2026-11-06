@@ -32250,6 +32250,9 @@ private aws.bedrock.marketplaceModelEndpoint @defaults("endpointArn modelSourceI
 // apiKeyCredentialProviders, and workloadIdentities hold the supporting
 // infrastructure. paymentManagers and paymentCredentialProviders hold the
 // AgentCore Payments setup agents use to pay through payment providers.
+// policyEngines holds the Cedar policies that authorize tool calls through
+// gateways, and tokenVaults the per-region store of the OAuth tokens and API
+// keys agents obtain from credential providers.
 private aws.bedrock.agentCore {
   // MCP gateways in the account
   gateways() []aws.bedrock.agentCore.gateway
@@ -32277,6 +32280,196 @@ private aws.bedrock.agentCore {
   paymentManagers() []aws.bedrock.agentCore.paymentManager
   // Payment credential providers that hold payment-provider credentials in AgentCore Identity
   paymentCredentialProviders() []aws.bedrock.agentCore.paymentCredentialProvider
+  // Policy engines that hold the policies authorizing tool calls made through gateways
+  policyEngines() []aws.bedrock.agentCore.policyEngine
+  // Token vaults that store the credentials agents obtain from credential providers, one per region in use
+  tokenVaults() []aws.bedrock.agentCore.tokenVault
+  // Agent registries that catalog the MCP servers, agents, and skills available to agents
+  registries() []aws.bedrock.agentCore.registry
+}
+
+// Amazon Bedrock AgentCore registry
+//
+// Catalog of MCP servers, agents, and agent skills that agents and developers
+// discover and connect to. `authorizerType` reports how callers searching the
+// registry are authenticated, with `allowedClients`, `allowedAudiences`, and
+// `allowedScopes` listing what a caller's JWT must carry for a CUSTOM_JWT
+// registry. `autoApproval` reports whether records are published without
+// review. `records` lists the catalog entries. The `arn` field selects a
+// registry.
+private aws.bedrock.agentCore.registry @defaults("name status authorizerType") {
+  // ARN of the registry
+  arn string
+  // Unique identifier of the registry
+  id string
+  // Name of the registry
+  name string
+  // Region where the registry exists
+  region string
+  // Current status of the registry
+  //
+  // One of CREATING, READY, UPDATING, CREATE_FAILED, UPDATE_FAILED, DELETING, or DELETE_FAILED.
+  status string
+  // Reason for the current status
+  statusReason string
+  // Description of the registry
+  description string
+  // How callers searching the registry are authenticated
+  //
+  // CUSTOM_JWT or AWS_IAM.
+  authorizerType string
+  // Time the registry was created
+  createdAt time
+  // Time the registry was last updated
+  updatedAt time
+  // Whether records are approved automatically when submitted
+  //
+  // True means a record becomes discoverable without review.
+  autoApproval() bool
+  // Discovery URL of the OpenID Connect provider whose JWTs the registry accepts
+  //
+  // Null when the registry does not use a custom JWT authorizer.
+  authorizerDiscoveryUrl() string
+  // Client IDs a caller's JWT must carry to search the registry
+  //
+  // Null when the registry does not use a custom JWT authorizer. Empty when the authorizer does not restrict clients.
+  allowedClients() []string
+  // Audiences a caller's JWT must carry to search the registry
+  //
+  // Null when the registry does not use a custom JWT authorizer. Empty when the authorizer does not restrict audiences.
+  allowedAudiences() []string
+  // Scopes a caller's JWT must carry to search the registry
+  //
+  // Null when the registry does not use a custom JWT authorizer. Empty when the authorizer does not restrict scopes.
+  allowedScopes() []string
+  // Records cataloged in the registry
+  records() []aws.bedrock.agentCore.registryRecord
+}
+
+// Amazon Bedrock AgentCore registry record
+private aws.bedrock.agentCore.registryRecord @defaults("name descriptorType status") {
+  // ARN of the record
+  arn string
+  // Unique identifier of the record
+  id string
+  // Name of the record
+  name string
+  // Kind of entry the record describes
+  //
+  // One of MCP, A2A, CUSTOM, or AGENT_SKILLS.
+  descriptorType string
+  // Approval status of the record
+  //
+  // One of DRAFT, PENDING_APPROVAL, APPROVED, REJECTED, DEPRECATED, CREATING, UPDATING, CREATE_FAILED, or UPDATE_FAILED.
+  status string
+  // Version of the record
+  recordVersion string
+  // Description of the record
+  description string
+  // Time the record was created
+  createdAt time
+  // Time the record was last updated
+  updatedAt time
+}
+
+// Amazon Bedrock AgentCore policy engine
+//
+// Policy engine that evaluates the Cedar policies attached to it whenever an
+// agent calls a tool through a gateway it is associated with. `policies` lists
+// the policies the engine evaluates, `kmsKey` the customer-managed key
+// encrypting the engine's data, and `status` with `statusReasons` whether the
+// engine is usable. Gateways reference an engine through their
+// `policyEngine` field. The `arn` field selects an engine.
+private aws.bedrock.agentCore.policyEngine @defaults("name status") {
+  // ARN of the policy engine
+  arn string
+  // Unique identifier of the policy engine
+  id string
+  // Name of the policy engine
+  name string
+  // Region where the policy engine exists
+  region string
+  // Current status of the policy engine
+  //
+  // One of CREATING, ACTIVE, UPDATING, DELETING, CREATE_FAILED, UPDATE_FAILED, or DELETE_FAILED.
+  status string
+  // Details on the current status, such as the reason a create or update failed
+  statusReasons []string
+  // Description of the policy engine
+  description string
+  // Time the policy engine was created
+  createdAt time
+  // Time the policy engine was last updated
+  updatedAt time
+  // Customer-managed KMS key encrypting the policy engine's data
+  //
+  // Null when the engine uses an AWS-owned key.
+  kmsKey() aws.kms.key
+  // Policies the engine evaluates
+  policies() []aws.bedrock.agentCore.policy
+}
+
+// Amazon Bedrock AgentCore policy
+//
+// Policy in a policy engine that permits or forbids tool calls made through
+// the gateways associated with the engine. `statement` is the policy text,
+// `definitionType` says which language it is written in, and
+// `enforcementMode` whether the engine applies its decision or only logs it.
+private aws.bedrock.agentCore.policy @defaults("name status enforcementMode") {
+  // ARN of the policy
+  arn string
+  // Unique identifier of the policy
+  id string
+  // Name of the policy
+  name string
+  // Identifier of the policy engine that holds the policy
+  policyEngineId string
+  // Current status of the policy
+  //
+  // One of CREATING, ACTIVE, UPDATING, DELETING, CREATE_FAILED, UPDATE_FAILED, or DELETE_FAILED.
+  status string
+  // Details on the current status, such as validation findings that blocked the policy
+  statusReasons []string
+  // Description of the policy
+  description string
+  // Whether the engine enforces the policy's decision or only logs it
+  //
+  // ACTIVE enforces the decision, LOG_ONLY records it without blocking the call.
+  enforcementMode string
+  // Form the policy definition takes
+  //
+  // `cedar` for a Cedar policy, `policy` for an AgentCore policy statement, or `policyGeneration` for a policy generated from a natural-language description.
+  definitionType string
+  // Policy text
+  //
+  // Null when the policy references a generated policy asset rather than carrying a statement.
+  statement string
+  // Time the policy was created
+  createdAt time
+  // Time the policy was last updated
+  updatedAt time
+}
+
+// Amazon Bedrock AgentCore token vault
+//
+// Regional store in which AgentCore Identity keeps the OAuth tokens and API
+// keys agents obtain from credential providers. `keyType` reports whether the
+// vault is encrypted with a customer-managed key, and `kmsKey` which key.
+private aws.bedrock.agentCore.tokenVault @defaults("region keyType") {
+  // Identifier of the token vault
+  id string
+  // Region where the token vault exists
+  region string
+  // Type of KMS key encrypting the vault
+  //
+  // CustomerManagedKey or ServiceManagedKey.
+  keyType string
+  // Customer-managed KMS key encrypting the vault
+  //
+  // Null when the vault uses a service-managed key.
+  kmsKey() aws.kms.key
+  // Time the vault configuration was last modified
+  lastModifiedAt time
 }
 
 // Amazon Bedrock AgentCore payment manager
@@ -32470,8 +32663,12 @@ private aws.bedrock.agentCore.gateway @defaults("name status protocolType") {
   wafFailureMode() string
   // ARN of the policy engine that authorizes tool calls made through the gateway
   //
+  // Deprecated in favor of policyEngine. Null when no policy engine is attached.
+  policyEngineArn() @maturity("deprecated") string
+  // Policy engine that authorizes tool calls made through the gateway
+  //
   // Null when no policy engine is attached.
-  policyEngineArn() string
+  policyEngine() aws.bedrock.agentCore.policyEngine
   // Whether the policy engine enforces its decisions or only logs them
   //
   // One of ENFORCE or LOG_ONLY. Null when no policy engine is attached.
@@ -32691,6 +32888,64 @@ private aws.bedrock.agentCore.gatewayTarget @defaults("name status") {
   targetConfiguration() dict
   // Credential provider configurations governing outbound authentication to the target
   credentialProviderConfigurations() []dict
+  // Protocol the gateway speaks to the target
+  //
+  // MCP or HTTP.
+  protocolType() string
+  // Details on the current status, such as the reason synchronization failed
+  statusReasons() []string
+  // Time the gateway last synchronized the target's tool definitions
+  lastSynchronizedAt() time
+  // Kind of configuration backing the target
+  //
+  // One of `mcp`, `http`, or `inference`.
+  configurationType() string
+  // Kind of backend behind the target
+  //
+  // For `mcp` targets one of `mcpServer`, `lambda`, `openApiSchema`, `smithyModel`, `apiGateway`, or `connector`. For `http` targets one of `agentcoreRuntime`, `connector`, or `passthrough`. For `inference` targets `provider` or `connector`.
+  targetType() string
+  // URL the gateway calls to reach the target
+  //
+  // Set for MCP server, HTTP passthrough, and inference provider targets. Null for other target types.
+  endpoint() string
+  // Lambda function that implements the target's tools
+  //
+  // Null unless the target type is `lambda`.
+  lambdaFunction() aws.lambda.function
+  // API Gateway REST API that implements the target's tools
+  //
+  // Null unless the target type is `apiGateway`.
+  apiGateway() aws.apigateway.restapi
+  // API Gateway stage the target calls
+  //
+  // Null unless the target type is `apiGateway`.
+  apiGatewayStage() string
+  // AgentCore runtime the target forwards requests to
+  //
+  // Null unless the target type is `agentcoreRuntime`.
+  agentRuntime() aws.bedrock.agentCore.runtime
+  // How the gateway reaches the target privately
+  //
+  // `managedVpcResource` when AgentCore manages a VPC Lattice resource in the VPC, `selfManagedLatticeResource` when the target uses an existing VPC Lattice resource configuration. Null when the target is reached over the internet.
+  privateEndpointType() string
+  // VPC that hosts the managed private endpoint
+  //
+  // Null unless the private endpoint type is `managedVpcResource`.
+  privateEndpointVpc() aws.vpc
+  // Subnets of the managed private endpoint
+  privateEndpointSubnets() []aws.vpc.subnet
+  // Security groups attached to the managed private endpoint
+  privateEndpointSecurityGroups() []aws.ec2.securitygroup
+  // Types of credentials the gateway presents to the target
+  //
+  // Each one of GATEWAY_IAM_ROLE, OAUTH, API_KEY, CALLER_IAM_CREDENTIALS, or JWT_PASSTHROUGH. CALLER_IAM_CREDENTIALS and JWT_PASSTHROUGH forward the caller's own identity to the target.
+  credentialProviderTypes() []string
+  // OAuth2 credential providers whose tokens the gateway presents to the target
+  oauth2CredentialProviders() []aws.bedrock.agentCore.oauth2CredentialProvider
+  // OAuth scopes the gateway requests when obtaining tokens for the target
+  oauthScopes() []string
+  // API-key credential providers whose keys the gateway presents to the target
+  apiKeyCredentialProviders() []aws.bedrock.agentCore.apiKeyCredentialProvider
 }
 
 // Amazon Bedrock AgentCore harness
