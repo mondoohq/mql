@@ -710,9 +710,13 @@ gitlab.group @defaults("name visibility webURL") @root {
   // Time (in hours) users are allowed to skip forced 2FA configuration before being locked out
   twoFactorGracePeriod int
   // Whether membership in the group is locked - members can only be added by administrators
-  membershipLock bool
+  //
+  // False on GitLab Community Edition, which does not report it.
+  membershipLock() bool
   // Whether forking projects outside this group is forbidden
-  preventForkingOutsideGroup bool
+  //
+  // False on GitLab Community Edition, which does not report it.
+  preventForkingOutsideGroup() bool
   // Whether group email notifications are enabled
   emailsEnabled bool
   // Whether group mentions within issues and merge requests are disabled
@@ -726,16 +730,22 @@ gitlab.group @defaults("name visibility webURL") @root {
   // List of all projects that belong to the group
   projects() []gitlab.project
   // List of allowed email domains for the group
-  allowedEmailDomainsList string
+  //
+  // Empty when unrestricted, or when the license does not include allowed
+  // email domain restrictions.
+  allowedEmailDomainsList() string
   // Whether the group has Large File Storage (LFS) enabled
   lfsEnabled bool
-  // Allowed IP address ranges (CIDR) for accessing the group; empty when unrestricted
-  ipRestrictionRanges string
+  // Allowed IP address ranges (CIDR) for accessing the group
+  //
+  // Empty when unrestricted, or when the license does not include group IP
+  // address restrictions.
+  ipRestrictionRanges() string
   // Groups this group is shared with and their access levels
   //
   // Each entry is a dict with groupId, groupName, groupFullPath, and
-  // groupAccessLevel keys.
-  sharedWithGroups []dict
+  // groupAccessLevel keys. Only links the scanning user can see are listed.
+  sharedWithGroups() []dict
   // Whether sharing this group's projects with other groups is locked
   shareWithGroupLock bool
   // Shared-runner policy for the group (enabled, disabled_and_overridable, disabled_and_unoverridable)

@@ -225,13 +225,18 @@ func initGitlabGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 }
 
 // populateGroupDetailArgs sets the fields GitLab returns only on the
-// single-group endpoint (GET /groups/:id). The list and subgroup endpoints
-// omit them, so a *gitlab.Group decoded from a listing would read false for
-// a group that has them turned on; those groups resolve the fields through
-// groupDetail instead.
+// single-group endpoint (GET /groups/:id, Entities::GroupDetail). The list
+// and subgroup endpoints (Entities::Group) omit them, so a *gitlab.Group
+// decoded from a listing would read false or empty for a group that has them
+// set; those groups resolve the fields through groupDetail instead.
 func populateGroupDetailArgs(args map[string]*llx.RawData, grp *gitlab.Group) {
 	args["requireShaForMerge"] = llx.BoolData(grp.RequireSHAForMerge)
 	args["lockRequireShaForMerge"] = llx.BoolData(grp.LockRequireSHAForMerge)
+	args["membershipLock"] = llx.BoolData(grp.MembershipLock)
+	args["preventForkingOutsideGroup"] = llx.BoolData(grp.PreventForkingOutsideGroup)
+	args["ipRestrictionRanges"] = llx.StringData(grp.IPRestrictionRanges)
+	args["allowedEmailDomainsList"] = llx.StringData(grp.AllowedEmailDomainsList)
+	args["sharedWithGroups"] = llx.ArrayData(groupSharedGroupsToDicts(grp.SharedWithGroups), types.Dict)
 }
 
 type mqlGitlabGroupInternal struct {
@@ -285,6 +290,46 @@ func (g *mqlGitlabGroup) lockRequireShaForMerge() (bool, error) {
 	return grp.LockRequireSHAForMerge, nil
 }
 
+func (g *mqlGitlabGroup) membershipLock() (bool, error) {
+	grp, err := g.groupDetail()
+	if err != nil {
+		return false, err
+	}
+	return grp.MembershipLock, nil
+}
+
+func (g *mqlGitlabGroup) preventForkingOutsideGroup() (bool, error) {
+	grp, err := g.groupDetail()
+	if err != nil {
+		return false, err
+	}
+	return grp.PreventForkingOutsideGroup, nil
+}
+
+func (g *mqlGitlabGroup) ipRestrictionRanges() (string, error) {
+	grp, err := g.groupDetail()
+	if err != nil {
+		return "", err
+	}
+	return grp.IPRestrictionRanges, nil
+}
+
+func (g *mqlGitlabGroup) allowedEmailDomainsList() (string, error) {
+	grp, err := g.groupDetail()
+	if err != nil {
+		return "", err
+	}
+	return grp.AllowedEmailDomainsList, nil
+}
+
+func (g *mqlGitlabGroup) sharedWithGroups() ([]any, error) {
+	grp, err := g.groupDetail()
+	if err != nil {
+		return nil, err
+	}
+	return groupSharedGroupsToDicts(grp.SharedWithGroups), nil
+}
+
 // populateGroupArgs fills the args map from a *gitlab.Group. Shared between
 // the connection-default and by-id paths in initGitlabGroup.
 func populateGroupArgs(args map[string]*llx.RawData, grp *gitlab.Group) {
@@ -299,8 +344,6 @@ func populateGroupArgs(args map[string]*llx.RawData, grp *gitlab.Group) {
 	args["visibility"] = llx.StringData(string(grp.Visibility))
 	args["requireTwoFactorAuthentication"] = llx.BoolData(grp.RequireTwoFactorAuth)
 	args["twoFactorGracePeriod"] = llx.IntData(grp.TwoFactorGracePeriod)
-	args["membershipLock"] = llx.BoolData(grp.MembershipLock)
-	args["preventForkingOutsideGroup"] = llx.BoolData(grp.PreventForkingOutsideGroup)
 	args["mentionsDisabled"] = llx.BoolData(grp.MentionsDisabled)
 	args["requestAccessEnabled"] = llx.BoolData(grp.RequestAccessEnabled)
 	// Convert ISOTime to time.Time
@@ -310,10 +353,8 @@ func populateGroupArgs(args map[string]*llx.RawData, grp *gitlab.Group) {
 		markedForDeletionOn = &t
 	}
 	args["markedForDeletionOn"] = llx.TimeDataPtr(markedForDeletionOn)
-	args["allowedEmailDomainsList"] = llx.StringData(grp.AllowedEmailDomainsList)
 	args["lfsEnabled"] = llx.BoolData(grp.LFSEnabled)
 	args["emailsEnabled"] = llx.BoolData(grp.EmailsEnabled)
-	args["ipRestrictionRanges"] = llx.StringData(grp.IPRestrictionRanges)
 	args["shareWithGroupLock"] = llx.BoolData(grp.ShareWithGroupLock)
 	args["sharedRunnersSetting"] = llx.StringData(string(grp.SharedRunnersSetting))
 	args["projectCreationLevel"] = llx.StringData(string(grp.ProjectCreationLevel))
@@ -322,7 +363,6 @@ func populateGroupArgs(args map[string]*llx.RawData, grp *gitlab.Group) {
 	args["wikiAccessLevel"] = llx.StringData(string(grp.WikiAccessLevel))
 	args["ldapCn"] = llx.StringData(grp.LDAPCN)
 	args["ldapAccess"] = llx.IntData(int64(grp.LDAPAccess))
-	args["sharedWithGroups"] = llx.ArrayData(groupSharedGroupsToDicts(grp.SharedWithGroups), types.Dict)
 	args["ldapGroupLinks"] = llx.ArrayData(ldapGroupLinksToDicts(grp.LDAPGroupLinks), types.Dict)
 	args["defaultBranchProtection"] = llx.DictData(branchProtectionDefaultsToDict(grp.DefaultBranchProtectionDefaults))
 }
