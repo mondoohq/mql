@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -11,6 +12,9 @@ import (
 	bacctypes "github.com/aws/aws-sdk-go-v2/service/bedrockagentcorecontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 )
 
@@ -210,4 +214,23 @@ func TestAgentRuntimeArtifactOf(t *testing.T) {
 		})
 		assert.Nil(t, info.containerUri)
 	})
+}
+
+func TestAgentCoreListError(t *testing.T) {
+	// Synthetic: error shapes as the SDK returns them.
+	denied := awsAPIErr(403, "AccessDeniedException", "User is not authorized to perform: bedrock-agentcore:ListGatewayTargets")
+	boom := errors.New("dial tcp: connection refused")
+
+	require.NoError(t, agentCoreListError(denied, "bedrock-agentcore:ListGatewayTargets"),
+		"without structured errors a denial returns the items read so far")
+	assert.ErrorIs(t, agentCoreListError(boom, "bedrock-agentcore:ListGatewayTargets"), boom)
+
+	plugin.ReadFeatures([]byte(mql.Features{byte(mql.StructuredErrors)}))
+	t.Cleanup(func() { plugin.ReadFeatures([]byte(mql.Features{byte(mql.ResourceContext)})) })
+
+	err := agentCoreListError(denied, "bedrock-agentcore:ListGatewayTargets")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, llx.ErrForbidden)
+	assert.ErrorIs(t, agentCoreListError(boom, "bedrock-agentcore:ListGatewayTargets"), boom)
+	assert.False(t, errors.Is(agentCoreListError(boom, "bedrock-agentcore:ListGatewayTargets"), llx.ErrForbidden))
 }
