@@ -1217,6 +1217,10 @@ gcp.project @defaults("name number") {
   vertexai() gcp.project.vertexaiService
   // GCP Model Armor resources
   modelArmor() gcp.project.modelArmorService
+  // GCP Agent Registry resources (agents, MCP servers, endpoints and bindings)
+  agentRegistry() gcp.project.agentRegistryService
+  // GCP Agent Identity resources (auth providers agents use to reach other services)
+  agentIdentity() gcp.project.agentIdentityService
   // GCP Identity Platform resources
   identityPlatform() gcp.project.identityPlatformService
   // GCP Discovery Engine (AI Applications / Agentspace) resources
@@ -17278,6 +17282,194 @@ private gcp.accesscontextmanager.servicePerimeter.config {
   // describing who may leave, and `egressTo` (`operations`, `resources`,
   // `externalResources`) describing what they may reach.
   egressPolicies []dict
+}
+
+// Google Cloud (GCP) Agent Registry
+//
+// Registry of the AI agents, MCP servers and endpoints known to the project,
+// and the bindings that connect an agent to what it calls through an Agent
+// Identity auth provider. Listed across every location the API reports.
+private gcp.project.agentRegistryService {
+  // Project ID
+  projectId string
+  // Registered agents
+  agents() []gcp.project.agentRegistryService.agent
+  // Registered MCP servers
+  mcpServers() []gcp.project.agentRegistryService.mcpServer
+  // Registered endpoints
+  endpoints() []gcp.project.agentRegistryService.endpoint
+  // Bindings between agents and the resources they call
+  bindings() []gcp.project.agentRegistryService.binding
+}
+
+// Google Cloud (GCP) Agent Registry agent
+//
+// An agent in the registry, typically discovered from an A2A agent card or a
+// Vertex AI Agent Engine deployment. `protocols` lists the protocols it
+// speaks, `urls` the addresses it answers on, `skills` what it advertises,
+// and `attributes` the registry's system attributes, such as the framework,
+// the runtime identity and the hosting resource.
+private gcp.project.agentRegistryService.agent @defaults("displayName version") {
+  // Full resource name
+  name string
+  // Agent ID
+  agentId string
+  // Display name
+  displayName string
+  // Description
+  description string
+  // Location of the agent
+  location string
+  // Agent version
+  version string
+  // Protocol types the agent speaks (A2A_AGENT or CUSTOM)
+  protocols []string
+  // URLs of the agent's interfaces across all protocols
+  urls []string
+  // Names of the skills the agent advertises
+  skills []string
+  // Registry attributes keyed by attribute name
+  //
+  // For example `agentregistry.googleapis.com/system/Framework` holds the
+  // framework (`{"framework": "google-adk"}`) and
+  // `agentregistry.googleapis.com/system/RuntimeIdentity` the principal the
+  // agent runs as.
+  attributes dict
+  // Creation time
+  createdAt time
+  // Last update time
+  updatedAt time
+}
+
+// Google Cloud (GCP) Agent Registry MCP server
+//
+// A Model Context Protocol server in the registry. `interfaces` maps each URL
+// to its protocol binding and `tools` lists the tools it exposes to agents.
+private gcp.project.agentRegistryService.mcpServer @defaults("displayName") {
+  // Full resource name
+  name string
+  // MCP server ID
+  mcpServerId string
+  // Display name
+  displayName string
+  // Description
+  description string
+  // Interface URLs mapped to their protocol binding (for example JSONRPC or HTTP_JSON)
+  interfaces map[string]string
+  // Names of the tools the server exposes
+  tools []string
+  // Registry attributes keyed by attribute name
+  attributes dict
+  // Creation time
+  createdAt time
+  // Last update time
+  updatedAt time
+}
+
+// Google Cloud (GCP) Agent Registry endpoint
+//
+// A registered endpoint agents can call. `interfaces` maps each URL to its
+// protocol binding.
+private gcp.project.agentRegistryService.endpoint @defaults("displayName") {
+  // Full resource name
+  name string
+  // Endpoint ID
+  endpointId string
+  // Display name
+  displayName string
+  // Description
+  description string
+  // Interface URLs mapped to their protocol binding
+  interfaces map[string]string
+  // Registry attributes keyed by attribute name
+  attributes dict
+  // Creation time
+  createdAt time
+  // Last update time
+  updatedAt time
+}
+
+// Google Cloud (GCP) Agent Registry binding
+//
+// Connects a source (usually an agent) to a target it may call, optionally
+// through an Agent Identity auth provider with the OAuth scopes it may
+// request. `source` and `target` are the registry identifiers of the two
+// ends.
+private gcp.project.agentRegistryService.binding @defaults("displayName source target") {
+  // Full resource name
+  name string
+  // Display name
+  displayName string
+  // Description
+  description string
+  // Identifier of the calling side
+  source string
+  // Identifier of the called side
+  target string
+  // Auth provider the source authenticates to the target with; null when none
+  authProvider() gcp.project.agentIdentityService.authProvider
+  // OAuth scopes the binding requests from the auth provider
+  scopes []string
+  // Creation time
+  createdAt time
+  // Last update time
+  updatedAt time
+}
+
+// Google Cloud (GCP) Agent Identity
+//
+// Agent Identity auth providers of the project: how agents obtain
+// credentials for the third-party and Google services they call. Listed
+// across every location the API reports.
+private gcp.project.agentIdentityService {
+  // Project ID
+  projectId string
+  // Auth providers
+  authProviders() []gcp.project.agentIdentityService.authProvider
+}
+
+// Google Cloud (GCP) Agent Identity auth provider
+//
+// A credential source agents use to call another service. `type` says how it
+// authenticates (API key, two- or three-legged OAuth, a connector reference,
+// Gemini Enterprise or cross-app access), `allowedScopes` and
+// `blockedScopes` bound what agents may request, and `workloadIds` names the
+// workloads allowed to use it. Only the kind of credential is reported, never
+// an API key or client secret. `iamPolicy` and `public` report who may use the
+// provider.
+private gcp.project.agentIdentityService.authProvider @defaults("name type state") {
+  // Full resource name
+  name string
+  // Description
+  description string
+  // State (ENABLED or DISABLED)
+  state string
+  // How the provider authenticates
+  //
+  // One of apiKey, twoLeggedOauth, threeLeggedOauth,
+  // connectorReferenceAuthProvider, geAuthProvider or xaaAuthProvider. Empty
+  // when the API reports none.
+  type string
+  // OAuth scopes agents may request
+  allowedScopes []string
+  // OAuth scopes agents may never request
+  blockedScopes []string
+  // Workloads allowed to use the provider
+  workloadIds []string
+  // Whether the provider is soft-deleted
+  deleted bool
+  // Time the provider expires; null when it does not
+  expireTime time
+  // User-defined labels
+  labels map[string]string
+  // Resource-level IAM policy bindings governing who can use or manage the provider
+  iamPolicy() []gcp.resourcemanager.binding
+  // Whether the IAM policy grants access to allUsers or allAuthenticatedUsers
+  public() bool
+  // Creation time
+  createdAt time
+  // Last update time
+  updatedAt time
 }
 
 // Google Cloud (GCP) Model Armor

@@ -1,9 +1,17 @@
 {
   "provider": "gcp",
   "version": "14.7.4",
-  "generated_at": "2026-11-06T17:21:42Z",
+  "generated_at": "2026-11-06T12:20:41-08:00",
   "permissions": [
     "accessapproval.settings.get",
+    "agentidentity.authProviders.getIamPolicy",
+    "agentidentity.authProviders.list",
+    "agentidentity.locations.list",
+    "agentregistry.agents.list",
+    "agentregistry.bindings.list",
+    "agentregistry.endpoints.list",
+    "agentregistry.locations.list",
+    "agentregistry.mcpServers.list",
     "aiplatform.batchPredictionJobs.list",
     "aiplatform.cachedContents.list",
     "aiplatform.customJobs.get",
@@ -329,6 +337,54 @@
       "service": "accessapproval",
       "action": "GetAccessApprovalSettings",
       "source_file": "access_approval.go"
+    },
+    {
+      "permission": "agentidentity.authProviders.getIamPolicy",
+      "service": "agentidentity",
+      "action": "AuthProviders.GetIamPolicy",
+      "source_file": "agentidentity.go"
+    },
+    {
+      "permission": "agentidentity.authProviders.list",
+      "service": "agentidentity",
+      "action": "AuthProviders.List",
+      "source_file": "agentidentity.go"
+    },
+    {
+      "permission": "agentidentity.locations.list",
+      "service": "agentidentity",
+      "action": "Locations.List",
+      "source_file": "agentidentity.go"
+    },
+    {
+      "permission": "agentregistry.agents.list",
+      "service": "agentregistry",
+      "action": "Agents.List",
+      "source_file": "agentregistry.go"
+    },
+    {
+      "permission": "agentregistry.bindings.list",
+      "service": "agentregistry",
+      "action": "Bindings.List",
+      "source_file": "agentregistry.go"
+    },
+    {
+      "permission": "agentregistry.endpoints.list",
+      "service": "agentregistry",
+      "action": "Endpoints.List",
+      "source_file": "agentregistry.go"
+    },
+    {
+      "permission": "agentregistry.locations.list",
+      "service": "agentregistry",
+      "action": "Locations.List",
+      "source_file": "agentregistry.go"
+    },
+    {
+      "permission": "agentregistry.mcpServers.list",
+      "service": "agentregistry",
+      "action": "McpServers.List",
+      "source_file": "agentregistry.go"
     },
     {
       "permission": "aiplatform.batchPredictionJobs.list",
