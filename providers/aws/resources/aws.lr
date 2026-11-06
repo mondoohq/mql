@@ -32664,7 +32664,7 @@ private aws.bedrock.agentCore.gateway @defaults("name status protocolType") {
   // ARN of the policy engine that authorizes tool calls made through the gateway
   //
   // Deprecated in favor of policyEngine. Null when no policy engine is attached.
-  policyEngineArn() @maturity("deprecated") string
+  policyEngineArn() @maturity("deprecated") @replaced_by("aws.bedrock.agentCore.gateway.policyEngine") string
   // Policy engine that authorizes tool calls made through the gateway
   //
   // Null when no policy engine is attached.

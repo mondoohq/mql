@@ -305,6 +305,9 @@ func (a *mqlAwsBedrockAgentCoreRegistry) fetchDetail() (*bedrockagentcorecontrol
 	detail, err := svc.GetRegistry(context.Background(), &bedrockagentcorecontrol.GetRegistryInput{RegistryId: &registryId})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
+			if !plugin.StructuredErrors() {
+				return nil, nil
+			}
 			return nil, llx.Forbidden(err, llx.WithPermissions("bedrock-agentcore:GetRegistry"))
 		}
 		return nil, err
