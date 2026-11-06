@@ -1,7 +1,7 @@
 {
   "provider": "gcp",
-  "version": "14.7.3",
-  "generated_at": "2026-11-05T20:59:06-08:00",
+  "version": "14.7.4",
+  "generated_at": "2026-11-06T17:21:42Z",
   "permissions": [
     "accessapproval.settings.get",
     "aiplatform.batchPredictionJobs.list",
@@ -11,8 +11,11 @@
     "aiplatform.datasets.list",
     "aiplatform.deploymentResourcePools.list",
     "aiplatform.endpoints.get",
+    "aiplatform.endpoints.getIamPolicy",
     "aiplatform.endpoints.list",
+    "aiplatform.featureGroups.getIamPolicy",
     "aiplatform.featureGroups.list",
+    "aiplatform.featureOnlineStores.getIamPolicy",
     "aiplatform.featureOnlineStores.list",
     "aiplatform.hyperparameterTuningJobs.list",
     "aiplatform.indexEndpoints.list",
@@ -30,6 +33,7 @@
     "aiplatform.pipelineJobs.get",
     "aiplatform.pipelineJobs.list",
     "aiplatform.ragCorpora.list",
+    "aiplatform.reasoningEngines.getIamPolicy",
     "aiplatform.reasoningEngines.list",
     "aiplatform.schedules.get",
     "aiplatform.schedules.list",
@@ -256,6 +260,8 @@
     "networksecurity.serverTlsPolicies.list",
     "networksecurity.tlsInspectionPolicies.list",
     "networksecurity.urlLists.list",
+    "notebooks.instances.getIamPolicy",
+    "notebooks.instances.list",
     "orgpolicy.constraints.list",
     "orgpolicy.policies.list",
     "orgpolicy.policy.get",
@@ -367,15 +373,33 @@
       "source_file": "vertexai.go"
     },
     {
+      "permission": "aiplatform.endpoints.getIamPolicy",
+      "service": "aiplatform",
+      "action": "GetIamPolicy",
+      "source_file": "vertexai.go"
+    },
+    {
       "permission": "aiplatform.endpoints.list",
       "service": "aiplatform",
       "action": "ListEndpoints",
       "source_file": "vertexai.go"
     },
     {
+      "permission": "aiplatform.featureGroups.getIamPolicy",
+      "service": "aiplatform",
+      "action": "GetIamPolicy",
+      "source_file": "vertexai.go"
+    },
+    {
       "permission": "aiplatform.featureGroups.list",
       "service": "aiplatform",
       "action": "ListFeatureGroups",
+      "source_file": "vertexai.go"
+    },
+    {
+      "permission": "aiplatform.featureOnlineStores.getIamPolicy",
+      "service": "aiplatform",
+      "action": "GetIamPolicy",
       "source_file": "vertexai.go"
     },
     {
@@ -478,6 +502,12 @@
       "permission": "aiplatform.ragCorpora.list",
       "service": "aiplatform",
       "action": "ListRagCorpora",
+      "source_file": "vertexai.go"
+    },
+    {
+      "permission": "aiplatform.reasoningEngines.getIamPolicy",
+      "service": "aiplatform",
+      "action": "GetIamPolicy",
       "source_file": "vertexai.go"
     },
     {
@@ -1941,6 +1971,18 @@
       "service": "networksecurity",
       "action": "UrlLists.List",
       "source_file": "networksecurity.go"
+    },
+    {
+      "permission": "notebooks.instances.getIamPolicy",
+      "service": "notebooks",
+      "action": "Instances.GetIamPolicy",
+      "source_file": "workbench.go"
+    },
+    {
+      "permission": "notebooks.instances.list",
+      "service": "notebooks",
+      "action": "Instances.List",
+      "source_file": "workbench.go"
     },
     {
       "permission": "orgpolicy.constraints.list",

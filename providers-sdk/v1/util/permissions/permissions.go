@@ -1499,6 +1499,13 @@ var gcpPermissionOverrides = map[string]map[string]string{
 		// never grant.
 		"Model.GetIamPolicy":    "",
 		"Notebook.GetIamPolicy": "aiplatform.notebookRuntimeTemplates.getIamPolicy",
+		// The same mixin on the endpoint, reasoning engine, feature online
+		// store and feature registry clients reads the policy of the
+		// resource each client manages.
+		"Endpoint.GetIamPolicy":                "aiplatform.endpoints.getIamPolicy",
+		"ReasoningEngine.GetIamPolicy":         "aiplatform.reasoningEngines.getIamPolicy",
+		"FeatureOnlineStoreAdmin.GetIamPolicy": "aiplatform.featureOnlineStores.getIamPolicy",
+		"FeatureRegistry.GetIamPolicy":         "aiplatform.featureGroups.getIamPolicy",
 	},
 	"documentai": {
 		// DocumentProcessorClient.GetProcessorVersion → singular "processorVersion"

@@ -7,23 +7,18 @@ import (
 	"context"
 	"fmt"
 
+	iampb "cloud.google.com/go/iam/apiv1/iampb"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/providers/gcp/connection"
 	"go.mondoo.com/mql/types"
 	notebooksv1 "google.golang.org/api/notebooks/v1"
 	notebooksv2 "google.golang.org/api/notebooks/v2"
 	"google.golang.org/api/option"
+	"google.golang.org/genproto/googleapis/type/expr"
 )
-
-func newWorkbenchService(conn *connection.GcpConnection) (*notebooksv2.Service, error) {
-	client, err := conn.Client(notebooksv2.CloudPlatformScope)
-	if err != nil {
-		return nil, err
-	}
-	return notebooksv2.NewService(context.Background(), option.WithHTTPClient(client))
-}
 
 func newNotebooksService(conn *connection.GcpConnection) (*notebooksv1.Service, error) {
 	client, err := conn.Client(notebooksv1.CloudPlatformScope)
@@ -88,12 +83,16 @@ func (g *mqlGcpProjectWorkbenchService) instances() ([]any, error) {
 	projectId := g.ProjectId.Data
 
 	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
-	svc, err := newWorkbenchService(conn)
+	client, err := conn.Client(notebooksv2.CloudPlatformScope)
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	svc, err := notebooksv2.NewService(ctx, option.WithHTTPClient(client))
 	if err != nil {
 		return nil, err
 	}
 
-	ctx := context.Background()
 	var res []any
 	parent := fmt.Sprintf("projects/%s/locations/-", projectId)
 	req := svc.Projects.Locations.Instances.List(parent)
@@ -192,4 +191,62 @@ func (g *mqlGcpProjectNotebooksService) instances() ([]any, error) {
 	}
 
 	return res, nil
+}
+
+func (g *mqlGcpProjectWorkbenchServiceInstance) iamPolicy() ([]any, error) {
+	if g.Name.Error != nil {
+		return nil, g.Name.Error
+	}
+	name := g.Name.Data
+
+	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
+	client, err := conn.Client(notebooksv2.CloudPlatformScope)
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	// Built here rather than through a helper so the permission extractor
+	// sees the service the call goes through.
+	svc, err := notebooksv2.NewService(ctx, option.WithHTTPClient(client))
+	if err != nil {
+		return nil, err
+	}
+	policy, err := svc.Projects.Locations.Instances.GetIamPolicy(name).
+		OptionsRequestedPolicyVersion(3).Context(ctx).Do()
+	if err != nil {
+		rerr := classifyRefusal(err, "notebooks.instances.getIamPolicy")
+		if rerr == nil {
+			return nil, err
+		}
+		if !plugin.StructuredErrors() {
+			return nil, nil
+		}
+		return nil, rerr
+	}
+	return iampbBindingsToMql(g.MqlRuntime, name, workbenchBindingsToIampb(policy.Bindings))
+}
+
+func (g *mqlGcpProjectWorkbenchServiceInstance) public() (bool, error) {
+	bindings := g.GetIamPolicy()
+	if bindings.Error != nil {
+		return false, bindings.Error
+	}
+	return iamPolicyHasPublicMember(bindings.Data)
+}
+
+// workbenchBindingsToIampb converts the Notebooks REST bindings to the iampb
+// shape the shared binding mapper takes.
+func workbenchBindingsToIampb(bindings []*notebooksv2.Binding) []*iampb.Binding {
+	res := make([]*iampb.Binding, 0, len(bindings))
+	for _, b := range bindings {
+		if b == nil {
+			continue
+		}
+		ib := &iampb.Binding{Role: b.Role, Members: b.Members}
+		if c := b.Condition; c != nil {
+			ib.Condition = &expr.Expr{Title: c.Title, Expression: c.Expression, Description: c.Description}
+		}
+		res = append(res, ib)
+	}
+	return res
 }
