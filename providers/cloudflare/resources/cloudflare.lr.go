@@ -27,6 +27,10 @@ const (
 	ResourceCloudflareDns                                             string = "cloudflare.dns"
 	ResourceCloudflareDnsRecord                                       string = "cloudflare.dns.record"
 	ResourceCloudflareAccount                                         string = "cloudflare.account"
+	ResourceCloudflareAccountAiGateway                                string = "cloudflare.account.aiGateway"
+	ResourceCloudflareAccountAiGatewayDlpPolicy                       string = "cloudflare.account.aiGateway.dlpPolicy"
+	ResourceCloudflareAccountAiGatewaySpendLimitRule                  string = "cloudflare.account.aiGateway.spendLimitRule"
+	ResourceCloudflareAccountAiGatewayProviderConfig                  string = "cloudflare.account.aiGateway.providerConfig"
 	ResourceCloudflareApiToken                                        string = "cloudflare.apiToken"
 	ResourceCloudflareAccountSettings                                 string = "cloudflare.account.settings"
 	ResourceCloudflareStreams                                         string = "cloudflare.streams"
@@ -164,6 +168,22 @@ func init() {
 		"cloudflare.account": {
 			Init:   initCloudflareAccount,
 			Create: createCloudflareAccount,
+		},
+		"cloudflare.account.aiGateway": {
+			// to override args, implement: initCloudflareAccountAiGateway(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCloudflareAccountAiGateway,
+		},
+		"cloudflare.account.aiGateway.dlpPolicy": {
+			// to override args, implement: initCloudflareAccountAiGatewayDlpPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCloudflareAccountAiGatewayDlpPolicy,
+		},
+		"cloudflare.account.aiGateway.spendLimitRule": {
+			// to override args, implement: initCloudflareAccountAiGatewaySpendLimitRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCloudflareAccountAiGatewaySpendLimitRule,
+		},
+		"cloudflare.account.aiGateway.providerConfig": {
+			// to override args, implement: initCloudflareAccountAiGatewayProviderConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCloudflareAccountAiGatewayProviderConfig,
 		},
 		"cloudflare.apiToken": {
 			// to override args, implement: initCloudflareApiToken(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -974,6 +994,159 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"cloudflare.account.ipAccessRules": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareAccount).GetIpAccessRules()).ToDataRes(types.Array(types.Resource("cloudflare.ipAccessRule")))
+	},
+	"cloudflare.account.aiGateways": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccount).GetAiGateways()).ToDataRes(types.Array(types.Resource("cloudflare.account.aiGateway")))
+	},
+	"cloudflare.account.aiGateway.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGateway).GetId()).ToDataRes(types.String)
+	},
+	"cloudflare.account.aiGateway.authentication": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGateway).GetAuthentication()).ToDataRes(types.Bool)
+	},
+	"cloudflare.account.aiGateway.byokOnly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGateway).GetByokOnly()).ToDataRes(types.Bool)
+	},
+	"cloudflare.account.aiGateway.isDefault": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGateway).GetIsDefault()).ToDataRes(types.Bool)
+	},
+	"cloudflare.account.aiGateway.collectLogs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGateway).GetCollectLogs()).ToDataRes(types.Bool)
+	},
+	"cloudflare.account.aiGateway.logpush": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGateway).GetLogpush()).ToDataRes(types.Bool)
+	},
+	"cloudflare.account.aiGateway.logManagement": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGateway).GetLogManagement()).ToDataRes(types.Int)
+	},
+	"cloudflare.account.aiGateway.logManagementStrategy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGateway).GetLogManagementStrategy()).ToDataRes(types.String)
+	},
+	"cloudflare.account.aiGateway.zeroDataRetention": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGateway).GetZeroDataRetention()).ToDataRes(types.Bool)
+	},
+	"cloudflare.account.aiGateway.fedrampLevel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGateway).GetFedrampLevel()).ToDataRes(types.String)
+	},
+	"cloudflare.account.aiGateway.fedrampMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGateway).GetFedrampMode()).ToDataRes(types.String)
+	},
+	"cloudflare.account.aiGateway.cacheTtl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGateway).GetCacheTtl()).ToDataRes(types.Int)
+	},
+	"cloudflare.account.aiGateway.cacheInvalidateOnUpdate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGateway).GetCacheInvalidateOnUpdate()).ToDataRes(types.Bool)
+	},
+	"cloudflare.account.aiGateway.rateLimitingLimit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGateway).GetRateLimitingLimit()).ToDataRes(types.Int)
+	},
+	"cloudflare.account.aiGateway.rateLimitingInterval": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGateway).GetRateLimitingInterval()).ToDataRes(types.Int)
+	},
+	"cloudflare.account.aiGateway.rateLimitingTechnique": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGateway).GetRateLimitingTechnique()).ToDataRes(types.String)
+	},
+	"cloudflare.account.aiGateway.dlpEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGateway).GetDlpEnabled()).ToDataRes(types.Bool)
+	},
+	"cloudflare.account.aiGateway.dlpAction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGateway).GetDlpAction()).ToDataRes(types.String)
+	},
+	"cloudflare.account.aiGateway.dlpProfiles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGateway).GetDlpProfiles()).ToDataRes(types.Array(types.Resource("cloudflare.one.dlpProfile")))
+	},
+	"cloudflare.account.aiGateway.dlpPolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGateway).GetDlpPolicies()).ToDataRes(types.Array(types.Resource("cloudflare.account.aiGateway.dlpPolicy")))
+	},
+	"cloudflare.account.aiGateway.promptGuardrails": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGateway).GetPromptGuardrails()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"cloudflare.account.aiGateway.responseGuardrails": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGateway).GetResponseGuardrails()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"cloudflare.account.aiGateway.spendLimitsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGateway).GetSpendLimitsEnabled()).ToDataRes(types.Bool)
+	},
+	"cloudflare.account.aiGateway.spendLimitRules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGateway).GetSpendLimitRules()).ToDataRes(types.Array(types.Resource("cloudflare.account.aiGateway.spendLimitRule")))
+	},
+	"cloudflare.account.aiGateway.providerConfigs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGateway).GetProviderConfigs()).ToDataRes(types.Array(types.Resource("cloudflare.account.aiGateway.providerConfig")))
+	},
+	"cloudflare.account.aiGateway.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGateway).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"cloudflare.account.aiGateway.modifiedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGateway).GetModifiedAt()).ToDataRes(types.Time)
+	},
+	"cloudflare.account.aiGateway.dlpPolicy.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGatewayDlpPolicy).GetId()).ToDataRes(types.String)
+	},
+	"cloudflare.account.aiGateway.dlpPolicy.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGatewayDlpPolicy).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"cloudflare.account.aiGateway.dlpPolicy.action": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGatewayDlpPolicy).GetAction()).ToDataRes(types.String)
+	},
+	"cloudflare.account.aiGateway.dlpPolicy.check": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGatewayDlpPolicy).GetCheck()).ToDataRes(types.Array(types.String))
+	},
+	"cloudflare.account.aiGateway.dlpPolicy.profiles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGatewayDlpPolicy).GetProfiles()).ToDataRes(types.Array(types.Resource("cloudflare.one.dlpProfile")))
+	},
+	"cloudflare.account.aiGateway.spendLimitRule.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGatewaySpendLimitRule).GetId()).ToDataRes(types.String)
+	},
+	"cloudflare.account.aiGateway.spendLimitRule.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGatewaySpendLimitRule).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"cloudflare.account.aiGateway.spendLimitRule.limit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGatewaySpendLimitRule).GetLimit()).ToDataRes(types.Float)
+	},
+	"cloudflare.account.aiGateway.spendLimitRule.limitType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGatewaySpendLimitRule).GetLimitType()).ToDataRes(types.String)
+	},
+	"cloudflare.account.aiGateway.spendLimitRule.window": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGatewaySpendLimitRule).GetWindow()).ToDataRes(types.Int)
+	},
+	"cloudflare.account.aiGateway.spendLimitRule.technique": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGatewaySpendLimitRule).GetTechnique()).ToDataRes(types.String)
+	},
+	"cloudflare.account.aiGateway.spendLimitRule.models": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGatewaySpendLimitRule).GetModels()).ToDataRes(types.Array(types.String))
+	},
+	"cloudflare.account.aiGateway.spendLimitRule.providers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGatewaySpendLimitRule).GetProviders()).ToDataRes(types.Array(types.String))
+	},
+	"cloudflare.account.aiGateway.spendLimitRule.metadata": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGatewaySpendLimitRule).GetMetadata()).ToDataRes(types.Dict)
+	},
+	"cloudflare.account.aiGateway.providerConfig.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGatewayProviderConfig).GetId()).ToDataRes(types.String)
+	},
+	"cloudflare.account.aiGateway.providerConfig.alias": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGatewayProviderConfig).GetAlias()).ToDataRes(types.String)
+	},
+	"cloudflare.account.aiGateway.providerConfig.providerSlug": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGatewayProviderConfig).GetProviderSlug()).ToDataRes(types.String)
+	},
+	"cloudflare.account.aiGateway.providerConfig.defaultConfig": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGatewayProviderConfig).GetDefaultConfig()).ToDataRes(types.Bool)
+	},
+	"cloudflare.account.aiGateway.providerConfig.secretId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGatewayProviderConfig).GetSecretId()).ToDataRes(types.String)
+	},
+	"cloudflare.account.aiGateway.providerConfig.lastUsedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGatewayProviderConfig).GetLastUsedAt()).ToDataRes(types.Time)
+	},
+	"cloudflare.account.aiGateway.providerConfig.rateLimit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGatewayProviderConfig).GetRateLimit()).ToDataRes(types.Float)
+	},
+	"cloudflare.account.aiGateway.providerConfig.rateLimitPeriod": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGatewayProviderConfig).GetRateLimitPeriod()).ToDataRes(types.Float)
+	},
+	"cloudflare.account.aiGateway.providerConfig.modifiedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareAccountAiGatewayProviderConfig).GetModifiedAt()).ToDataRes(types.Time)
 	},
 	"cloudflare.apiToken.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareApiToken).GetId()).ToDataRes(types.String)
@@ -3696,6 +3869,226 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"cloudflare.account.ipAccessRules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCloudflareAccount).IpAccessRules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateways": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccount).AiGateways, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).__id, ok = v.Value.(string)
+		return
+	},
+	"cloudflare.account.aiGateway.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.authentication": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).Authentication, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.byokOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).ByokOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.isDefault": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).IsDefault, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.collectLogs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).CollectLogs, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.logpush": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).Logpush, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.logManagement": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).LogManagement, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.logManagementStrategy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).LogManagementStrategy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.zeroDataRetention": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).ZeroDataRetention, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.fedrampLevel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).FedrampLevel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.fedrampMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).FedrampMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.cacheTtl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).CacheTtl, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.cacheInvalidateOnUpdate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).CacheInvalidateOnUpdate, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.rateLimitingLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).RateLimitingLimit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.rateLimitingInterval": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).RateLimitingInterval, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.rateLimitingTechnique": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).RateLimitingTechnique, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.dlpEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).DlpEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.dlpAction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).DlpAction, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.dlpProfiles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).DlpProfiles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.dlpPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).DlpPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.promptGuardrails": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).PromptGuardrails, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.responseGuardrails": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).ResponseGuardrails, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.spendLimitsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).SpendLimitsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.spendLimitRules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).SpendLimitRules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.providerConfigs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).ProviderConfigs, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.modifiedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGateway).ModifiedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.dlpPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGatewayDlpPolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"cloudflare.account.aiGateway.dlpPolicy.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGatewayDlpPolicy).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.dlpPolicy.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGatewayDlpPolicy).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.dlpPolicy.action": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGatewayDlpPolicy).Action, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.dlpPolicy.check": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGatewayDlpPolicy).Check, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.dlpPolicy.profiles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGatewayDlpPolicy).Profiles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.spendLimitRule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGatewaySpendLimitRule).__id, ok = v.Value.(string)
+		return
+	},
+	"cloudflare.account.aiGateway.spendLimitRule.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGatewaySpendLimitRule).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.spendLimitRule.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGatewaySpendLimitRule).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.spendLimitRule.limit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGatewaySpendLimitRule).Limit, ok = plugin.RawToTValue[float64](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.spendLimitRule.limitType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGatewaySpendLimitRule).LimitType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.spendLimitRule.window": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGatewaySpendLimitRule).Window, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.spendLimitRule.technique": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGatewaySpendLimitRule).Technique, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.spendLimitRule.models": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGatewaySpendLimitRule).Models, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.spendLimitRule.providers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGatewaySpendLimitRule).Providers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.spendLimitRule.metadata": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGatewaySpendLimitRule).Metadata, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.providerConfig.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGatewayProviderConfig).__id, ok = v.Value.(string)
+		return
+	},
+	"cloudflare.account.aiGateway.providerConfig.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGatewayProviderConfig).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.providerConfig.alias": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGatewayProviderConfig).Alias, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.providerConfig.providerSlug": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGatewayProviderConfig).ProviderSlug, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.providerConfig.defaultConfig": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGatewayProviderConfig).DefaultConfig, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.providerConfig.secretId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGatewayProviderConfig).SecretId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.providerConfig.lastUsedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGatewayProviderConfig).LastUsedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.providerConfig.rateLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGatewayProviderConfig).RateLimit, ok = plugin.RawToTValue[float64](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.providerConfig.rateLimitPeriod": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGatewayProviderConfig).RateLimitPeriod, ok = plugin.RawToTValue[float64](v.Value, v.Error)
+		return
+	},
+	"cloudflare.account.aiGateway.providerConfig.modifiedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareAccountAiGatewayProviderConfig).ModifiedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"cloudflare.apiToken.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -8334,6 +8727,7 @@ type mqlCloudflareAccount struct {
 	LogExplorerDatasets   plugin.TValue[[]any]
 	ApiTokens             plugin.TValue[[]any]
 	IpAccessRules         plugin.TValue[[]any]
+	AiGateways            plugin.TValue[[]any]
 }
 
 // createCloudflareAccount creates a new instance of this resource
@@ -8647,6 +9041,488 @@ func (c *mqlCloudflareAccount) GetIpAccessRules() *plugin.TValue[[]any] {
 
 		return c.ipAccessRules()
 	})
+}
+
+func (c *mqlCloudflareAccount) GetAiGateways() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AiGateways, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cloudflare.account", c.__id, "aiGateways")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.aiGateways()
+	})
+}
+
+// mqlCloudflareAccountAiGateway for the cloudflare.account.aiGateway resource
+type mqlCloudflareAccountAiGateway struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlCloudflareAccountAiGatewayInternal
+	Id                      plugin.TValue[string]
+	Authentication          plugin.TValue[bool]
+	ByokOnly                plugin.TValue[bool]
+	IsDefault               plugin.TValue[bool]
+	CollectLogs             plugin.TValue[bool]
+	Logpush                 plugin.TValue[bool]
+	LogManagement           plugin.TValue[int64]
+	LogManagementStrategy   plugin.TValue[string]
+	ZeroDataRetention       plugin.TValue[bool]
+	FedrampLevel            plugin.TValue[string]
+	FedrampMode             plugin.TValue[string]
+	CacheTtl                plugin.TValue[int64]
+	CacheInvalidateOnUpdate plugin.TValue[bool]
+	RateLimitingLimit       plugin.TValue[int64]
+	RateLimitingInterval    plugin.TValue[int64]
+	RateLimitingTechnique   plugin.TValue[string]
+	DlpEnabled              plugin.TValue[bool]
+	DlpAction               plugin.TValue[string]
+	DlpProfiles             plugin.TValue[[]any]
+	DlpPolicies             plugin.TValue[[]any]
+	PromptGuardrails        plugin.TValue[map[string]any]
+	ResponseGuardrails      plugin.TValue[map[string]any]
+	SpendLimitsEnabled      plugin.TValue[bool]
+	SpendLimitRules         plugin.TValue[[]any]
+	ProviderConfigs         plugin.TValue[[]any]
+	CreatedAt               plugin.TValue[*time.Time]
+	ModifiedAt              plugin.TValue[*time.Time]
+}
+
+// createCloudflareAccountAiGateway creates a new instance of this resource
+func createCloudflareAccountAiGateway(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCloudflareAccountAiGateway{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("cloudflare.account.aiGateway", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCloudflareAccountAiGateway) MqlName() string {
+	return "cloudflare.account.aiGateway"
+}
+
+func (c *mqlCloudflareAccountAiGateway) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCloudflareAccountAiGateway) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlCloudflareAccountAiGateway) GetAuthentication() *plugin.TValue[bool] {
+	return &c.Authentication
+}
+
+func (c *mqlCloudflareAccountAiGateway) GetByokOnly() *plugin.TValue[bool] {
+	return &c.ByokOnly
+}
+
+func (c *mqlCloudflareAccountAiGateway) GetIsDefault() *plugin.TValue[bool] {
+	return &c.IsDefault
+}
+
+func (c *mqlCloudflareAccountAiGateway) GetCollectLogs() *plugin.TValue[bool] {
+	return &c.CollectLogs
+}
+
+func (c *mqlCloudflareAccountAiGateway) GetLogpush() *plugin.TValue[bool] {
+	return &c.Logpush
+}
+
+func (c *mqlCloudflareAccountAiGateway) GetLogManagement() *plugin.TValue[int64] {
+	return &c.LogManagement
+}
+
+func (c *mqlCloudflareAccountAiGateway) GetLogManagementStrategy() *plugin.TValue[string] {
+	return &c.LogManagementStrategy
+}
+
+func (c *mqlCloudflareAccountAiGateway) GetZeroDataRetention() *plugin.TValue[bool] {
+	return &c.ZeroDataRetention
+}
+
+func (c *mqlCloudflareAccountAiGateway) GetFedrampLevel() *plugin.TValue[string] {
+	return &c.FedrampLevel
+}
+
+func (c *mqlCloudflareAccountAiGateway) GetFedrampMode() *plugin.TValue[string] {
+	return &c.FedrampMode
+}
+
+func (c *mqlCloudflareAccountAiGateway) GetCacheTtl() *plugin.TValue[int64] {
+	return &c.CacheTtl
+}
+
+func (c *mqlCloudflareAccountAiGateway) GetCacheInvalidateOnUpdate() *plugin.TValue[bool] {
+	return &c.CacheInvalidateOnUpdate
+}
+
+func (c *mqlCloudflareAccountAiGateway) GetRateLimitingLimit() *plugin.TValue[int64] {
+	return &c.RateLimitingLimit
+}
+
+func (c *mqlCloudflareAccountAiGateway) GetRateLimitingInterval() *plugin.TValue[int64] {
+	return &c.RateLimitingInterval
+}
+
+func (c *mqlCloudflareAccountAiGateway) GetRateLimitingTechnique() *plugin.TValue[string] {
+	return &c.RateLimitingTechnique
+}
+
+func (c *mqlCloudflareAccountAiGateway) GetDlpEnabled() *plugin.TValue[bool] {
+	return &c.DlpEnabled
+}
+
+func (c *mqlCloudflareAccountAiGateway) GetDlpAction() *plugin.TValue[string] {
+	return &c.DlpAction
+}
+
+func (c *mqlCloudflareAccountAiGateway) GetDlpProfiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DlpProfiles, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cloudflare.account.aiGateway", c.__id, "dlpProfiles")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.dlpProfiles()
+	})
+}
+
+func (c *mqlCloudflareAccountAiGateway) GetDlpPolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DlpPolicies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cloudflare.account.aiGateway", c.__id, "dlpPolicies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.dlpPolicies()
+	})
+}
+
+func (c *mqlCloudflareAccountAiGateway) GetPromptGuardrails() *plugin.TValue[map[string]any] {
+	return &c.PromptGuardrails
+}
+
+func (c *mqlCloudflareAccountAiGateway) GetResponseGuardrails() *plugin.TValue[map[string]any] {
+	return &c.ResponseGuardrails
+}
+
+func (c *mqlCloudflareAccountAiGateway) GetSpendLimitsEnabled() *plugin.TValue[bool] {
+	return &c.SpendLimitsEnabled
+}
+
+func (c *mqlCloudflareAccountAiGateway) GetSpendLimitRules() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SpendLimitRules, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cloudflare.account.aiGateway", c.__id, "spendLimitRules")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.spendLimitRules()
+	})
+}
+
+func (c *mqlCloudflareAccountAiGateway) GetProviderConfigs() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ProviderConfigs, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cloudflare.account.aiGateway", c.__id, "providerConfigs")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.providerConfigs()
+	})
+}
+
+func (c *mqlCloudflareAccountAiGateway) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlCloudflareAccountAiGateway) GetModifiedAt() *plugin.TValue[*time.Time] {
+	return &c.ModifiedAt
+}
+
+// mqlCloudflareAccountAiGatewayDlpPolicy for the cloudflare.account.aiGateway.dlpPolicy resource
+type mqlCloudflareAccountAiGatewayDlpPolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlCloudflareAccountAiGatewayDlpPolicyInternal
+	Id       plugin.TValue[string]
+	Enabled  plugin.TValue[bool]
+	Action   plugin.TValue[string]
+	Check    plugin.TValue[[]any]
+	Profiles plugin.TValue[[]any]
+}
+
+// createCloudflareAccountAiGatewayDlpPolicy creates a new instance of this resource
+func createCloudflareAccountAiGatewayDlpPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCloudflareAccountAiGatewayDlpPolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("cloudflare.account.aiGateway.dlpPolicy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCloudflareAccountAiGatewayDlpPolicy) MqlName() string {
+	return "cloudflare.account.aiGateway.dlpPolicy"
+}
+
+func (c *mqlCloudflareAccountAiGatewayDlpPolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCloudflareAccountAiGatewayDlpPolicy) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlCloudflareAccountAiGatewayDlpPolicy) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlCloudflareAccountAiGatewayDlpPolicy) GetAction() *plugin.TValue[string] {
+	return &c.Action
+}
+
+func (c *mqlCloudflareAccountAiGatewayDlpPolicy) GetCheck() *plugin.TValue[[]any] {
+	return &c.Check
+}
+
+func (c *mqlCloudflareAccountAiGatewayDlpPolicy) GetProfiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Profiles, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cloudflare.account.aiGateway.dlpPolicy", c.__id, "profiles")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.profiles()
+	})
+}
+
+// mqlCloudflareAccountAiGatewaySpendLimitRule for the cloudflare.account.aiGateway.spendLimitRule resource
+type mqlCloudflareAccountAiGatewaySpendLimitRule struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlCloudflareAccountAiGatewaySpendLimitRuleInternal it will be used here
+	Id        plugin.TValue[string]
+	Enabled   plugin.TValue[bool]
+	Limit     plugin.TValue[float64]
+	LimitType plugin.TValue[string]
+	Window    plugin.TValue[int64]
+	Technique plugin.TValue[string]
+	Models    plugin.TValue[[]any]
+	Providers plugin.TValue[[]any]
+	Metadata  plugin.TValue[any]
+}
+
+// createCloudflareAccountAiGatewaySpendLimitRule creates a new instance of this resource
+func createCloudflareAccountAiGatewaySpendLimitRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCloudflareAccountAiGatewaySpendLimitRule{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("cloudflare.account.aiGateway.spendLimitRule", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCloudflareAccountAiGatewaySpendLimitRule) MqlName() string {
+	return "cloudflare.account.aiGateway.spendLimitRule"
+}
+
+func (c *mqlCloudflareAccountAiGatewaySpendLimitRule) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCloudflareAccountAiGatewaySpendLimitRule) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlCloudflareAccountAiGatewaySpendLimitRule) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlCloudflareAccountAiGatewaySpendLimitRule) GetLimit() *plugin.TValue[float64] {
+	return &c.Limit
+}
+
+func (c *mqlCloudflareAccountAiGatewaySpendLimitRule) GetLimitType() *plugin.TValue[string] {
+	return &c.LimitType
+}
+
+func (c *mqlCloudflareAccountAiGatewaySpendLimitRule) GetWindow() *plugin.TValue[int64] {
+	return &c.Window
+}
+
+func (c *mqlCloudflareAccountAiGatewaySpendLimitRule) GetTechnique() *plugin.TValue[string] {
+	return &c.Technique
+}
+
+func (c *mqlCloudflareAccountAiGatewaySpendLimitRule) GetModels() *plugin.TValue[[]any] {
+	return &c.Models
+}
+
+func (c *mqlCloudflareAccountAiGatewaySpendLimitRule) GetProviders() *plugin.TValue[[]any] {
+	return &c.Providers
+}
+
+func (c *mqlCloudflareAccountAiGatewaySpendLimitRule) GetMetadata() *plugin.TValue[any] {
+	return &c.Metadata
+}
+
+// mqlCloudflareAccountAiGatewayProviderConfig for the cloudflare.account.aiGateway.providerConfig resource
+type mqlCloudflareAccountAiGatewayProviderConfig struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlCloudflareAccountAiGatewayProviderConfigInternal it will be used here
+	Id              plugin.TValue[string]
+	Alias           plugin.TValue[string]
+	ProviderSlug    plugin.TValue[string]
+	DefaultConfig   plugin.TValue[bool]
+	SecretId        plugin.TValue[string]
+	LastUsedAt      plugin.TValue[*time.Time]
+	RateLimit       plugin.TValue[float64]
+	RateLimitPeriod plugin.TValue[float64]
+	ModifiedAt      plugin.TValue[*time.Time]
+}
+
+// createCloudflareAccountAiGatewayProviderConfig creates a new instance of this resource
+func createCloudflareAccountAiGatewayProviderConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCloudflareAccountAiGatewayProviderConfig{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("cloudflare.account.aiGateway.providerConfig", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCloudflareAccountAiGatewayProviderConfig) MqlName() string {
+	return "cloudflare.account.aiGateway.providerConfig"
+}
+
+func (c *mqlCloudflareAccountAiGatewayProviderConfig) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCloudflareAccountAiGatewayProviderConfig) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlCloudflareAccountAiGatewayProviderConfig) GetAlias() *plugin.TValue[string] {
+	return &c.Alias
+}
+
+func (c *mqlCloudflareAccountAiGatewayProviderConfig) GetProviderSlug() *plugin.TValue[string] {
+	return &c.ProviderSlug
+}
+
+func (c *mqlCloudflareAccountAiGatewayProviderConfig) GetDefaultConfig() *plugin.TValue[bool] {
+	return &c.DefaultConfig
+}
+
+func (c *mqlCloudflareAccountAiGatewayProviderConfig) GetSecretId() *plugin.TValue[string] {
+	return &c.SecretId
+}
+
+func (c *mqlCloudflareAccountAiGatewayProviderConfig) GetLastUsedAt() *plugin.TValue[*time.Time] {
+	return &c.LastUsedAt
+}
+
+func (c *mqlCloudflareAccountAiGatewayProviderConfig) GetRateLimit() *plugin.TValue[float64] {
+	return &c.RateLimit
+}
+
+func (c *mqlCloudflareAccountAiGatewayProviderConfig) GetRateLimitPeriod() *plugin.TValue[float64] {
+	return &c.RateLimitPeriod
+}
+
+func (c *mqlCloudflareAccountAiGatewayProviderConfig) GetModifiedAt() *plugin.TValue[*time.Time] {
+	return &c.ModifiedAt
 }
 
 // mqlCloudflareApiToken for the cloudflare.apiToken resource
