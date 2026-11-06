@@ -11,7 +11,7 @@ go 1.27.3
 
 require (
 	// pin main
-	github.com/Snowflake-Labs/terraform-provider-snowflake v1.2.2-0.20261105182226-8a7d19b230d4
+	github.com/Snowflake-Labs/terraform-provider-snowflake v1.2.2-0.20261029102712-ef814d966397
 	github.com/rs/zerolog v1.35.1
 	github.com/snowflakedb/gosnowflake/v2 v2.4.0
 	github.com/stretchr/testify v1.12.1
@@ -89,6 +89,7 @@ require (
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
 	github.com/hashicorp/go-plugin v1.8.1-0.20260626113307-2d71c1b8b0e6 // indirect; pinned past v1.8.0 for hashicorp/go-plugin#388 (drops deprecated github.com/golang/protobuf) - revert to a tagged release once one ships
 	github.com/hashicorp/go-retryablehttp v0.7.8 // indirect
+	github.com/hashicorp/go-uuid v1.0.4 // indirect
 	github.com/hashicorp/terraform-plugin-log v0.11.0 // indirect
 	github.com/hashicorp/terraform-registry-address v0.5.1 // indirect
 	github.com/hashicorp/yamux v0.1.2 // indirect

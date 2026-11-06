@@ -35,8 +35,8 @@ github.com/Microsoft/go-winio v0.6.4 h1:kJF2pamtYCWXf0xAT8sAkwKC0pMl2HYBrRPHAqyU
 github.com/Microsoft/go-winio v0.6.4/go.mod h1:1xl5JXG4ze/m74GH6Dc4Mwxfc3VL5siRVQjIAlHH07U=
 github.com/ProtonMail/go-crypto v1.5.2 h1:cucYnvqcY7UOXVD//mSyjeaPY0SSN3v5cDkYPxumINk=
 github.com/ProtonMail/go-crypto v1.5.2/go.mod h1:/RaSu30DaKO4RY+XdV/ACcCcZkGr7AhUIduq5sjzzCo=
-github.com/Snowflake-Labs/terraform-provider-snowflake v1.2.2-0.20261105182226-8a7d19b230d4 h1:aReIvs2I7gwllQFBdhojKNjYDEal+TqmtxZbShdduDc=
-github.com/Snowflake-Labs/terraform-provider-snowflake v1.2.2-0.20261105182226-8a7d19b230d4/go.mod h1:tqUaQLRhkKBp3viCLtpw9L/b7+62tO28SmytPkVg3gM=
+github.com/Snowflake-Labs/terraform-provider-snowflake v1.2.2-0.20261029102712-ef814d966397 h1:/b+PDkyQ9+hrRm883WSIm1pDuqOQU+Lu/nJ9MxxC5y4=
+github.com/Snowflake-Labs/terraform-provider-snowflake v1.2.2-0.20261029102712-ef814d966397/go.mod h1:/z7bOJdAcod11+uakM2XwOmU+778Qa2INEHuOm3yH4k=
 github.com/agext/levenshtein v1.2.3 h1:YB2fHEn0UJagG8T1rrWknE3ZQzWM06O8AMAatNn7lmo=
 github.com/agext/levenshtein v1.2.3/go.mod h1:JEDfjyjHDjOF/1e4FlBE/PkbqA9OfWu2ki2W0IB5558=
 github.com/alecthomas/participle v0.3.0 h1:e8vhrYR1nDjzDxyDwpLO27TWOYWilaT+glkwbPadj50=
@@ -272,8 +272,8 @@ github.com/hashicorp/logutils v1.0.0 h1:dLEQVugN8vlakKOUE3ihGLTZJRB4j+M2cdTm/ORI
 github.com/hashicorp/logutils v1.0.0/go.mod h1:QIAnNjmIWmVIIkWDTG1z5v++HQmx9WQRO+LraFDTW64=
 github.com/hashicorp/terraform-exec v0.25.2 h1:fFLAVEtAjKdGfawGUXDnKooCnqJi+TuohT3W99AGbhk=
 github.com/hashicorp/terraform-exec v0.25.2/go.mod h1:uaQV2oqVLqM4cixJryk6qIWS1qji3GtuwPG5pjGXYfc=
-github.com/hashicorp/terraform-json v0.29.0 h1:ZggVL0YzGj5zdbafX4+rDcROM7EvVU0eXlIMkHieptI=
-github.com/hashicorp/terraform-json v0.29.0/go.mod h1:PJIRf+Yzu5iLb52c/xYp1tUOL4jzMzfIAB5gvWWKIWE=
+github.com/hashicorp/terraform-json v0.28.0 h1:dOkJT55rWfU6T1/VklHde51ym4LfNP+9xYR3ZizAJe4=
+github.com/hashicorp/terraform-json v0.28.0/go.mod h1:PJIRf+Yzu5iLb52c/xYp1tUOL4jzMzfIAB5gvWWKIWE=
 github.com/hashicorp/terraform-plugin-go v0.31.0 h1:0Fz2r9DQ+kNNl6bx8HRxFd1TfMKUvnrOtvJPmp3Z0q8=
 github.com/hashicorp/terraform-plugin-go v0.31.0/go.mod h1:A88bDhd/cW7FnwqxQRz3slT+QY6yzbHKc6AOTtmdeS8=
 github.com/hashicorp/terraform-plugin-log v0.11.0 h1:WjhcpZIVqP8YRe83+dIZXncwSgtu4vh27i23G33PUQY=
