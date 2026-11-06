@@ -511,6 +511,211 @@ private cloudflare.account @defaults("name") @root {
 	// WAF, rate limiting, and the security level of every zone the account
 	// owns, so one entry can undo the firewall posture of the whole estate.
 	ipAccessRules() []cloudflare.ipAccessRule
+
+	// AI Gateways in the account
+	//
+	// Gateways that proxy the account's calls to AI model providers. Each
+	// reports whether callers must authenticate (`authentication`), whether
+	// prompts and responses are logged (`collectLogs`, `logpush`), the data
+	// loss prevention (`dlpEnabled`, `dlpPolicies`) and guardrail settings
+	// (`promptGuardrails`, `responseGuardrails`) applied to traffic, rate and
+	// spend limits, and the provider keys it stores (`providerConfigs`).
+	aiGateways() []cloudflare.account.aiGateway
+}
+
+// AI Gateway
+//
+// A gateway that proxies AI model requests for the account. The `id` field
+// names the gateway, for example
+// `cloudflare.account.aiGateways.where(id == "default")`. Covers caller
+// authentication, logging and log retention, data loss prevention, content
+// guardrails on prompts and responses, rate limiting, spend limits,
+// zero data retention, and the provider keys stored for the gateway.
+private cloudflare.account.aiGateway @defaults("id authentication collectLogs") {
+	// Gateway identifier, unique within the account
+	id string
+	// Whether callers must authenticate to use the gateway
+	//
+	// A gateway without authentication accepts requests from anyone who knows
+	// its URL and bills them to the account. Once enabled it cannot be turned
+	// off.
+	authentication bool
+	// Whether the gateway only uses provider keys supplied by the account
+	//
+	// When true, requests never fall back to Cloudflare Unified Billing.
+	byokOnly bool
+	// Whether the gateway is the account's default gateway
+	isDefault bool
+	// Whether request and response logs are stored
+	//
+	// Stored logs include the prompts and model responses passing through the
+	// gateway.
+	collectLogs bool
+	// Whether logs are exported through Logpush
+	logpush bool
+	// Maximum number of logs stored for the gateway
+	//
+	// Null when no limit is configured.
+	logManagement int
+	// What happens when the stored log limit is reached
+	//
+	// One of STOP_INSERTING or DELETE_OLDEST. Null when no limit is configured.
+	logManagementStrategy string
+	// Whether zero data retention is required
+	//
+	// When true, the gateway only routes to provider endpoints that do not
+	// retain request data.
+	zeroDataRetention bool
+	// FedRAMP compliance level required of provider connectors
+	//
+	// One of fedramp-medium or fedramp-high. Null when no level is set.
+	fedrampLevel string
+	// FedRAMP enforcement mode
+	//
+	// `prefer` favors compliant connectors but allows fallback; `require`
+	// only uses compliant connectors. Null when no mode is set.
+	fedrampMode string
+	// Cache lifetime for responses, in seconds
+	//
+	// Null when not set.
+	cacheTtl int
+	// Whether the cache is invalidated when the gateway is updated
+	cacheInvalidateOnUpdate bool
+	// Number of requests allowed in each rate limiting interval
+	//
+	// Null when not set.
+	rateLimitingLimit int
+	// Rate limiting interval, in seconds
+	//
+	// Null when not set.
+	rateLimitingInterval int
+	// Rate limiting technique
+	//
+	// One of fixed or sliding. Null when not set.
+	rateLimitingTechnique string
+	// Whether data loss prevention scanning is enabled
+	dlpEnabled bool
+	// Action taken when a DLP profile matches
+	//
+	// One of BLOCK or FLAG, for a gateway configured with one action for all
+	// its profiles. Null for a gateway configured with `dlpPolicies`.
+	dlpAction string
+	// DLP profiles the gateway scans traffic with
+	//
+	// Set for a gateway configured with one action for all its profiles. Empty
+	// for a gateway configured with `dlpPolicies`.
+	dlpProfiles() []cloudflare.one.dlpProfile
+	// DLP policies the gateway applies
+	//
+	// Each policy names its profiles, its action, and whether it checks
+	// requests, responses, or both. Empty for a gateway configured with one
+	// action for all its profiles.
+	dlpPolicies() []cloudflare.account.aiGateway.dlpPolicy
+	// Guardrail actions applied to prompts, keyed by hazard category
+	//
+	// Maps a category code (for example `S1` or `P1`) to FLAG or BLOCK. A
+	// category not in the map is not evaluated. Null when guardrails are not
+	// configured.
+	promptGuardrails map[string]string
+	// Guardrail actions applied to model responses, keyed by hazard category
+	//
+	// Maps a category code (for example `S1` or `P1`) to FLAG or BLOCK. A
+	// category not in the map is not evaluated. Null when guardrails are not
+	// configured.
+	responseGuardrails map[string]string
+	// Whether spend limits are enforced
+	spendLimitsEnabled bool
+	// Spend limit rules
+	spendLimitRules() []cloudflare.account.aiGateway.spendLimitRule
+	// Provider keys stored for the gateway
+	//
+	// The credentials the gateway uses to call each AI provider. Key values
+	// and previews are not exposed.
+	providerConfigs() []cloudflare.account.aiGateway.providerConfig
+	// Time the gateway was created
+	createdAt time
+	// Time the gateway was last modified
+	modifiedAt time
+}
+
+// AI Gateway DLP policy
+private cloudflare.account.aiGateway.dlpPolicy @defaults("id action enabled") {
+	// Policy identifier
+	id string
+	// Whether the policy is enabled
+	enabled bool
+	// Action taken when a profile matches
+	//
+	// One of BLOCK or FLAG.
+	action string
+	// Traffic the policy inspects
+	//
+	// Contains REQUEST, RESPONSE, or both.
+	check []string
+	// DLP profiles the policy scans with
+	profiles() []cloudflare.one.dlpProfile
+}
+
+// AI Gateway spend limit rule
+private cloudflare.account.aiGateway.spendLimitRule @defaults("id limit window enabled") {
+	// Rule identifier
+	id string
+	// Whether the rule is enabled
+	enabled bool
+	// Spend allowed in each window
+	limit float
+	// What the limit measures, for example cost
+	limitType string
+	// Window length, in seconds
+	window int
+	// Window technique
+	//
+	// One of fixed or sliding.
+	technique string
+	// Models the rule applies to
+	//
+	// Empty when the rule applies to every model.
+	models []string
+	// Providers the rule applies to
+	//
+	// Empty when the rule applies to every provider.
+	providers []string
+	// Request metadata the rule applies to
+	//
+	// Maps a metadata key to an object with `mode` (`filter` to match the
+	// listed `values`, `partition` to apply the limit separately to each value
+	// of the key).
+	metadata dict
+}
+
+// AI Gateway provider key
+private cloudflare.account.aiGateway.providerConfig @defaults("providerSlug alias defaultConfig") {
+	// Provider key identifier
+	id string
+	// Name given to the key
+	alias string
+	// AI provider the key authenticates to, for example openai or anthropic
+	providerSlug string
+	// Whether this is the default key for the provider
+	defaultConfig bool
+	// Identifier of the stored secret that holds the key
+	secretId string
+	// Date the gateway last used the key
+	//
+	// Updated at most once a day. Null when the gateway has not used the key
+	// since Cloudflare began recording it, which on a stored provider key
+	// suggests it can be removed.
+	lastUsedAt time
+	// Number of requests allowed in each rate limit period
+	//
+	// Null when no rate limit is set.
+	rateLimit float
+	// Rate limit period, in seconds
+	//
+	// Null when no rate limit is set.
+	rateLimitPeriod float
+	// Time the key was last modified
+	modifiedAt time
 }
 
 // Cloudflare API Token
