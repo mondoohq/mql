@@ -73,6 +73,7 @@ func newMqlAuth0Connection(runtime *plugin.Runtime, c *management.Connection) (p
 	var passwordDictionaryEnabled, passwordHistoryEnabled, passwordNoPersonalInfo *bool
 	var mfaActive, mfaReturnEnrollSettings *bool
 	var passwordHistorySize *int64
+	var otp otpChannelSettings
 	if opts, ok := c.Options.(*management.ConnectionOptions); ok && opts != nil {
 		passwordPolicy = opts.PasswordPolicy
 		disableSignup = opts.DisableSignup
@@ -84,6 +85,7 @@ func newMqlAuth0Connection(runtime *plugin.Runtime, c *management.Connection) (p
 		passwordNoPersonalInfo = mapBool(opts.PasswordNoPersonalInfo, "enable")
 		mfaActive = mapBool(opts.MFA, "active")
 		mfaReturnEnrollSettings = mapBool(opts.MFA, "return_enroll_settings")
+		otp = otpSettings(opts.OTPSettings)
 	}
 
 	r, err := CreateResource(runtime, "auth0.connection", map[string]*llx.RawData{
@@ -102,6 +104,10 @@ func newMqlAuth0Connection(runtime *plugin.Runtime, c *management.Connection) (p
 		"mfaReturnEnrollSettings":   llx.BoolDataPtr(mfaReturnEnrollSettings),
 		"bruteForceProtection":      llx.BoolDataPtr(bruteForceProtection),
 		"options":                   llx.DictData(optionsDict),
+		"otpEmailLength":            llx.IntDataPtr(otp.emailLength),
+		"otpEmailExpiry":            llx.IntDataPtr(otp.emailExpiry),
+		"otpPhoneLength":            llx.IntDataPtr(otp.phoneLength),
+		"otpPhoneExpiry":            llx.IntDataPtr(otp.phoneExpiry),
 	})
 	if err != nil {
 		return nil, err
@@ -165,4 +171,27 @@ func (c *mqlAuth0Connection) enabledClients() ([]any, error) {
 
 func (r *mqlAuth0Connection) id() (string, error) {
 	return "auth0.connection/" + r.Id.Data, nil
+}
+
+// otpChannelSettings holds the per-channel one-time password settings of a
+// database connection. A nil pointer means the API did not return the value.
+type otpChannelSettings struct {
+	emailLength, emailExpiry *int
+	phoneLength, phoneExpiry *int
+}
+
+func otpSettings(o *management.ConnectionOptionsOTPSettings) otpChannelSettings {
+	var res otpChannelSettings
+	if o == nil {
+		return res
+	}
+	if o.Email != nil {
+		res.emailLength = o.Email.OTPLength
+		res.emailExpiry = o.Email.OTPExpiry
+	}
+	if o.Phone != nil {
+		res.phoneLength = o.Phone.OTPLength
+		res.phoneExpiry = o.Phone.OTPExpiry
+	}
+	return res
 }

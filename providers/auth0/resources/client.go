@@ -122,6 +122,11 @@ func newMqlAuth0Client(runtime *plugin.Runtime, c *management.Client) (plugin.Re
 		"authenticationMethods":      llx.ArrayData(authMethods, types.String),
 		"anonymousSessionsEnabled":   llx.BoolDataPtr(anonymousSessionsActive(c.AnonymousSessions)),
 		"myOrganization":             myOrg,
+		"agentId":                    llx.StringDataPtr(c.AgentID),
+		"metadataDocumentUrl":        llx.StringDataPtr(c.ExternalClientID),
+		"externalMetadataType":       llx.StringDataPtr(c.ExternalMetadataType),
+		"externalMetadataCreatedBy":  llx.StringDataPtr(c.ExternalMetadataCreatedBy),
+		"externalMetadataStatus":     llx.StringDataPtr(c.ExternalMetadataStatus),
 	})
 	if err != nil {
 		return nil, err

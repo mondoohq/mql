@@ -148,3 +148,111 @@ func TestTenantSessionSettings(t *testing.T) {
 	assert.Nil(t, lifetime)
 	assert.Nil(t, cookie)
 }
+
+func TestOtpSettings(t *testing.T) {
+	// Synthetic: database connection with both channels configured; no target showed this.
+	var both management.Connection
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"id": "con_1",
+		"strategy": "auth0",
+		"options": {
+			"otp_settings": {
+				"email": {"otp_length": 8, "otp_expiry": 300},
+				"phone": {"otp_length": 6, "otp_expiry": 120}
+			}
+		}
+	}`), &both))
+	opts, ok := both.Options.(*management.ConnectionOptions)
+	require.True(t, ok)
+	got := otpSettings(opts.OTPSettings)
+	require.NotNil(t, got.emailLength)
+	require.NotNil(t, got.emailExpiry)
+	require.NotNil(t, got.phoneLength)
+	require.NotNil(t, got.phoneExpiry)
+	assert.Equal(t, 8, *got.emailLength)
+	assert.Equal(t, 300, *got.emailExpiry)
+	assert.Equal(t, 6, *got.phoneLength)
+	assert.Equal(t, 120, *got.phoneExpiry)
+
+	// Synthetic: only the email expiry configured; everything else stays null, not zero.
+	var emailOnly management.Connection
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"id": "con_2",
+		"strategy": "auth0",
+		"options": {"otp_settings": {"email": {"otp_expiry": 600}}}
+	}`), &emailOnly))
+	got = otpSettings(emailOnly.Options.(*management.ConnectionOptions).OTPSettings)
+	assert.Nil(t, got.emailLength)
+	require.NotNil(t, got.emailExpiry)
+	assert.Equal(t, 600, *got.emailExpiry)
+	assert.Nil(t, got.phoneLength)
+	assert.Nil(t, got.phoneExpiry)
+
+	// Synthetic: feature not enabled, so the API omits otp_settings.
+	var absent management.Connection
+	require.NoError(t, json.Unmarshal([]byte(`{"id": "con_3", "strategy": "auth0", "options": {}}`), &absent))
+	got = otpSettings(absent.Options.(*management.ConnectionOptions).OTPSettings)
+	assert.Nil(t, got.emailLength)
+	assert.Nil(t, got.emailExpiry)
+	assert.Nil(t, got.phoneLength)
+	assert.Nil(t, got.phoneExpiry)
+}
+
+func TestClientMetadataDocumentDecode(t *testing.T) {
+	// Synthetic: self-registered CIMD client linked to an agent; no target showed this.
+	var cimd management.Client
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"client_id": "https://app.example.com/client.json",
+		"agent_id": "agt_1",
+		"external_client_id": "https://app.example.com/client.json",
+		"external_metadata_type": "cimd",
+		"external_metadata_created_by": "client",
+		"external_metadata_status": "unavailable"
+	}`), &cimd))
+	assert.Equal(t, "agt_1", cimd.GetAgentID())
+	assert.Equal(t, "https://app.example.com/client.json", cimd.GetExternalClientID())
+	assert.Equal(t, "cimd", cimd.GetExternalMetadataType())
+	assert.Equal(t, "client", cimd.GetExternalMetadataCreatedBy())
+	assert.Equal(t, "unavailable", cimd.GetExternalMetadataStatus())
+
+	// Synthetic: client created in the tenant; the CIMD fields stay null.
+	var regular management.Client
+	require.NoError(t, json.Unmarshal([]byte(`{"client_id": "abc"}`), &regular))
+	assert.Nil(t, regular.AgentID)
+	assert.Nil(t, regular.ExternalClientID)
+	assert.Nil(t, regular.ExternalMetadataType)
+	assert.Nil(t, regular.ExternalMetadataCreatedBy)
+	assert.Nil(t, regular.ExternalMetadataStatus)
+}
+
+func TestTenantClientIDMetadataDocumentDecode(t *testing.T) {
+	// Synthetic: tenant supporting CIMD without self-registration; no target showed this.
+	var on management.Tenant
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"client_id_metadata_document_supported": true,
+		"client_id_metadata_document_dynamic_registration_supported": false
+	}`), &on))
+	require.NotNil(t, on.ClientIDMetadataDocumentSupported)
+	assert.True(t, *on.ClientIDMetadataDocumentSupported)
+	require.NotNil(t, on.ClientIDMetadataDocumentDynamicRegistrationSupported)
+	assert.False(t, *on.ClientIDMetadataDocumentDynamicRegistrationSupported)
+
+	// Synthetic: feature not enabled, the keys are absent and read as null.
+	var absent management.Tenant
+	require.NoError(t, json.Unmarshal([]byte(`{"friendly_name": "t"}`), &absent))
+	assert.Nil(t, absent.ClientIDMetadataDocumentSupported)
+	assert.Nil(t, absent.ClientIDMetadataDocumentDynamicRegistrationSupported)
+}
+
+func TestResourceServerTypeDecode(t *testing.T) {
+	// Synthetic: UCP resource server; no target showed this.
+	var ucp management.ResourceServer
+	require.NoError(t, json.Unmarshal([]byte(`{"id": "rs_1", "type": "universal_commerce_protocol_server"}`), &ucp))
+	require.NotNil(t, ucp.Type)
+	assert.Equal(t, "universal_commerce_protocol_server", *ucp.Type)
+
+	// Synthetic: regular API, type is null.
+	var regular management.ResourceServer
+	require.NoError(t, json.Unmarshal([]byte(`{"id": "rs_2"}`), &regular))
+	assert.Nil(t, regular.Type)
+}

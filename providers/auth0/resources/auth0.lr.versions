@@ -29,6 +29,7 @@ auth0.attackProtection.suspiciousIpThrottlingEnabled 13.0.0
 auth0.attackProtection.suspiciousIpThrottlingPreLoginMaxAttempts 13.0.0
 auth0.attackProtection.suspiciousIpThrottlingPreRegistrationMaxAttempts 13.0.0
 auth0.client 13.0.0
+auth0.client.agentId 14.1.10
 auth0.client.allowedLogoutUrls 13.0.0
 auth0.client.allowedOrigins 13.0.0
 auth0.client.anonymousSessionsEnabled 14.0.1
@@ -39,11 +40,15 @@ auth0.client.clientMetadata 13.0.0
 auth0.client.crossOriginAuth 13.0.0
 auth0.client.description 13.0.0
 auth0.client.enabledConnections 13.0.0
+auth0.client.externalMetadataCreatedBy 14.1.10
+auth0.client.externalMetadataStatus 14.1.10
+auth0.client.externalMetadataType 14.1.10
 auth0.client.grantTypes 13.0.0
 auth0.client.id 13.0.0
 auth0.client.initiateLoginUri 13.0.0
 auth0.client.isFirstParty 13.0.0
 auth0.client.jwtConfiguration 13.0.0
+auth0.client.metadataDocumentUrl 14.1.10
 auth0.client.myOrganization 14.0.1
 auth0.client.myOrganizationConfiguration 14.0.1
 auth0.client.myOrganizationConfiguration.allowedStrategies 14.0.1
@@ -83,6 +88,10 @@ auth0.connection.mfaActive 13.0.0
 auth0.connection.mfaReturnEnrollSettings 13.0.0
 auth0.connection.name 13.0.0
 auth0.connection.options 13.0.0
+auth0.connection.otpEmailExpiry 14.1.10
+auth0.connection.otpEmailLength 14.1.10
+auth0.connection.otpPhoneExpiry 14.1.10
+auth0.connection.otpPhoneLength 14.1.10
 auth0.connection.passwordDictionaryEnabled 13.0.0
 auth0.connection.passwordHistoryEnabled 13.0.0
 auth0.connection.passwordHistorySize 13.0.0
@@ -140,6 +149,7 @@ auth0.resourceServer.tokenDialect 13.0.0
 auth0.resourceServer.tokenLifetime 13.0.0
 auth0.resourceServer.tokenLifetimeForAnonymousAccessTokens 14.0.1
 auth0.resourceServer.tokenLifetimeForWeb 13.0.0
+auth0.resourceServer.type 14.1.10
 auth0.resourceServer.userPolicy 14.0.1
 auth0.resourceServers 13.0.0
 auth0.role 13.0.0
@@ -153,6 +163,8 @@ auth0.tenant 13.0.0
 auth0.tenant.allowedLogoutUrls 13.0.0
 auth0.tenant.anonymousSessionCookieEnabled 14.0.1
 auth0.tenant.anonymousSessionLifetime 14.0.1
+auth0.tenant.clientIdMetadataDocumentDynamicRegistrationSupported 14.1.10
+auth0.tenant.clientIdMetadataDocumentSupported 14.1.10
 auth0.tenant.defaultAudience 13.0.0
 auth0.tenant.defaultDirectory 13.0.0
 auth0.tenant.enabledLocales 13.0.0
