@@ -934,23 +934,26 @@ func (a *mqlAwsEmrCluster) steps() ([]any, error) {
 				}
 			}
 
+			resourceManager, resourceManagerAppIds := emrStepAdditionalInfo(step.AdditionalInfo)
 			mqlStep, err := CreateResource(a.MqlRuntime, "aws.emr.cluster.step",
 				map[string]*llx.RawData{
-					"__id":              llx.StringData(fmt.Sprintf("%s/step/%s", arn, convert.ToValue(step.Id))),
-					"id":                llx.StringDataPtr(step.Id),
-					"name":              llx.StringDataPtr(step.Name),
-					"actionOnFailure":   llx.StringData(string(step.ActionOnFailure)),
-					"status":            llx.StringData(status),
-					"jar":               llx.StringData(jar),
-					"mainClass":         llx.StringData(mainClass),
-					"properties":        llx.MapData(properties, types.String),
-					"args":              llx.ArrayData(args, types.String),
-					"createdAt":         createdAt,
-					"startedAt":         startedAt,
-					"endedAt":           endedAt,
-					"stateChangeReason": llx.StringData(stateChangeReason),
-					"failureDetails":    llx.DictData(failureDetails),
-					"logUri":            llx.StringDataPtr(step.LogUri),
+					"__id":                          llx.StringData(fmt.Sprintf("%s/step/%s", arn, convert.ToValue(step.Id))),
+					"id":                            llx.StringDataPtr(step.Id),
+					"name":                          llx.StringDataPtr(step.Name),
+					"actionOnFailure":               llx.StringData(string(step.ActionOnFailure)),
+					"status":                        llx.StringData(status),
+					"jar":                           llx.StringData(jar),
+					"mainClass":                     llx.StringData(mainClass),
+					"properties":                    llx.MapData(properties, types.String),
+					"args":                          llx.ArrayData(args, types.String),
+					"createdAt":                     createdAt,
+					"startedAt":                     startedAt,
+					"endedAt":                       endedAt,
+					"stateChangeReason":             llx.StringData(stateChangeReason),
+					"failureDetails":                llx.DictData(failureDetails),
+					"logUri":                        llx.StringDataPtr(step.LogUri),
+					"resourceManager":               resourceManager,
+					"resourceManagerApplicationIds": resourceManagerAppIds,
 				})
 			if err != nil {
 				return nil, err
@@ -1523,4 +1526,17 @@ func (a *mqlAwsEmrStudio) encryptionKey() (*mqlAwsKmsKey, error) {
 		return nil, err
 	}
 	return res.(*mqlAwsKmsKey), nil
+}
+
+// emrStepAdditionalInfo returns the YARN resource manager address and
+// application IDs of a step, both null when EMR reports no additional info.
+func emrStepAdditionalInfo(info *emrtypes.StepAdditionalInfo) (*llx.RawData, *llx.RawData) {
+	if info == nil {
+		return llx.NilData, llx.NilData
+	}
+	appIds := llx.NilData
+	if info.ResourceManagerApplicationIds != nil {
+		appIds = llx.ArrayData(convert.SliceAnyToInterface(info.ResourceManagerApplicationIds), types.String)
+	}
+	return llx.StringDataPtr(info.ResourceManager), appIds
 }

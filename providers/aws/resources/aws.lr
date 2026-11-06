@@ -9096,6 +9096,15 @@ aws.securityhub {
   // on. In any other account, central configuration does not apply and the
   // field reports no policies.
   configurationPolicies() []aws.securityhub.configurationPolicy
+  // Software packages Security Hub found installed on the account's resources
+  //
+  // One entry per package name, type, and version in each region where
+  // Security Hub (the version that succeeded Security Hub CSPM) is enabled.
+  // Regions where it is not enabled, or where the caller lacks
+  // securityhub:GetSoftwareV2, report no entries. When a home region
+  // aggregates other regions, the home region's entries include packages from
+  // the linked regions.
+  softwarePackages() []aws.securityhub.softwarePackage
 }
 
 // AWS Security Hub hub
@@ -9453,6 +9462,68 @@ private aws.securityhub.enabledProduct @defaults("productArn") {
   productArn string
   // Region where the product is enabled
   region string
+}
+
+// Software package in the Security Hub inventory
+//
+// A package Security Hub found on one or more resources, identified by
+// `packageName`, `packageType` (such as operating-system, application, or
+// library), and `packageVersion`. `resourceCount` gives how many resources
+// carry it, and `resources` lists them, for example
+// `aws.securityhub.softwarePackages.where(packageName == "openssl") { packageVersion resourceCount }`.
+private aws.securityhub.softwarePackage @defaults("packageName packageVersion resourceCount") {
+  // Name of the package
+  packageName string
+  // Type of the package, such as operating-system, application, or library
+  packageType string
+  // Version of the package
+  //
+  // Null when Security Hub did not record a version.
+  packageVersion string
+  // Number of resources the package is installed on
+  resourceCount int
+  // Region the inventory was read from
+  region string
+  // Resources the package is installed on
+  resources() []aws.securityhub.softwareResource
+}
+
+// Resource that carries a package in the Security Hub inventory
+//
+// A resource on which Security Hub found a package, identified by
+// `resourceId` and `resourceType` (such as AWS::EC2::Instance or
+// AWS::Lambda::Function), with the cloud provider, owner account, and region
+// it lives in. `ec2Instance` and `lambdaFunction` resolve the AWS resources
+// of those types.
+private aws.securityhub.softwareResource @defaults("resourceType resourceId") {
+  // Identifier of the resource
+  resourceId string
+  // Type of the resource, such as AWS::EC2::Instance or AWS::Lambda::Function
+  resourceType string
+  // Cloud provider the resource runs in: AWS or Azure
+  resourceProvider string
+  // Region the resource is located in, in the cloud provider's naming
+  resourceRegion string
+  // Cloud partition of the resource, such as aws, aws-cn, or aws-us-gov
+  //
+  // Null for cloud providers without partitions.
+  resourceCloudPartition string
+  // Account that owns the resource: the AWS account ID or Azure subscription ID
+  resourceOwnerAccountId string
+  // Organization that owns the resource: the AWS Organizations ID or Azure tenant ID
+  resourceOwnerOrgId string
+  // AWS account that recorded the resource in Security Hub
+  accountId string
+  // Region that recorded the resource in Security Hub
+  region string
+  // EC2 instance the package is installed on
+  //
+  // Null when the resource is not an EC2 instance owned by the scanned account.
+  ec2Instance() aws.ec2.instance
+  // Lambda function the package is installed in
+  //
+  // Null when the resource is not a Lambda function owned by the scanned account.
+  lambdaFunction() aws.lambda.function
 }
 
 // AWS Shield Advanced
@@ -10919,6 +10990,14 @@ private aws.emr.cluster.step @defaults("name status") {
   logUri string
   // IAM runtime role assumed for the step
   executionRole() aws.iam.role
+  // Address of the YARN resource manager that processed the step
+  //
+  // Null when EMR reports no additional information for the step.
+  resourceManager string
+  // YARN application IDs the step ran
+  //
+  // Null when EMR reports no additional information for the step.
+  resourceManagerApplicationIds []string
 }
 
 // Amazon EMR cluster instance group
@@ -15158,6 +15237,10 @@ private aws.rds.optionGroup @defaults("optionGroupName engineName majorEngineVer
   vpc() aws.vpc
   // Account ID of the option group this one was copied from, when applicable
   sourceAccountId string
+  // Region of the option group this one was copied from
+  //
+  // Null when the group is not a copy.
+  sourceRegion string
   // Source option group name when this group is a copy
   sourceOptionGroup string
   // Time the option group was copied from another option group
@@ -27349,6 +27432,23 @@ private aws.glue.job @defaults("name region") {
   region string
   // Tags for the job
   tags() map[string]string
+  // State of the automatic Glue version upgrade
+  //
+  // One of OBSERVING, UPGRADING, UPGRADE_SUCCEEDED, UPGRADE_FAILED, STOPPED, or
+  // WAITING_FOR_CONSENT. Null when the job does not use glueVersion auto.
+  autoUpgradeStatus string
+  // Glue version the job ran before the automatic upgrade
+  //
+  // Null when the job does not use glueVersion auto.
+  autoUpgradeSourceVersion string
+  // Glue version the automatic upgrade moves the job to
+  //
+  // Null when the job does not use glueVersion auto or no target is chosen yet.
+  autoUpgradeTargetVersion string
+  // Identifier of the assessment that evaluates the automatic upgrade
+  //
+  // Null when the job does not use glueVersion auto.
+  autoUpgradeAnalysisId string
 }
 
 // AWS Glue security configuration
@@ -34632,6 +34732,34 @@ private aws.datasync.location @defaults("arn locationUri") {
   region string
   // Tags assigned to the location
   tags() map[string]string
+  // How DataSync authenticates to Azure Blob Storage
+  //
+  // One of SAS (a shared access signature token that DataSync stores), OIDC
+  // (federated identity, no stored credential), or NONE. Null for locations
+  // other than azure-blob.
+  authenticationType() string
+  // Secrets Manager secret holding the credential DataSync uses for the location
+  //
+  // The SAS token of an azure-blob location or the secret key of an
+  // object-storage location, whether DataSync manages the secret (optionally
+  // encrypted with a customer-managed KMS key) or the customer supplies it.
+  // Null when the location stores no credential, such as one that uses a
+  // federated identity, and for location types other than azure-blob and
+  // object-storage.
+  credentialSecret() aws.secretsmanager.secret
+  // IAM role DataSync uses to obtain a web identity token for federated access
+  //
+  // Set on azure-blob and object-storage locations that authenticate with an
+  // OpenID Connect token instead of a stored secret. Null when the location
+  // does not use a federated identity, and for other location types.
+  federatedIdentityRole() aws.iam.role
+  // External identity DataSync exchanges the web identity token with
+  //
+  // For azure-blob: {azureOidc: {clientId, tenantId}}. For object-storage:
+  // {googleOidc: {identityPoolName, identityProviderName, projectName,
+  // projectNumber}}. Null when the location does not use a federated
+  // identity, and for other location types.
+  federatedIdentity() dict
 }
 
 // AWS DataSync agent

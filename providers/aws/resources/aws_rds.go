@@ -2168,6 +2168,7 @@ func newMqlAwsRdsOptionGroup(runtime *plugin.Runtime, region string, og rds_type
 		"region":                                llx.StringData(region),
 		"allowsVpcAndNonVpcInstanceMemberships": llx.BoolDataPtr(og.AllowsVpcAndNonVpcInstanceMemberships),
 		"sourceAccountId":                       llx.StringDataPtr(og.SourceAccountId),
+		"sourceRegion":                          llx.StringDataPtr(og.SourceRegion),
 		"sourceOptionGroup":                     llx.StringDataPtr(og.SourceOptionGroup),
 		"copyTimestamp":                         llx.TimeDataPtr(og.CopyTimestamp),
 		"options":                               llx.ArrayData(options, types.Dict),
