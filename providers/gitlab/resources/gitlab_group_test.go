@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 )
 
 func TestListGroupMemberRolesWalksPagesByPath(t *testing.T) {
@@ -59,4 +60,57 @@ func TestIsGitlabStatusIgnoresTransportErrors(t *testing.T) {
 	// Synthetic: an error that never reached GitLab.
 	assert.False(t, isGitlabStatus(errors.New("dial tcp: connection refused"), 403, 404))
 	assert.False(t, isGitlabStatus(nil, 403))
+}
+
+func TestGetGroupDetailReadsRequireShaForMerge(t *testing.T) {
+	// Synthetic: a GitLab 19.5+ group with the SHA requirement on and locked
+	// for descendants; no target showed this.
+	client, _ := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/v4/groups/42", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"id": 42, "require_sha_for_merge": true, "lock_require_sha_for_merge": true}`)
+	}))
+
+	grp, err := getGroupDetail(client, 42)
+	require.NoError(t, err)
+	args := map[string]*llx.RawData{}
+	populateGroupDetailArgs(args, grp)
+	assert.Equal(t, true, args["requireShaForMerge"].Value)
+	assert.Equal(t, true, args["lockRequireShaForMerge"].Value)
+}
+
+func TestGetGroupDetailWithoutRequireShaForMerge(t *testing.T) {
+	// Synthetic: a GitLab version before 19.5, whose group payload has no
+	// require_sha_for_merge keys; no target showed this.
+	client, _ := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"id": 42, "membership_lock": true}`)
+	}))
+
+	grp, err := getGroupDetail(client, 42)
+	require.NoError(t, err)
+	args := map[string]*llx.RawData{}
+	populateGroupDetailArgs(args, grp)
+	assert.Equal(t, false, args["requireShaForMerge"].Value)
+	assert.Equal(t, false, args["lockRequireShaForMerge"].Value)
+}
+
+func TestGetGroupDetailRefusalIsForbidden(t *testing.T) {
+	// Synthetic: a token without read access to the group; no target showed this.
+	client, _ := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprint(w, `{"message": "403 Forbidden"}`)
+	}))
+	grp, err := getGroupDetail(client, 42)
+	assert.Nil(t, grp)
+	assert.True(t, errors.Is(err, llx.ErrForbidden))
+
+	// Synthetic: a group that no longer exists is not a refusal.
+	notFound, _ := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprint(w, `{"message": "404 Group Not Found"}`)
+	}))
+	_, err = getGroupDetail(notFound, 42)
+	require.Error(t, err)
+	assert.False(t, errors.Is(err, llx.ErrForbidden))
 }

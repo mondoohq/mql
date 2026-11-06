@@ -761,6 +761,19 @@ gitlab.group @defaults("name visibility webURL") @root {
   //
   // Each entry is a dict with cn, filter, provider, and groupAccess keys.
   ldapGroupLinks []dict
+  // Whether merging a merge request through the API requires its head commit SHA
+  //
+  // When true, a merge call must pass the `sha` the merge request was reviewed
+  // at, so commits pushed after review cannot be merged by an API client that
+  // never saw them. False on GitLab versions before 19.5, which have no such
+  // setting and accept merge calls without a SHA.
+  requireShaForMerge() bool
+  // Whether subgroups are prevented from overriding requireShaForMerge
+  //
+  // When true, every descendant group inherits this group's
+  // requireShaForMerge value and cannot change it. False on GitLab versions
+  // before 19.5.
+  lockRequireShaForMerge() bool
   // List of members in the group with their roles
   members() []gitlab.member
   // Custom member roles defined in the group

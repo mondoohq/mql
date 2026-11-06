@@ -104,6 +104,7 @@ gitlab.group.ldapAccess 13.3.9
 gitlab.group.ldapCn 13.3.9
 gitlab.group.ldapGroupLinks 13.3.9
 gitlab.group.lfsEnabled 11.1.129
+gitlab.group.lockRequireShaForMerge 14.1.11
 gitlab.group.markedForDeletionOn 11.1.129
 gitlab.group.memberRoles 13.3.9
 gitlab.group.members 11.1.129
@@ -144,6 +145,7 @@ gitlab.group.pushRule.rejectNonDCOCommits 11.1.138
 gitlab.group.pushRule.rejectUnsignedCommits 11.1.138
 gitlab.group.pushRules 11.1.138
 gitlab.group.requestAccessEnabled 11.1.129
+gitlab.group.requireShaForMerge 14.1.11
 gitlab.group.requireTwoFactorAuthentication 9.0.0
 gitlab.group.samlGroupLink 13.0.8
 gitlab.group.samlGroupLink.accessLevel 13.0.8

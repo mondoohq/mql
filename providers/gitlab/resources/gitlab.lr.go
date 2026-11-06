@@ -1143,6 +1143,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gitlab.group.ldapGroupLinks": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGitlabGroup).GetLdapGroupLinks()).ToDataRes(types.Array(types.Dict))
 	},
+	"gitlab.group.requireShaForMerge": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabGroup).GetRequireShaForMerge()).ToDataRes(types.Bool)
+	},
+	"gitlab.group.lockRequireShaForMerge": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabGroup).GetLockRequireShaForMerge()).ToDataRes(types.Bool)
+	},
 	"gitlab.group.members": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGitlabGroup).GetMembers()).ToDataRes(types.Array(types.Resource("gitlab.member")))
 	},
@@ -4399,6 +4405,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gitlab.group.ldapGroupLinks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGitlabGroup).LdapGroupLinks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gitlab.group.requireShaForMerge": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabGroup).RequireShaForMerge, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gitlab.group.lockRequireShaForMerge": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabGroup).LockRequireShaForMerge, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"gitlab.group.members": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -9278,7 +9292,7 @@ func (c *mqlGitlabNamespace) GetSeatsInUse() *plugin.TValue[int64] {
 type mqlGitlabGroup struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlGitlabGroupInternal it will be used here
+	mqlGitlabGroupInternal
 	Id                             plugin.TValue[int64]
 	Name                           plugin.TValue[string]
 	Path                           plugin.TValue[string]
@@ -9312,6 +9326,8 @@ type mqlGitlabGroup struct {
 	LdapCn                         plugin.TValue[string]
 	LdapAccess                     plugin.TValue[int64]
 	LdapGroupLinks                 plugin.TValue[[]any]
+	RequireShaForMerge             plugin.TValue[bool]
+	LockRequireShaForMerge         plugin.TValue[bool]
 	Members                        plugin.TValue[[]any]
 	MemberRoles                    plugin.TValue[[]any]
 	Subgroups                      plugin.TValue[[]any]
@@ -9527,6 +9543,18 @@ func (c *mqlGitlabGroup) GetLdapAccess() *plugin.TValue[int64] {
 
 func (c *mqlGitlabGroup) GetLdapGroupLinks() *plugin.TValue[[]any] {
 	return &c.LdapGroupLinks
+}
+
+func (c *mqlGitlabGroup) GetRequireShaForMerge() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.RequireShaForMerge, func() (bool, error) {
+		return c.requireShaForMerge()
+	})
+}
+
+func (c *mqlGitlabGroup) GetLockRequireShaForMerge() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.LockRequireShaForMerge, func() (bool, error) {
+		return c.lockRequireShaForMerge()
+	})
 }
 
 func (c *mqlGitlabGroup) GetMembers() *plugin.TValue[[]any] {
