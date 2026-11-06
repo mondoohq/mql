@@ -308,6 +308,8 @@ azure.subscription @defaults ("name") {
   automation() azure.subscription.automationService
   // Azure Virtual Desktop resources in the subscription
   desktopVirtualization() azure.subscription.desktopVirtualizationService
+  // Azure AI Bot Service resources in the subscription
+  botService() azure.subscription.botService
 }
 
 // Azure function
@@ -19360,6 +19362,162 @@ azure.subscription.lighthouseService.registrationAssignment @defaults("name scop
   registrationDefinition() azure.subscription.lighthouseService.registrationDefinition
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
+}
+
+// Azure AI Bot Service
+//
+// Azure AI Bot Service registrations in the subscription, backed by the
+// `Microsoft.BotService` resource provider. A bot registration binds a
+// messaging endpoint to an Entra app identity and to the channels (Teams,
+// Direct Line, Web Chat) that deliver user messages to it, so this is the
+// entry point for auditing bot authentication, network exposure, and channel
+// security.
+private azure.subscription.botService {
+  // Subscription identifier
+  subscriptionId string
+  // Bot registrations in the subscription
+  bots() []azure.subscription.botService.bot
+}
+
+// Azure AI Bot Service bot
+//
+// Single bot registration, selected by `name` (for example
+// `azure.subscription.botService.bots.where(name == "support-bot")`).
+// `msaAppType` and `msaAppTenantId` describe the Entra app identity the bot
+// authenticates as, `disableLocalAuth` whether only Entra tokens are accepted,
+// `publicNetworkAccess` whether the bot is reachable from the public internet,
+// and `isCmekEnabled` with `cmkKey` the customer-managed key encrypting bot
+// data. `channels` lists the channels the bot is connected to and their
+// sites, and `connections` the OAuth connection settings the bot uses to call
+// other services on behalf of users.
+azure.subscription.botService.bot @defaults("id name kind publicNetworkAccess") {
+  // Bot resource ID
+  id string
+  // Bot resource name
+  name string
+  // Bot location
+  location string
+  // Bot tags
+  tags map[string]string
+  // Bot kind ("azurebot", "bot", "designer", "function", or "sdk")
+  kind string
+  // Billable SKU the resource is provisioned at
+  skuData azure.subscription.resourceSku
+  // Display name of the bot
+  displayName string
+  // Description of the bot
+  description string
+  // Messaging endpoint the channels deliver user messages to
+  endpoint string
+  // Version of the messaging endpoint
+  endpointVersion string
+  // Provisioning state of the bot
+  provisioningState string
+  // Whether the bot is reachable from the public internet ("Enabled" or "Disabled")
+  publicNetworkAccess string
+  // Whether local authentication is disabled, so only managed identities and Entra ID tokens are accepted
+  disableLocalAuth bool
+  // Whether bot data is encrypted with a customer-managed key
+  isCmekEnabled bool
+  // Customer-managed key encryption status
+  cmekEncryptionStatus string
+  // Customer-managed Key Vault key encrypting bot data
+  //
+  // Null when the bot uses Microsoft-managed keys.
+  cmkKey() azure.subscription.keyVaultService.key
+  // Microsoft Entra app ID the bot authenticates as
+  msaAppId string
+  // Kind of app identity ("MultiTenant", "SingleTenant", or "UserAssignedMSI")
+  //
+  // "MultiTenant" accepts tokens for the app from any Entra tenant.
+  msaAppType string
+  // Entra tenant of the app identity, set for SingleTenant and UserAssignedMSI bots
+  msaAppTenantId string
+  // User-assigned managed identity the bot authenticates as
+  //
+  // Null unless msaAppType is "UserAssignedMSI".
+  msaAppManagedIdentity() azure.subscription.managedIdentity
+  // Channels the bot is enabled for, such as "webchat" or "msteams"
+  enabledChannels []string
+  // Channels the bot is configured for
+  configuredChannels []string
+  // Whether the bot supports streaming
+  isStreamingSupported bool
+  // Private endpoint connections to the bot
+  privateEndpointConnections() []azure.subscription.privateEndpointConnection
+  // Channels the bot is connected to
+  channels() []azure.subscription.botService.bot.channel
+  // OAuth connection settings the bot uses to sign users in to other services
+  connections() []azure.subscription.botService.bot.connection
+}
+
+// Channel of an Azure AI Bot Service bot
+private azure.subscription.botService.bot.channel @defaults("channelName provisioningState") {
+  // Channel resource ID
+  id string
+  // Channel resource name
+  name string
+  // Channel type, such as "DirectLineChannel", "WebChatChannel", or "MsTeamsChannel"
+  channelName string
+  // Channel location
+  location string
+  // Channel tags
+  tags map[string]string
+  // Provisioning state of the channel
+  provisioningState string
+  // Sites of a Direct Line or Web Chat channel
+  //
+  // Empty for channel types that have no sites.
+  sites []azure.subscription.botService.bot.channel.site
+}
+
+// Site of an Azure AI Bot Service Direct Line or Web Chat channel
+//
+// A site is one client application's access to the channel. Its secret keys
+// are not exposed. `isSecureSiteEnabled` with `trustedOrigins` restricts which
+// web origins can exchange the site secret for a token, and `isV1Enabled`
+// reports whether the legacy Bot Framework v1 protocol is still accepted.
+private azure.subscription.botService.bot.channel.site @defaults("siteName isEnabled isSecureSiteEnabled") {
+  // Site ID
+  siteId string
+  // Site name
+  siteName string
+  // Whether the site is enabled
+  isEnabled bool
+  // Whether the site requires enhanced authentication, accepting tokens only from trustedOrigins
+  isSecureSiteEnabled bool
+  // Origin URLs allowed to obtain tokens, applied when isSecureSiteEnabled is true
+  trustedOrigins []string
+  // Whether the legacy Bot Framework v1 protocol is enabled
+  isV1Enabled bool
+  // Whether the Bot Framework v3 protocol is enabled
+  isV3Enabled bool
+  // Whether clients can exchange the site secret for a token
+  isTokenEnabled bool
+  // Whether users are blocked from uploading files
+  isBlockUserUploadEnabled bool
+  // Whether conversation data is kept out of storage
+  isNoStorageEnabled bool
+  // Whether detailed logging is enabled
+  isDetailedLoggingEnabled bool
+}
+
+// OAuth connection setting of an Azure AI Bot Service bot
+//
+// Credentials are not exposed.
+private azure.subscription.botService.bot.connection @defaults("name serviceProviderDisplayName") {
+  // Connection setting resource ID
+  id string
+  // Connection setting name
+  name string
+  // Display name of the identity provider, such as "Azure Active Directory v2" or "GitHub"
+  serviceProviderDisplayName string
+  // ID of the identity provider
+  serviceProviderId string
+  // OAuth scopes requested on behalf of the user
+  scopes string
+  // Provisioning state of the connection setting
+  provisioningState string
 }
 
 // Azure Machine Learning
