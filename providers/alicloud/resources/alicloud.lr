@@ -17,7 +17,7 @@ option root = "alicloud"
 // Cloud Firewall, Anti-DDoS, Security Center, Key Management Service,
 // ActionTrail, Log Service, Cloud Config, CloudSSO, Cloud Enterprise Network,
 // Resource Directory, API Gateway, Certificate Management Service,
-// PrivateLink, and Platform for AI resources.
+// PrivateLink, Platform for AI, and Model Studio resources.
 alicloud @root {
   // Account (UID) that the active credential belongs to
   accountId() string
@@ -9395,10 +9395,11 @@ alicloud.privatelink.endpoint @defaults("endpointName endpointId serviceName end
 //
 // Platform for AI resources across an Alibaba Cloud account. Exposes the AI
 // workspaces and their members, the Elastic Algorithm Service (EAS) model
-// inference services, and the EAS dedicated gateways in every region that
-// offers PAI. Use it to audit who can administer AI workspaces, which model
-// services are reachable from the internet, and which gateways accept public
-// traffic and from where.
+// inference services, the EAS dedicated gateways, and the Data Science
+// Workshop (DSW) notebook instances in every region that offers PAI. Use it to
+// audit who can administer AI workspaces, which model services and notebooks
+// are reachable from the internet, which gateways accept public traffic and
+// from where, and which RAM roles notebooks run with.
 alicloud.pai {
   // AI workspaces across all regions that offer PAI
   workspaces() []alicloud.pai.workspace
@@ -9406,6 +9407,8 @@ alicloud.pai {
   easServices() []alicloud.pai.easService
   // EAS dedicated gateways across all regions that offer PAI
   easGateways() []alicloud.pai.easGateway
+  // DSW notebook instances across all regions that offer PAI
+  dswInstances() []alicloud.pai.dswInstance
 }
 
 // PAI AI workspace
@@ -9601,4 +9604,193 @@ alicloud.pai.easGateway {
   //
   // Each entry holds `entry` (the CIDR block) and `comment`.
   internetAcl() []dict
+}
+
+// PAI-DSW notebook instance
+//
+// A single Data Science Workshop (DSW) notebook instance, keyed by instanceId
+// within its region. Exposes the instance status, owner, workspace, image,
+// accessibility within the workspace, the VPC placement and port forwards
+// that can expose it to the internet, the RAM roles it obtains credentials
+// for, the environment variable names it sets, and its idle shutdown settings.
+// For example
+// `alicloud.pai.dswInstance(instanceId: "dsw-xxxx", regionId: "cn-hangzhou")`.
+alicloud.pai.dswInstance {
+  // Region ID the instance resides in, for example cn-hangzhou
+  regionId string
+  // Instance ID, used with regionId as the lookup key
+  instanceId string
+  // Instance name
+  name string
+  // Instance status, for example Running, Stopped, or Failed
+  status string
+  // Who in the workspace can use the instance
+  //
+  // PRIVATE limits it to the owner and the workspace administrators; PUBLIC
+  // opens it to every member of the workspace.
+  accessibility string
+  // Name of the user who owns the instance
+  userName string
+  // Workspace the instance belongs to, null when it has none
+  workspace() alicloud.pai.workspace
+  // ECS instance type the notebook runs on, for example ecs.g6.xlarge
+  ecsSpec string
+  // Accelerator type, CPU or GPU
+  acceleratorType string
+  // Billing method, for example PayAsYouGo or Subscription
+  paymentType string
+  // Name of the notebook image
+  imageName string
+  // Image ID
+  imageId string
+  // Address of the notebook image in its registry
+  imageUrl string
+  // Labels applied to the instance
+  labels map[string]string
+  // Tags applied to the instance
+  tags map[string]string
+  // Names of the environment variables set on the instance
+  //
+  // Values are never returned. A name such as OPENAI_API_KEY or AWS_SECRET_ACCESS_KEY
+  // suggests a credential stored in plain text on the notebook.
+  environmentVariableNames []string
+  // Time the instance was created
+  createTime time
+  // Time the instance was last modified
+  modifiedTime time
+  // VPC the instance attaches to, null when it has no VPC configuration
+  vpc() alicloud.vpc.network
+  // vSwitch the instance attaches to, null when it has no VPC configuration
+  vswitch() alicloud.vpc.vswitch
+  // Security group applied to the instance's VPC interface, null when it has no VPC configuration
+  securityGroup() alicloud.ecs.securitygroup
+  // Network interface that carries the default route, eth0 or eth1
+  //
+  // eth1 sends all outbound traffic through the attached VPC.
+  defaultRoute string
+  // Extra CIDR blocks routed through the attached VPC
+  extendedCidrs []string
+  // Port forwards configured on the instance
+  forwardInfos() []alicloud.pai.dswInstance.forwardInfo
+  // Whether an enabled port forward exposes the instance to the internet
+  //
+  // True when an enabled forward has a public access type, an EIP, or a
+  // public connect endpoint.
+  hasInternetForwarding() bool
+  // Whether the instance obtains RAM role credentials
+  credentialConfigEnabled bool
+  // ARNs of the RAM roles the instance obtains credentials for
+  //
+  // Includes roles in other accounts. Only role identifiers are returned,
+  // never the credentials.
+  ramRoleArns []string
+  // RAM roles in this account that the instance obtains credentials for
+  ramRoles() []alicloud.ram.role
+  // Whether the idle culler stops the instance when it is idle
+  idleCullerEnabled bool
+  // Minutes of idleness after which the idle culler stops the instance
+  idleCullerMaxIdleTimeInMinutes int
+  // CPU utilization percentage below which the instance counts as idle
+  idleCullerCpuPercentThreshold int
+  // GPU utilization percentage below which the instance counts as idle
+  idleCullerGpuPercentThreshold int
+  // Time a scheduled shutdown stops the instance, null when no shutdown is scheduled
+  shutdownTime time
+}
+
+// PAI-DSW instance port forward
+private alicloud.pai.dswInstance.forwardInfo {
+  // Forward name, for example ssh
+  name string
+  // Whether the forward is on
+  enabled bool
+  // Access types of the forward, for example PUBLIC or PRIVATE
+  accessTypes []string
+  // Port inside the instance the forward targets, for example 22
+  forwardPort string
+  // External port the forward listens on
+  externalPort string
+  // Public endpoint of the forward, empty when it has none
+  internetEndpoint string
+  // Public port of the forward
+  internetPort string
+  // VPC endpoint of the forward
+  intranetEndpoint string
+  // VPC port of the forward
+  intranetPort string
+  // Readiness of the forward, for example Ready
+  phase string
+  // NAT gateway that carries the forward, null when it uses none
+  natGateway() alicloud.vpc.natGateway
+  // Elastic IP address the forward is reachable on, null when it uses none
+  eip() alicloud.vpc.eipAddress
+}
+
+// Alibaba Cloud Model Studio
+//
+// Model Studio (Bailian) workspaces and API keys across an Alibaba Cloud
+// account. Exposes the workspaces in every region that offers Model Studio,
+// and the API keys that call its models, with their status, creator, IP
+// allowlist, and model access scope. Use it to find enabled keys with no IP
+// restriction or with access to every model.
+alicloud.modelStudio {
+  // Model Studio workspaces across all regions that offer Model Studio
+  workspaces() []alicloud.modelStudio.workspace
+  // Model Studio API keys across all regions that offer Model Studio
+  apiKeys() []alicloud.modelStudio.apiKey
+}
+
+// Model Studio workspace
+//
+// A single Model Studio workspace, keyed by workspaceId. Exposes the workspace
+// name, region, service site, and the API host its models are called on, and
+// the API keys created in it.
+alicloud.modelStudio.workspace {
+  // Region ID the workspace resides in, for example cn-beijing
+  regionId string
+  // Workspace ID
+  workspaceId string
+  // Workspace name
+  name string
+  // Service deployment scope the workspace belongs to
+  serviceSite string
+  // Host the workspace's model APIs are called on
+  apiHost string
+  // Time the workspace was created
+  createTime time
+  // API keys created in the workspace
+  apiKeys() []alicloud.modelStudio.apiKey
+}
+
+// Model Studio API key
+//
+// A single Model Studio API key, keyed by its numeric ID. Exposes whether the
+// key is enabled, who created it and when, its workspace, and its permissions:
+// the IP allowlist and which models it may call. The key value is never
+// returned.
+alicloud.modelStudio.apiKey {
+  // Region ID of the endpoint the key was read from
+  regionId string
+  // API key ID
+  id int
+  // Description of the key
+  description string
+  // Account that created the key
+  createdBy string
+  // Time the key was created
+  createdAt time
+  // Whether the key is enabled
+  enabled bool
+  // Workspace the key belongs to
+  workspace() alicloud.modelStudio.workspace
+  // Permission type, All for full permissions or Custom for scoped permissions
+  authType string
+  // IP addresses or CIDR blocks allowed to use the key
+  //
+  // An empty list means the key is accepted from any address.
+  accessIps []string
+  // Whether the key may call every model the workspace has inference permissions for
+  allowAllModels bool
+  // Models the key may call when allowAllModels is false
+  accessibleModels []string
 }

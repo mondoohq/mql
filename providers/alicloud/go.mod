@@ -26,8 +26,10 @@ require (
 	github.com/alibabacloud-go/fc-20230330/v4 v4.8.4
 	github.com/alibabacloud-go/ims-20190815/v4 v4.5.0
 	github.com/alibabacloud-go/kms-20160120/v4 v4.3.2
+	github.com/alibabacloud-go/modelstudio-20260210/v2 v2.2.4
 	github.com/alibabacloud-go/nas-20170626/v4 v4.7.5
 	github.com/alibabacloud-go/nlb-20220430/v4 v4.1.3
+	github.com/alibabacloud-go/pai-dsw-20220101/v2 v2.5.0
 	github.com/alibabacloud-go/polardb-20170801/v10 v10.1.1
 	github.com/alibabacloud-go/privatelink-20200415/v5 v5.0.11
 	github.com/alibabacloud-go/r-kvstore-20150101/v8 v8.0.0
