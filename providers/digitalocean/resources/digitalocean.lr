@@ -30,6 +30,12 @@ digitalocean @root {
   hostedAgentConfigs() []digitalocean.hostedAgentConfig
   // Hosted agent triggers (webhook and cron automations) held by the team
   hostedAgentTriggers() []digitalocean.hostedAgentTrigger
+  // Hosted agent connections (authorized external-provider accounts) held by the team
+  //
+  // Covers the providers the platform registers for webhook triggers
+  // (github and gitlab). The API has no endpoint that lists every provider a
+  // team has connected.
+  hostedAgentConnections() []digitalocean.hostedAgentConnection
   // Firewalls
   firewalls() []digitalocean.firewall
   // Managed databases
@@ -479,6 +485,42 @@ private digitalocean.hostedAgentTrigger @defaults("id name kind status") {
   // Time the trigger was created
   createdAt time
   // Time the trigger was last updated
+  updatedAt time
+}
+
+// DigitalOcean hosted agent connection
+//
+// Team connection to an external provider (for example github) that
+// hosted agents act through. `status` reports whether the connection is
+// usable, `oauthScopes` and `grantedAt` describe the OAuth grant it holds,
+// `owningUserUuid` names the DigitalOcean user that created it, and
+// `deletionProtected` reports that an agent environment depends on it. The
+// grant's tokens are never returned by the API and are not exposed here.
+private digitalocean.hostedAgentConnection @defaults("provider status actorId") {
+  // Connection ID
+  id string
+  // External provider key, such as github
+  provider string
+  // Display name of the external provider
+  providerDisplayName string
+  // Actor identifier that agent environments bind the connection to
+  //
+  // An identifier chosen when the connection is created, not a
+  // DigitalOcean user ID.
+  actorId string
+  // Connection status, such as pending, active, or revoked
+  status string
+  // UUID of the DigitalOcean user that created the connection
+  owningUserUuid string
+  // Whether an agent environment depends on the connection, which blocks deletion
+  deletionProtected bool
+  // OAuth scopes granted to the connection; empty for connections without an OAuth grant
+  oauthScopes []string
+  // Time the OAuth grant was made; null for connections without an OAuth grant
+  grantedAt time
+  // Time the connection was created
+  createdAt time
+  // Time the connection was last updated
   updatedAt time
 }
 
@@ -3121,7 +3163,8 @@ digitalocean.dropletAutoscalePool @defaults("id name status") {
 // knowledge bases, `indexingJobs` knowledge-base indexing runs,
 // `anthropicApiKeys` and `openaiApiKeys` the registered external
 // provider keys, `dedicatedInferenceEndpoints` dedicated GPU inference,
-// and `batchJobs` batch inference jobs.
+// `batchJobs` batch inference jobs, and `inferenceRouters` the routers
+// that choose a model per request.
 digitalocean.gradientai {
   // GenAI agents
   agents() []digitalocean.gradientai.agent
@@ -3141,6 +3184,34 @@ digitalocean.gradientai {
   dedicatedInferenceEndpoints() []digitalocean.gradientai.dedicatedInferenceEndpoint
   // Batch inference jobs
   batchJobs() []digitalocean.gradientai.batchJob
+  // Inference routers that pick a model per request
+  inferenceRouters() []digitalocean.gradientai.inferenceRouter
+}
+
+// DigitalOcean GradientAI inference router
+//
+// Router that sends each inference request to a model chosen by its
+// routing `policies`, and to the `fallbackModels` when no policy matches
+// or the chosen model fails. Audits can check which models a router can
+// reach.
+private digitalocean.gradientai.inferenceRouter @defaults("uuid name") {
+  // Router UUID
+  uuid string
+  // Router name
+  name string
+  // Description
+  description string
+  // Model names tried in order when no policy matches or the chosen model fails
+  fallbackModels() []string
+  // Routing policies
+  //
+  // The policy document as the API returns it; policies select a model by
+  // task (a preset `task_slug` or a custom task description).
+  policies() dict
+  // Time the router was created
+  createdAt() time
+  // Time the router was last updated
+  updatedAt() time
 }
 
 // DigitalOcean GradientAI agent

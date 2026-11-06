@@ -23,6 +23,7 @@ const (
 	ResourceDigitaloceanMicroDropletCheckpoint                          string = "digitalocean.microDroplet.checkpoint"
 	ResourceDigitaloceanHostedAgentConfig                               string = "digitalocean.hostedAgentConfig"
 	ResourceDigitaloceanHostedAgentTrigger                              string = "digitalocean.hostedAgentTrigger"
+	ResourceDigitaloceanHostedAgentConnection                           string = "digitalocean.hostedAgentConnection"
 	ResourceDigitaloceanFirewall                                        string = "digitalocean.firewall"
 	ResourceDigitaloceanFirewallPendingChange                           string = "digitalocean.firewall.pendingChange"
 	ResourceDigitaloceanFirewallIngressRule                             string = "digitalocean.firewall.ingressRule"
@@ -90,6 +91,7 @@ const (
 	ResourceDigitaloceanReservedIpV6                                    string = "digitalocean.reservedIpV6"
 	ResourceDigitaloceanDropletAutoscalePool                            string = "digitalocean.dropletAutoscalePool"
 	ResourceDigitaloceanGradientai                                      string = "digitalocean.gradientai"
+	ResourceDigitaloceanGradientaiInferenceRouter                       string = "digitalocean.gradientai.inferenceRouter"
 	ResourceDigitaloceanGradientaiAgent                                 string = "digitalocean.gradientai.agent"
 	ResourceDigitaloceanGradientaiAgentGuardrail                        string = "digitalocean.gradientai.agent.guardrail"
 	ResourceDigitaloceanGradientaiAgentFunction                         string = "digitalocean.gradientai.agent.function"
@@ -145,6 +147,10 @@ func init() {
 		"digitalocean.hostedAgentTrigger": {
 			// to override args, implement: initDigitaloceanHostedAgentTrigger(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createDigitaloceanHostedAgentTrigger,
+		},
+		"digitalocean.hostedAgentConnection": {
+			// to override args, implement: initDigitaloceanHostedAgentConnection(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDigitaloceanHostedAgentConnection,
 		},
 		"digitalocean.firewall": {
 			Init:   initDigitaloceanFirewall,
@@ -414,6 +420,10 @@ func init() {
 			// to override args, implement: initDigitaloceanGradientai(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createDigitaloceanGradientai,
 		},
+		"digitalocean.gradientai.inferenceRouter": {
+			// to override args, implement: initDigitaloceanGradientaiInferenceRouter(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDigitaloceanGradientaiInferenceRouter,
+		},
 		"digitalocean.gradientai.agent": {
 			Init:   initDigitaloceanGradientaiAgent,
 			Create: createDigitaloceanGradientaiAgent,
@@ -587,6 +597,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"digitalocean.hostedAgentTriggers": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitalocean).GetHostedAgentTriggers()).ToDataRes(types.Array(types.Resource("digitalocean.hostedAgentTrigger")))
+	},
+	"digitalocean.hostedAgentConnections": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitalocean).GetHostedAgentConnections()).ToDataRes(types.Array(types.Resource("digitalocean.hostedAgentConnection")))
 	},
 	"digitalocean.firewalls": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitalocean).GetFirewalls()).ToDataRes(types.Array(types.Resource("digitalocean.firewall")))
@@ -1019,6 +1032,39 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"digitalocean.hostedAgentTrigger.updatedAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitaloceanHostedAgentTrigger).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"digitalocean.hostedAgentConnection.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanHostedAgentConnection).GetId()).ToDataRes(types.String)
+	},
+	"digitalocean.hostedAgentConnection.provider": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanHostedAgentConnection).GetProvider()).ToDataRes(types.String)
+	},
+	"digitalocean.hostedAgentConnection.providerDisplayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanHostedAgentConnection).GetProviderDisplayName()).ToDataRes(types.String)
+	},
+	"digitalocean.hostedAgentConnection.actorId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanHostedAgentConnection).GetActorId()).ToDataRes(types.String)
+	},
+	"digitalocean.hostedAgentConnection.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanHostedAgentConnection).GetStatus()).ToDataRes(types.String)
+	},
+	"digitalocean.hostedAgentConnection.owningUserUuid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanHostedAgentConnection).GetOwningUserUuid()).ToDataRes(types.String)
+	},
+	"digitalocean.hostedAgentConnection.deletionProtected": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanHostedAgentConnection).GetDeletionProtected()).ToDataRes(types.Bool)
+	},
+	"digitalocean.hostedAgentConnection.oauthScopes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanHostedAgentConnection).GetOauthScopes()).ToDataRes(types.Array(types.String))
+	},
+	"digitalocean.hostedAgentConnection.grantedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanHostedAgentConnection).GetGrantedAt()).ToDataRes(types.Time)
+	},
+	"digitalocean.hostedAgentConnection.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanHostedAgentConnection).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"digitalocean.hostedAgentConnection.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanHostedAgentConnection).GetUpdatedAt()).ToDataRes(types.Time)
 	},
 	"digitalocean.firewall.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitaloceanFirewall).GetId()).ToDataRes(types.String)
@@ -3258,6 +3304,30 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"digitalocean.gradientai.batchJobs": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitaloceanGradientai).GetBatchJobs()).ToDataRes(types.Array(types.Resource("digitalocean.gradientai.batchJob")))
 	},
+	"digitalocean.gradientai.inferenceRouters": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanGradientai).GetInferenceRouters()).ToDataRes(types.Array(types.Resource("digitalocean.gradientai.inferenceRouter")))
+	},
+	"digitalocean.gradientai.inferenceRouter.uuid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanGradientaiInferenceRouter).GetUuid()).ToDataRes(types.String)
+	},
+	"digitalocean.gradientai.inferenceRouter.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanGradientaiInferenceRouter).GetName()).ToDataRes(types.String)
+	},
+	"digitalocean.gradientai.inferenceRouter.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanGradientaiInferenceRouter).GetDescription()).ToDataRes(types.String)
+	},
+	"digitalocean.gradientai.inferenceRouter.fallbackModels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanGradientaiInferenceRouter).GetFallbackModels()).ToDataRes(types.Array(types.String))
+	},
+	"digitalocean.gradientai.inferenceRouter.policies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanGradientaiInferenceRouter).GetPolicies()).ToDataRes(types.Dict)
+	},
+	"digitalocean.gradientai.inferenceRouter.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanGradientaiInferenceRouter).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"digitalocean.gradientai.inferenceRouter.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanGradientaiInferenceRouter).GetUpdatedAt()).ToDataRes(types.Time)
+	},
 	"digitalocean.gradientai.agent.uuid": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitaloceanGradientaiAgent).GetUuid()).ToDataRes(types.String)
 	},
@@ -4104,6 +4174,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDigitalocean).HostedAgentTriggers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"digitalocean.hostedAgentConnections": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitalocean).HostedAgentConnections, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"digitalocean.firewalls": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDigitalocean).Firewalls, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -4702,6 +4776,54 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"digitalocean.hostedAgentTrigger.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDigitaloceanHostedAgentTrigger).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"digitalocean.hostedAgentConnection.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanHostedAgentConnection).__id, ok = v.Value.(string)
+		return
+	},
+	"digitalocean.hostedAgentConnection.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanHostedAgentConnection).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"digitalocean.hostedAgentConnection.provider": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanHostedAgentConnection).Provider, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"digitalocean.hostedAgentConnection.providerDisplayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanHostedAgentConnection).ProviderDisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"digitalocean.hostedAgentConnection.actorId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanHostedAgentConnection).ActorId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"digitalocean.hostedAgentConnection.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanHostedAgentConnection).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"digitalocean.hostedAgentConnection.owningUserUuid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanHostedAgentConnection).OwningUserUuid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"digitalocean.hostedAgentConnection.deletionProtected": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanHostedAgentConnection).DeletionProtected, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"digitalocean.hostedAgentConnection.oauthScopes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanHostedAgentConnection).OauthScopes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"digitalocean.hostedAgentConnection.grantedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanHostedAgentConnection).GrantedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"digitalocean.hostedAgentConnection.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanHostedAgentConnection).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"digitalocean.hostedAgentConnection.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanHostedAgentConnection).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"digitalocean.firewall.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -7956,6 +8078,42 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDigitaloceanGradientai).BatchJobs, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"digitalocean.gradientai.inferenceRouters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanGradientai).InferenceRouters, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"digitalocean.gradientai.inferenceRouter.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanGradientaiInferenceRouter).__id, ok = v.Value.(string)
+		return
+	},
+	"digitalocean.gradientai.inferenceRouter.uuid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanGradientaiInferenceRouter).Uuid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"digitalocean.gradientai.inferenceRouter.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanGradientaiInferenceRouter).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"digitalocean.gradientai.inferenceRouter.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanGradientaiInferenceRouter).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"digitalocean.gradientai.inferenceRouter.fallbackModels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanGradientaiInferenceRouter).FallbackModels, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"digitalocean.gradientai.inferenceRouter.policies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanGradientaiInferenceRouter).Policies, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"digitalocean.gradientai.inferenceRouter.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanGradientaiInferenceRouter).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"digitalocean.gradientai.inferenceRouter.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanGradientaiInferenceRouter).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
 	"digitalocean.gradientai.agent.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDigitaloceanGradientaiAgent).__id, ok = v.Value.(string)
 		return
@@ -9158,6 +9316,7 @@ type mqlDigitalocean struct {
 	MicroDropletCheckpoints plugin.TValue[[]any]
 	HostedAgentConfigs      plugin.TValue[[]any]
 	HostedAgentTriggers     plugin.TValue[[]any]
+	HostedAgentConnections  plugin.TValue[[]any]
 	Firewalls               plugin.TValue[[]any]
 	Databases               plugin.TValue[[]any]
 	VectorDatabases         plugin.TValue[[]any]
@@ -9313,6 +9472,22 @@ func (c *mqlDigitalocean) GetHostedAgentTriggers() *plugin.TValue[[]any] {
 		}
 
 		return c.hostedAgentTriggers()
+	})
+}
+
+func (c *mqlDigitalocean) GetHostedAgentConnections() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.HostedAgentConnections, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("digitalocean", c.__id, "hostedAgentConnections")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.hostedAgentConnections()
 	})
 }
 
@@ -10857,6 +11032,105 @@ func (c *mqlDigitaloceanHostedAgentTrigger) GetCreatedAt() *plugin.TValue[*time.
 }
 
 func (c *mqlDigitaloceanHostedAgentTrigger) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+// mqlDigitaloceanHostedAgentConnection for the digitalocean.hostedAgentConnection resource
+type mqlDigitaloceanHostedAgentConnection struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDigitaloceanHostedAgentConnectionInternal it will be used here
+	Id                  plugin.TValue[string]
+	Provider            plugin.TValue[string]
+	ProviderDisplayName plugin.TValue[string]
+	ActorId             plugin.TValue[string]
+	Status              plugin.TValue[string]
+	OwningUserUuid      plugin.TValue[string]
+	DeletionProtected   plugin.TValue[bool]
+	OauthScopes         plugin.TValue[[]any]
+	GrantedAt           plugin.TValue[*time.Time]
+	CreatedAt           plugin.TValue[*time.Time]
+	UpdatedAt           plugin.TValue[*time.Time]
+}
+
+// createDigitaloceanHostedAgentConnection creates a new instance of this resource
+func createDigitaloceanHostedAgentConnection(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDigitaloceanHostedAgentConnection{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("digitalocean.hostedAgentConnection", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDigitaloceanHostedAgentConnection) MqlName() string {
+	return "digitalocean.hostedAgentConnection"
+}
+
+func (c *mqlDigitaloceanHostedAgentConnection) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDigitaloceanHostedAgentConnection) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlDigitaloceanHostedAgentConnection) GetProvider() *plugin.TValue[string] {
+	return &c.Provider
+}
+
+func (c *mqlDigitaloceanHostedAgentConnection) GetProviderDisplayName() *plugin.TValue[string] {
+	return &c.ProviderDisplayName
+}
+
+func (c *mqlDigitaloceanHostedAgentConnection) GetActorId() *plugin.TValue[string] {
+	return &c.ActorId
+}
+
+func (c *mqlDigitaloceanHostedAgentConnection) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlDigitaloceanHostedAgentConnection) GetOwningUserUuid() *plugin.TValue[string] {
+	return &c.OwningUserUuid
+}
+
+func (c *mqlDigitaloceanHostedAgentConnection) GetDeletionProtected() *plugin.TValue[bool] {
+	return &c.DeletionProtected
+}
+
+func (c *mqlDigitaloceanHostedAgentConnection) GetOauthScopes() *plugin.TValue[[]any] {
+	return &c.OauthScopes
+}
+
+func (c *mqlDigitaloceanHostedAgentConnection) GetGrantedAt() *plugin.TValue[*time.Time] {
+	return &c.GrantedAt
+}
+
+func (c *mqlDigitaloceanHostedAgentConnection) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlDigitaloceanHostedAgentConnection) GetUpdatedAt() *plugin.TValue[*time.Time] {
 	return &c.UpdatedAt
 }
 
@@ -18521,6 +18795,7 @@ type mqlDigitaloceanGradientai struct {
 	OpenaiApiKeys               plugin.TValue[[]any]
 	DedicatedInferenceEndpoints plugin.TValue[[]any]
 	BatchJobs                   plugin.TValue[[]any]
+	InferenceRouters            plugin.TValue[[]any]
 }
 
 // createDigitaloceanGradientai creates a new instance of this resource
@@ -18701,6 +18976,109 @@ func (c *mqlDigitaloceanGradientai) GetBatchJobs() *plugin.TValue[[]any] {
 		}
 
 		return c.batchJobs()
+	})
+}
+
+func (c *mqlDigitaloceanGradientai) GetInferenceRouters() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.InferenceRouters, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("digitalocean.gradientai", c.__id, "inferenceRouters")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.inferenceRouters()
+	})
+}
+
+// mqlDigitaloceanGradientaiInferenceRouter for the digitalocean.gradientai.inferenceRouter resource
+type mqlDigitaloceanGradientaiInferenceRouter struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlDigitaloceanGradientaiInferenceRouterInternal
+	Uuid           plugin.TValue[string]
+	Name           plugin.TValue[string]
+	Description    plugin.TValue[string]
+	FallbackModels plugin.TValue[[]any]
+	Policies       plugin.TValue[any]
+	CreatedAt      plugin.TValue[*time.Time]
+	UpdatedAt      plugin.TValue[*time.Time]
+}
+
+// createDigitaloceanGradientaiInferenceRouter creates a new instance of this resource
+func createDigitaloceanGradientaiInferenceRouter(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDigitaloceanGradientaiInferenceRouter{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("digitalocean.gradientai.inferenceRouter", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDigitaloceanGradientaiInferenceRouter) MqlName() string {
+	return "digitalocean.gradientai.inferenceRouter"
+}
+
+func (c *mqlDigitaloceanGradientaiInferenceRouter) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDigitaloceanGradientaiInferenceRouter) GetUuid() *plugin.TValue[string] {
+	return &c.Uuid
+}
+
+func (c *mqlDigitaloceanGradientaiInferenceRouter) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDigitaloceanGradientaiInferenceRouter) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlDigitaloceanGradientaiInferenceRouter) GetFallbackModels() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.FallbackModels, func() ([]any, error) {
+		return c.fallbackModels()
+	})
+}
+
+func (c *mqlDigitaloceanGradientaiInferenceRouter) GetPolicies() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.Policies, func() (any, error) {
+		return c.policies()
+	})
+}
+
+func (c *mqlDigitaloceanGradientaiInferenceRouter) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.CreatedAt, func() (*time.Time, error) {
+		return c.createdAt()
+	})
+}
+
+func (c *mqlDigitaloceanGradientaiInferenceRouter) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.UpdatedAt, func() (*time.Time, error) {
+		return c.updatedAt()
 	})
 }
 

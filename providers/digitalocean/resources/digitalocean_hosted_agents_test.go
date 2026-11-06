@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/digitalocean/godo"
@@ -234,4 +235,143 @@ func TestHostedAgentTriggerArgs_CronWithoutOutput(t *testing.T) {
 func TestHostedAgentTriggerArgs_EmptyIDRejected(t *testing.T) {
 	_, err := hostedAgentTriggerArgs(&godo.HostedAgentTrigger{Name: "no-id"})
 	require.Error(t, err)
+}
+
+func TestHostedAgentConnectionProviders_DropsCustomAndDuplicates(t *testing.T) {
+	// Synthetic: response shape from godo's webhook provider registry type.
+	client := newTestGodoClient(t, func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/v2/harness-runtime/webhook-providers", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"providers":[{"key":"github"},{"key":"custom"},{"key":"gitlab"},{"key":"github"},{"key":""}]}`)
+	})
+	got, err := hostedAgentConnectionProviders(context.Background(), client.HostedAgentTriggers)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"github", "gitlab"}, got)
+}
+
+func TestListHostedAgentConnections_FollowsPages(t *testing.T) {
+	// Synthetic: page/per_page pagination with a reported total.
+	client := newTestGodoClient(t, func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/v2/harness-runtime/auth/github/connections", r.URL.Path)
+		assert.Equal(t, "100", r.URL.Query().Get("per_page"))
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("page") {
+		case "1":
+			fmt.Fprint(w, `{"connections":[{"id":"c-1"},{"id":"c-2"}],"pagination":{"page":1,"per_page":2,"total":3}}`)
+		case "2":
+			fmt.Fprint(w, `{"connections":[{"id":"c-3"}],"pagination":{"page":2,"per_page":2,"total":3}}`)
+		default:
+			t.Fatalf("unexpected page %q", r.URL.Query().Get("page"))
+		}
+	})
+	conns, err := listHostedAgentConnections(context.Background(), client.HostedAgents, "github")
+	require.NoError(t, err)
+	ids := []string{}
+	for _, c := range conns {
+		ids = append(ids, c.ID)
+	}
+	assert.Equal(t, []string{"c-1", "c-2", "c-3"}, ids)
+}
+
+func TestListHostedAgentConnections_StuckPageFails(t *testing.T) {
+	// Synthetic: an endpoint that ignores the page parameter and keeps
+	// answering the first page must not loop forever.
+	calls := 0
+	client := newTestGodoClient(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"connections":[{"id":"c-1"}],"pagination":{"page":1,"per_page":1,"total":3}}`)
+	})
+	_, err := listHostedAgentConnections(context.Background(), client.HostedAgents, "github")
+	require.Error(t, err)
+	assert.Equal(t, 2, calls)
+}
+
+func TestListHostedAgentConnections_NotFoundPropagates(t *testing.T) {
+	client := newTestGodoClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprint(w, `{"id":"not_found","message":"provider not found"}`)
+	})
+	_, err := listHostedAgentConnections(context.Background(), client.HostedAgents, "gitlab")
+	require.Error(t, err)
+	assert.True(t, isDoNotFound(err))
+}
+
+func TestHostedAgentConnectionArgs_OAuth(t *testing.T) {
+	// Synthetic: fields from godo's HostedAgentConnection json tags.
+	raw := `{
+		"id": "conn-1",
+		"provider": "github",
+		"provider_display_name": "GitHub",
+		"user_id": "reviewer-bot",
+		"status": "active",
+		"owning_user_id": "6e1f0c1a-0000-4000-8000-000000000001",
+		"deletion_protected": true,
+		"created_at": "2026-05-01T10:00:00Z",
+		"oauth": {"scopes": ["repo", "read:org"], "granted_at": "2026-05-01T10:05:00Z"}
+	}`
+	var c godo.HostedAgentConnection
+	require.NoError(t, json.Unmarshal([]byte(raw), &c))
+	args, err := hostedAgentConnectionArgs(&c)
+	require.NoError(t, err)
+	assert.Equal(t, "digitalocean.hostedAgentConnection/github/conn-1", args["__id"].Value)
+	assert.Equal(t, "reviewer-bot", args["actorId"].Value)
+	assert.Equal(t, "GitHub", args["providerDisplayName"].Value)
+	assert.Equal(t, "active", args["status"].Value)
+	assert.Equal(t, "6e1f0c1a-0000-4000-8000-000000000001", args["owningUserUuid"].Value)
+	assert.Equal(t, true, args["deletionProtected"].Value)
+	assert.Equal(t, []any{"repo", "read:org"}, args["oauthScopes"].Value)
+	assert.NotNil(t, args["grantedAt"].Value)
+	assert.NotNil(t, args["createdAt"].Value)
+	assert.Nil(t, args["updatedAt"].Value)
+}
+
+func TestHostedAgentConnectionArgs_NoOAuth(t *testing.T) {
+	// Synthetic: an API-key connection carries no oauth block.
+	c := godo.HostedAgentConnection{ID: "conn-2", Provider: "github", Status: "pending"}
+	args, err := hostedAgentConnectionArgs(&c)
+	require.NoError(t, err)
+	assert.Equal(t, []any{}, args["oauthScopes"].Value)
+	assert.Nil(t, args["grantedAt"].Value)
+	assert.Equal(t, false, args["deletionProtected"].Value)
+}
+
+func TestHostedAgentConnectionArgs_EmptyIDRejected(t *testing.T) {
+	_, err := hostedAgentConnectionArgs(&godo.HostedAgentConnection{Provider: "github"})
+	require.Error(t, err)
+}
+
+func TestListHostedAgentConnections_NoPaginationBlock(t *testing.T) {
+	// Synthetic: a response without a pagination block (total 0) must not
+	// stop after a full first page.
+	client := newTestGodoClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("page") == "1" {
+			conns := make([]string, 0, hostedAgentConnectionPageSize)
+			for i := 0; i < hostedAgentConnectionPageSize; i++ {
+				conns = append(conns, fmt.Sprintf(`{"id":"c-%d"}`, i))
+			}
+			fmt.Fprintf(w, `{"connections":[%s]}`, strings.Join(conns, ","))
+			return
+		}
+		fmt.Fprint(w, `{"connections":[{"id":"last"}]}`)
+	})
+	conns, err := listHostedAgentConnections(context.Background(), client.HostedAgents, "github")
+	require.NoError(t, err)
+	assert.Len(t, conns, hostedAgentConnectionPageSize+1)
+}
+
+func TestListHostedAgentConnections_NoPaginationShortPage(t *testing.T) {
+	// Synthetic: without a total, a short page is the last one.
+	calls := 0
+	client := newTestGodoClient(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"connections":[{"id":"c-1"}]}`)
+	})
+	conns, err := listHostedAgentConnections(context.Background(), client.HostedAgents, "github")
+	require.NoError(t, err)
+	assert.Len(t, conns, 1)
+	assert.Equal(t, 1, calls)
 }

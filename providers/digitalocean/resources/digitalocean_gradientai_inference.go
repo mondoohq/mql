@@ -5,6 +5,9 @@ package resources
 
 import (
 	"context"
+	"encoding/json"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/digitalocean/godo"
@@ -374,4 +377,158 @@ func parseBatchTime(s *string) *time.Time {
 		return nil
 	}
 	return parseBatchTimeStr(*s)
+}
+
+// ----- Inference routers -----
+
+type mqlDigitaloceanGradientaiInferenceRouterInternal struct {
+	routerLoaded atomic.Bool
+	routerLock   sync.Mutex
+	router       *godo.InferenceRouter
+}
+
+func (r *mqlDigitaloceanGradientai) inferenceRouters() ([]any, error) {
+	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
+	client := conn.Client()
+
+	summaries, err := paginate(context.Background(), client.AgentPlatform.ListInferenceRouters)
+	if err != nil {
+		if isDoForbidden(err) {
+			return nil, llx.Forbidden(err)
+		}
+		return nil, err
+	}
+
+	all := make([]any, 0, len(summaries))
+	for _, s := range summaries {
+		if s == nil || s.UUID == "" {
+			continue
+		}
+		res, err := CreateResource(r.MqlRuntime, "digitalocean.gradientai.inferenceRouter", inferenceRouterSummaryArgs(s))
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, res)
+	}
+	return all, nil
+}
+
+func inferenceRouterSummaryArgs(s *godo.InferenceRouterSummary) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":        llx.StringData("digitalocean.gradientai.inferenceRouter/" + s.UUID),
+		"uuid":        llx.StringData(s.UUID),
+		"name":        llx.StringData(s.Name),
+		"description": llx.StringData(s.Description),
+	}
+}
+
+func (r *mqlDigitaloceanGradientaiInferenceRouter) id() (string, error) {
+	return "digitalocean.gradientai.inferenceRouter/" + r.Uuid.Data, nil
+}
+
+// fetchRouter reads the router once. The list returns summaries only, so the
+// routing config and timestamps come from the per-router read, made only
+// when one of those fields is queried. A router deleted since the list
+// answers 404 and reads as having no config.
+func (r *mqlDigitaloceanGradientaiInferenceRouter) fetchRouter() (*godo.InferenceRouter, error) {
+	if r.routerLoaded.Load() {
+		return r.router, nil
+	}
+	r.routerLock.Lock()
+	defer r.routerLock.Unlock()
+	if r.routerLoaded.Load() {
+		return r.router, nil
+	}
+	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
+	router, _, err := conn.Client().AgentPlatform.GetInferenceRouter(context.Background(), r.Uuid.Data)
+	if err != nil {
+		if isDoForbidden(err) {
+			return nil, llx.Forbidden(err)
+		}
+		if !isDoNotFound(err) {
+			return nil, err
+		}
+		router = nil
+	}
+	r.router = router
+	r.routerLoaded.Store(true)
+	return router, nil
+}
+
+func (r *mqlDigitaloceanGradientaiInferenceRouter) fallbackModels() ([]any, error) {
+	ir, err := r.fetchRouter()
+	if err != nil {
+		return nil, err
+	}
+	return inferenceRouterFallbackModels(ir), nil
+}
+
+func (r *mqlDigitaloceanGradientaiInferenceRouter) policies() (any, error) {
+	ir, err := r.fetchRouter()
+	if err != nil {
+		return nil, err
+	}
+	p, err := inferenceRouterPolicies(ir)
+	if err != nil {
+		return nil, err
+	}
+	if p == nil {
+		r.Policies.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return p, nil
+}
+
+func (r *mqlDigitaloceanGradientaiInferenceRouter) createdAt() (*time.Time, error) {
+	ir, err := r.fetchRouter()
+	if err != nil || ir == nil {
+		return nil, err
+	}
+	return gradientaiTime(ir.CreatedAt), nil
+}
+
+func (r *mqlDigitaloceanGradientaiInferenceRouter) updatedAt() (*time.Time, error) {
+	ir, err := r.fetchRouter()
+	if err != nil || ir == nil {
+		return nil, err
+	}
+	return gradientaiTime(ir.UpdatedAt), nil
+}
+
+// inferenceRouterFallbackModels returns the router's fallback model names,
+// empty when the router carries no config.
+func inferenceRouterFallbackModels(ir *godo.InferenceRouter) []any {
+	out := []any{}
+	if ir == nil || ir.Config == nil {
+		return out
+	}
+	for _, m := range ir.Config.FallbackModels {
+		out = append(out, m)
+	}
+	return out
+}
+
+// inferenceRouterPolicies decodes the router's policy document, nil when the
+// router carries none.
+func inferenceRouterPolicies(ir *godo.InferenceRouter) (any, error) {
+	if ir == nil || ir.Config == nil {
+		return nil, nil
+	}
+	p, err := rawJSONDict(ir.Config.Policies)
+	if err != nil {
+		return nil, llx.MalformedData(err)
+	}
+	return p, nil
+}
+
+// rawJSONDict decodes a raw JSON value for a dict field. An absent value or a
+// JSON null decodes to nil so the field reads as null.
+func rawJSONDict(raw json.RawMessage) (any, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var out any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }

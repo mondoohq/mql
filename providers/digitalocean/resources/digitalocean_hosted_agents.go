@@ -5,11 +5,14 @@ package resources
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/digitalocean/godo"
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers/digitalocean/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // hostedAgentPageSize is the page size requested from the hosted agents
@@ -212,4 +215,153 @@ func (r *mqlDigitalocean) hostedAgentTriggers() ([]any, error) {
 
 func (r *mqlDigitaloceanHostedAgentTrigger) id() (string, error) {
 	return r.Id.Data, nil
+}
+
+// ----- connections -----
+
+// hostedAgentConnectionPageSize is the largest page the connection list
+// endpoint accepts.
+const hostedAgentConnectionPageSize = 100
+
+// hostedAgentConnectionProviders returns the external providers whose
+// connections are listed. The connection API is keyed by provider and has no
+// endpoint that enumerates them, so the webhook provider registry supplies
+// the set. "custom" is a signature scheme, not a provider an agent connects
+// to, so it is left out.
+func hostedAgentConnectionProviders(ctx context.Context, svc godo.HostedAgentTriggersService) ([]string, error) {
+	resp, _, err := svc.ListWebhookProviders(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return nil, nil
+	}
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(resp.Providers))
+	for _, p := range resp.Providers {
+		key := string(p.Key)
+		if key == "" || p.Key == godo.HostedAgentWebhookProviderCustom {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, key)
+	}
+	return out, nil
+}
+
+// listHostedAgentConnections walks the page/per_page pagination of one
+// provider's connection list. It stops on an empty page, once the reported
+// total is reached, or, when the response carries no total, on a short page. A page that adds no connection not already seen means the
+// endpoint ignores the page parameter, which would otherwise loop forever.
+func listHostedAgentConnections(ctx context.Context, svc godo.HostedAgentsService, provider string) ([]godo.HostedAgentConnection, error) {
+	var all []godo.HostedAgentConnection
+	seen := map[string]struct{}{}
+	for page := 1; ; page++ {
+		resp, _, err := svc.ListConnections(ctx, provider, &godo.HostedAgentConnectionListOptions{Page: page, PerPage: hostedAgentConnectionPageSize})
+		if err != nil {
+			return nil, err
+		}
+		if resp == nil || len(resp.Connections) == 0 {
+			return all, nil
+		}
+		added := 0
+		for _, c := range resp.Connections {
+			if _, ok := seen[c.ID]; ok {
+				continue
+			}
+			seen[c.ID] = struct{}{}
+			all = append(all, c)
+			added++
+		}
+		if added == 0 {
+			return nil, fmt.Errorf("hosted agent connections for %s: page %d repeated earlier connections, so the endpoint is repeating a page", provider, page)
+		}
+		// A response without a pagination total ends on a short page.
+		if total := int(resp.Pagination.Total); total > 0 {
+			if len(all) >= total {
+				return all, nil
+			}
+		} else if len(resp.Connections) < hostedAgentConnectionPageSize {
+			return all, nil
+		}
+	}
+}
+
+// hostedAgentConnectionArgs maps a connection to its MQL fields. The API
+// exposes no token or authorization handle on this surface.
+func hostedAgentConnectionArgs(c *godo.HostedAgentConnection) (map[string]*llx.RawData, error) {
+	id, err := resourceID("digitalocean.hostedAgentConnection", c.Provider, c.ID)
+	if err != nil {
+		return nil, err
+	}
+	scopes := []any{}
+	grantedAt := llx.NilData
+	if c.OAuth != nil {
+		for _, s := range c.OAuth.Scopes {
+			scopes = append(scopes, s)
+		}
+		grantedAt = llx.TimeDataPtr(gradientaiTime(c.OAuth.GrantedAt))
+	}
+	return map[string]*llx.RawData{
+		"__id":                llx.StringData(id),
+		"id":                  llx.StringData(c.ID),
+		"provider":            llx.StringData(c.Provider),
+		"providerDisplayName": llx.StringData(c.ProviderDisplayName),
+		"actorId":             llx.StringData(c.ActorID),
+		"status":              llx.StringData(c.Status),
+		"owningUserUuid":      llx.StringData(c.OwningUserID),
+		"deletionProtected":   llx.BoolData(c.DeletionProtected),
+		"oauthScopes":         llx.ArrayData(scopes, types.String),
+		"grantedAt":           grantedAt,
+		"createdAt":           llx.TimeDataPtr(gradientaiTime(c.CreatedAt)),
+		"updatedAt":           llx.TimeDataPtr(gradientaiTime(c.UpdatedAt)),
+	}, nil
+}
+
+func (r *mqlDigitalocean) hostedAgentConnections() ([]any, error) {
+	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
+	client := conn.Client()
+	ctx := context.Background()
+
+	providers, err := hostedAgentConnectionProviders(ctx, client.HostedAgentTriggers)
+	if err != nil {
+		if isDoForbidden(err) {
+			return nil, llx.Forbidden(err)
+		}
+		return nil, err
+	}
+
+	out := []any{}
+	for _, provider := range providers {
+		conns, err := listHostedAgentConnections(ctx, client.HostedAgents, provider)
+		if err != nil {
+			// One provider's list failing is a partial result: a provider
+			// without connection support answers 404, and a denied read
+			// for one provider should not hide the others.
+			if isDoNotFound(err) || isDoForbidden(err) {
+				log.Debug().Err(err).Str("provider", provider).Msg("digitalocean> skipping hosted agent connections")
+				continue
+			}
+			return nil, err
+		}
+		for i := range conns {
+			args, err := hostedAgentConnectionArgs(&conns[i])
+			if err != nil {
+				return nil, err
+			}
+			res, err := CreateResource(r.MqlRuntime, "digitalocean.hostedAgentConnection", args)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, res)
+		}
+	}
+	return out, nil
+}
+
+func (r *mqlDigitaloceanHostedAgentConnection) id() (string, error) {
+	return resourceID("digitalocean.hostedAgentConnection", r.Provider.Data, r.Id.Data)
 }
