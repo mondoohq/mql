@@ -87,6 +87,21 @@ func (a *mqlAwsBedrockAgentCore) agentCoreRegionTasks(conn *connection.AwsConnec
 	return tasks
 }
 
+// agentCoreListError decides what a per-resource sub-list returns when its
+// list call fails. A nil result means the call was refused and structured
+// errors are off: the caller returns the items read so far, as in v13. Any
+// other result is the error to return. Region fan-out loops don't use this,
+// a refused region there is skipped (ADR 046 §8).
+func agentCoreListError(err error, permission string) error {
+	if Is400AccessDeniedError(err) {
+		if !plugin.StructuredErrors() {
+			return nil
+		}
+		return llx.Forbidden(err, llx.WithPermissions(permission))
+	}
+	return err
+}
+
 // --- Gateways ---
 
 func (a *mqlAwsBedrockAgentCore) gateways() ([]any, error) {
@@ -273,10 +288,10 @@ func (a *mqlAwsBedrockAgentCoreGateway) targets() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
+			if cerr := agentCoreListError(err, "bedrock-agentcore:ListGatewayTargets"); cerr != nil {
+				return nil, cerr
 			}
-			return nil, err
+			return res, nil
 		}
 		for _, t := range page.Items {
 			mqlTarget, err := CreateResource(a.MqlRuntime, "aws.bedrock.agentCore.gatewayTarget", map[string]*llx.RawData{
@@ -330,10 +345,10 @@ func (a *mqlAwsBedrockAgentCoreGateway) rateLimits() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
+			if cerr := agentCoreListError(err, "bedrock-agentcore:ListGatewayRateLimits"); cerr != nil {
+				return nil, cerr
 			}
-			return nil, err
+			return res, nil
 		}
 		for _, rl := range page.RateLimits {
 			dimensionKeys := make([]any, 0, len(rl.DimensionKeys))
@@ -851,6 +866,9 @@ func (a *mqlAwsBedrockAgentCoreGatewayTarget) fetchDetail() (*bedrockagentcoreco
 		TargetId:          &targetId,
 	})
 	if err != nil {
+		if Is400AccessDeniedError(err) {
+			return nil, llx.Forbidden(err, llx.WithPermissions("bedrock-agentcore:GetGatewayTarget"))
+		}
 		return nil, err
 	}
 	a.detail = detail
@@ -1056,10 +1074,10 @@ func (a *mqlAwsBedrockAgentCoreRuntime) endpoints() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
+			if cerr := agentCoreListError(err, "bedrock-agentcore:ListAgentRuntimeEndpoints"); cerr != nil {
+				return nil, cerr
 			}
-			return nil, err
+			return res, nil
 		}
 		for _, ep := range page.RuntimeEndpoints {
 			mqlEp, err := CreateResource(a.MqlRuntime, "aws.bedrock.agentCore.runtimeEndpoint", map[string]*llx.RawData{
@@ -1501,6 +1519,9 @@ func (a *mqlAwsBedrockAgentCoreMemory) fetchDetail() (*bedrockagentcorecontrol.G
 		MemoryId: &memoryId,
 	})
 	if err != nil {
+		if Is400AccessDeniedError(err) {
+			return nil, llx.Forbidden(err, llx.WithPermissions("bedrock-agentcore:GetMemory"))
+		}
 		return nil, err
 	}
 	a.detail = detail

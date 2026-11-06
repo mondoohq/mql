@@ -107,9 +107,10 @@ type mqlAwsBedrockAgentCoreConsentPortalInternal struct {
 }
 
 // fetchDetail reads the identity-provider configuration and execution role,
-// which the list API does not carry. An access denial leaves detail nil so
-// those fields resolve to null rather than reporting an unread configuration
-// as absent.
+// which the list API does not carry. With structured errors off, an access
+// denial leaves detail nil so those fields resolve to null rather than
+// reporting an unread configuration as absent; with them on it is a Forbidden
+// error on every field.
 func (a *mqlAwsBedrockAgentCoreConsentPortal) fetchDetail() (*bedrockagentcorecontrol.GetConsentPortalOutput, error) {
 	a.detailOnce.Do(func() {
 		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
@@ -124,7 +125,11 @@ func (a *mqlAwsBedrockAgentCoreConsentPortal) fetchDetail() (*bedrockagentcoreco
 		})
 		if err != nil {
 			if Is400AccessDeniedError(err) {
-				log.Warn().Str("portal", identifier).Msg("access denied getting agentcore consent portal")
+				if !plugin.StructuredErrors() {
+					log.Warn().Str("portal", identifier).Msg("access denied getting agentcore consent portal")
+					return
+				}
+				a.detailErr = llx.Forbidden(err, llx.WithPermissions("bedrock-agentcore:GetConsentPortal"))
 				return
 			}
 			a.detailErr = err
