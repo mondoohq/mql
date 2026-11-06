@@ -225,9 +225,12 @@ var validatedGCPPermissions = []string{
 	"datastream.privateConnections.list",
 	"datastream.routes.list",
 	"datastream.streams.list",
+	"discoveryengine.assistants.list",
 	"discoveryengine.dataStores.get",
 	"discoveryengine.dataStores.list",
+	"discoveryengine.engines.getIamPolicy",
 	"discoveryengine.engines.list",
+	"discoveryengine.widgetConfigs.get",
 	"dlp.columnDataProfiles.list",
 	"dlp.connections.list",
 	// Validated against Google's own documentation for

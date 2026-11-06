@@ -1429,6 +1429,11 @@ var gcpPermissionOverrides = map[string]map[string]string{
 		// GetDataStore → singular "dataStore" by default; the real IAM permission
 		// is the plural form.
 		"GetDataStore": "discoveryengine.dataStores.get",
+		// Same singular-vs-plural derivation for widget configs.
+		"GetWidgetConfig": "discoveryengine.widgetConfigs.get",
+		// GetIamPolicy is the google.iam.v1 mixin on EngineClient; it reads
+		// the app's own policy.
+		"Engine.GetIamPolicy": "discoveryengine.engines.getIamPolicy",
 	},
 	"cloudidentity": {
 		// The Cloud Identity Groups API is not governed by project/org IAM

@@ -472,6 +472,8 @@ const (
 	ResourceGcpProjectDiscoveryEngineService                                           string = "gcp.project.discoveryEngineService"
 	ResourceGcpProjectDiscoveryEngineServiceDataStore                                  string = "gcp.project.discoveryEngineService.dataStore"
 	ResourceGcpProjectDiscoveryEngineServiceEngine                                     string = "gcp.project.discoveryEngineService.engine"
+	ResourceGcpProjectDiscoveryEngineServiceWidgetConfig                               string = "gcp.project.discoveryEngineService.widgetConfig"
+	ResourceGcpProjectDiscoveryEngineServiceAssistant                                  string = "gcp.project.discoveryEngineService.assistant"
 	ResourceGcpProjectDocumentaiService                                                string = "gcp.project.documentaiService"
 	ResourceGcpProjectDocumentaiServiceProcessor                                       string = "gcp.project.documentaiService.processor"
 	ResourceGcpProjectDocumentaiServiceProcessorVersion                                string = "gcp.project.documentaiService.processor.version"
@@ -2403,6 +2405,14 @@ func init() {
 		"gcp.project.discoveryEngineService.engine": {
 			// to override args, implement: initGcpProjectDiscoveryEngineServiceEngine(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createGcpProjectDiscoveryEngineServiceEngine,
+		},
+		"gcp.project.discoveryEngineService.widgetConfig": {
+			// to override args, implement: initGcpProjectDiscoveryEngineServiceWidgetConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectDiscoveryEngineServiceWidgetConfig,
+		},
+		"gcp.project.discoveryEngineService.assistant": {
+			// to override args, implement: initGcpProjectDiscoveryEngineServiceAssistant(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectDiscoveryEngineServiceAssistant,
 		},
 		"gcp.project.documentaiService": {
 			Init:   initGcpProjectDocumentaiService,
@@ -18284,6 +18294,93 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.discoveryEngineService.engine.updatedAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectDiscoveryEngineServiceEngine).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.discoveryEngineService.engine.appType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceEngine).GetAppType()).ToDataRes(types.String)
+	},
+	"gcp.project.discoveryEngineService.engine.features": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceEngine).GetFeatures()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gcp.project.discoveryEngineService.engine.modelConfigs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceEngine).GetModelConfigs()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gcp.project.discoveryEngineService.engine.observabilityEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceEngine).GetObservabilityEnabled()).ToDataRes(types.Bool)
+	},
+	"gcp.project.discoveryEngineService.engine.sensitiveLoggingEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceEngine).GetSensitiveLoggingEnabled()).ToDataRes(types.Bool)
+	},
+	"gcp.project.discoveryEngineService.engine.marketplaceAgentVisibility": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceEngine).GetMarketplaceAgentVisibility()).ToDataRes(types.String)
+	},
+	"gcp.project.discoveryEngineService.engine.kmsKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceEngine).GetKmsKey()).ToDataRes(types.Resource("gcp.project.kmsService.keyring.cryptokey"))
+	},
+	"gcp.project.discoveryEngineService.engine.iamPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceEngine).GetIamPolicy()).ToDataRes(types.Array(types.Resource("gcp.resourcemanager.binding")))
+	},
+	"gcp.project.discoveryEngineService.engine.public": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceEngine).GetPublic()).ToDataRes(types.Bool)
+	},
+	"gcp.project.discoveryEngineService.engine.widgetConfig": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceEngine).GetWidgetConfig()).ToDataRes(types.Resource("gcp.project.discoveryEngineService.widgetConfig"))
+	},
+	"gcp.project.discoveryEngineService.engine.assistants": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceEngine).GetAssistants()).ToDataRes(types.Array(types.Resource("gcp.project.discoveryEngineService.assistant")))
+	},
+	"gcp.project.discoveryEngineService.widgetConfig.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceWidgetConfig).GetName()).ToDataRes(types.String)
+	},
+	"gcp.project.discoveryEngineService.widgetConfig.allowPublicAccess": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceWidgetConfig).GetAllowPublicAccess()).ToDataRes(types.Bool)
+	},
+	"gcp.project.discoveryEngineService.widgetConfig.enableWebApp": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceWidgetConfig).GetEnableWebApp()).ToDataRes(types.Bool)
+	},
+	"gcp.project.discoveryEngineService.widgetConfig.allowlistedDomains": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceWidgetConfig).GetAllowlistedDomains()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.discoveryEngineService.widgetConfig.workforceIdentityPoolProvider": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceWidgetConfig).GetWorkforceIdentityPoolProvider()).ToDataRes(types.String)
+	},
+	"gcp.project.discoveryEngineService.widgetConfig.llmEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceWidgetConfig).GetLlmEnabled()).ToDataRes(types.Bool)
+	},
+	"gcp.project.discoveryEngineService.assistant.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceAssistant).GetName()).ToDataRes(types.String)
+	},
+	"gcp.project.discoveryEngineService.assistant.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceAssistant).GetDisplayName()).ToDataRes(types.String)
+	},
+	"gcp.project.discoveryEngineService.assistant.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceAssistant).GetDescription()).ToDataRes(types.String)
+	},
+	"gcp.project.discoveryEngineService.assistant.modelArmorPromptTemplate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceAssistant).GetModelArmorPromptTemplate()).ToDataRes(types.Resource("gcp.project.modelArmorService.template"))
+	},
+	"gcp.project.discoveryEngineService.assistant.modelArmorResponseTemplate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceAssistant).GetModelArmorResponseTemplate()).ToDataRes(types.Resource("gcp.project.modelArmorService.template"))
+	},
+	"gcp.project.discoveryEngineService.assistant.modelArmorFailureMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceAssistant).GetModelArmorFailureMode()).ToDataRes(types.String)
+	},
+	"gcp.project.discoveryEngineService.assistant.bannedPhrases": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceAssistant).GetBannedPhrases()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.discoveryEngineService.assistant.sensitiveDataProtectionPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceAssistant).GetSensitiveDataProtectionPolicy()).ToDataRes(types.Resource("gcp.project.dlpService.contentPolicy"))
+	},
+	"gcp.project.discoveryEngineService.assistant.webGroundingType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceAssistant).GetWebGroundingType()).ToDataRes(types.String)
+	},
+	"gcp.project.discoveryEngineService.assistant.enabledTools": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceAssistant).GetEnabledTools()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.discoveryEngineService.assistant.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceAssistant).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.discoveryEngineService.assistant.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceAssistant).GetUpdatedAt()).ToDataRes(types.Time)
 	},
 	"gcp.project.documentaiService.projectId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectDocumentaiService).GetProjectId()).ToDataRes(types.String)
@@ -43244,6 +43341,130 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.discoveryEngineService.engine.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectDiscoveryEngineServiceEngine).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.engine.appType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceEngine).AppType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.engine.features": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceEngine).Features, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.engine.modelConfigs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceEngine).ModelConfigs, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.engine.observabilityEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceEngine).ObservabilityEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.engine.sensitiveLoggingEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceEngine).SensitiveLoggingEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.engine.marketplaceAgentVisibility": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceEngine).MarketplaceAgentVisibility, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.engine.kmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceEngine).KmsKey, ok = plugin.RawToTValue[*mqlGcpProjectKmsServiceKeyringCryptokey](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.engine.iamPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceEngine).IamPolicy, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.engine.public": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceEngine).Public, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.engine.widgetConfig": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceEngine).WidgetConfig, ok = plugin.RawToTValue[*mqlGcpProjectDiscoveryEngineServiceWidgetConfig](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.engine.assistants": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceEngine).Assistants, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.widgetConfig.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceWidgetConfig).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.discoveryEngineService.widgetConfig.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceWidgetConfig).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.widgetConfig.allowPublicAccess": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceWidgetConfig).AllowPublicAccess, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.widgetConfig.enableWebApp": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceWidgetConfig).EnableWebApp, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.widgetConfig.allowlistedDomains": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceWidgetConfig).AllowlistedDomains, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.widgetConfig.workforceIdentityPoolProvider": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceWidgetConfig).WorkforceIdentityPoolProvider, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.widgetConfig.llmEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceWidgetConfig).LlmEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.assistant.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceAssistant).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.discoveryEngineService.assistant.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceAssistant).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.assistant.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceAssistant).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.assistant.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceAssistant).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.assistant.modelArmorPromptTemplate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceAssistant).ModelArmorPromptTemplate, ok = plugin.RawToTValue[*mqlGcpProjectModelArmorServiceTemplate](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.assistant.modelArmorResponseTemplate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceAssistant).ModelArmorResponseTemplate, ok = plugin.RawToTValue[*mqlGcpProjectModelArmorServiceTemplate](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.assistant.modelArmorFailureMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceAssistant).ModelArmorFailureMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.assistant.bannedPhrases": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceAssistant).BannedPhrases, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.assistant.sensitiveDataProtectionPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceAssistant).SensitiveDataProtectionPolicy, ok = plugin.RawToTValue[*mqlGcpProjectDlpServiceContentPolicy](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.assistant.webGroundingType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceAssistant).WebGroundingType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.assistant.enabledTools": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceAssistant).EnabledTools, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.assistant.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceAssistant).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.assistant.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceAssistant).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"gcp.project.documentaiService.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -101357,14 +101578,25 @@ type mqlGcpProjectDiscoveryEngineServiceEngine struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlGcpProjectDiscoveryEngineServiceEngineInternal
-	Name             plugin.TValue[string]
-	DisplayName      plugin.TValue[string]
-	SolutionType     plugin.TValue[string]
-	IndustryVertical plugin.TValue[string]
-	DataStores       plugin.TValue[[]any]
-	DisableAnalytics plugin.TValue[bool]
-	CreatedAt        plugin.TValue[*time.Time]
-	UpdatedAt        plugin.TValue[*time.Time]
+	Name                       plugin.TValue[string]
+	DisplayName                plugin.TValue[string]
+	SolutionType               plugin.TValue[string]
+	IndustryVertical           plugin.TValue[string]
+	DataStores                 plugin.TValue[[]any]
+	DisableAnalytics           plugin.TValue[bool]
+	CreatedAt                  plugin.TValue[*time.Time]
+	UpdatedAt                  plugin.TValue[*time.Time]
+	AppType                    plugin.TValue[string]
+	Features                   plugin.TValue[map[string]any]
+	ModelConfigs               plugin.TValue[map[string]any]
+	ObservabilityEnabled       plugin.TValue[bool]
+	SensitiveLoggingEnabled    plugin.TValue[bool]
+	MarketplaceAgentVisibility plugin.TValue[string]
+	KmsKey                     plugin.TValue[*mqlGcpProjectKmsServiceKeyringCryptokey]
+	IamPolicy                  plugin.TValue[[]any]
+	Public                     plugin.TValue[bool]
+	WidgetConfig               plugin.TValue[*mqlGcpProjectDiscoveryEngineServiceWidgetConfig]
+	Assistants                 plugin.TValue[[]any]
 }
 
 // createGcpProjectDiscoveryEngineServiceEngine creates a new instance of this resource
@@ -101445,6 +101677,314 @@ func (c *mqlGcpProjectDiscoveryEngineServiceEngine) GetCreatedAt() *plugin.TValu
 }
 
 func (c *mqlGcpProjectDiscoveryEngineServiceEngine) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceEngine) GetAppType() *plugin.TValue[string] {
+	return &c.AppType
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceEngine) GetFeatures() *plugin.TValue[map[string]any] {
+	return &c.Features
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceEngine) GetModelConfigs() *plugin.TValue[map[string]any] {
+	return &c.ModelConfigs
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceEngine) GetObservabilityEnabled() *plugin.TValue[bool] {
+	return &c.ObservabilityEnabled
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceEngine) GetSensitiveLoggingEnabled() *plugin.TValue[bool] {
+	return &c.SensitiveLoggingEnabled
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceEngine) GetMarketplaceAgentVisibility() *plugin.TValue[string] {
+	return &c.MarketplaceAgentVisibility
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceEngine) GetKmsKey() *plugin.TValue[*mqlGcpProjectKmsServiceKeyringCryptokey] {
+	return plugin.GetOrCompute[*mqlGcpProjectKmsServiceKeyringCryptokey](&c.KmsKey, func() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.discoveryEngineService.engine", c.__id, "kmsKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectKmsServiceKeyringCryptokey), nil
+			}
+		}
+
+		return c.kmsKey()
+	})
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceEngine) GetIamPolicy() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.IamPolicy, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.discoveryEngineService.engine", c.__id, "iamPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.iamPolicy()
+	})
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceEngine) GetPublic() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Public, func() (bool, error) {
+		return c.public()
+	})
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceEngine) GetWidgetConfig() *plugin.TValue[*mqlGcpProjectDiscoveryEngineServiceWidgetConfig] {
+	return plugin.GetOrCompute[*mqlGcpProjectDiscoveryEngineServiceWidgetConfig](&c.WidgetConfig, func() (*mqlGcpProjectDiscoveryEngineServiceWidgetConfig, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.discoveryEngineService.engine", c.__id, "widgetConfig")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectDiscoveryEngineServiceWidgetConfig), nil
+			}
+		}
+
+		return c.widgetConfig()
+	})
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceEngine) GetAssistants() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Assistants, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.discoveryEngineService.engine", c.__id, "assistants")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.assistants()
+	})
+}
+
+// mqlGcpProjectDiscoveryEngineServiceWidgetConfig for the gcp.project.discoveryEngineService.widgetConfig resource
+type mqlGcpProjectDiscoveryEngineServiceWidgetConfig struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGcpProjectDiscoveryEngineServiceWidgetConfigInternal it will be used here
+	Name                          plugin.TValue[string]
+	AllowPublicAccess             plugin.TValue[bool]
+	EnableWebApp                  plugin.TValue[bool]
+	AllowlistedDomains            plugin.TValue[[]any]
+	WorkforceIdentityPoolProvider plugin.TValue[string]
+	LlmEnabled                    plugin.TValue[bool]
+}
+
+// createGcpProjectDiscoveryEngineServiceWidgetConfig creates a new instance of this resource
+func createGcpProjectDiscoveryEngineServiceWidgetConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectDiscoveryEngineServiceWidgetConfig{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.discoveryEngineService.widgetConfig", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceWidgetConfig) MqlName() string {
+	return "gcp.project.discoveryEngineService.widgetConfig"
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceWidgetConfig) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceWidgetConfig) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceWidgetConfig) GetAllowPublicAccess() *plugin.TValue[bool] {
+	return &c.AllowPublicAccess
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceWidgetConfig) GetEnableWebApp() *plugin.TValue[bool] {
+	return &c.EnableWebApp
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceWidgetConfig) GetAllowlistedDomains() *plugin.TValue[[]any] {
+	return &c.AllowlistedDomains
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceWidgetConfig) GetWorkforceIdentityPoolProvider() *plugin.TValue[string] {
+	return &c.WorkforceIdentityPoolProvider
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceWidgetConfig) GetLlmEnabled() *plugin.TValue[bool] {
+	return &c.LlmEnabled
+}
+
+// mqlGcpProjectDiscoveryEngineServiceAssistant for the gcp.project.discoveryEngineService.assistant resource
+type mqlGcpProjectDiscoveryEngineServiceAssistant struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlGcpProjectDiscoveryEngineServiceAssistantInternal
+	Name                          plugin.TValue[string]
+	DisplayName                   plugin.TValue[string]
+	Description                   plugin.TValue[string]
+	ModelArmorPromptTemplate      plugin.TValue[*mqlGcpProjectModelArmorServiceTemplate]
+	ModelArmorResponseTemplate    plugin.TValue[*mqlGcpProjectModelArmorServiceTemplate]
+	ModelArmorFailureMode         plugin.TValue[string]
+	BannedPhrases                 plugin.TValue[[]any]
+	SensitiveDataProtectionPolicy plugin.TValue[*mqlGcpProjectDlpServiceContentPolicy]
+	WebGroundingType              plugin.TValue[string]
+	EnabledTools                  plugin.TValue[[]any]
+	CreatedAt                     plugin.TValue[*time.Time]
+	UpdatedAt                     plugin.TValue[*time.Time]
+}
+
+// createGcpProjectDiscoveryEngineServiceAssistant creates a new instance of this resource
+func createGcpProjectDiscoveryEngineServiceAssistant(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectDiscoveryEngineServiceAssistant{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.discoveryEngineService.assistant", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceAssistant) MqlName() string {
+	return "gcp.project.discoveryEngineService.assistant"
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceAssistant) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceAssistant) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceAssistant) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceAssistant) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceAssistant) GetModelArmorPromptTemplate() *plugin.TValue[*mqlGcpProjectModelArmorServiceTemplate] {
+	return plugin.GetOrCompute[*mqlGcpProjectModelArmorServiceTemplate](&c.ModelArmorPromptTemplate, func() (*mqlGcpProjectModelArmorServiceTemplate, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.discoveryEngineService.assistant", c.__id, "modelArmorPromptTemplate")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectModelArmorServiceTemplate), nil
+			}
+		}
+
+		return c.modelArmorPromptTemplate()
+	})
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceAssistant) GetModelArmorResponseTemplate() *plugin.TValue[*mqlGcpProjectModelArmorServiceTemplate] {
+	return plugin.GetOrCompute[*mqlGcpProjectModelArmorServiceTemplate](&c.ModelArmorResponseTemplate, func() (*mqlGcpProjectModelArmorServiceTemplate, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.discoveryEngineService.assistant", c.__id, "modelArmorResponseTemplate")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectModelArmorServiceTemplate), nil
+			}
+		}
+
+		return c.modelArmorResponseTemplate()
+	})
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceAssistant) GetModelArmorFailureMode() *plugin.TValue[string] {
+	return &c.ModelArmorFailureMode
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceAssistant) GetBannedPhrases() *plugin.TValue[[]any] {
+	return &c.BannedPhrases
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceAssistant) GetSensitiveDataProtectionPolicy() *plugin.TValue[*mqlGcpProjectDlpServiceContentPolicy] {
+	return plugin.GetOrCompute[*mqlGcpProjectDlpServiceContentPolicy](&c.SensitiveDataProtectionPolicy, func() (*mqlGcpProjectDlpServiceContentPolicy, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.discoveryEngineService.assistant", c.__id, "sensitiveDataProtectionPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectDlpServiceContentPolicy), nil
+			}
+		}
+
+		return c.sensitiveDataProtectionPolicy()
+	})
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceAssistant) GetWebGroundingType() *plugin.TValue[string] {
+	return &c.WebGroundingType
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceAssistant) GetEnabledTools() *plugin.TValue[[]any] {
+	return &c.EnabledTools
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceAssistant) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceAssistant) GetUpdatedAt() *plugin.TValue[*time.Time] {
 	return &c.UpdatedAt
 }
 

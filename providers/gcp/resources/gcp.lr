@@ -17802,8 +17802,11 @@ private gcp.project.discoveryEngineService.dataStore @defaults("displayName indu
 // reports what kind of app it is, `industryVertical` its domain,
 // `dataStores` resolves the data stores it grounds on, and
 // `disableAnalytics` reports whether analytics collection is turned off.
-// These fields reveal which AI apps are deployed and what data they draw
-// on.
+// `features`, `modelConfigs`, `sensitiveLoggingEnabled`, `kmsKey`,
+// `iamPolicy`, `widgetConfig` and `assistants` report the app's security
+// posture: who can reach it, whether prompts are logged, and which safety
+// filters apply. These fields reveal which AI apps are deployed and what
+// data they draw on.
 private gcp.project.discoveryEngineService.engine @defaults("displayName solutionType") {
   // Full resource name
   name string
@@ -17817,6 +17820,98 @@ private gcp.project.discoveryEngineService.engine @defaults("displayName solutio
   dataStores() []gcp.project.discoveryEngineService.dataStore
   // Whether analytics collection is disabled
   disableAnalytics bool
+  // Creation time
+  createdAt time
+  // Last update time
+  updatedAt time
+  // App type (APP_TYPE_INTRANET for a Gemini Enterprise app, empty when unspecified)
+  appType string
+  // Feature states keyed by feature name
+  //
+  // Values are FEATURE_STATE_ON or FEATURE_STATE_OFF and say which app
+  // features an administrator turned on or off.
+  features map[string]string
+  // Model states keyed by model name
+  //
+  // Values are MODEL_ENABLED or MODEL_DISABLED and decide which models users
+  // of the app may pick.
+  modelConfigs map[string]string
+  // Whether observability (tracing and logging of agent runs) is enabled; null when not configured
+  observabilityEnabled bool
+  // Whether sensitive logging is enabled; null when not configured
+  //
+  // When true, prompts and responses are written to logs, which can carry
+  // user data into Cloud Logging.
+  sensitiveLoggingEnabled bool
+  // Which marketplace agents users see, for example SHOW_AVAILABLE_AGENTS_ONLY or SHOW_ALL_AGENTS
+  marketplaceAgentVisibility string
+  // Customer-managed Cloud KMS key that encrypts the app's data
+  kmsKey() gcp.project.kmsService.keyring.cryptokey
+  // Resource-level IAM policy bindings governing who can use or manage this app
+  iamPolicy() []gcp.resourcemanager.binding
+  // Whether the IAM policy grants access to allUsers or allAuthenticatedUsers
+  public() bool
+  // Default search widget configuration of the app; null when the app has none
+  widgetConfig() gcp.project.discoveryEngineService.widgetConfig
+  // Assistants of the app with their safety and grounding policies
+  assistants() []gcp.project.discoveryEngineService.assistant
+}
+
+// Google Cloud (GCP) Discovery Engine widget configuration
+//
+// Access settings of an app's default search widget, the web front end
+// users reach the app through. `allowPublicAccess` reports whether
+// unauthenticated users may use the widget, `enableWebApp` whether the
+// standalone web app is on, `allowlistedDomains` which sites may embed it,
+// `workforceIdentityPoolProvider` the workforce identity federation provider
+// that signs users in, and `llmEnabled` whether generated answers are shown.
+private gcp.project.discoveryEngineService.widgetConfig @defaults("name allowPublicAccess") {
+  // Full resource name
+  name string
+  // Whether unauthenticated public access is allowed
+  allowPublicAccess bool
+  // Whether the standalone web app is enabled
+  enableWebApp bool
+  // Domains allowed to embed the widget
+  allowlistedDomains []string
+  // Workforce identity pool provider users sign in through, as a full resource name; empty when not set
+  workforceIdentityPoolProvider string
+  // Whether LLM-generated answers are enabled
+  llmEnabled bool
+}
+
+// Google Cloud (GCP) Discovery Engine assistant
+//
+// Assistant of a Gemini Enterprise app with its customer policy: the Model
+// Armor templates that screen user prompts and model responses
+// (`modelArmorPromptTemplate`, `modelArmorResponseTemplate`) and what happens
+// when Model Armor fails (`modelArmorFailureMode`), the banned phrases, the
+// Sensitive Data Protection content policy, the web grounding source and the
+// enabled tools.
+private gcp.project.discoveryEngineService.assistant @defaults("displayName webGroundingType") {
+  // Full resource name
+  name string
+  // Display name
+  displayName string
+  // Description
+  description string
+  // Model Armor template that screens user prompts; null when not set
+  modelArmorPromptTemplate() gcp.project.modelArmorService.template
+  // Model Armor template that screens model responses; null when not set
+  modelArmorResponseTemplate() gcp.project.modelArmorService.template
+  // Behavior when Model Armor cannot screen a request
+  //
+  // FAIL_OPEN lets the request through, FAIL_CLOSED blocks it. Empty when
+  // no Model Armor configuration is set.
+  modelArmorFailureMode string
+  // Phrases the assistant refuses to produce
+  bannedPhrases []string
+  // Sensitive Data Protection content policy applied to the assistant; null when not set
+  sensitiveDataProtectionPolicy() gcp.project.dlpService.contentPolicy
+  // Web grounding source (WEB_GROUNDING_TYPE_DISABLED, WEB_GROUNDING_TYPE_GOOGLE_SEARCH or WEB_GROUNDING_TYPE_ENTERPRISE_WEB_SEARCH)
+  webGroundingType string
+  // Names of the tools enabled on the assistant, across all connectors
+  enabledTools []string
   // Creation time
   createdAt time
   // Last update time

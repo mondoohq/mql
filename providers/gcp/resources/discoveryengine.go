@@ -7,18 +7,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	discoveryengine "cloud.google.com/go/discoveryengine/apiv1"
 	"cloud.google.com/go/discoveryengine/apiv1/discoveryenginepb"
+	iampb "cloud.google.com/go/iam/apiv1/iampb"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/providers/gcp/connection"
 	"go.mondoo.com/mql/types"
 	googleoauth "golang.org/x/oauth2/google"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
+	"google.golang.org/grpc/codes"
 )
 
 // discoveryEngineLocations lists the Discovery Engine multi-region locations.
@@ -320,19 +324,28 @@ func (g *mqlGcpProjectDiscoveryEngineService) listEnginesInLocation(ctx context.
 			return nil, err
 		}
 
+		posture := discoveryEngineEnginePostureOf(engine)
 		mqlEngine, err := CreateResource(g.MqlRuntime, "gcp.project.discoveryEngineService.engine", map[string]*llx.RawData{
-			"name":             llx.StringData(engine.Name),
-			"displayName":      llx.StringData(engine.DisplayName),
-			"solutionType":     llx.StringData(engine.SolutionType.String()),
-			"industryVertical": llx.StringData(engine.IndustryVertical.String()),
-			"disableAnalytics": llx.BoolData(engine.DisableAnalytics),
-			"createdAt":        llx.TimeDataPtr(timestampAsTimePtr(engine.CreateTime)),
-			"updatedAt":        llx.TimeDataPtr(timestampAsTimePtr(engine.UpdateTime)),
+			"name":                       llx.StringData(engine.Name),
+			"displayName":                llx.StringData(engine.DisplayName),
+			"solutionType":               llx.StringData(engine.SolutionType.String()),
+			"industryVertical":           llx.StringData(engine.IndustryVertical.String()),
+			"disableAnalytics":           llx.BoolData(engine.DisableAnalytics),
+			"appType":                    llx.StringData(posture.appType),
+			"features":                   llx.MapData(posture.features, types.String),
+			"modelConfigs":               llx.MapData(posture.modelConfigs, types.String),
+			"observabilityEnabled":       llx.BoolDataPtr(posture.observabilityEnabled),
+			"sensitiveLoggingEnabled":    llx.BoolDataPtr(posture.sensitiveLoggingEnabled),
+			"marketplaceAgentVisibility": llx.StringData(posture.marketplaceAgentVisibility),
+			"createdAt":                  llx.TimeDataPtr(timestampAsTimePtr(engine.CreateTime)),
+			"updatedAt":                  llx.TimeDataPtr(timestampAsTimePtr(engine.UpdateTime)),
 		})
 		if err != nil {
 			return nil, err
 		}
-		mqlEngine.(*mqlGcpProjectDiscoveryEngineServiceEngine).cacheDataStoreIds = engine.DataStoreIds
+		mqlEngineRes := mqlEngine.(*mqlGcpProjectDiscoveryEngineServiceEngine)
+		mqlEngineRes.cacheDataStoreIds = engine.DataStoreIds
+		mqlEngineRes.cacheKmsKeyName = engine.GetCmekConfig().GetKmsKey()
 		items = append(items, mqlEngine)
 	}
 	return items, nil
@@ -369,6 +382,313 @@ func (g *mqlGcpProjectDiscoveryEngineServiceEngine) id() (string, error) {
 
 type mqlGcpProjectDiscoveryEngineServiceEngineInternal struct {
 	cacheDataStoreIds []string
+	cacheKmsKeyName   string
+}
+
+// discoveryEngineEnginePosture is the security posture an engine reports
+// inline. Enum values are reported only when set: an unspecified enum reads
+// as empty, and an absent observability config as null.
+type discoveryEngineEnginePosture struct {
+	appType                    string
+	features                   map[string]any
+	modelConfigs               map[string]any
+	observabilityEnabled       *bool
+	sensitiveLoggingEnabled    *bool
+	marketplaceAgentVisibility string
+}
+
+func discoveryEngineEnginePostureOf(engine *discoveryenginepb.Engine) discoveryEngineEnginePosture {
+	p := discoveryEngineEnginePosture{
+		features:     map[string]any{},
+		modelConfigs: map[string]any{},
+	}
+	if engine.GetAppType() != discoveryenginepb.Engine_APP_TYPE_UNSPECIFIED {
+		p.appType = engine.GetAppType().String()
+	}
+	for k, v := range engine.GetFeatures() {
+		p.features[k] = v.String()
+	}
+	for k, v := range engine.GetModelConfigs() {
+		p.modelConfigs[k] = v.String()
+	}
+	if cfg := engine.GetObservabilityConfig(); cfg != nil {
+		obs, sens := cfg.GetObservabilityEnabled(), cfg.GetSensitiveLoggingEnabled()
+		p.observabilityEnabled = &obs
+		p.sensitiveLoggingEnabled = &sens
+	}
+	if v := engine.GetMarketplaceAgentVisibility(); v != discoveryenginepb.Engine_MARKETPLACE_AGENT_VISIBILITY_UNSPECIFIED {
+		p.marketplaceAgentVisibility = v.String()
+	}
+	return p
+}
+
+func (g *mqlGcpProjectDiscoveryEngineServiceEngine) kmsKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
+	return newKmsCryptoKeyRef(g.MqlRuntime, &g.KmsKey, g.cacheKmsKeyName)
+}
+
+func (g *mqlGcpProjectDiscoveryEngineServiceEngine) iamPolicy() ([]any, error) {
+	if g.Name.Error != nil {
+		return nil, g.Name.Error
+	}
+	name := g.Name.Data
+	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
+	creds, err := conn.Credentials(discoveryengine.DefaultAuthScopes()...)
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	client, err := discoveryengine.NewEngineClient(ctx,
+		option.WithCredentials(creds), connection.GRPCClientTraceOption(),
+		option.WithEndpoint(discoveryEngineEndpoint(discoveryEngineLocationFromName(name))),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+
+	policy, err := client.GetIamPolicy(ctx, &iampb.GetIamPolicyRequest{
+		Resource: name,
+		Options:  &iampb.GetPolicyOptions{RequestedPolicyVersion: 3},
+	})
+	if err != nil {
+		return listRefusal(err, "cannot read discovery engine app IAM policy", "discoveryengine.engines.getIamPolicy")
+	}
+	return iampbBindingsToMql(g.MqlRuntime, name, policy.GetBindings())
+}
+
+// public is null when the IAM policy could not be read: a refusal must not
+// read as "not public".
+func (g *mqlGcpProjectDiscoveryEngineServiceEngine) public() (bool, error) {
+	bindings := g.GetIamPolicy()
+	if bindings.Error != nil {
+		return false, bindings.Error
+	}
+	if bindings.Data == nil {
+		g.Public.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return iamPolicyHasPublicMember(bindings.Data)
+}
+
+// discoveryEngineDefaultWidgetConfigId is the ID the console gives the
+// widget configuration it creates with every app.
+const discoveryEngineDefaultWidgetConfigId = "default_search_widget_config"
+
+func (g *mqlGcpProjectDiscoveryEngineServiceEngine) widgetConfig() (*mqlGcpProjectDiscoveryEngineServiceWidgetConfig, error) {
+	if g.Name.Error != nil {
+		return nil, g.Name.Error
+	}
+	engineName := g.Name.Data
+	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
+	creds, err := conn.Credentials(discoveryengine.DefaultAuthScopes()...)
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	client, err := discoveryengine.NewWidgetConfigClient(ctx,
+		option.WithCredentials(creds), connection.GRPCClientTraceOption(),
+		option.WithEndpoint(discoveryEngineEndpoint(discoveryEngineLocationFromName(engineName))),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+
+	wc, err := client.GetWidgetConfig(ctx, &discoveryenginepb.GetWidgetConfigRequest{
+		Name: engineName + "/widgetConfigs/" + discoveryEngineDefaultWidgetConfigId,
+	})
+	if err != nil {
+		if s, ok := grpcStatusOf(err); ok && s.Code() == codes.NotFound {
+			g.WidgetConfig.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		rerr := classifyRefusal(err, "discoveryengine.widgetConfigs.get")
+		if rerr == nil {
+			return nil, err
+		}
+		if !plugin.StructuredErrors() {
+			log.Warn().Err(err).Msg("cannot read discovery engine widget config")
+			g.WidgetConfig.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		return nil, rerr
+	}
+
+	access := wc.GetAccessSettings()
+	res, err := CreateResource(g.MqlRuntime, "gcp.project.discoveryEngineService.widgetConfig", map[string]*llx.RawData{
+		"name":                          llx.StringData(wc.GetName()),
+		"allowPublicAccess":             llx.BoolData(access.GetAllowPublicAccess()),
+		"enableWebApp":                  llx.BoolData(access.GetEnableWebApp()),
+		"allowlistedDomains":            llx.ArrayData(convert.SliceAnyToInterface(access.GetAllowlistedDomains()), types.String),
+		"workforceIdentityPoolProvider": llx.StringData(access.GetWorkforceIdentityPoolProvider()),
+		"llmEnabled":                    llx.BoolData(wc.GetLlmEnabled()),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGcpProjectDiscoveryEngineServiceWidgetConfig), nil
+}
+
+func (g *mqlGcpProjectDiscoveryEngineServiceWidgetConfig) id() (string, error) {
+	return g.Name.Data, g.Name.Error
+}
+
+func (g *mqlGcpProjectDiscoveryEngineServiceEngine) assistants() ([]any, error) {
+	if g.Name.Error != nil {
+		return nil, g.Name.Error
+	}
+	engineName := g.Name.Data
+	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
+	creds, err := conn.Credentials(discoveryengine.DefaultAuthScopes()...)
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	client, err := discoveryengine.NewAssistantClient(ctx,
+		option.WithCredentials(creds), connection.GRPCClientTraceOption(),
+		option.WithEndpoint(discoveryEngineEndpoint(discoveryEngineLocationFromName(engineName))),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+
+	res := []any{}
+	it := client.ListAssistants(ctx, &discoveryenginepb.ListAssistantsRequest{Parent: engineName})
+	for {
+		a, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			if isInapplicable(err) {
+				break
+			}
+			return listRefusal(err, "cannot list discovery engine assistants", "discoveryengine.assistants.list")
+		}
+		mqlA, err := newMqlDiscoveryEngineAssistant(g.MqlRuntime, a)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlA)
+	}
+	return res, nil
+}
+
+type mqlGcpProjectDiscoveryEngineServiceAssistantInternal struct {
+	cachePromptTemplate   string
+	cacheResponseTemplate string
+	cacheContentPolicy    string
+}
+
+// discoveryEngineAssistantPolicy is the typed view of an assistant's
+// customer policy and tools.
+type discoveryEngineAssistantPolicy struct {
+	promptTemplate   string
+	responseTemplate string
+	failureMode      string
+	bannedPhrases    []string
+	contentPolicy    string
+	webGroundingType string
+	enabledTools     []string
+}
+
+func discoveryEngineAssistantPolicyOf(a *discoveryenginepb.Assistant) discoveryEngineAssistantPolicy {
+	var p discoveryEngineAssistantPolicy
+	cp := a.GetCustomerPolicy()
+	if ma := cp.GetModelArmorConfig(); ma != nil {
+		p.promptTemplate = ma.GetUserPromptTemplate()
+		p.responseTemplate = ma.GetResponseTemplate()
+		if ma.GetFailureMode() != discoveryenginepb.Assistant_CustomerPolicy_ModelArmorConfig_FAILURE_MODE_UNSPECIFIED {
+			p.failureMode = ma.GetFailureMode().String()
+		}
+	}
+	p.bannedPhrases = make([]string, 0, len(cp.GetBannedPhrases()))
+	for _, bp := range cp.GetBannedPhrases() {
+		p.bannedPhrases = append(p.bannedPhrases, bp.GetPhrase())
+	}
+	p.contentPolicy = cp.GetDataProtectionPolicy().GetSensitiveDataProtectionPolicy().GetPolicy()
+	if a.GetWebGroundingType() != discoveryenginepb.Assistant_WEB_GROUNDING_TYPE_UNSPECIFIED {
+		p.webGroundingType = a.GetWebGroundingType().String()
+	}
+	connectors := make([]string, 0, len(a.GetEnabledTools()))
+	for c := range a.GetEnabledTools() {
+		connectors = append(connectors, c)
+	}
+	sort.Strings(connectors)
+	p.enabledTools = []string{}
+	for _, c := range connectors {
+		for _, ti := range a.GetEnabledTools()[c].GetToolInfo() {
+			p.enabledTools = append(p.enabledTools, ti.GetToolName())
+		}
+	}
+	return p
+}
+
+func newMqlDiscoveryEngineAssistant(runtime *plugin.Runtime, a *discoveryenginepb.Assistant) (*mqlGcpProjectDiscoveryEngineServiceAssistant, error) {
+	p := discoveryEngineAssistantPolicyOf(a)
+	res, err := CreateResource(runtime, "gcp.project.discoveryEngineService.assistant", map[string]*llx.RawData{
+		"name":                  llx.StringData(a.GetName()),
+		"displayName":           llx.StringData(a.GetDisplayName()),
+		"description":           llx.StringData(a.GetDescription()),
+		"modelArmorFailureMode": llx.StringData(p.failureMode),
+		"bannedPhrases":         llx.ArrayData(convert.SliceAnyToInterface(p.bannedPhrases), types.String),
+		"webGroundingType":      llx.StringData(p.webGroundingType),
+		"enabledTools":          llx.ArrayData(convert.SliceAnyToInterface(p.enabledTools), types.String),
+		"createdAt":             llx.TimeDataPtr(timestampAsTimePtr(a.GetCreateTime())),
+		"updatedAt":             llx.TimeDataPtr(timestampAsTimePtr(a.GetUpdateTime())),
+	})
+	if err != nil {
+		return nil, err
+	}
+	mqlA := res.(*mqlGcpProjectDiscoveryEngineServiceAssistant)
+	mqlA.cachePromptTemplate = p.promptTemplate
+	mqlA.cacheResponseTemplate = p.responseTemplate
+	mqlA.cacheContentPolicy = p.contentPolicy
+	return mqlA, nil
+}
+
+func (g *mqlGcpProjectDiscoveryEngineServiceAssistant) id() (string, error) {
+	return g.Name.Data, g.Name.Error
+}
+
+func (g *mqlGcpProjectDiscoveryEngineServiceAssistant) modelArmorPromptTemplate() (*mqlGcpProjectModelArmorServiceTemplate, error) {
+	return modelArmorTemplateRef(g.MqlRuntime, &g.ModelArmorPromptTemplate, g.cachePromptTemplate)
+}
+
+func (g *mqlGcpProjectDiscoveryEngineServiceAssistant) modelArmorResponseTemplate() (*mqlGcpProjectModelArmorServiceTemplate, error) {
+	return modelArmorTemplateRef(g.MqlRuntime, &g.ModelArmorResponseTemplate, g.cacheResponseTemplate)
+}
+
+// modelArmorTemplateRef resolves a Model Armor template by its full resource
+// name, marking the field null when no template is set.
+func modelArmorTemplateRef(runtime *plugin.Runtime, field *plugin.TValue[*mqlGcpProjectModelArmorServiceTemplate], name string) (*mqlGcpProjectModelArmorServiceTemplate, error) {
+	if name == "" {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(runtime, "gcp.project.modelArmorService.template", map[string]*llx.RawData{
+		"name": llx.StringData(name),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGcpProjectModelArmorServiceTemplate), nil
+}
+
+func (g *mqlGcpProjectDiscoveryEngineServiceAssistant) sensitiveDataProtectionPolicy() (*mqlGcpProjectDlpServiceContentPolicy, error) {
+	if g.cacheContentPolicy == "" {
+		g.SensitiveDataProtectionPolicy.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	cp, err := getDlpContentPolicyByName(g.MqlRuntime, g.cacheContentPolicy)
+	if err != nil {
+		return nil, err
+	}
+	if cp == nil {
+		g.SensitiveDataProtectionPolicy.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return cp, nil
 }
 
 func (g *mqlGcpProjectDiscoveryEngineServiceEngine) dataStores() ([]any, error) {
