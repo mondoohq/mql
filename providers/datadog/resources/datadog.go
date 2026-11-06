@@ -14,6 +14,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers/datadog/connection"
+	"go.mondoo.com/mql/types"
 )
 
 type mqlDatadogInternal struct {
@@ -237,7 +238,7 @@ func (r *mqlDatadog) monitors() ([]any, error) {
 				"query":        llx.StringData(m.GetQuery()),
 				"message":      llx.StringData(m.GetMessage()),
 				"overallState": llx.StringData(string(m.GetOverallState())),
-				"tags":         llx.ArrayData(tags, "\x02"),
+				"tags":         llx.ArrayData(tags, types.String),
 				"priority":     llx.IntData(priority),
 				"created":      llx.TimeDataPtr(timePtr(m.GetCreated())),
 				"modified":     llx.TimeDataPtr(timePtr(m.GetModified())),
@@ -339,8 +340,8 @@ func (r *mqlDatadog) syntheticsTests() ([]any, error) {
 			"subtype":   llx.StringData(string(t.GetSubtype())),
 			"status":    llx.StringData(string(t.GetStatus())),
 			"message":   llx.StringData(t.GetMessage()),
-			"tags":      llx.ArrayData(tags, "\x02"),
-			"locations": llx.ArrayData(locations, "\x02"),
+			"tags":      llx.ArrayData(tags, types.String),
+			"locations": llx.ArrayData(locations, types.String),
 			"monitorId": llx.IntData(t.GetMonitorId()),
 			"config":    llx.DictData(config),
 			"options":   llx.DictData(options),
@@ -409,13 +410,13 @@ func (r *mqlDatadog) slos() ([]any, error) {
 				"name":             llx.StringData(s.GetName()),
 				"type":             llx.StringData(string(s.GetType())),
 				"description":      llx.StringData(s.GetDescription()),
-				"tags":             llx.ArrayData(tags, "\x02"),
+				"tags":             llx.ArrayData(tags, types.String),
 				"targetThreshold":  llx.FloatData(targetThreshold),
 				"warningThreshold": llx.FloatData(warningThreshold),
 				"timeframe":        llx.StringData(timeframe),
 				"createdAt":        llx.TimeDataPtr(epochSecondsToTimePtr(s.GetCreatedAt())),
 				"modifiedAt":       llx.TimeDataPtr(epochSecondsToTimePtr(s.GetModifiedAt())),
-				"monitorIds":       llx.ArrayData(monitorIds, "\x05"),
+				"monitorIds":       llx.ArrayData(monitorIds, types.Int),
 			})
 			if err != nil {
 				return nil, err
@@ -499,7 +500,7 @@ func (r *mqlDatadog) logIndexes() ([]any, error) {
 			"dailyLimitWarningThresholdPercentage": llx.FloatData(warnPct),
 			"isRateLimited":                        llx.BoolData(idx.GetIsRateLimited()),
 			"numFlexLogsRetentionDays":             llx.IntData(numFlex),
-			"exclusionFilters":                     llx.ArrayData(exclusionFilters, "\x13"),
+			"exclusionFilters":                     llx.ArrayData(exclusionFilters, types.Dict),
 		})
 		if err != nil {
 			return nil, err
@@ -581,13 +582,13 @@ func (r *mqlDatadog) securityRules() ([]any, error) {
 				"message":          llx.StringData(rule.GetMessage()),
 				"isEnabled":        llx.BoolData(rule.GetIsEnabled()),
 				"hasExtendedTitle": llx.BoolData(rule.GetHasExtendedTitle()),
-				"tags":             llx.ArrayData(tags, "\x02"),
+				"tags":             llx.ArrayData(tags, types.String),
 				"isDefault":        llx.BoolData(rule.GetIsDefault()),
 				"isDeleted":        llx.BoolData(rule.GetIsDeleted()),
 				"createdAt":        llx.TimeDataPtr(timePtr(time.UnixMilli(rule.GetCreatedAt()))),
 				"updatedAt":        llx.TimeDataPtr(timePtr(time.UnixMilli(rule.GetUpdatedAt()))),
-				"cases":            llx.ArrayData(cases, "\x13"),
-				"filters":          llx.ArrayData(filters, "\x13"),
+				"cases":            llx.ArrayData(cases, types.Dict),
+				"filters":          llx.ArrayData(filters, types.Dict),
 				"options":          llx.DictData(options),
 			})
 			if err != nil {
@@ -675,8 +676,8 @@ func (r *mqlDatadog) downtimes() ([]any, error) {
 			"displayTimezone":               llx.StringData(attrs.GetDisplayTimezone()),
 			"message":                       llx.StringData(attrs.GetMessage()),
 			"muteFirstRecoveryNotification": llx.BoolData(attrs.GetMuteFirstRecoveryNotification()),
-			"notifyEndStates":               llx.ArrayData(notifyEndStates, "\x02"),
-			"notifyEndTypes":                llx.ArrayData(notifyEndTypes, "\x02"),
+			"notifyEndStates":               llx.ArrayData(notifyEndStates, types.String),
+			"notifyEndTypes":                llx.ArrayData(notifyEndTypes, types.String),
 			"status":                        llx.StringData(string(attrs.GetStatus())),
 			"monitorIdentifier":             llx.DictData(monitorId),
 			"schedule":                      llx.DictData(schedule),
@@ -750,7 +751,7 @@ func (r *mqlDatadog) applicationKeys() ([]any, error) {
 			"name":       llx.StringData(attrs.GetName()),
 			"createdAt":  llx.TimeDataPtr(parseTime(attrs.GetCreatedAt())),
 			"last4":      llx.StringData(attrs.GetLast4()),
-			"scopes":     llx.ArrayData(scopes, "\x02"),
+			"scopes":     llx.ArrayData(scopes, types.String),
 			"lastUsedAt": llx.TimeDataPtr(parseTime(attrs.GetLastUsedAt())),
 		})
 		if err != nil {
@@ -890,11 +891,11 @@ func (r *mqlDatadog) integrationAwsAccounts() ([]any, error) {
 			"metricsEnabled":            llx.BoolData(metricsEnabled),
 			"resourceCollectionEnabled": llx.BoolData(resourceCollectionEnabled),
 			"logsEnabled":               llx.BoolData(logsEnabled),
-			"filterTags":                llx.ArrayData(filterTags, "\x02"),
-			"hostTags":                  llx.ArrayData([]any{}, "\x02"),
-			"accountTags":               llx.ArrayData(accountTags, "\x02"),
-			"excludedRegions":           llx.ArrayData([]any{}, "\x02"),
-			"includedRegions":           llx.ArrayData(includedRegions, "\x02"),
+			"filterTags":                llx.ArrayData(filterTags, types.String),
+			"hostTags":                  llx.ArrayData([]any{}, types.String),
+			"accountTags":               llx.ArrayData(accountTags, types.String),
+			"excludedRegions":           llx.ArrayData([]any{}, types.String),
+			"includedRegions":           llx.ArrayData(includedRegions, types.String),
 		})
 		if err != nil {
 			return nil, err

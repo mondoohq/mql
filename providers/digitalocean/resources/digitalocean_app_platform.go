@@ -11,6 +11,7 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/digitalocean/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // timePtr returns a pointer to t, or nil when t is the zero value, so an
@@ -55,11 +56,11 @@ func newAppDeployment(runtime *plugin.Runtime, appID string, d *godo.Deployment)
 		"tierSlug":             llx.StringData(d.TierSlug),
 		"previousDeploymentId": llx.StringData(d.PreviousDeploymentID),
 		"loadBalancerId":       llx.StringData(d.LoadBalancerID),
-		"services":             llx.ArrayData(componentNames(d.Services, func(s *godo.DeploymentService) string { return s.Name }), "\x02"),
-		"workers":              llx.ArrayData(componentNames(d.Workers, func(w *godo.DeploymentWorker) string { return w.Name }), "\x02"),
-		"jobs":                 llx.ArrayData(componentNames(d.Jobs, func(j *godo.DeploymentJob) string { return j.Name }), "\x02"),
-		"staticSites":          llx.ArrayData(componentNames(d.StaticSites, func(s *godo.DeploymentStaticSite) string { return s.Name }), "\x02"),
-		"functions":            llx.ArrayData(componentNames(d.Functions, func(f *godo.DeploymentFunctions) string { return f.Name }), "\x02"),
+		"services":             llx.ArrayData(componentNames(d.Services, func(s *godo.DeploymentService) string { return s.Name }), types.String),
+		"workers":              llx.ArrayData(componentNames(d.Workers, func(w *godo.DeploymentWorker) string { return w.Name }), types.String),
+		"jobs":                 llx.ArrayData(componentNames(d.Jobs, func(j *godo.DeploymentJob) string { return j.Name }), types.String),
+		"staticSites":          llx.ArrayData(componentNames(d.StaticSites, func(s *godo.DeploymentStaticSite) string { return s.Name }), types.String),
+		"functions":            llx.ArrayData(componentNames(d.Functions, func(f *godo.DeploymentFunctions) string { return f.Name }), types.String),
 		"progressSuccessSteps": llx.IntData(successSteps),
 		"progressErrorSteps":   llx.IntData(errorSteps),
 		"progressTotalSteps":   llx.IntData(totalSteps),
@@ -295,7 +296,7 @@ func (r *mqlDigitaloceanApp) alerts() ([]any, error) {
 			"value":             llx.FloatData(value),
 			"window":            llx.StringData(window),
 			"phase":             llx.StringData(string(a.Phase)),
-			"emails":            llx.ArrayData(emails, "\x02"),
+			"emails":            llx.ArrayData(emails, types.String),
 			"slackWebhookCount": llx.IntData(int64(len(a.SlackWebhooks))),
 		})
 		if err != nil {

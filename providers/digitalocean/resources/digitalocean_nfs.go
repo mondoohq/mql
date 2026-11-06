@@ -59,7 +59,7 @@ func (r *mqlDigitalocean) nfsShares() ([]any, error) {
 					"performanceTier": llx.StringData(s.PerformanceTier),
 					"host":            llx.StringData(s.Host),
 					"mountPath":       llx.StringData(s.MountPath),
-					"vpcIds":          llx.ArrayData(vpcIDs, "\x02"),
+					"vpcIds":          llx.ArrayData(vpcIDs, types.String),
 					"createdAt":       llx.TimeDataPtr(createdAt),
 				})
 				if err != nil {

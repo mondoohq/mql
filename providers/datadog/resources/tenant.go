@@ -11,6 +11,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers/datadog/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // nullableTimePtr unwraps a nullable timestamp. Datadog sends these fields
@@ -121,7 +122,7 @@ func (r *mqlDatadogOauthClient) authorizations() ([]any, error) {
 
 			res, err := CreateResource(r.MqlRuntime, "datadog.oauthClient.authorization", map[string]*llx.RawData{
 				"id":            llx.StringData(a.GetId()),
-				"scopes":        llx.ArrayData(scopes, "\x02"),
+				"scopes":        llx.ArrayData(scopes, types.String),
 				"disabled":      llx.BoolData(attrs.GetDisabled()),
 				"orgDisabled":   llx.BoolData(attrs.GetOrgDisabled()),
 				"createdAt":     llx.TimeDataPtr(timePtr(attrs.GetCreatedAt())),
@@ -231,7 +232,7 @@ func (r *mqlDatadog) orgConnections() ([]any, error) {
 
 			res, err := CreateResource(r.MqlRuntime, "datadog.orgConnection", map[string]*llx.RawData{
 				"id":              llx.StringData(c.GetId().String()),
-				"connectionTypes": llx.ArrayData(connectionTypes, "\x02"),
+				"connectionTypes": llx.ArrayData(connectionTypes, types.String),
 				"createdAt":       llx.TimeDataPtr(timePtr(attrs.GetCreatedAt())),
 				"sourceOrgId":     llx.StringData(sourceOrg.GetId()),
 				"sourceOrgName":   llx.StringData(sourceOrg.GetName()),

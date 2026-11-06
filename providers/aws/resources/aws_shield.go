@@ -138,7 +138,7 @@ func (a *mqlAwsShield) protections() ([]any, error) {
 					"arn":            llx.StringDataPtr(p.ProtectionArn),
 					"name":           llx.StringDataPtr(p.Name),
 					"resourceArn":    llx.StringDataPtr(p.ResourceArn),
-					"healthCheckIds": llx.ArrayData(llx.TArr2Raw(p.HealthCheckIds), "string"),
+					"healthCheckIds": llx.ArrayData(llx.TArr2Raw(p.HealthCheckIds), types.String),
 					"applicationLayerAutomaticResponseEnabled": llx.BoolData(appLayerEnabled),
 					"applicationLayerAutomaticResponseAction":  llx.StringData(appLayerAction),
 				})
@@ -181,7 +181,7 @@ func (a *mqlAwsShield) protectionGroups() ([]any, error) {
 					"aggregation":  llx.StringData(string(pg.Aggregation)),
 					"pattern":      llx.StringData(string(pg.Pattern)),
 					"resourceType": llx.StringData(string(pg.ResourceType)),
-					"members":      llx.ArrayData(llx.TArr2Raw(pg.Members), "string"),
+					"members":      llx.ArrayData(llx.TArr2Raw(pg.Members), types.String),
 				})
 			if err != nil {
 				return nil, err
@@ -222,7 +222,7 @@ func (a *mqlAwsShield) drtAccess() (*mqlAwsShieldDrtAccess, error) {
 
 	mqlDrt, err := CreateResource(a.MqlRuntime, "aws.shield.drtAccess",
 		map[string]*llx.RawData{
-			"logBucketList": llx.ArrayData(llx.TArr2Raw(resp.LogBucketList), "string"),
+			"logBucketList": llx.ArrayData(llx.TArr2Raw(resp.LogBucketList), types.String),
 		})
 	if err != nil {
 		return nil, err

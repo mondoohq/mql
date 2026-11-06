@@ -8,6 +8,7 @@ import (
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers/clickhousecloud/connection"
+	"go.mondoo.com/mql/types"
 )
 
 type apiIPAccess struct {
@@ -77,11 +78,11 @@ func (r *mqlClickhousecloudOrganization) services() ([]any, error) {
 			"state":                        llx.StringData(svc.State),
 			"tier":                         llx.StringData(svc.Tier),
 			"openToAllIps":                 llx.BoolData(openToAll),
-			"ipAccessList":                 llx.ArrayData(ipList, "clickhousecloud.service.ipAccess"),
-			"endpoints":                    llx.ArrayData(endpoints, "clickhousecloud.service.endpoint"),
+			"ipAccessList":                 llx.ArrayData(ipList, types.Resource("clickhousecloud.service.ipAccess")),
+			"endpoints":                    llx.ArrayData(endpoints, types.Resource("clickhousecloud.service.endpoint")),
 			"hasTransparentDataEncryption": llx.BoolData(svc.HasTransparentDataEncryption),
 			"hasPrivateEndpoints":          llx.BoolData(len(svc.PrivateEndpointIds) > 0),
-			"privateEndpointIds":           llx.ArrayData(toAnySlice(svc.PrivateEndpointIds), "string"),
+			"privateEndpointIds":           llx.ArrayData(toAnySlice(svc.PrivateEndpointIds), types.String),
 			"isReadonly":                   llx.BoolData(svc.IsReadonly),
 			"minReplicaMemoryGb":           llx.IntData(int64(svc.MinReplicaMemoryGb)),
 			"maxReplicaMemoryGb":           llx.IntData(int64(svc.MaxReplicaMemoryGb)),

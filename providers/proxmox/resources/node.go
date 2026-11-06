@@ -11,6 +11,7 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/proxmox/connection"
+	"go.mondoo.com/mql/types"
 )
 
 type mqlProxmoxNodeInternal struct {
@@ -272,7 +273,7 @@ func (r *mqlProxmoxNode) certificates() ([]any, error) {
 			"notBefore":     llx.TimeData(time.Unix(c.NotBefore, 0).UTC()),
 			"publicKeyBits": llx.IntData(int64(c.PublicKeyBits)),
 			"publicKeyType": llx.StringData(c.PublicKeyType),
-			"san":           llx.ArrayData(san, "\x02"),
+			"san":           llx.ArrayData(san, types.String),
 			"subject":       llx.StringData(c.Subject),
 		})
 		if err != nil {
@@ -321,9 +322,9 @@ func (r *mqlProxmoxNode) repositories() ([]any, error) {
 			if name == "" && len(repo.URIs) > 0 {
 				name = repo.URIs[0]
 			}
-			var types, uris, suites, components []any
+			var repoTypes, uris, suites, components []any
 			for _, t := range repo.Types {
-				types = append(types, t)
+				repoTypes = append(repoTypes, t)
 			}
 			for _, u := range repo.URIs {
 				uris = append(uris, u)
@@ -348,10 +349,10 @@ func (r *mqlProxmoxNode) repositories() ([]any, error) {
 				"id":         llx.StringData(repoID),
 				"name":       llx.StringData(name),
 				"enabled":    llx.BoolData(repo.Enabled),
-				"types":      llx.ArrayData(types, "\x02"),
-				"uris":       llx.ArrayData(uris, "\x02"),
-				"suites":     llx.ArrayData(suites, "\x02"),
-				"components": llx.ArrayData(components, "\x02"),
+				"types":      llx.ArrayData(repoTypes, types.String),
+				"uris":       llx.ArrayData(uris, types.String),
+				"suites":     llx.ArrayData(suites, types.String),
+				"components": llx.ArrayData(components, types.String),
 				"fileType":   llx.StringData(file.FileType),
 				"signedBy":   llx.StringData(signedBy),
 			})

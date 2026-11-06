@@ -16,6 +16,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/sshutil"
 	"go.mondoo.com/mql/providers/digitalocean/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (r *mqlDigitalocean) id() (string, error) {
@@ -223,8 +224,8 @@ func (r *mqlDigitalocean) droplets() ([]any, error) {
 			"publicIpv4":            llx.StringData(publicIPv4),
 			"privateIpv4":           llx.StringData(privateIPv4),
 			"publicIpv6":            llx.StringData(publicIPv6),
-			"tags":                  llx.ArrayData(tags, "\x02"),
-			"features":              llx.ArrayData(features, "\x02"),
+			"tags":                  llx.ArrayData(tags, types.String),
+			"features":              llx.ArrayData(features, types.String),
 			"backupsEnabled":        llx.BoolData(backupsEnabled),
 			"monitoringEnabled":     llx.BoolData(monitoringEnabled),
 			"kernel":                llx.DictData(kernelDict),
@@ -435,7 +436,7 @@ func (r *mqlDigitalocean) volumes() ([]any, error) {
 				"filesystemType":  llx.StringData(v.FilesystemType),
 				"filesystemLabel": llx.StringData(v.FilesystemLabel),
 				"createdAt":       llx.TimeData(v.CreatedAt),
-				"tags":            llx.ArrayData(tags, "\x02"),
+				"tags":            llx.ArrayData(tags, types.String),
 			})
 			if err != nil {
 				return nil, err
@@ -703,7 +704,7 @@ func (r *mqlDigitalocean) certificates() ([]any, error) {
 			"sha1Fingerprint": llx.StringData(c.SHA1Fingerprint),
 			"state":           llx.StringData(c.State),
 			"type":            llx.StringData(c.Type),
-			"dnsNames":        llx.ArrayData(dnsNames, "\x02"),
+			"dnsNames":        llx.ArrayData(dnsNames, types.String),
 			"notAfter":        llx.TimeDataPtr(parseDoTime(c.NotAfter)),
 			"createdAt":       llx.TimeDataPtr(parseDoTime(c.Created)),
 		})

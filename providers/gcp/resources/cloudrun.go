@@ -485,7 +485,7 @@ func (g *mqlGcpProjectCloudRunService) services() ([]any, error) {
 				"vpcAccessConfig":                      llx.ResourceData(mqlVpcAccessCfg, "gcp.project.cloudRunService.vpcAccessConfig"),
 				"timeout":                              llx.TimeData(llx.DurationToTime(s.Template.GetTimeout().GetSeconds())),
 				"serviceAccountEmail":                  llx.StringData(s.Template.ServiceAccount),
-				"containers":                           llx.ArrayData(mqlContainers, "gcp.project.cloudRunService.container"),
+				"containers":                           llx.ArrayData(mqlContainers, types.Resource("gcp.project.cloudRunService.container")),
 				"volumes":                              llx.ArrayData(mqlVolumes(s.Template.Volumes), types.Dict),
 				"executionEnvironment":                 llx.StringData(s.Template.ExecutionEnvironment.String()),
 				"encryptionKey":                        llx.StringData(s.Template.EncryptionKey),

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/types"
 )
 
 func (r *mqlClickhousedbInstance) users() ([]any, error) {
@@ -55,21 +56,21 @@ func (r *mqlClickhousedbInstance) users() ([]any, error) {
 		res, err := CreateResource(r.MqlRuntime, "clickhousedb.user", map[string]*llx.RawData{
 			"__id":               llx.StringData(serverID + "/user/" + name),
 			"name":               llx.StringData(name),
-			"authTypes":          llx.ArrayData(toAnySlice(authTypes), "string"),
+			"authTypes":          llx.ArrayData(toAnySlice(authTypes), types.String),
 			"hasPassword":        hasPassword,
 			"anyHost":            llx.BoolData(allowsAnyHost(hostIps, hostNamesRegexp, hostNamesLike)),
 			"storage":            llx.StringData(storage),
-			"hostIps":            llx.ArrayData(toAnySlice(hostIps), "string"),
-			"hostNames":          llx.ArrayData(toAnySlice(hostNames), "string"),
-			"hostNamesRegexp":    llx.ArrayData(toAnySlice(hostNamesRegexp), "string"),
-			"hostNamesLike":      llx.ArrayData(toAnySlice(hostNamesLike), "string"),
+			"hostIps":            llx.ArrayData(toAnySlice(hostIps), types.String),
+			"hostNames":          llx.ArrayData(toAnySlice(hostNames), types.String),
+			"hostNamesRegexp":    llx.ArrayData(toAnySlice(hostNamesRegexp), types.String),
+			"hostNamesLike":      llx.ArrayData(toAnySlice(hostNamesLike), types.String),
 			"defaultRolesAll":    llx.BoolData(defaultRolesAll != 0),
-			"defaultRoles":       llx.ArrayData(toAnySlice(defaultRoles), "string"),
-			"defaultRolesExcept": llx.ArrayData(toAnySlice(defaultRolesExcept), "string"),
+			"defaultRoles":       llx.ArrayData(toAnySlice(defaultRoles), types.String),
+			"defaultRolesExcept": llx.ArrayData(toAnySlice(defaultRolesExcept), types.String),
 			"defaultDatabase":    llx.StringData(defaultDatabase),
 			"granteesAny":        llx.BoolData(granteesAny != 0),
-			"granteesList":       llx.ArrayData(toAnySlice(granteesList), "string"),
-			"granteesExcept":     llx.ArrayData(toAnySlice(granteesExcept), "string"),
+			"granteesList":       llx.ArrayData(toAnySlice(granteesList), types.String),
+			"granteesExcept":     llx.ArrayData(toAnySlice(granteesExcept), types.String),
 		})
 		if err != nil {
 			return nil, err
