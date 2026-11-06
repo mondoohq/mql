@@ -540,6 +540,11 @@ const (
 	ResourceAzureSubscriptionLighthouseServiceRegistrationDefinition                                    string = "azure.subscription.lighthouseService.registrationDefinition"
 	ResourceAzureSubscriptionLighthouseServiceRegistrationDefinitionAuthorization                       string = "azure.subscription.lighthouseService.registrationDefinition.authorization"
 	ResourceAzureSubscriptionLighthouseServiceRegistrationAssignment                                    string = "azure.subscription.lighthouseService.registrationAssignment"
+	ResourceAzureSubscriptionBotService                                                                 string = "azure.subscription.botService"
+	ResourceAzureSubscriptionBotServiceBot                                                              string = "azure.subscription.botService.bot"
+	ResourceAzureSubscriptionBotServiceBotChannel                                                       string = "azure.subscription.botService.bot.channel"
+	ResourceAzureSubscriptionBotServiceBotChannelSite                                                   string = "azure.subscription.botService.bot.channel.site"
+	ResourceAzureSubscriptionBotServiceBotConnection                                                    string = "azure.subscription.botService.bot.connection"
 	ResourceAzureSubscriptionMachineLearningService                                                     string = "azure.subscription.machineLearningService"
 	ResourceAzureSubscriptionMachineLearningServiceRegistry                                             string = "azure.subscription.machineLearningService.registry"
 	ResourceAzureSubscriptionMachineLearningServiceRegistryRegion                                       string = "azure.subscription.machineLearningService.registry.region"
@@ -2741,6 +2746,26 @@ func init() {
 			// to override args, implement: initAzureSubscriptionLighthouseServiceRegistrationAssignment(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAzureSubscriptionLighthouseServiceRegistrationAssignment,
 		},
+		"azure.subscription.botService": {
+			Init:   initAzureSubscriptionBotService,
+			Create: createAzureSubscriptionBotService,
+		},
+		"azure.subscription.botService.bot": {
+			// to override args, implement: initAzureSubscriptionBotServiceBot(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionBotServiceBot,
+		},
+		"azure.subscription.botService.bot.channel": {
+			// to override args, implement: initAzureSubscriptionBotServiceBotChannel(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionBotServiceBotChannel,
+		},
+		"azure.subscription.botService.bot.channel.site": {
+			// to override args, implement: initAzureSubscriptionBotServiceBotChannelSite(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionBotServiceBotChannelSite,
+		},
+		"azure.subscription.botService.bot.connection": {
+			// to override args, implement: initAzureSubscriptionBotServiceBotConnection(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionBotServiceBotConnection,
+		},
 		"azure.subscription.machineLearningService": {
 			Init:   initAzureSubscriptionMachineLearningService,
 			Create: createAzureSubscriptionMachineLearningService,
@@ -3468,6 +3493,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.desktopVirtualization": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscription).GetDesktopVirtualization()).ToDataRes(types.Resource("azure.subscription.desktopVirtualizationService"))
+	},
+	"azure.subscription.botService": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscription).GetBotService()).ToDataRes(types.Resource("azure.subscription.botService"))
 	},
 	"azure.subscription.webService.function.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionWebServiceFunction).GetId()).ToDataRes(types.String)
@@ -21751,6 +21779,162 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.lighthouseService.registrationAssignment.systemMetadata": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionLighthouseServiceRegistrationAssignment).GetSystemMetadata()).ToDataRes(types.Resource("azure.subscription.systemData"))
 	},
+	"azure.subscription.botService.subscriptionId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotService).GetSubscriptionId()).ToDataRes(types.String)
+	},
+	"azure.subscription.botService.bots": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotService).GetBots()).ToDataRes(types.Array(types.Resource("azure.subscription.botService.bot")))
+	},
+	"azure.subscription.botService.bot.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBot).GetId()).ToDataRes(types.String)
+	},
+	"azure.subscription.botService.bot.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBot).GetName()).ToDataRes(types.String)
+	},
+	"azure.subscription.botService.bot.location": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBot).GetLocation()).ToDataRes(types.String)
+	},
+	"azure.subscription.botService.bot.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBot).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"azure.subscription.botService.bot.kind": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBot).GetKind()).ToDataRes(types.String)
+	},
+	"azure.subscription.botService.bot.skuData": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBot).GetSkuData()).ToDataRes(types.Resource("azure.subscription.resourceSku"))
+	},
+	"azure.subscription.botService.bot.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBot).GetDisplayName()).ToDataRes(types.String)
+	},
+	"azure.subscription.botService.bot.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBot).GetDescription()).ToDataRes(types.String)
+	},
+	"azure.subscription.botService.bot.endpoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBot).GetEndpoint()).ToDataRes(types.String)
+	},
+	"azure.subscription.botService.bot.endpointVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBot).GetEndpointVersion()).ToDataRes(types.String)
+	},
+	"azure.subscription.botService.bot.provisioningState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBot).GetProvisioningState()).ToDataRes(types.String)
+	},
+	"azure.subscription.botService.bot.publicNetworkAccess": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBot).GetPublicNetworkAccess()).ToDataRes(types.String)
+	},
+	"azure.subscription.botService.bot.disableLocalAuth": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBot).GetDisableLocalAuth()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.botService.bot.isCmekEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBot).GetIsCmekEnabled()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.botService.bot.cmekEncryptionStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBot).GetCmekEncryptionStatus()).ToDataRes(types.String)
+	},
+	"azure.subscription.botService.bot.cmkKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBot).GetCmkKey()).ToDataRes(types.Resource("azure.subscription.keyVaultService.key"))
+	},
+	"azure.subscription.botService.bot.msaAppId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBot).GetMsaAppId()).ToDataRes(types.String)
+	},
+	"azure.subscription.botService.bot.msaAppType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBot).GetMsaAppType()).ToDataRes(types.String)
+	},
+	"azure.subscription.botService.bot.msaAppTenantId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBot).GetMsaAppTenantId()).ToDataRes(types.String)
+	},
+	"azure.subscription.botService.bot.msaAppManagedIdentity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBot).GetMsaAppManagedIdentity()).ToDataRes(types.Resource("azure.subscription.managedIdentity"))
+	},
+	"azure.subscription.botService.bot.enabledChannels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBot).GetEnabledChannels()).ToDataRes(types.Array(types.String))
+	},
+	"azure.subscription.botService.bot.configuredChannels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBot).GetConfiguredChannels()).ToDataRes(types.Array(types.String))
+	},
+	"azure.subscription.botService.bot.isStreamingSupported": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBot).GetIsStreamingSupported()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.botService.bot.privateEndpointConnections": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBot).GetPrivateEndpointConnections()).ToDataRes(types.Array(types.Resource("azure.subscription.privateEndpointConnection")))
+	},
+	"azure.subscription.botService.bot.channels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBot).GetChannels()).ToDataRes(types.Array(types.Resource("azure.subscription.botService.bot.channel")))
+	},
+	"azure.subscription.botService.bot.connections": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBot).GetConnections()).ToDataRes(types.Array(types.Resource("azure.subscription.botService.bot.connection")))
+	},
+	"azure.subscription.botService.bot.channel.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBotChannel).GetId()).ToDataRes(types.String)
+	},
+	"azure.subscription.botService.bot.channel.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBotChannel).GetName()).ToDataRes(types.String)
+	},
+	"azure.subscription.botService.bot.channel.channelName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBotChannel).GetChannelName()).ToDataRes(types.String)
+	},
+	"azure.subscription.botService.bot.channel.location": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBotChannel).GetLocation()).ToDataRes(types.String)
+	},
+	"azure.subscription.botService.bot.channel.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBotChannel).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"azure.subscription.botService.bot.channel.provisioningState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBotChannel).GetProvisioningState()).ToDataRes(types.String)
+	},
+	"azure.subscription.botService.bot.channel.sites": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBotChannel).GetSites()).ToDataRes(types.Array(types.Resource("azure.subscription.botService.bot.channel.site")))
+	},
+	"azure.subscription.botService.bot.channel.site.siteId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBotChannelSite).GetSiteId()).ToDataRes(types.String)
+	},
+	"azure.subscription.botService.bot.channel.site.siteName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBotChannelSite).GetSiteName()).ToDataRes(types.String)
+	},
+	"azure.subscription.botService.bot.channel.site.isEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBotChannelSite).GetIsEnabled()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.botService.bot.channel.site.isSecureSiteEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBotChannelSite).GetIsSecureSiteEnabled()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.botService.bot.channel.site.trustedOrigins": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBotChannelSite).GetTrustedOrigins()).ToDataRes(types.Array(types.String))
+	},
+	"azure.subscription.botService.bot.channel.site.isV1Enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBotChannelSite).GetIsV1Enabled()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.botService.bot.channel.site.isV3Enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBotChannelSite).GetIsV3Enabled()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.botService.bot.channel.site.isTokenEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBotChannelSite).GetIsTokenEnabled()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.botService.bot.channel.site.isBlockUserUploadEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBotChannelSite).GetIsBlockUserUploadEnabled()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.botService.bot.channel.site.isNoStorageEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBotChannelSite).GetIsNoStorageEnabled()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.botService.bot.channel.site.isDetailedLoggingEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBotChannelSite).GetIsDetailedLoggingEnabled()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.botService.bot.connection.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBotConnection).GetId()).ToDataRes(types.String)
+	},
+	"azure.subscription.botService.bot.connection.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBotConnection).GetName()).ToDataRes(types.String)
+	},
+	"azure.subscription.botService.bot.connection.serviceProviderDisplayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBotConnection).GetServiceProviderDisplayName()).ToDataRes(types.String)
+	},
+	"azure.subscription.botService.bot.connection.serviceProviderId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBotConnection).GetServiceProviderId()).ToDataRes(types.String)
+	},
+	"azure.subscription.botService.bot.connection.scopes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBotConnection).GetScopes()).ToDataRes(types.String)
+	},
+	"azure.subscription.botService.bot.connection.provisioningState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionBotServiceBotConnection).GetProvisioningState()).ToDataRes(types.String)
+	},
 	"azure.subscription.machineLearningService.subscriptionId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionMachineLearningService).GetSubscriptionId()).ToDataRes(types.String)
 	},
@@ -25845,6 +26029,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.desktopVirtualization": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscription).DesktopVirtualization, ok = plugin.RawToTValue[*mqlAzureSubscriptionDesktopVirtualizationService](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscription).BotService, ok = plugin.RawToTValue[*mqlAzureSubscriptionBotService](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.webService.function.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -52303,6 +52491,234 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionLighthouseServiceRegistrationAssignment).SystemMetadata, ok = plugin.RawToTValue[*mqlAzureSubscriptionSystemData](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.botService.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotService).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.subscription.botService.subscriptionId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotService).SubscriptionId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bots": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotService).Bots, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBot).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.subscription.botService.bot.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBot).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBot).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.location": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBot).Location, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBot).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.kind": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBot).Kind, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.skuData": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBot).SkuData, ok = plugin.RawToTValue[*mqlAzureSubscriptionResourceSku](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBot).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBot).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.endpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBot).Endpoint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.endpointVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBot).EndpointVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.provisioningState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBot).ProvisioningState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.publicNetworkAccess": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBot).PublicNetworkAccess, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.disableLocalAuth": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBot).DisableLocalAuth, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.isCmekEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBot).IsCmekEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.cmekEncryptionStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBot).CmekEncryptionStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.cmkKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBot).CmkKey, ok = plugin.RawToTValue[*mqlAzureSubscriptionKeyVaultServiceKey](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.msaAppId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBot).MsaAppId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.msaAppType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBot).MsaAppType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.msaAppTenantId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBot).MsaAppTenantId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.msaAppManagedIdentity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBot).MsaAppManagedIdentity, ok = plugin.RawToTValue[*mqlAzureSubscriptionManagedIdentity](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.enabledChannels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBot).EnabledChannels, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.configuredChannels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBot).ConfiguredChannels, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.isStreamingSupported": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBot).IsStreamingSupported, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.privateEndpointConnections": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBot).PrivateEndpointConnections, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.channels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBot).Channels, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.connections": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBot).Connections, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.channel.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBotChannel).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.subscription.botService.bot.channel.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBotChannel).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.channel.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBotChannel).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.channel.channelName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBotChannel).ChannelName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.channel.location": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBotChannel).Location, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.channel.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBotChannel).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.channel.provisioningState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBotChannel).ProvisioningState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.channel.sites": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBotChannel).Sites, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.channel.site.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBotChannelSite).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.subscription.botService.bot.channel.site.siteId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBotChannelSite).SiteId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.channel.site.siteName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBotChannelSite).SiteName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.channel.site.isEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBotChannelSite).IsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.channel.site.isSecureSiteEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBotChannelSite).IsSecureSiteEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.channel.site.trustedOrigins": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBotChannelSite).TrustedOrigins, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.channel.site.isV1Enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBotChannelSite).IsV1Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.channel.site.isV3Enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBotChannelSite).IsV3Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.channel.site.isTokenEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBotChannelSite).IsTokenEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.channel.site.isBlockUserUploadEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBotChannelSite).IsBlockUserUploadEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.channel.site.isNoStorageEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBotChannelSite).IsNoStorageEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.channel.site.isDetailedLoggingEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBotChannelSite).IsDetailedLoggingEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.connection.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBotConnection).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.subscription.botService.bot.connection.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBotConnection).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.connection.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBotConnection).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.connection.serviceProviderDisplayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBotConnection).ServiceProviderDisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.connection.serviceProviderId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBotConnection).ServiceProviderId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.connection.scopes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBotConnection).Scopes, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.botService.bot.connection.provisioningState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionBotServiceBotConnection).ProvisioningState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.machineLearningService.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionMachineLearningService).__id, ok = v.Value.(string)
 		return
@@ -58036,6 +58452,7 @@ type mqlAzureSubscription struct {
 	Kusto                 plugin.TValue[*mqlAzureSubscriptionKustoService]
 	Automation            plugin.TValue[*mqlAzureSubscriptionAutomationService]
 	DesktopVirtualization plugin.TValue[*mqlAzureSubscriptionDesktopVirtualizationService]
+	BotService            plugin.TValue[*mqlAzureSubscriptionBotService]
 }
 
 // createAzureSubscription creates a new instance of this resource
@@ -59020,6 +59437,22 @@ func (c *mqlAzureSubscription) GetDesktopVirtualization() *plugin.TValue[*mqlAzu
 		}
 
 		return c.desktopVirtualization()
+	})
+}
+
+func (c *mqlAzureSubscription) GetBotService() *plugin.TValue[*mqlAzureSubscriptionBotService] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionBotService](&c.BotService, func() (*mqlAzureSubscriptionBotService, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription", c.__id, "botService")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionBotService), nil
+			}
+		}
+
+		return c.botService()
 	})
 }
 
@@ -122581,6 +123014,553 @@ func (c *mqlAzureSubscriptionLighthouseServiceRegistrationAssignment) GetSystemM
 
 		return c.systemMetadata()
 	})
+}
+
+// mqlAzureSubscriptionBotService for the azure.subscription.botService resource
+type mqlAzureSubscriptionBotService struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzureSubscriptionBotServiceInternal it will be used here
+	SubscriptionId plugin.TValue[string]
+	Bots           plugin.TValue[[]any]
+}
+
+// createAzureSubscriptionBotService creates a new instance of this resource
+func createAzureSubscriptionBotService(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionBotService{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.subscription.botService", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureSubscriptionBotService) MqlName() string {
+	return "azure.subscription.botService"
+}
+
+func (c *mqlAzureSubscriptionBotService) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureSubscriptionBotService) GetSubscriptionId() *plugin.TValue[string] {
+	return &c.SubscriptionId
+}
+
+func (c *mqlAzureSubscriptionBotService) GetBots() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Bots, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.botService", c.__id, "bots")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.bots()
+	})
+}
+
+// mqlAzureSubscriptionBotServiceBot for the azure.subscription.botService.bot resource
+type mqlAzureSubscriptionBotServiceBot struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAzureSubscriptionBotServiceBotInternal
+	Id                         plugin.TValue[string]
+	Name                       plugin.TValue[string]
+	Location                   plugin.TValue[string]
+	Tags                       plugin.TValue[map[string]any]
+	Kind                       plugin.TValue[string]
+	SkuData                    plugin.TValue[*mqlAzureSubscriptionResourceSku]
+	DisplayName                plugin.TValue[string]
+	Description                plugin.TValue[string]
+	Endpoint                   plugin.TValue[string]
+	EndpointVersion            plugin.TValue[string]
+	ProvisioningState          plugin.TValue[string]
+	PublicNetworkAccess        plugin.TValue[string]
+	DisableLocalAuth           plugin.TValue[bool]
+	IsCmekEnabled              plugin.TValue[bool]
+	CmekEncryptionStatus       plugin.TValue[string]
+	CmkKey                     plugin.TValue[*mqlAzureSubscriptionKeyVaultServiceKey]
+	MsaAppId                   plugin.TValue[string]
+	MsaAppType                 plugin.TValue[string]
+	MsaAppTenantId             plugin.TValue[string]
+	MsaAppManagedIdentity      plugin.TValue[*mqlAzureSubscriptionManagedIdentity]
+	EnabledChannels            plugin.TValue[[]any]
+	ConfiguredChannels         plugin.TValue[[]any]
+	IsStreamingSupported       plugin.TValue[bool]
+	PrivateEndpointConnections plugin.TValue[[]any]
+	Channels                   plugin.TValue[[]any]
+	Connections                plugin.TValue[[]any]
+}
+
+// createAzureSubscriptionBotServiceBot creates a new instance of this resource
+func createAzureSubscriptionBotServiceBot(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionBotServiceBot{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.subscription.botService.bot", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) MqlName() string {
+	return "azure.subscription.botService.bot"
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) GetLocation() *plugin.TValue[string] {
+	return &c.Location
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) GetTags() *plugin.TValue[map[string]any] {
+	return &c.Tags
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) GetKind() *plugin.TValue[string] {
+	return &c.Kind
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) GetSkuData() *plugin.TValue[*mqlAzureSubscriptionResourceSku] {
+	return &c.SkuData
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) GetEndpoint() *plugin.TValue[string] {
+	return &c.Endpoint
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) GetEndpointVersion() *plugin.TValue[string] {
+	return &c.EndpointVersion
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) GetProvisioningState() *plugin.TValue[string] {
+	return &c.ProvisioningState
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) GetPublicNetworkAccess() *plugin.TValue[string] {
+	return &c.PublicNetworkAccess
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) GetDisableLocalAuth() *plugin.TValue[bool] {
+	return &c.DisableLocalAuth
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) GetIsCmekEnabled() *plugin.TValue[bool] {
+	return &c.IsCmekEnabled
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) GetCmekEncryptionStatus() *plugin.TValue[string] {
+	return &c.CmekEncryptionStatus
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) GetCmkKey() *plugin.TValue[*mqlAzureSubscriptionKeyVaultServiceKey] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionKeyVaultServiceKey](&c.CmkKey, func() (*mqlAzureSubscriptionKeyVaultServiceKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.botService.bot", c.__id, "cmkKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionKeyVaultServiceKey), nil
+			}
+		}
+
+		return c.cmkKey()
+	})
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) GetMsaAppId() *plugin.TValue[string] {
+	return &c.MsaAppId
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) GetMsaAppType() *plugin.TValue[string] {
+	return &c.MsaAppType
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) GetMsaAppTenantId() *plugin.TValue[string] {
+	return &c.MsaAppTenantId
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) GetMsaAppManagedIdentity() *plugin.TValue[*mqlAzureSubscriptionManagedIdentity] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionManagedIdentity](&c.MsaAppManagedIdentity, func() (*mqlAzureSubscriptionManagedIdentity, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.botService.bot", c.__id, "msaAppManagedIdentity")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionManagedIdentity), nil
+			}
+		}
+
+		return c.msaAppManagedIdentity()
+	})
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) GetEnabledChannels() *plugin.TValue[[]any] {
+	return &c.EnabledChannels
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) GetConfiguredChannels() *plugin.TValue[[]any] {
+	return &c.ConfiguredChannels
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) GetIsStreamingSupported() *plugin.TValue[bool] {
+	return &c.IsStreamingSupported
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) GetPrivateEndpointConnections() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PrivateEndpointConnections, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.botService.bot", c.__id, "privateEndpointConnections")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.privateEndpointConnections()
+	})
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) GetChannels() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Channels, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.botService.bot", c.__id, "channels")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.channels()
+	})
+}
+
+func (c *mqlAzureSubscriptionBotServiceBot) GetConnections() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Connections, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.botService.bot", c.__id, "connections")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.connections()
+	})
+}
+
+// mqlAzureSubscriptionBotServiceBotChannel for the azure.subscription.botService.bot.channel resource
+type mqlAzureSubscriptionBotServiceBotChannel struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzureSubscriptionBotServiceBotChannelInternal it will be used here
+	Id                plugin.TValue[string]
+	Name              plugin.TValue[string]
+	ChannelName       plugin.TValue[string]
+	Location          plugin.TValue[string]
+	Tags              plugin.TValue[map[string]any]
+	ProvisioningState plugin.TValue[string]
+	Sites             plugin.TValue[[]any]
+}
+
+// createAzureSubscriptionBotServiceBotChannel creates a new instance of this resource
+func createAzureSubscriptionBotServiceBotChannel(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionBotServiceBotChannel{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.subscription.botService.bot.channel", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotChannel) MqlName() string {
+	return "azure.subscription.botService.bot.channel"
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotChannel) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotChannel) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotChannel) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotChannel) GetChannelName() *plugin.TValue[string] {
+	return &c.ChannelName
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotChannel) GetLocation() *plugin.TValue[string] {
+	return &c.Location
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotChannel) GetTags() *plugin.TValue[map[string]any] {
+	return &c.Tags
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotChannel) GetProvisioningState() *plugin.TValue[string] {
+	return &c.ProvisioningState
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotChannel) GetSites() *plugin.TValue[[]any] {
+	return &c.Sites
+}
+
+// mqlAzureSubscriptionBotServiceBotChannelSite for the azure.subscription.botService.bot.channel.site resource
+type mqlAzureSubscriptionBotServiceBotChannelSite struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzureSubscriptionBotServiceBotChannelSiteInternal it will be used here
+	SiteId                   plugin.TValue[string]
+	SiteName                 plugin.TValue[string]
+	IsEnabled                plugin.TValue[bool]
+	IsSecureSiteEnabled      plugin.TValue[bool]
+	TrustedOrigins           plugin.TValue[[]any]
+	IsV1Enabled              plugin.TValue[bool]
+	IsV3Enabled              plugin.TValue[bool]
+	IsTokenEnabled           plugin.TValue[bool]
+	IsBlockUserUploadEnabled plugin.TValue[bool]
+	IsNoStorageEnabled       plugin.TValue[bool]
+	IsDetailedLoggingEnabled plugin.TValue[bool]
+}
+
+// createAzureSubscriptionBotServiceBotChannelSite creates a new instance of this resource
+func createAzureSubscriptionBotServiceBotChannelSite(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionBotServiceBotChannelSite{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.subscription.botService.bot.channel.site", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotChannelSite) MqlName() string {
+	return "azure.subscription.botService.bot.channel.site"
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotChannelSite) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotChannelSite) GetSiteId() *plugin.TValue[string] {
+	return &c.SiteId
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotChannelSite) GetSiteName() *plugin.TValue[string] {
+	return &c.SiteName
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotChannelSite) GetIsEnabled() *plugin.TValue[bool] {
+	return &c.IsEnabled
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotChannelSite) GetIsSecureSiteEnabled() *plugin.TValue[bool] {
+	return &c.IsSecureSiteEnabled
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotChannelSite) GetTrustedOrigins() *plugin.TValue[[]any] {
+	return &c.TrustedOrigins
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotChannelSite) GetIsV1Enabled() *plugin.TValue[bool] {
+	return &c.IsV1Enabled
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotChannelSite) GetIsV3Enabled() *plugin.TValue[bool] {
+	return &c.IsV3Enabled
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotChannelSite) GetIsTokenEnabled() *plugin.TValue[bool] {
+	return &c.IsTokenEnabled
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotChannelSite) GetIsBlockUserUploadEnabled() *plugin.TValue[bool] {
+	return &c.IsBlockUserUploadEnabled
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotChannelSite) GetIsNoStorageEnabled() *plugin.TValue[bool] {
+	return &c.IsNoStorageEnabled
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotChannelSite) GetIsDetailedLoggingEnabled() *plugin.TValue[bool] {
+	return &c.IsDetailedLoggingEnabled
+}
+
+// mqlAzureSubscriptionBotServiceBotConnection for the azure.subscription.botService.bot.connection resource
+type mqlAzureSubscriptionBotServiceBotConnection struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzureSubscriptionBotServiceBotConnectionInternal it will be used here
+	Id                         plugin.TValue[string]
+	Name                       plugin.TValue[string]
+	ServiceProviderDisplayName plugin.TValue[string]
+	ServiceProviderId          plugin.TValue[string]
+	Scopes                     plugin.TValue[string]
+	ProvisioningState          plugin.TValue[string]
+}
+
+// createAzureSubscriptionBotServiceBotConnection creates a new instance of this resource
+func createAzureSubscriptionBotServiceBotConnection(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionBotServiceBotConnection{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.subscription.botService.bot.connection", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotConnection) MqlName() string {
+	return "azure.subscription.botService.bot.connection"
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotConnection) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotConnection) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotConnection) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotConnection) GetServiceProviderDisplayName() *plugin.TValue[string] {
+	return &c.ServiceProviderDisplayName
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotConnection) GetServiceProviderId() *plugin.TValue[string] {
+	return &c.ServiceProviderId
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotConnection) GetScopes() *plugin.TValue[string] {
+	return &c.Scopes
+}
+
+func (c *mqlAzureSubscriptionBotServiceBotConnection) GetProvisioningState() *plugin.TValue[string] {
+	return &c.ProvisioningState
 }
 
 // mqlAzureSubscriptionMachineLearningService for the azure.subscription.machineLearningService resource

@@ -1,7 +1,7 @@
 {
   "provider": "azure",
   "version": "14.6.4",
-  "generated_at": "2026-11-06T17:21:42Z",
+  "generated_at": "2026-11-06T12:20:41-08:00",
   "permissions": [
     "Microsoft.Advisor/recommendations/read",
     "Microsoft.ApiManagement/service/apis/policies/read",
@@ -42,6 +42,9 @@
     "Microsoft.Automation/automationAccounts/webhooks/read",
     "Microsoft.Batch/batchAccounts/pools/read",
     "Microsoft.Batch/batchAccounts/read",
+    "Microsoft.BotService/botServices/channels/read",
+    "Microsoft.BotService/botServices/connections/read",
+    "Microsoft.BotService/botServices/read",
     "Microsoft.Cache/redis/firewallRules/read",
     "Microsoft.Cache/redis/patchSchedules/read",
     "Microsoft.Cache/redis/read",
@@ -613,6 +616,24 @@
       "service": "Microsoft.Batch",
       "action": "NewListPager",
       "source_file": "batch.go"
+    },
+    {
+      "permission": "Microsoft.BotService/botServices/channels/read",
+      "service": "Microsoft.BotService",
+      "action": "NewListByResourceGroupPager",
+      "source_file": "botservice.go"
+    },
+    {
+      "permission": "Microsoft.BotService/botServices/connections/read",
+      "service": "Microsoft.BotService",
+      "action": "NewListByBotServicePager",
+      "source_file": "botservice.go"
+    },
+    {
+      "permission": "Microsoft.BotService/botServices/read",
+      "service": "Microsoft.BotService",
+      "action": "NewListPager",
+      "source_file": "botservice.go"
     },
     {
       "permission": "Microsoft.Cache/redis/firewallRules/read",
