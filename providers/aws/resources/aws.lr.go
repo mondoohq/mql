@@ -997,6 +997,8 @@ const (
 	ResourceAwsBedrockAgentCoreCapacityProvider                                 string = "aws.bedrock.agentCore.capacityProvider"
 	ResourceAwsBedrockAgentCoreCapacityProviderVolume                           string = "aws.bedrock.agentCore.capacityProvider.volume"
 	ResourceAwsBedrockAgentCoreGatewayTarget                                    string = "aws.bedrock.agentCore.gatewayTarget"
+	ResourceAwsBedrockAgentCoreHarness                                          string = "aws.bedrock.agentCore.harness"
+	ResourceAwsBedrockAgentCoreHarnessEndpoint                                  string = "aws.bedrock.agentCore.harnessEndpoint"
 	ResourceAwsBedrockAgentCoreRuntime                                          string = "aws.bedrock.agentCore.runtime"
 	ResourceAwsBedrockAgentCoreRuntimeEndpoint                                  string = "aws.bedrock.agentCore.runtimeEndpoint"
 	ResourceAwsBedrockAgentCoreRuntimeAllowedPort                               string = "aws.bedrock.agentCore.runtimeAllowedPort"
@@ -5009,6 +5011,14 @@ func init() {
 		"aws.bedrock.agentCore.gatewayTarget": {
 			// to override args, implement: initAwsBedrockAgentCoreGatewayTarget(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAwsBedrockAgentCoreGatewayTarget,
+		},
+		"aws.bedrock.agentCore.harness": {
+			// to override args, implement: initAwsBedrockAgentCoreHarness(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsBedrockAgentCoreHarness,
+		},
+		"aws.bedrock.agentCore.harnessEndpoint": {
+			// to override args, implement: initAwsBedrockAgentCoreHarnessEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsBedrockAgentCoreHarnessEndpoint,
 		},
 		"aws.bedrock.agentCore.runtime": {
 			// to override args, implement: initAwsBedrockAgentCoreRuntime(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -36880,6 +36890,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.bedrock.agentCore.runtimes": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockAgentCore).GetRuntimes()).ToDataRes(types.Array(types.Resource("aws.bedrock.agentCore.runtime")))
 	},
+	"aws.bedrock.agentCore.harnesses": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCore).GetHarnesses()).ToDataRes(types.Array(types.Resource("aws.bedrock.agentCore.harness")))
+	},
 	"aws.bedrock.agentCore.memories": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockAgentCore).GetMemories()).ToDataRes(types.Array(types.Resource("aws.bedrock.agentCore.memory")))
 	},
@@ -37257,6 +37270,135 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.bedrock.agentCore.gatewayTarget.credentialProviderConfigurations": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockAgentCoreGatewayTarget).GetCredentialProviderConfigurations()).ToDataRes(types.Array(types.Dict))
+	},
+	"aws.bedrock.agentCore.harness.arn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetArn()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.harness.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetId()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.harness.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetName()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.harness.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.harness.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetStatus()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.harness.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetVersion()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.harness.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"aws.bedrock.agentCore.harness.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"aws.bedrock.agentCore.harness.failureReason": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetFailureReason()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.harness.iamRole": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetIamRole()).ToDataRes(types.Resource("aws.iam.role"))
+	},
+	"aws.bedrock.agentCore.harness.authorizerType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetAuthorizerType()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.harness.authorizerDiscoveryUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetAuthorizerDiscoveryUrl()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.harness.allowedClients": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetAllowedClients()).ToDataRes(types.Array(types.String))
+	},
+	"aws.bedrock.agentCore.harness.allowedAudiences": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetAllowedAudiences()).ToDataRes(types.Array(types.String))
+	},
+	"aws.bedrock.agentCore.harness.allowedScopes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetAllowedScopes()).ToDataRes(types.Array(types.String))
+	},
+	"aws.bedrock.agentCore.harness.modelProvider": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetModelProvider()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.harness.modelId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetModelId()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.harness.modelApiBase": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetModelApiBase()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.harness.apiKeyCredentialProvider": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetApiKeyCredentialProvider()).ToDataRes(types.Resource("aws.bedrock.agentCore.apiKeyCredentialProvider"))
+	},
+	"aws.bedrock.agentCore.harness.toolTypes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetToolTypes()).ToDataRes(types.Array(types.String))
+	},
+	"aws.bedrock.agentCore.harness.allowedTools": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetAllowedTools()).ToDataRes(types.Array(types.String))
+	},
+	"aws.bedrock.agentCore.harness.gateways": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetGateways()).ToDataRes(types.Array(types.Resource("aws.bedrock.agentCore.gateway")))
+	},
+	"aws.bedrock.agentCore.harness.remoteMcpServerUrls": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetRemoteMcpServerUrls()).ToDataRes(types.Array(types.String))
+	},
+	"aws.bedrock.agentCore.harness.agentRuntime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetAgentRuntime()).ToDataRes(types.Resource("aws.bedrock.agentCore.runtime"))
+	},
+	"aws.bedrock.agentCore.harness.networkMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetNetworkMode()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.harness.subnets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetSubnets()).ToDataRes(types.Array(types.Resource("aws.vpc.subnet")))
+	},
+	"aws.bedrock.agentCore.harness.securityGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetSecurityGroups()).ToDataRes(types.Array(types.Resource("aws.ec2.securitygroup")))
+	},
+	"aws.bedrock.agentCore.harness.memoryType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetMemoryType()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.harness.memory": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetMemory()).ToDataRes(types.Resource("aws.bedrock.agentCore.memory"))
+	},
+	"aws.bedrock.agentCore.harness.environmentVariableNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetEnvironmentVariableNames()).ToDataRes(types.Array(types.String))
+	},
+	"aws.bedrock.agentCore.harness.maxIterations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetMaxIterations()).ToDataRes(types.Int)
+	},
+	"aws.bedrock.agentCore.harness.maxTokens": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetMaxTokens()).ToDataRes(types.Int)
+	},
+	"aws.bedrock.agentCore.harness.timeoutSeconds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetTimeoutSeconds()).ToDataRes(types.Int)
+	},
+	"aws.bedrock.agentCore.harness.endpoints": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarness).GetEndpoints()).ToDataRes(types.Array(types.Resource("aws.bedrock.agentCore.harnessEndpoint")))
+	},
+	"aws.bedrock.agentCore.harnessEndpoint.arn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarnessEndpoint).GetArn()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.harnessEndpoint.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarnessEndpoint).GetName()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.harnessEndpoint.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarnessEndpoint).GetStatus()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.harnessEndpoint.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarnessEndpoint).GetDescription()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.harnessEndpoint.liveVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarnessEndpoint).GetLiveVersion()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.harnessEndpoint.targetVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarnessEndpoint).GetTargetVersion()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.harnessEndpoint.failureReason": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarnessEndpoint).GetFailureReason()).ToDataRes(types.String)
+	},
+	"aws.bedrock.agentCore.harnessEndpoint.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarnessEndpoint).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"aws.bedrock.agentCore.harnessEndpoint.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreHarnessEndpoint).GetUpdatedAt()).ToDataRes(types.Time)
 	},
 	"aws.bedrock.agentCore.runtime.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockAgentCoreRuntime).GetId()).ToDataRes(types.String)
@@ -85874,6 +86016,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsBedrockAgentCore).Runtimes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"aws.bedrock.agentCore.harnesses": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCore).Harnesses, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"aws.bedrock.agentCore.memories": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsBedrockAgentCore).Memories, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -86412,6 +86558,186 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.bedrock.agentCore.gatewayTarget.credentialProviderConfigurations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsBedrockAgentCoreGatewayTarget).CredentialProviderConfigurations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.bedrock.agentCore.harness.arn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.failureReason": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).FailureReason, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.iamRole": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).IamRole, ok = plugin.RawToTValue[*mqlAwsIamRole](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.authorizerType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).AuthorizerType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.authorizerDiscoveryUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).AuthorizerDiscoveryUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.allowedClients": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).AllowedClients, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.allowedAudiences": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).AllowedAudiences, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.allowedScopes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).AllowedScopes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.modelProvider": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).ModelProvider, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.modelId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).ModelId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.modelApiBase": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).ModelApiBase, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.apiKeyCredentialProvider": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).ApiKeyCredentialProvider, ok = plugin.RawToTValue[*mqlAwsBedrockAgentCoreApiKeyCredentialProvider](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.toolTypes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).ToolTypes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.allowedTools": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).AllowedTools, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.gateways": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).Gateways, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.remoteMcpServerUrls": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).RemoteMcpServerUrls, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.agentRuntime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).AgentRuntime, ok = plugin.RawToTValue[*mqlAwsBedrockAgentCoreRuntime](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.networkMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).NetworkMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.subnets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).Subnets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.securityGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).SecurityGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.memoryType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).MemoryType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.memory": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).Memory, ok = plugin.RawToTValue[*mqlAwsBedrockAgentCoreMemory](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.environmentVariableNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).EnvironmentVariableNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.maxIterations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).MaxIterations, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.maxTokens": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).MaxTokens, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.timeoutSeconds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).TimeoutSeconds, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harness.endpoints": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarness).Endpoints, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harnessEndpoint.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarnessEndpoint).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.bedrock.agentCore.harnessEndpoint.arn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarnessEndpoint).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harnessEndpoint.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarnessEndpoint).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harnessEndpoint.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarnessEndpoint).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harnessEndpoint.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarnessEndpoint).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harnessEndpoint.liveVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarnessEndpoint).LiveVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harnessEndpoint.targetVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarnessEndpoint).TargetVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harnessEndpoint.failureReason": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarnessEndpoint).FailureReason, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harnessEndpoint.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarnessEndpoint).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.harnessEndpoint.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreHarnessEndpoint).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"aws.bedrock.agentCore.runtime.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -209043,6 +209369,7 @@ type mqlAwsBedrockAgentCore struct {
 	// optional: if you define mqlAwsBedrockAgentCoreInternal it will be used here
 	Gateways                   plugin.TValue[[]any]
 	Runtimes                   plugin.TValue[[]any]
+	Harnesses                  plugin.TValue[[]any]
 	Memories                   plugin.TValue[[]any]
 	Browsers                   plugin.TValue[[]any]
 	CodeInterpreters           plugin.TValue[[]any]
@@ -209121,6 +209448,22 @@ func (c *mqlAwsBedrockAgentCore) GetRuntimes() *plugin.TValue[[]any] {
 		}
 
 		return c.runtimes()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCore) GetHarnesses() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Harnesses, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore", c.__id, "harnesses")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.harnesses()
 	})
 }
 
@@ -210553,6 +210896,431 @@ func (c *mqlAwsBedrockAgentCoreGatewayTarget) GetCredentialProviderConfiguration
 	return plugin.GetOrCompute[[]any](&c.CredentialProviderConfigurations, func() ([]any, error) {
 		return c.credentialProviderConfigurations()
 	})
+}
+
+// mqlAwsBedrockAgentCoreHarness for the aws.bedrock.agentCore.harness resource
+type mqlAwsBedrockAgentCoreHarness struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsBedrockAgentCoreHarnessInternal
+	Arn                      plugin.TValue[string]
+	Id                       plugin.TValue[string]
+	Name                     plugin.TValue[string]
+	Region                   plugin.TValue[string]
+	Status                   plugin.TValue[string]
+	Version                  plugin.TValue[string]
+	CreatedAt                plugin.TValue[*time.Time]
+	UpdatedAt                plugin.TValue[*time.Time]
+	FailureReason            plugin.TValue[string]
+	IamRole                  plugin.TValue[*mqlAwsIamRole]
+	AuthorizerType           plugin.TValue[string]
+	AuthorizerDiscoveryUrl   plugin.TValue[string]
+	AllowedClients           plugin.TValue[[]any]
+	AllowedAudiences         plugin.TValue[[]any]
+	AllowedScopes            plugin.TValue[[]any]
+	ModelProvider            plugin.TValue[string]
+	ModelId                  plugin.TValue[string]
+	ModelApiBase             plugin.TValue[string]
+	ApiKeyCredentialProvider plugin.TValue[*mqlAwsBedrockAgentCoreApiKeyCredentialProvider]
+	ToolTypes                plugin.TValue[[]any]
+	AllowedTools             plugin.TValue[[]any]
+	Gateways                 plugin.TValue[[]any]
+	RemoteMcpServerUrls      plugin.TValue[[]any]
+	AgentRuntime             plugin.TValue[*mqlAwsBedrockAgentCoreRuntime]
+	NetworkMode              plugin.TValue[string]
+	Subnets                  plugin.TValue[[]any]
+	SecurityGroups           plugin.TValue[[]any]
+	MemoryType               plugin.TValue[string]
+	Memory                   plugin.TValue[*mqlAwsBedrockAgentCoreMemory]
+	EnvironmentVariableNames plugin.TValue[[]any]
+	MaxIterations            plugin.TValue[int64]
+	MaxTokens                plugin.TValue[int64]
+	TimeoutSeconds           plugin.TValue[int64]
+	Endpoints                plugin.TValue[[]any]
+}
+
+// createAwsBedrockAgentCoreHarness creates a new instance of this resource
+func createAwsBedrockAgentCoreHarness(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsBedrockAgentCoreHarness{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.bedrock.agentCore.harness", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) MqlName() string {
+	return "aws.bedrock.agentCore.harness"
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetArn() *plugin.TValue[string] {
+	return &c.Arn
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetVersion() *plugin.TValue[string] {
+	return &c.Version
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetFailureReason() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.FailureReason, func() (string, error) {
+		return c.failureReason()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetIamRole() *plugin.TValue[*mqlAwsIamRole] {
+	return plugin.GetOrCompute[*mqlAwsIamRole](&c.IamRole, func() (*mqlAwsIamRole, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.harness", c.__id, "iamRole")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsIamRole), nil
+			}
+		}
+
+		return c.iamRole()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetAuthorizerType() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.AuthorizerType, func() (string, error) {
+		return c.authorizerType()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetAuthorizerDiscoveryUrl() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.AuthorizerDiscoveryUrl, func() (string, error) {
+		return c.authorizerDiscoveryUrl()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetAllowedClients() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AllowedClients, func() ([]any, error) {
+		return c.allowedClients()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetAllowedAudiences() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AllowedAudiences, func() ([]any, error) {
+		return c.allowedAudiences()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetAllowedScopes() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AllowedScopes, func() ([]any, error) {
+		return c.allowedScopes()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetModelProvider() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ModelProvider, func() (string, error) {
+		return c.modelProvider()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetModelId() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ModelId, func() (string, error) {
+		return c.modelId()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetModelApiBase() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ModelApiBase, func() (string, error) {
+		return c.modelApiBase()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetApiKeyCredentialProvider() *plugin.TValue[*mqlAwsBedrockAgentCoreApiKeyCredentialProvider] {
+	return plugin.GetOrCompute[*mqlAwsBedrockAgentCoreApiKeyCredentialProvider](&c.ApiKeyCredentialProvider, func() (*mqlAwsBedrockAgentCoreApiKeyCredentialProvider, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.harness", c.__id, "apiKeyCredentialProvider")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsBedrockAgentCoreApiKeyCredentialProvider), nil
+			}
+		}
+
+		return c.apiKeyCredentialProvider()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetToolTypes() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ToolTypes, func() ([]any, error) {
+		return c.toolTypes()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetAllowedTools() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AllowedTools, func() ([]any, error) {
+		return c.allowedTools()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetGateways() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Gateways, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.harness", c.__id, "gateways")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.gateways()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetRemoteMcpServerUrls() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.RemoteMcpServerUrls, func() ([]any, error) {
+		return c.remoteMcpServerUrls()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetAgentRuntime() *plugin.TValue[*mqlAwsBedrockAgentCoreRuntime] {
+	return plugin.GetOrCompute[*mqlAwsBedrockAgentCoreRuntime](&c.AgentRuntime, func() (*mqlAwsBedrockAgentCoreRuntime, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.harness", c.__id, "agentRuntime")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsBedrockAgentCoreRuntime), nil
+			}
+		}
+
+		return c.agentRuntime()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetNetworkMode() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.NetworkMode, func() (string, error) {
+		return c.networkMode()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetSubnets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Subnets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.harness", c.__id, "subnets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.subnets()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetSecurityGroups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SecurityGroups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.harness", c.__id, "securityGroups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.securityGroups()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetMemoryType() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.MemoryType, func() (string, error) {
+		return c.memoryType()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetMemory() *plugin.TValue[*mqlAwsBedrockAgentCoreMemory] {
+	return plugin.GetOrCompute[*mqlAwsBedrockAgentCoreMemory](&c.Memory, func() (*mqlAwsBedrockAgentCoreMemory, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.harness", c.__id, "memory")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsBedrockAgentCoreMemory), nil
+			}
+		}
+
+		return c.memory()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetEnvironmentVariableNames() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EnvironmentVariableNames, func() ([]any, error) {
+		return c.environmentVariableNames()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetMaxIterations() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MaxIterations, func() (int64, error) {
+		return c.maxIterations()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetMaxTokens() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MaxTokens, func() (int64, error) {
+		return c.maxTokens()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetTimeoutSeconds() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.TimeoutSeconds, func() (int64, error) {
+		return c.timeoutSeconds()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreHarness) GetEndpoints() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Endpoints, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.harness", c.__id, "endpoints")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.endpoints()
+	})
+}
+
+// mqlAwsBedrockAgentCoreHarnessEndpoint for the aws.bedrock.agentCore.harnessEndpoint resource
+type mqlAwsBedrockAgentCoreHarnessEndpoint struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAwsBedrockAgentCoreHarnessEndpointInternal it will be used here
+	Arn           plugin.TValue[string]
+	Name          plugin.TValue[string]
+	Status        plugin.TValue[string]
+	Description   plugin.TValue[string]
+	LiveVersion   plugin.TValue[string]
+	TargetVersion plugin.TValue[string]
+	FailureReason plugin.TValue[string]
+	CreatedAt     plugin.TValue[*time.Time]
+	UpdatedAt     plugin.TValue[*time.Time]
+}
+
+// createAwsBedrockAgentCoreHarnessEndpoint creates a new instance of this resource
+func createAwsBedrockAgentCoreHarnessEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsBedrockAgentCoreHarnessEndpoint{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.bedrock.agentCore.harnessEndpoint", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsBedrockAgentCoreHarnessEndpoint) MqlName() string {
+	return "aws.bedrock.agentCore.harnessEndpoint"
+}
+
+func (c *mqlAwsBedrockAgentCoreHarnessEndpoint) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsBedrockAgentCoreHarnessEndpoint) GetArn() *plugin.TValue[string] {
+	return &c.Arn
+}
+
+func (c *mqlAwsBedrockAgentCoreHarnessEndpoint) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAwsBedrockAgentCoreHarnessEndpoint) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlAwsBedrockAgentCoreHarnessEndpoint) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlAwsBedrockAgentCoreHarnessEndpoint) GetLiveVersion() *plugin.TValue[string] {
+	return &c.LiveVersion
+}
+
+func (c *mqlAwsBedrockAgentCoreHarnessEndpoint) GetTargetVersion() *plugin.TValue[string] {
+	return &c.TargetVersion
+}
+
+func (c *mqlAwsBedrockAgentCoreHarnessEndpoint) GetFailureReason() *plugin.TValue[string] {
+	return &c.FailureReason
+}
+
+func (c *mqlAwsBedrockAgentCoreHarnessEndpoint) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlAwsBedrockAgentCoreHarnessEndpoint) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
 }
 
 // mqlAwsBedrockAgentCoreRuntime for the aws.bedrock.agentCore.runtime resource
