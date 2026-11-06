@@ -278,9 +278,14 @@ func listEasServices(runtime *plugin.Runtime, region string) ([]any, error) {
 // references and the DescribeService detail, which is the only call that
 // returns the service endpoints.
 type mqlAlicloudPaiEasServiceInternal struct {
-	cacheWorkspaceId   string
-	cacheGatewayId     string
-	cacheServiceConfig string
+	cacheWorkspaceId string
+	cacheGatewayId   string
+
+	// networking is the VPC placement parsed from the service configuration,
+	// once; the configuration itself is not kept
+	networkingLock sync.Mutex
+	networkingSet  atomic.Bool
+	networking     easNetworking
 
 	detailLock    sync.Mutex
 	detailFetched atomic.Bool
@@ -338,7 +343,10 @@ func newEasService(runtime *plugin.Runtime, region string, s *easclient.Service,
 	mqlS := res.(*mqlAlicloudPaiEasService)
 	mqlS.cacheWorkspaceId = tea.StringValue(s.WorkspaceId)
 	mqlS.cacheGatewayId = tea.StringValue(s.Gateway)
-	mqlS.cacheServiceConfig = tea.StringValue(s.ServiceConfig)
+	if cfg := tea.StringValue(s.ServiceConfig); cfg != "" {
+		mqlS.networking = parseEasNetworking(cfg)
+		mqlS.networkingSet.Store(true)
+	}
 	if isDetail {
 		mqlS.detail = s
 		mqlS.detailFetched.Store(true)
@@ -517,22 +525,29 @@ func parseEasNetworking(serviceConfig string) easNetworking {
 	return n
 }
 
-// networking returns the service's VPC placement, reading the configuration
-// from the list record and falling back to DescribeService when the list did
-// not carry it.
-func (r *mqlAlicloudPaiEasService) networking() (easNetworking, error) {
-	if r.cacheServiceConfig != "" {
-		return parseEasNetworking(r.cacheServiceConfig), nil
+// getNetworking returns the service's VPC placement. It is parsed from the
+// list record's configuration when the list carried one, and otherwise once
+// from the DescribeService configuration.
+func (r *mqlAlicloudPaiEasService) getNetworking() (easNetworking, error) {
+	if r.networkingSet.Load() {
+		return r.networking, nil
+	}
+	r.networkingLock.Lock()
+	defer r.networkingLock.Unlock()
+	if r.networkingSet.Load() {
+		return r.networking, nil
 	}
 	d, err := r.getDetail()
 	if err != nil {
 		return easNetworking{}, err
 	}
-	return parseEasNetworking(tea.StringValue(d.ServiceConfig)), nil
+	r.networking = parseEasNetworking(tea.StringValue(d.ServiceConfig))
+	r.networkingSet.Store(true)
+	return r.networking, nil
 }
 
 func (r *mqlAlicloudPaiEasService) vpc() (*mqlAlicloudVpcNetwork, error) {
-	n, err := r.networking()
+	n, err := r.getNetworking()
 	if err != nil {
 		return nil, err
 	}
@@ -544,7 +559,7 @@ func (r *mqlAlicloudPaiEasService) vpc() (*mqlAlicloudVpcNetwork, error) {
 }
 
 func (r *mqlAlicloudPaiEasService) vswitch() (*mqlAlicloudVpcVswitch, error) {
-	n, err := r.networking()
+	n, err := r.getNetworking()
 	if err != nil {
 		return nil, err
 	}
@@ -556,7 +571,7 @@ func (r *mqlAlicloudPaiEasService) vswitch() (*mqlAlicloudVpcVswitch, error) {
 }
 
 func (r *mqlAlicloudPaiEasService) securityGroup() (*mqlAlicloudEcsSecuritygroup, error) {
-	n, err := r.networking()
+	n, err := r.getNetworking()
 	if err != nil {
 		return nil, err
 	}
