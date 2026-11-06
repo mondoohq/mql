@@ -303,8 +303,8 @@ func (a *mqlAwsBedrockPromptRouter) fallbackInferenceProfile() (*mqlAwsBedrockIn
 }
 
 // isBedrockRegionUnsupported reports whether a regional Bedrock call failed
-// because the region does not serve that API. Prompt routers and custom model
-// deployments exist in a subset of regions; elsewhere Bedrock answers with a
+// because the region does not serve that API. Prompt routers, Automated
+// Reasoning policies and custom model deployments exist in a subset of regions; elsewhere Bedrock answers with a
 // ValidationException ("not recognized by the service", or "You don't have
 // the permissions to perform the requested operation" in regions without the
 // feature) or a 404 from a missing endpoint, none of which the shared region
@@ -345,7 +345,7 @@ type mqlAwsBedrockAutomatedReasoningPolicyInternal struct {
 
 func (a *mqlAwsBedrock) automatedReasoningPolicies() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	return bedrockCollectRegionJobs(jobpool.CreatePool(bedrockRegionJobs(conn, a.collectAutomatedReasoningPolicies), 5))
+	return bedrockCollectRegionJobs(jobpool.CreatePool(bedrockRegionJobs(conn, bedrockSkipUnsupportedRegion(a.collectAutomatedReasoningPolicies)), 5))
 }
 
 func (a *mqlAwsBedrock) collectAutomatedReasoningPolicies(svc *bedrock.Client, region string) ([]any, error) {
