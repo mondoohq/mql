@@ -166,6 +166,7 @@
     "Microsoft.Kusto/clusters/privateEndpointConnections/read",
     "Microsoft.Kusto/clusters/read",
     "Microsoft.Logic/workflows/read",
+    "Microsoft.MachineLearningServices/registries/read",
     "Microsoft.MachineLearningServices/workspaces/batchEndpoints/deployments/read",
     "Microsoft.MachineLearningServices/workspaces/batchEndpoints/read",
     "Microsoft.MachineLearningServices/workspaces/computes/read",
@@ -1356,6 +1357,12 @@
       "service": "Microsoft.Logic",
       "action": "NewListBySubscriptionPager",
       "source_file": "logic.go"
+    },
+    {
+      "permission": "Microsoft.MachineLearningServices/registries/read",
+      "service": "Microsoft.MachineLearningServices",
+      "action": "NewListBySubscriptionPager",
+      "source_file": "machinelearning_registries.go"
     },
     {
       "permission": "Microsoft.MachineLearningServices/workspaces/batchEndpoints/deployments/read",

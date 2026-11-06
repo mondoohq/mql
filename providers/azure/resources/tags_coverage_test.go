@@ -27,6 +27,7 @@ var untaggableWithLocation = map[string]string{
 	"azure.subscription.cloudDefenderService.jitNetworkAccessPolicy":  "armsecurity.JitNetworkAccessPolicy has no Tags",
 	"azure.subscription.kustoService.cluster.database":                "armkusto.Database/ReadWriteDatabase have no Tags",
 	"azure.subscription.kustoService.cluster.database.dataConnection": "armkusto data connections have no Tags",
+	"azure.subscription.machineLearningService.registry.region":       "armmachinelearning.RegistryRegionArmDetails is a replication region of the registry, not a tracked resource",
 	"azure.subscription.monitorService.workspace.replication":         "replication config is a proxy child of the workspace",
 	"azure.subscription.networkService.backendAddressPool":            "armnetwork.BackendAddressPool is a proxy child of the load balancer; its Location is the regional scope of a global pool, not a tracked resource's region",
 	"azure.subscription.networkService.routeFilter.rule":              "armnetwork.RouteFilterRule is a proxy child of the filter",

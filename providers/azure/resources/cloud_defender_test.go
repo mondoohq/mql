@@ -223,3 +223,38 @@ func TestSimpleDefenderDict(t *testing.T) {
 		assert.ErrorIs(t, err, want)
 	})
 }
+
+func TestDefenderForAIServicesFromPricing(t *testing.T) {
+	// Synthetic: Standard plan with prompt evidence on and Purview sharing off; no target showed this.
+	props := &security.PricingProperties{
+		PricingTier: ptr(security.PricingTierStandard),
+		Extensions: []*security.Extension{
+			{Name: new("AIPromptEvidence"), IsEnabled: ptr(security.IsEnabledTrue)},
+			{Name: new("AIPromptSharingWithPurview"), IsEnabled: ptr(security.IsEnabledFalse)},
+		},
+	}
+	res, err := defenderForAIServicesFromPricing(cacheIDTestRuntime(), "sub-1", props)
+	require.NoError(t, err)
+	assert.True(t, res.Enabled.Data)
+
+	// Primed from the pricing response, so no API call is needed here.
+	exts, err := res.extensions()
+	require.NoError(t, err)
+	require.Len(t, exts, 2)
+	evidence := exts[0].(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension)
+	sharing := exts[1].(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension)
+	assert.Equal(t, "AIPromptEvidence", evidence.Name.Data)
+	assert.True(t, evidence.IsEnabled.Data)
+	assert.Equal(t, "AIPromptSharingWithPurview", sharing.Name.Data)
+	assert.False(t, sharing.IsEnabled.Data)
+}
+
+func TestDefenderForAIServicesWithoutExtensions(t *testing.T) {
+	// Synthetic: Free tier plan, which carries no extensions; no target showed this.
+	res, err := defenderForAIServicesFromPricing(cacheIDTestRuntime(), "sub-1",
+		&security.PricingProperties{PricingTier: ptr(security.PricingTierFree)})
+	require.NoError(t, err)
+	exts, err := res.extensions()
+	require.NoError(t, err)
+	assert.Empty(t, exts)
+}

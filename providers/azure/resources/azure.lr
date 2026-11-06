@@ -12915,6 +12915,28 @@ private azure.subscription.cloudDefenderService.defenderForAIServices @defaults(
   replacedBy []string
   // Coverage status of resources under this plan (FullyCovered, NotCovered, PartiallyCovered)
   resourcesCoverageStatus string
+  // Components offered under the plan and whether each is turned on
+  //
+  // The plan is billed as a whole but its capabilities are switched
+  // individually, so a subscription on the Standard tier can still have
+  // user prompt evidence turned off, which leaves alerts without the
+  // prompt that triggered them. Select a component by name, for example
+  // `extensions.where(name == "AIPromptEvidence")`.
+  extensions() []azure.subscription.cloudDefenderService.defenderForAIServices.extension
+}
+
+// Microsoft Defender for AI services extension
+private azure.subscription.cloudDefenderService.defenderForAIServices.extension {
+  // Extension name
+  name string
+  // Whether the extension is enabled
+  isEnabled bool
+  // Additional extension properties
+  additionalProperties dict
+  // Status code of the enablement/disablement operation (Succeeded or Failed)
+  operationStatusCode string
+  // Status message of the enablement/disablement operation
+  operationStatusMessage string
 }
 
 // Microsoft Defender for Resource Manager
@@ -19355,6 +19377,68 @@ private azure.subscription.machineLearningService {
   subscriptionId string
   // Azure Machine Learning workspaces in the subscription
   workspaces() []azure.subscription.machineLearningService.workspace
+  // Azure Machine Learning registries in the subscription
+  registries() []azure.subscription.machineLearningService.registry
+}
+
+// Azure Machine Learning registry
+//
+// Single Azure Machine Learning registry, which shares models, components,
+// and environments across workspaces and regions, selected by `name` (for
+// example
+// `azure.subscription.machineLearningService.registries.where(name == "shared-models")`).
+// `publicNetworkAccess` reports whether the registry is reachable from the
+// public internet, `privateEndpointConnections` the private connections into
+// it, and `regions` the per-region container registries and storage accounts
+// that hold its assets. `intellectualPropertyPublisher` is set on registries
+// that publish models whose weights are protected from download.
+azure.subscription.machineLearningService.registry @defaults("id name location publicNetworkAccess") {
+  // Registry resource ID
+  id string
+  // Registry name
+  name string
+  // Primary location of the registry
+  location string
+  // Registry tags
+  tags map[string]string
+  // Registry kind
+  kind string
+  // Billable SKU the resource is provisioned at
+  skuData azure.subscription.resourceSku
+  // Managed identity attached to the registry
+  resourceIdentity azure.subscription.resourceIdentity
+  // Whether the registry is reachable from the public internet ("Enabled" or "Disabled")
+  publicNetworkAccess string
+  // Publisher name for intellectual-property-protected assets
+  //
+  // Empty when the registry does not publish protected assets.
+  intellectualPropertyPublisher string
+  // URL of the discovery service clients use to resolve registry endpoints
+  discoveryUrl string
+  // MLflow registry URI
+  mlFlowRegistryUri string
+  // Private endpoint connections to the registry
+  privateEndpointConnections() []azure.subscription.privateEndpointConnection
+  // Regions the registry replicates its assets to
+  regions() []azure.subscription.machineLearningService.registry.region
+  // Microsoft Entra role assignments granting access to the registry
+  //
+  // The effective role assignments at the registry scope, including those
+  // inherited from the resource group, subscription, and management-group
+  // ancestors. These decide who can publish and consume shared models.
+  roleAssignments() []azure.subscription.authorizationService.roleAssignment
+  // Creation and last-modification provenance recorded by Azure Resource Manager
+  systemMetadata() azure.subscription.systemData
+}
+
+// Region of an Azure Machine Learning registry
+private azure.subscription.machineLearningService.registry.region @defaults("location") {
+  // Azure region
+  location string
+  // Container registries holding the registry's environment images in this region
+  containerRegistries() []azure.subscription.containerRegistryService.registry
+  // Storage accounts holding the registry's model and data assets in this region
+  storageAccounts() []azure.subscription.storageService.account
 }
 
 // Azure Machine Learning workspace

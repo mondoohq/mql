@@ -431,11 +431,90 @@ func (a *mqlAzureSubscriptionCloudDefenderService) forKeyVaults() (*mqlAzureSubs
 // forAIServices reads the subscription's Defender for AI services plan. "AI" is
 // the pricing name Defender for Cloud uses for this plan.
 func (a *mqlAzureSubscriptionCloudDefenderService) forAIServices() (*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices, error) {
-	resource, err := a.getSimpleDefenderPricing("AI", ResourceAzureSubscriptionCloudDefenderServiceDefenderForAIServices)
+	props, err := getDefenderPricingProperties(a.MqlRuntime, a.SubscriptionId.Data, defenderForAIPricingName)
 	if err != nil {
 		return nil, err
 	}
-	return resource.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices), nil
+	return defenderForAIServicesFromPricing(a.MqlRuntime, a.SubscriptionId.Data, props)
+}
+
+// defenderForAIPricingName is the pricing name Defender for Cloud uses for the
+// AI services plan.
+const defenderForAIPricingName = "AI"
+
+// defenderForAIServicesFromPricing builds the plan resource and primes its
+// extensions from the pricing response it was built from, so extensions()
+// does not read the same pricing again.
+func defenderForAIServicesFromPricing(runtime *plugin.Runtime, subId string, props *security.PricingProperties) (*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices, error) {
+	args := commonPricingArgs(props, ResourceAzureSubscriptionCloudDefenderServiceDefenderForAIServices, subId)
+	resource, err := CreateResource(runtime, ResourceAzureSubscriptionCloudDefenderServiceDefenderForAIServices, args)
+	if err != nil {
+		return nil, err
+	}
+	mqlAI := resource.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices)
+	var rawExtensions []*security.Extension
+	if props != nil {
+		rawExtensions = props.Extensions
+	}
+	mqlAI.rawExtensionsOnce.Do(func() {
+		mqlAI.rawExtensions = rawExtensions
+	})
+	return mqlAI, nil
+}
+
+// getDefenderPricingProperties reads one Defender for Cloud plan's pricing at
+// subscription scope.
+func getDefenderPricingProperties(runtime *plugin.Runtime, subId, azurePricingName string) (*security.PricingProperties, error) {
+	conn := runtime.Connection.(*connection.AzureConnection)
+	clientFactory, err := armsecurity.NewClientFactory(subId, conn.Token(), &arm.ClientOptions{
+		ClientOptions: conn.ClientOptions(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	resp, err := clientFactory.NewPricingsClient().Get(context.Background(),
+		fmt.Sprintf("subscriptions/%s", subId), azurePricingName, &security.PricingsClientGetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return resp.Properties, nil
+}
+
+type mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesInternal struct {
+	rawExtensionsOnce sync.Once
+	rawExtensions     []*security.Extension
+	rawExtensionsErr  error
+}
+
+// fetchRawExtensions returns the extension list of the AI services plan,
+// resolved once. forAIServices() primes it; reaching the resource by its own
+// type name falls back to the API.
+func (a *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices) fetchRawExtensions() ([]*security.Extension, error) {
+	a.rawExtensionsOnce.Do(func() {
+		props, err := getDefenderPricingProperties(a.MqlRuntime, a.SubscriptionId.Data, defenderForAIPricingName)
+		if err != nil {
+			a.rawExtensionsErr = err
+			return
+		}
+		if props != nil {
+			a.rawExtensions = props.Extensions
+		}
+	})
+	return a.rawExtensions, a.rawExtensionsErr
+}
+
+func (a *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices) extensions() ([]any, error) {
+	exts, err := a.fetchRawExtensions()
+	if err != nil {
+		return nil, err
+	}
+	return buildExtensionResources(a.MqlRuntime, exts,
+		ResourceAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension,
+		ResourceAzureSubscriptionCloudDefenderServiceDefenderForAIServices+"/"+a.SubscriptionId.Data)
+}
+
+func (a *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesExtension) id() (string, error) {
+	return a.__id, nil
 }
 
 func (a *mqlAzureSubscriptionCloudDefenderService) forResourceManager() (*mqlAzureSubscriptionCloudDefenderServiceDefenderForResourceManager, error) {
