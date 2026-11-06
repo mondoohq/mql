@@ -66,13 +66,20 @@ func parseGrantRows(rows []map[string]*any) []snowflakeGrant {
 		if grantedTo == "" {
 			grantedTo = unsafeString(row["grant_to"])
 		}
+		// SHOW GRANTS OF ROLE and OF DATABASE ROLE have no name column; the
+		// role granted is in the role column. Without it every grant of two
+		// different roles to the same grantee would share one cache key.
+		name := unsafeString(row["name"])
+		if name == "" {
+			name = unsafeString(row["role"])
+		}
 
 		grants = append(grants, snowflakeGrant{
 			createdOn:   unsafeTime(row["created_on"]),
 			privilege:   unsafeString(row["privilege"]),
 			grantedOn:   grantedOn,
 			grantedTo:   grantedTo,
-			name:        quoteQualifiedName(unsafeString(row["name"])),
+			name:        quoteQualifiedName(name),
 			granteeName: identifierName(unsafeString(row["grantee_name"])),
 			grantedBy:   identifierName(unsafeString(row["granted_by"])),
 			grantOption: unsafeBool(row["grant_option"]),

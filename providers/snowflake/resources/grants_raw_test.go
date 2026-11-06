@@ -191,3 +191,31 @@ func TestParseGrantRowsEmpty(t *testing.T) {
 	assert.Empty(t, parseGrantRows(nil))
 	assert.Empty(t, parseGrantRows([]map[string]*any{}))
 }
+
+// SHOW GRANTS OF ROLE and OF DATABASE ROLE name the role granted in a role
+// column instead of name. Two grants of different roles to one grantee must
+// stay distinct.
+func TestParseGrantRowsGrantsOfRole(t *testing.T) {
+	// Synthetic: column set of SHOW GRANTS OF DATABASE ROLE per Snowflake's
+	// reference (created_on, role, granted_to, grantee_name, granted_by).
+	rows := []map[string]*any{
+		grantRowCells(map[string]any{
+			"role":         "SNOWFLAKE.CORTEX_USER",
+			"granted_to":   "ROLE",
+			"grantee_name": "PUBLIC",
+			"granted_by":   "",
+		}),
+		grantRowCells(map[string]any{
+			"role":         "SNOWFLAKE.CORTEX_EMBED_USER",
+			"granted_to":   "ROLE",
+			"grantee_name": "PUBLIC",
+		}),
+	}
+
+	grants := parseGrantRows(rows)
+	require.Len(t, grants, 2)
+	assert.Equal(t, `"SNOWFLAKE"."CORTEX_USER"`, grants[0].name)
+	assert.Equal(t, "PUBLIC", grants[0].granteeName)
+	assert.Equal(t, "ROLE", grants[0].grantedTo)
+	assert.NotEqual(t, snowflakeGrantID(grants[0]), snowflakeGrantID(grants[1]))
+}
