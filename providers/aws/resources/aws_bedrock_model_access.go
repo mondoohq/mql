@@ -5,12 +5,17 @@ package resources
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
 	"github.com/aws/aws-sdk-go-v2/service/bedrock"
 	bedrocktypes "github.com/aws/aws-sdk-go-v2/service/bedrock/types"
+	"github.com/aws/smithy-go"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
@@ -141,7 +146,7 @@ func (a *mqlAwsBedrockFoundationModel) agreementStatus() (string, error) {
 
 func (a *mqlAwsBedrock) promptRouters() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	return bedrockCollectRegionJobs(jobpool.CreatePool(bedrockRegionJobs(conn, a.collectPromptRouters), 5))
+	return bedrockCollectRegionJobs(jobpool.CreatePool(bedrockRegionJobs(conn, bedrockSkipUnsupportedRegion(a.collectPromptRouters)), 5))
 }
 
 func promptRouterModelArns(models []bedrocktypes.PromptRouterTargetModel) []any {
@@ -193,6 +198,140 @@ func (a *mqlAwsBedrock) collectPromptRouters(svc *bedrock.Client, region string)
 		}
 	}
 	return res, nil
+}
+
+// bedrockTargetKind reports whether a prompt router target ARN names a
+// foundation model or an inference profile (system-defined or application).
+func bedrockTargetKind(targetArn string) string {
+	parsed, err := arn.Parse(targetArn)
+	if err != nil {
+		return ""
+	}
+	switch {
+	case strings.HasPrefix(parsed.Resource, "foundation-model/"):
+		return "foundationModel"
+	case strings.HasPrefix(parsed.Resource, "inference-profile/"),
+		strings.HasPrefix(parsed.Resource, "application-inference-profile/"):
+		return "inferenceProfile"
+	}
+	return ""
+}
+
+// bedrockTargets resolves router target ARNs of one kind against the
+// account's cached foundation model or inference profile list. ARNs that
+// don't resolve stay readable in modelArns and fallbackModelArn.
+func bedrockTargets(runtime *plugin.Runtime, arns []string, kind string) ([]any, error) {
+	want := map[string]bool{}
+	for _, a := range arns {
+		if bedrockTargetKind(a) == kind {
+			want[a] = true
+		}
+	}
+	res := []any{}
+	if len(want) == 0 {
+		return res, nil
+	}
+	obj, err := CreateResource(runtime, ResourceAwsBedrock, map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	root := obj.(*mqlAwsBedrock)
+	if kind == "foundationModel" {
+		list := root.GetFoundationModels()
+		if list.Error != nil {
+			return nil, list.Error
+		}
+		for _, raw := range list.Data {
+			if m, ok := raw.(*mqlAwsBedrockFoundationModel); ok && want[m.ModelArn.Data] {
+				res = append(res, m)
+			}
+		}
+		return res, nil
+	}
+	list := root.GetInferenceProfiles()
+	if list.Error != nil {
+		return nil, list.Error
+	}
+	for _, raw := range list.Data {
+		if p, ok := raw.(*mqlAwsBedrockInferenceProfile); ok && want[p.Arn.Data] {
+			res = append(res, p)
+		}
+	}
+	return res, nil
+}
+
+func (a *mqlAwsBedrockPromptRouter) routerModelArns() []string {
+	arns := make([]string, 0, len(a.ModelArns.Data))
+	for _, v := range a.ModelArns.Data {
+		if s, ok := v.(string); ok {
+			arns = append(arns, s)
+		}
+	}
+	return arns
+}
+
+func (a *mqlAwsBedrockPromptRouter) foundationModels() ([]any, error) {
+	return bedrockTargets(a.MqlRuntime, a.routerModelArns(), "foundationModel")
+}
+
+func (a *mqlAwsBedrockPromptRouter) inferenceProfiles() ([]any, error) {
+	return bedrockTargets(a.MqlRuntime, a.routerModelArns(), "inferenceProfile")
+}
+
+func (a *mqlAwsBedrockPromptRouter) fallbackFoundationModel() (*mqlAwsBedrockFoundationModel, error) {
+	res, err := bedrockTargets(a.MqlRuntime, []string{a.FallbackModelArn.Data}, "foundationModel")
+	if err != nil {
+		return nil, err
+	}
+	if len(res) == 0 {
+		a.FallbackFoundationModel.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return res[0].(*mqlAwsBedrockFoundationModel), nil
+}
+
+func (a *mqlAwsBedrockPromptRouter) fallbackInferenceProfile() (*mqlAwsBedrockInferenceProfile, error) {
+	res, err := bedrockTargets(a.MqlRuntime, []string{a.FallbackModelArn.Data}, "inferenceProfile")
+	if err != nil {
+		return nil, err
+	}
+	if len(res) == 0 {
+		a.FallbackInferenceProfile.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return res[0].(*mqlAwsBedrockInferenceProfile), nil
+}
+
+// isBedrockRegionUnsupported reports whether a regional Bedrock call failed
+// because the region does not serve that API. Prompt routers and custom model
+// deployments exist in a subset of regions; elsewhere Bedrock answers with a
+// ValidationException ("not recognized by the service", or "You don't have
+// the permissions to perform the requested operation" in regions without the
+// feature) or a 404 from a missing endpoint, none of which the shared region
+// classifiers match.
+func isBedrockRegionUnsupported(err error) bool {
+	if ae, ok := errors.AsType[smithy.APIError](err); ok && ae.ErrorCode() == "ValidationException" {
+		msg := ae.ErrorMessage()
+		return strings.Contains(msg, "not recognized by the service") ||
+			strings.Contains(msg, "don't have the permissions to perform the requested operation")
+	}
+	if re, ok := errors.AsType[*smithyhttp.ResponseError](err); ok {
+		return re.HTTPStatusCode() == 404
+	}
+	return false
+}
+
+// bedrockSkipUnsupportedRegion wraps a regional collector so a region that
+// doesn't serve the API reads as empty instead of failing the whole list.
+func bedrockSkipUnsupportedRegion(collect func(svc *bedrock.Client, region string) ([]any, error)) func(svc *bedrock.Client, region string) ([]any, error) {
+	return func(svc *bedrock.Client, region string) ([]any, error) {
+		res, err := collect(svc, region)
+		if err != nil && isBedrockRegionUnsupported(err) {
+			log.Debug().Err(err).Str("region", region).Msg("bedrock API not available in region")
+			return []any{}, nil
+		}
+		return res, err
+	}
 }
 
 // --- Automated Reasoning policies ---
@@ -309,7 +448,7 @@ type mqlAwsBedrockCustomModelDeploymentInternal struct {
 
 func (a *mqlAwsBedrock) customModelDeployments() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	return bedrockCollectRegionJobs(jobpool.CreatePool(bedrockRegionJobs(conn, a.collectCustomModelDeployments), 5))
+	return bedrockCollectRegionJobs(jobpool.CreatePool(bedrockRegionJobs(conn, bedrockSkipUnsupportedRegion(a.collectCustomModelDeployments)), 5))
 }
 
 func (a *mqlAwsBedrock) collectCustomModelDeployments(svc *bedrock.Client, region string) ([]any, error) {

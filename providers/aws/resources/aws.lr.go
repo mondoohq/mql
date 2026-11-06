@@ -36903,8 +36903,20 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.bedrock.promptRouter.modelArns": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockPromptRouter).GetModelArns()).ToDataRes(types.Array(types.String))
 	},
+	"aws.bedrock.promptRouter.foundationModels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockPromptRouter).GetFoundationModels()).ToDataRes(types.Array(types.Resource("aws.bedrock.foundationModel")))
+	},
+	"aws.bedrock.promptRouter.inferenceProfiles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockPromptRouter).GetInferenceProfiles()).ToDataRes(types.Array(types.Resource("aws.bedrock.inferenceProfile")))
+	},
 	"aws.bedrock.promptRouter.fallbackModelArn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockPromptRouter).GetFallbackModelArn()).ToDataRes(types.String)
+	},
+	"aws.bedrock.promptRouter.fallbackFoundationModel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockPromptRouter).GetFallbackFoundationModel()).ToDataRes(types.Resource("aws.bedrock.foundationModel"))
+	},
+	"aws.bedrock.promptRouter.fallbackInferenceProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockPromptRouter).GetFallbackInferenceProfile()).ToDataRes(types.Resource("aws.bedrock.inferenceProfile"))
 	},
 	"aws.bedrock.promptRouter.responseQualityDifference": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockPromptRouter).GetResponseQualityDifference()).ToDataRes(types.Float)
@@ -86619,8 +86631,24 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsBedrockPromptRouter).ModelArns, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"aws.bedrock.promptRouter.foundationModels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockPromptRouter).FoundationModels, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.promptRouter.inferenceProfiles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockPromptRouter).InferenceProfiles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"aws.bedrock.promptRouter.fallbackModelArn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsBedrockPromptRouter).FallbackModelArn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.promptRouter.fallbackFoundationModel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockPromptRouter).FallbackFoundationModel, ok = plugin.RawToTValue[*mqlAwsBedrockFoundationModel](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.promptRouter.fallbackInferenceProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockPromptRouter).FallbackInferenceProfile, ok = plugin.RawToTValue[*mqlAwsBedrockInferenceProfile](v.Value, v.Error)
 		return
 	},
 	"aws.bedrock.promptRouter.responseQualityDifference": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -210683,7 +210711,11 @@ type mqlAwsBedrockPromptRouter struct {
 	Status                    plugin.TValue[string]
 	Description               plugin.TValue[string]
 	ModelArns                 plugin.TValue[[]any]
+	FoundationModels          plugin.TValue[[]any]
+	InferenceProfiles         plugin.TValue[[]any]
 	FallbackModelArn          plugin.TValue[string]
+	FallbackFoundationModel   plugin.TValue[*mqlAwsBedrockFoundationModel]
+	FallbackInferenceProfile  plugin.TValue[*mqlAwsBedrockInferenceProfile]
 	ResponseQualityDifference plugin.TValue[float64]
 	CreatedAt                 plugin.TValue[*time.Time]
 	UpdatedAt                 plugin.TValue[*time.Time]
@@ -210749,8 +210781,72 @@ func (c *mqlAwsBedrockPromptRouter) GetModelArns() *plugin.TValue[[]any] {
 	return &c.ModelArns
 }
 
+func (c *mqlAwsBedrockPromptRouter) GetFoundationModels() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.FoundationModels, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.promptRouter", c.__id, "foundationModels")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.foundationModels()
+	})
+}
+
+func (c *mqlAwsBedrockPromptRouter) GetInferenceProfiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.InferenceProfiles, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.promptRouter", c.__id, "inferenceProfiles")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.inferenceProfiles()
+	})
+}
+
 func (c *mqlAwsBedrockPromptRouter) GetFallbackModelArn() *plugin.TValue[string] {
 	return &c.FallbackModelArn
+}
+
+func (c *mqlAwsBedrockPromptRouter) GetFallbackFoundationModel() *plugin.TValue[*mqlAwsBedrockFoundationModel] {
+	return plugin.GetOrCompute[*mqlAwsBedrockFoundationModel](&c.FallbackFoundationModel, func() (*mqlAwsBedrockFoundationModel, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.promptRouter", c.__id, "fallbackFoundationModel")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsBedrockFoundationModel), nil
+			}
+		}
+
+		return c.fallbackFoundationModel()
+	})
+}
+
+func (c *mqlAwsBedrockPromptRouter) GetFallbackInferenceProfile() *plugin.TValue[*mqlAwsBedrockInferenceProfile] {
+	return plugin.GetOrCompute[*mqlAwsBedrockInferenceProfile](&c.FallbackInferenceProfile, func() (*mqlAwsBedrockInferenceProfile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.promptRouter", c.__id, "fallbackInferenceProfile")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsBedrockInferenceProfile), nil
+			}
+		}
+
+		return c.fallbackInferenceProfile()
+	})
 }
 
 func (c *mqlAwsBedrockPromptRouter) GetResponseQualityDifference() *plugin.TValue[float64] {

@@ -2084,7 +2084,11 @@ aws.bedrock.promptRouter 14.6.5
 aws.bedrock.promptRouter.arn 14.6.5
 aws.bedrock.promptRouter.createdAt 14.6.5
 aws.bedrock.promptRouter.description 14.6.5
+aws.bedrock.promptRouter.fallbackFoundationModel 14.6.5
+aws.bedrock.promptRouter.fallbackInferenceProfile 14.6.5
 aws.bedrock.promptRouter.fallbackModelArn 14.6.5
+aws.bedrock.promptRouter.foundationModels 14.6.5
+aws.bedrock.promptRouter.inferenceProfiles 14.6.5
 aws.bedrock.promptRouter.modelArns 14.6.5
 aws.bedrock.promptRouter.name 14.6.5
 aws.bedrock.promptRouter.region 14.6.5

@@ -32168,10 +32168,22 @@ private aws.bedrock.promptRouter @defaults("name type status") {
   //
   // Each is a foundation model or inference profile ARN.
   modelArns []string
+  // Foundation models the router may send requests to
+  foundationModels() []aws.bedrock.foundationModel
+  // Inference profiles the router may send requests to
+  inferenceProfiles() []aws.bedrock.inferenceProfile
   // ARN of the model used when no routing decision applies
   //
   // A foundation model or inference profile ARN.
   fallbackModelArn string
+  // Foundation model used when no routing decision applies
+  //
+  // Null when the fallback is an inference profile.
+  fallbackFoundationModel() aws.bedrock.foundationModel
+  // Inference profile used when no routing decision applies
+  //
+  // Null when the fallback is a foundation model.
+  fallbackInferenceProfile() aws.bedrock.inferenceProfile
   // Response quality difference, in percent, that must be expected before the router picks a cheaper model
   responseQualityDifference float
   // Time the prompt router was created
