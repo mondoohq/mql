@@ -29,6 +29,7 @@ import (
 	logme "github.com/stackitcloud/stackit-sdk-go/services/logme/v2api"
 	logs "github.com/stackitcloud/stackit-sdk-go/services/logs/v1api"
 	mariadb "github.com/stackitcloud/stackit-sdk-go/services/mariadb/v2api"
+	modelexperiments "github.com/stackitcloud/stackit-sdk-go/services/modelexperiments/v1api"
 	modelserving "github.com/stackitcloud/stackit-sdk-go/services/modelserving/v1api"
 	mongodbflex "github.com/stackitcloud/stackit-sdk-go/services/mongodbflex/v2api"
 	objectstorage "github.com/stackitcloud/stackit-sdk-go/services/objectstorage/v2api"
@@ -182,6 +183,9 @@ type StackitConnection struct {
 	modelServingOnce     sync.Once
 	modelServingClient   *modelserving.APIClient
 	modelServingErr      error
+	modelExperimentsOnce sync.Once
+	modelExperimentsClnt *modelexperiments.APIClient
+	modelExperimentsErr  error
 	albOnce              sync.Once
 	albClient            *alb.APIClient
 	albErr               error
@@ -625,6 +629,13 @@ func (c *StackitConnection) ModelServing() (*modelserving.APIClient, error) {
 		c.modelServingClient, c.modelServingErr = modelserving.NewAPIClient(c.configOptsGlobal...)
 	})
 	return c.modelServingClient, c.modelServingErr
+}
+
+func (c *StackitConnection) ModelExperiments() (*modelexperiments.APIClient, error) {
+	c.modelExperimentsOnce.Do(func() {
+		c.modelExperimentsClnt, c.modelExperimentsErr = modelexperiments.NewAPIClient(c.configOptsGlobal...)
+	})
+	return c.modelExperimentsClnt, c.modelExperimentsErr
 }
 
 func (c *StackitConnection) TelemetryRouter() (*telemetryrouter.APIClient, error) {
