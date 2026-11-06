@@ -42,6 +42,14 @@ import (
 // dlp.jobTriggers.list per Google's REST reference.)
 var validatedGCPPermissions = []string{
 	"accessapproval.settings.get",
+	"agentidentity.authProviders.getIamPolicy",
+	"agentidentity.authProviders.list",
+	"agentidentity.locations.list",
+	"agentregistry.agents.list",
+	"agentregistry.bindings.list",
+	"agentregistry.endpoints.list",
+	"agentregistry.locations.list",
+	"agentregistry.mcpServers.list",
 	"aiplatform.batchPredictionJobs.list",
 	"aiplatform.cachedContents.list",
 	"aiplatform.customJobs.get",

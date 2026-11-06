@@ -456,6 +456,13 @@ const (
 	ResourceGcpAccesscontextmanagerAccessLevel                                         string = "gcp.accesscontextmanager.accessLevel"
 	ResourceGcpAccesscontextmanagerServicePerimeter                                    string = "gcp.accesscontextmanager.servicePerimeter"
 	ResourceGcpAccesscontextmanagerServicePerimeterConfig                              string = "gcp.accesscontextmanager.servicePerimeter.config"
+	ResourceGcpProjectAgentRegistryService                                             string = "gcp.project.agentRegistryService"
+	ResourceGcpProjectAgentRegistryServiceAgent                                        string = "gcp.project.agentRegistryService.agent"
+	ResourceGcpProjectAgentRegistryServiceMcpServer                                    string = "gcp.project.agentRegistryService.mcpServer"
+	ResourceGcpProjectAgentRegistryServiceEndpoint                                     string = "gcp.project.agentRegistryService.endpoint"
+	ResourceGcpProjectAgentRegistryServiceBinding                                      string = "gcp.project.agentRegistryService.binding"
+	ResourceGcpProjectAgentIdentityService                                             string = "gcp.project.agentIdentityService"
+	ResourceGcpProjectAgentIdentityServiceAuthProvider                                 string = "gcp.project.agentIdentityService.authProvider"
 	ResourceGcpProjectModelArmorService                                                string = "gcp.project.modelArmorService"
 	ResourceGcpProjectModelArmorServiceTemplate                                        string = "gcp.project.modelArmorService.template"
 	ResourceGcpProjectModelArmorServiceFloorSetting                                    string = "gcp.project.modelArmorService.floorSetting"
@@ -2333,6 +2340,34 @@ func init() {
 			// to override args, implement: initGcpAccesscontextmanagerServicePerimeterConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createGcpAccesscontextmanagerServicePerimeterConfig,
 		},
+		"gcp.project.agentRegistryService": {
+			Init:   initGcpProjectAgentRegistryService,
+			Create: createGcpProjectAgentRegistryService,
+		},
+		"gcp.project.agentRegistryService.agent": {
+			// to override args, implement: initGcpProjectAgentRegistryServiceAgent(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectAgentRegistryServiceAgent,
+		},
+		"gcp.project.agentRegistryService.mcpServer": {
+			// to override args, implement: initGcpProjectAgentRegistryServiceMcpServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectAgentRegistryServiceMcpServer,
+		},
+		"gcp.project.agentRegistryService.endpoint": {
+			// to override args, implement: initGcpProjectAgentRegistryServiceEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectAgentRegistryServiceEndpoint,
+		},
+		"gcp.project.agentRegistryService.binding": {
+			// to override args, implement: initGcpProjectAgentRegistryServiceBinding(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectAgentRegistryServiceBinding,
+		},
+		"gcp.project.agentIdentityService": {
+			Init:   initGcpProjectAgentIdentityService,
+			Create: createGcpProjectAgentIdentityService,
+		},
+		"gcp.project.agentIdentityService.authProvider": {
+			// to override args, implement: initGcpProjectAgentIdentityServiceAuthProvider(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectAgentIdentityServiceAuthProvider,
+		},
 		"gcp.project.modelArmorService": {
 			Init:   initGcpProjectModelArmorService,
 			Create: createGcpProjectModelArmorService,
@@ -3960,6 +3995,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.modelArmor": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProject).GetModelArmor()).ToDataRes(types.Resource("gcp.project.modelArmorService"))
+	},
+	"gcp.project.agentRegistry": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProject).GetAgentRegistry()).ToDataRes(types.Resource("gcp.project.agentRegistryService"))
+	},
+	"gcp.project.agentIdentity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProject).GetAgentIdentity()).ToDataRes(types.Resource("gcp.project.agentIdentityService"))
 	},
 	"gcp.project.identityPlatform": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProject).GetIdentityPlatform()).ToDataRes(types.Resource("gcp.project.identityPlatformService"))
@@ -17800,6 +17841,183 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.accesscontextmanager.servicePerimeter.config.egressPolicies": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpAccesscontextmanagerServicePerimeterConfig).GetEgressPolicies()).ToDataRes(types.Array(types.Dict))
 	},
+	"gcp.project.agentRegistryService.projectId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryService).GetProjectId()).ToDataRes(types.String)
+	},
+	"gcp.project.agentRegistryService.agents": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryService).GetAgents()).ToDataRes(types.Array(types.Resource("gcp.project.agentRegistryService.agent")))
+	},
+	"gcp.project.agentRegistryService.mcpServers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryService).GetMcpServers()).ToDataRes(types.Array(types.Resource("gcp.project.agentRegistryService.mcpServer")))
+	},
+	"gcp.project.agentRegistryService.endpoints": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryService).GetEndpoints()).ToDataRes(types.Array(types.Resource("gcp.project.agentRegistryService.endpoint")))
+	},
+	"gcp.project.agentRegistryService.bindings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryService).GetBindings()).ToDataRes(types.Array(types.Resource("gcp.project.agentRegistryService.binding")))
+	},
+	"gcp.project.agentRegistryService.agent.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceAgent).GetName()).ToDataRes(types.String)
+	},
+	"gcp.project.agentRegistryService.agent.agentId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceAgent).GetAgentId()).ToDataRes(types.String)
+	},
+	"gcp.project.agentRegistryService.agent.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceAgent).GetDisplayName()).ToDataRes(types.String)
+	},
+	"gcp.project.agentRegistryService.agent.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceAgent).GetDescription()).ToDataRes(types.String)
+	},
+	"gcp.project.agentRegistryService.agent.location": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceAgent).GetLocation()).ToDataRes(types.String)
+	},
+	"gcp.project.agentRegistryService.agent.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceAgent).GetVersion()).ToDataRes(types.String)
+	},
+	"gcp.project.agentRegistryService.agent.protocols": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceAgent).GetProtocols()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.agentRegistryService.agent.urls": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceAgent).GetUrls()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.agentRegistryService.agent.skills": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceAgent).GetSkills()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.agentRegistryService.agent.attributes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceAgent).GetAttributes()).ToDataRes(types.Dict)
+	},
+	"gcp.project.agentRegistryService.agent.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceAgent).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.agentRegistryService.agent.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceAgent).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.agentRegistryService.mcpServer.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceMcpServer).GetName()).ToDataRes(types.String)
+	},
+	"gcp.project.agentRegistryService.mcpServer.mcpServerId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceMcpServer).GetMcpServerId()).ToDataRes(types.String)
+	},
+	"gcp.project.agentRegistryService.mcpServer.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceMcpServer).GetDisplayName()).ToDataRes(types.String)
+	},
+	"gcp.project.agentRegistryService.mcpServer.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceMcpServer).GetDescription()).ToDataRes(types.String)
+	},
+	"gcp.project.agentRegistryService.mcpServer.interfaces": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceMcpServer).GetInterfaces()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gcp.project.agentRegistryService.mcpServer.tools": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceMcpServer).GetTools()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.agentRegistryService.mcpServer.attributes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceMcpServer).GetAttributes()).ToDataRes(types.Dict)
+	},
+	"gcp.project.agentRegistryService.mcpServer.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceMcpServer).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.agentRegistryService.mcpServer.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceMcpServer).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.agentRegistryService.endpoint.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceEndpoint).GetName()).ToDataRes(types.String)
+	},
+	"gcp.project.agentRegistryService.endpoint.endpointId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceEndpoint).GetEndpointId()).ToDataRes(types.String)
+	},
+	"gcp.project.agentRegistryService.endpoint.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceEndpoint).GetDisplayName()).ToDataRes(types.String)
+	},
+	"gcp.project.agentRegistryService.endpoint.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceEndpoint).GetDescription()).ToDataRes(types.String)
+	},
+	"gcp.project.agentRegistryService.endpoint.interfaces": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceEndpoint).GetInterfaces()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gcp.project.agentRegistryService.endpoint.attributes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceEndpoint).GetAttributes()).ToDataRes(types.Dict)
+	},
+	"gcp.project.agentRegistryService.endpoint.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceEndpoint).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.agentRegistryService.endpoint.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceEndpoint).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.agentRegistryService.binding.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceBinding).GetName()).ToDataRes(types.String)
+	},
+	"gcp.project.agentRegistryService.binding.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceBinding).GetDisplayName()).ToDataRes(types.String)
+	},
+	"gcp.project.agentRegistryService.binding.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceBinding).GetDescription()).ToDataRes(types.String)
+	},
+	"gcp.project.agentRegistryService.binding.source": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceBinding).GetSource()).ToDataRes(types.String)
+	},
+	"gcp.project.agentRegistryService.binding.target": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceBinding).GetTarget()).ToDataRes(types.String)
+	},
+	"gcp.project.agentRegistryService.binding.authProvider": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceBinding).GetAuthProvider()).ToDataRes(types.Resource("gcp.project.agentIdentityService.authProvider"))
+	},
+	"gcp.project.agentRegistryService.binding.scopes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceBinding).GetScopes()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.agentRegistryService.binding.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceBinding).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.agentRegistryService.binding.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentRegistryServiceBinding).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.agentIdentityService.projectId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentIdentityService).GetProjectId()).ToDataRes(types.String)
+	},
+	"gcp.project.agentIdentityService.authProviders": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentIdentityService).GetAuthProviders()).ToDataRes(types.Array(types.Resource("gcp.project.agentIdentityService.authProvider")))
+	},
+	"gcp.project.agentIdentityService.authProvider.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).GetName()).ToDataRes(types.String)
+	},
+	"gcp.project.agentIdentityService.authProvider.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).GetDescription()).ToDataRes(types.String)
+	},
+	"gcp.project.agentIdentityService.authProvider.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).GetState()).ToDataRes(types.String)
+	},
+	"gcp.project.agentIdentityService.authProvider.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).GetType()).ToDataRes(types.String)
+	},
+	"gcp.project.agentIdentityService.authProvider.allowedScopes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).GetAllowedScopes()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.agentIdentityService.authProvider.blockedScopes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).GetBlockedScopes()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.agentIdentityService.authProvider.workloadIds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).GetWorkloadIds()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.agentIdentityService.authProvider.deleted": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).GetDeleted()).ToDataRes(types.Bool)
+	},
+	"gcp.project.agentIdentityService.authProvider.expireTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).GetExpireTime()).ToDataRes(types.Time)
+	},
+	"gcp.project.agentIdentityService.authProvider.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gcp.project.agentIdentityService.authProvider.iamPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).GetIamPolicy()).ToDataRes(types.Array(types.Resource("gcp.resourcemanager.binding")))
+	},
+	"gcp.project.agentIdentityService.authProvider.public": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).GetPublic()).ToDataRes(types.Bool)
+	},
+	"gcp.project.agentIdentityService.authProvider.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.agentIdentityService.authProvider.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).GetUpdatedAt()).ToDataRes(types.Time)
+	},
 	"gcp.project.modelArmorService.projectId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectModelArmorService).GetProjectId()).ToDataRes(types.String)
 	},
@@ -22258,6 +22476,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.modelArmor": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProject).ModelArmor, ok = plugin.RawToTValue[*mqlGcpProjectModelArmorService](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistry": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProject).AgentRegistry, ok = plugin.RawToTValue[*mqlGcpProjectAgentRegistryService](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentIdentity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProject).AgentIdentity, ok = plugin.RawToTValue[*mqlGcpProjectAgentIdentityService](v.Value, v.Error)
 		return
 	},
 	"gcp.project.identityPlatform": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -42364,6 +42590,270 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpAccesscontextmanagerServicePerimeterConfig).EgressPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"gcp.project.agentRegistryService.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryService).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.agentRegistryService.projectId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryService).ProjectId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.agents": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryService).Agents, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.mcpServers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryService).McpServers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.endpoints": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryService).Endpoints, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.bindings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryService).Bindings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.agent.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceAgent).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.agentRegistryService.agent.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceAgent).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.agent.agentId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceAgent).AgentId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.agent.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceAgent).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.agent.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceAgent).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.agent.location": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceAgent).Location, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.agent.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceAgent).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.agent.protocols": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceAgent).Protocols, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.agent.urls": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceAgent).Urls, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.agent.skills": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceAgent).Skills, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.agent.attributes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceAgent).Attributes, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.agent.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceAgent).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.agent.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceAgent).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.mcpServer.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceMcpServer).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.agentRegistryService.mcpServer.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceMcpServer).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.mcpServer.mcpServerId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceMcpServer).McpServerId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.mcpServer.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceMcpServer).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.mcpServer.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceMcpServer).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.mcpServer.interfaces": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceMcpServer).Interfaces, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.mcpServer.tools": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceMcpServer).Tools, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.mcpServer.attributes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceMcpServer).Attributes, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.mcpServer.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceMcpServer).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.mcpServer.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceMcpServer).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.endpoint.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceEndpoint).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.agentRegistryService.endpoint.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceEndpoint).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.endpoint.endpointId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceEndpoint).EndpointId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.endpoint.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceEndpoint).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.endpoint.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceEndpoint).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.endpoint.interfaces": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceEndpoint).Interfaces, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.endpoint.attributes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceEndpoint).Attributes, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.endpoint.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceEndpoint).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.endpoint.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceEndpoint).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.binding.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceBinding).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.agentRegistryService.binding.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceBinding).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.binding.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceBinding).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.binding.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceBinding).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.binding.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceBinding).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.binding.target": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceBinding).Target, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.binding.authProvider": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceBinding).AuthProvider, ok = plugin.RawToTValue[*mqlGcpProjectAgentIdentityServiceAuthProvider](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.binding.scopes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceBinding).Scopes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.binding.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceBinding).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentRegistryService.binding.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentRegistryServiceBinding).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentIdentityService.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentIdentityService).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.agentIdentityService.projectId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentIdentityService).ProjectId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentIdentityService.authProviders": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentIdentityService).AuthProviders, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentIdentityService.authProvider.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.agentIdentityService.authProvider.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentIdentityService.authProvider.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentIdentityService.authProvider.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentIdentityService.authProvider.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentIdentityService.authProvider.allowedScopes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).AllowedScopes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentIdentityService.authProvider.blockedScopes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).BlockedScopes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentIdentityService.authProvider.workloadIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).WorkloadIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentIdentityService.authProvider.deleted": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).Deleted, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentIdentityService.authProvider.expireTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).ExpireTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentIdentityService.authProvider.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentIdentityService.authProvider.iamPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).IamPolicy, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentIdentityService.authProvider.public": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).Public, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentIdentityService.authProvider.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.agentIdentityService.authProvider.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAgentIdentityServiceAuthProvider).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
 	"gcp.project.modelArmorService.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectModelArmorService).__id, ok = v.Value.(string)
 		return
@@ -50254,6 +50744,8 @@ type mqlGcpProject struct {
 	Backupdr                                plugin.TValue[*mqlGcpProjectBackupdrService]
 	Vertexai                                plugin.TValue[*mqlGcpProjectVertexaiService]
 	ModelArmor                              plugin.TValue[*mqlGcpProjectModelArmorService]
+	AgentRegistry                           plugin.TValue[*mqlGcpProjectAgentRegistryService]
+	AgentIdentity                           plugin.TValue[*mqlGcpProjectAgentIdentityService]
 	IdentityPlatform                        plugin.TValue[*mqlGcpProjectIdentityPlatformService]
 	DiscoveryEngine                         plugin.TValue[*mqlGcpProjectDiscoveryEngineService]
 	Documentai                              plugin.TValue[*mqlGcpProjectDocumentaiService]
@@ -51211,6 +51703,38 @@ func (c *mqlGcpProject) GetModelArmor() *plugin.TValue[*mqlGcpProjectModelArmorS
 		}
 
 		return c.modelArmor()
+	})
+}
+
+func (c *mqlGcpProject) GetAgentRegistry() *plugin.TValue[*mqlGcpProjectAgentRegistryService] {
+	return plugin.GetOrCompute[*mqlGcpProjectAgentRegistryService](&c.AgentRegistry, func() (*mqlGcpProjectAgentRegistryService, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project", c.__id, "agentRegistry")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectAgentRegistryService), nil
+			}
+		}
+
+		return c.agentRegistry()
+	})
+}
+
+func (c *mqlGcpProject) GetAgentIdentity() *plugin.TValue[*mqlGcpProjectAgentIdentityService] {
+	return plugin.GetOrCompute[*mqlGcpProjectAgentIdentityService](&c.AgentIdentity, func() (*mqlGcpProjectAgentIdentityService, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project", c.__id, "agentIdentity")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectAgentIdentityService), nil
+			}
+		}
+
+		return c.agentIdentity()
 	})
 }
 
@@ -99277,6 +99801,695 @@ func (c *mqlGcpAccesscontextmanagerServicePerimeterConfig) GetIngressPolicies() 
 
 func (c *mqlGcpAccesscontextmanagerServicePerimeterConfig) GetEgressPolicies() *plugin.TValue[[]any] {
 	return &c.EgressPolicies
+}
+
+// mqlGcpProjectAgentRegistryService for the gcp.project.agentRegistryService resource
+type mqlGcpProjectAgentRegistryService struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlGcpProjectAgentRegistryServiceInternal
+	ProjectId  plugin.TValue[string]
+	Agents     plugin.TValue[[]any]
+	McpServers plugin.TValue[[]any]
+	Endpoints  plugin.TValue[[]any]
+	Bindings   plugin.TValue[[]any]
+}
+
+// createGcpProjectAgentRegistryService creates a new instance of this resource
+func createGcpProjectAgentRegistryService(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectAgentRegistryService{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.agentRegistryService", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectAgentRegistryService) MqlName() string {
+	return "gcp.project.agentRegistryService"
+}
+
+func (c *mqlGcpProjectAgentRegistryService) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectAgentRegistryService) GetProjectId() *plugin.TValue[string] {
+	return &c.ProjectId
+}
+
+func (c *mqlGcpProjectAgentRegistryService) GetAgents() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Agents, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.agentRegistryService", c.__id, "agents")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.agents()
+	})
+}
+
+func (c *mqlGcpProjectAgentRegistryService) GetMcpServers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.McpServers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.agentRegistryService", c.__id, "mcpServers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.mcpServers()
+	})
+}
+
+func (c *mqlGcpProjectAgentRegistryService) GetEndpoints() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Endpoints, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.agentRegistryService", c.__id, "endpoints")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.endpoints()
+	})
+}
+
+func (c *mqlGcpProjectAgentRegistryService) GetBindings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Bindings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.agentRegistryService", c.__id, "bindings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.bindings()
+	})
+}
+
+// mqlGcpProjectAgentRegistryServiceAgent for the gcp.project.agentRegistryService.agent resource
+type mqlGcpProjectAgentRegistryServiceAgent struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGcpProjectAgentRegistryServiceAgentInternal it will be used here
+	Name        plugin.TValue[string]
+	AgentId     plugin.TValue[string]
+	DisplayName plugin.TValue[string]
+	Description plugin.TValue[string]
+	Location    plugin.TValue[string]
+	Version     plugin.TValue[string]
+	Protocols   plugin.TValue[[]any]
+	Urls        plugin.TValue[[]any]
+	Skills      plugin.TValue[[]any]
+	Attributes  plugin.TValue[any]
+	CreatedAt   plugin.TValue[*time.Time]
+	UpdatedAt   plugin.TValue[*time.Time]
+}
+
+// createGcpProjectAgentRegistryServiceAgent creates a new instance of this resource
+func createGcpProjectAgentRegistryServiceAgent(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectAgentRegistryServiceAgent{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.agentRegistryService.agent", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceAgent) MqlName() string {
+	return "gcp.project.agentRegistryService.agent"
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceAgent) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceAgent) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceAgent) GetAgentId() *plugin.TValue[string] {
+	return &c.AgentId
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceAgent) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceAgent) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceAgent) GetLocation() *plugin.TValue[string] {
+	return &c.Location
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceAgent) GetVersion() *plugin.TValue[string] {
+	return &c.Version
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceAgent) GetProtocols() *plugin.TValue[[]any] {
+	return &c.Protocols
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceAgent) GetUrls() *plugin.TValue[[]any] {
+	return &c.Urls
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceAgent) GetSkills() *plugin.TValue[[]any] {
+	return &c.Skills
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceAgent) GetAttributes() *plugin.TValue[any] {
+	return &c.Attributes
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceAgent) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceAgent) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+// mqlGcpProjectAgentRegistryServiceMcpServer for the gcp.project.agentRegistryService.mcpServer resource
+type mqlGcpProjectAgentRegistryServiceMcpServer struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGcpProjectAgentRegistryServiceMcpServerInternal it will be used here
+	Name        plugin.TValue[string]
+	McpServerId plugin.TValue[string]
+	DisplayName plugin.TValue[string]
+	Description plugin.TValue[string]
+	Interfaces  plugin.TValue[map[string]any]
+	Tools       plugin.TValue[[]any]
+	Attributes  plugin.TValue[any]
+	CreatedAt   plugin.TValue[*time.Time]
+	UpdatedAt   plugin.TValue[*time.Time]
+}
+
+// createGcpProjectAgentRegistryServiceMcpServer creates a new instance of this resource
+func createGcpProjectAgentRegistryServiceMcpServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectAgentRegistryServiceMcpServer{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.agentRegistryService.mcpServer", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceMcpServer) MqlName() string {
+	return "gcp.project.agentRegistryService.mcpServer"
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceMcpServer) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceMcpServer) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceMcpServer) GetMcpServerId() *plugin.TValue[string] {
+	return &c.McpServerId
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceMcpServer) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceMcpServer) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceMcpServer) GetInterfaces() *plugin.TValue[map[string]any] {
+	return &c.Interfaces
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceMcpServer) GetTools() *plugin.TValue[[]any] {
+	return &c.Tools
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceMcpServer) GetAttributes() *plugin.TValue[any] {
+	return &c.Attributes
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceMcpServer) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceMcpServer) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+// mqlGcpProjectAgentRegistryServiceEndpoint for the gcp.project.agentRegistryService.endpoint resource
+type mqlGcpProjectAgentRegistryServiceEndpoint struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGcpProjectAgentRegistryServiceEndpointInternal it will be used here
+	Name        plugin.TValue[string]
+	EndpointId  plugin.TValue[string]
+	DisplayName plugin.TValue[string]
+	Description plugin.TValue[string]
+	Interfaces  plugin.TValue[map[string]any]
+	Attributes  plugin.TValue[any]
+	CreatedAt   plugin.TValue[*time.Time]
+	UpdatedAt   plugin.TValue[*time.Time]
+}
+
+// createGcpProjectAgentRegistryServiceEndpoint creates a new instance of this resource
+func createGcpProjectAgentRegistryServiceEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectAgentRegistryServiceEndpoint{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.agentRegistryService.endpoint", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceEndpoint) MqlName() string {
+	return "gcp.project.agentRegistryService.endpoint"
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceEndpoint) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceEndpoint) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceEndpoint) GetEndpointId() *plugin.TValue[string] {
+	return &c.EndpointId
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceEndpoint) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceEndpoint) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceEndpoint) GetInterfaces() *plugin.TValue[map[string]any] {
+	return &c.Interfaces
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceEndpoint) GetAttributes() *plugin.TValue[any] {
+	return &c.Attributes
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceEndpoint) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceEndpoint) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+// mqlGcpProjectAgentRegistryServiceBinding for the gcp.project.agentRegistryService.binding resource
+type mqlGcpProjectAgentRegistryServiceBinding struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlGcpProjectAgentRegistryServiceBindingInternal
+	Name         plugin.TValue[string]
+	DisplayName  plugin.TValue[string]
+	Description  plugin.TValue[string]
+	Source       plugin.TValue[string]
+	Target       plugin.TValue[string]
+	AuthProvider plugin.TValue[*mqlGcpProjectAgentIdentityServiceAuthProvider]
+	Scopes       plugin.TValue[[]any]
+	CreatedAt    plugin.TValue[*time.Time]
+	UpdatedAt    plugin.TValue[*time.Time]
+}
+
+// createGcpProjectAgentRegistryServiceBinding creates a new instance of this resource
+func createGcpProjectAgentRegistryServiceBinding(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectAgentRegistryServiceBinding{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.agentRegistryService.binding", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceBinding) MqlName() string {
+	return "gcp.project.agentRegistryService.binding"
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceBinding) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceBinding) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceBinding) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceBinding) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceBinding) GetSource() *plugin.TValue[string] {
+	return &c.Source
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceBinding) GetTarget() *plugin.TValue[string] {
+	return &c.Target
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceBinding) GetAuthProvider() *plugin.TValue[*mqlGcpProjectAgentIdentityServiceAuthProvider] {
+	return plugin.GetOrCompute[*mqlGcpProjectAgentIdentityServiceAuthProvider](&c.AuthProvider, func() (*mqlGcpProjectAgentIdentityServiceAuthProvider, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.agentRegistryService.binding", c.__id, "authProvider")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectAgentIdentityServiceAuthProvider), nil
+			}
+		}
+
+		return c.authProvider()
+	})
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceBinding) GetScopes() *plugin.TValue[[]any] {
+	return &c.Scopes
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceBinding) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlGcpProjectAgentRegistryServiceBinding) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+// mqlGcpProjectAgentIdentityService for the gcp.project.agentIdentityService resource
+type mqlGcpProjectAgentIdentityService struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlGcpProjectAgentIdentityServiceInternal
+	ProjectId     plugin.TValue[string]
+	AuthProviders plugin.TValue[[]any]
+}
+
+// createGcpProjectAgentIdentityService creates a new instance of this resource
+func createGcpProjectAgentIdentityService(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectAgentIdentityService{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.agentIdentityService", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectAgentIdentityService) MqlName() string {
+	return "gcp.project.agentIdentityService"
+}
+
+func (c *mqlGcpProjectAgentIdentityService) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectAgentIdentityService) GetProjectId() *plugin.TValue[string] {
+	return &c.ProjectId
+}
+
+func (c *mqlGcpProjectAgentIdentityService) GetAuthProviders() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AuthProviders, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.agentIdentityService", c.__id, "authProviders")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.authProviders()
+	})
+}
+
+// mqlGcpProjectAgentIdentityServiceAuthProvider for the gcp.project.agentIdentityService.authProvider resource
+type mqlGcpProjectAgentIdentityServiceAuthProvider struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGcpProjectAgentIdentityServiceAuthProviderInternal it will be used here
+	Name          plugin.TValue[string]
+	Description   plugin.TValue[string]
+	State         plugin.TValue[string]
+	Type          plugin.TValue[string]
+	AllowedScopes plugin.TValue[[]any]
+	BlockedScopes plugin.TValue[[]any]
+	WorkloadIds   plugin.TValue[[]any]
+	Deleted       plugin.TValue[bool]
+	ExpireTime    plugin.TValue[*time.Time]
+	Labels        plugin.TValue[map[string]any]
+	IamPolicy     plugin.TValue[[]any]
+	Public        plugin.TValue[bool]
+	CreatedAt     plugin.TValue[*time.Time]
+	UpdatedAt     plugin.TValue[*time.Time]
+}
+
+// createGcpProjectAgentIdentityServiceAuthProvider creates a new instance of this resource
+func createGcpProjectAgentIdentityServiceAuthProvider(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectAgentIdentityServiceAuthProvider{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.agentIdentityService.authProvider", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectAgentIdentityServiceAuthProvider) MqlName() string {
+	return "gcp.project.agentIdentityService.authProvider"
+}
+
+func (c *mqlGcpProjectAgentIdentityServiceAuthProvider) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectAgentIdentityServiceAuthProvider) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpProjectAgentIdentityServiceAuthProvider) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlGcpProjectAgentIdentityServiceAuthProvider) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlGcpProjectAgentIdentityServiceAuthProvider) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlGcpProjectAgentIdentityServiceAuthProvider) GetAllowedScopes() *plugin.TValue[[]any] {
+	return &c.AllowedScopes
+}
+
+func (c *mqlGcpProjectAgentIdentityServiceAuthProvider) GetBlockedScopes() *plugin.TValue[[]any] {
+	return &c.BlockedScopes
+}
+
+func (c *mqlGcpProjectAgentIdentityServiceAuthProvider) GetWorkloadIds() *plugin.TValue[[]any] {
+	return &c.WorkloadIds
+}
+
+func (c *mqlGcpProjectAgentIdentityServiceAuthProvider) GetDeleted() *plugin.TValue[bool] {
+	return &c.Deleted
+}
+
+func (c *mqlGcpProjectAgentIdentityServiceAuthProvider) GetExpireTime() *plugin.TValue[*time.Time] {
+	return &c.ExpireTime
+}
+
+func (c *mqlGcpProjectAgentIdentityServiceAuthProvider) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlGcpProjectAgentIdentityServiceAuthProvider) GetIamPolicy() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.IamPolicy, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.agentIdentityService.authProvider", c.__id, "iamPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.iamPolicy()
+	})
+}
+
+func (c *mqlGcpProjectAgentIdentityServiceAuthProvider) GetPublic() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Public, func() (bool, error) {
+		return c.public()
+	})
+}
+
+func (c *mqlGcpProjectAgentIdentityServiceAuthProvider) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlGcpProjectAgentIdentityServiceAuthProvider) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
 }
 
 // mqlGcpProjectModelArmorService for the gcp.project.modelArmorService resource
