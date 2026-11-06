@@ -695,13 +695,46 @@ scanned, the opposite of what it says. A separate call is also what makes it saf
 before the server knows it: a server that predates it answers `NotFound`, and the
 client ignores any error here.
 
-**It does not count as a scan.** It is sent instead of results, never beside
-them, so an asset's last successful scan stays where it was. What the server
-records it as is the server's decision; its per-asset scan outcome (server
-ADR-106) is where it would naturally land.
+**What the report means: the asset's latest scan, and it failed.** It is sent
+instead of results, never beside them. It does not replace the last successful
+scan: that scan's results and scan time still stand, and freshness does not
+move. How a server stores and shows it is the server's business.
 
-**Only synced assets.** An asset whose `Connect`, discovery, or sync failed has
-no MRN, so nothing upstream can name it. Those failures stay local until phase 9.
+### Asset errors before sync
+
+An asset whose `Connect`, discovery, or sync failed never received an MRN
+(phase 9). Evidence, choices and the proposed design are in the
+[annex](046-structured-provider-errors-annex.md).
+
+**This ADR defines only what mql supplies.** It specifies what cnspec sends
+and what each part means, so that any server can act on it. How a server
+stores, matches, joins, caps or shows these failures is outside this ADR and
+does not change it. A server that ignores the new parts loses nothing it has
+today.
+
+Decided so far:
+
+- **One RPC.** A pre-sync failure goes up through `ReportAssetScanFailed`, the
+  same call as a synced asset's. The request gains a way to name an asset that
+  has no MRN.
+- **Platform IDs name the asset.** When cnspec has platform IDs for a failed
+  target, it sends them with the failure. They mean what they mean in a sync:
+  the asset these IDs identify, whether or not the server has seen it before.
+- **The connection describes a target without them.** Every pre-sync failure
+  also carries a description of the connection cnspec tried, and a key derived
+  from it, together with what cnspec knows about itself as the scanner. The
+  same key goes out when a later sync of that target succeeds, so a server can
+  tell that the failure and the success were the same target from the same
+  scanner.
+- **Debounced, not held to the end.** Failures are collected and sent after a
+  short quiet period, and whatever remains when the run ends. A failure is
+  sent soon after it happens, and a burst of them (a registry refusing every
+  image) is one call.
+- **A sync answers per asset.** cnspec needs `SynchronizeAssets` to report an
+  error per asset instead of failing the whole call, and reports each refused
+  asset through the same RPC. Today one asset without platform IDs fails every
+  asset in its batch and aborts the run. How the client retries a failed sync
+  is phase 15.
 
 ### Two string matches this removes
 
@@ -779,9 +812,10 @@ have landed, and no machine phase waits for a migration.
    last rather than competing with the rest.
 9. **Asset errors before sync.** An asset whose `Connect`, discovery, or sync
    failed never received an MRN, so `ReportAssetScanFailed` cannot name it.
-   Open: which asset upstream it is reported against (the root the scan
-   started from, or the asset itself synced as failed), how an asset without
-   platform IDs is identified, and what the server records. Needs 6.
+   Only what mql supplies ("Asset errors before sync"): platform IDs when
+   cnspec has them, otherwise a connection description and key with the
+   scanner's identity, the key again on a later successful sync, debounced
+   sending, per-asset sync errors. Open: the interface details (annex). Needs 6.
 
 ### Migrating providers
 
@@ -816,6 +850,15 @@ Each step names the machine phases it needs.
     of every provider, and it is the work that actually finishes what this ADR
     starts. Named as its own step because it is large, mechanical, and easy to
     declare done while most of it is untouched.
+
+### After both tracks
+
+15. **Sync retry.** How cnspec retries a failed asset sync: a refused batch, a
+    transport error, the three attempts it makes today. It comes last on
+    purpose. The machine phases say what a failure is and the migration steps
+    make providers report them, and retry can only be shaped with confidence
+    once real failures arrive classified. Retrying a target's own 429 is not
+    part of it ("What this does not change").
 
 Phases 1 and 2 are independently useful: a kind that only reaches the CLI is
 already better than a string, and step 10 without phase 6 still makes `mql shell`
