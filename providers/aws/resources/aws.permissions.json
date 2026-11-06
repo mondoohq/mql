@@ -1,7 +1,7 @@
 {
   "provider": "aws",
-  "version": "14.6.3",
-  "generated_at": "2026-11-05T20:59:06-08:00",
+  "version": "14.6.4",
+  "generated_at": "2026-11-06T17:21:42Z",
   "permissions": [
     "access-analyzer:GetFinding",
     "access-analyzer:ListAnalyzers",
@@ -871,6 +871,12 @@
     "s3:ListAccessPoints",
     "s3:ListAllMyBuckets",
     "s3:ListTagsForResource",
+    "s3vectors:GetIndex",
+    "s3vectors:GetVectorBucket",
+    "s3vectors:GetVectorBucketPolicy",
+    "s3vectors:ListIndexes",
+    "s3vectors:ListTagsForResource",
+    "s3vectors:ListVectorBuckets",
     "sagemaker:DescribeAction",
     "sagemaker:DescribeAlgorithm",
     "sagemaker:DescribeApp",
@@ -6592,6 +6598,42 @@
       "service": "s3",
       "action": "ListTagsForResource",
       "source_file": "aws_s3.go"
+    },
+    {
+      "permission": "s3vectors:GetIndex",
+      "service": "s3vectors",
+      "action": "GetIndex",
+      "source_file": "aws_s3vectors.go"
+    },
+    {
+      "permission": "s3vectors:GetVectorBucket",
+      "service": "s3vectors",
+      "action": "GetVectorBucket",
+      "source_file": "aws_s3vectors.go"
+    },
+    {
+      "permission": "s3vectors:GetVectorBucketPolicy",
+      "service": "s3vectors",
+      "action": "GetVectorBucketPolicy",
+      "source_file": "aws_s3vectors.go"
+    },
+    {
+      "permission": "s3vectors:ListIndexes",
+      "service": "s3vectors",
+      "action": "ListIndexes",
+      "source_file": "aws_s3vectors.go"
+    },
+    {
+      "permission": "s3vectors:ListTagsForResource",
+      "service": "s3vectors",
+      "action": "ListTagsForResource",
+      "source_file": "aws_s3vectors.go"
+    },
+    {
+      "permission": "s3vectors:ListVectorBuckets",
+      "service": "s3vectors",
+      "action": "ListVectorBuckets",
+      "source_file": "aws_s3vectors.go"
     },
     {
       "permission": "sagemaker:DescribeAction",

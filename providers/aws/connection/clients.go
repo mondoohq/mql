@@ -105,6 +105,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/route53resolver"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3control"
+	"github.com/aws/aws-sdk-go-v2/service/s3vectors"
 	"github.com/aws/aws-sdk-go-v2/service/sagemaker"
 	"github.com/aws/aws-sdk-go-v2/service/scheduler"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
@@ -661,6 +662,10 @@ func (t *AwsConnection) BedrockAgent(region string) *bedrockagent.Client {
 
 func (t *AwsConnection) QBusiness(region string) *qbusiness.Client {
 	return regionalClient(t, "qbusiness", region, qbusiness.NewFromConfig)
+}
+
+func (t *AwsConnection) S3Vectors(region string) *s3vectors.Client {
+	return regionalClient(t, "s3vectors", region, s3vectors.NewFromConfig)
 }
 
 func (t *AwsConnection) BedrockAgentCoreControl(region string) *bedrockagentcorecontrol.Client {
