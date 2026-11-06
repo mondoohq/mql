@@ -1,7 +1,7 @@
 {
   "provider": "gcp",
   "version": "14.7.4",
-  "generated_at": "2026-11-06T12:20:41-08:00",
+  "generated_at": "2026-11-06T12:47:06-08:00",
   "permissions": [
     "accessapproval.settings.get",
     "agentidentity.authProviders.getIamPolicy",
@@ -181,9 +181,12 @@
     "datastream.privateConnections.list",
     "datastream.routes.list",
     "datastream.streams.list",
+    "discoveryengine.assistants.list",
     "discoveryengine.dataStores.get",
     "discoveryengine.dataStores.list",
+    "discoveryengine.engines.getIamPolicy",
     "discoveryengine.engines.list",
+    "discoveryengine.widgetConfigs.get",
     "dlp.columnDataProfiles.list",
     "dlp.connections.list",
     "dlp.contentPolicies.get",
@@ -1488,6 +1491,12 @@
       "source_file": "datastream.go"
     },
     {
+      "permission": "discoveryengine.assistants.list",
+      "service": "discoveryengine",
+      "action": "ListAssistants",
+      "source_file": "discoveryengine.go"
+    },
+    {
       "permission": "discoveryengine.dataStores.get",
       "service": "discoveryengine",
       "action": "GetDataStore",
@@ -1500,9 +1509,21 @@
       "source_file": "discoveryengine.go"
     },
     {
+      "permission": "discoveryengine.engines.getIamPolicy",
+      "service": "discoveryengine",
+      "action": "GetIamPolicy",
+      "source_file": "discoveryengine.go"
+    },
+    {
       "permission": "discoveryengine.engines.list",
       "service": "discoveryengine",
       "action": "ListEngines",
+      "source_file": "discoveryengine.go"
+    },
+    {
+      "permission": "discoveryengine.widgetConfigs.get",
+      "service": "discoveryengine",
+      "action": "GetWidgetConfig",
       "source_file": "discoveryengine.go"
     },
     {
