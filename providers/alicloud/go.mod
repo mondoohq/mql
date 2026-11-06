@@ -6,6 +6,7 @@ go 1.27.3
 
 require (
 	github.com/alibabacloud-go/actiontrail-20200706/v3 v3.5.0
+	github.com/alibabacloud-go/aiworkspace-20210204/v6 v6.3.6
 	github.com/alibabacloud-go/alb-20200616/v2 v2.3.2
 	github.com/alibabacloud-go/cas-20200407/v4 v4.7.4
 	github.com/alibabacloud-go/cbn-20170912/v2 v2.5.0
@@ -18,6 +19,7 @@ require (
 	github.com/alibabacloud-go/darabonba-openapi/v2 v2.2.5
 	github.com/alibabacloud-go/ddoscoo-20200101/v5 v5.0.3
 	github.com/alibabacloud-go/dds-20151201/v10 v10.5.0
+	github.com/alibabacloud-go/eas-20210701/v7 v7.10.0
 	github.com/alibabacloud-go/ecs-20140526/v7 v7.11.7
 	github.com/alibabacloud-go/elasticsearch-20170613/v6 v6.4.2
 	github.com/alibabacloud-go/ess-20220222/v2 v2.13.3

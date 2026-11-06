@@ -16,8 +16,8 @@ option root = "alicloud"
 // Kubernetes, Function Compute, NAS file storage, Web Application Firewall,
 // Cloud Firewall, Anti-DDoS, Security Center, Key Management Service,
 // ActionTrail, Log Service, Cloud Config, CloudSSO, Cloud Enterprise Network,
-// Resource Directory, API Gateway, Certificate Management Service, and
-// PrivateLink resources.
+// Resource Directory, API Gateway, Certificate Management Service,
+// PrivateLink, and Platform for AI resources.
 alicloud @root {
   // Account (UID) that the active credential belongs to
   accountId() string
@@ -9389,4 +9389,216 @@ alicloud.privatelink.endpoint @defaults("endpointName endpointId serviceName end
   tags map[string]string
   // Security groups that filter the endpoint's traffic
   securityGroups() []alicloud.ecs.securitygroup
+}
+
+// Alibaba Cloud Platform for AI (PAI)
+//
+// Platform for AI resources across an Alibaba Cloud account. Exposes the AI
+// workspaces and their members, the Elastic Algorithm Service (EAS) model
+// inference services, and the EAS dedicated gateways in every region that
+// offers PAI. Use it to audit who can administer AI workspaces, which model
+// services are reachable from the internet, and which gateways accept public
+// traffic and from where.
+alicloud.pai {
+  // AI workspaces across all regions that offer PAI
+  workspaces() []alicloud.pai.workspace
+  // EAS model inference services across all regions that offer PAI
+  easServices() []alicloud.pai.easService
+  // EAS dedicated gateways across all regions that offer PAI
+  easGateways() []alicloud.pai.easGateway
+}
+
+// PAI AI workspace
+//
+// A single PAI workspace, keyed by workspaceId within its region. Exposes the
+// workspace name, status, creator, administrators, environment types, and the
+// resource group it belongs to, along with its members and their roles. For
+// example `alicloud.pai.workspace(workspaceId: "12345", regionId: "cn-hangzhou")`.
+alicloud.pai.workspace {
+  // Region ID the workspace resides in, for example cn-hangzhou
+  regionId string
+  // Workspace ID, used with regionId as the lookup key
+  workspaceId string
+  // Workspace name
+  name string
+  // Display name shown in the console
+  displayName string
+  // Description of the workspace
+  description string
+  // Workspace status
+  //
+  // One of ENABLED, INITIALIZING, FAILURE, DISABLED, FROZEN, or UPDATING.
+  status string
+  // Account UID of the workspace creator
+  creator string
+  // Names of the workspace administrators
+  adminNames []string
+  // Whether this is the account's default workspace in the region
+  isDefault bool
+  // Environment types the workspace provides
+  //
+  // A workspace with only prod has no development environment; one with dev
+  // and prod separates the two.
+  envTypes []string
+  // Time the workspace was created
+  createTime time
+  // Time the workspace was last modified
+  modifiedTime time
+  // Resource group ID of the workspace
+  resourceGroupId string
+  // Resource group the workspace belongs to
+  resourceGroup() alicloud.resourceManager.resourceGroup
+  // Members of the workspace and their roles
+  members() []alicloud.pai.workspace.member
+}
+
+// PAI workspace member
+private alicloud.pai.workspace.member {
+  // Member ID within the workspace
+  memberId string
+  // Account name of the member
+  accountName string
+  // Display name of the member
+  displayName string
+  // Account type of the member
+  //
+  // 1 for an Alibaba Cloud account, 5 for a RAM user, or 6 for a RAM role.
+  accountType string
+  // Workspace roles granted to the member
+  //
+  // For example PAI.AlgoDeveloper, PAI.AlgoOperator, PAI.LabelManager,
+  // PAI.MaxComputeDeveloper, or PAI.WorkspaceAdmin.
+  roles []string
+  // Time the member was added to the workspace
+  createTime time
+}
+
+// PAI-EAS model inference service
+//
+// A single Elastic Algorithm Service (EAS) online inference service, keyed by
+// name within its region. Exposes the service status, image, deployment source,
+// safety lock, labels, the workspace and dedicated gateway it belongs to, its
+// public and VPC endpoints, and the VPC, vSwitch, and security group its
+// instances attach to. Use it to find model endpoints reachable from the
+// internet and services with no deletion protection. For example
+// `alicloud.pai.easService(name: "my-llm", regionId: "cn-hangzhou")`.
+alicloud.pai.easService {
+  // Region ID the service resides in, for example cn-hangzhou
+  regionId string
+  // Service name, used with regionId as the lookup key
+  name string
+  // System-generated service ID, for example eas-m-xxxxxxxx
+  id string
+  // Service status, for example Running, Stopped, or Failed
+  status string
+  // Reason for the current status
+  reason string
+  // Message describing the service status
+  message string
+  // Container image the service runs, empty for processor-based services
+  image string
+  // Deployment source, for example dsw or quickstart
+  source string
+  // Service role, for example Queue for a queue service, empty for a standard service
+  role string
+  // Application type, for example LLM
+  appType string
+  // Safety lock level that guards the service against changes
+  //
+  // For example dangerous, which blocks destructive operations such as deleting
+  // or stopping the service, or all, which blocks every change.
+  safetyLock string
+  // Service group the service belongs to
+  serviceGroup string
+  // Traffic state, for example standalone, grouping, or blue-green
+  trafficState string
+  // vCPU cores requested per instance
+  cpu int
+  // Memory requested per instance in MB
+  memory int
+  // GPUs requested per instance
+  gpu int
+  // Total number of instances
+  totalInstance int
+  // Number of running instances
+  runningInstance int
+  // Whether horizontal auto scaling is on
+  autoscalerEnabled bool
+  // Labels applied to the service
+  labels map[string]string
+  // Time the service was created
+  createTime time
+  // Time the service was last updated
+  updateTime time
+  // Account UID of the caller that created the service
+  callerUid string
+  // Workspace the service belongs to, null when the service has none
+  workspace() alicloud.pai.workspace
+  // Dedicated gateway the service is bound to, null when it uses the shared gateway
+  gateway() alicloud.pai.easGateway
+  // Public endpoint of the service, empty when it has none
+  internetEndpoint() string
+  // VPC endpoint of the service
+  intranetEndpoint() string
+  // Public endpoint for synchronous requests to an asynchronous service
+  secondaryInternetEndpoint() string
+  // VPC endpoint for synchronous requests to an asynchronous service
+  secondaryIntranetEndpoint() string
+  // Whether the service has a public endpoint
+  //
+  // True when internetEndpoint is non-empty, so the model can be invoked from
+  // the internet by anyone holding its token.
+  isPublic() bool
+  // VPC the service instances attach to, null when the service has no VPC configuration
+  vpc() alicloud.vpc.network
+  // vSwitch the service instances attach to, null when the service has no VPC configuration
+  vswitch() alicloud.vpc.vswitch
+  // Security group applied to the service instances, null when the service has no VPC configuration
+  securityGroup() alicloud.ecs.securitygroup
+}
+
+// PAI-EAS dedicated gateway
+//
+// A single EAS dedicated gateway, keyed by gatewayId within its region. Exposes
+// whether the gateway accepts public and VPC traffic, its domains, whether it
+// redirects HTTP to HTTPS, and the CIDR blocks allowed to reach it over the
+// internet. For example
+// `alicloud.pai.easGateway(gatewayId: "gw-xxxx", regionId: "cn-hangzhou")`.
+alicloud.pai.easGateway {
+  // Region ID the gateway resides in, for example cn-hangzhou
+  regionId string
+  // Gateway ID, used with regionId as the lookup key
+  gatewayId string
+  // Gateway alias
+  name string
+  // Gateway status, for example Running
+  status string
+  // Instance type the gateway nodes run on
+  instanceType string
+  // Number of gateway nodes
+  replicas int
+  // Billing method, PrePaid or PostPaid
+  chargeType string
+  // Whether this is the account's default gateway in the region
+  isDefault bool
+  // Whether the gateway accepts traffic from the internet
+  internetEnabled bool
+  // Public domain of the gateway, empty when internet access is off
+  internetDomain string
+  // Whether the gateway accepts traffic from VPCs
+  intranetEnabled bool
+  // VPC domain of the gateway
+  intranetDomain string
+  // Whether the gateway redirects HTTP requests to HTTPS
+  sslRedirectionEnabled bool
+  // Labels applied to the gateway
+  labels map[string]string
+  // Time the gateway was created
+  createTime time
+  // Time the gateway was last updated
+  updateTime time
+  // CIDR blocks allowed to reach the gateway over the internet
+  //
+  // Each entry holds `entry` (the CIDR block) and `comment`.
+  internetAcl() []dict
 }

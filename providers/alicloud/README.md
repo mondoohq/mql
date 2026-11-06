@@ -55,6 +55,8 @@ Some services answer only in the region or partition that owns them. WAF, Cloud 
 
 RAM, ActionTrail, Resource Management, and Cloud Enterprise Network are global and carry no region in their endpoint at all.
 
+Platform for AI (`alicloud.pai`) runs in a subset of regions. Its resources are read only in the scanned regions that offer PAI, and need the `paiworkspace:List*` and `eas:List*`/`eas:Describe*` actions.
+
 ## Regions
 
 By default every region enabled on the account is scanned. Narrow it with either flag:

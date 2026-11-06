@@ -96,6 +96,12 @@ func TestEndpoint(t *testing.T) {
 		assert.Equal(t, "privatelink.eu-central-1.aliyuncs.com", endpoint("privatelink", "eu-central-1"))
 	})
 
+	t.Run("PAI EAS answers on the pai-eas host", func(t *testing.T) {
+		assert.Equal(t, "pai-eas.cn-hangzhou.aliyuncs.com", endpoint("eas", "cn-hangzhou"))
+		assert.Equal(t, "pai-eas.ap-southeast-1.aliyuncs.com", endpoint("eas", "ap-southeast-1"))
+		assert.Equal(t, "aiworkspace.cn-shanghai.aliyuncs.com", endpoint("aiworkspace", "cn-shanghai"))
+	})
+
 	t.Run("Cloud Enterprise Network is global", func(t *testing.T) {
 		// CEN spans regions by design, so its endpoint carries none. Falling
 		// back to the usual layout would address a host that does not serve it.
@@ -166,5 +172,31 @@ func TestResolveCredential(t *testing.T) {
 		if err == nil && cred != nil && cred.GetType() != nil {
 			assert.NotEqual(t, "ram_role_arn", *cred.GetType())
 		}
+	})
+}
+
+func TestRegionsWithEndpoint(t *testing.T) {
+	ep := "pai-eas.cn-hangzhou.aliyuncs.com"
+	empty := ""
+	endpoints := map[string]*string{
+		"cn-hangzhou":    &ep,
+		"ap-southeast-1": &ep,
+		"cn-nil":         nil,
+		"cn-empty":       &empty,
+	}
+
+	t.Run("keeps only regions with an endpoint, in order", func(t *testing.T) {
+		got := regionsWithEndpoint([]string{"ap-southeast-1", "eu-west-1", "cn-hangzhou"}, endpoints)
+		assert.Equal(t, []string{"ap-southeast-1", "cn-hangzhou"}, got)
+	})
+
+	t.Run("nil and empty endpoints do not count", func(t *testing.T) {
+		assert.Empty(t, regionsWithEndpoint([]string{"cn-nil", "cn-empty"}, endpoints))
+	})
+
+	t.Run("no regions yields an empty list, not nil", func(t *testing.T) {
+		got := regionsWithEndpoint(nil, endpoints)
+		assert.NotNil(t, got)
+		assert.Empty(t, got)
 	})
 }
