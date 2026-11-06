@@ -195,6 +195,7 @@ type mqlAwsBedrockAutomatedReasoningPolicyInternal struct {
 	fetchLock sync.Mutex
 	fetched   atomic.Bool
 	detail    *bedrock.GetAutomatedReasoningPolicyOutput
+	detailErr error
 }
 
 func (a *mqlAwsBedrock) automatedReasoningPolicies() ([]any, error) {
@@ -234,13 +235,14 @@ func (a *mqlAwsBedrock) collectAutomatedReasoningPolicies(svc *bedrock.Client, r
 
 func (a *mqlAwsBedrockAutomatedReasoningPolicy) fetchDetail() (*bedrock.GetAutomatedReasoningPolicyOutput, error) {
 	if a.fetched.Load() {
-		return a.detail, nil
+		return a.detail, a.detailErr
 	}
 	a.fetchLock.Lock()
 	defer a.fetchLock.Unlock()
 	if a.fetched.Load() {
-		return a.detail, nil
+		return a.detail, a.detailErr
 	}
+	defer a.fetched.Store(true)
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	policyArn := a.Arn.Data
 	out, err := conn.Bedrock(a.Region.Data).GetAutomatedReasoningPolicy(context.Background(), &bedrock.GetAutomatedReasoningPolicyInput{
@@ -248,12 +250,16 @@ func (a *mqlAwsBedrockAutomatedReasoningPolicy) fetchDetail() (*bedrock.GetAutom
 	})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
-			return nil, llx.Forbidden(err, llx.WithPermissions("bedrock:GetAutomatedReasoningPolicy"))
+			if !plugin.StructuredErrors() {
+				return nil, nil
+			}
+			a.detailErr = llx.Forbidden(err, llx.WithPermissions("bedrock:GetAutomatedReasoningPolicy"))
+			return nil, a.detailErr
 		}
+		a.detailErr = err
 		return nil, err
 	}
 	a.detail = out
-	a.fetched.Store(true)
 	return a.detail, nil
 }
 
@@ -292,6 +298,7 @@ type mqlAwsBedrockCustomModelDeploymentInternal struct {
 	fetchLock     sync.Mutex
 	fetched       atomic.Bool
 	detail        *bedrock.GetCustomModelDeploymentOutput
+	detailErr     error
 }
 
 func (a *mqlAwsBedrock) customModelDeployments() ([]any, error) {
@@ -332,13 +339,14 @@ func (a *mqlAwsBedrock) collectCustomModelDeployments(svc *bedrock.Client, regio
 
 func (a *mqlAwsBedrockCustomModelDeployment) fetchDetail() (*bedrock.GetCustomModelDeploymentOutput, error) {
 	if a.fetched.Load() {
-		return a.detail, nil
+		return a.detail, a.detailErr
 	}
 	a.fetchLock.Lock()
 	defer a.fetchLock.Unlock()
 	if a.fetched.Load() {
-		return a.detail, nil
+		return a.detail, a.detailErr
 	}
+	defer a.fetched.Store(true)
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	deploymentArn := a.Arn.Data
 	out, err := conn.Bedrock(a.Region.Data).GetCustomModelDeployment(context.Background(), &bedrock.GetCustomModelDeploymentInput{
@@ -346,12 +354,16 @@ func (a *mqlAwsBedrockCustomModelDeployment) fetchDetail() (*bedrock.GetCustomMo
 	})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
-			return nil, llx.Forbidden(err, llx.WithPermissions("bedrock:GetCustomModelDeployment"))
+			if !plugin.StructuredErrors() {
+				return nil, nil
+			}
+			a.detailErr = llx.Forbidden(err, llx.WithPermissions("bedrock:GetCustomModelDeployment"))
+			return nil, a.detailErr
 		}
+		a.detailErr = err
 		return nil, err
 	}
 	a.detail = out
-	a.fetched.Store(true)
 	return a.detail, nil
 }
 
