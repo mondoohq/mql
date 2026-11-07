@@ -137,8 +137,74 @@ func (a *mqlAwsBedrockAgentCore) gateways() ([]any, error) {
 				res = append(res, mqlGwRes)
 			}
 		}
-		return res, nil
+		return filterByTags(ctx, conn.Filters.General, res, func(item any) (map[string]any, error) {
+			return item.(*mqlAwsBedrockAgentCoreGateway).tags()
+		}), nil
 	}))
+}
+
+// initAwsBedrockAgentCoreGateway resolves a single gateway from its ARN, which
+// is how a discovered aws-bedrock-agentcore-gateway asset is scanned. It reads
+// the gateway with one GetGateway call and keeps that response as the
+// gateway's detail, so the fields it backs need no second call.
+func initAwsBedrockAgentCoreGateway(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+	if len(args) == 0 {
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformBedrockAgentcoreGateway); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
+		}
+	}
+	if args["arn"] == nil {
+		return nil, nil, errors.New("arn required to fetch aws.bedrock.agentCore.gateway")
+	}
+	arnVal, ok := args["arn"].Value.(string)
+	if !ok {
+		return nil, nil, errors.New("wrong type for 'arn' in aws.bedrock.agentCore.gateway initialization, it must be a string")
+	}
+	region, gatewayId, err := regionAndIdFromArn(arnVal, "bedrock-agentcore", "gateway")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.BedrockAgentCoreControl(region)
+	detail, err := svc.GetGateway(context.Background(), &bedrockagentcorecontrol.GetGatewayInput{GatewayIdentifier: &gatewayId})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			return nil, nil, llx.Forbidden(err, llx.WithPermissions("bedrock-agentcore:GetGateway"))
+		}
+		return nil, nil, err
+	}
+
+	resource, err := CreateResource(runtime, ResourceAwsBedrockAgentCoreGateway, map[string]*llx.RawData{
+		"__id":           llx.StringData(region + "/" + gatewayId),
+		"name":           llx.StringDataPtr(detail.Name),
+		"region":         llx.StringData(region),
+		"status":         llx.StringData(string(detail.Status)),
+		"description":    llx.StringDataPtr(detail.Description),
+		"protocolType":   llx.StringData(string(detail.ProtocolType)),
+		"authorizerType": llx.StringData(string(detail.AuthorizerType)),
+		"createdAt":      llx.TimeDataPtr(detail.CreatedAt),
+		"updatedAt":      llx.TimeDataPtr(detail.UpdatedAt),
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	mqlGw := resource.(*mqlAwsBedrockAgentCoreGateway)
+	// CreateResource hands back the cached gateway when a list already built
+	// it; keep whatever detail that one fetched.
+	mqlGw.fetchLock.Lock()
+	defer mqlGw.fetchLock.Unlock()
+	if !mqlGw.fetched {
+		mqlGw.cacheRegion = region
+		mqlGw.cacheGatewayId = gatewayId
+		mqlGw.detail = detail
+		mqlGw.fetched = true
+	}
+	return nil, mqlGw, nil
 }
 
 type mqlAwsBedrockAgentCoreGatewayInternal struct {
@@ -931,8 +997,73 @@ func (a *mqlAwsBedrockAgentCore) runtimes() ([]any, error) {
 				res = append(res, mqlRtRes)
 			}
 		}
-		return res, nil
+		return filterByTags(ctx, conn.Filters.General, res, func(item any) (map[string]any, error) {
+			return item.(*mqlAwsBedrockAgentCoreRuntime).tags()
+		}), nil
 	}))
+}
+
+// initAwsBedrockAgentCoreRuntime resolves a single agent runtime from its ARN,
+// which is how a discovered aws-bedrock-agentcore-runtime asset is scanned. It
+// reads the runtime with one GetAgentRuntime call and keeps that response as
+// the runtime's detail, so the fields it backs need no second call.
+func initAwsBedrockAgentCoreRuntime(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+	if len(args) == 0 {
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformBedrockAgentcoreRuntime); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
+		}
+	}
+	if args["arn"] == nil {
+		return nil, nil, errors.New("arn required to fetch aws.bedrock.agentCore.runtime")
+	}
+	arnVal, ok := args["arn"].Value.(string)
+	if !ok {
+		return nil, nil, errors.New("wrong type for 'arn' in aws.bedrock.agentCore.runtime initialization, it must be a string")
+	}
+	region, runtimeId, err := regionAndIdFromArn(arnVal, "bedrock-agentcore", "runtime")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.BedrockAgentCoreControl(region)
+	detail, err := svc.GetAgentRuntime(context.Background(), &bedrockagentcorecontrol.GetAgentRuntimeInput{AgentRuntimeId: &runtimeId})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			return nil, nil, llx.Forbidden(err, llx.WithPermissions("bedrock-agentcore:GetAgentRuntime"))
+		}
+		return nil, nil, err
+	}
+
+	resource, err := CreateResource(runtime, ResourceAwsBedrockAgentCoreRuntime, map[string]*llx.RawData{
+		"__id":        llx.StringDataPtr(detail.AgentRuntimeArn),
+		"id":          llx.StringDataPtr(detail.AgentRuntimeId),
+		"arn":         llx.StringDataPtr(detail.AgentRuntimeArn),
+		"name":        llx.StringDataPtr(detail.AgentRuntimeName),
+		"region":      llx.StringData(region),
+		"version":     llx.StringDataPtr(detail.AgentRuntimeVersion),
+		"status":      llx.StringData(string(detail.Status)),
+		"description": llx.StringDataPtr(detail.Description),
+		"updatedAt":   llx.TimeDataPtr(detail.LastUpdatedAt),
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	mqlRt := resource.(*mqlAwsBedrockAgentCoreRuntime)
+	// CreateResource hands back the cached runtime when a list already built
+	// it; keep whatever detail that one fetched.
+	mqlRt.fetchLock.Lock()
+	defer mqlRt.fetchLock.Unlock()
+	if !mqlRt.fetched {
+		mqlRt.cacheRegion = region
+		mqlRt.detail = detail
+		mqlRt.fetched = true
+	}
+	return nil, mqlRt, nil
 }
 
 type mqlAwsBedrockAgentCoreRuntimeInternal struct {

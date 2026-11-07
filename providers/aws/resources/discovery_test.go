@@ -69,6 +69,9 @@ func TestAllResolvedResources(t *testing.T) {
 		DiscoveryDocumentDBInstances,
 		DiscoverySnsTopics,
 		DiscoverySqsQueues,
+		DiscoveryBedrockAgents,
+		DiscoveryBedrockAgentCoreGateways,
+		DiscoveryBedrockAgentCoreRuntimes,
 		DiscoveryInstances,
 		DiscoverySSMInstances,
 		DiscoveryECR,
@@ -131,6 +134,9 @@ func TestAutoResolvedResources(t *testing.T) {
 		DiscoveryDocumentDBInstances,
 		DiscoverySnsTopics,
 		DiscoverySqsQueues,
+		DiscoveryBedrockAgents,
+		DiscoveryBedrockAgentCoreGateways,
+		DiscoveryBedrockAgentCoreRuntimes,
 	}
 	require.ElementsMatch(t, expected, Auto)
 }

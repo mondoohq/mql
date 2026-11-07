@@ -1184,6 +1184,9 @@ func (a *mqlAwsBedrock) getAgents(conn *connection.AwsConnection) []*jobpool.Job
 					res = append(res, mqlAg)
 				}
 			}
+			res = filterByTags(ctx, conn.Filters.General, res, func(item any) (map[string]any, error) {
+				return item.(*mqlAwsBedrockAgent).tags()
+			})
 			return jobpool.JobResult(res), nil
 		}
 		tasks = append(tasks, jobpool.NewJob(f))
@@ -1201,6 +1204,66 @@ type mqlAwsBedrockAgentInternal struct {
 
 func (a *mqlAwsBedrockAgent) id() (string, error) {
 	return "aws.bedrock.agent/" + a.Region.Data + "/" + a.Id.Data, nil
+}
+
+// initAwsBedrockAgent resolves a single agent from its ARN, which is how a
+// discovered aws-bedrock-agent asset is scanned. It reads the agent with one
+// GetAgent call and keeps that response as the agent's detail, so the fields
+// it backs need no second call.
+func initAwsBedrockAgent(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+	if len(args) == 0 {
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformBedrockAgent); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
+		}
+	}
+	if args["arn"] == nil {
+		return nil, nil, errors.New("arn required to fetch aws.bedrock.agent")
+	}
+	arnVal, ok := args["arn"].Value.(string)
+	if !ok {
+		return nil, nil, errors.New("wrong type for 'arn' in aws.bedrock.agent initialization, it must be a string")
+	}
+	region, agentId, err := regionAndIdFromArn(arnVal, "bedrock", "agent")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.BedrockAgent(region)
+	detail, err := svc.GetAgent(context.Background(), &bedrockagent.GetAgentInput{AgentId: &agentId})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			return nil, nil, llx.Forbidden(err, llx.WithPermissions("bedrock:GetAgent"))
+		}
+		return nil, nil, err
+	}
+	if detail.Agent == nil {
+		return nil, nil, fmt.Errorf("aws.bedrock.agent with arn %q not found", arnVal)
+	}
+
+	resource, err := CreateResource(runtime, ResourceAwsBedrockAgent, map[string]*llx.RawData{
+		"__id":   llx.StringData("aws.bedrock.agent/" + region + "/" + agentId),
+		"id":     llx.StringData(agentId),
+		"name":   llx.StringDataPtr(detail.Agent.AgentName),
+		"region": llx.StringData(region),
+		"status": llx.StringData(string(detail.Agent.AgentStatus)),
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	mqlAg := resource.(*mqlAwsBedrockAgent)
+	// CreateResource hands back the cached agent when a list already built it.
+	// The Once keeps whatever detail that one fetched; on a fresh agent it
+	// records this response so the detail fields need no second call.
+	mqlAg.detailOnce.Do(func() {
+		mqlAg.cacheRegion = region
+		mqlAg.detail = detail
+	})
+	return nil, mqlAg, nil
 }
 
 func (a *mqlAwsBedrockAgent) fetchDetail() (*bedrockagent.GetAgentOutput, error) {

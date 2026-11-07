@@ -424,6 +424,29 @@ func GetRegionFromArn(arnVal string) (string, error) {
 	return parsedArn.Region, nil
 }
 
+// regionAndIdFromArn splits an ARN of the form
+// arn:<partition>:<service>:<region>:<account>:<resourceType>/<id> into its
+// region and id. It rejects an ARN of another service or resource type, so an
+// init handed the wrong ARN fails with a clear error instead of asking the API
+// for a resource that cannot exist.
+func regionAndIdFromArn(arnVal, service, resourceType string) (region, id string, err error) {
+	parsedArn, err := arn.Parse(arnVal)
+	if err != nil {
+		return "", "", err
+	}
+	if parsedArn.Service != service {
+		return "", "", fmt.Errorf("arn %q is not a %s arn", arnVal, service)
+	}
+	id, ok := strings.CutPrefix(parsedArn.Resource, resourceType+"/")
+	if !ok || id == "" || strings.Contains(id, "/") {
+		return "", "", fmt.Errorf("arn %q is not a %s %s arn", arnVal, service, resourceType)
+	}
+	if parsedArn.Region == "" {
+		return "", "", fmt.Errorf("arn %q has no region", arnVal)
+	}
+	return parsedArn.Region, id, nil
+}
+
 func CertificatesToMqlCertificates(runtime *plugin.Runtime, certs []*x509.Certificate) ([]any, error) {
 	res := []any{}
 	// to create certificate resources
@@ -621,6 +644,41 @@ func fetchTagsConcurrently[K comparable](ctx context.Context, keys []K, fetch fu
 	// The worker func never returns an error, so Wait only drains the pool.
 	_ = g.Wait()
 	return result
+}
+
+// filterByTags drops the items the general tag filters exclude, reading each
+// item's tags through tags at most fetchTagsConcurrency at a time. It is for
+// listers whose tag lookup needs something only the created resource has (an
+// ARN from a detail call): passing the resource's own tags accessor fills its
+// tag cache, so a later read of the tags field costs nothing.
+//
+// tags reports an unreadable tag set as a nil map, which is how resolveTags
+// answers a refused lookup. Such an item is treated as fetchTagsConcurrently
+// treats a failed fetch: dropped when an include filter is set, kept when only
+// exclude filters are set. Without tag filters the items are returned as is
+// and no tags are read.
+func filterByTags[T comparable](ctx context.Context, filters connection.GeneralDiscoveryFilters, items []T, tags func(T) (map[string]any, error)) []T {
+	if !filters.HasTags() || len(items) == 0 {
+		return items
+	}
+	tagsByItem := fetchTagsConcurrently(ctx, items, func(_ context.Context, item T) (map[string]string, error) {
+		t, err := tags(item)
+		if err != nil {
+			return nil, err
+		}
+		if t == nil {
+			return nil, errTagsUnreadable
+		}
+		return mapStringInterfaceToStringString(t), nil
+	})
+	res := make([]T, 0, len(items))
+	for _, item := range items {
+		if filters.IsFilteredOutByTags(tagsByItem[item]) {
+			continue
+		}
+		res = append(res, item)
+	}
+	return res
 }
 
 // securityGroupIdHandler is a helper struct to handle security group ids and convert them to resources

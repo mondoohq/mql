@@ -123,6 +123,9 @@ Notes:
 				resources.DiscoveryDocumentDBInstances,
 				resources.DiscoverySnsTopics,
 				resources.DiscoverySqsQueues,
+				resources.DiscoveryBedrockAgents,
+				resources.DiscoveryBedrockAgentCoreGateways,
+				resources.DiscoveryBedrockAgentCoreRuntimes,
 				resources.DiscoveryVPCs,
 			},
 			Flags: []plugin.Flag{

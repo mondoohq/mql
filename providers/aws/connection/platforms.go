@@ -73,6 +73,9 @@ const (
 	PlatformDocumentdbInstance        = "aws-documentdb-instance"
 	PlatformSnsTopic                  = "aws-sns-topic"
 	PlatformSqsQueue                  = "aws-sqs-queue"
+	PlatformBedrockAgent              = "aws-bedrock-agent"
+	PlatformBedrockAgentcoreGateway   = "aws-bedrock-agentcore-gateway"
+	PlatformBedrockAgentcoreRuntime   = "aws-bedrock-agentcore-runtime"
 )
 
 var Platforms = []*plugin.PlatformInfo{
@@ -133,6 +136,9 @@ var Platforms = []*plugin.PlatformInfo{
 	{Name: PlatformDocumentdbInstance, Title: "AWS DocumentDB Instance", Kind: []string{"aws-object"}, Runtime: []string{"aws"}},
 	{Name: PlatformSnsTopic, Title: "AWS SNS Topic", Kind: []string{"aws-object"}, Runtime: []string{"aws"}},
 	{Name: PlatformSqsQueue, Title: "AWS SQS Queue", Kind: []string{"aws-object"}, Runtime: []string{"aws"}},
+	{Name: PlatformBedrockAgent, Title: "AWS Bedrock Agent", Kind: []string{"aws-object"}, Runtime: []string{"aws"}},
+	{Name: PlatformBedrockAgentcoreGateway, Title: "AWS Bedrock AgentCore Gateway", Kind: []string{"aws-object"}, Runtime: []string{"aws"}},
+	{Name: PlatformBedrockAgentcoreRuntime, Title: "AWS Bedrock AgentCore Runtime", Kind: []string{"aws-object"}, Runtime: []string{"aws"}},
 }
 
 var platformsByName = plugin.PlatformsByName(Platforms)

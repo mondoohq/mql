@@ -5043,7 +5043,7 @@ func init() {
 			Create: createAwsBedrockAgentCorePaymentCredentialProvider,
 		},
 		"aws.bedrock.agentCore.gateway": {
-			// to override args, implement: initAwsBedrockAgentCoreGateway(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initAwsBedrockAgentCoreGateway,
 			Create: createAwsBedrockAgentCoreGateway,
 		},
 		"aws.bedrock.agentCore.gatewayRateLimit": {
@@ -5075,7 +5075,7 @@ func init() {
 			Create: createAwsBedrockAgentCoreHarnessEndpoint,
 		},
 		"aws.bedrock.agentCore.runtime": {
-			// to override args, implement: initAwsBedrockAgentCoreRuntime(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initAwsBedrockAgentCoreRuntime,
 			Create: createAwsBedrockAgentCoreRuntime,
 		},
 		"aws.bedrock.agentCore.runtimeEndpoint": {
@@ -5155,7 +5155,7 @@ func init() {
 			Create: createAwsBedrockProvisionedModelThroughput,
 		},
 		"aws.bedrock.agent": {
-			// to override args, implement: initAwsBedrockAgent(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initAwsBedrockAgent,
 			Create: createAwsBedrockAgent,
 		},
 		"aws.bedrock.agent.actionGroup": {

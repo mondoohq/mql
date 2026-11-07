@@ -16,7 +16,8 @@ import (
 // If discovery learns a new object type, add it here AND to Platforms.
 var discoveryPlatformNames = []string{
 	"aws-apigatewayv2-api", "aws-appstream-fleet", "aws-athena-workgroup",
-	"aws-batch-jobdefinition", "aws-directoryservice-directory", "aws-documentdb-instance",
+	"aws-batch-jobdefinition", "aws-bedrock-agent", "aws-bedrock-agentcore-gateway",
+	"aws-bedrock-agentcore-runtime", "aws-directoryservice-directory", "aws-documentdb-instance",
 	"aws-cloudfront-distribution", "aws-cloudtrail-trail", "aws-cloudwatch-loggroup",
 	"aws-documentdb-cluster", "aws-dynamodb-table", "aws-ebs-snapshot", "aws-ebs-volume",
 	"aws-ec2-instance", "aws-ecr-image", "aws-ecr-repository", "aws-ecs-container",
@@ -69,6 +70,11 @@ func TestGetPlatformForObjectParity(t *testing.T) {
 	// messaging objects resolve to their own service segment, not the "other" fallback
 	assert.Equal(t, []string{"aws", acc, "sns"}, GetPlatformForObject("aws-sns-topic", acc).TechnologyUrlSegments)
 	assert.Equal(t, []string{"aws", acc, "sqs"}, GetPlatformForObject("aws-sqs-queue", acc).TechnologyUrlSegments)
+
+	// Bedrock agents and AgentCore objects resolve to the service prefix their ARNs carry
+	assert.Equal(t, []string{"aws", acc, "bedrock"}, GetPlatformForObject("aws-bedrock-agent", acc).TechnologyUrlSegments)
+	assert.Equal(t, []string{"aws", acc, "bedrock-agentcore"}, GetPlatformForObject("aws-bedrock-agentcore-gateway", acc).TechnologyUrlSegments)
+	assert.Equal(t, []string{"aws", acc, "bedrock-agentcore"}, GetPlatformForObject("aws-bedrock-agentcore-runtime", acc).TechnologyUrlSegments)
 
 	// an unknown object name falls back to a generic AWS object
 	u := GetPlatformForObject("aws-brand-new-thing", acc)

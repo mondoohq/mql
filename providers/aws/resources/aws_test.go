@@ -14,6 +14,7 @@ import (
 
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"github.com/stretchr/testify/assert"
+	"go.mondoo.com/mql/providers/aws/connection"
 )
 
 func TestIsServiceNotAvailableInRegionError(t *testing.T) {
@@ -285,5 +286,92 @@ func TestFetchTagsConcurrently(t *testing.T) {
 		assert.LessOrEqual(t, maxInFlight, fetchTagsConcurrency)
 		// Guard against the bound silently collapsing to serial execution.
 		assert.Greater(t, maxInFlight, 1)
+	})
+}
+
+func TestRegionAndIdFromArn(t *testing.T) {
+	tests := []struct {
+		name         string
+		arn          string
+		service      string
+		resourceType string
+		wantRegion   string
+		wantId       string
+		wantErr      bool
+	}{
+		// Synthetic: ARN shapes from the AWS service authorization reference; no target showed these exact values.
+		{"agentcore gateway", "arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/my-gateway-abc123def4", "bedrock-agentcore", "gateway", "us-east-1", "my-gateway-abc123def4", false},
+		{"agentcore runtime", "arn:aws:bedrock-agentcore:eu-central-1:123456789012:runtime/my_agent-AbC123dEf4", "bedrock-agentcore", "runtime", "eu-central-1", "my_agent-AbC123dEf4", false},
+		{"bedrock agent", "arn:aws:bedrock:us-west-2:123456789012:agent/ABCDEFGHIJ", "bedrock", "agent", "us-west-2", "ABCDEFGHIJ", false},
+		{"other partition", "arn:aws-us-gov:bedrock:us-gov-west-1:123456789012:agent/ABCDEFGHIJ", "bedrock", "agent", "us-gov-west-1", "ABCDEFGHIJ", false},
+		// Synthetic: inputs an init must reject before calling the API.
+		{"wrong service", "arn:aws:bedrock:us-east-1:123456789012:agent/ABCDEFGHIJ", "bedrock-agentcore", "gateway", "", "", true},
+		{"wrong resource type", "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/rt-1", "bedrock-agentcore", "gateway", "", "", true},
+		{"resource type prefix only", "arn:aws:bedrock-agentcore:us-east-1:123456789012:gatewayx/gw-1", "bedrock-agentcore", "gateway", "", "", true},
+		{"empty id", "arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/", "bedrock-agentcore", "gateway", "", "", true},
+		{"nested sub-resource", "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/rt-1/runtime-endpoint/DEFAULT", "bedrock-agentcore", "runtime", "", "", true},
+		{"no region", "arn:aws:bedrock::123456789012:agent/ABCDEFGHIJ", "bedrock", "agent", "", "", true},
+		{"not an arn", "ABCDEFGHIJ", "bedrock", "agent", "", "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			region, id, err := regionAndIdFromArn(tt.arn, tt.service, tt.resourceType)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tt.wantRegion, region)
+			assert.Equal(t, tt.wantId, id)
+		})
+	}
+}
+
+func TestFilterByTags(t *testing.T) {
+	// Synthetic: tag sets keyed by item name; "denied" stands for a refused
+	// lookup (resolveTags answers nil), "broken" for a failed call.
+	tagsOf := map[string]map[string]any{
+		"prod":     {"env": "prod"},
+		"staging":  {"env": "staging"},
+		"untagged": {},
+		"denied":   nil,
+	}
+	items := []string{"prod", "staging", "untagged", "denied", "broken"}
+	lookup := func(item string) (map[string]any, error) {
+		if item == "broken" {
+			return nil, errors.New("throttled")
+		}
+		return tagsOf[item], nil
+	}
+
+	t.Run("no tag filters reads no tags and keeps every item", func(t *testing.T) {
+		called := false
+		res := filterByTags(context.Background(), connection.GeneralDiscoveryFilters{Regions: []string{"us-east-1"}}, items, func(string) (map[string]any, error) {
+			called = true
+			return nil, nil
+		})
+		assert.Equal(t, items, res)
+		assert.False(t, called)
+	})
+
+	t.Run("include filter keeps only matching items", func(t *testing.T) {
+		filters := connection.GeneralDiscoveryFilters{Tags: map[string]string{"env": "prod"}}
+		assert.Equal(t, []string{"prod"}, filterByTags(context.Background(), filters, items, lookup))
+	})
+
+	t.Run("include filter with a value list", func(t *testing.T) {
+		filters := connection.GeneralDiscoveryFilters{Tags: map[string]string{"env": "prod,staging"}}
+		assert.Equal(t, []string{"prod", "staging"}, filterByTags(context.Background(), filters, items, lookup))
+	})
+
+	t.Run("exclude filter keeps unreadable and untagged items", func(t *testing.T) {
+		filters := connection.GeneralDiscoveryFilters{ExcludeTags: map[string]string{"env": "staging"}}
+		assert.Equal(t, []string{"prod", "untagged", "denied", "broken"}, filterByTags(context.Background(), filters, items, lookup))
+	})
+
+	t.Run("keeps list order", func(t *testing.T) {
+		filters := connection.GeneralDiscoveryFilters{ExcludeTags: map[string]string{"env": "none"}}
+		reversed := []string{"broken", "denied", "untagged", "staging", "prod"}
+		assert.Equal(t, reversed, filterByTags(context.Background(), filters, reversed, lookup))
 	})
 }
