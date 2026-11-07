@@ -147,6 +147,10 @@ func getServiceName(platformName string) string {
 		return "sns"
 	case "aws-sqs-queue":
 		return "sqs"
+	case "aws-bedrock-agent":
+		return "bedrock"
+	case "aws-bedrock-agentcore-gateway", "aws-bedrock-agentcore-runtime":
+		return "bedrock-agentcore"
 	}
 	return "other"
 }

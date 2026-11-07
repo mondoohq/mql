@@ -319,6 +319,17 @@ func getPlatformName(awsObject awsObject) string {
 		if awsObject.objectType == "queue" {
 			return "aws-sqs-queue"
 		}
+	case "bedrock":
+		if awsObject.objectType == "agent" {
+			return "aws-bedrock-agent"
+		}
+	case "bedrock-agentcore":
+		switch awsObject.objectType {
+		case "gateway":
+			return "aws-bedrock-agentcore-gateway"
+		case "runtime":
+			return "aws-bedrock-agentcore-runtime"
+		}
 	}
 	return ""
 }

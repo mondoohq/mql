@@ -86,6 +86,9 @@ const (
 	DiscoveryDocumentDBInstances         = "documentdb-instances"
 	DiscoverySnsTopics                   = "sns-topics"
 	DiscoverySqsQueues                   = "sqs-queues"
+	DiscoveryBedrockAgents               = "bedrock-agents"
+	DiscoveryBedrockAgentCoreGateways    = "bedrock-agentcore-gateways"
+	DiscoveryBedrockAgentCoreRuntimes    = "bedrock-agentcore-runtimes"
 )
 
 var AllAPIResources = []string{
@@ -144,6 +147,9 @@ var AllAPIResources = []string{
 	DiscoveryDocumentDBInstances,
 	DiscoverySnsTopics,
 	DiscoverySqsQueues,
+	DiscoveryBedrockAgents,
+	DiscoveryBedrockAgentCoreGateways,
+	DiscoveryBedrockAgentCoreRuntimes,
 }
 
 var Auto = append(
@@ -1909,6 +1915,112 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 				awsObject: awsObject{
 					account: accountId, region: f.Region.Data, arn: queueArn.Data,
 					id: queueArn.Data, service: "sqs", objectType: "queue",
+				},
+			}
+			assetList = append(assetList, MqlObjectToAsset(accountId, obj, conn))
+		}
+	case DiscoveryBedrockAgents:
+		res, err := NewResource(runtime, ResourceAwsBedrock, map[string]*llx.RawData{})
+		if err != nil {
+			return nil, err
+		}
+
+		agents := res.(*mqlAwsBedrock).GetAgents()
+		if agents == nil {
+			return assetList, nil
+		}
+		if agents.Error != nil {
+			return nil, agents.Error
+		}
+
+		for i := range agents.Data {
+			ag := agents.Data[i].(*mqlAwsBedrockAgent)
+
+			// Agents are listed without their ARN; it comes from the agent
+			// detail, so skip an agent whose detail is unreadable rather than
+			// emitting an asset with no platform id.
+			agentArn := ag.GetArn()
+			if agentArn.Error != nil || agentArn.Data == "" {
+				log.Error().Err(agentArn.Error).Str("agent", ag.Id.Data).Str("region", ag.Region.Data).Msg("unable to fetch bedrock agent arn")
+				continue
+			}
+
+			tags := mapStringInterfaceToStringString(ag.GetTags().Data)
+			obj := mqlObject{
+				name: ag.Name.Data, labels: tags,
+				awsObject: awsObject{
+					account: accountId, region: ag.Region.Data, arn: agentArn.Data,
+					id: agentArn.Data, service: "bedrock", objectType: "agent",
+				},
+			}
+			assetList = append(assetList, MqlObjectToAsset(accountId, obj, conn))
+		}
+	case DiscoveryBedrockAgentCoreGateways:
+		agentCore, err := harnessAgentCoreRoot(runtime)
+		if err != nil {
+			return nil, err
+		}
+
+		gateways := agentCore.GetGateways()
+		if gateways == nil {
+			return assetList, nil
+		}
+		if gateways.Error != nil {
+			return nil, gateways.Error
+		}
+
+		for i := range gateways.Data {
+			gw := gateways.Data[i].(*mqlAwsBedrockAgentCoreGateway)
+
+			// Gateways are listed without their ARN; it comes from the
+			// gateway detail, so skip a gateway whose detail is unreadable
+			// rather than emitting an asset with no platform id.
+			gatewayArn := gw.GetArn()
+			if gatewayArn.Error != nil || gatewayArn.Data == "" {
+				log.Error().Err(gatewayArn.Error).Str("gateway", gw.cacheGatewayId).Str("region", gw.Region.Data).Msg("unable to fetch bedrock agentcore gateway arn")
+				continue
+			}
+
+			tags := mapStringInterfaceToStringString(gw.GetTags().Data)
+			obj := mqlObject{
+				name: gw.Name.Data, labels: tags,
+				awsObject: awsObject{
+					account: accountId, region: gw.Region.Data, arn: gatewayArn.Data,
+					id: gatewayArn.Data, service: "bedrock-agentcore", objectType: "gateway",
+				},
+			}
+			assetList = append(assetList, MqlObjectToAsset(accountId, obj, conn))
+		}
+	case DiscoveryBedrockAgentCoreRuntimes:
+		agentCore, err := harnessAgentCoreRoot(runtime)
+		if err != nil {
+			return nil, err
+		}
+
+		runtimes := agentCore.GetRuntimes()
+		if runtimes == nil {
+			return assetList, nil
+		}
+		if runtimes.Error != nil {
+			return nil, runtimes.Error
+		}
+
+		for i := range runtimes.Data {
+			rt := runtimes.Data[i].(*mqlAwsBedrockAgentCoreRuntime)
+
+			// Skip a runtime listed without an ARN rather than emitting an
+			// asset with no platform id.
+			if rt.Arn.Data == "" {
+				log.Error().Str("runtime", rt.Id.Data).Str("region", rt.Region.Data).Msg("bedrock agentcore runtime listed without an arn")
+				continue
+			}
+
+			tags := mapStringInterfaceToStringString(rt.GetTags().Data)
+			obj := mqlObject{
+				name: rt.Name.Data, labels: tags,
+				awsObject: awsObject{
+					account: accountId, region: rt.Region.Data, arn: rt.Arn.Data,
+					id: rt.Arn.Data, service: "bedrock-agentcore", objectType: "runtime",
 				},
 			}
 			assetList = append(assetList, MqlObjectToAsset(accountId, obj, conn))
