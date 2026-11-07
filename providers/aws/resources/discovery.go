@@ -2008,6 +2008,13 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 		for i := range runtimes.Data {
 			rt := runtimes.Data[i].(*mqlAwsBedrockAgentCoreRuntime)
 
+			// Skip a runtime listed without an ARN rather than emitting an
+			// asset with no platform id.
+			if rt.Arn.Data == "" {
+				log.Error().Str("runtime", rt.Id.Data).Str("region", rt.Region.Data).Msg("bedrock agentcore runtime listed without an arn")
+				continue
+			}
+
 			tags := mapStringInterfaceToStringString(rt.GetTags().Data)
 			obj := mqlObject{
 				name: rt.Name.Data, labels: tags,
