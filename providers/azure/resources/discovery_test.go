@@ -45,6 +45,7 @@ func TestAllResolvedResources(t *testing.T) {
 		DiscoveryFirewalls,
 		DiscoveryContainerApps,
 		DiscoveryCognitiveServices,
+		DiscoveryMachineLearningWorkspaces,
 		DiscoveryStorageContainers,
 	}
 	require.ElementsMatch(t, expected, All)
@@ -76,6 +77,7 @@ func TestAutoResolvedResources(t *testing.T) {
 		DiscoveryFirewalls,
 		DiscoveryContainerApps,
 		DiscoveryCognitiveServices,
+		DiscoveryMachineLearningWorkspaces,
 	}
 	require.ElementsMatch(t, expected, Auto)
 	require.NotContains(t, Auto, DiscoveryInstancesApi, "virtual machines are opt-in, not part of auto")
@@ -493,5 +495,21 @@ func TestRetiredTargetsAreNotDiscovered(t *testing.T) {
 	for _, spec := range genericDiscoverySpecs {
 		require.NotEqual(t, "Microsoft.DBforMySQL/servers", spec.armType)
 		require.NotEqual(t, "Microsoft.DBforPostgreSQL/servers", spec.armType)
+	}
+}
+
+// Every generic discovery spec must map to a platform the catalog knows, and
+// every discovery target it serves must be scanned by auto. A spec whose
+// service/objectType has no getTitleFamily case drops each of its assets.
+func TestGenericDiscoverySpecsResolveToCatalogPlatforms(t *testing.T) {
+	for _, spec := range genericDiscoverySpecs {
+		t.Run(spec.armType+"/"+spec.discoveryTarget, func(t *testing.T) {
+			info, err := getTitleFamily(azureObject{service: spec.service, objectType: spec.objectType})
+			require.NoError(t, err)
+			pi := PlatformByName(info.platform)
+			require.NotNil(t, pi, "platform %q is not in the catalog", info.platform)
+			require.Equal(t, pi.Title, info.title)
+			require.Contains(t, Auto, spec.discoveryTarget)
+		})
 	}
 }

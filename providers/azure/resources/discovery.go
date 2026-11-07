@@ -36,31 +36,32 @@ const (
 	DiscoverySubscriptions = "subscriptions"
 	DiscoveryInstances     = "instances"
 	// TODO: this probably needs some more work on the linking to its OS counterpart side
-	DiscoveryInstancesApi            = "instances-api"
-	DiscoverySqlServers              = "sql-servers"
-	DiscoveryPostgresFlexibleServers = "postgres-flexible-servers"
-	DiscoveryMySqlFlexibleServers    = "mysql-flexible-servers"
-	DiscoveryAksClusters             = "aks-clusters"
-	DiscoveryAppServiceApps          = "app-service-webapps"
-	DiscoveryCacheRedis              = "cache-redis-instances"
-	DiscoveryBatchAccounts           = "batch-accounts"
-	DiscoveryStorageAccounts         = "storage-accounts"
-	DiscoveryStorageContainers       = "storage-containers"
-	DiscoveryKeyVaults               = "keyvaults-vaults"
-	DiscoveryManagedHsms             = "keyvaults-managed-hsms"
-	DiscoveryIotHubs                 = "iot-hubs"
-	DiscoverySecurityGroups          = "security-groups"
-	DiscoveryCosmosDb                = "cosmosdb"
-	DiscoveryVirtualNetworks         = "virtual-networks"
-	DiscoveryContainerRegistries     = "container-registries"
-	DiscoveryRecoveryServicesVaults  = "recovery-services-vaults"
-	DiscoverySynapseWorkspaces       = "synapse-workspaces"
-	DiscoveryDataFactories           = "data-factories"
-	DiscoveryFunctionApps            = "function-apps"
-	DiscoveryApplicationGateways     = "application-gateways"
-	DiscoveryFirewalls               = "firewalls"
-	DiscoveryContainerApps           = "container-apps"
-	DiscoveryCognitiveServices       = "cognitiveservices-accounts"
+	DiscoveryInstancesApi              = "instances-api"
+	DiscoverySqlServers                = "sql-servers"
+	DiscoveryPostgresFlexibleServers   = "postgres-flexible-servers"
+	DiscoveryMySqlFlexibleServers      = "mysql-flexible-servers"
+	DiscoveryAksClusters               = "aks-clusters"
+	DiscoveryAppServiceApps            = "app-service-webapps"
+	DiscoveryCacheRedis                = "cache-redis-instances"
+	DiscoveryBatchAccounts             = "batch-accounts"
+	DiscoveryStorageAccounts           = "storage-accounts"
+	DiscoveryStorageContainers         = "storage-containers"
+	DiscoveryKeyVaults                 = "keyvaults-vaults"
+	DiscoveryManagedHsms               = "keyvaults-managed-hsms"
+	DiscoveryIotHubs                   = "iot-hubs"
+	DiscoverySecurityGroups            = "security-groups"
+	DiscoveryCosmosDb                  = "cosmosdb"
+	DiscoveryVirtualNetworks           = "virtual-networks"
+	DiscoveryContainerRegistries       = "container-registries"
+	DiscoveryRecoveryServicesVaults    = "recovery-services-vaults"
+	DiscoverySynapseWorkspaces         = "synapse-workspaces"
+	DiscoveryDataFactories             = "data-factories"
+	DiscoveryFunctionApps              = "function-apps"
+	DiscoveryApplicationGateways       = "application-gateways"
+	DiscoveryFirewalls                 = "firewalls"
+	DiscoveryContainerApps             = "container-apps"
+	DiscoveryCognitiveServices         = "cognitiveservices-accounts"
+	DiscoveryMachineLearningWorkspaces = "machinelearning-workspaces"
 
 	// optionBuiltByTenantStage marks a connection config that stage 1 of staged
 	// discovery built for a subscription, meaning stage 1 has already read that
@@ -123,6 +124,7 @@ var AllAPIResources = []string{
 	DiscoveryFirewalls,
 	DiscoveryContainerApps,
 	DiscoveryCognitiveServices,
+	DiscoveryMachineLearningWorkspaces,
 }
 
 // genericDiscoverySpec maps an ARM resource type to the discovery metadata
@@ -182,6 +184,7 @@ var genericDiscoverySpecs = []genericDiscoverySpec{
 	{armType: "Microsoft.DataFactory/factories", discoveryTarget: DiscoveryDataFactories, service: "datafactory", objectType: "factory"},
 	{armType: "Microsoft.App/containerApps", discoveryTarget: DiscoveryContainerApps, service: "containerapps", objectType: "app"},
 	{armType: "Microsoft.CognitiveServices/accounts", discoveryTarget: DiscoveryCognitiveServices, service: "cognitiveservices", objectType: "account"},
+	{armType: "Microsoft.MachineLearningServices/workspaces", discoveryTarget: DiscoveryMachineLearningWorkspaces, service: "machinelearning", objectType: "workspace"},
 }
 
 type azureObject struct {
@@ -1198,6 +1201,10 @@ func getTitleFamily(azureObject azureObject) (azureObjectPlatformInfo, error) {
 	case "cognitiveservices":
 		if azureObject.objectType == "account" {
 			return azureObjectPlatformInfo{title: "Azure AI Services Account", platform: "azure-cognitiveservices-account"}, nil
+		}
+	case "machinelearning":
+		if azureObject.objectType == "workspace" {
+			return azureObjectPlatformInfo{title: "Azure Machine Learning Workspace", platform: "azure-machinelearning-workspace"}, nil
 		}
 	}
 	return azureObjectPlatformInfo{}, fmt.Errorf("missing runtime info for azure object service %s type %s", azureObject.service, azureObject.objectType)

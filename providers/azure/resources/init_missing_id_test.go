@@ -58,6 +58,7 @@ func TestInitsReportAMissingID(t *testing.T) {
 		{"azure.subscription.cosmosDbService.account", initAzureSubscriptionCosmosDbServiceAccount},
 		{"azure.subscription.cacheService.redisInstance", initAzureSubscriptionCacheServiceRedisInstance},
 		{"azure.subscription.cognitiveServicesService.account", initAzureSubscriptionCognitiveServicesServiceAccount},
+		{"azure.subscription.machineLearningService.workspace", initAzureSubscriptionMachineLearningServiceWorkspace},
 		{"azure.subscription.aksService.cluster", initAzureSubscriptionAksServiceCluster},
 	}
 
