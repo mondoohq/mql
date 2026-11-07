@@ -35,6 +35,7 @@ var _ = []taggedListedResource{
 	(*mqlAzureSubscriptionIotServiceIotHub)(nil),
 	(*mqlAzureSubscriptionKeyVaultServiceManagedHsm)(nil),
 	(*mqlAzureSubscriptionKeyVaultServiceVault)(nil),
+	(*mqlAzureSubscriptionMachineLearningServiceWorkspace)(nil),
 	(*mqlAzureSubscriptionMonitorServiceActivityLogAlert)(nil),
 	(*mqlAzureSubscriptionMySqlServiceFlexibleServer)(nil),
 	(*mqlAzureSubscriptionNetworkServiceApplicationGateway)(nil),

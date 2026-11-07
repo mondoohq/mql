@@ -112,6 +112,16 @@ func (a *mqlAzureSubscriptionMachineLearningService) id() (string, error) {
 	return "azure.subscription.machineLearningService/" + a.SubscriptionId.Data, nil
 }
 
+// initAzureSubscriptionMachineLearningServiceWorkspace resolves a single
+// workspace by its ARM id. Called without arguments, as for a discovered
+// azure-machinelearning-workspace asset, it takes the id from the asset.
+func initAzureSubscriptionMachineLearningServiceWorkspace(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	return initFromServiceList(runtime, args,
+		ResourceAzureSubscriptionMachineLearningService,
+		func(s *mqlAzureSubscriptionMachineLearningService) *plugin.TValue[[]any] { return s.GetWorkspaces() },
+		ResourceAzureSubscriptionMachineLearningServiceWorkspace)
+}
+
 func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) id() (string, error) {
 	return a.Id.Data, nil
 }
@@ -205,7 +215,7 @@ func (a *mqlAzureSubscriptionMachineLearningService) workspaces() ([]any, error)
 			var respErr *azcore.ResponseError
 			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden {
 				log.Warn().Err(err).Msg("could not list machine learning workspaces due to access denied")
-				return res, nil
+				return keepTagMatches(a.MqlRuntime, res), nil
 			}
 			return nil, err
 		}
@@ -220,7 +230,7 @@ func (a *mqlAzureSubscriptionMachineLearningService) workspaces() ([]any, error)
 			res = append(res, mqlWs)
 		}
 	}
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 func machineLearningWorkspaceToMql(runtime *plugin.Runtime, ws *ml.Workspace) (*mqlAzureSubscriptionMachineLearningServiceWorkspace, error) {

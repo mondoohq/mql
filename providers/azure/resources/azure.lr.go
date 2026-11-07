@@ -2779,7 +2779,7 @@ func init() {
 			Create: createAzureSubscriptionMachineLearningServiceRegistryRegion,
 		},
 		"azure.subscription.machineLearningService.workspace": {
-			// to override args, implement: initAzureSubscriptionMachineLearningServiceWorkspace(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initAzureSubscriptionMachineLearningServiceWorkspace,
 			Create: createAzureSubscriptionMachineLearningServiceWorkspace,
 		},
 		"azure.subscription.machineLearningService.workspace.sharedPrivateLink": {
