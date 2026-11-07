@@ -110,6 +110,15 @@ func (f *fakeRunner) probes() int {
 	return n
 }
 
+// utf8Command is command as the connection sends it to a Windows target,
+// with powershell.UTF8Output in front of its script.
+func utf8Command(t *testing.T, command string) string {
+	t.Helper()
+	res, ok := powershell.WithUTF8Output(command)
+	require.True(t, ok, command)
+	return res
+}
+
 func newFakeConnection(f *fakeRunner) *Connection {
 	return &Connection{conf: &inventory.Config{}, rawRunner: f.run}
 }
@@ -151,11 +160,12 @@ func TestRunCommandKeepsPowershellExeForOtherShells(t *testing.T) {
 			f := &fakeRunner{shell: probe}
 			c := newFakeConnection(f)
 			cmd := powershell.Encode("Get-Date")
-			_, err := c.RunCommand(cmd)
+			res, err := c.RunCommand(cmd)
 			require.NoError(t, err)
+			assert.Equal(t, cmd, res.Command, "callers and recordings see the command they asked for")
 			_, err = c.RunCommand(cmd)
 			require.NoError(t, err)
-			assert.Equal(t, []string{shellProbe, cmd, cmd}, f.sent)
+			assert.Equal(t, []string{shellProbe, utf8Command(t, cmd), utf8Command(t, cmd)}, f.sent)
 		})
 	}
 }

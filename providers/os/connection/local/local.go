@@ -255,7 +255,11 @@ func (c *CommandRunner) ExecContext(parent context.Context, usercmd string, args
 		shellCommand, shellArgs := c.Shell[0], c.Shell[1:]
 		cmd = shellCommand
 		cmdArgs = append(cmdArgs, shellArgs...)
-		cmdArgs = append(cmdArgs, usercmd)
+		if isPowershell(shellCommand) {
+			cmdArgs = append(cmdArgs, powershell.UTF8Output+usercmd)
+		} else {
+			cmdArgs = append(cmdArgs, usercmd)
+		}
 	} else {
 		cmd = usercmd
 	}
@@ -326,14 +330,24 @@ func (c *CommandRunner) ExecContext(parent context.Context, usercmd string, args
 // avoids spawning powershell.exe inside powershell.exe. It only fires for the
 // PowerShell shell (Windows local default) so unix `sh -c` behavior and plain
 // commands (e.g. `hostname`) are untouched.
+//
+// The script then writes its output as UTF-8 (powershell.WithUTF8Output), as
+// commands run through the shell do.
 func unnestPowershell(shell []string, usercmd string) ([]string, bool) {
-	if len(shell) == 0 {
+	if len(shell) == 0 || !isPowershell(shell[0]) {
 		return nil, false
 	}
-	switch strings.ToLower(shell[0]) {
+	if utf8cmd, ok := powershell.WithUTF8Output(usercmd); ok {
+		usercmd = utf8cmd
+	}
+	return powershell.SplitInvocation(usercmd)
+}
+
+func isPowershell(shell string) bool {
+	switch strings.ToLower(shell) {
 	case "powershell", "powershell.exe", "pwsh", "pwsh.exe":
-		return powershell.SplitInvocation(usercmd)
+		return true
 	default:
-		return nil, false
+		return false
 	}
 }

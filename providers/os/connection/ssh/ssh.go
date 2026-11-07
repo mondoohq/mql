@@ -186,23 +186,32 @@ func (c *Connection) RunCommandContext(parent context.Context, command string) (
 		return nil, err
 	}
 	defer release()
+	run := command
 	if !sudo {
+		// the session writes UTF-8 since its setup (sessionSetup)
 		if res, ok, err := c.runInSessionContext(ctx, command); ok {
-			if err == nil {
-				powershell.DecodeStderr(res)
-			}
-			return res, err
+			return asRequested(res, err, command)
 		}
-		if res, ok, err := c.runPowershellDirectContext(ctx, command); ok {
-			if err == nil {
-				powershell.DecodeStderr(res)
-			}
-			return res, err
+		// OpenSSH for Windows leaves powershell.exe in the OEM code page
+		if utf8cmd, ok := powershell.WithUTF8Output(command); ok {
+			run = utf8cmd
+		}
+		if res, ok, err := c.runPowershellDirectContext(ctx, run); ok {
+			return asRequested(res, err, command)
 		}
 	}
-	res, err := c.runRawContext(ctx, command)
+	res, err := c.runRawContext(ctx, run)
+	return asRequested(res, err, command)
+}
+
+// asRequested decodes a command's stderr and gives it the command the caller
+// asked for, not the one that ran on the target, so recordings key on it.
+func asRequested(res *shared.Command, err error, command string) (*shared.Command, error) {
 	if err == nil {
 		powershell.DecodeStderr(res)
+	}
+	if res != nil {
+		res.Command = command
 	}
 	return res, err
 }

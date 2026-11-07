@@ -239,9 +239,11 @@ func sessionFrame(m sessionMarkers, fileTag string, script sessionScript) string
 		"[Console]::Error.Write([char]13 + [char]10 + '" + errEnd + "' + [char]13 + [char]10); [Console]::Error.Flush() }"
 }
 
-// sessionSetup runs once when a session starts. It also points the
-// process's stdin handle at NUL (sessionDetachStdin).
-const sessionSetup = "$global:__mqlHome = (Get-Location).Path; $ProgressPreference = 'SilentlyContinue'; " + sessionDetachStdin
+// sessionSetup runs once when a session starts. It makes the session write
+// UTF-8 (powershell.UTF8Output), which covers the commands that run in it
+// without being PowerShell invocations. It also points the process's stdin
+// handle at NUL (sessionDetachStdin).
+const sessionSetup = "$global:__mqlHome = (Get-Location).Path; $ProgressPreference = 'SilentlyContinue'; " + powershell.UTF8Output + sessionDetachStdin
 
 // sessionDetachStdin points the session's stdin handle at NUL once
 // PowerShell reads its statements. A native command inherits the stdin

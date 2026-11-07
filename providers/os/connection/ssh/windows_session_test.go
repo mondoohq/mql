@@ -227,7 +227,7 @@ func TestRunCommandInSession(t *testing.T) {
 	wrapped := powershell.Wrap("Get-Date")
 	_, err = c.RunCommand(wrapped)
 	require.NoError(t, err)
-	assert.Equal(t, wrapped, raw.sent[len(raw.sent)-1])
+	assert.Equal(t, utf8Command(t, wrapped), raw.sent[len(raw.sent)-1])
 }
 
 func TestRawCommandsInSessionOnlyForPowershellShell(t *testing.T) {
@@ -336,7 +336,7 @@ func TestSessionFallsBackWhenItBreaks(t *testing.T) {
 	require.NoError(t, err)
 	out, _ := io.ReadAll(res.Stdout)
 	assert.Equal(t, "ran", string(out), "the process' output")
-	assert.Equal(t, []string{shellProbe, directCommand(t, crash)}, raw.sent)
+	assert.Equal(t, []string{shellProbe, directCommand(t, utf8Command(t, crash))}, raw.sent)
 
 	// the next command starts a new session
 	res, err = c.RunCommand(powershell.Encode("ok"))
@@ -355,7 +355,7 @@ func TestSessionFallsBackWhenItBreaks(t *testing.T) {
 	_, err = c.RunCommand(powershell.Encode("ok"))
 	require.NoError(t, err)
 	assert.Equal(t, before, *opened, "no session once they are off")
-	assert.Equal(t, directCommand(t, powershell.Encode("ok")), raw.sent[len(raw.sent)-1])
+	assert.Equal(t, directCommand(t, utf8Command(t, powershell.Encode("ok"))), raw.sent[len(raw.sent)-1])
 }
 
 func TestSessionFallsBackWhenItCannotStart(t *testing.T) {
