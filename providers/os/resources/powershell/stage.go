@@ -159,7 +159,15 @@ func Stage(conn shared.Connection, name, script string) (*StagedScript, error) {
 		return staged, nil
 	}
 
-	if err := writeViaFileSystem(conn, path, script); err == nil {
+	// No transport rewrites a -File command to write UTF-8
+	// (WithUTF8Output), so the file does it itself. The name stays the hash
+	// of the caller's script.
+	body := script
+	if dir == stagedDirWindows {
+		body = UTF8Output + script
+	}
+
+	if err := writeViaFileSystem(conn, path, body); err == nil {
 		staged.written = true
 		staged.viaFS = true
 		return staged, nil
@@ -168,7 +176,7 @@ func Stage(conn shared.Connection, name, script string) (*StagedScript, error) {
 			Msg("powershell> staging over the filesystem failed, falling back to a chunked write")
 	}
 
-	if err := writeViaCommand(conn, path, script); err != nil {
+	if err := writeViaCommand(conn, path, body); err != nil {
 		return nil, fmt.Errorf("could not stage the powershell script on the target: %w", err)
 	}
 	staged.written = true

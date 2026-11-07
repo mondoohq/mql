@@ -68,6 +68,10 @@ func (c *fakeConn) RunCommand(cmd string) (*shared.Command, error) {
 var _ shared.Connection = (*fakeConn)(nil)
 var _ plugin.Connection = (*fakeConn)(nil)
 
+// utf8Statement is what a script staged on Windows starts with, so it writes
+// UTF-8 whatever the target's OEM code page.
+const utf8Statement = "[Console]::OutputEncoding = [Text.Encoding]::UTF8; "
+
 func windowsPlatform() *inventory.Platform {
 	return &inventory.Platform{Name: "windows", Family: []string{"windows", "os"}}
 }
@@ -129,7 +133,7 @@ func TestStageWritesThroughAWritableFilesystem(t *testing.T) {
 
 	body, err := afero.ReadFile(fs, staged.Path)
 	require.NoError(t, err)
-	assert.Equal(t, script, string(body))
+	assert.Equal(t, utf8Statement+script, string(body))
 	assert.Empty(t, conn.commands, "the filesystem path must not shell out")
 
 	// The script went on through the filesystem, so the cleanup goes back through
@@ -343,7 +347,7 @@ func TestStageDoesNotDeleteAPathThatIsFree(t *testing.T) {
 
 	body, err := afero.ReadFile(fs, staged.Path)
 	require.NoError(t, err)
-	assert.Equal(t, script, string(body))
+	assert.Equal(t, utf8Statement+script, string(body))
 }
 
 // A scan that died between the write and the run leaves its file behind. The
@@ -367,7 +371,7 @@ func TestStageClearsALeftoverFromAnInterruptedScan(t *testing.T) {
 
 	body, err := afero.ReadFile(fs, staged.Path)
 	require.NoError(t, err)
-	assert.Equal(t, script, string(body))
+	assert.Equal(t, utf8Statement+script, string(body))
 }
 
 // The chunked path has no filesystem to remove through, so its cleanup is still
@@ -408,4 +412,21 @@ func TestFilesystemRemovalFallsBackToTheCommand(t *testing.T) {
 	assert.Contains(t, conn.commands[0], "Remove-Item")
 	assert.Contains(t, conn.commands[0], staged.Path)
 	assertStagingCommandShape(t, conn.commands)
+}
+
+// Synthetic: a script staged on Unix runs under pwsh, which writes UTF-8
+// already, so it is written as it is.
+func TestStageOnUnixKeepsTheScript(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	conn := &fakeConn{
+		connType: shared.Type_SSH, platform: &inventory.Platform{Name: "ubuntu", Family: []string{"debian", "linux", "unix", "os"}},
+		fs: fs, caps: shared.Capability_RunCommand | shared.Capability_File,
+	}
+	script := "ConvertTo-Json @{ a = 1 }\n"
+	staged, err := powershell.Stage(conn, "iis", script)
+	require.NoError(t, err)
+
+	body, err := afero.ReadFile(fs, staged.Path)
+	require.NoError(t, err)
+	assert.Equal(t, script, string(body))
 }

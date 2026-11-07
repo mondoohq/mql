@@ -715,7 +715,7 @@ func TestComponentScriptsFitOrAreStaged(t *testing.T) {
 		run := conn.commands[len(conn.commands)-1]
 		assert.Equal(t, powershell.StagedCommand(path), run)
 		assert.NotContains(t, run, "EncodedCommand")
-		assert.Equal(t, script, conn.seen[path], "the file holds the script when the command runs")
+		assert.Equal(t, "[Console]::OutputEncoding = [Text.Encoding]::UTF8; "+script, conn.seen[path], "the file holds the script, writing UTF-8, when the command runs")
 		for _, c := range conn.commands {
 			assert.LessOrEqual(t, len(c), powershell.MaxCommandLength, "no command may exceed the WinRM limit")
 		}

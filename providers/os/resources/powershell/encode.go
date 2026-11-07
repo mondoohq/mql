@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"strings"
+	"unicode/utf16"
 
 	"github.com/rs/zerolog/log"
 	"golang.org/x/text/encoding/unicode"
@@ -90,6 +91,77 @@ func SplitInvocation(cmd string) (argv []string, ok bool) {
 	}
 
 	return nil, false
+}
+
+// UTF8Output is the statement that makes Windows PowerShell write stdout and
+// stderr as UTF-8. Without it, powershell.exe writes them in the console's
+// OEM code page: 932 (Shift-JIS) on a Japanese host, 850 or 437 on Western
+// European and US ones. mql reads command output as UTF-8, so every character
+// outside ASCII would arrive garbled. In Shift-JIS it is worse: the second
+// byte of characters such as ソ (83 5C) and 表 (95 5C) is a backslash, which
+// escapes the next character of the JSON string the name sits in, so the
+// whole ConvertTo-Json output can fail to parse.
+//
+// WinRM does not need it: its shell already runs in code page 65001.
+const UTF8Output = "[Console]::OutputEncoding = [Text.Encoding]::UTF8; "
+
+// WithUTF8Output rewrites a Windows PowerShell invocation built by Encode or
+// Wrap so its script starts with UTF8Output. Transports whose PowerShell
+// writes in the OEM code page (local and SSH) run the rewritten command;
+// callers keep building and recording the command without it.
+//
+// ok is false for anything else: a command that is not a powershell.exe
+// invocation (pwsh from EncodeUnix runs on Unix, where output is UTF-8
+// already), and one that would no longer fit a Windows command line, which
+// then runs as it is rather than not at all.
+func WithUTF8Output(command string) (string, bool) {
+	argv, ok := SplitInvocation(command)
+	if !ok {
+		return "", false
+	}
+	switch strings.ToLower(argv[0]) {
+	case "powershell", "powershell.exe":
+	default:
+		return "", false
+	}
+
+	var res string
+	switch {
+	case len(argv) == 4 && argv[2] == "-EncodedCommand":
+		script, err := base64.StdEncoding.DecodeString(argv[3])
+		if err != nil || len(script)%2 != 0 {
+			return "", false
+		}
+		prefix, err := unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM).NewEncoder().Bytes([]byte(UTF8Output))
+		if err != nil {
+			return "", false
+		}
+		// both halves are UTF-16LE, so the bytes join into one script
+		res = argv[0] + " -NoProfile -EncodedCommand " + base64.StdEncoding.EncodeToString(append(prefix, script...))
+	case len(argv) == 3 && argv[1] == "-c":
+		res = argv[0] + " -c \"" + UTF8Output + argv[2] + "\""
+	default:
+		return "", false
+	}
+
+	if commandLength(res) > MaxCommandLength {
+		return "", false
+	}
+	return res, true
+}
+
+// commandLength counts the UTF-16 code units in s, the unit of the Windows
+// command line limit.
+func commandLength(s string) int {
+	n := 0
+	for _, r := range s {
+		if utf16.RuneLen(r) == 2 {
+			n += 2
+		} else {
+			n++
+		}
+	}
+	return n
 }
 
 // SingleQuote renders a value as a PowerShell single quoted string.
