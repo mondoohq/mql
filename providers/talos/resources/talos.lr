@@ -3,6 +3,7 @@
 
 option provider = "go.mondoo.com/mql/providers/talos"
 option go_package = "go.mondoo.com/mql/providers/talos/resources"
+option root = "talos"
 
 // Talos Linux node
 //
@@ -12,7 +13,7 @@ option go_package = "go.mondoo.com/mql/providers/talos/resources"
 // `talos.resources(type: "TimeServerStatuses.net.talos.dev")`. The Talos API
 // serves sensitive resources, the machine configuration, and reads of files
 // such as /proc/sys only to the os:admin role.
-talos {
+talos @root {
   // Talos version the node runs
   version() talos.version
   // Kernel parameters Talos manages on the node
