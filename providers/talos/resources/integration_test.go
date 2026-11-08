@@ -82,9 +82,14 @@ func TestIntegrationReader(t *testing.T) {
 		t.Errorf("securitystate list = %d, %v", len(list.Data), list.Error)
 	}
 
-	// A reader is refused the machine configuration and file reads.
-	if mc := talos.GetMachineConfig(); !errors.Is(mc.Error, connection.ErrNeedsAdmin) {
-		t.Errorf("machineConfig error = %v, want ErrNeedsAdmin", mc.Error)
+	// A reader is refused the machine configuration and file reads, as
+	// Forbidden (ADR 046).
+	if mc := talos.GetMachineConfig(); !errors.Is(mc.Error, llx.ErrForbidden) || !errors.Is(mc.Error, connection.ErrNeedsAdmin) {
+		t.Errorf("machineConfig error = %v, want Forbidden and ErrNeedsAdmin", mc.Error)
+	}
+	_, err = NewResource(runtime, "talos.kernelParameter", map[string]*llx.RawData{"key": llx.StringData("net.ipv4.tcp_syncookies")})
+	if !errors.Is(err, llx.ErrForbidden) {
+		t.Errorf("talos.kernelParameter(tcp_syncookies) error = %v, want Forbidden", err)
 	}
 	if _, err := conn.ReadFile("/proc/sys/net/ipv4/tcp_syncookies"); !errors.Is(err, connection.ErrNeedsAdmin) {
 		t.Errorf("ReadFile error = %v, want ErrNeedsAdmin", err)

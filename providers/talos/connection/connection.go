@@ -111,6 +111,14 @@ func (c *TalosConnection) Asset() *inventory.Asset {
 	return c.asset
 }
 
+// Close closes the gRPC connection to the Talos API. The plugin runtime calls
+// it when the connection is no longer used (plugin.Closer).
+func (c *TalosConnection) Close() {
+	if c.client != nil {
+		c.client.Close() //nolint:errcheck
+	}
+}
+
 // Node is the node every request goes to.
 func (c *TalosConnection) Node() string {
 	return c.node
@@ -202,21 +210,23 @@ func (c *TalosConnection) ReadFile(path string) ([]byte, error) {
 	return data, nil
 }
 
-// IsNotFound reports whether the Talos API has no such resource.
+// IsNotFound reports whether the Talos API has no such resource. It reads
+// the error's kind, never its message.
 func IsNotFound(err error) bool {
-	return err != nil && (state.IsNotFoundError(err) || status.Code(errors.Unwrap(err)) == codes.NotFound ||
-		strings.Contains(err.Error(), "NotFound") || strings.Contains(err.Error(), "doesn't exist"))
+	return err != nil && (state.IsNotFoundError(err) || status.Code(err) == codes.NotFound)
 }
 
-// wrap turns the Talos API's permission errors into ErrNeedsAdmin.
+// wrap turns the Talos API's refusals (gRPC PermissionDenied) into
+// ErrNeedsAdmin. Only the status code decides, so a transport error is never
+// taken for a refusal.
 func wrap(err error) error {
 	if err == nil {
 		return nil
 	}
-	if status.Code(err) == codes.PermissionDenied || strings.Contains(err.Error(), "PermissionDenied") {
-		return fmt.Errorf("%w: %v", ErrNeedsAdmin, err)
+	if status.Code(err) == codes.PermissionDenied {
+		return fmt.Errorf("%w: %w", ErrNeedsAdmin, err)
 	}
-	if state.IsNotFoundError(err) || status.Code(err) == codes.NotFound {
+	if IsNotFound(err) {
 		return err
 	}
 	return fmt.Errorf("talos: %w", err)

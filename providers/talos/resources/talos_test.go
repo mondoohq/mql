@@ -5,6 +5,8 @@ package resources
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +15,8 @@ import (
 	"github.com/siderolabs/talos/pkg/machinery/config/generate"
 	"github.com/siderolabs/talos/pkg/machinery/config/generate/secrets"
 	"github.com/siderolabs/talos/pkg/machinery/config/machine"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/talos/connection"
 )
 
 func TestNormalizeKey(t *testing.T) {
@@ -133,4 +137,20 @@ func TestMachineConfigDocsRedacts(t *testing.T) {
 func b64(s string) string {
 	data, _ := json.Marshal([]byte(s))
 	return strings.Trim(string(data), `"`)
+}
+
+func TestRefused(t *testing.T) {
+	err := refused(fmt.Errorf("%w: not authorized", connection.ErrNeedsAdmin))
+	if !errors.Is(err, llx.ErrForbidden) {
+		t.Fatalf("refused(ErrNeedsAdmin) = %v, want Forbidden", err)
+	}
+	var lerr *llx.Error
+	if !errors.As(err, &lerr) || len(lerr.Permissions) != 1 || lerr.Permissions[0] != "os:admin" {
+		t.Errorf("refused(ErrNeedsAdmin) permissions = %+v, want [os:admin]", lerr)
+	}
+
+	other := errors.New("talos: connection refused")
+	if got := refused(other); got != other {
+		t.Errorf("refused(%v) = %v, want it unchanged", other, got)
+	}
 }

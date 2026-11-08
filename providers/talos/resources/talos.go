@@ -32,6 +32,15 @@ func talosConnection(runtime *plugin.Runtime) *connection.TalosConnection {
 	return runtime.Connection.(*connection.TalosConnection)
 }
 
+// refused classifies a refusal of the Talos API as Forbidden, naming the
+// os:admin role the read needs (ADR 046). Any other error is returned as is.
+func refused(err error) error {
+	if errors.Is(err, connection.ErrNeedsAdmin) {
+		return llx.Forbidden(err, llx.WithPermissions("os:admin"))
+	}
+	return err
+}
+
 func (r *mqlTalos) id() (string, error) {
 	return "talos", nil
 }
@@ -39,7 +48,7 @@ func (r *mqlTalos) id() (string, error) {
 func (r *mqlTalos) version() (*mqlTalosVersion, error) {
 	v, err := talosConnection(r.MqlRuntime).Version()
 	if err != nil {
-		return nil, err
+		return nil, refused(err)
 	}
 	res, err := CreateResource(r.MqlRuntime, "talos.version", map[string]*llx.RawData{
 		"__id":      llx.StringData("talos.version"),
@@ -59,7 +68,7 @@ func (r *mqlTalos) kernelParameters() ([]any, error) {
 	conn := talosConnection(r.MqlRuntime)
 	items, err := conn.List(kernelParamStatusNamespace, kernelParamStatusType)
 	if err != nil {
-		return nil, err
+		return nil, refused(err)
 	}
 	list := make([]any, 0, len(items))
 	for _, item := range items {
@@ -133,14 +142,16 @@ func initTalosKernelParameter(runtime *plugin.Runtime, args map[string]*llx.RawD
 		return args, nil, nil
 	}
 	if !connection.IsNotFound(err) {
-		return nil, nil, err
+		return nil, nil, refused(err)
 	}
 
 	// Talos doesn't manage the parameter, so its value is the kernel's.
 	data, err := conn.ReadFile("/proc/sys/" + strings.ReplaceAll(key, ".", "/"))
 	if err != nil {
 		if errors.Is(err, connection.ErrNeedsAdmin) {
-			return nil, nil, fmt.Errorf("talos: Talos doesn't manage %s, and reading it from /proc/sys needs the os:admin role", key)
+			return nil, nil, llx.Forbidden(
+				fmt.Errorf("talos: Talos doesn't manage %s, and reading it from /proc/sys needs the os:admin role: %w", key, err),
+				llx.WithPermissions("os:admin"))
 		}
 		return nil, nil, err
 	}
@@ -155,7 +166,7 @@ func initTalosKernelParameter(runtime *plugin.Runtime, args map[string]*llx.RawD
 func (r *mqlTalos) machineConfig() ([]any, error) {
 	data, err := talosConnection(r.MqlRuntime).ReadFile(machineConfigPath)
 	if err != nil {
-		return nil, err
+		return nil, refused(err)
 	}
 	return machineConfigDocs(data)
 }
@@ -223,7 +234,7 @@ func initTalosResources(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 	}
 	resolved, ns, err := talosConnection(runtime).ResolveType(typ)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, refused(err)
 	}
 	args["__id"] = llx.StringData("talos.resources/" + ns + "/" + resolved)
 	args["type"] = llx.StringData(typ)
@@ -235,7 +246,7 @@ func initTalosResources(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 func (r *mqlTalosResources) list() ([]any, error) {
 	items, err := talosConnection(r.MqlRuntime).List(r.Namespace.Data, r.ResolvedType.Data)
 	if err != nil {
-		return nil, err
+		return nil, refused(err)
 	}
 	list := make([]any, 0, len(items))
 	for _, item := range items {
