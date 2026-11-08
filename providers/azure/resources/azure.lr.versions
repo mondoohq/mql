@@ -4700,6 +4700,7 @@ azure.subscription.networkService.applicationGateway.operationalState 13.35.1
 azure.subscription.networkService.applicationGateway.policy 9.0.13
 azure.subscription.networkService.applicationGateway.principalId 13.23.1
 azure.subscription.networkService.applicationGateway.properties 9.0.13
+azure.subscription.networkService.applicationGateway.publicIpAddresses 14.7.1
 azure.subscription.networkService.applicationGateway.resourceGuid 13.35.1
 azure.subscription.networkService.applicationGateway.sslCertificate 13.12.2
 azure.subscription.networkService.applicationGateway.sslCertificate.hsmKey 13.25.1
@@ -5237,6 +5238,8 @@ azure.subscription.networkService.ipAddress 9.0.1
 azure.subscription.networkService.ipAddress.associatedResourceId 13.16.2
 azure.subscription.networkService.ipAddress.ddosCustomPolicy 14.3.10
 azure.subscription.networkService.ipAddress.ddosProtectionMode 13.1.8
+azure.subscription.networkService.ipAddress.domainNameLabel 14.7.1
+azure.subscription.networkService.ipAddress.fqdn 14.7.1
 azure.subscription.networkService.ipAddress.id 9.0.1
 azure.subscription.networkService.ipAddress.idleTimeoutInMinutes 13.25.1
 azure.subscription.networkService.ipAddress.ipAddress 9.0.1
@@ -5247,6 +5250,7 @@ azure.subscription.networkService.ipAddress.location 9.0.1
 azure.subscription.networkService.ipAddress.name 9.0.1
 azure.subscription.networkService.ipAddress.natGateway 13.25.1
 azure.subscription.networkService.ipAddress.publicIpPrefix 13.25.1
+azure.subscription.networkService.ipAddress.reverseFqdn 14.7.1
 azure.subscription.networkService.ipAddress.skuName 13.25.1
 azure.subscription.networkService.ipAddress.skuTier 13.25.1
 azure.subscription.networkService.ipAddress.tags 9.0.1
@@ -5294,6 +5298,7 @@ azure.subscription.networkService.loadBalancer.name 9.0.8
 azure.subscription.networkService.loadBalancer.outboundRules 9.0.8
 azure.subscription.networkService.loadBalancer.probes 9.0.8
 azure.subscription.networkService.loadBalancer.properties 9.0.8
+azure.subscription.networkService.loadBalancer.publicIpAddresses 14.7.1
 azure.subscription.networkService.loadBalancer.sku 9.0.8
 azure.subscription.networkService.loadBalancer.skuTier 13.1.8
 azure.subscription.networkService.loadBalancer.tags 9.0.8

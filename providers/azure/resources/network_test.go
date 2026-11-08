@@ -4,12 +4,55 @@
 package resources
 
 import (
+	"errors"
 	"testing"
 
 	network "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12"
 	trafficmanager "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/trafficmanager/armtrafficmanager/v2"
 	"github.com/stretchr/testify/assert"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
+
+// TestCollectFrontendPublicIps checks that the load-balancer and application
+// gateway public-IP rollup skips internal frontends and returns an address
+// bound to several frontends once. Synthetic: no target showed this; the shared
+// address and the nil (internal) frontend are the cases a naive rollup gets
+// wrong.
+func TestCollectFrontendPublicIps(t *testing.T) {
+	ip := func(id string) *mqlAzureSubscriptionNetworkServiceIpAddress {
+		return &mqlAzureSubscriptionNetworkServiceIpAddress{
+			Id: plugin.TValue[string]{Data: id, State: plugin.StateIsSet},
+		}
+	}
+	resolved := map[string]*mqlAzureSubscriptionNetworkServiceIpAddress{
+		"feA": ip("/ip/1"),
+		"feB": nil,         // internal frontend, no public IP
+		"feC": ip("/ip/1"), // same public IP as feA, shared between frontends
+		"feD": ip("/ip/2"),
+	}
+	resolve := func(fe any) (*mqlAzureSubscriptionNetworkServiceIpAddress, error) {
+		return resolved[fe.(string)], nil
+	}
+
+	out, err := collectFrontendPublicIps([]any{"feA", "feB", "feC", "feD"}, resolve)
+	assert.NoError(t, err)
+	assert.Len(t, out, 2)
+	ids := []string{
+		out[0].(*mqlAzureSubscriptionNetworkServiceIpAddress).Id.Data,
+		out[1].(*mqlAzureSubscriptionNetworkServiceIpAddress).Id.Data,
+	}
+	assert.ElementsMatch(t, []string{"/ip/1", "/ip/2"}, ids)
+}
+
+// TestCollectFrontendPublicIpsError propagates a resolve failure instead of
+// returning a short list. Synthetic: covers the API-failure path.
+func TestCollectFrontendPublicIpsError(t *testing.T) {
+	resolve := func(fe any) (*mqlAzureSubscriptionNetworkServiceIpAddress, error) {
+		return nil, errors.New("boom")
+	}
+	_, err := collectFrontendPublicIps([]any{"fe"}, resolve)
+	assert.Error(t, err)
+}
 
 func TestFrontendIpConfigFields(t *testing.T) {
 	t.Run("nil config returns empty strings", func(t *testing.T) {
