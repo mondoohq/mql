@@ -4620,6 +4620,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.computeService.address.addressType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceAddress).GetAddressType()).ToDataRes(types.String)
 	},
+	"gcp.project.computeService.address.isExternal": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceAddress).GetIsExternal()).ToDataRes(types.Bool)
+	},
 	"gcp.project.computeService.address.created": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceAddress).GetCreated()).ToDataRes(types.Time)
 	},
@@ -23484,6 +23487,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.computeService.address.addressType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectComputeServiceAddress).AddressType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.address.isExternal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceAddress).IsExternal, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"gcp.project.computeService.address.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -54625,6 +54632,7 @@ type mqlGcpProjectComputeServiceAddress struct {
 	Id               plugin.TValue[string]
 	Address          plugin.TValue[string]
 	AddressType      plugin.TValue[string]
+	IsExternal       plugin.TValue[bool]
 	Created          plugin.TValue[*time.Time]
 	Description      plugin.TValue[string]
 	IpVersion        plugin.TValue[string]
@@ -54688,6 +54696,12 @@ func (c *mqlGcpProjectComputeServiceAddress) GetAddress() *plugin.TValue[string]
 
 func (c *mqlGcpProjectComputeServiceAddress) GetAddressType() *plugin.TValue[string] {
 	return &c.AddressType
+}
+
+func (c *mqlGcpProjectComputeServiceAddress) GetIsExternal() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.IsExternal, func() (bool, error) {
+		return c.isExternal()
+	})
 }
 
 func (c *mqlGcpProjectComputeServiceAddress) GetCreated() *plugin.TValue[*time.Time] {
