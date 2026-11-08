@@ -21,6 +21,10 @@ import (
 // group can read it.
 const linuxAgentIDFile = "/var/opt/action1/agent_id.txt"
 
+// macosAgentIDFile holds the endpoint ID on macOS. Only root and wheel can read
+// it.
+const macosAgentIDFile = "/var/local/action1/agent_id.txt"
+
 // windowsAgentIDScript reads the endpoint ID on Windows, where the agent keeps it
 // in the registry under WOW6432Node.
 const windowsAgentIDScript = `(Get-ItemProperty -Path 'HKLM:\SOFTWARE\WOW6432Node\Action1' -Name 'agent.guid' -ErrorAction SilentlyContinue).'agent.guid'`
@@ -30,8 +34,6 @@ var endpointID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-
 // Detect returns the endpoint ID of the Action1 agent on the host as a lowercase
 // GUID, the form the Action1 API uses, or "" when no agent is installed or the
 // ID cannot be read. It never returns an error: detection is best-effort.
-//
-// macOS is not covered: the location of the ID on a macOS agent is not known.
 func Detect(conn shared.Connection, pf *inventory.Platform) string {
 	if conn == nil || pf == nil {
 		return ""
@@ -48,7 +50,9 @@ func Detect(conn shared.Connection, pf *inventory.Platform) string {
 	case pf.IsFamily(inventory.FAMILY_WINDOWS):
 		return readWindows(conn)
 	case pf.IsFamily(inventory.FAMILY_LINUX):
-		return readLinux(conn)
+		return readFile(conn, linuxAgentIDFile)
+	case pf.IsFamily(inventory.FAMILY_DARWIN):
+		return readFile(conn, macosAgentIDFile)
 	default:
 		return ""
 	}
@@ -63,8 +67,8 @@ func PlatformID(id string) string {
 	return "//platformid.api.mondoo.app/runtime/action1/endpoints/" + id
 }
 
-func readLinux(conn shared.Connection) string {
-	f, err := conn.FileSystem().Open(linuxAgentIDFile)
+func readFile(conn shared.Connection, path string) string {
+	f, err := conn.FileSystem().Open(path)
 	if err != nil {
 		return ""
 	}
