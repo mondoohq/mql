@@ -23,7 +23,7 @@ const (
 	// Intune device ID, scoped by its Entra tenant. Opt-in: it is never part of
 	// the defaults.
 	IdDetector_IntuneDevice = "intune-device"
-	// IdDetector_Action1Endpoint identifies a Linux or Windows host by the
+	// IdDetector_Action1Endpoint identifies a Linux, macOS or Windows host by the
 	// endpoint ID of its Action1 agent. Opt-in: it is never part of the defaults.
 	IdDetector_Action1Endpoint = "action1-endpoint"
 
