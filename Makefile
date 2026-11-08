@@ -240,6 +240,7 @@ PROVIDERS := \
 	dropbox \
 	elasticsearch \
 	exoscale \
+	fastly \
 	gcp \
 	github \
 	gitlab \
