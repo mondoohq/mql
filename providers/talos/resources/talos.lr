@@ -1,0 +1,96 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+option provider = "go.mondoo.com/mql/providers/talos"
+option go_package = "go.mondoo.com/mql/providers/talos/resources"
+
+// Talos Linux node
+//
+// The node reached through the Talos API: the Talos version it runs, its
+// kernel parameters, its machine configuration with the secrets removed, and
+// any resource the Talos API serves, for example
+// `talos.resources(type: "TimeServerStatuses.net.talos.dev")`. The Talos API
+// serves sensitive resources, the machine configuration, and reads of files
+// such as /proc/sys only to the os:admin role.
+talos {
+  // Talos version the node runs
+  version() talos.version
+  // Kernel parameters Talos manages on the node
+  //
+  // The parameters Talos sets itself or from the machine configuration, each
+  // with its current and default value. A parameter Talos doesn't manage is
+  // not listed; `talos.kernelParameter(key: "net.ipv4.tcp_syncookies")` reads
+  // it from /proc/sys instead.
+  kernelParameters() []talos.kernelParameter
+  // Machine configuration documents, with the secrets removed
+  //
+  // Each document of the multi-document machine configuration, such as the
+  // v1alpha1 config or a NetworkRuleConfig, with every key, certificate and
+  // token replaced by an empty value. Requires the os:admin role.
+  machineConfig() []dict
+}
+
+// Talos version of a node
+private talos.version @defaults("tag") {
+  // Release tag, such as v1.14.4
+  tag string
+  // Git commit the release was built from
+  sha string
+  // Go version Talos was built with
+  goVersion string
+  // Operating system of the build, such as linux
+  os string
+  // CPU architecture, such as amd64 or arm64
+  arch string
+}
+
+// Kernel parameter of a Talos node
+//
+// A sysctl, keyed by its name with dots, such as
+// `talos.kernelParameter(key: "net.ipv4.conf.all.accept_source_route")`. The
+// value comes from Talos's KernelParamStatuses resource when Talos manages the
+// parameter, and from /proc/sys otherwise, which requires the os:admin role.
+talos.kernelParameter @defaults("key current") {
+  init(key string)
+  // Name of the parameter with dots, such as net.ipv4.tcp_syncookies
+  key string
+  // Current value
+  current string
+  // Kernel default value, when Talos manages the parameter
+  default string
+  // Where the value comes from: status (Talos's KernelParamStatuses) or proc (/proc/sys)
+  source string
+}
+
+// Talos API resources of one type
+//
+// Every resource of the type on the node, in the type's default namespace.
+// The type is a full type or an alias, as `talosctl get` accepts it, such as
+// `talos.resources(type: "SecurityStates.talos.dev")` or
+// `talos.resources(type: "timeserverstatus")`.
+talos.resources {
+  []talos.resource
+  init(type string)
+  // Resource type as given
+  type string
+  // Full resource type the API resolved it to, such as TimeServerStatuses.net.talos.dev
+  resolvedType string
+  // Namespace the resources were listed in
+  namespace string
+}
+
+// Talos API resource
+private talos.resource @defaults("type id") {
+  // Full resource type, such as TimeServerStatuses.net.talos.dev
+  type string
+  // Namespace of the resource
+  namespace string
+  // ID of the resource within its type and namespace
+  id string
+  // Resource version
+  version string
+  // Resource metadata, such as labels, annotations and timestamps
+  metadata dict
+  // Resource spec
+  spec dict
+}

@@ -1,0 +1,29 @@
+# Copyright Mondoo, Inc. 2024, 2026
+# SPDX-License-Identifier: BUSL-1.1
+
+talos 14.0.0
+talos.kernelParameter 14.0.0
+talos.kernelParameter.current 14.0.0
+talos.kernelParameter.default 14.0.0
+talos.kernelParameter.key 14.0.0
+talos.kernelParameter.source 14.0.0
+talos.kernelParameters 14.0.0
+talos.machineConfig 14.0.0
+talos.resource 14.0.0
+talos.resource.id 14.0.0
+talos.resource.metadata 14.0.0
+talos.resource.namespace 14.0.0
+talos.resource.spec 14.0.0
+talos.resource.type 14.0.0
+talos.resource.version 14.0.0
+talos.resources 14.0.0
+talos.resources.list 14.0.0
+talos.resources.namespace 14.0.0
+talos.resources.resolvedType 14.0.0
+talos.resources.type 14.0.0
+talos.version 14.0.0
+talos.version.arch 14.0.0
+talos.version.goVersion 14.0.0
+talos.version.os 14.0.0
+talos.version.sha 14.0.0
+talos.version.tag 14.0.0

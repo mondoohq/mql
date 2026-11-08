@@ -296,6 +296,7 @@ use (
    ./mql/providers/snowflake
    ./mql/providers/stackit
    ./mql/providers/tailscale
+   ./mql/providers/talos
    ./mql/providers/terraform
    ./mql/providers/vcd
    ./mql/providers/vercel

@@ -200,6 +200,7 @@ To learn about Mondoo Platform, read the [Mondoo Platform docs](https://mondoo.c
 | SSL certificates on websites  | `host`                     | `mql shell host mondoo.com`                                                                                                                     |
 | STACKIT projects              | `stackit`                  | `mql shell stackit --project-id PROJECT_ID --service-account-key-path KEY_FILE`                                                                |
 | Tailscale organization        | `tailscale`                | `mql shell tailscale --token ACCESS_TOKEN`                                                                                                      |
+| Talos Linux node              | `talos`                    | `mql shell talos 10.5.0.2 --talosconfig talosconfig`                                                                                            |
 | Terraform HCL                 | `terraform`                | `mql shell terraform HCL_FILE_OR_PATH`                                                                                                          |
 | Terraform plan                | `terraform plan`           | `mql shell terraform plan plan.json`                                                                                                            |
 | Terraform state               | `terraform state`          | `mql shell terraform state state.json`                                                                                                          |
