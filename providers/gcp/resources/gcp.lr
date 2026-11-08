@@ -1893,6 +1893,8 @@ private gcp.project.computeService.address @defaults("name address addressType")
   address string
   // Address type
   addressType string
+  // Whether the address is internet-facing (addressType is EXTERNAL)
+  isExternal() bool
   // Creation timestamp
   created time
   // Address description

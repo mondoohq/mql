@@ -7,9 +7,31 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/types"
 	"google.golang.org/api/compute/v1"
 )
+
+// TestComputeAddressIsExternal drives the derived internet-facing predicate.
+// Synthetic: no target showed this; it covers both states and the absent case.
+func TestComputeAddressIsExternal(t *testing.T) {
+	cases := []struct {
+		addressType string
+		want        bool
+	}{
+		{"EXTERNAL", true},
+		{"INTERNAL", false},
+		{"", false},
+	}
+	for _, c := range cases {
+		addr := &mqlGcpProjectComputeServiceAddress{
+			AddressType: plugin.TValue[string]{Data: c.addressType, State: plugin.StateIsSet},
+		}
+		got, err := addr.isExternal()
+		assert.NoError(t, err)
+		assert.Equal(t, c.want, got, "addressType=%q", c.addressType)
+	}
+}
 
 func TestCustomerEncryptionKeyToDict(t *testing.T) {
 	t.Run("nil input returns nil", func(t *testing.T) {
