@@ -1887,6 +1887,7 @@ gcp.project.computeService.address.description 9.0.0
 gcp.project.computeService.address.id 9.0.0
 gcp.project.computeService.address.ipVersion 9.0.0
 gcp.project.computeService.address.ipv6EndpointType 9.0.0
+gcp.project.computeService.address.isExternal 14.8.1
 gcp.project.computeService.address.labels 11.6.6
 gcp.project.computeService.address.name 9.0.0
 gcp.project.computeService.address.network 9.0.0

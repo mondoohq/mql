@@ -3244,6 +3244,13 @@ func (g *mqlGcpProjectComputeService) addresses() ([]any, error) {
 	return mqlAddresses, nil
 }
 
+func (g *mqlGcpProjectComputeServiceAddress) isExternal() (bool, error) {
+	if g.AddressType.Error != nil {
+		return false, g.AddressType.Error
+	}
+	return g.AddressType.Data == "EXTERNAL", nil
+}
+
 func (g *mqlGcpProjectComputeServiceAddress) network() (*mqlGcpProjectComputeServiceNetwork, error) {
 	networkUrl := g.cacheNetworkUrl
 	net, err := getNetworkByUrl(networkUrl, g.MqlRuntime)
