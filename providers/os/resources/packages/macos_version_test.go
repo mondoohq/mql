@@ -80,6 +80,45 @@ func TestStripVersionLabel(t *testing.T) {
 	}
 }
 
+func TestStripAppName(t *testing.T) {
+	tests := []struct {
+		name    string
+		app     string
+		version string
+		want    string
+	}{
+		// R.app's CFBundleShortVersionString, read off real installs of the
+		// CRAN builds on macOS.
+		{"R, Big Sur ARM build", "R", "R 4.4.1 GUI 1.80 Big Sur ARM build", "4.4.1"},
+		{"R, Big Sur Intel build", "R", "R 4.6.2 GUI 1.84 Big Sur Intel build", "4.6.2"},
+		{"R, High Sierra build", "R", "R 4.1.3 GUI 1.77 High Sierra build", "4.1.3"},
+		{"R, El Capitan build", "R", "R 3.5.3 GUI 1.70 El Capitan build", "3.5.3"},
+		{"R, name repeated", "R", "R R 4.6.0 GUI 1.83 High Sierra build", "4.6.0"},
+
+		// A prefix that is not the application's own name stays, so
+		// looksLikeVersion still rejects a hypervisor launcher stub.
+		{"guest OS name on a stub", "Google Chrome", "Windows 11", "Windows 11"},
+		{"name is only a prefix of the word", "R", "Rosetta 2.0", "Rosetta 2.0"},
+		{"name without a space", "R", "R4.4.1", "R4.4.1"},
+
+		// The name followed by something that is not a dotted version.
+		{"name before a word", "R", "R GUI build", "R GUI build"},
+		{"name before a bare number", "R", "R 4 build", "R 4 build"},
+
+		// Nothing to strip.
+		{"clean version", "R", "4.4.1", "4.4.1"},
+		{"decorated version", "Docker", "1.0 (1234)", "1.0 (1234)"},
+		{"no name", "", "R 4.4.1 GUI 1.80", "R 4.4.1 GUI 1.80"},
+		{"empty", "R", "", ""},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, stripAppName(test.app, test.version))
+		})
+	}
+}
+
 func TestNormalizeVersion(t *testing.T) {
 	tests := []struct {
 		name    string
