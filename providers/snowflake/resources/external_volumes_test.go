@@ -13,16 +13,16 @@ import (
 func TestExternalVolumeStorageLocations(t *testing.T) {
 	t.Run("parses json locations and ignores other properties", func(t *testing.T) {
 		props := []sdk.ExternalVolumeProperty{
-			{Parent: "", Name: "ALLOW_WRITES", Type: "Boolean", Value: "true"},
+			{ParentProperty: "", Property: "ALLOW_WRITES", PropertyType: "Boolean", PropertyValue: "true"},
 			{
-				Parent: "STORAGE_LOCATIONS",
-				Name:   "STORAGE_LOCATION_1",
-				Value:  `{"NAME":"my-s3-loc","STORAGE_PROVIDER":"S3","STORAGE_BASE_URL":"s3://bucket/path/","STORAGE_AWS_ROLE_ARN":"arn:aws:iam::role/snowflake"}`,
+				ParentProperty: "STORAGE_LOCATIONS",
+				Property:       "STORAGE_LOCATION_1",
+				PropertyValue:  `{"NAME":"my-s3-loc","STORAGE_PROVIDER":"S3","STORAGE_BASE_URL":"s3://bucket/path/","STORAGE_AWS_ROLE_ARN":"arn:aws:iam::role/snowflake"}`,
 			},
 			{
-				Parent: "STORAGE_LOCATIONS",
-				Name:   "STORAGE_LOCATION_2",
-				Value:  `{"NAME":"my-gcs-loc","STORAGE_PROVIDER":"GCS","STORAGE_BASE_URL":"gcs://bucket/","STORAGE_GCP_SERVICE_ACCOUNT":"svc@project.iam.gserviceaccount.com"}`,
+				ParentProperty: "STORAGE_LOCATIONS",
+				Property:       "STORAGE_LOCATION_2",
+				PropertyValue:  `{"NAME":"my-gcs-loc","STORAGE_PROVIDER":"GCS","STORAGE_BASE_URL":"gcs://bucket/","STORAGE_GCP_SERVICE_ACCOUNT":"svc@project.iam.gserviceaccount.com"}`,
 			},
 		}
 
@@ -48,7 +48,7 @@ func TestExternalVolumeStorageLocations(t *testing.T) {
 
 	t.Run("no locations yields an empty slice, never nil", func(t *testing.T) {
 		got := externalVolumeStorageLocations([]sdk.ExternalVolumeProperty{
-			{Parent: "", Name: "ALLOW_WRITES", Value: "false"},
+			{ParentProperty: "", Property: "ALLOW_WRITES", PropertyValue: "false"},
 		})
 		if got == nil {
 			t.Fatal("got nil, want an empty slice")
@@ -62,7 +62,7 @@ func TestExternalVolumeStorageLocations(t *testing.T) {
 	// that would make an exposure check pass vacuously.
 	t.Run("unparseable value is preserved, not dropped", func(t *testing.T) {
 		got := externalVolumeStorageLocations([]sdk.ExternalVolumeProperty{
-			{Parent: "STORAGE_LOCATIONS", Name: "STORAGE_LOCATION_1", Value: "not json at all"},
+			{ParentProperty: "STORAGE_LOCATIONS", Property: "STORAGE_LOCATION_1", PropertyValue: "not json at all"},
 		})
 		if len(got) != 1 {
 			t.Fatalf("got %d locations, want 1: %#v", len(got), got)
@@ -78,7 +78,7 @@ func TestExternalVolumeStorageLocations(t *testing.T) {
 
 	t.Run("json null is preserved rather than treated as an object", func(t *testing.T) {
 		got := externalVolumeStorageLocations([]sdk.ExternalVolumeProperty{
-			{Parent: "STORAGE_LOCATIONS", Name: "STORAGE_LOCATION_1", Value: "null"},
+			{ParentProperty: "STORAGE_LOCATIONS", Property: "STORAGE_LOCATION_1", PropertyValue: "null"},
 		})
 		if len(got) != 1 {
 			t.Fatalf("got %d locations, want 1: %#v", len(got), got)
@@ -94,7 +94,7 @@ func TestExternalVolumeStorageLocations(t *testing.T) {
 
 	t.Run("parent match is case insensitive", func(t *testing.T) {
 		got := externalVolumeStorageLocations([]sdk.ExternalVolumeProperty{
-			{Parent: "storage_locations", Name: "STORAGE_LOCATION_1", Value: `{"NAME":"loc"}`},
+			{ParentProperty: "storage_locations", Property: "STORAGE_LOCATION_1", PropertyValue: `{"NAME":"loc"}`},
 		})
 		if len(got) != 1 {
 			t.Errorf("got %d locations, want 1", len(got))

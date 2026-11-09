@@ -18,16 +18,16 @@ type mqlSnowflakeAlertInternal struct {
 }
 
 func (r *mqlSnowflakeAccount) alerts() ([]any, error) {
-	return listSnowflakeAlerts(r.MqlRuntime, &sdk.In{Account: new(true)})
+	return listSnowflakeAlerts(r.MqlRuntime, &sdk.ExtendedIn{In: sdk.In{Account: new(true)}})
 }
 
 func (r *mqlSnowflakeDatabase) alerts() ([]any, error) {
-	return listSnowflakeAlerts(r.MqlRuntime, &sdk.In{Database: sdk.NewAccountObjectIdentifier(r.Name.Data)})
+	return listSnowflakeAlerts(r.MqlRuntime, &sdk.ExtendedIn{In: sdk.In{Database: sdk.NewAccountObjectIdentifier(r.Name.Data)}})
 }
 
 // listSnowflakeAlerts fetches alerts within the given scope (account-wide or a
 // single database) and maps them to resources.
-func listSnowflakeAlerts(runtime *plugin.Runtime, in *sdk.In) ([]any, error) {
+func listSnowflakeAlerts(runtime *plugin.Runtime, in *sdk.ExtendedIn) ([]any, error) {
 	conn := runtime.Connection.(*connection.SnowflakeConnection)
 	alerts, err := conn.Client().Alerts.Show(context.Background(), &sdk.ShowAlertRequest{In: in})
 	if err != nil {
@@ -52,7 +52,7 @@ func newMqlSnowflakeAlert(runtime *plugin.Runtime, alert sdk.Alert) (*mqlSnowfla
 		"databaseName":  llx.StringData(alert.DatabaseName),
 		"schemaName":    llx.StringData(alert.SchemaName),
 		"ownerRoleType": llx.StringData(alert.OwnerRoleType),
-		"schedule":      llx.StringData(alert.Schedule),
+		"schedule":      llx.StringDataPtr(alert.Schedule),
 		"state":         llx.StringData(string(alert.State)),
 		"condition":     llx.StringData(alert.Condition),
 		"action":        llx.StringData(alert.Action),
@@ -64,7 +64,9 @@ func newMqlSnowflakeAlert(runtime *plugin.Runtime, alert sdk.Alert) (*mqlSnowfla
 	}
 	mqlAlert := r.(*mqlSnowflakeAlert)
 	mqlAlert.cacheOwner = alert.Owner
-	mqlAlert.cacheWarehouse = alert.Warehouse
+	if alert.Warehouse != nil {
+		mqlAlert.cacheWarehouse = alert.Warehouse.Name()
+	}
 	return mqlAlert, nil
 }
 

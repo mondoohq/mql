@@ -7,7 +7,7 @@ go 1.27.3
 require (
 	github.com/IBM-Cloud/power-go-client v1.17.0
 	github.com/IBM/cloud-databases-go-sdk v0.8.3
-	github.com/IBM/go-sdk-core/v5 v5.25.2
+	github.com/IBM/go-sdk-core/v5 v5.25.3
 	github.com/IBM/ibm-cos-sdk-go v1.15.2
 	github.com/IBM/ibm-cos-sdk-go-config/v2 v2.3.1
 	github.com/IBM/keyprotect-go-client v1.1.0
@@ -18,7 +18,7 @@ require (
 	github.com/go-openapi/strfmt v0.27.4
 	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.12.1
-	go.mondoo.com/mql v0.0.0-20261105211600-217eb10051a6
+	go.mondoo.com/mql v0.0.0-20261109064811-87180a95a1f3
 )
 
 require (
@@ -26,19 +26,19 @@ require (
 	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/Microsoft/go-winio v0.6.4 // indirect
 	github.com/ProtonMail/go-crypto v1.5.2 // indirect
-	github.com/aws/aws-sdk-go-v2 v1.47.7 // indirect
-	github.com/aws/aws-sdk-go-v2/config v1.33.15 // indirect
-	github.com/aws/aws-sdk-go-v2/credentials v1.20.15 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.20.7 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.10 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.10 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/v4a v1.5.10 // indirect
+	github.com/aws/aws-sdk-go-v2 v1.47.8 // indirect
+	github.com/aws/aws-sdk-go-v2/config v1.33.16 // indirect
+	github.com/aws/aws-sdk-go-v2/credentials v1.20.16 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.20.8 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.11 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.11 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/v4a v1.5.11 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.24 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.14.10 // indirect
-	github.com/aws/aws-sdk-go-v2/service/signin v1.12.3 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sso v1.39.3 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.44.3 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sts v1.51.8 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.14.11 // indirect
+	github.com/aws/aws-sdk-go-v2/service/signin v1.12.4 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.39.4 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.44.4 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sts v1.51.9 // indirect
 	github.com/aws/smithy-go v1.28.8 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -116,7 +116,7 @@ require (
 	github.com/sergi/go-diff v1.4.0 // indirect
 	github.com/skeema/knownhosts v1.3.3 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
-	github.com/spf13/pflag v1.0.10 // indirect
+	github.com/spf13/pflag v1.1.0 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	go.mondoo.com/ranger-rpc v0.8.1 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect

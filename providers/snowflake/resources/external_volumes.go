@@ -86,18 +86,18 @@ func (r *mqlSnowflakeExternalVolume) storageLocations() ([]any, error) {
 func externalVolumeStorageLocations(props []sdk.ExternalVolumeProperty) []any {
 	out := []any{}
 	for _, prop := range props {
-		if !strings.EqualFold(prop.Parent, "STORAGE_LOCATIONS") {
+		if !strings.EqualFold(prop.ParentProperty, "STORAGE_LOCATIONS") {
 			continue
 		}
 
 		var location map[string]any
-		if err := json.Unmarshal([]byte(prop.Value), &location); err == nil && location != nil {
+		if err := json.Unmarshal([]byte(prop.PropertyValue), &location); err == nil && location != nil {
 			out = append(out, location)
 			continue
 		}
 		out = append(out, map[string]any{
-			"NAME":             prop.Name,
-			"STORAGE_LOCATION": prop.Value,
+			"NAME":             prop.Property,
+			"STORAGE_LOCATION": prop.PropertyValue,
 		})
 	}
 	return out
