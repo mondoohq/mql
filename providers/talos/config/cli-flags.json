@@ -1,0 +1,25 @@
+{
+  "connectors": [
+    {
+      "name": "talos",
+      "flags": [
+        {
+          "long": "context",
+          "type": "String"
+        },
+        {
+          "long": "endpoints",
+          "type": "String"
+        },
+        {
+          "long": "node",
+          "type": "String"
+        },
+        {
+          "long": "talosconfig",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

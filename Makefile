@@ -292,6 +292,7 @@ PROVIDERS := \
 	snowflake \
 	stackit \
 	tailscale \
+	talos \
 	terraform \
 	together \
 	vcd \

@@ -1572,6 +1572,22 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"talos": {
+		Provider: &plugin.Provider{
+			Name:            "talos",
+			ID:              "go.mondoo.com/mql/providers/talos",
+			ConnectionTypes: []string{"talos"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "talos",
+					Use:   "talos [node]",
+					Short: "a Talos Linux node",
+				},
+			},
+		},
+	},
+
 	"terraform": {
 		Provider: &plugin.Provider{
 			Name:            "terraform",
