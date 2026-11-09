@@ -94,6 +94,8 @@ openai @defaults("organization") @maturity("preview") @root {
   vaults() []openai.vault
   // Environment templates that provision agent sandboxes
   environmentTemplates() []openai.environmentTemplate
+  // Scheduled agent runs that start without anyone present
+  automations() []openai.automation
 }
 
 // OpenAI certificate
@@ -1337,6 +1339,8 @@ openai.agent @defaults("id name model") @maturity("preview") {
   createdAt time
   // Last update timestamp
   updatedAt time
+  // Automations that start a new session with this agent on a schedule
+  automations() []openai.automation
 }
 
 // Tool available to an OpenAI agent
@@ -1537,8 +1541,8 @@ openai.environmentTemplate @defaults("id name networkPolicyType") @maturity("pre
 // Skill placed in an OpenAI agent sandbox
 //
 // Skill available inside the sandbox an agent session runs in, either resolved
-// from the project skill library or supplied with the template. The `type`
-// field separates the two: a skill_reference entry resolves `skill` at the
+// from the project skill library or supplied with the template or automation. The
+// `type` field separates the two: a skill_reference entry resolves `skill` at the
 // selector in `version`, and an inline entry carries its own `name` and
 // `description` and is not registered in the project, so nothing else can
 // review or replace it.
@@ -1568,8 +1572,8 @@ openai.environmentTemplate.skill @defaults("type name version") @maturity("previ
 // File written into the sandbox an agent session runs in, before the agent
 // starts. The `type` field separates a file_id entry, which resolves `file`
 // from the project uploads at session start, from an inline entry, whose
-// contents travel with the template and are reported only as `sizeBytes`. The
-// `path` field is where the file lands inside the sandbox.
+// contents travel with the template or automation and are reported only as
+// `sizeBytes`. The `path` field is where the file lands inside the sandbox.
 openai.environmentTemplate.file @defaults("path type") @maturity("preview") {
   // Absolute path the file takes inside the sandbox
   path string
@@ -1579,11 +1583,173 @@ openai.environmentTemplate.file @defaults("path type") @maturity("preview") {
   type string
   // Uploaded project file resolved at session start
   //
-  // Null for an inline file, whose contents travel with the template, and for
-  // a reference to a file the project no longer lists.
+  // Null for an inline file, whose contents travel with the template or automation,
+  // and for a reference to a file the project no longer lists.
   file() openai.file
   // Decoded size of an inline file in bytes
   //
   // Null for a file_id entry, whose size is reported on the uploaded file.
   sizeBytes int
+}
+
+// OpenAI agent automation
+//
+// Agent run that starts on a schedule without anyone present, either
+// repeatedly on the cron `expression` interpreted in `timezone`, or once at
+// `runAt`. The `status` field reports whether it still fires, and
+// `createdByType` whether a developer or an agent set it up. A new_session
+// automation starts a fresh session with the saved `agent`, or with the inline
+// agent the `inlineAgent` fields describe, in the environment the
+// `environment` fields select: `networkPolicyType` and
+// `networkPolicyAllowedDomains` bound where the run can send data, `vaults`
+// lists the credentials it can use, and `skills` and `files` list what is
+// placed in its sandbox. An existing_session automation sends
+// `targetInstructions` into the session in `targetSessionId` instead.
+openai.automation @defaults("name type status") @maturity("preview") {
+  init(id string)
+  // Automation identifier
+  id string
+  // Automation display name
+  name string
+  // Schedule type
+  //
+  // One of periodic, which fires on a cron expression, or once, which fires a
+  // single time.
+  type string
+  // Delivery state
+  //
+  // One of active, paused, or completed. Only a once automation completes, and
+  // completed means its schedule has finished, not that the agent's work has.
+  status string
+  // Cron expression a periodic automation fires on
+  //
+  // Null for a once automation.
+  expression string
+  // Timezone the cron expression is interpreted in
+  //
+  // Null for a once automation.
+  timezone string
+  // Point a once automation runs at
+  //
+  // Null for a periodic automation.
+  runAt time
+  // User-provided metadata key-value pairs
+  metadata map[string]string
+  // Creation timestamp
+  createdAt time
+  // Creator of the automation
+  //
+  // One of developer, for an automation created through the API, or agent, for
+  // one an agent created from inside a session.
+  createdByType string
+  // Session of the agent that created the automation
+  //
+  // Null when a developer created it.
+  createdBySessionId string
+  // Tool call through which the agent created the automation
+  //
+  // Null when a developer created it.
+  createdByToolCallId string
+  // What each run is delivered to
+  //
+  // One of new_session, where each run starts a fresh session, or
+  // existing_session, where each run sends instructions into a session that
+  // already exists.
+  targetType string
+  // Session each run of an existing_session automation is delivered to
+  //
+  // Null for a new_session automation.
+  targetSessionId string
+  // Instructions sent into the existing session on each run
+  //
+  // Null for a new_session automation.
+  targetInstructions string
+  // Saved agent each new session runs
+  //
+  // Null when the automation runs an inline agent, for an existing_session
+  // automation, and when the agent is no longer listed in the project.
+  agent() openai.agent
+  // Model the inline agent runs on
+  //
+  // Null when the automation runs a saved agent or targets an existing session.
+  inlineAgentModel string
+  // Instructions the inline agent runs with
+  //
+  // Null when the automation runs a saved agent or targets an existing session.
+  inlineAgentInstructions string
+  // Tools available to the inline agent
+  //
+  // Null when the automation runs a saved agent or targets an existing session.
+  inlineAgentTools []openai.agent.tool
+  // Vaults whose credentials each new session can use
+  //
+  // Vaults the project no longer lists are left out.
+  vaults() []openai.vault
+  // Environment each new session runs in
+  //
+  // One of none, openai_hosted, or self_hosted. Null for an existing_session
+  // automation.
+  environmentType string
+  // Environment template an openai_hosted environment starts from
+  //
+  // Null when no template is selected, and when the template is no longer
+  // listed in the project.
+  environmentTemplate() openai.environmentTemplate
+  // Identifier of an existing environment each session reuses
+  //
+  // Null when each session provisions a new environment.
+  environmentId string
+  // Outbound network policy mode
+  //
+  // One of enabled, where the sandbox reaches any destination, disabled, where
+  // it has no outbound access, or restricted, where only the listed domains
+  // are reachable. Null when the automation keeps the policy of its
+  // environment template.
+  networkPolicyType string
+  // Domains a restricted sandbox may reach
+  //
+  // Null when the automation keeps the policy of its environment template.
+  networkPolicyAllowedDomains []string
+  // Whether the sandbox has a desktop the agent can operate
+  //
+  // Null when the automation keeps the setting of its environment template.
+  desktopEnabled bool
+  // Container size of an openai_hosted environment
+  //
+  // One of small, medium, or large. Null when the automation keeps the size of
+  // its environment template.
+  containerSize string
+  // Directories that expose capabilities to the agent
+  //
+  // Null when the automation keeps the directories of its environment template.
+  capabilityDirectories []string
+  // npm packages installed globally in the sandbox
+  //
+  // Null when the automation keeps the packages of its environment template.
+  npmPackages []string
+  // Python packages installed in the sandbox
+  //
+  // Null when the automation keeps the packages of its environment template.
+  pythonPackages []string
+  // System packages installed in the sandbox
+  //
+  // Null when the automation keeps the packages of its environment template.
+  systemPackages []string
+  // Plugins installed in the sandbox
+  //
+  // Maps each installed plugin name to the description it declares. Null when
+  // the automation keeps the plugins of its environment template.
+  plugins map[string]string
+  // Skills placed in the sandbox
+  //
+  // Null when the automation keeps the skills of its environment template.
+  skills []openai.environmentTemplate.skill
+  // Files placed in the sandbox
+  //
+  // Null when the automation keeps the files of its environment template.
+  files []openai.environmentTemplate.file
+  // Working directory of a self_hosted environment
+  //
+  // Null for every other environment type.
+  workspaceDirectory string
 }

@@ -54,6 +54,7 @@ const (
 	ResourceOpenaiEnvironmentTemplate                    string = "openai.environmentTemplate"
 	ResourceOpenaiEnvironmentTemplateSkill               string = "openai.environmentTemplate.skill"
 	ResourceOpenaiEnvironmentTemplateFile                string = "openai.environmentTemplate.file"
+	ResourceOpenaiAutomation                             string = "openai.automation"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -211,6 +212,10 @@ func init() {
 		"openai.environmentTemplate.file": {
 			// to override args, implement: initOpenaiEnvironmentTemplateFile(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createOpenaiEnvironmentTemplateFile,
+		},
+		"openai.automation": {
+			Init:   initOpenaiAutomation,
+			Create: createOpenaiAutomation,
 		},
 	}
 }
@@ -372,6 +377,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"openai.environmentTemplates": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenai).GetEnvironmentTemplates()).ToDataRes(types.Array(types.Resource("openai.environmentTemplate")))
+	},
+	"openai.automations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenai).GetAutomations()).ToDataRes(types.Array(types.Resource("openai.automation")))
 	},
 	"openai.certificate.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiCertificate).GetId()).ToDataRes(types.String)
@@ -1279,6 +1287,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"openai.agent.updatedAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiAgent).GetUpdatedAt()).ToDataRes(types.Time)
 	},
+	"openai.agent.automations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAgent).GetAutomations()).ToDataRes(types.Array(types.Resource("openai.automation")))
+	},
 	"openai.agent.tool.type": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiAgentTool).GetType()).ToDataRes(types.String)
 	},
@@ -1462,6 +1473,111 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"openai.environmentTemplate.file.sizeBytes": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiEnvironmentTemplateFile).GetSizeBytes()).ToDataRes(types.Int)
 	},
+	"openai.automation.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetId()).ToDataRes(types.String)
+	},
+	"openai.automation.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetName()).ToDataRes(types.String)
+	},
+	"openai.automation.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetType()).ToDataRes(types.String)
+	},
+	"openai.automation.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetStatus()).ToDataRes(types.String)
+	},
+	"openai.automation.expression": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetExpression()).ToDataRes(types.String)
+	},
+	"openai.automation.timezone": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetTimezone()).ToDataRes(types.String)
+	},
+	"openai.automation.runAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetRunAt()).ToDataRes(types.Time)
+	},
+	"openai.automation.metadata": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetMetadata()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"openai.automation.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"openai.automation.createdByType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetCreatedByType()).ToDataRes(types.String)
+	},
+	"openai.automation.createdBySessionId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetCreatedBySessionId()).ToDataRes(types.String)
+	},
+	"openai.automation.createdByToolCallId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetCreatedByToolCallId()).ToDataRes(types.String)
+	},
+	"openai.automation.targetType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetTargetType()).ToDataRes(types.String)
+	},
+	"openai.automation.targetSessionId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetTargetSessionId()).ToDataRes(types.String)
+	},
+	"openai.automation.targetInstructions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetTargetInstructions()).ToDataRes(types.String)
+	},
+	"openai.automation.agent": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetAgent()).ToDataRes(types.Resource("openai.agent"))
+	},
+	"openai.automation.inlineAgentModel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetInlineAgentModel()).ToDataRes(types.String)
+	},
+	"openai.automation.inlineAgentInstructions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetInlineAgentInstructions()).ToDataRes(types.String)
+	},
+	"openai.automation.inlineAgentTools": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetInlineAgentTools()).ToDataRes(types.Array(types.Resource("openai.agent.tool")))
+	},
+	"openai.automation.vaults": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetVaults()).ToDataRes(types.Array(types.Resource("openai.vault")))
+	},
+	"openai.automation.environmentType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetEnvironmentType()).ToDataRes(types.String)
+	},
+	"openai.automation.environmentTemplate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetEnvironmentTemplate()).ToDataRes(types.Resource("openai.environmentTemplate"))
+	},
+	"openai.automation.environmentId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetEnvironmentId()).ToDataRes(types.String)
+	},
+	"openai.automation.networkPolicyType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetNetworkPolicyType()).ToDataRes(types.String)
+	},
+	"openai.automation.networkPolicyAllowedDomains": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetNetworkPolicyAllowedDomains()).ToDataRes(types.Array(types.String))
+	},
+	"openai.automation.desktopEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetDesktopEnabled()).ToDataRes(types.Bool)
+	},
+	"openai.automation.containerSize": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetContainerSize()).ToDataRes(types.String)
+	},
+	"openai.automation.capabilityDirectories": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetCapabilityDirectories()).ToDataRes(types.Array(types.String))
+	},
+	"openai.automation.npmPackages": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetNpmPackages()).ToDataRes(types.Array(types.String))
+	},
+	"openai.automation.pythonPackages": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetPythonPackages()).ToDataRes(types.Array(types.String))
+	},
+	"openai.automation.systemPackages": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetSystemPackages()).ToDataRes(types.Array(types.String))
+	},
+	"openai.automation.plugins": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetPlugins()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"openai.automation.skills": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetSkills()).ToDataRes(types.Array(types.Resource("openai.environmentTemplate.skill")))
+	},
+	"openai.automation.files": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetFiles()).ToDataRes(types.Array(types.Resource("openai.environmentTemplate.file")))
+	},
+	"openai.automation.workspaceDirectory": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetWorkspaceDirectory()).ToDataRes(types.String)
+	},
 }
 
 func GetData(resource plugin.Resource, field string, args map[string]*llx.RawData) *plugin.DataRes {
@@ -1596,6 +1712,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"openai.environmentTemplates": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOpenai).EnvironmentTemplates, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"openai.automations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenai).Automations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"openai.certificate.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -2930,6 +3050,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOpenaiAgent).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
+	"openai.agent.automations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAgent).Automations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"openai.agent.tool.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOpenaiAgentTool).__id, ok = v.Value.(string)
 		return
@@ -3198,6 +3322,150 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOpenaiEnvironmentTemplateFile).SizeBytes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
+	"openai.automation.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).__id, ok = v.Value.(string)
+		return
+	},
+	"openai.automation.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.automation.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.automation.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.automation.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.automation.expression": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).Expression, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.automation.timezone": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).Timezone, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.automation.runAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).RunAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"openai.automation.metadata": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).Metadata, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"openai.automation.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"openai.automation.createdByType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).CreatedByType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.automation.createdBySessionId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).CreatedBySessionId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.automation.createdByToolCallId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).CreatedByToolCallId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.automation.targetType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).TargetType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.automation.targetSessionId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).TargetSessionId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.automation.targetInstructions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).TargetInstructions, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.automation.agent": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).Agent, ok = plugin.RawToTValue[*mqlOpenaiAgent](v.Value, v.Error)
+		return
+	},
+	"openai.automation.inlineAgentModel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).InlineAgentModel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.automation.inlineAgentInstructions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).InlineAgentInstructions, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.automation.inlineAgentTools": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).InlineAgentTools, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"openai.automation.vaults": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).Vaults, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"openai.automation.environmentType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).EnvironmentType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.automation.environmentTemplate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).EnvironmentTemplate, ok = plugin.RawToTValue[*mqlOpenaiEnvironmentTemplate](v.Value, v.Error)
+		return
+	},
+	"openai.automation.environmentId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).EnvironmentId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.automation.networkPolicyType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).NetworkPolicyType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.automation.networkPolicyAllowedDomains": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).NetworkPolicyAllowedDomains, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"openai.automation.desktopEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).DesktopEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"openai.automation.containerSize": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).ContainerSize, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.automation.capabilityDirectories": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).CapabilityDirectories, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"openai.automation.npmPackages": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).NpmPackages, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"openai.automation.pythonPackages": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).PythonPackages, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"openai.automation.systemPackages": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).SystemPackages, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"openai.automation.plugins": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).Plugins, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"openai.automation.skills": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).Skills, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"openai.automation.files": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).Files, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"openai.automation.workspaceDirectory": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).WorkspaceDirectory, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 }
 
 func SetData(resource plugin.Resource, field string, val *llx.RawData) error {
@@ -3257,6 +3525,7 @@ type mqlOpenai struct {
 	Agents                    plugin.TValue[[]any]
 	Vaults                    plugin.TValue[[]any]
 	EnvironmentTemplates      plugin.TValue[[]any]
+	Automations               plugin.TValue[[]any]
 }
 
 // createOpenai creates a new instance of this resource
@@ -3703,6 +3972,22 @@ func (c *mqlOpenai) GetEnvironmentTemplates() *plugin.TValue[[]any] {
 		}
 
 		return c.environmentTemplates()
+	})
+}
+
+func (c *mqlOpenai) GetAutomations() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Automations, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("openai", c.__id, "automations")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.automations()
 	})
 }
 
@@ -6895,6 +7180,7 @@ type mqlOpenaiAgent struct {
 	Tools                  plugin.TValue[[]any]
 	CreatedAt              plugin.TValue[*time.Time]
 	UpdatedAt              plugin.TValue[*time.Time]
+	Automations            plugin.TValue[[]any]
 }
 
 // createOpenaiAgent creates a new instance of this resource
@@ -6983,6 +7269,22 @@ func (c *mqlOpenaiAgent) GetCreatedAt() *plugin.TValue[*time.Time] {
 
 func (c *mqlOpenaiAgent) GetUpdatedAt() *plugin.TValue[*time.Time] {
 	return &c.UpdatedAt
+}
+
+func (c *mqlOpenaiAgent) GetAutomations() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Automations, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("openai.agent", c.__id, "automations")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.automations()
+	})
 }
 
 // mqlOpenaiAgentTool for the openai.agent.tool resource
@@ -7582,4 +7884,254 @@ func (c *mqlOpenaiEnvironmentTemplateFile) GetFile() *plugin.TValue[*mqlOpenaiFi
 
 func (c *mqlOpenaiEnvironmentTemplateFile) GetSizeBytes() *plugin.TValue[int64] {
 	return &c.SizeBytes
+}
+
+// mqlOpenaiAutomation for the openai.automation resource
+type mqlOpenaiAutomation struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlOpenaiAutomationInternal
+	Id                          plugin.TValue[string]
+	Name                        plugin.TValue[string]
+	Type                        plugin.TValue[string]
+	Status                      plugin.TValue[string]
+	Expression                  plugin.TValue[string]
+	Timezone                    plugin.TValue[string]
+	RunAt                       plugin.TValue[*time.Time]
+	Metadata                    plugin.TValue[map[string]any]
+	CreatedAt                   plugin.TValue[*time.Time]
+	CreatedByType               plugin.TValue[string]
+	CreatedBySessionId          plugin.TValue[string]
+	CreatedByToolCallId         plugin.TValue[string]
+	TargetType                  plugin.TValue[string]
+	TargetSessionId             plugin.TValue[string]
+	TargetInstructions          plugin.TValue[string]
+	Agent                       plugin.TValue[*mqlOpenaiAgent]
+	InlineAgentModel            plugin.TValue[string]
+	InlineAgentInstructions     plugin.TValue[string]
+	InlineAgentTools            plugin.TValue[[]any]
+	Vaults                      plugin.TValue[[]any]
+	EnvironmentType             plugin.TValue[string]
+	EnvironmentTemplate         plugin.TValue[*mqlOpenaiEnvironmentTemplate]
+	EnvironmentId               plugin.TValue[string]
+	NetworkPolicyType           plugin.TValue[string]
+	NetworkPolicyAllowedDomains plugin.TValue[[]any]
+	DesktopEnabled              plugin.TValue[bool]
+	ContainerSize               plugin.TValue[string]
+	CapabilityDirectories       plugin.TValue[[]any]
+	NpmPackages                 plugin.TValue[[]any]
+	PythonPackages              plugin.TValue[[]any]
+	SystemPackages              plugin.TValue[[]any]
+	Plugins                     plugin.TValue[map[string]any]
+	Skills                      plugin.TValue[[]any]
+	Files                       plugin.TValue[[]any]
+	WorkspaceDirectory          plugin.TValue[string]
+}
+
+// createOpenaiAutomation creates a new instance of this resource
+func createOpenaiAutomation(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlOpenaiAutomation{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("openai.automation", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlOpenaiAutomation) MqlName() string {
+	return "openai.automation"
+}
+
+func (c *mqlOpenaiAutomation) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlOpenaiAutomation) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlOpenaiAutomation) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlOpenaiAutomation) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlOpenaiAutomation) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlOpenaiAutomation) GetExpression() *plugin.TValue[string] {
+	return &c.Expression
+}
+
+func (c *mqlOpenaiAutomation) GetTimezone() *plugin.TValue[string] {
+	return &c.Timezone
+}
+
+func (c *mqlOpenaiAutomation) GetRunAt() *plugin.TValue[*time.Time] {
+	return &c.RunAt
+}
+
+func (c *mqlOpenaiAutomation) GetMetadata() *plugin.TValue[map[string]any] {
+	return &c.Metadata
+}
+
+func (c *mqlOpenaiAutomation) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlOpenaiAutomation) GetCreatedByType() *plugin.TValue[string] {
+	return &c.CreatedByType
+}
+
+func (c *mqlOpenaiAutomation) GetCreatedBySessionId() *plugin.TValue[string] {
+	return &c.CreatedBySessionId
+}
+
+func (c *mqlOpenaiAutomation) GetCreatedByToolCallId() *plugin.TValue[string] {
+	return &c.CreatedByToolCallId
+}
+
+func (c *mqlOpenaiAutomation) GetTargetType() *plugin.TValue[string] {
+	return &c.TargetType
+}
+
+func (c *mqlOpenaiAutomation) GetTargetSessionId() *plugin.TValue[string] {
+	return &c.TargetSessionId
+}
+
+func (c *mqlOpenaiAutomation) GetTargetInstructions() *plugin.TValue[string] {
+	return &c.TargetInstructions
+}
+
+func (c *mqlOpenaiAutomation) GetAgent() *plugin.TValue[*mqlOpenaiAgent] {
+	return plugin.GetOrCompute[*mqlOpenaiAgent](&c.Agent, func() (*mqlOpenaiAgent, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("openai.automation", c.__id, "agent")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOpenaiAgent), nil
+			}
+		}
+
+		return c.agent()
+	})
+}
+
+func (c *mqlOpenaiAutomation) GetInlineAgentModel() *plugin.TValue[string] {
+	return &c.InlineAgentModel
+}
+
+func (c *mqlOpenaiAutomation) GetInlineAgentInstructions() *plugin.TValue[string] {
+	return &c.InlineAgentInstructions
+}
+
+func (c *mqlOpenaiAutomation) GetInlineAgentTools() *plugin.TValue[[]any] {
+	return &c.InlineAgentTools
+}
+
+func (c *mqlOpenaiAutomation) GetVaults() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Vaults, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("openai.automation", c.__id, "vaults")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.vaults()
+	})
+}
+
+func (c *mqlOpenaiAutomation) GetEnvironmentType() *plugin.TValue[string] {
+	return &c.EnvironmentType
+}
+
+func (c *mqlOpenaiAutomation) GetEnvironmentTemplate() *plugin.TValue[*mqlOpenaiEnvironmentTemplate] {
+	return plugin.GetOrCompute[*mqlOpenaiEnvironmentTemplate](&c.EnvironmentTemplate, func() (*mqlOpenaiEnvironmentTemplate, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("openai.automation", c.__id, "environmentTemplate")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOpenaiEnvironmentTemplate), nil
+			}
+		}
+
+		return c.environmentTemplate()
+	})
+}
+
+func (c *mqlOpenaiAutomation) GetEnvironmentId() *plugin.TValue[string] {
+	return &c.EnvironmentId
+}
+
+func (c *mqlOpenaiAutomation) GetNetworkPolicyType() *plugin.TValue[string] {
+	return &c.NetworkPolicyType
+}
+
+func (c *mqlOpenaiAutomation) GetNetworkPolicyAllowedDomains() *plugin.TValue[[]any] {
+	return &c.NetworkPolicyAllowedDomains
+}
+
+func (c *mqlOpenaiAutomation) GetDesktopEnabled() *plugin.TValue[bool] {
+	return &c.DesktopEnabled
+}
+
+func (c *mqlOpenaiAutomation) GetContainerSize() *plugin.TValue[string] {
+	return &c.ContainerSize
+}
+
+func (c *mqlOpenaiAutomation) GetCapabilityDirectories() *plugin.TValue[[]any] {
+	return &c.CapabilityDirectories
+}
+
+func (c *mqlOpenaiAutomation) GetNpmPackages() *plugin.TValue[[]any] {
+	return &c.NpmPackages
+}
+
+func (c *mqlOpenaiAutomation) GetPythonPackages() *plugin.TValue[[]any] {
+	return &c.PythonPackages
+}
+
+func (c *mqlOpenaiAutomation) GetSystemPackages() *plugin.TValue[[]any] {
+	return &c.SystemPackages
+}
+
+func (c *mqlOpenaiAutomation) GetPlugins() *plugin.TValue[map[string]any] {
+	return &c.Plugins
+}
+
+func (c *mqlOpenaiAutomation) GetSkills() *plugin.TValue[[]any] {
+	return &c.Skills
+}
+
+func (c *mqlOpenaiAutomation) GetFiles() *plugin.TValue[[]any] {
+	return &c.Files
+}
+
+func (c *mqlOpenaiAutomation) GetWorkspaceDirectory() *plugin.TValue[string] {
+	return &c.WorkspaceDirectory
 }
