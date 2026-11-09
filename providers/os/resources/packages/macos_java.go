@@ -290,5 +290,8 @@ func readJavaRelease(conn shared.Connection, releasePath string) (javaRelease, b
 			release.osArch = value
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		log.Debug().Err(err).Str("path", releasePath).Msg("could not read Java release file")
+	}
 	return release, true
 }
