@@ -149,7 +149,7 @@ func macOSApplicationPackages(conn shared.Connection, platform *inventory.Platfo
 		// version. Some bundles ship a version only in
 		// CFBundleVersion, so fall back to the bundle's Info.plist when
 		// system_profiler reports no version, or a version we cannot use.
-		version := stripVersionLabel(entry.Version)
+		version := stripVersionLabel(stripAppName(entry.Name, entry.Version))
 		if !looksLikeVersion(version) {
 			// Plenty of directories genuinely end in .app without being
 			// applications: Firefox origin storage (https+++example.app),
@@ -163,7 +163,7 @@ func macOSApplicationPackages(conn shared.Connection, platform *inventory.Platfo
 			// Entries reporting a version we can use are never checked, because
 			// some real applications have no Contents/Info.plist. Wrapped iOS
 			// apps keep theirs under Wrapper/ and would otherwise be lost.
-			bundleVersion := stripVersionLabel(bundleVersionOf(info))
+			bundleVersion := stripVersionLabel(stripAppName(entry.Name, bundleVersionOf(info)))
 			if !isBundle {
 				log.Debug().
 					Str("name", entry.Name).
@@ -621,6 +621,52 @@ func stripVersionLabel(version string) string {
 		return version
 	}
 	return m[1]
+}
+
+// appNamedVersion matches the dotted version at the start of what follows an
+// application's own name in its version string, and nothing after it.
+var appNamedVersion = regexp.MustCompile(`^\d+(?:\.\d+)+`)
+
+// stripAppName returns the version from a version string that begins with the
+// application's own name, and every other version unchanged.
+//
+// R writes a sentence about the build into CFBundleShortVersionString:
+// "R 4.4.1 GUI 1.80 Big Sur ARM build". It fails looksLikeVersion in both
+// places a version can come from, so R.app used to be dropped from the
+// inventory. Only the dotted version right after the name is kept. Unlike the
+// decoration other bundles put after a version ("1.0 (1234)"), the rest is a
+// second product's version (the GUI) and a build target, and keeping it would
+// put the whole sentence in the purl.
+//
+// The prefix has to be the application's own name. That is what tells this
+// apart from a hypervisor launcher stub, whose version names a different
+// product ("Windows 11" on a stub named "Google Chrome") and must keep failing
+// looksLikeVersion. The name is stripped as often as it repeats, because one R
+// release ships "R R 4.6.0 GUI 1.83 High Sierra build". A remainder that does
+// not start with a dotted version is not a version, and the input is returned
+// as it was.
+func stripAppName(name, version string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return version
+	}
+	rest := strings.TrimSpace(version)
+	stripped := false
+	for {
+		after, ok := strings.CutPrefix(rest, name+" ")
+		if !ok {
+			break
+		}
+		rest = strings.TrimSpace(after)
+		stripped = true
+	}
+	if !stripped {
+		return version
+	}
+	if v := appNamedVersion.FindString(rest); v != "" {
+		return v
+	}
+	return version
 }
 
 // versionPaddedSeparators matches a version built only from numeric components

@@ -1,0 +1,44 @@
+# R.app as system_profiler reports it after installing the CRAN build of R
+# 4.4.1 for Apple silicon: the version is a sentence that starts with the
+# application's own name. The Info.plist carries the same string as
+# CFBundleShortVersionString.
+[commands."system_profiler SPApplicationsDataType -xml"]
+stdout = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+	<dict>
+		<key>_items</key>
+		<array>
+			<dict>
+				<key>_name</key>
+				<string>R</string>
+				<key>obtained_from</key>
+				<string>identified_developer</string>
+				<key>path</key>
+				<string>/Applications/R.app</string>
+				<key>version</key>
+				<string>R 4.4.1 GUI 1.80 Big Sur ARM build</string>
+			</dict>
+		</array>
+		<key>_dataType</key>
+		<string>SPApplicationsDataType</string>
+	</dict>
+</array>
+</plist>
+"""
+
+[files."/Applications/R.app/Contents/Info.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>org.R-project.R</string>
+	<key>CFBundleName</key>
+	<string>R</string>
+	<key>CFBundleShortVersionString</key>
+	<string>R 4.4.1 GUI 1.80 Big Sur ARM build</string>
+</dict>
+</plist>
+"""

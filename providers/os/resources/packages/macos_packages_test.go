@@ -294,3 +294,23 @@ func TestMacOSPackagesKeepReleaseTaggedVersions(t *testing.T) {
 	assert.Equal(t, "OpenRA - Tiberian Dawn", pkgs[1].Name)
 	assert.Equal(t, "20250330", pkgs[1].Version)
 }
+
+// R.app reports a sentence about its build as its version ("R 4.4.1 GUI 1.80
+// Big Sur ARM build"), which used to fail the version check and drop R from
+// the inventory. The application's own name is stripped and the version after
+// it is kept.
+func TestMacOSPackagesKeepAppNamedVersions(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/packages_macos_app_named_version.toml"))
+	require.NoError(t, err)
+	c, err := conn.RunCommand("system_profiler SPApplicationsDataType -xml")
+	require.NoError(t, err)
+
+	pf := &inventory.Platform{Name: "macos", Version: "26.0", Arch: "arm64", Family: []string{"darwin", "bsd", "unix", "os"}}
+	pkgs, err := packages.ParseMacOSPackages(conn, pf, c.Stdout)
+	require.NoError(t, err)
+	require.Len(t, pkgs, 1)
+
+	assert.Equal(t, "R", pkgs[0].Name)
+	assert.Equal(t, "4.4.1", pkgs[0].Version)
+	assert.Equal(t, "pkg:macos/macos/R@4.4.1?arch=arm64&bundle-id=org.R-project.R", pkgs[0].PUrl)
+}
