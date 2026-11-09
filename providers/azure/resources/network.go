@@ -4851,12 +4851,18 @@ func azureFirewallPolicyToMql(runtime *plugin.Runtime, fwp network.FirewallPolic
 func azureIpToMql(runtime *plugin.Runtime, ip network.PublicIPAddress) (*mqlAzureSubscriptionNetworkServiceIpAddress, error) {
 	var ipAllocationMethod, ipVersion, ddosProtectionMode, associatedResourceId string
 	var ipAddr, publicIpPrefixId, natGatewayId, ddosCustomPolicyId *string
+	var fqdn, reverseFqdn, domainNameLabel *string
 	var upgradedToV2 *bool
 	var idleTimeoutInMinutes int64
 	ipTags := []any{}
 	if ip.Properties != nil {
 		ipAddr = ip.Properties.IPAddress
 		upgradedToV2 = ip.Properties.UpgradedToV2
+		if ds := ip.Properties.DNSSettings; ds != nil {
+			fqdn = ds.Fqdn
+			reverseFqdn = ds.ReverseFqdn
+			domainNameLabel = ds.DomainNameLabel
+		}
 		if ip.Properties.PublicIPAllocationMethod != nil {
 			ipAllocationMethod = string(*ip.Properties.PublicIPAllocationMethod)
 		}
@@ -4914,6 +4920,9 @@ func azureIpToMql(runtime *plugin.Runtime, ip network.PublicIPAddress) (*mqlAzur
 			"ipAddress":            llx.StringDataPtr(ipAddr),
 			"ipAllocationMethod":   llx.StringData(ipAllocationMethod),
 			"ipVersion":            llx.StringData(ipVersion),
+			"fqdn":                 llx.StringDataPtr(fqdn),
+			"reverseFqdn":          llx.StringDataPtr(reverseFqdn),
+			"domainNameLabel":      llx.StringDataPtr(domainNameLabel),
 			"zones":                llx.ArrayData(zones, types.String),
 			"ddosProtectionMode":   llx.StringData(ddosProtectionMode),
 			"associatedResourceId": llx.StringData(associatedResourceId),
@@ -4931,6 +4940,58 @@ func azureIpToMql(runtime *plugin.Runtime, ip network.PublicIPAddress) (*mqlAzur
 	mqlIp.cacheNatGatewayID = natGatewayId
 	mqlIp.cacheDdosCustomPolicyID = ddosCustomPolicyId
 	return mqlIp, nil
+}
+
+// collectFrontendPublicIps resolves the public IP of each frontend IP
+// configuration through the frontend's own accessor and keeps the distinct
+// internet-facing addresses. An internal frontend resolves to nil and is
+// skipped; an address bound to several frontends is returned once. Resolution
+// goes through the frontend accessor, which reuses the shared init cache, so
+// the same public IP is fetched once per scan however many frontends reach it.
+func collectFrontendPublicIps(frontends []any, resolve func(any) (*mqlAzureSubscriptionNetworkServiceIpAddress, error)) ([]any, error) {
+	seen := map[string]struct{}{}
+	out := []any{}
+	for _, fe := range frontends {
+		ip, err := resolve(fe)
+		if err != nil {
+			return nil, err
+		}
+		if ip == nil {
+			continue
+		}
+		id := ip.Id.Data
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, ip)
+	}
+	return out, nil
+}
+
+// publicIpAddresses lists the public IP addresses bound to the load balancer's
+// internet-facing frontends, so the internet-facing addresses are one hop from
+// the load balancer rather than reached through each frontend IP configuration.
+func (a *mqlAzureSubscriptionNetworkServiceLoadBalancer) publicIpAddresses() ([]any, error) {
+	frontends := a.GetFrontendIpConfigs()
+	if frontends.Error != nil {
+		return nil, frontends.Error
+	}
+	return collectFrontendPublicIps(frontends.Data, func(fe any) (*mqlAzureSubscriptionNetworkServiceIpAddress, error) {
+		return fe.(*mqlAzureSubscriptionNetworkServiceFrontendIpConfig).publicIpAddress()
+	})
+}
+
+// publicIpAddresses lists the public IP addresses bound to the application
+// gateway's internet-facing frontends.
+func (a *mqlAzureSubscriptionNetworkServiceApplicationGateway) publicIpAddresses() ([]any, error) {
+	frontends := a.GetFrontendIpConfigs()
+	if frontends.Error != nil {
+		return nil, frontends.Error
+	}
+	return collectFrontendPublicIps(frontends.Data, func(fe any) (*mqlAzureSubscriptionNetworkServiceIpAddress, error) {
+		return fe.(*mqlAzureSubscriptionNetworkServiceApplicationGatewayFrontendIpConfig).publicIpAddress()
+	})
 }
 
 type mqlAzureSubscriptionNetworkServiceIpAddressInternal struct {

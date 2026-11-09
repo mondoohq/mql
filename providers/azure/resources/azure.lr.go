@@ -6887,6 +6887,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.networkService.loadBalancer.loadBalancerRules": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceLoadBalancer).GetLoadBalancerRules()).ToDataRes(types.Array(types.Resource("azure.subscription.networkService.loadBalancerRule")))
 	},
+	"azure.subscription.networkService.loadBalancer.publicIpAddresses": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceLoadBalancer).GetPublicIpAddresses()).ToDataRes(types.Array(types.Resource("azure.subscription.networkService.ipAddress")))
+	},
 	"azure.subscription.networkService.probe.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceProbe).GetId()).ToDataRes(types.String)
 	},
@@ -7403,6 +7406,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.networkService.ipAddress.ipVersion": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceIpAddress).GetIpVersion()).ToDataRes(types.String)
 	},
+	"azure.subscription.networkService.ipAddress.fqdn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceIpAddress).GetFqdn()).ToDataRes(types.String)
+	},
+	"azure.subscription.networkService.ipAddress.reverseFqdn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceIpAddress).GetReverseFqdn()).ToDataRes(types.String)
+	},
+	"azure.subscription.networkService.ipAddress.domainNameLabel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceIpAddress).GetDomainNameLabel()).ToDataRes(types.String)
+	},
 	"azure.subscription.networkService.ipAddress.zones": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceIpAddress).GetZones()).ToDataRes(types.Array(types.String))
 	},
@@ -7906,6 +7918,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.networkService.applicationGateway.disableDefaultServerHeaderInResponse": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceApplicationGateway).GetDisableDefaultServerHeaderInResponse()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.networkService.applicationGateway.publicIpAddresses": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceApplicationGateway).GetPublicIpAddresses()).ToDataRes(types.Array(types.Resource("azure.subscription.networkService.ipAddress")))
 	},
 	"azure.subscription.networkService.applicationGateway.gatewayIpConfig.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceApplicationGatewayGatewayIpConfig).GetId()).ToDataRes(types.String)
@@ -30863,6 +30878,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionNetworkServiceLoadBalancer).LoadBalancerRules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.networkService.loadBalancer.publicIpAddresses": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceLoadBalancer).PublicIpAddresses, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.networkService.probe.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionNetworkServiceProbe).__id, ok = v.Value.(string)
 		return
@@ -31599,6 +31618,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionNetworkServiceIpAddress).IpVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.networkService.ipAddress.fqdn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceIpAddress).Fqdn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkService.ipAddress.reverseFqdn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceIpAddress).ReverseFqdn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkService.ipAddress.domainNameLabel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceIpAddress).DomainNameLabel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.networkService.ipAddress.zones": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionNetworkServiceIpAddress).Zones, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -32309,6 +32340,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.networkService.applicationGateway.disableDefaultServerHeaderInResponse": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionNetworkServiceApplicationGateway).DisableDefaultServerHeaderInResponse, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkService.applicationGateway.publicIpAddresses": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceApplicationGateway).PublicIpAddresses, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.networkService.applicationGateway.gatewayIpConfig.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -70507,6 +70542,7 @@ type mqlAzureSubscriptionNetworkServiceLoadBalancer struct {
 	InboundNatRules   plugin.TValue[[]any]
 	OutboundRules     plugin.TValue[[]any]
 	LoadBalancerRules plugin.TValue[[]any]
+	PublicIpAddresses plugin.TValue[[]any]
 }
 
 // createAzureSubscriptionNetworkServiceLoadBalancer creates a new instance of this resource
@@ -70695,6 +70731,22 @@ func (c *mqlAzureSubscriptionNetworkServiceLoadBalancer) GetLoadBalancerRules() 
 		}
 
 		return c.loadBalancerRules()
+	})
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceLoadBalancer) GetPublicIpAddresses() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PublicIpAddresses, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.networkService.loadBalancer", c.__id, "publicIpAddresses")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.publicIpAddresses()
 	})
 }
 
@@ -72335,6 +72387,9 @@ type mqlAzureSubscriptionNetworkServiceIpAddress struct {
 	Type                 plugin.TValue[string]
 	IpAllocationMethod   plugin.TValue[string]
 	IpVersion            plugin.TValue[string]
+	Fqdn                 plugin.TValue[string]
+	ReverseFqdn          plugin.TValue[string]
+	DomainNameLabel      plugin.TValue[string]
 	Zones                plugin.TValue[[]any]
 	DdosProtectionMode   plugin.TValue[string]
 	DdosCustomPolicy     plugin.TValue[*mqlAzureSubscriptionNetworkServiceDdosCustomPolicy]
@@ -72415,6 +72470,18 @@ func (c *mqlAzureSubscriptionNetworkServiceIpAddress) GetIpAllocationMethod() *p
 
 func (c *mqlAzureSubscriptionNetworkServiceIpAddress) GetIpVersion() *plugin.TValue[string] {
 	return &c.IpVersion
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceIpAddress) GetFqdn() *plugin.TValue[string] {
+	return &c.Fqdn
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceIpAddress) GetReverseFqdn() *plugin.TValue[string] {
+	return &c.ReverseFqdn
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceIpAddress) GetDomainNameLabel() *plugin.TValue[string] {
+	return &c.DomainNameLabel
 }
 
 func (c *mqlAzureSubscriptionNetworkServiceIpAddress) GetZones() *plugin.TValue[[]any] {
@@ -73702,6 +73769,7 @@ type mqlAzureSubscriptionNetworkServiceApplicationGateway struct {
 	UserAssignedIdentities               plugin.TValue[[]any]
 	GatewayIpConfigs                     plugin.TValue[[]any]
 	DisableDefaultServerHeaderInResponse plugin.TValue[bool]
+	PublicIpAddresses                    plugin.TValue[[]any]
 }
 
 // createAzureSubscriptionNetworkServiceApplicationGateway creates a new instance of this resource
@@ -73919,6 +73987,22 @@ func (c *mqlAzureSubscriptionNetworkServiceApplicationGateway) GetGatewayIpConfi
 
 func (c *mqlAzureSubscriptionNetworkServiceApplicationGateway) GetDisableDefaultServerHeaderInResponse() *plugin.TValue[bool] {
 	return &c.DisableDefaultServerHeaderInResponse
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceApplicationGateway) GetPublicIpAddresses() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PublicIpAddresses, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.networkService.applicationGateway", c.__id, "publicIpAddresses")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.publicIpAddresses()
+	})
 }
 
 // mqlAzureSubscriptionNetworkServiceApplicationGatewayGatewayIpConfig for the azure.subscription.networkService.applicationGateway.gatewayIpConfig resource

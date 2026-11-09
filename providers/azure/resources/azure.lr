@@ -3828,6 +3828,8 @@ azure.subscription.networkService.loadBalancer @defaults("id name location") {
   outboundRules() []azure.subscription.networkService.outboundRule
   // List of Load Balancer rules
   loadBalancerRules() []azure.subscription.networkService.loadBalancerRule
+  // Public IP addresses bound to the load balancer's internet-facing frontends, empty for an internal-only load balancer
+  publicIpAddresses() []azure.subscription.networkService.ipAddress
 }
 
 // Azure network probe
@@ -4385,6 +4387,12 @@ private azure.subscription.networkService.ipAddress @defaults("name location ipA
   ipAllocationMethod string
   // IP address version (IPv4, IPv6)
   ipVersion string
+  // Fully qualified domain name of the A record for this public IP, empty when no DNS name is configured
+  fqdn string
+  // Reverse FQDN (PTR record) that resolves to this public IP, empty when none is set
+  reverseFqdn string
+  // Domain name label that, with the regional DNS zone, forms the FQDN; empty when no DNS name is configured
+  domainNameLabel string
   // Availability zones for the public IP address
   zones []string
   // DDoS protection mode ("VirtualNetworkInherited", "Enabled", "Disabled")
@@ -4875,6 +4883,8 @@ azure.subscription.networkService.applicationGateway @defaults("id name location
   // the platform to anyone probing the endpoint. Null when the gateway does
   // not carry a global configuration block.
   disableDefaultServerHeaderInResponse bool
+  // Public IP addresses bound to the application gateway's internet-facing frontends, empty for an internal-only gateway
+  publicIpAddresses() []azure.subscription.networkService.ipAddress
 }
 
 // Azure Application Gateway IP configuration
