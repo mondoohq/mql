@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/openai/openai-go/v3"
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/types"
@@ -307,9 +308,12 @@ func (r *mqlOpenaiAutomation) vaults() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
-		if v != nil {
-			res = append(res, v)
+		if v == nil {
+			log.Debug().Str("automation", r.Id.Data).Str("vault", id).
+				Msg("openai> automation names a vault the project does not list, leaving it out")
+			continue
 		}
+		res = append(res, v)
 	}
 	return res, nil
 }

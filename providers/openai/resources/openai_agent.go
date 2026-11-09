@@ -432,11 +432,11 @@ func (r *mqlOpenaiVaultCredential) vault() (*mqlOpenaiVault, error) {
 // openaiVaultList returns the project vault collection through the openai
 // resource so the underlying list call is made once per scan.
 func openaiVaultList(runtime *plugin.Runtime) ([]any, error) {
-	obj, err := CreateResource(runtime, "openai", map[string]*llx.RawData{})
+	root, err := openaiRoot(runtime)
 	if err != nil {
 		return nil, err
 	}
-	vaults := obj.(*mqlOpenai).GetVaults()
+	vaults := root.GetVaults()
 	if vaults.Error != nil {
 		return nil, vaults.Error
 	}
@@ -744,11 +744,11 @@ func (r *mqlOpenaiEnvironmentTemplateSkill) skill() (*mqlOpenaiSkill, error) {
 // openaiSkillList returns the project skill collection through the openai
 // resource so the underlying list call is made once per scan.
 func openaiSkillList(runtime *plugin.Runtime) ([]any, error) {
-	obj, err := CreateResource(runtime, "openai", map[string]*llx.RawData{})
+	root, err := openaiRoot(runtime)
 	if err != nil {
 		return nil, err
 	}
-	skills := obj.(*mqlOpenai).GetSkills()
+	skills := root.GetSkills()
 	if skills.Error != nil {
 		return nil, skills.Error
 	}
