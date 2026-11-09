@@ -454,10 +454,11 @@ func (e *ProviderNotFoundError) Unwrap() error {
 // publishes, e.g. go.mondoo.com/mql/providers/os.
 const providerIDPrefix = "go.mondoo.com/mql/providers/"
 
-// providerNameRe is the shape of every published provider name. The name
-// becomes a path segment of the download URL and a directory under the
-// providers path, so nothing else is accepted.
-var providerNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+// providerNameRe is the shape of every published provider name: lower-case
+// alphanumeric words joined by single hyphens, such as `os` or
+// `google-workspace`. The name becomes a path segment of the download URL and
+// a directory under the providers path, so nothing else is accepted.
+var providerNameRe = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 
 func validateProviderName(name string) error {
 	if !providerNameRe.MatchString(name) {
@@ -512,6 +513,10 @@ func installUpstream(search ProviderLookup, name string, known bool) (*Provider,
 			Msg("provider is not known to this build, resolving it from the registry")
 	}
 
+	// Install validates the name again. That is deliberate: a name from
+	// DefaultProviders or from the ID namespace is well-formed, but Install is
+	// also the entry point for user-typed names, and one check at the chokepoint
+	// is easier to trust than one per caller.
 	nu, err := Install(name, "")
 	if err != nil {
 		if !known {

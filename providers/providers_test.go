@@ -682,7 +682,7 @@ func TestValidateProviderName(t *testing.T) {
 	}
 	// Synthetic: anything that would change the URL path or the install
 	// directory, or that no published provider is spelled like.
-	for _, name := range []string{"", "../os", "os/1", "os@1.2.3", "Os", "-os", "os.json", "os bicep"} {
+	for _, name := range []string{"", "../os", "os/1", "os@1.2.3", "Os", "-os", "os-", "foo--bar", "os.json", "os bicep"} {
 		assert.Error(t, validateProviderName(name), "%q must be rejected", name)
 	}
 }
