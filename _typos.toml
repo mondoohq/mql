@@ -93,6 +93,9 @@ automattic = "automattic"
 # Python package on PyPI providing Mozilla's CA bundle. The project spells it
 # without the trailing "y", so every reference to it must stay verbatim.
 certifi = "certifi"
+# Alibaba Cloud RDS ReleasedKeepPolicy / ArchiveBackupKeepPolicy value
+# (None, Lastest, All). The API returns it with this spelling.
+lastest = "lastest"
 # Misspelled JSON serialization tag kept for wire/persisted-data compatibility
 # (the Go field itself is spelled correctly).
 reciever = "reciever"
