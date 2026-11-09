@@ -258,3 +258,143 @@ func TestRdsInstanceAttributePeersDecode(t *testing.T) {
 	assert.Equal(t, "rm-ws1", id)
 	assert.Equal(t, "cn-hangzhou", region)
 }
+
+// TestRdsTwoState covers the on/off decoder for the backup policy settings the
+// API returns as strings. Every spelling the policy uses must decode, and an
+// absent or unrecognised value must stay nil so the field reads null instead
+// of claiming log backup is off (or on) for an instance that never said.
+func TestRdsTwoState(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		value *string
+		want  *bool
+	}{
+		// Synthetic: spellings from the DescribeBackupPolicy API reference;
+		// no live instance was available.
+		{"EnableBackupLog on", new("1"), new(true)},
+		{"EnableBackupLog off", new("0"), new(false)},
+		{"BackupLog on", new("Enable"), new(true)},
+		{"BackupLog off", new("Disabled"), new(false)},
+		{"HighSpaceUsageProtection off", new("Disable"), new(false)},
+		{"lowercase and space", new(" enable "), new(true)},
+		{"True string", new("True"), new(true)},
+		{"False string", new("False"), new(false)},
+		{"nil is unknown", nil, nil},
+		{"empty is unknown", new(""), nil},
+		{"unrecognised is unknown", new("Pending"), nil},
+		{"substring must not match", new("NotEnabled"), nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, rdsTwoState(tc.value))
+		})
+	}
+}
+
+// TestRdsCompressed covers CompressType, where 0 is the only value that means
+// uncompressed. Reading it as a plain on/off flag would call method codes 2, 4
+// and 8 uncompressed.
+func TestRdsCompressed(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		value *string
+		want  *bool
+	}{
+		// Synthetic: codes from the DescribeBackupPolicy API reference.
+		{"no compression", new("0"), new(false)},
+		{"zlib", new("1"), new(true)},
+		{"parallel zlib", new("2"), new(true)},
+		{"QuickLZ with table restore", new("4"), new(true)},
+		{"QuickLZ", new("8"), new(true)},
+		{"nil is unknown", nil, nil},
+		{"empty is unknown", new(""), nil},
+		{"non-numeric is unknown", new("zlib"), nil},
+		{"negative is unknown", new("-1"), nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, rdsCompressed(tc.value))
+		})
+	}
+}
+
+// TestRdsIntString covers the archive retention period, a day count the API
+// returns as a string.
+func TestRdsIntString(t *testing.T) {
+	// Synthetic: no live instance was available.
+	assert.Equal(t, new(int64(365)), rdsIntString(new("365")))
+	assert.Equal(t, new(int64(0)), rdsIntString(new("0")))
+	assert.Equal(t, new(int64(30)), rdsIntString(new(" 30 ")))
+	assert.Nil(t, rdsIntString(nil))
+	assert.Nil(t, rdsIntString(new("")))
+	assert.Nil(t, rdsIntString(new("forever")))
+	assert.Nil(t, rdsIntString(new("-1")))
+}
+
+// TestRdsBackupPolicyFromDecode decodes DescribeBackupPolicy responses through
+// the SDK's JSON tags, so a renamed tag or a field wired to the wrong source
+// shows up as a wrong value rather than a silent null.
+func TestRdsBackupPolicyFromDecode(t *testing.T) {
+	t.Run("MySQL", func(t *testing.T) {
+		// Synthetic: field names and example values from the
+		// DescribeBackupPolicy API reference; no live instance was available.
+		body := `{"BackupRetentionPeriod":7,"PreferredBackupPeriod":"Monday,Wednesday,Friday,Sunday","PreferredBackupTime":"15:00Z-16:00Z","EnableBackupLog":"1","BackupLog":"Enable","LogBackupRetentionPeriod":14,"LocalLogRetentionHours":18,"HighSpaceUsageProtection":"Enable","EnablePitrProtection":true,"PitrRetentionPeriod":5,"CompressType":"4","ArchiveBackupRetentionPeriod":"365","ReleasedKeepPolicy":"Lastest","RequestId":"B87E2AB3-B7C9-4394-9160-7F639F732031"}`
+		var resp rdsclient.DescribeBackupPolicyResponseBody
+		require.NoError(t, json.Unmarshal([]byte(body), &resp))
+		p := rdsBackupPolicyFrom(&resp)
+
+		assert.Nil(t, p.immutableBackupEnabled, "MySQL does not report immutable backup")
+		assert.Equal(t, new(int64(7)), p.backupRetentionDays)
+		assert.Equal(t, []string{"Monday", "Wednesday", "Friday", "Sunday"}, p.preferredBackupPeriod)
+		assert.Equal(t, "15:00Z-16:00Z", p.preferredBackupTime)
+		assert.Equal(t, new(true), p.logBackupEnabled)
+		assert.Equal(t, new(int64(14)), p.logBackupRetentionDays)
+		assert.Equal(t, new(int64(18)), p.localLogRetentionHours)
+		assert.Equal(t, new(true), p.highSpaceUsageProtection)
+		assert.Equal(t, new(true), p.pitrEnabled)
+		assert.Equal(t, new(int64(5)), p.pitrRetentionDays)
+		assert.Equal(t, "", p.backupMethod)
+		assert.Equal(t, new(true), p.backupCompressed)
+		assert.Equal(t, new(int64(365)), p.archiveBackupRetentionDays)
+		assert.Equal(t, "Lastest", p.releasedBackupKeepPolicy)
+	})
+
+	t.Run("PostgreSQL with immutable backup", func(t *testing.T) {
+		// Synthetic: PostgreSQL is the only engine that reports
+		// EnableImmutableBackup; log backup off in the 1/0 spelling.
+		body := `{"BackupRetentionPeriod":30,"EnableImmutableBackup":true,"EnableBackupLog":"0","LogBackupRetentionPeriod":7,"CompressType":"0"}`
+		var resp rdsclient.DescribeBackupPolicyResponseBody
+		require.NoError(t, json.Unmarshal([]byte(body), &resp))
+		p := rdsBackupPolicyFrom(&resp)
+
+		assert.Equal(t, new(true), p.immutableBackupEnabled)
+		assert.Equal(t, new(int64(30)), p.backupRetentionDays)
+		assert.Equal(t, new(false), p.logBackupEnabled)
+		assert.Equal(t, new(false), p.backupCompressed)
+		assert.Nil(t, p.pitrEnabled)
+		assert.Nil(t, p.highSpaceUsageProtection)
+		assert.Nil(t, p.localLogRetentionHours)
+		assert.Nil(t, p.archiveBackupRetentionDays)
+	})
+
+	t.Run("SQL Server reports only BackupLog", func(t *testing.T) {
+		// Synthetic: EnableBackupLog absent, so log backup falls back to the
+		// BackupLog spelling.
+		body := `{"BackupLog":"Disabled","BackupMethod":"Snapshot"}`
+		var resp rdsclient.DescribeBackupPolicyResponseBody
+		require.NoError(t, json.Unmarshal([]byte(body), &resp))
+		p := rdsBackupPolicyFrom(&resp)
+
+		assert.Equal(t, new(false), p.logBackupEnabled)
+		assert.Equal(t, "Snapshot", p.backupMethod)
+	})
+
+	t.Run("absent body", func(t *testing.T) {
+		// Synthetic: nothing reported must read as null, not false or 0.
+		p := rdsBackupPolicyFrom(nil)
+		assert.Nil(t, p.immutableBackupEnabled)
+		assert.Nil(t, p.backupRetentionDays)
+		assert.Nil(t, p.logBackupEnabled)
+		assert.Nil(t, p.backupCompressed)
+		assert.NotNil(t, p.preferredBackupPeriod)
+		assert.Empty(t, p.preferredBackupPeriod)
+	})
+}

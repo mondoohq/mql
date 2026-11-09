@@ -107,6 +107,9 @@ type mqlAlicloudRdsInstanceInternal struct {
 
 	operatorLock sync.Mutex
 	operator     *rdsOperatorPermission
+
+	backupLock   sync.Mutex
+	backupPolicy *rdsBackupPolicy
 }
 
 // rdsOperatorPermission is the access an account has granted Alibaba Cloud
@@ -816,4 +819,270 @@ func (r *mqlAlicloudRdsInstance) fetchSecurityGroupIds() ([]any, error) {
 		res = append(res, *rel.SecurityGroupId)
 	}
 	return res, nil
+}
+
+// rdsBackupPolicy is the backup policy of one RDS instance, decoded from
+// DescribeBackupPolicy. Each pointer is nil when the instance does not report
+// the setting, which the fields surface as null rather than as false or 0.
+type rdsBackupPolicy struct {
+	immutableBackupEnabled     *bool
+	backupRetentionDays        *int64
+	preferredBackupPeriod      []string
+	preferredBackupTime        string
+	logBackupEnabled           *bool
+	logBackupRetentionDays     *int64
+	localLogRetentionHours     *int64
+	highSpaceUsageProtection   *bool
+	pitrEnabled                *bool
+	pitrRetentionDays          *int64
+	backupMethod               string
+	backupCompressed           *bool
+	archiveBackupRetentionDays *int64
+	releasedBackupKeepPolicy   string
+}
+
+// rdsTwoState decodes an on/off setting that the RDS API returns as a string.
+// The backup policy alone spells it three ways: Enable/Disable,
+// Enable/Disabled, and 1/0. A nil, empty, or unrecognised value is nil, so the
+// field reads null instead of claiming a state nobody reported.
+func rdsTwoState(v *string) *bool {
+	if v == nil {
+		return nil
+	}
+	switch strings.ToLower(strings.TrimSpace(*v)) {
+	case "enable", "enabled", "1", "true":
+		return new(true)
+	case "disable", "disabled", "0", "false":
+		return new(false)
+	}
+	return nil
+}
+
+// rdsCompressed decodes CompressType, a numeric code where 0 means no
+// compression and every other documented value (1, 2, 4, 8) names a
+// compression method. A nil, empty, negative, or non-numeric value is nil.
+func rdsCompressed(v *string) *bool {
+	if v == nil {
+		return nil
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(*v))
+	if err != nil || n < 0 {
+		return nil
+	}
+	return new(n != 0)
+}
+
+// rdsInt32 widens an optional int32 to an optional int64, keeping nil.
+func rdsInt32(v *int32) *int64 {
+	if v == nil {
+		return nil
+	}
+	return new(int64(*v))
+}
+
+// rdsIntString parses a count the API returns as a string. A nil, empty,
+// negative, or non-numeric value is nil.
+func rdsIntString(v *string) *int64 {
+	if v == nil {
+		return nil
+	}
+	n, err := strconv.ParseInt(strings.TrimSpace(*v), 10, 64)
+	if err != nil || n < 0 {
+		return nil
+	}
+	return &n
+}
+
+// rdsBackupPolicyFrom decodes a DescribeBackupPolicy response. Log backup is
+// read from EnableBackupLog (1/0) and falls back to BackupLog
+// (Enable/Disabled), which carries the same setting in another spelling.
+func rdsBackupPolicyFrom(body *rdsclient.DescribeBackupPolicyResponseBody) *rdsBackupPolicy {
+	res := &rdsBackupPolicy{preferredBackupPeriod: []string{}}
+	if body == nil {
+		return res
+	}
+	res.immutableBackupEnabled = body.EnableImmutableBackup
+	res.backupRetentionDays = rdsInt32(body.BackupRetentionPeriod)
+	if body.PreferredBackupPeriod != nil {
+		for day := range strings.SplitSeq(*body.PreferredBackupPeriod, ",") {
+			if day = strings.TrimSpace(day); day != "" {
+				res.preferredBackupPeriod = append(res.preferredBackupPeriod, day)
+			}
+		}
+	}
+	res.preferredBackupTime = tea.StringValue(body.PreferredBackupTime)
+	res.logBackupEnabled = rdsTwoState(body.EnableBackupLog)
+	if res.logBackupEnabled == nil {
+		res.logBackupEnabled = rdsTwoState(body.BackupLog)
+	}
+	res.logBackupRetentionDays = rdsInt32(body.LogBackupRetentionPeriod)
+	res.localLogRetentionHours = rdsInt32(body.LocalLogRetentionHours)
+	res.highSpaceUsageProtection = rdsTwoState(body.HighSpaceUsageProtection)
+	res.pitrEnabled = body.EnablePitrProtection
+	res.pitrRetentionDays = rdsInt32(body.PitrRetentionPeriod)
+	res.backupMethod = tea.StringValue(body.BackupMethod)
+	res.backupCompressed = rdsCompressed(body.CompressType)
+	res.archiveBackupRetentionDays = rdsIntString(body.ArchiveBackupRetentionPeriod)
+	res.releasedBackupKeepPolicy = tea.StringValue(body.ReleasedKeepPolicy)
+	return res
+}
+
+// fetchBackupPolicy loads the instance's backup policy with one
+// DescribeBackupPolicy call shared by every backup field. A failed call is
+// returned as a classified error and not cached, so an unreadable policy never
+// reads as "backups off".
+func (r *mqlAlicloudRdsInstance) fetchBackupPolicy() (*rdsBackupPolicy, error) {
+	r.backupLock.Lock()
+	defer r.backupLock.Unlock()
+	if r.backupPolicy != nil {
+		return r.backupPolicy, nil
+	}
+
+	conn := r.MqlRuntime.Connection.(*connection.AlicloudConnection)
+	client, err := conn.RdsClient(r.region)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.DescribeBackupPolicy(&rdsclient.DescribeBackupPolicyRequest{
+		DBInstanceId: new(r.instanceId),
+	})
+	if err != nil {
+		return nil, classifyAlicloudError(err, "rds:DescribeBackupPolicy")
+	}
+	var body *rdsclient.DescribeBackupPolicyResponseBody
+	if resp != nil {
+		body = resp.Body
+	}
+	r.backupPolicy = rdsBackupPolicyFrom(body)
+	return r.backupPolicy, nil
+}
+
+// rdsOptionalBool returns *v, or marks field null when v is nil.
+func rdsOptionalBool(field *plugin.TValue[bool], v *bool) (bool, error) {
+	if v == nil {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return *v, nil
+}
+
+// rdsOptionalInt returns *v, or marks field null when v is nil.
+func rdsOptionalInt(field *plugin.TValue[int64], v *int64) (int64, error) {
+	if v == nil {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return *v, nil
+}
+
+func (r *mqlAlicloudRdsInstance) immutableBackupEnabled() (bool, error) {
+	p, err := r.fetchBackupPolicy()
+	if err != nil {
+		return false, err
+	}
+	return rdsOptionalBool(&r.ImmutableBackupEnabled, p.immutableBackupEnabled)
+}
+
+func (r *mqlAlicloudRdsInstance) backupRetentionDays() (int64, error) {
+	p, err := r.fetchBackupPolicy()
+	if err != nil {
+		return 0, err
+	}
+	return rdsOptionalInt(&r.BackupRetentionDays, p.backupRetentionDays)
+}
+
+func (r *mqlAlicloudRdsInstance) preferredBackupPeriod() ([]any, error) {
+	p, err := r.fetchBackupPolicy()
+	if err != nil {
+		return nil, err
+	}
+	return stringsToAny(p.preferredBackupPeriod), nil
+}
+
+func (r *mqlAlicloudRdsInstance) preferredBackupTime() (string, error) {
+	p, err := r.fetchBackupPolicy()
+	if err != nil {
+		return "", err
+	}
+	return p.preferredBackupTime, nil
+}
+
+func (r *mqlAlicloudRdsInstance) logBackupEnabled() (bool, error) {
+	p, err := r.fetchBackupPolicy()
+	if err != nil {
+		return false, err
+	}
+	return rdsOptionalBool(&r.LogBackupEnabled, p.logBackupEnabled)
+}
+
+func (r *mqlAlicloudRdsInstance) logBackupRetentionDays() (int64, error) {
+	p, err := r.fetchBackupPolicy()
+	if err != nil {
+		return 0, err
+	}
+	return rdsOptionalInt(&r.LogBackupRetentionDays, p.logBackupRetentionDays)
+}
+
+func (r *mqlAlicloudRdsInstance) localLogRetentionHours() (int64, error) {
+	p, err := r.fetchBackupPolicy()
+	if err != nil {
+		return 0, err
+	}
+	return rdsOptionalInt(&r.LocalLogRetentionHours, p.localLogRetentionHours)
+}
+
+func (r *mqlAlicloudRdsInstance) highSpaceUsageProtection() (bool, error) {
+	p, err := r.fetchBackupPolicy()
+	if err != nil {
+		return false, err
+	}
+	return rdsOptionalBool(&r.HighSpaceUsageProtection, p.highSpaceUsageProtection)
+}
+
+func (r *mqlAlicloudRdsInstance) pitrEnabled() (bool, error) {
+	p, err := r.fetchBackupPolicy()
+	if err != nil {
+		return false, err
+	}
+	return rdsOptionalBool(&r.PitrEnabled, p.pitrEnabled)
+}
+
+func (r *mqlAlicloudRdsInstance) pitrRetentionDays() (int64, error) {
+	p, err := r.fetchBackupPolicy()
+	if err != nil {
+		return 0, err
+	}
+	return rdsOptionalInt(&r.PitrRetentionDays, p.pitrRetentionDays)
+}
+
+func (r *mqlAlicloudRdsInstance) backupMethod() (string, error) {
+	p, err := r.fetchBackupPolicy()
+	if err != nil {
+		return "", err
+	}
+	return p.backupMethod, nil
+}
+
+func (r *mqlAlicloudRdsInstance) backupCompressed() (bool, error) {
+	p, err := r.fetchBackupPolicy()
+	if err != nil {
+		return false, err
+	}
+	return rdsOptionalBool(&r.BackupCompressed, p.backupCompressed)
+}
+
+func (r *mqlAlicloudRdsInstance) archiveBackupRetentionDays() (int64, error) {
+	p, err := r.fetchBackupPolicy()
+	if err != nil {
+		return 0, err
+	}
+	return rdsOptionalInt(&r.ArchiveBackupRetentionDays, p.archiveBackupRetentionDays)
+}
+
+func (r *mqlAlicloudRdsInstance) releasedBackupKeepPolicy() (string, error) {
+	p, err := r.fetchBackupPolicy()
+	if err != nil {
+		return "", err
+	}
+	return p.releasedBackupKeepPolicy, nil
 }
