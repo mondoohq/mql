@@ -1706,6 +1706,32 @@ func (a *mqlAwsBedrockKnowledgeBase) updatedAt() (*time.Time, error) {
 	return detail.KnowledgeBase.UpdatedAt, nil
 }
 
+func (a *mqlAwsBedrockKnowledgeBase) metadataConfigurations() ([]any, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	if detail == nil || detail.KnowledgeBase == nil {
+		return []any{}, nil
+	}
+	return bedrockKnowledgeBaseMetadataConfigurations(detail.KnowledgeBase.MetadataConfigurations), nil
+}
+
+// bedrockKnowledgeBaseMetadataConfigurations turns the knowledge base's custom
+// metadata field declarations into dicts, mapping the two-state searchability
+// enum to a bool.
+func bedrockKnowledgeBaseMetadataConfigurations(cfgs []bedrockagenttypes.MetadataConfiguration) []any {
+	res := make([]any, 0, len(cfgs))
+	for _, c := range cfgs {
+		res = append(res, map[string]any{
+			"name":       convert.ToValue(c.Name),
+			"type":       string(c.Type),
+			"searchable": c.Searchability == bedrockagenttypes.SearchableStatusEnabled,
+		})
+	}
+	return res
+}
+
 func (a *mqlAwsBedrockKnowledgeBase) dataSources() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	svc := conn.BedrockAgent(a.cacheRegion)

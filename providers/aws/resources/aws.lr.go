@@ -784,6 +784,7 @@ const (
 	ResourceAwsApprunnerObservabilityConfiguration                              string = "aws.apprunner.observabilityConfiguration"
 	ResourceAwsApprunnerVpcIngressConnection                                    string = "aws.apprunner.vpcIngressConnection"
 	ResourceAwsAthena                                                           string = "aws.athena"
+	ResourceAwsAthenaSystemTableConfiguration                                   string = "aws.athena.systemTableConfiguration"
 	ResourceAwsAthenaWorkgroup                                                  string = "aws.athena.workgroup"
 	ResourceAwsAthenaDataCatalog                                                string = "aws.athena.dataCatalog"
 	ResourceAwsAthenaNamedQuery                                                 string = "aws.athena.namedQuery"
@@ -945,6 +946,7 @@ const (
 	ResourceAwsSfnActivity                                                      string = "aws.sfn.activity"
 	ResourceAwsRam                                                              string = "aws.ram"
 	ResourceAwsRamResourceShare                                                 string = "aws.ram.resourceShare"
+	ResourceAwsRamPermission                                                    string = "aws.ram.permission"
 	ResourceAwsStoragegateway                                                   string = "aws.storagegateway"
 	ResourceAwsStoragegatewayGateway                                            string = "aws.storagegateway.gateway"
 	ResourceAwsStoragegatewayFileShare                                          string = "aws.storagegateway.fileShare"
@@ -4174,6 +4176,10 @@ func init() {
 			// to override args, implement: initAwsAthena(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAwsAthena,
 		},
+		"aws.athena.systemTableConfiguration": {
+			// to override args, implement: initAwsAthenaSystemTableConfiguration(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsAthenaSystemTableConfiguration,
+		},
 		"aws.athena.workgroup": {
 			Init:   initAwsAthenaWorkgroup,
 			Create: createAwsAthenaWorkgroup,
@@ -4817,6 +4823,10 @@ func init() {
 		"aws.ram.resourceShare": {
 			// to override args, implement: initAwsRamResourceShare(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAwsRamResourceShare,
+		},
+		"aws.ram.permission": {
+			// to override args, implement: initAwsRamPermission(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsRamPermission,
 		},
 		"aws.storagegateway": {
 			// to override args, implement: initAwsStoragegateway(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -30372,6 +30382,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.athena.capacityReservations": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsAthena).GetCapacityReservations()).ToDataRes(types.Array(types.Resource("aws.athena.capacityReservation")))
 	},
+	"aws.athena.systemTableConfigurations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsAthena).GetSystemTableConfigurations()).ToDataRes(types.Array(types.Resource("aws.athena.systemTableConfiguration")))
+	},
+	"aws.athena.systemTableConfiguration.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsAthenaSystemTableConfiguration).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.athena.systemTableConfiguration.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsAthenaSystemTableConfiguration).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"aws.athena.systemTableConfiguration.tables": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsAthenaSystemTableConfiguration).GetTables()).ToDataRes(types.Map(types.String, types.Bool))
+	},
+	"aws.athena.systemTableConfiguration.kmsKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsAthenaSystemTableConfiguration).GetKmsKey()).ToDataRes(types.Resource("aws.kms.key"))
+	},
+	"aws.athena.systemTableConfiguration.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsAthenaSystemTableConfiguration).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"aws.athena.systemTableConfiguration.lastModifiedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsAthenaSystemTableConfiguration).GetLastModifiedAt()).ToDataRes(types.Time)
+	},
 	"aws.athena.workgroup.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsAthenaWorkgroup).GetName()).ToDataRes(types.String)
 	},
@@ -35658,6 +35689,54 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.ram.resourceShare.resources": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsRamResourceShare).GetResources()).ToDataRes(types.Array(types.Dict))
 	},
+	"aws.ram.resourceShare.permissions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRamResourceShare).GetPermissions()).ToDataRes(types.Array(types.Resource("aws.ram.permission")))
+	},
+	"aws.ram.permission.arn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRamPermission).GetArn()).ToDataRes(types.String)
+	},
+	"aws.ram.permission.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRamPermission).GetName()).ToDataRes(types.String)
+	},
+	"aws.ram.permission.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRamPermission).GetVersion()).ToDataRes(types.String)
+	},
+	"aws.ram.permission.defaultVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRamPermission).GetDefaultVersion()).ToDataRes(types.Bool)
+	},
+	"aws.ram.permission.isResourceTypeDefault": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRamPermission).GetIsResourceTypeDefault()).ToDataRes(types.Bool)
+	},
+	"aws.ram.permission.permissionType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRamPermission).GetPermissionType()).ToDataRes(types.String)
+	},
+	"aws.ram.permission.resourceOwner": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRamPermission).GetResourceOwner()).ToDataRes(types.String)
+	},
+	"aws.ram.permission.featureSet": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRamPermission).GetFeatureSet()).ToDataRes(types.String)
+	},
+	"aws.ram.permission.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRamPermission).GetStatus()).ToDataRes(types.String)
+	},
+	"aws.ram.permission.resourceType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRamPermission).GetResourceType()).ToDataRes(types.String)
+	},
+	"aws.ram.permission.templateParameters": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRamPermission).GetTemplateParameters()).ToDataRes(types.Array(types.Dict))
+	},
+	"aws.ram.permission.policy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRamPermission).GetPolicy()).ToDataRes(types.Dict)
+	},
+	"aws.ram.permission.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRamPermission).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"aws.ram.permission.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRamPermission).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"aws.ram.permission.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRamPermission).GetRegion()).ToDataRes(types.String)
+	},
 	"aws.storagegateway.gateways": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsStoragegateway).GetGateways()).ToDataRes(types.Array(types.Resource("aws.storagegateway.gateway")))
 	},
@@ -38846,6 +38925,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.bedrock.knowledgeBase.vpcConfigurations": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockKnowledgeBase).GetVpcConfigurations()).ToDataRes(types.Array(types.Resource("aws.bedrock.knowledgeBase.vpcConfiguration")))
+	},
+	"aws.bedrock.knowledgeBase.metadataConfigurations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockKnowledgeBase).GetMetadataConfigurations()).ToDataRes(types.Array(types.Dict))
 	},
 	"aws.bedrock.knowledgeBase.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockKnowledgeBase).GetTags()).ToDataRes(types.Map(types.String, types.String))
@@ -77119,6 +77201,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsAthena).CapacityReservations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"aws.athena.systemTableConfigurations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsAthena).SystemTableConfigurations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.athena.systemTableConfiguration.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsAthenaSystemTableConfiguration).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.athena.systemTableConfiguration.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsAthenaSystemTableConfiguration).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.athena.systemTableConfiguration.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsAthenaSystemTableConfiguration).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.athena.systemTableConfiguration.tables": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsAthenaSystemTableConfiguration).Tables, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aws.athena.systemTableConfiguration.kmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsAthenaSystemTableConfiguration).KmsKey, ok = plugin.RawToTValue[*mqlAwsKmsKey](v.Value, v.Error)
+		return
+	},
+	"aws.athena.systemTableConfiguration.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsAthenaSystemTableConfiguration).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.athena.systemTableConfiguration.lastModifiedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsAthenaSystemTableConfiguration).LastModifiedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
 	"aws.athena.workgroup.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsAthenaWorkgroup).__id, ok = v.Value.(string)
 		return
@@ -84811,6 +84925,74 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsRamResourceShare).Resources, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"aws.ram.resourceShare.permissions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRamResourceShare).Permissions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.ram.permission.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRamPermission).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.ram.permission.arn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRamPermission).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.ram.permission.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRamPermission).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.ram.permission.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRamPermission).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.ram.permission.defaultVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRamPermission).DefaultVersion, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.ram.permission.isResourceTypeDefault": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRamPermission).IsResourceTypeDefault, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.ram.permission.permissionType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRamPermission).PermissionType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.ram.permission.resourceOwner": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRamPermission).ResourceOwner, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.ram.permission.featureSet": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRamPermission).FeatureSet, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.ram.permission.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRamPermission).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.ram.permission.resourceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRamPermission).ResourceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.ram.permission.templateParameters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRamPermission).TemplateParameters, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.ram.permission.policy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRamPermission).Policy, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"aws.ram.permission.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRamPermission).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.ram.permission.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRamPermission).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.ram.permission.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRamPermission).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"aws.storagegateway.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsStoragegateway).__id, ok = v.Value.(string)
 		return
@@ -89417,6 +89599,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.bedrock.knowledgeBase.vpcConfigurations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsBedrockKnowledgeBase).VpcConfigurations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.knowledgeBase.metadataConfigurations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockKnowledgeBase).MetadataConfigurations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"aws.bedrock.knowledgeBase.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -186337,10 +186523,11 @@ type mqlAwsAthena struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlAwsAthenaInternal it will be used here
-	Workgroups           plugin.TValue[[]any]
-	DataCatalogs         plugin.TValue[[]any]
-	NamedQueries         plugin.TValue[[]any]
-	CapacityReservations plugin.TValue[[]any]
+	Workgroups                plugin.TValue[[]any]
+	DataCatalogs              plugin.TValue[[]any]
+	NamedQueries              plugin.TValue[[]any]
+	CapacityReservations      plugin.TValue[[]any]
+	SystemTableConfigurations plugin.TValue[[]any]
 }
 
 // createAwsAthena creates a new instance of this resource
@@ -186442,6 +186629,105 @@ func (c *mqlAwsAthena) GetCapacityReservations() *plugin.TValue[[]any] {
 
 		return c.capacityReservations()
 	})
+}
+
+func (c *mqlAwsAthena) GetSystemTableConfigurations() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SystemTableConfigurations, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.athena", c.__id, "systemTableConfigurations")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.systemTableConfigurations()
+	})
+}
+
+// mqlAwsAthenaSystemTableConfiguration for the aws.athena.systemTableConfiguration resource
+type mqlAwsAthenaSystemTableConfiguration struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsAthenaSystemTableConfigurationInternal
+	Region         plugin.TValue[string]
+	Enabled        plugin.TValue[bool]
+	Tables         plugin.TValue[map[string]any]
+	KmsKey         plugin.TValue[*mqlAwsKmsKey]
+	CreatedAt      plugin.TValue[*time.Time]
+	LastModifiedAt plugin.TValue[*time.Time]
+}
+
+// createAwsAthenaSystemTableConfiguration creates a new instance of this resource
+func createAwsAthenaSystemTableConfiguration(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsAthenaSystemTableConfiguration{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.athena.systemTableConfiguration", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsAthenaSystemTableConfiguration) MqlName() string {
+	return "aws.athena.systemTableConfiguration"
+}
+
+func (c *mqlAwsAthenaSystemTableConfiguration) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsAthenaSystemTableConfiguration) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlAwsAthenaSystemTableConfiguration) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlAwsAthenaSystemTableConfiguration) GetTables() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Tables, func() (map[string]any, error) {
+		return c.tables()
+	})
+}
+
+func (c *mqlAwsAthenaSystemTableConfiguration) GetKmsKey() *plugin.TValue[*mqlAwsKmsKey] {
+	return plugin.GetOrCompute[*mqlAwsKmsKey](&c.KmsKey, func() (*mqlAwsKmsKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.athena.systemTableConfiguration", c.__id, "kmsKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsKmsKey), nil
+			}
+		}
+
+		return c.kmsKey()
+	})
+}
+
+func (c *mqlAwsAthenaSystemTableConfiguration) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlAwsAthenaSystemTableConfiguration) GetLastModifiedAt() *plugin.TValue[*time.Time] {
+	return &c.LastModifiedAt
 }
 
 // mqlAwsAthenaWorkgroup for the aws.athena.workgroup resource
@@ -205707,6 +205993,7 @@ type mqlAwsRamResourceShare struct {
 	Tags                    plugin.TValue[map[string]any]
 	Principals              plugin.TValue[[]any]
 	Resources               plugin.TValue[[]any]
+	Permissions             plugin.TValue[[]any]
 }
 
 // createAwsRamResourceShare creates a new instance of this resource
@@ -205788,6 +206075,138 @@ func (c *mqlAwsRamResourceShare) GetResources() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.Resources, func() ([]any, error) {
 		return c.resources()
 	})
+}
+
+func (c *mqlAwsRamResourceShare) GetPermissions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Permissions, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.ram.resourceShare", c.__id, "permissions")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.permissions()
+	})
+}
+
+// mqlAwsRamPermission for the aws.ram.permission resource
+type mqlAwsRamPermission struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsRamPermissionInternal
+	Arn                   plugin.TValue[string]
+	Name                  plugin.TValue[string]
+	Version               plugin.TValue[string]
+	DefaultVersion        plugin.TValue[bool]
+	IsResourceTypeDefault plugin.TValue[bool]
+	PermissionType        plugin.TValue[string]
+	ResourceOwner         plugin.TValue[string]
+	FeatureSet            plugin.TValue[string]
+	Status                plugin.TValue[string]
+	ResourceType          plugin.TValue[string]
+	TemplateParameters    plugin.TValue[[]any]
+	Policy                plugin.TValue[any]
+	CreatedAt             plugin.TValue[*time.Time]
+	UpdatedAt             plugin.TValue[*time.Time]
+	Region                plugin.TValue[string]
+}
+
+// createAwsRamPermission creates a new instance of this resource
+func createAwsRamPermission(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsRamPermission{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.ram.permission", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsRamPermission) MqlName() string {
+	return "aws.ram.permission"
+}
+
+func (c *mqlAwsRamPermission) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsRamPermission) GetArn() *plugin.TValue[string] {
+	return &c.Arn
+}
+
+func (c *mqlAwsRamPermission) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAwsRamPermission) GetVersion() *plugin.TValue[string] {
+	return &c.Version
+}
+
+func (c *mqlAwsRamPermission) GetDefaultVersion() *plugin.TValue[bool] {
+	return &c.DefaultVersion
+}
+
+func (c *mqlAwsRamPermission) GetIsResourceTypeDefault() *plugin.TValue[bool] {
+	return &c.IsResourceTypeDefault
+}
+
+func (c *mqlAwsRamPermission) GetPermissionType() *plugin.TValue[string] {
+	return &c.PermissionType
+}
+
+func (c *mqlAwsRamPermission) GetResourceOwner() *plugin.TValue[string] {
+	return &c.ResourceOwner
+}
+
+func (c *mqlAwsRamPermission) GetFeatureSet() *plugin.TValue[string] {
+	return &c.FeatureSet
+}
+
+func (c *mqlAwsRamPermission) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlAwsRamPermission) GetResourceType() *plugin.TValue[string] {
+	return &c.ResourceType
+}
+
+func (c *mqlAwsRamPermission) GetTemplateParameters() *plugin.TValue[[]any] {
+	return &c.TemplateParameters
+}
+
+func (c *mqlAwsRamPermission) GetPolicy() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.Policy, func() (any, error) {
+		return c.policy()
+	})
+}
+
+func (c *mqlAwsRamPermission) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlAwsRamPermission) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlAwsRamPermission) GetRegion() *plugin.TValue[string] {
+	return &c.Region
 }
 
 // mqlAwsStoragegateway for the aws.storagegateway resource
@@ -217850,6 +218269,7 @@ type mqlAwsBedrockKnowledgeBase struct {
 	DataSources                plugin.TValue[[]any]
 	DataSourceDetails          plugin.TValue[[]any]
 	VpcConfigurations          plugin.TValue[[]any]
+	MetadataConfigurations     plugin.TValue[[]any]
 	Tags                       plugin.TValue[map[string]any]
 }
 
@@ -218031,6 +218451,12 @@ func (c *mqlAwsBedrockKnowledgeBase) GetVpcConfigurations() *plugin.TValue[[]any
 		}
 
 		return c.vpcConfigurations()
+	})
+}
+
+func (c *mqlAwsBedrockKnowledgeBase) GetMetadataConfigurations() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MetadataConfigurations, func() ([]any, error) {
+		return c.metadataConfigurations()
 	})
 }
 
