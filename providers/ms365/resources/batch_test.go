@@ -262,67 +262,87 @@ func TestBatchPacer(t *testing.T) {
 	assert.Equal(t, 2, p.limit)
 	assert.True(t, p.ready(now))
 
-	assert.False(t, p.observe(now, 1, batchChunkSize, 10*time.Second), "one throttled key of a chunk is no reason to pause")
-	assert.False(t, p.observe(now, 9, 19, 0))
+	assert.False(t, p.observe(now, now, 1, batchChunkSize, 10*time.Second), "one throttled key of a chunk is no reason to pause")
+	assert.False(t, p.observe(now, now, 9, 19, 0))
 	assert.Equal(t, 2, p.limit)
+
+	assert.False(t, p.observe(now, now, 10, 19, 10*time.Second), "one heavily throttled chunk does not pause the fetch")
+	assert.Equal(t, 1, p.limit, "but it drops to one call in flight")
 	assert.True(t, p.ready(now))
 
-	assert.True(t, p.observe(now, 10, 19, 10*time.Second))
-	assert.Equal(t, 1, p.limit, "heavy throttling drops to one call in flight")
+	// half of the window heavily throttled pauses the fetch
+	for range batchPauseWindow/2 - 2 {
+		assert.False(t, p.observe(now, now, batchChunkSize, batchChunkSize, 0))
+	}
+	assert.True(t, p.observe(now, now, batchChunkSize, batchChunkSize, 0))
 	assert.False(t, p.ready(now.Add(9*time.Second)))
-	assert.True(t, p.ready(now.Add(10*time.Second)), "the pause is the Retry-After Graph asked for")
+	assert.True(t, p.ready(now.Add(10*time.Second)), "the pause is the longest Retry-After in the window")
 
-	// without a Retry-After the pause doubles while chunks stay heavily throttled
+	// chunks that were sent before the pause ended say nothing about now
+	for range 2 * batchPauseWindow {
+		assert.False(t, p.observe(now.Add(time.Second), now, batchChunkSize, batchChunkSize, 0))
+	}
+	assert.Equal(t, now.Add(10*time.Second), p.pausedUntil)
+
+	heavyWindow := func(now time.Time, retryAfter time.Duration) bool {
+		for range batchPauseWindow/2 - 1 {
+			require.False(t, p.observe(now, now, batchChunkSize, batchChunkSize, retryAfter))
+		}
+		return p.observe(now, now, batchChunkSize, batchChunkSize, retryAfter)
+	}
+
+	// without a Retry-After the pause doubles while pauses follow one another
 	now = now.Add(10 * time.Second)
-	p.observe(now, batchChunkSize, batchChunkSize, 0)
+	assert.True(t, heavyWindow(now, 0))
 	assert.Equal(t, now.Add(2*time.Second), p.pausedUntil)
 	now = now.Add(2 * time.Second)
-	p.observe(now, batchChunkSize, batchChunkSize, 0)
+	assert.True(t, heavyWindow(now, 0))
 	assert.Equal(t, now.Add(4*time.Second), p.pausedUntil)
-	p.observe(now, batchChunkSize, batchChunkSize, 10*time.Hour)
+	now = now.Add(4 * time.Second)
+	assert.True(t, heavyWindow(now, 10*time.Hour))
 	assert.Equal(t, now.Add(batchMaxRetryWait), p.pausedUntil, "the pause is capped")
 
-	// a chunk without heavy throttling resets the backoff
+	// a chunk that gets through resets the backoff
 	now = now.Add(batchMaxRetryWait)
-	p.observe(now, 1, batchChunkSize, 0)
-	p.observe(now, batchChunkSize, batchChunkSize, 0)
+	p.observe(now, now, 1, batchChunkSize, 0)
+	assert.True(t, heavyWindow(now, 0))
 	assert.Equal(t, now.Add(time.Second), p.pausedUntil)
 
-	// batchRampUpChunks such chunks in a row raise the limit by one, up to max
+	// batchRampUpChunks chunks in a row without heavy throttling raise the
+	// limit by one, up to max
+	now = now.Add(time.Second)
 	for range batchRampUpChunks - 1 {
-		p.observe(now, 0, batchChunkSize, 0)
+		p.observe(now, now, 0, batchChunkSize, 0)
 	}
 	assert.Equal(t, 1, p.limit)
-	p.observe(now, 1, batchChunkSize, 0)
+	p.observe(now, now, 1, batchChunkSize, 0)
 	assert.Equal(t, 2, p.limit, "light throttling still counts towards the ramp-up")
 	for range 2 * batchRampUpChunks {
-		p.observe(now, 0, batchChunkSize, 0)
+		p.observe(now, now, 0, batchChunkSize, 0)
 	}
 	assert.Equal(t, 2, p.limit, "never above max")
+
+	// a failed $batch call pauses for the backoff
+	p.failed(now)
+	assert.Equal(t, 1, p.limit)
+	assert.Equal(t, now.Add(time.Second), p.pausedUntil)
 }
 
-// A heavily throttled chunk pauses the whole fetch before anything else is
-// sent.
-func TestBatchEachPausesAfterHeavyThrottling(t *testing.T) {
-	backoff := batchRetryBackoff
-	batchRetryBackoff = 200 * time.Millisecond
-	t.Cleanup(func() { batchRetryBackoff = backoff })
-
-	keys := make([]string, 3*batchChunkSize)
+// A throttled key waits out its own Retry-After; the keys that got through
+// keep going in the meantime.
+func TestBatchEachResendsAThrottledKeyAfterItsRetryAfter(t *testing.T) {
+	keys := make([]string, 4*batchChunkSize)
 	routes := map[string]fakeRoute{}
-	f := newFakeGraph(t, routes)
-	f.throttle = map[string]int{}
 	for i := range keys {
 		keys[i] = fmt.Sprintf("u%03d", i)
 		routes["/users/"+keys[i]] = fakeRoute{status: http.StatusOK, body: `{"id":"` + keys[i] + `"}`}
-		if i < batchChunkSize {
-			f.throttle["/users/"+keys[i]] = 1
-		}
 	}
+	f := newFakeGraph(t, routes)
+	f.throttle = map[string]int{"/users/u000": 1}
+	f.retryAfter = "1"
 	client := f.client()
 	ctx := context.Background()
 
-	start := time.Now()
 	errs, _, err := batchEach(ctx, client.GetAdapter(), keys,
 		func(key string) (*abstractions.RequestInformation, error) {
 			return client.Users().ByUserId(key).ToGetRequestInformation(ctx, nil)
@@ -331,15 +351,104 @@ func TestBatchEachPausesAfterHeavyThrottling(t *testing.T) {
 		func(key string, u *models.User) error { return nil })
 	require.NoError(t, err)
 	assert.Empty(t, errs)
-	assert.GreaterOrEqual(t, time.Since(start), batchRetryBackoff, "sending resumed before the pause was over")
-	assert.Len(t, f.steps, len(keys)+batchChunkSize, "only the throttled chunk is sent twice")
+
+	var sends []time.Time
+	for i, step := range f.steps {
+		if strings.HasSuffix(step, "/users/u000") {
+			sends = append(sends, f.stepTimes[i])
+		}
+	}
+	require.Len(t, sends, 2)
+	assert.GreaterOrEqual(t, sends[1].Sub(sends[0]), time.Second, "resent before its Retry-After")
+	last := f.steps[len(f.steps)-1]
+	assert.True(t, strings.HasSuffix(last, "/users/u000"), "every other key went out while u000 waited, last sent was %s", last)
+}
+
+// Graph throttling a whole chunk now and then must not stop the fetch. Hosted
+// scans of ordinary tenants ran three to eight times longer when every such
+// chunk paused everything for its Retry-After.
+func TestBatchEachDoesNotPauseOnIsolatedHeavyThrottling(t *testing.T) {
+	const chunks = 40
+	keys := make([]string, chunks*batchChunkSize)
+	routes := map[string]fakeRoute{}
+	f := newFakeGraph(t, routes)
+	f.throttle = map[string]int{}
+	f.retryAfter = "1"
+	for i := range keys {
+		keys[i] = fmt.Sprintf("u%04d", i)
+		routes["/users/"+keys[i]] = fakeRoute{status: http.StatusOK, body: `{"id":"` + keys[i] + `"}`}
+		if (i/batchChunkSize)%4 == 0 {
+			f.throttle["/users/"+keys[i]] = 1
+		}
+	}
+	client := f.client()
+	ctx := context.Background()
+
+	seen := map[string]bool{}
+	start := time.Now()
+	errs, _, err := batchEach(ctx, client.GetAdapter(), keys,
+		func(key string) (*abstractions.RequestInformation, error) {
+			return client.Users().ByUserId(key).ToGetRequestInformation(ctx, nil)
+		},
+		models.CreateUserFromDiscriminatorValue,
+		func(key string, u *models.User) error {
+			seen[key] = true
+			return nil
+		})
+	require.NoError(t, err)
+	assert.Empty(t, errs)
+	assert.Len(t, seen, len(keys))
+	// Ten heavily throttled chunks with a one-second Retry-After each: pausing
+	// for every one of them takes at least ten seconds.
+	assert.Less(t, time.Since(start), 4*time.Second, "the fetch paused for isolated heavily throttled chunks")
+}
+
+// When Graph keeps throttling most of what is sent, the whole fetch pauses:
+// nothing new goes out until the pause is over.
+func TestBatchEachPausesUnderSustainedHeavyThrottling(t *testing.T) {
+	backoff := batchRetryBackoff
+	batchRetryBackoff = 300 * time.Millisecond
+	t.Cleanup(func() { batchRetryBackoff = backoff })
+
+	heavy := batchPauseWindow / 2
+	keys := make([]string, (heavy+4)*batchChunkSize)
+	routes := map[string]fakeRoute{}
+	f := newFakeGraph(t, routes)
+	f.throttle = map[string]int{}
+	for i := range keys {
+		keys[i] = fmt.Sprintf("u%03d", i)
+		routes["/users/"+keys[i]] = fakeRoute{status: http.StatusOK, body: `{"id":"` + keys[i] + `"}`}
+		if i < heavy*batchChunkSize {
+			f.throttle["/users/"+keys[i]] = 1
+		}
+	}
+	client := f.client()
+	ctx := context.Background()
+
+	errs, _, err := batchEach(ctx, client.GetAdapter(), keys,
+		func(key string) (*abstractions.RequestInformation, error) {
+			return client.Users().ByUserId(key).ToGetRequestInformation(ctx, nil)
+		},
+		models.CreateUserFromDiscriminatorValue,
+		func(key string, u *models.User) error { return nil })
+	require.NoError(t, err)
+	assert.Empty(t, errs)
+
+	firstSend := func(key string) time.Time {
+		i := slices.IndexFunc(f.steps, func(step string) bool { return strings.HasSuffix(step, "/users/"+key) })
+		require.GreaterOrEqual(t, i, 0, key)
+		return f.stepTimes[i]
+	}
+	lastHeavy := firstSend(keys[heavy*batchChunkSize-1])
+	firstFresh := firstSend(keys[heavy*batchChunkSize])
+	assert.GreaterOrEqual(t, firstFresh.Sub(lastHeavy), batchRetryBackoff, "a new chunk went out during the pause")
 }
 
 // Graph throttling the odd sub-request must not pause the fetch: those keys
-// are sent again later while everything else keeps going.
+// wait out their backoff while everything else keeps going.
 func TestBatchEachDoesNotPauseOnLightThrottling(t *testing.T) {
 	backoff := batchRetryBackoff
-	batchRetryBackoff = time.Hour
+	batchRetryBackoff = 500 * time.Millisecond
 	t.Cleanup(func() { batchRetryBackoff = backoff })
 
 	keys := make([]string, 6*batchChunkSize)
@@ -354,8 +463,7 @@ func TestBatchEachDoesNotPauseOnLightThrottling(t *testing.T) {
 		}
 	}
 	client := f.client()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	ctx := context.Background()
 
 	seen := map[string]bool{}
 	errs, _, err := batchEach(ctx, client.GetAdapter(), keys,
@@ -367,9 +475,12 @@ func TestBatchEachDoesNotPauseOnLightThrottling(t *testing.T) {
 			seen[key] = true
 			return nil
 		})
-	require.NoError(t, err, "a pause of batchRetryBackoff would have run into the deadline")
+	require.NoError(t, err)
 	assert.Empty(t, errs)
 	assert.Len(t, seen, len(keys))
+	require.Len(t, f.steps, len(keys)+6)
+	assert.Less(t, f.stepTimes[len(keys)-1].Sub(f.stepTimes[0]), batchRetryBackoff, "every key was sent once before the backoff ran out")
+	assert.GreaterOrEqual(t, f.stepTimes[len(keys)].Sub(f.stepTimes[0]), batchRetryBackoff, "a throttled key was resent before its backoff")
 }
 
 // A $batch call that fails as a whole puts its keys back into the queue; the
