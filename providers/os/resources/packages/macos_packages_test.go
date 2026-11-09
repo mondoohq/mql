@@ -314,3 +314,22 @@ func TestMacOSPackagesKeepAppNamedVersions(t *testing.T) {
 	assert.Equal(t, "4.4.1", pkgs[0].Version)
 	assert.Equal(t, "pkg:macos/macos/R@4.4.1?arch=arm64&bundle-id=org.R-project.R", pkgs[0].PUrl)
 }
+
+// Sublime Text reports "Build 4215" as its version, with CFBundleVersion
+// "4215". The two agreeing make the build number the version. A bundle whose
+// "Build 2079" is not corroborated by CFBundleVersion is still dropped.
+func TestMacOSPackagesKeepCorroboratedBuildVersions(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/packages_macos_build_version.toml"))
+	require.NoError(t, err)
+	c, err := conn.RunCommand("system_profiler SPApplicationsDataType -xml")
+	require.NoError(t, err)
+
+	pf := &inventory.Platform{Name: "macos", Version: "26.0", Arch: "arm64", Family: []string{"darwin", "bsd", "unix", "os"}}
+	pkgs, err := packages.ParseMacOSPackages(conn, pf, c.Stdout)
+	require.NoError(t, err)
+	require.Len(t, pkgs, 1)
+
+	assert.Equal(t, "Sublime Text", pkgs[0].Name)
+	assert.Equal(t, "4215", pkgs[0].Version)
+	assert.Equal(t, "pkg:macos/macos/Sublime%20Text@4215?arch=arm64&bundle-id=com.sublimetext.4", pkgs[0].PUrl)
+}

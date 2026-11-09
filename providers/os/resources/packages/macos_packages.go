@@ -171,6 +171,9 @@ func macOSApplicationPackages(conn shared.Connection, platform *inventory.Platfo
 					Msg("skipping entry that is not an application bundle")
 				continue
 			}
+			if v, ok := corroboratedBuildVersion(version, info); ok {
+				bundleVersion = v
+			}
 			// system_profiler reported something, and it was not a version.
 			// CFBundleVersion is the one other place a version can come from,
 			// so a bundle that fails both has no version to report under a name
@@ -621,6 +624,29 @@ func stripVersionLabel(version string) string {
 		return version
 	}
 	return m[1]
+}
+
+// buildLabel matches a version written as a build number behind the word
+// "Build": Sublime Text sets CFBundleShortVersionString to "Build 4215".
+var buildLabel = regexp.MustCompile(`(?i)^build\s+(\d+)$`)
+
+// corroboratedBuildVersion returns the build number from a "Build N" version
+// when the bundle's CFBundleVersion is exactly N, and false otherwise.
+//
+// Sublime Text has no other version: every release is a build number
+// (CFBundleShortVersionString "Build 4169", CFBundleVersion "4169"), its
+// release notes and its Homebrew cask are numbered the same way, and without
+// this the editor is dropped from the inventory. stripVersionLabel does not
+// strip "Build" on its own, because a build number in front of nothing else
+// usually is not the version. The two Info.plist keys agreeing on the number
+// is what says it is the only version the bundle has. A launcher stub or any
+// bundle whose CFBundleVersion differs keeps failing looksLikeVersion.
+func corroboratedBuildVersion(version string, info infoPlist) (string, bool) {
+	m := buildLabel.FindStringSubmatch(strings.TrimSpace(version))
+	if m == nil || strings.TrimSpace(info.BundleVersion) != m[1] {
+		return "", false
+	}
+	return m[1], true
 }
 
 // appNamedVersion matches the dotted version at the start of what follows an
