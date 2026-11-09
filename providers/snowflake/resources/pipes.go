@@ -19,16 +19,16 @@ type mqlSnowflakePipeInternal struct {
 }
 
 func (r *mqlSnowflakeAccount) pipes() ([]any, error) {
-	return listSnowflakePipes(r.MqlRuntime, &sdk.In{Account: new(true)})
+	return listSnowflakePipes(r.MqlRuntime, &sdk.ExtendedIn{In: sdk.In{Account: new(true)}})
 }
 
 func (r *mqlSnowflakeDatabase) pipes() ([]any, error) {
-	return listSnowflakePipes(r.MqlRuntime, &sdk.In{Database: sdk.NewAccountObjectIdentifier(r.Name.Data)})
+	return listSnowflakePipes(r.MqlRuntime, &sdk.ExtendedIn{In: sdk.In{Database: sdk.NewAccountObjectIdentifier(r.Name.Data)}})
 }
 
 // listSnowflakePipes fetches pipes within the given scope (account-wide or a
 // single database) and maps them to resources.
-func listSnowflakePipes(runtime *plugin.Runtime, in *sdk.In) ([]any, error) {
+func listSnowflakePipes(runtime *plugin.Runtime, in *sdk.ExtendedIn) ([]any, error) {
 	conn := runtime.Connection.(*connection.SnowflakeConnection)
 	pipes, err := conn.Client().Pipes.Show(context.Background(), &sdk.ShowPipeRequest{In: in})
 	if err != nil {
