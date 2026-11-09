@@ -20,7 +20,7 @@ option root = "databricks"
 // warehouses, catalogs, storageCredentials, credentials, connections,
 // externalLocations, systemSchemas, deltaSharingRecipients,
 // deltaSharingShares, globalInitScripts, instanceProfiles, servingEndpoints,
-// registeredModels, domains, and sandboxes fields.
+// registeredModels, domains, sandboxes, and serverlessComputes fields.
 databricks @root {
   // Workspaces registered in the account
   workspaces() []databricks.workspace
@@ -78,6 +78,11 @@ databricks @root {
   domains() []databricks.domain
   // Serverless sandboxes provisioned in the workspace
   sandboxes() []databricks.sandbox
+  // Interactive serverless computes in the workspace
+  //
+  // Lists only the computes the calling identity may use or manage, so a
+  // compute the caller has no permission on is absent from the list.
+  serverlessComputes() []databricks.serverlessCompute
   // Customer-managed encryption keys registered in the account
   customerManagedKeys() []databricks.customerManagedKey
   // Jobs defined in the workspace
@@ -758,6 +763,72 @@ databricks.schema @defaults("fullName owner") {
   volumes() []databricks.volume
   // Unity Catalog functions in the schema
   functions() []databricks.function
+  // Container images registered as software artifacts in the schema
+  softwareArtifacts() []databricks.softwareArtifact
+}
+
+// Unity Catalog software artifact
+//
+// A container image registered in a Unity Catalog schema, keyed by its
+// resource name in the form software-artifacts/{catalog}.{schema}.{artifact}.
+// Covers the owner, who created and last updated the artifact, and its
+// versions, each identified by a content digest along with the tags that point
+// at it. Select an artifact by full name, for example
+// `databricks.catalogs.where(name == "main").schemas.where(name == "apps").softwareArtifacts.where(fullName == "main.apps.agent")`.
+databricks.softwareArtifact @defaults("fullName owner") {
+  // Resource name in the form software-artifacts/{catalog}.{schema}.{artifact}
+  name string
+  // Fully qualified name (catalog.schema.artifact)
+  fullName string
+  // Principal that owns the artifact
+  //
+  // A user, service principal, or group name.
+  owner string
+  // Principal that created the artifact
+  createdBy string
+  // When the artifact was created
+  createTime time
+  // Principal that last updated the artifact
+  updatedBy string
+  // When the artifact was last updated
+  updateTime time
+  // Versions of the artifact, one per content digest
+  versions() []databricks.softwareArtifact.version
+}
+
+// Version of a Unity Catalog software artifact
+//
+// An immutable version of a software artifact, keyed by its resource name in
+// the form software-artifacts/{catalog}.{schema}.{artifact}/versions/{version}.
+// Covers the content digest that identifies the image, the tags that currently
+// point at it, its image acceleration status, and who created and last updated
+// it. Select a version by tag, for example
+// `databricks.catalogs.where(name == "main").schemas.where(name == "apps").softwareArtifacts.where(fullName == "main.apps.agent").versions.where(tags.contains("latest"))`.
+databricks.softwareArtifact.version @defaults("version digest tags") {
+  // Resource name in the form software-artifacts/{catalog}.{schema}.{artifact}/versions/{version}
+  name string
+  // Version name relative to the artifact
+  version string
+  // Content digest of the image, for example sha256:...
+  digest string
+  // Tags that currently point at this version, for example latest or v1.2.3
+  //
+  // Databricks returns at most 10 tags per version. A version with more tags
+  // reports an arbitrary 10 of them.
+  tags []string
+  // Image acceleration status
+  //
+  // SUCCESS or UNSPECIFIED, or null when the API reports no acceleration
+  // details for the version.
+  imageAccelerationStatus string
+  // Principal that created the version
+  createdBy string
+  // When the version was created
+  createTime time
+  // Principal that last updated the version
+  updatedBy string
+  // When the version was last updated
+  updateTime time
 }
 
 // Unity Catalog function
@@ -2528,6 +2599,36 @@ databricks.domain @defaults("id tagKey effectiveDraft") {
   createTime time
   // Last update timestamp
   updateTime time
+}
+
+// Databricks serverless compute
+//
+// An interactive serverless compute in the workspace, keyed by its
+// serverlessComputeId. Covers the display name, whether it is the
+// system-provisioned workspace default, its creation time, and whether the
+// calling identity may use or manage it. Select a compute by name, for example
+// `databricks.serverlessComputes.where(name == "Serverless")`.
+databricks.serverlessCompute @defaults("name isDefault") {
+  // Unique serverless compute id (UUID)
+  id string
+  // Display name
+  name string
+  // Whether this is the system-provisioned workspace default compute
+  //
+  // A default compute cannot be deleted or renamed.
+  isDefault bool
+  // Whether the calling identity may manage the compute
+  //
+  // Relative to the identity the scan connects as, not a property of the
+  // compute. The same compute reads differently under another identity.
+  canManage bool
+  // Whether the calling identity may use the compute
+  //
+  // Relative to the identity the scan connects as, not a property of the
+  // compute. The same compute reads differently under another identity.
+  canUse bool
+  // When the compute was created
+  createTime time
 }
 
 // Databricks serverless sandbox

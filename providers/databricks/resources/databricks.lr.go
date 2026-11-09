@@ -35,6 +35,8 @@ const (
 	ResourceDatabricksWarehouse                    string = "databricks.warehouse"
 	ResourceDatabricksCatalog                      string = "databricks.catalog"
 	ResourceDatabricksSchema                       string = "databricks.schema"
+	ResourceDatabricksSoftwareArtifact             string = "databricks.softwareArtifact"
+	ResourceDatabricksSoftwareArtifactVersion      string = "databricks.softwareArtifact.version"
 	ResourceDatabricksFunction                     string = "databricks.function"
 	ResourceDatabricksGrant                        string = "databricks.grant"
 	ResourceDatabricksStorageCredential            string = "databricks.storageCredential"
@@ -74,6 +76,7 @@ const (
 	ResourceDatabricksRuleSet                      string = "databricks.ruleSet"
 	ResourceDatabricksRuleSetGrant                 string = "databricks.ruleSet.grant"
 	ResourceDatabricksDomain                       string = "databricks.domain"
+	ResourceDatabricksServerlessCompute            string = "databricks.serverlessCompute"
 	ResourceDatabricksSandbox                      string = "databricks.sandbox"
 )
 
@@ -156,6 +159,14 @@ func init() {
 		"databricks.schema": {
 			Init:   initDatabricksSchema,
 			Create: createDatabricksSchema,
+		},
+		"databricks.softwareArtifact": {
+			// to override args, implement: initDatabricksSoftwareArtifact(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatabricksSoftwareArtifact,
+		},
+		"databricks.softwareArtifact.version": {
+			// to override args, implement: initDatabricksSoftwareArtifactVersion(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatabricksSoftwareArtifactVersion,
 		},
 		"databricks.function": {
 			// to override args, implement: initDatabricksFunction(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -312,6 +323,10 @@ func init() {
 		"databricks.domain": {
 			// to override args, implement: initDatabricksDomain(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createDatabricksDomain,
+		},
+		"databricks.serverlessCompute": {
+			// to override args, implement: initDatabricksServerlessCompute(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatabricksServerlessCompute,
 		},
 		"databricks.sandbox": {
 			// to override args, implement: initDatabricksSandbox(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -471,6 +486,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"databricks.sandboxes": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricks).GetSandboxes()).ToDataRes(types.Array(types.Resource("databricks.sandbox")))
+	},
+	"databricks.serverlessComputes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricks).GetServerlessComputes()).ToDataRes(types.Array(types.Resource("databricks.serverlessCompute")))
 	},
 	"databricks.customerManagedKeys": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricks).GetCustomerManagedKeys()).ToDataRes(types.Array(types.Resource("databricks.customerManagedKey")))
@@ -1053,6 +1071,60 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"databricks.schema.functions": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricksSchema).GetFunctions()).ToDataRes(types.Array(types.Resource("databricks.function")))
+	},
+	"databricks.schema.softwareArtifacts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksSchema).GetSoftwareArtifacts()).ToDataRes(types.Array(types.Resource("databricks.softwareArtifact")))
+	},
+	"databricks.softwareArtifact.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksSoftwareArtifact).GetName()).ToDataRes(types.String)
+	},
+	"databricks.softwareArtifact.fullName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksSoftwareArtifact).GetFullName()).ToDataRes(types.String)
+	},
+	"databricks.softwareArtifact.owner": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksSoftwareArtifact).GetOwner()).ToDataRes(types.String)
+	},
+	"databricks.softwareArtifact.createdBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksSoftwareArtifact).GetCreatedBy()).ToDataRes(types.String)
+	},
+	"databricks.softwareArtifact.createTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksSoftwareArtifact).GetCreateTime()).ToDataRes(types.Time)
+	},
+	"databricks.softwareArtifact.updatedBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksSoftwareArtifact).GetUpdatedBy()).ToDataRes(types.String)
+	},
+	"databricks.softwareArtifact.updateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksSoftwareArtifact).GetUpdateTime()).ToDataRes(types.Time)
+	},
+	"databricks.softwareArtifact.versions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksSoftwareArtifact).GetVersions()).ToDataRes(types.Array(types.Resource("databricks.softwareArtifact.version")))
+	},
+	"databricks.softwareArtifact.version.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksSoftwareArtifactVersion).GetName()).ToDataRes(types.String)
+	},
+	"databricks.softwareArtifact.version.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksSoftwareArtifactVersion).GetVersion()).ToDataRes(types.String)
+	},
+	"databricks.softwareArtifact.version.digest": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksSoftwareArtifactVersion).GetDigest()).ToDataRes(types.String)
+	},
+	"databricks.softwareArtifact.version.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksSoftwareArtifactVersion).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"databricks.softwareArtifact.version.imageAccelerationStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksSoftwareArtifactVersion).GetImageAccelerationStatus()).ToDataRes(types.String)
+	},
+	"databricks.softwareArtifact.version.createdBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksSoftwareArtifactVersion).GetCreatedBy()).ToDataRes(types.String)
+	},
+	"databricks.softwareArtifact.version.createTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksSoftwareArtifactVersion).GetCreateTime()).ToDataRes(types.Time)
+	},
+	"databricks.softwareArtifact.version.updatedBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksSoftwareArtifactVersion).GetUpdatedBy()).ToDataRes(types.String)
+	},
+	"databricks.softwareArtifact.version.updateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksSoftwareArtifactVersion).GetUpdateTime()).ToDataRes(types.Time)
 	},
 	"databricks.function.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricksFunction).GetId()).ToDataRes(types.String)
@@ -2521,6 +2593,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"databricks.domain.updateTime": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricksDomain).GetUpdateTime()).ToDataRes(types.Time)
 	},
+	"databricks.serverlessCompute.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksServerlessCompute).GetId()).ToDataRes(types.String)
+	},
+	"databricks.serverlessCompute.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksServerlessCompute).GetName()).ToDataRes(types.String)
+	},
+	"databricks.serverlessCompute.isDefault": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksServerlessCompute).GetIsDefault()).ToDataRes(types.Bool)
+	},
+	"databricks.serverlessCompute.canManage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksServerlessCompute).GetCanManage()).ToDataRes(types.Bool)
+	},
+	"databricks.serverlessCompute.canUse": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksServerlessCompute).GetCanUse()).ToDataRes(types.Bool)
+	},
+	"databricks.serverlessCompute.createTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksServerlessCompute).GetCreateTime()).ToDataRes(types.Time)
+	},
 	"databricks.sandbox.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricksSandbox).GetName()).ToDataRes(types.String)
 	},
@@ -2665,6 +2755,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"databricks.sandboxes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDatabricks).Sandboxes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"databricks.serverlessComputes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricks).ServerlessComputes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"databricks.customerManagedKeys": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -3513,6 +3607,86 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"databricks.schema.functions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDatabricksSchema).Functions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"databricks.schema.softwareArtifacts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSchema).SoftwareArtifacts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"databricks.softwareArtifact.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSoftwareArtifact).__id, ok = v.Value.(string)
+		return
+	},
+	"databricks.softwareArtifact.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSoftwareArtifact).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.softwareArtifact.fullName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSoftwareArtifact).FullName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.softwareArtifact.owner": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSoftwareArtifact).Owner, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.softwareArtifact.createdBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSoftwareArtifact).CreatedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.softwareArtifact.createTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSoftwareArtifact).CreateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"databricks.softwareArtifact.updatedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSoftwareArtifact).UpdatedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.softwareArtifact.updateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSoftwareArtifact).UpdateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"databricks.softwareArtifact.versions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSoftwareArtifact).Versions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"databricks.softwareArtifact.version.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSoftwareArtifactVersion).__id, ok = v.Value.(string)
+		return
+	},
+	"databricks.softwareArtifact.version.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSoftwareArtifactVersion).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.softwareArtifact.version.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSoftwareArtifactVersion).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.softwareArtifact.version.digest": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSoftwareArtifactVersion).Digest, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.softwareArtifact.version.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSoftwareArtifactVersion).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"databricks.softwareArtifact.version.imageAccelerationStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSoftwareArtifactVersion).ImageAccelerationStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.softwareArtifact.version.createdBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSoftwareArtifactVersion).CreatedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.softwareArtifact.version.createTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSoftwareArtifactVersion).CreateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"databricks.softwareArtifact.version.updatedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSoftwareArtifactVersion).UpdatedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.softwareArtifact.version.updateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSoftwareArtifactVersion).UpdateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"databricks.function.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -5627,6 +5801,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDatabricksDomain).UpdateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
+	"databricks.serverlessCompute.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksServerlessCompute).__id, ok = v.Value.(string)
+		return
+	},
+	"databricks.serverlessCompute.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksServerlessCompute).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.serverlessCompute.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksServerlessCompute).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.serverlessCompute.isDefault": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksServerlessCompute).IsDefault, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"databricks.serverlessCompute.canManage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksServerlessCompute).CanManage, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"databricks.serverlessCompute.canUse": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksServerlessCompute).CanUse, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"databricks.serverlessCompute.createTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksServerlessCompute).CreateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
 	"databricks.sandbox.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDatabricksSandbox).__id, ok = v.Value.(string)
 		return
@@ -5712,6 +5914,7 @@ type mqlDatabricks struct {
 	RegisteredModels          plugin.TValue[[]any]
 	Domains                   plugin.TValue[[]any]
 	Sandboxes                 plugin.TValue[[]any]
+	ServerlessComputes        plugin.TValue[[]any]
 	CustomerManagedKeys       plugin.TValue[[]any]
 	Jobs                      plugin.TValue[[]any]
 	Pipelines                 plugin.TValue[[]any]
@@ -6212,6 +6415,22 @@ func (c *mqlDatabricks) GetSandboxes() *plugin.TValue[[]any] {
 		}
 
 		return c.sandboxes()
+	})
+}
+
+func (c *mqlDatabricks) GetServerlessComputes() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ServerlessComputes, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("databricks", c.__id, "serverlessComputes")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.serverlessComputes()
 	})
 }
 
@@ -8253,16 +8472,17 @@ type mqlDatabricksSchema struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlDatabricksSchemaInternal it will be used here
-	Id          plugin.TValue[string]
-	Name        plugin.TValue[string]
-	FullName    plugin.TValue[string]
-	CatalogName plugin.TValue[string]
-	Catalog     plugin.TValue[*mqlDatabricksCatalog]
-	Owner       plugin.TValue[string]
-	Comment     plugin.TValue[string]
-	Grants      plugin.TValue[[]any]
-	Volumes     plugin.TValue[[]any]
-	Functions   plugin.TValue[[]any]
+	Id                plugin.TValue[string]
+	Name              plugin.TValue[string]
+	FullName          plugin.TValue[string]
+	CatalogName       plugin.TValue[string]
+	Catalog           plugin.TValue[*mqlDatabricksCatalog]
+	Owner             plugin.TValue[string]
+	Comment           plugin.TValue[string]
+	Grants            plugin.TValue[[]any]
+	Volumes           plugin.TValue[[]any]
+	Functions         plugin.TValue[[]any]
+	SoftwareArtifacts plugin.TValue[[]any]
 }
 
 // createDatabricksSchema creates a new instance of this resource
@@ -8383,6 +8603,197 @@ func (c *mqlDatabricksSchema) GetFunctions() *plugin.TValue[[]any] {
 
 		return c.functions()
 	})
+}
+
+func (c *mqlDatabricksSchema) GetSoftwareArtifacts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SoftwareArtifacts, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("databricks.schema", c.__id, "softwareArtifacts")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.softwareArtifacts()
+	})
+}
+
+// mqlDatabricksSoftwareArtifact for the databricks.softwareArtifact resource
+type mqlDatabricksSoftwareArtifact struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDatabricksSoftwareArtifactInternal it will be used here
+	Name       plugin.TValue[string]
+	FullName   plugin.TValue[string]
+	Owner      plugin.TValue[string]
+	CreatedBy  plugin.TValue[string]
+	CreateTime plugin.TValue[*time.Time]
+	UpdatedBy  plugin.TValue[string]
+	UpdateTime plugin.TValue[*time.Time]
+	Versions   plugin.TValue[[]any]
+}
+
+// createDatabricksSoftwareArtifact creates a new instance of this resource
+func createDatabricksSoftwareArtifact(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatabricksSoftwareArtifact{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("databricks.softwareArtifact", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatabricksSoftwareArtifact) MqlName() string {
+	return "databricks.softwareArtifact"
+}
+
+func (c *mqlDatabricksSoftwareArtifact) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatabricksSoftwareArtifact) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDatabricksSoftwareArtifact) GetFullName() *plugin.TValue[string] {
+	return &c.FullName
+}
+
+func (c *mqlDatabricksSoftwareArtifact) GetOwner() *plugin.TValue[string] {
+	return &c.Owner
+}
+
+func (c *mqlDatabricksSoftwareArtifact) GetCreatedBy() *plugin.TValue[string] {
+	return &c.CreatedBy
+}
+
+func (c *mqlDatabricksSoftwareArtifact) GetCreateTime() *plugin.TValue[*time.Time] {
+	return &c.CreateTime
+}
+
+func (c *mqlDatabricksSoftwareArtifact) GetUpdatedBy() *plugin.TValue[string] {
+	return &c.UpdatedBy
+}
+
+func (c *mqlDatabricksSoftwareArtifact) GetUpdateTime() *plugin.TValue[*time.Time] {
+	return &c.UpdateTime
+}
+
+func (c *mqlDatabricksSoftwareArtifact) GetVersions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Versions, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("databricks.softwareArtifact", c.__id, "versions")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.versions()
+	})
+}
+
+// mqlDatabricksSoftwareArtifactVersion for the databricks.softwareArtifact.version resource
+type mqlDatabricksSoftwareArtifactVersion struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDatabricksSoftwareArtifactVersionInternal it will be used here
+	Name                    plugin.TValue[string]
+	Version                 plugin.TValue[string]
+	Digest                  plugin.TValue[string]
+	Tags                    plugin.TValue[[]any]
+	ImageAccelerationStatus plugin.TValue[string]
+	CreatedBy               plugin.TValue[string]
+	CreateTime              plugin.TValue[*time.Time]
+	UpdatedBy               plugin.TValue[string]
+	UpdateTime              plugin.TValue[*time.Time]
+}
+
+// createDatabricksSoftwareArtifactVersion creates a new instance of this resource
+func createDatabricksSoftwareArtifactVersion(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatabricksSoftwareArtifactVersion{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("databricks.softwareArtifact.version", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatabricksSoftwareArtifactVersion) MqlName() string {
+	return "databricks.softwareArtifact.version"
+}
+
+func (c *mqlDatabricksSoftwareArtifactVersion) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatabricksSoftwareArtifactVersion) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDatabricksSoftwareArtifactVersion) GetVersion() *plugin.TValue[string] {
+	return &c.Version
+}
+
+func (c *mqlDatabricksSoftwareArtifactVersion) GetDigest() *plugin.TValue[string] {
+	return &c.Digest
+}
+
+func (c *mqlDatabricksSoftwareArtifactVersion) GetTags() *plugin.TValue[[]any] {
+	return &c.Tags
+}
+
+func (c *mqlDatabricksSoftwareArtifactVersion) GetImageAccelerationStatus() *plugin.TValue[string] {
+	return &c.ImageAccelerationStatus
+}
+
+func (c *mqlDatabricksSoftwareArtifactVersion) GetCreatedBy() *plugin.TValue[string] {
+	return &c.CreatedBy
+}
+
+func (c *mqlDatabricksSoftwareArtifactVersion) GetCreateTime() *plugin.TValue[*time.Time] {
+	return &c.CreateTime
+}
+
+func (c *mqlDatabricksSoftwareArtifactVersion) GetUpdatedBy() *plugin.TValue[string] {
+	return &c.UpdatedBy
+}
+
+func (c *mqlDatabricksSoftwareArtifactVersion) GetUpdateTime() *plugin.TValue[*time.Time] {
+	return &c.UpdateTime
 }
 
 // mqlDatabricksFunction for the databricks.function resource
@@ -12863,6 +13274,75 @@ func (c *mqlDatabricksDomain) GetCreateTime() *plugin.TValue[*time.Time] {
 
 func (c *mqlDatabricksDomain) GetUpdateTime() *plugin.TValue[*time.Time] {
 	return &c.UpdateTime
+}
+
+// mqlDatabricksServerlessCompute for the databricks.serverlessCompute resource
+type mqlDatabricksServerlessCompute struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDatabricksServerlessComputeInternal it will be used here
+	Id         plugin.TValue[string]
+	Name       plugin.TValue[string]
+	IsDefault  plugin.TValue[bool]
+	CanManage  plugin.TValue[bool]
+	CanUse     plugin.TValue[bool]
+	CreateTime plugin.TValue[*time.Time]
+}
+
+// createDatabricksServerlessCompute creates a new instance of this resource
+func createDatabricksServerlessCompute(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatabricksServerlessCompute{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("databricks.serverlessCompute", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatabricksServerlessCompute) MqlName() string {
+	return "databricks.serverlessCompute"
+}
+
+func (c *mqlDatabricksServerlessCompute) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatabricksServerlessCompute) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlDatabricksServerlessCompute) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDatabricksServerlessCompute) GetIsDefault() *plugin.TValue[bool] {
+	return &c.IsDefault
+}
+
+func (c *mqlDatabricksServerlessCompute) GetCanManage() *plugin.TValue[bool] {
+	return &c.CanManage
+}
+
+func (c *mqlDatabricksServerlessCompute) GetCanUse() *plugin.TValue[bool] {
+	return &c.CanUse
+}
+
+func (c *mqlDatabricksServerlessCompute) GetCreateTime() *plugin.TValue[*time.Time] {
+	return &c.CreateTime
 }
 
 // mqlDatabricksSandbox for the databricks.sandbox resource
