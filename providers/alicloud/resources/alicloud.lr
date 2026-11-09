@@ -3406,6 +3406,71 @@ alicloud.rds.instance {
   // has not passed. A grant without an expiry time counts as in effect, so a
   // check for no standing support access fails on it.
   operatorAccessActive() bool
+  // Whether immutable backup is enabled for the instance
+  //
+  // Immutable backup sets cannot be deleted or altered before their retention
+  // period ends, even by an account administrator, which protects them from
+  // ransomware and accidental deletion. Only PostgreSQL instances report the
+  // setting; null for other engines.
+  immutableBackupEnabled() bool
+  // Days that data backups are retained
+  //
+  // Null when the instance reports no backup retention period.
+  backupRetentionDays() int
+  // Days of the week on which data backups run
+  //
+  // For example ["Monday", "Wednesday", "Friday"]. Empty when the instance
+  // reports no backup cycle.
+  preferredBackupPeriod() []string
+  // Window in which data backups start, in UTC, for example 15:00Z-16:00Z
+  preferredBackupTime() string
+  // Whether log backup is enabled for the instance
+  //
+  // Log backups make restoring to a point in time between data backups
+  // possible. On SQL Server, true only when log backups run every 5 minutes.
+  // Null when the instance reports no log backup setting.
+  logBackupEnabled() bool
+  // Days that log backups are retained
+  //
+  // Null when the instance reports no log backup retention period.
+  logBackupRetentionDays() int
+  // Hours that binary logs are kept on the instance before they are removed
+  //
+  // MySQL only; null for other engines.
+  localLogRetentionHours() int
+  // Whether binary logs are deleted when the instance runs short of storage
+  //
+  // When true, binary logs are removed once storage usage passes 80% or less
+  // than 5 GB remains, even if they have not been backed up, which leaves a gap
+  // in the recovery window. MySQL only; null for other engines.
+  highSpaceUsageProtection() bool
+  // Whether point-in-time recovery is enabled for the instance
+  //
+  // MySQL only; null for other engines.
+  pitrEnabled() bool
+  // Days within which the instance can be restored to a point in time
+  //
+  // MySQL only; null for other engines.
+  pitrRetentionDays() int
+  // Backup method of the instance
+  //
+  // One of Physical or Snapshot. Reported for SQL Server instances with cloud
+  // disks; empty for other instances.
+  backupMethod() string
+  // Whether data backups are compressed
+  //
+  // Null when the instance reports no compression setting.
+  backupCompressed() bool
+  // Days that archived backups are retained
+  //
+  // MySQL only; null when the instance reports no archive retention period.
+  archiveBackupRetentionDays() int
+  // Backups kept after the instance is released
+  //
+  // One of None (no backup sets are kept), Lastest (the last backup set is
+  // kept, spelled as the API returns it), or All (every backup set is kept).
+  // Empty when the instance reports no policy.
+  releasedBackupKeepPolicy() string
 }
 
 // ApsaraDB for Redis

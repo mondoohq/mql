@@ -3822,6 +3822,48 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"alicloud.rds.instance.operatorAccessActive": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudRdsInstance).GetOperatorAccessActive()).ToDataRes(types.Bool)
 	},
+	"alicloud.rds.instance.immutableBackupEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRdsInstance).GetImmutableBackupEnabled()).ToDataRes(types.Bool)
+	},
+	"alicloud.rds.instance.backupRetentionDays": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRdsInstance).GetBackupRetentionDays()).ToDataRes(types.Int)
+	},
+	"alicloud.rds.instance.preferredBackupPeriod": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRdsInstance).GetPreferredBackupPeriod()).ToDataRes(types.Array(types.String))
+	},
+	"alicloud.rds.instance.preferredBackupTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRdsInstance).GetPreferredBackupTime()).ToDataRes(types.String)
+	},
+	"alicloud.rds.instance.logBackupEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRdsInstance).GetLogBackupEnabled()).ToDataRes(types.Bool)
+	},
+	"alicloud.rds.instance.logBackupRetentionDays": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRdsInstance).GetLogBackupRetentionDays()).ToDataRes(types.Int)
+	},
+	"alicloud.rds.instance.localLogRetentionHours": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRdsInstance).GetLocalLogRetentionHours()).ToDataRes(types.Int)
+	},
+	"alicloud.rds.instance.highSpaceUsageProtection": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRdsInstance).GetHighSpaceUsageProtection()).ToDataRes(types.Bool)
+	},
+	"alicloud.rds.instance.pitrEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRdsInstance).GetPitrEnabled()).ToDataRes(types.Bool)
+	},
+	"alicloud.rds.instance.pitrRetentionDays": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRdsInstance).GetPitrRetentionDays()).ToDataRes(types.Int)
+	},
+	"alicloud.rds.instance.backupMethod": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRdsInstance).GetBackupMethod()).ToDataRes(types.String)
+	},
+	"alicloud.rds.instance.backupCompressed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRdsInstance).GetBackupCompressed()).ToDataRes(types.Bool)
+	},
+	"alicloud.rds.instance.archiveBackupRetentionDays": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRdsInstance).GetArchiveBackupRetentionDays()).ToDataRes(types.Int)
+	},
+	"alicloud.rds.instance.releasedBackupKeepPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRdsInstance).GetReleasedBackupKeepPolicy()).ToDataRes(types.String)
+	},
 	"alicloud.redis.instances": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudRedis).GetInstances()).ToDataRes(types.Array(types.Resource("alicloud.redis.instance")))
 	},
@@ -13302,6 +13344,62 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"alicloud.rds.instance.operatorAccessActive": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAlicloudRdsInstance).OperatorAccessActive, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.rds.instance.immutableBackupEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRdsInstance).ImmutableBackupEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.rds.instance.backupRetentionDays": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRdsInstance).BackupRetentionDays, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.rds.instance.preferredBackupPeriod": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRdsInstance).PreferredBackupPeriod, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.rds.instance.preferredBackupTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRdsInstance).PreferredBackupTime, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.rds.instance.logBackupEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRdsInstance).LogBackupEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.rds.instance.logBackupRetentionDays": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRdsInstance).LogBackupRetentionDays, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.rds.instance.localLogRetentionHours": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRdsInstance).LocalLogRetentionHours, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.rds.instance.highSpaceUsageProtection": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRdsInstance).HighSpaceUsageProtection, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.rds.instance.pitrEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRdsInstance).PitrEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.rds.instance.pitrRetentionDays": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRdsInstance).PitrRetentionDays, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.rds.instance.backupMethod": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRdsInstance).BackupMethod, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.rds.instance.backupCompressed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRdsInstance).BackupCompressed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.rds.instance.archiveBackupRetentionDays": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRdsInstance).ArchiveBackupRetentionDays, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.rds.instance.releasedBackupKeepPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRdsInstance).ReleasedBackupKeepPolicy, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"alicloud.redis.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -29848,6 +29946,20 @@ type mqlAlicloudRdsInstance struct {
 	OperatorPrivilegesCreateTime plugin.TValue[*time.Time]
 	OperatorPrivilegesExpireTime plugin.TValue[*time.Time]
 	OperatorAccessActive         plugin.TValue[bool]
+	ImmutableBackupEnabled       plugin.TValue[bool]
+	BackupRetentionDays          plugin.TValue[int64]
+	PreferredBackupPeriod        plugin.TValue[[]any]
+	PreferredBackupTime          plugin.TValue[string]
+	LogBackupEnabled             plugin.TValue[bool]
+	LogBackupRetentionDays       plugin.TValue[int64]
+	LocalLogRetentionHours       plugin.TValue[int64]
+	HighSpaceUsageProtection     plugin.TValue[bool]
+	PitrEnabled                  plugin.TValue[bool]
+	PitrRetentionDays            plugin.TValue[int64]
+	BackupMethod                 plugin.TValue[string]
+	BackupCompressed             plugin.TValue[bool]
+	ArchiveBackupRetentionDays   plugin.TValue[int64]
+	ReleasedBackupKeepPolicy     plugin.TValue[string]
 }
 
 // createAlicloudRdsInstance creates a new instance of this resource
@@ -30232,6 +30344,90 @@ func (c *mqlAlicloudRdsInstance) GetOperatorPrivilegesExpireTime() *plugin.TValu
 func (c *mqlAlicloudRdsInstance) GetOperatorAccessActive() *plugin.TValue[bool] {
 	return plugin.GetOrCompute[bool](&c.OperatorAccessActive, func() (bool, error) {
 		return c.operatorAccessActive()
+	})
+}
+
+func (c *mqlAlicloudRdsInstance) GetImmutableBackupEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ImmutableBackupEnabled, func() (bool, error) {
+		return c.immutableBackupEnabled()
+	})
+}
+
+func (c *mqlAlicloudRdsInstance) GetBackupRetentionDays() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.BackupRetentionDays, func() (int64, error) {
+		return c.backupRetentionDays()
+	})
+}
+
+func (c *mqlAlicloudRdsInstance) GetPreferredBackupPeriod() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PreferredBackupPeriod, func() ([]any, error) {
+		return c.preferredBackupPeriod()
+	})
+}
+
+func (c *mqlAlicloudRdsInstance) GetPreferredBackupTime() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.PreferredBackupTime, func() (string, error) {
+		return c.preferredBackupTime()
+	})
+}
+
+func (c *mqlAlicloudRdsInstance) GetLogBackupEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.LogBackupEnabled, func() (bool, error) {
+		return c.logBackupEnabled()
+	})
+}
+
+func (c *mqlAlicloudRdsInstance) GetLogBackupRetentionDays() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.LogBackupRetentionDays, func() (int64, error) {
+		return c.logBackupRetentionDays()
+	})
+}
+
+func (c *mqlAlicloudRdsInstance) GetLocalLogRetentionHours() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.LocalLogRetentionHours, func() (int64, error) {
+		return c.localLogRetentionHours()
+	})
+}
+
+func (c *mqlAlicloudRdsInstance) GetHighSpaceUsageProtection() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.HighSpaceUsageProtection, func() (bool, error) {
+		return c.highSpaceUsageProtection()
+	})
+}
+
+func (c *mqlAlicloudRdsInstance) GetPitrEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.PitrEnabled, func() (bool, error) {
+		return c.pitrEnabled()
+	})
+}
+
+func (c *mqlAlicloudRdsInstance) GetPitrRetentionDays() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.PitrRetentionDays, func() (int64, error) {
+		return c.pitrRetentionDays()
+	})
+}
+
+func (c *mqlAlicloudRdsInstance) GetBackupMethod() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.BackupMethod, func() (string, error) {
+		return c.backupMethod()
+	})
+}
+
+func (c *mqlAlicloudRdsInstance) GetBackupCompressed() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.BackupCompressed, func() (bool, error) {
+		return c.backupCompressed()
+	})
+}
+
+func (c *mqlAlicloudRdsInstance) GetArchiveBackupRetentionDays() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.ArchiveBackupRetentionDays, func() (int64, error) {
+		return c.archiveBackupRetentionDays()
+	})
+}
+
+func (c *mqlAlicloudRdsInstance) GetReleasedBackupKeepPolicy() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ReleasedBackupKeepPolicy, func() (string, error) {
+		return c.releasedBackupKeepPolicy()
 	})
 }
 
