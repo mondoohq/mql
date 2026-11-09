@@ -1,7 +1,7 @@
 {
   "provider": "aws",
   "version": "14.7.0",
-  "generated_at": "2026-11-06T15:02:37-08:00",
+  "generated_at": "2026-11-09T09:51:53-08:00",
   "permissions": [
     "access-analyzer:GetFinding",
     "access-analyzer:ListAnalyzers",
@@ -68,11 +68,13 @@
     "appsync:ListGraphqlApis",
     "athena:BatchGetNamedQuery",
     "athena:GetDataCatalog",
+    "athena:GetSystemTableConfiguration",
     "athena:GetWorkGroup",
     "athena:ListCapacityReservations",
     "athena:ListDataCatalogs",
     "athena:ListDatabases",
     "athena:ListNamedQueries",
+    "athena:ListSystemTableStatuses",
     "athena:ListTableMetadata",
     "athena:ListTagsForResource",
     "athena:ListWorkGroups",
@@ -798,8 +800,10 @@
     "qbusiness:ListRetrievers",
     "qbusiness:ListTagsForResource",
     "qbusiness:ListWebExperiences",
+    "ram:GetPermission",
     "ram:GetResourceShares",
     "ram:ListPrincipals",
+    "ram:ListResourceSharePermissions",
     "ram:ListResources",
     "rds:DescribeDBClusterAutomatedBackups",
     "rds:DescribeDBClusterParameterGroups",
@@ -1567,6 +1571,12 @@
       "source_file": "aws_athena.go"
     },
     {
+      "permission": "athena:GetSystemTableConfiguration",
+      "service": "athena",
+      "action": "GetSystemTableConfiguration",
+      "source_file": "aws_athena_system_tables.go"
+    },
+    {
       "permission": "athena:GetWorkGroup",
       "service": "athena",
       "action": "GetWorkGroup",
@@ -1595,6 +1605,12 @@
       "service": "athena",
       "action": "ListNamedQueries",
       "source_file": "aws_athena.go"
+    },
+    {
+      "permission": "athena:ListSystemTableStatuses",
+      "service": "athena",
+      "action": "ListSystemTableStatuses",
+      "source_file": "aws_athena_system_tables.go"
     },
     {
       "permission": "athena:ListTableMetadata",
@@ -6109,6 +6125,12 @@
       "source_file": "aws_qbusiness.go"
     },
     {
+      "permission": "ram:GetPermission",
+      "service": "ram",
+      "action": "GetPermission",
+      "source_file": "aws_ram.go"
+    },
+    {
       "permission": "ram:GetResourceShares",
       "service": "ram",
       "action": "GetResourceShares",
@@ -6118,6 +6140,12 @@
       "permission": "ram:ListPrincipals",
       "service": "ram",
       "action": "ListPrincipals",
+      "source_file": "aws_ram.go"
+    },
+    {
+      "permission": "ram:ListResourceSharePermissions",
+      "service": "ram",
+      "action": "ListResourceSharePermissions",
       "source_file": "aws_ram.go"
     },
     {

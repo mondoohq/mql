@@ -8,6 +8,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	bedrocktypes "github.com/aws/aws-sdk-go-v2/service/bedrock/types"
+	bedrockagenttypes "github.com/aws/aws-sdk-go-v2/service/bedrockagent/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
@@ -196,4 +197,19 @@ func TestBedrockGuardrailPolicyDictKeys(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []any{"arn:aws:bedrock:us-east-1:123456789012:automated-reasoning-policy/abc"}, reasoning["Policies"])
 	assert.Equal(t, 0.9, reasoning["ConfidenceThreshold"])
+}
+
+func TestBedrockKnowledgeBaseMetadataConfigurations(t *testing.T) {
+	// Synthetic: one searchable and one non-searchable custom metadata field.
+	got := bedrockKnowledgeBaseMetadataConfigurations([]bedrockagenttypes.MetadataConfiguration{
+		{Name: aws.String("department"), Type: bedrockagenttypes.FieldTypeString, Searchability: bedrockagenttypes.SearchableStatusEnabled},
+		{Name: aws.String("tags"), Type: bedrockagenttypes.FieldTypeStringList, Searchability: bedrockagenttypes.SearchableStatusDisabled},
+	})
+	assert.Equal(t, []any{
+		map[string]any{"name": "department", "type": "STRING", "searchable": true},
+		map[string]any{"name": "tags", "type": "STRING_LIST", "searchable": false},
+	}, got)
+
+	// A knowledge base without custom metadata fields reports an empty list.
+	assert.Equal(t, []any{}, bedrockKnowledgeBaseMetadataConfigurations(nil))
 }

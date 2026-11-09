@@ -25644,6 +25644,40 @@ aws.athena @defaults("workgroups") {
   namedQueries() []aws.athena.namedQuery
   // List of Athena capacity reservations
   capacityReservations() []aws.athena.capacityReservation
+  // Athena system tables configuration in each region
+  //
+  // One entry per region. System tables record the account's Athena
+  // usage, such as every query execution, in AWS-managed Iceberg tables, which
+  // makes them an audit trail of who queried what. Use
+  // `systemTableConfigurations.all(enabled)` to check that the trail is on in
+  // every region.
+  systemTableConfigurations() []aws.athena.systemTableConfiguration
+}
+
+// Amazon Athena system tables configuration for a region
+//
+// The account-wide system tables setting in one region. `enabled` reports
+// whether the account has turned on system tables there, `tables` reports the
+// enablement status of each system table, and `kmsKey` is the customer managed
+// key encrypting the recorded usage data.
+private aws.athena.systemTableConfiguration @defaults("region enabled") {
+  // Region the configuration applies to
+  region string
+  // Whether system tables are enabled for the account in the region
+  enabled bool
+  // Enablement status of each system table, keyed by table name
+  //
+  // For example `tables["QUERY_EXECUTIONS"]`.
+  tables() map[string]bool
+  // KMS key encrypting the system table data
+  //
+  // Null when system tables are disabled or no customer managed key is
+  // configured.
+  kmsKey() aws.kms.key
+  // Time the system tables configuration was created
+  createdAt time
+  // Time the system tables configuration was last modified
+  lastModifiedAt time
 }
 
 // Amazon Athena workgroup
@@ -30886,6 +30920,65 @@ private aws.ram.resourceShare @defaults("arn name status") {
   // `status` (the resource's availability in the share, one of AVAILABLE,
   // ZONAL_RESOURCE_INACCESSIBLE, LIMIT_EXCEEDED, UNAVAILABLE, or PENDING).
   resources() []dict
+  // Managed permissions attached to the resource share
+  //
+  // Each permission defines the actions principals of the share may perform
+  // on its resources of one resource type.
+  permissions() []aws.ram.permission
+}
+
+// Managed permission attached to an AWS RAM resource share
+//
+// A RAM managed permission version, as associated with one resource share.
+// `policy` holds the actions the permission grants, rendered with the
+// share's template parameter values. `permissionType` separates AWS managed
+// from customer managed permissions, and `defaultVersion` reports whether the
+// share still uses an outdated version of the permission.
+private aws.ram.permission @defaults("name version permissionType resourceType") {
+  // ARN of the managed permission
+  arn string
+  // Name of the managed permission
+  name string
+  // Version of the managed permission attached to the resource share
+  version string
+  // Whether the attached version is the default version of the permission
+  defaultVersion bool
+  // Whether the permission is the default permission for its resource type
+  isResourceTypeDefault bool
+  // Type of the managed permission
+  //
+  // AWS_MANAGED for permissions AWS creates and maintains, CUSTOMER_MANAGED for
+  // permissions created in the account.
+  permissionType string
+  // Owner of the managed permission
+  //
+  // SELF when the permission belongs to this account, OTHER-ACCOUNTS when it
+  // is shared with this account by another account.
+  resourceOwner string
+  // Features available for the permission
+  //
+  // One of STANDARD, CREATED_FROM_POLICY, or PROMOTING_TO_STANDARD.
+  featureSet string
+  // Status of the permission, such as ATTACHABLE or DEPRECATED
+  status string
+  // Resource type the permission applies to, for example `ec2:subnet`
+  resourceType string
+  // Template parameters of the permission and the values the share assigns them
+  //
+  // Each entry is a dict with `name`, `description`, `type` (STRING or
+  // STRING_LIST), and `values`.
+  templateParameters []dict
+  // Policy of the attached permission version
+  //
+  // The permission's effect and actions as granted to the principals of the
+  // share, with template parameters filled in from the share's values.
+  policy() dict
+  // Date the permission was created
+  createdAt time
+  // Date the permission was last updated
+  updatedAt time
+  // Region of the resource share
+  region string
 }
 
 // AWS Storage Gateway
@@ -34390,6 +34483,12 @@ private aws.bedrock.knowledgeBase @defaults("name status") {
   dataSourceDetails() []aws.bedrock.knowledgeBase.dataSource
   // VPC configurations the knowledge base uses to reach private resources
   vpcConfigurations() []aws.bedrock.knowledgeBase.vpcConfiguration
+  // Custom metadata fields of the knowledge base and whether each is searchable
+  //
+  // Each entry is a dict with `name` (the metadata field name), `type` (STRING
+  // or STRING_LIST), and `searchable` (true when the field is indexed for
+  // search, so its values can be matched by retrieval queries).
+  metadataConfigurations() []dict
   // Tags assigned to the knowledge base
   tags() map[string]string
 }

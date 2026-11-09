@@ -786,6 +786,7 @@ func awsConnectionMethodToService(method string) string {
 		"opensearchserverless":     "opensearchserverless",
 		"redshiftserverless":       "redshiftserverless",
 		"mwaa":                     "mwaa",
+		"ram":                      "ram",
 	}
 	if svc, ok := knownMethods[lower]; ok {
 		return svc
