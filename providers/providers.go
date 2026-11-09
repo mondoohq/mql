@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -432,10 +433,93 @@ func ListAll() ([]*Provider, error) {
 
 type ProviderNotFoundError struct {
 	lookup ProviderLookup
+	// cause is set when the lookup named a provider that the registry was
+	// asked for and could not supply.
+	cause error
 }
 
 func (e *ProviderNotFoundError) Error() string {
-	return "cannot find provider for " + e.lookup.String()
+	msg := "cannot find provider for " + e.lookup.String()
+	if e.cause != nil {
+		msg += ": " + e.cause.Error()
+	}
+	return msg
+}
+
+func (e *ProviderNotFoundError) Unwrap() error {
+	return e.cause
+}
+
+// providerIDPrefix is the namespace of every provider ID the registry
+// publishes, e.g. go.mondoo.com/mql/providers/os.
+const providerIDPrefix = "go.mondoo.com/mql/providers/"
+
+// providerNameRe is the shape of every published provider name. The name
+// becomes a path segment of the download URL and a directory under the
+// providers path, so nothing else is accepted.
+var providerNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+
+func validateProviderName(name string) error {
+	if !providerNameRe.MatchString(name) {
+		return errors.Newf("invalid provider name %q", name)
+	}
+	return nil
+}
+
+// registryName returns the name under which the registry publishes the
+// provider this lookup asks for, or "" when the lookup carries nothing the
+// registry can answer.
+//
+// The registry indexes providers by name only. A lookup by connector name or
+// type ("ssh", "registry-image") cannot be resolved there, since no document
+// maps connectors back to providers; those stay bound to DefaultProviders.
+func (s ProviderLookup) registryName() string {
+	if s.ProviderName != "" {
+		return s.ProviderName
+	}
+	if name, ok := strings.CutPrefix(s.ID, providerIDPrefix); ok && name != "" {
+		return name
+	}
+	return ""
+}
+
+// upstreamName names the provider to install for a lookup that no installed
+// provider matched. DefaultProviders answers first; a lookup it does not know
+// but that names a provider is still resolvable, through the registry, and
+// comes back with known=false. An empty name means neither can resolve it.
+//
+// DefaultProviders is a snapshot of the providers that existed when this
+// binary was built. A provider published after that is missing from it, so a
+// policy requiring the new provider failed on every older client with "cannot
+// find provider" until the client was upgraded. The registry is the source of
+// truth for what is published, so it is asked as well. Its index lists only
+// the names Mondoo published, so an unknown name fails there before any
+// download URL is built with it.
+func upstreamName(search ProviderLookup) (name string, known bool) {
+	if upstream := DefaultProviders.Lookup(search); upstream != nil {
+		return upstream.Name, true
+	}
+	return search.registryName(), false
+}
+
+// installUpstream installs the provider that upstreamName resolved a lookup
+// to. A registry failure for a provider this build does not know is reported
+// as not found, which is what it is from the caller's point of view.
+func installUpstream(search ProviderLookup, name string, known bool) (*Provider, error) {
+	if !known {
+		log.Info().
+			Str("provider", name).
+			Msg("provider is not known to this build, resolving it from the registry")
+	}
+
+	nu, err := Install(name, "")
+	if err != nil {
+		if !known {
+			return nil, &ProviderNotFoundError{lookup: search, cause: err}
+		}
+		return nil, err
+	}
+	return nu, nil
 }
 
 // EnsureProvider makes sure that a given provider exists and returns it.
@@ -446,6 +530,13 @@ func (e *ProviderNotFoundError) Error() string {
 //     they are moved between discovery and execution, e.g. "registry-image".
 //
 // If you disable autoUpdate, it will neither update NOR install missing providers.
+//
+// A provider that is not in DefaultProviders is still installed when the
+// lookup names it (providerID or ProviderName), since a client older than the
+// provider has no other way to learn about it. A lookup by connector name or
+// type can only be resolved against the installed providers and
+// DefaultProviders: those carry each provider's connector list, the registry
+// index carries names only.
 //
 // If you don't supply existing providers, it will look for alist of all
 // active providers first.
@@ -490,8 +581,8 @@ func EnsureProvider(search ProviderLookup, autoUpdate bool, existing Providers) 
 		return &recordingProviderInstance, nil
 	}
 
-	upstream := DefaultProviders.Lookup(search)
-	if upstream == nil {
+	name, known := upstreamName(search)
+	if name == "" {
 		// we can't find any provider for this connector in our default set
 		// FIXME: This causes a panic in the CLI, we should handle this better
 		return nil, &ProviderNotFoundError{lookup: search}
@@ -501,7 +592,7 @@ func EnsureProvider(search ProviderLookup, autoUpdate bool, existing Providers) 
 		return nil, errors.New("cannot find installed provider for " + search.String())
 	}
 
-	nu, err := Install(upstream.Name, "")
+	nu, err := installUpstream(search, name, known)
 	if err != nil {
 		return nil, err
 	}
@@ -519,6 +610,10 @@ func EnsureProvider(search ProviderLookup, autoUpdate bool, existing Providers) 
 }
 
 func Install(name string, version string) (*Provider, error) {
+	if err := validateProviderName(name); err != nil {
+		return nil, err
+	}
+
 	ctx := context.Background()
 	if version == "" {
 		// if no version is specified, we default to installing the latest one
@@ -580,6 +675,10 @@ func installVersion(ctx context.Context, name string, version string) (*Provider
 // queries against the provider's resources. It is meant for workflows that
 // never start the provider; connecting to an asset requires a full install.
 func InstallSchemaOnly(name string, version string) (*Provider, error) {
+	if err := validateProviderName(name); err != nil {
+		return nil, err
+	}
+
 	ctx := context.Background()
 	if version == "" {
 		// if no version is specified, we default to installing the latest one
@@ -707,12 +806,12 @@ func installDependencies(provider *Provider, existing Providers) error {
 			continue // exist
 		}
 
-		upstreamDep := DefaultProviders.Lookup(dependencyLookup)
-		if upstreamDep == nil {
+		name, known := upstreamName(dependencyLookup)
+		if name == "" {
 			return &ProviderNotFoundError{lookup: dependencyLookup}
 		}
 
-		depProvider, err := Install(upstreamDep.Name, "")
+		depProvider, err := installUpstream(dependencyLookup, name, known)
 		if err != nil {
 			return err
 		}

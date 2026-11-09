@@ -195,14 +195,20 @@ func TestInstallIO(t *testing.T) {
 // be exercised without reaching releases.mondoo.com.
 type fakeRegistry struct {
 	latest      string
+	latestErr   error
 	archive     []byte
 	confJSON    []byte
 	schemaJSON  []byte
 	downloadErr error
 	downloads   int
+	lookups     int
 }
 
 func (r *fakeRegistry) GetLatestVersion(ctx context.Context, name string) (string, error) {
+	r.lookups++
+	if r.latestErr != nil {
+		return "", r.latestErr
+	}
 	return r.latest, nil
 }
 
@@ -631,4 +637,165 @@ func TestPeerBelowFloor(t *testing.T) {
 			assert.Equal(t, test.below, peerBelowFloor(test.installed, test.floor))
 		})
 	}
+}
+
+// testProviderArchive builds an installable archive for a provider named
+// `name` that no DefaultProviders entry knows about.
+func testProviderArchive(t *testing.T, name, version string) []byte {
+	t.Helper()
+	archive, err := buildTarXz(map[string][]byte{
+		name:                     []byte(`fake-binary`),
+		name + ".json":           []byte(`{"Name":"` + name + `","ID":"` + providerIDPrefix + name + `","Version":"` + version + `"}`),
+		name + ".resources.json": []byte(`{"resources":{}}`),
+	})
+	require.NoError(t, err)
+	return archive
+}
+
+func TestProviderLookupRegistryName(t *testing.T) {
+	// Synthetic: each shape of lookup the callers build.
+	tests := []struct {
+		name   string
+		lookup ProviderLookup
+		want   string
+	}{
+		{"provider name", ProviderLookup{ProviderName: "bicep"}, "bicep"},
+		{"name wins over id", ProviderLookup{ID: providerIDPrefix + "os", ProviderName: "bicep"}, "bicep"},
+		{"id in the registry namespace", ProviderLookup{ID: providerIDPrefix + "bicep"}, "bicep"},
+		{"id outside the namespace", ProviderLookup{ID: "example.com/providers/bicep"}, ""},
+		{"bare namespace", ProviderLookup{ID: providerIDPrefix}, ""},
+		{"connector name", ProviderLookup{ConnName: "ssh"}, ""},
+		{"connector type", ProviderLookup{ConnType: "registry-image"}, ""},
+		{"meta target", ProviderLookup{Target: "iac", Discovery: "k8s"}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.lookup.registryName())
+		})
+	}
+}
+
+func TestValidateProviderName(t *testing.T) {
+	// Measured: names from DefaultProviders, 2026-11-09.
+	for _, name := range []string{"os", "ms365", "google-workspace", "k8s", "bicep"} {
+		assert.NoError(t, validateProviderName(name), name)
+	}
+	// Synthetic: anything that would change the URL path or the install
+	// directory, or that no published provider is spelled like.
+	for _, name := range []string{"", "../os", "os/1", "os@1.2.3", "Os", "-os", "os.json", "os bicep"} {
+		assert.Error(t, validateProviderName(name), "%q must be rejected", name)
+	}
+}
+
+func TestInstallRejectsInvalidName(t *testing.T) {
+	reg := &fakeRegistry{latest: "1.0.0"}
+	useTestProviderPath(t, reg)
+
+	_, err := Install("../os", "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid provider name")
+
+	_, err = InstallSchemaOnly("../os", "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid provider name")
+
+	assert.Equal(t, 0, reg.lookups, "the registry must not be asked for an invalid name")
+	assert.Equal(t, 0, reg.downloads)
+}
+
+// A policy published after this binary was built can require a provider
+// DefaultProviders has never heard of. The registry still knows it.
+func TestEnsureProviderInstallsUnknownNameFromRegistry(t *testing.T) {
+	const name = "testp"
+	const version = "1.2.3"
+	require.Nil(t, DefaultProviders.Lookup(ProviderLookup{ProviderName: name}), "test needs a name outside DefaultProviders")
+
+	reg := &fakeRegistry{latest: version, archive: testProviderArchive(t, name, version)}
+	dir := useTestProviderPath(t, reg)
+
+	existing := Providers{}
+	lookup := ProviderLookup{ID: providerIDPrefix + name, ProviderName: name}
+	installed, err := EnsureProvider(lookup, true, existing)
+	require.NoError(t, err)
+
+	assert.Equal(t, name, installed.Name)
+	assert.Equal(t, version, installed.Version)
+	assert.True(t, installed.HasBinary)
+	assert.FileExists(t, filepath.Join(dir, name, name))
+	assert.Equal(t, 1, reg.downloads)
+	assert.Same(t, installed, existing.Lookup(lookup), "the install must be added to the caller's set")
+}
+
+func TestEnsureProviderUnknownNameNotPublished(t *testing.T) {
+	reg := &fakeRegistry{latestErr: errors.New("cannot determine latest version of provider 'nope'")}
+	useTestProviderPath(t, reg)
+
+	existing := Providers{}
+	_, err := EnsureProvider(ProviderLookup{ProviderName: "nope"}, true, existing)
+	require.Error(t, err)
+
+	var notFound *ProviderNotFoundError
+	require.ErrorAs(t, err, &notFound, "a name the registry does not publish is not found")
+	assert.Contains(t, err.Error(), "cannot find provider for provider=nope")
+	assert.Contains(t, err.Error(), "cannot determine latest version", "the registry's reason must be kept")
+	assert.Equal(t, 1, reg.lookups)
+	assert.Equal(t, 0, reg.downloads)
+	assert.Empty(t, existing)
+}
+
+// Connector lookups have nothing the registry can answer; they must not turn
+// into a registry round-trip.
+func TestEnsureProviderUnknownConnectorStaysNotFound(t *testing.T) {
+	reg := &fakeRegistry{latest: "1.0.0"}
+	useTestProviderPath(t, reg)
+
+	for _, lookup := range []ProviderLookup{
+		{ConnType: "no-such-connector"},
+		{ConnName: "no-such-connector"},
+		{ID: "example.com/providers/other"},
+	} {
+		_, err := EnsureProvider(lookup, true, Providers{})
+		var notFound *ProviderNotFoundError
+		require.ErrorAs(t, err, &notFound, lookup.String())
+		assert.Nil(t, notFound.cause, lookup.String())
+	}
+	assert.Equal(t, 0, reg.lookups)
+	assert.Equal(t, 0, reg.downloads)
+}
+
+// With auto-update off nothing is installed, known to this build or not.
+func TestEnsureProviderUnknownNameWithoutAutoUpdate(t *testing.T) {
+	reg := &fakeRegistry{latest: "1.0.0", archive: testProviderArchive(t, "testp", "1.0.0")}
+	useTestProviderPath(t, reg)
+
+	_, err := EnsureProvider(ProviderLookup{ProviderName: "testp"}, false, Providers{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot find installed provider for provider=testp")
+	assert.Equal(t, 0, reg.lookups)
+	assert.Equal(t, 0, reg.downloads)
+}
+
+// A provider's schema can declare a dependency on a provider newer than this
+// build; it resolves through the registry the same way.
+func TestInstallDependenciesInstallsUnknownDependencyFromRegistry(t *testing.T) {
+	const name = "testp"
+	const version = "1.2.3"
+	reg := &fakeRegistry{latest: version, archive: testProviderArchive(t, name, version)}
+	useTestProviderPath(t, reg)
+
+	provider := &Provider{
+		Provider: &plugin.Provider{Name: "os", ID: providerIDPrefix + "os"},
+		Schema: &resources.Schema{
+			Dependencies: map[string]*resources.ProviderInfo{
+				name: {Id: providerIDPrefix + name, Name: name},
+			},
+		},
+	}
+	existing := Providers{}
+
+	require.NoError(t, installDependencies(provider, existing))
+	dep := existing.Lookup(ProviderLookup{ProviderName: name})
+	require.NotNil(t, dep, "the dependency must have been installed")
+	assert.Equal(t, version, dep.Version)
+	assert.Equal(t, 1, reg.downloads)
 }
