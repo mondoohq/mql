@@ -432,11 +432,11 @@ func (r *mqlOpenaiVaultCredential) vault() (*mqlOpenaiVault, error) {
 // openaiVaultList returns the project vault collection through the openai
 // resource so the underlying list call is made once per scan.
 func openaiVaultList(runtime *plugin.Runtime) ([]any, error) {
-	obj, err := CreateResource(runtime, "openai", map[string]*llx.RawData{})
+	root, err := openaiRoot(runtime)
 	if err != nil {
 		return nil, err
 	}
-	vaults := obj.(*mqlOpenai).GetVaults()
+	vaults := root.GetVaults()
 	if vaults.Error != nil {
 		return nil, vaults.Error
 	}
@@ -551,52 +551,86 @@ func environmentTemplateArgs(t openai.EnvironmentTemplate) map[string]*llx.RawDa
 
 // environmentTemplateSkillArgs builds the resource args for one entry of a
 // template's skill list, together with the skill id a skill_reference entry
-// names. An inline skill carries a name and description of its own and names
-// no project skill.
+// names.
 func environmentTemplateSkillArgs(templateID string, index int, s openai.EnvironmentTemplateSkillUnion) (map[string]*llx.RawData, string) {
+	return sandboxSkillArgs(templateID, index, s.Type, s.SkillID, s.Version, s.Name, s.Description)
+}
+
+// sandboxSkillArgs builds the resource args for one skill placed in an agent
+// sandbox, together with the skill id a skill_reference entry names. Templates
+// and automations both carry this list, as differently named SDK types with
+// the same fields, so each passes the flat union fields in. An inline skill
+// carries a name and description of its own and names no project skill.
+func sandboxSkillArgs(ownerID string, index int, typ, skillID, version, name, description string) (map[string]*llx.RawData, string) {
 	args := map[string]*llx.RawData{
-		"__id":        llx.StringData(templateID + "/skill/" + strconv.Itoa(index)),
-		"type":        llx.StringDataPtr(emptyToNil(s.Type)),
+		"__id":        llx.StringData(ownerID + "/skill/" + strconv.Itoa(index)),
+		"type":        llx.StringDataPtr(emptyToNil(typ)),
 		"version":     llx.NilData,
 		"name":        llx.NilData,
 		"description": llx.NilData,
 	}
 
-	skillID := ""
-	switch s.Type {
+	refID := ""
+	switch typ {
 	case "skill_reference":
-		ref := s.AsSkillReference()
-		skillID = ref.SkillID
-		args["version"] = llx.StringDataPtr(emptyToNil(ref.Version))
+		refID = skillID
+		args["version"] = llx.StringDataPtr(emptyToNil(version))
 	case "inline":
-		inline := s.AsInline()
-		args["name"] = llx.StringData(inline.Name)
-		args["description"] = llx.StringData(inline.Description)
+		args["name"] = llx.StringData(name)
+		args["description"] = llx.StringData(description)
 	}
-	return args, skillID
+	return args, refID
 }
 
 // environmentTemplateFileArgs builds the resource args for one entry of a
 // template's file list, together with the uploaded file id a file_id entry
-// names. An inline file carries its contents with the template and reports
-// only a size.
+// names.
 func environmentTemplateFileArgs(templateID string, index int, f openai.EnvironmentTemplateFileUnion) (map[string]*llx.RawData, string) {
+	return sandboxFileArgs(templateID, index, f.Type, f.Path, f.FileID, f.SizeBytes)
+}
+
+// sandboxFileArgs builds the resource args for one file placed in an agent
+// sandbox, together with the uploaded file id a file_id entry names. An inline
+// file carries its contents with the template or automation and reports only
+// a size.
+func sandboxFileArgs(ownerID string, index int, typ, path, fileID string, sizeBytes int64) (map[string]*llx.RawData, string) {
 	args := map[string]*llx.RawData{
-		"__id":      llx.StringData(templateID + "/file/" + strconv.Itoa(index)),
-		"path":      llx.StringData(f.Path),
-		"type":      llx.StringDataPtr(emptyToNil(f.Type)),
+		"__id":      llx.StringData(ownerID + "/file/" + strconv.Itoa(index)),
+		"path":      llx.StringData(path),
+		"type":      llx.StringDataPtr(emptyToNil(typ)),
 		"sizeBytes": llx.NilData,
 	}
 
-	fileID := ""
-	switch f.Type {
+	refID := ""
+	switch typ {
 	case "file_id":
-		fileID = f.AsFileID().FileID
+		refID = fileID
 	case "inline":
-		inline := f.AsInline()
-		args["sizeBytes"] = llx.IntData(inline.SizeBytes)
+		args["sizeBytes"] = llx.IntData(sizeBytes)
 	}
-	return args, fileID
+	return args, refID
+}
+
+// newSandboxSkill creates one openai.environmentTemplate.skill and remembers
+// the project skill it names for the skill accessor.
+func newSandboxSkill(runtime *plugin.Runtime, args map[string]*llx.RawData, skillID string) (plugin.Resource, error) {
+	res, err := CreateResource(runtime, "openai.environmentTemplate.skill", args)
+	if err != nil {
+		return nil, err
+	}
+	res.(*mqlOpenaiEnvironmentTemplateSkill).cacheSkillID = skillID
+	return res, nil
+}
+
+// newSandboxFile creates one openai.environmentTemplate.file and remembers the
+// uploaded file it names for the file accessor.
+func newSandboxFile(runtime *plugin.Runtime, args map[string]*llx.RawData, fileID string) (plugin.Resource, error) {
+	res, err := CreateResource(runtime, "openai.environmentTemplate.file", args)
+	if err != nil {
+		return nil, err
+	}
+	res.(*mqlOpenaiEnvironmentTemplateFile).cacheFileID = fileID
+	return res, nil
 }
 
 // newEnvironmentTemplate builds an openai.environmentTemplate along with the
@@ -605,22 +639,20 @@ func newEnvironmentTemplate(runtime *plugin.Runtime, t openai.EnvironmentTemplat
 	skills := make([]any, 0, len(t.Skills))
 	for i := range t.Skills {
 		skillArgs, skillID := environmentTemplateSkillArgs(t.ID, i, t.Skills[i])
-		mqlSkill, err := CreateResource(runtime, "openai.environmentTemplate.skill", skillArgs)
+		mqlSkill, err := newSandboxSkill(runtime, skillArgs, skillID)
 		if err != nil {
 			return nil, err
 		}
-		mqlSkill.(*mqlOpenaiEnvironmentTemplateSkill).cacheSkillID = skillID
 		skills = append(skills, mqlSkill)
 	}
 
 	files := make([]any, 0, len(t.Files))
 	for i := range t.Files {
 		fileArgs, fileID := environmentTemplateFileArgs(t.ID, i, t.Files[i])
-		mqlFile, err := CreateResource(runtime, "openai.environmentTemplate.file", fileArgs)
+		mqlFile, err := newSandboxFile(runtime, fileArgs, fileID)
 		if err != nil {
 			return nil, err
 		}
-		mqlFile.(*mqlOpenaiEnvironmentTemplateFile).cacheFileID = fileID
 		files = append(files, mqlFile)
 	}
 
@@ -712,11 +744,11 @@ func (r *mqlOpenaiEnvironmentTemplateSkill) skill() (*mqlOpenaiSkill, error) {
 // openaiSkillList returns the project skill collection through the openai
 // resource so the underlying list call is made once per scan.
 func openaiSkillList(runtime *plugin.Runtime) ([]any, error) {
-	obj, err := CreateResource(runtime, "openai", map[string]*llx.RawData{})
+	root, err := openaiRoot(runtime)
 	if err != nil {
 		return nil, err
 	}
-	skills := obj.(*mqlOpenai).GetSkills()
+	skills := root.GetSkills()
 	if skills.Error != nil {
 		return nil, skills.Error
 	}
