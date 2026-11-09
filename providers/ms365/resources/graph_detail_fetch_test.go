@@ -34,6 +34,8 @@ type fakeGraph struct {
 
 	mu    sync.Mutex
 	steps []string
+	// stepTimes holds when each entry of steps was received
+	stepTimes []time.Time
 	// delay holds every $batch call, so concurrent calls overlap; inflight
 	// and maxInflight count them
 	delay       time.Duration
@@ -45,6 +47,8 @@ type fakeGraph struct {
 	// rateLimit, when set, answers every step of a $batch call with 429
 	// while more than this many calls are in flight
 	rateLimit int
+	// retryAfter, when set, is the Retry-After header of throttled steps
+	retryAfter string
 	// failBatches answers this many $batch calls with a 500 for the whole
 	// call, which the SDK's retry handler does not retry
 	failBatches int
@@ -137,6 +141,7 @@ func (f *fakeGraph) serve(w http.ResponseWriter, r *http.Request) {
 		for _, step := range req.Requests {
 			f.mu.Lock()
 			f.steps = append(f.steps, step.URL)
+			f.stepTimes = append(f.stepTimes, time.Now())
 			u, err := url.Parse(step.URL)
 			require.NoError(f.t, err)
 			path := strings.TrimPrefix(u.Path, "/v1.0")
@@ -146,10 +151,14 @@ func (f *fakeGraph) serve(w http.ResponseWriter, r *http.Request) {
 			}
 			f.mu.Unlock()
 			if throttled {
+				headers := map[string]string{"Content-Type": "application/json"}
+				if f.retryAfter != "" {
+					headers["Retry-After"] = f.retryAfter
+				}
 				out.Responses = append(out.Responses, sub{
 					ID:      step.ID,
 					Status:  http.StatusTooManyRequests,
-					Headers: map[string]string{"Content-Type": "application/json"},
+					Headers: headers,
 					Body:    json.RawMessage(`{"error":{"code":"TooManyRequests","message":"throttled"}}`),
 				})
 				continue
