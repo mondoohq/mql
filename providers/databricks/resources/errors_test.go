@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/databricks/databricks-sdk-go/apierr"
+	"go.mondoo.com/mql/llx"
 )
 
 // The classifiers below decide whether a failed read reports null ("I was not
@@ -145,5 +146,35 @@ func TestClassifiersAreDisjoint(t *testing.T) {
 		if isDatabricksUnreadable(err) && isDatabricksFeatureUnavailable(err) {
 			t.Fatalf("status %d classifies as both unreadable and feature-unavailable", code)
 		}
+	}
+}
+
+func TestClassifyDatabricksError(t *testing.T) {
+	transport := &net.OpError{Op: "dial", Err: errors.New("connection refused")}
+	tests := []struct {
+		name string
+		err  error
+		want llx.ErrorKind
+	}{
+		{name: "401", err: &apierr.APIError{StatusCode: 401}, want: llx.ErrorKind_ERROR_KIND_UNAUTHENTICATED},
+		{name: "403", err: &apierr.APIError{StatusCode: 403}, want: llx.ErrorKind_ERROR_KIND_FORBIDDEN},
+		{name: "wrapped 403", err: fmt.Errorf("listing: %w", &apierr.APIError{StatusCode: 403}), want: llx.ErrorKind_ERROR_KIND_FORBIDDEN},
+		{name: "feature not enabled", err: &apierr.APIError{StatusCode: 400}, want: llx.ErrorKind_ERROR_KIND_NOT_APPLICABLE},
+		{name: "endpoint not served", err: &apierr.APIError{StatusCode: 404}, want: llx.ErrorKind_ERROR_KIND_NOT_APPLICABLE},
+		{name: "not implemented", err: &apierr.APIError{StatusCode: 501}, want: llx.ErrorKind_ERROR_KIND_NOT_APPLICABLE},
+		// Unclassified: a wrong kind is worse than none.
+		{name: "server error", err: &apierr.APIError{StatusCode: 503}, want: llx.ErrorKind_ERROR_KIND_UNSPECIFIED},
+		{name: "transport error", err: transport, want: llx.ErrorKind_ERROR_KIND_UNSPECIFIED},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := classifyDatabricksError(tc.err)
+			if k := llx.KindOf(got); k != tc.want {
+				t.Fatalf("KindOf(classifyDatabricksError()) = %v, want %v", k, tc.want)
+			}
+			if !errors.Is(got, tc.err) {
+				t.Fatalf("classifyDatabricksError() dropped the original error")
+			}
+		})
 	}
 }

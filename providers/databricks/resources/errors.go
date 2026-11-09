@@ -7,6 +7,7 @@ import (
 	"errors"
 
 	"github.com/databricks/databricks-sdk-go/apierr"
+	"go.mondoo.com/mql/llx"
 )
 
 // databricksStatusCode reports the HTTP status a Databricks API error carries,
@@ -53,4 +54,25 @@ func isDatabricksFeatureUnavailable(err error) bool {
 		return false
 	}
 	return code == 400 || code == 404 || code == 501
+}
+
+// classifyDatabricksError wraps a failed read in the error kind the server's
+// answer supports: 401 is Unauthenticated, 403 is Forbidden, and the statuses
+// isDatabricksFeatureUnavailable treats as an absent feature are
+// NotApplicable. Anything else, including every transport failure, is returned
+// as is, because an unclassified error is better than a wrong kind.
+func classifyDatabricksError(err error) error {
+	code, ok := databricksStatusCode(err)
+	if !ok {
+		return err
+	}
+	switch {
+	case code == 401:
+		return llx.Unauthenticated(err)
+	case code == 403:
+		return llx.Forbidden(err)
+	case isDatabricksFeatureUnavailable(err):
+		return llx.NotApplicable(err)
+	}
+	return err
 }
