@@ -1,0 +1,70 @@
+# Sublime Text 4 as system_profiler reports it: the version is "Build 4215",
+# and the Info.plist's CFBundleVersion is the same number. Build Tool stands in
+# for a bundle whose "Build 2079" is not corroborated by CFBundleVersion.
+[commands."system_profiler SPApplicationsDataType -xml"]
+stdout = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+	<dict>
+		<key>_items</key>
+		<array>
+			<dict>
+				<key>_name</key>
+				<string>Sublime Text</string>
+				<key>obtained_from</key>
+				<string>identified_developer</string>
+				<key>path</key>
+				<string>/Applications/Sublime Text.app</string>
+				<key>version</key>
+				<string>Build 4215</string>
+			</dict>
+			<dict>
+				<key>_name</key>
+				<string>Build Tool</string>
+				<key>obtained_from</key>
+				<string>identified_developer</string>
+				<key>path</key>
+				<string>/Applications/Build Tool.app</string>
+				<key>version</key>
+				<string>Build 2079</string>
+			</dict>
+		</array>
+		<key>_dataType</key>
+		<string>SPApplicationsDataType</string>
+	</dict>
+</array>
+</plist>
+"""
+
+[files."/Applications/Sublime Text.app/Contents/Info.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>com.sublimetext.4</string>
+	<key>CFBundleName</key>
+	<string>Sublime Text</string>
+	<key>CFBundleShortVersionString</key>
+	<string>Build 4215</string>
+	<key>CFBundleVersion</key>
+	<string>4215</string>
+</dict>
+</plist>
+"""
+
+[files."/Applications/Build Tool.app/Contents/Info.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>com.example.buildtool</string>
+	<key>CFBundleShortVersionString</key>
+	<string>Build 2079</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+</dict>
+</plist>
+"""

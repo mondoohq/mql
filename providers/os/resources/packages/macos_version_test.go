@@ -119,6 +119,39 @@ func TestStripAppName(t *testing.T) {
 	}
 }
 
+func TestCorroboratedBuildVersion(t *testing.T) {
+	tests := []struct {
+		name          string
+		version       string
+		bundleVersion string
+		want          string
+		ok            bool
+	}{
+		// Sublime Text's two version keys (CFBundleShortVersionString,
+		// CFBundleVersion) as published for build 4169, and the shape of the
+		// builds the testbed captured (Build 3211 to Build 4215).
+		{"Sublime Text 4", "Build 4169", "4169", "4169", true},
+		{"Sublime Text 3", "Build 3211", "3211", "3211", true},
+		{"padded", " Build 4215 ", " 4215", "4215", true},
+
+		// Without the second key agreeing, a build number is not taken as the
+		// version.
+		{"build number differs", "Build 2079", "1", "", false},
+		{"no CFBundleVersion", "Build 4215", "", "", false},
+		{"guest OS name on a stub", "Windows 11", "1", "", false},
+		{"word after the number", "Build 4215 dev", "4215", "", false},
+		{"dotted build", "Build 1.2", "1.2", "", false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, ok := corroboratedBuildVersion(test.version, infoPlist{BundleVersion: test.bundleVersion})
+			assert.Equal(t, test.ok, ok)
+			assert.Equal(t, test.want, got)
+		})
+	}
+}
+
 func TestNormalizeVersion(t *testing.T) {
 	tests := []struct {
 		name    string
