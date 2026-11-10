@@ -2415,7 +2415,7 @@ aws.kms @defaults("keys") {
 // and `externalAccessFindings` fields flag keys whose policy allows access
 // from outside the account, and `encryptedVolumes` links the key to the
 // EBS volumes it protects.
-private aws.kms.key @defaults("id region aliases metadata.Description") {
+private aws.kms.key @defaults("id region aliases description") {
   // Unique identifier for the key
   id string
   // ARN of the key
