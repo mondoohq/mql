@@ -14,6 +14,8 @@ import (
 	"time"
 
 	abstractions "github.com/microsoft/kiota-abstractions-go"
+	"github.com/microsoft/kiota-abstractions-go/authentication"
+	msgraphsdkgo "github.com/microsoftgraph/msgraph-sdk-go"
 	msgraphgocore "github.com/microsoftgraph/msgraph-sdk-go-core"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/stretchr/testify/assert"
@@ -583,4 +585,22 @@ func TestBatchEachSettlesUnderRateLimit(t *testing.T) {
 	assert.Len(t, seen, len(keys))
 	resent := len(f.steps) - len(keys)
 	assert.LessOrEqualf(t, resent, 10*batchChunkSize, "%d sub-requests resent; throttling should only cost the occasional ramp-up probe", resent)
+}
+
+func TestBatchEndpointNamesTheCallWithoutIDs(t *testing.T) {
+	f := newFakeGraph(t, nil)
+	adapter, err := msgraphsdkgo.NewGraphRequestAdapter(&authentication.AnonymousAuthenticationProvider{})
+	require.NoError(t, err)
+	adapter.SetBaseUrl(f.srv.URL + "/beta")
+	client := msgraphsdkgo.NewGraphServiceClient(adapter)
+
+	reqInfo, err := client.Users().ByUserId("8a1c2d3e-0000-4000-8000-000000000001").Authentication().Methods().ToGetRequestInformation(context.Background(), nil)
+	require.NoError(t, err)
+	got := batchEndpoint(adapter, reqInfo)
+	assert.Equal(t, "beta/users/{user-id}/authentication/methods", got)
+	assert.NotContains(t, got, "8a1c2d3e")
+
+	reqInfo, err = f.client().Users().ByUserId("someone").Settings().ToGetRequestInformation(context.Background(), nil)
+	require.NoError(t, err)
+	assert.Equal(t, "v1.0/users/{user-id}/settings", batchEndpoint(f.client().GetAdapter(), reqInfo))
 }
