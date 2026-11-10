@@ -187,6 +187,9 @@ func batchEach[T serialization.Parsable](
 	var chunks, throttled, gaveUp, pauses, sendFailures int
 	var idle time.Duration
 	start := time.Now()
+	// endpoint names the call this fetch makes, for the log lines; it comes
+	// from the first request built, since every key runs the same call.
+	endpoint := ""
 
 	// nextChunk takes up to batchChunkSize keys that may be sent at now:
 	// resends whose wait is over first, then keys not sent yet.
@@ -215,6 +218,9 @@ func batchEach[T serialization.Parsable](
 				if buildErr != nil {
 					err = transformError(buildErr)
 					break
+				}
+				if endpoint == "" {
+					endpoint = batchEndpoint(adapter, reqInfo)
 				}
 				item, addErr := batch.AddBatchRequestStep(*reqInfo)
 				if addErr != nil {
@@ -273,7 +279,7 @@ func batchEach[T serialization.Parsable](
 				cancel()
 				continue
 			}
-			log.Warn().Err(res.err).Int("failures", sendFailures).Int("keys", len(res.idToKey)).
+			log.Warn().Err(res.err).Str("endpoint", endpoint).Int("failures", sendFailures).Int("keys", len(res.idToKey)).
 				Msg("ms365> batch call failed, sending its keys again")
 			for _, key := range res.idToKey {
 				heap.Push(retries, batchRetry{key: key, notBefore: now})
@@ -303,20 +309,20 @@ func batchEach[T serialization.Parsable](
 			pauses++
 		}
 		if chunks%batchProgressEvery == 0 {
-			log.Debug().Int("keys", len(keys)).Int("sent", next).Int("resends", retries.Len()).
+			log.Debug().Str("endpoint", endpoint).Int("keys", len(keys)).Int("sent", next).Int("resends", retries.Len()).
 				Int("throttled", throttled).Int("concurrency", pacer.limit).Dur("elapsed", time.Since(start)).
 				Msg("ms365> batch progress")
 		}
 	}
 
 	if err != nil {
-		log.Warn().Err(err).Int("keys", len(keys)).Int("sent", next).Int("resends", retries.Len()).
+		log.Warn().Err(err).Str("endpoint", endpoint).Int("keys", len(keys)).Int("sent", next).Int("resends", retries.Len()).
 			Int("chunks", chunks).Dur("elapsed", time.Since(start)).
 			Msg("ms365> batch fetch failed")
 	} else if throttled > 0 || pauses > 0 || chunks >= batchProgressEvery {
 		// Info, not Debug: this is the only record of how much a fetch lost to
 		// throttling, and hosted scans do not log at Debug.
-		log.Info().Int("keys", len(keys)).Int("chunks", chunks).Int("throttled", throttled).
+		log.Info().Str("endpoint", endpoint).Int("keys", len(keys)).Int("chunks", chunks).Int("throttled", throttled).
 			Int("gave_up", gaveUp).Int("pauses", pauses).Dur("idle", idle).Dur("elapsed", time.Since(start)).
 			Msg("ms365> batch done")
 	}
@@ -502,6 +508,22 @@ func handleBatchChunk[T serialization.Parsable](
 		}
 	}
 	return retry, retryAfter
+}
+
+// batchEndpoint names the Graph call a request makes, built from the API
+// version and the request's URL template, e.g.
+// "beta/users/{user-id}/authentication/requirements". The template holds
+// placeholders, never the ids filled into them, so the name is safe to log.
+func batchEndpoint(adapter abstractions.RequestAdapter, reqInfo *abstractions.RequestInformation) string {
+	t := strings.TrimPrefix(reqInfo.UrlTemplate, "{+baseurl}")
+	if i := strings.Index(t, "{?"); i >= 0 {
+		t = t[:i]
+	}
+	t = strings.ReplaceAll(t, "%2D", "-")
+	if base := strings.TrimRight(adapter.GetBaseUrl(), "/"); base != "" {
+		t = base[strings.LastIndex(base, "/")+1:] + t
+	}
+	return t
 }
 
 // batchStatusIsTransient reports whether a sub-request failed in a way that
