@@ -224,6 +224,10 @@ func (s *mqlFrrConfig) markParseErrors(err error) {
 	s.RouteMaps = arrVal
 	s.Blocks = arrVal
 	s.Directives = arrVal
+	s.StaticRoutes = arrVal
+	s.CommunityLists = arrVal
+	s.AccessLists = arrVal
+	s.AsPathAccessLists = arrVal
 }
 
 func (s *mqlFrrConfig) hostname(file *mqlFile) (string, error) {
@@ -308,8 +312,7 @@ func (s *mqlFrrConfig) bgp(file *mqlFile) ([]any, error) {
 		b := &instances[i]
 		// The id is built from what the instance is, not from where it
 		// sits, so reordering the blocks does not renumber the rest. An ASN
-		// and a VRF name identify an instance; FRR allows one instance per
-		// VRF, so an instance without a valid ASN is still told apart.
+		// and a VRF name identify an instance.
 		asn := ""
 		if b.ASN != nil {
 			asn = strconv.FormatInt(*b.ASN, 10)
@@ -553,7 +556,7 @@ func (s *mqlFrrConfig) routeMaps(file *mqlFile) ([]any, error) {
 		entries := make([]any, 0, len(rm.Entries))
 		for j := range rm.Entries {
 			e := &rm.Entries[j]
-			obj, err := CreateResource(s.MqlRuntime, "frr.config.routeMap.entry", map[string]*llx.RawData{
+			entryArgs := map[string]*llx.RawData{
 				"__id":      llx.StringData(id + "/" + strconv.FormatInt(e.Sequence, 10) + "/" + strconv.Itoa(j)),
 				"name":      llx.StringData(e.Name),
 				"action":    llx.StringData(e.Action),
@@ -565,7 +568,10 @@ func (s *mqlFrrConfig) routeMaps(file *mqlFile) ([]any, error) {
 				"file":      llx.StringData(e.File),
 				"startLine": llx.IntData(int64(e.StartLine)),
 				"raw":       llx.StringData(e.Raw),
-			})
+			}
+			routeMapClauseArgs(entryArgs, &e.Clauses)
+
+			obj, err := CreateResource(s.MqlRuntime, "frr.config.routeMap.entry", entryArgs)
 			if err != nil {
 				return nil, err
 			}
