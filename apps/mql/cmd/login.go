@@ -204,7 +204,7 @@ func register(token string, annotations map[string]string, updatesURL string, ti
 		log.Debug().Msg("store configuration")
 		// update configuration file, api-endpoint is set automatically
 		viper.Set("agent_mrn", confirmation.AgentMrn)
-		viper.Set("api_endpoint", confirmation.Credential.ApiEndpoint)
+		viper.Set("api_endpoint", storedApiEndpoint(apiEndpointOverride, confirmation.Credential.ApiEndpoint))
 		viper.Set("space_mrn", confirmation.Credential.GetParentMrn())
 		viper.Set("mrn", confirmation.Credential.Mrn)
 		viper.Set("private_key", confirmation.Credential.PrivateKey)
@@ -343,4 +343,14 @@ func registerAgent(ctx context.Context, client *upstream.AgentManagerClient, req
 			return confirmation, nil
 		}
 	}
+}
+
+// storedApiEndpoint picks the endpoint written to the config after registration.
+// A caller-supplied --api-endpoint wins: the server only knows its own public
+// URL, which hosts on an internal network may not be able to reach.
+func storedApiEndpoint(override, fromServer string) string {
+	if override != "" {
+		return override
+	}
+	return fromServer
 }

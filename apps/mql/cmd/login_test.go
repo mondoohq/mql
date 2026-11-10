@@ -13,6 +13,13 @@ import (
 	cli_errors "go.mondoo.com/mql/cli/errors"
 )
 
+func TestStoredApiEndpoint(t *testing.T) {
+	assert.Equal(t, "https://api.internal.example.com",
+		storedApiEndpoint("https://api.internal.example.com", "https://api.example.com"),
+		"--api-endpoint must survive registration")
+	assert.Equal(t, "https://api.example.com", storedApiEndpoint("", "https://api.example.com"))
+}
+
 func TestLoginCmd_ProvidersURLFlagRemoved(t *testing.T) {
 	// providers-url was deprecated in favor of updates-url and removed in v14.
 	// Guard against it being reintroduced.
