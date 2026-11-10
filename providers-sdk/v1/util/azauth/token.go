@@ -441,7 +441,7 @@ func GetTokenFromCredential(credential *vault.Credential, options *ChainedTokenO
 	chainOpts.Methods = chainOpts.Methods.Effective()
 	// fallback to default authorizer if no credentials are specified
 	if credential == nil {
-		log.Info().
+		log.Debug().
 			Str("methods", chainOpts.Methods.Names()).
 			Str("source", credentialSource(chainOpts.Source)).
 			Str("tenant-id", tenantId).
