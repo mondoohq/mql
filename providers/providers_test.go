@@ -680,6 +680,12 @@ func TestValidateProviderName(t *testing.T) {
 	for _, name := range []string{"os", "ms365", "google-workspace", "k8s", "bicep"} {
 		assert.NoError(t, validateProviderName(name), name)
 	}
+	// Every provider this build ships must stay installable: Install rejects
+	// any name the pattern does not match.
+	require.NotEmpty(t, DefaultProviders)
+	for _, provider := range DefaultProviders {
+		assert.NoError(t, validateProviderName(provider.Name), provider.Name)
+	}
 	// Synthetic: anything that would change the URL path or the install
 	// directory, or that no published provider is spelled like.
 	for _, name := range []string{"", "../os", "os/1", "os@1.2.3", "Os", "-os", "os-", "foo--bar", "os.json", "os bicep"} {
