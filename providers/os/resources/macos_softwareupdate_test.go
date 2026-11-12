@@ -4,18 +4,21 @@
 package resources
 
 import (
+	"bytes"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers/os/resources/plist"
 )
 
 // =============================================================================
-// parseSoftwareUpdateSettings — plist key mapping
+// parseSoftwareUpdatePrefs — plist key mapping
 // =============================================================================
 
-func TestParseSoftwareUpdateSettings_AllSet(t *testing.T) {
+func TestParseSoftwareUpdatePrefs_AllSet(t *testing.T) {
 	d := map[string]any{
 		"AutomaticCheckEnabled":            true,
 		"AutomaticDownload":                true,
@@ -24,32 +27,29 @@ func TestParseSoftwareUpdateSettings_AllSet(t *testing.T) {
 		"CriticalUpdateInstall":            true,
 		"LastSuccessfulDate":               "2024-08-12T14:23:00Z",
 	}
-	s := parseSoftwareUpdateSettings(d)
-	assert.True(t, s.autoCheckEnabled)
-	assert.True(t, s.autoDownloadEnabled)
-	assert.True(t, s.autoInstallMacOSUpdates)
-	assert.True(t, s.installSystemDataFiles)
-	assert.True(t, s.installSecurityResponses)
+	s := parseSoftwareUpdatePrefs(d)
+	assertSetting(t, true, s.autoCheckEnabled)
+	assertSetting(t, true, s.autoDownloadEnabled)
+	assertSetting(t, true, s.autoInstallMacOSUpdates)
+	assertSetting(t, true, s.installSystemDataFiles)
+	assertSetting(t, true, s.installSecurityResponses)
 	require.NotNil(t, s.lastSuccessfulCheck)
 	expected, _ := time.Parse(time.RFC3339, "2024-08-12T14:23:00Z")
 	assert.True(t, s.lastSuccessfulCheck.Equal(expected))
 }
 
-func TestParseSoftwareUpdateSettings_AllUnset(t *testing.T) {
-	// Empty plist means no policy has ever been written. All boolean
-	// fields read false — auditors should fail soft for un-policied devices.
-	s := parseSoftwareUpdateSettings(map[string]any{})
-	assert.False(t, s.autoCheckEnabled)
-	assert.False(t, s.autoDownloadEnabled)
-	assert.False(t, s.autoInstallMacOSUpdates)
-	assert.False(t, s.installSystemDataFiles)
-	assert.False(t, s.installSecurityResponses)
-	assert.Nil(t, s.lastSuccessfulCheck, "missing LastSuccessfulDate stays nil")
+func TestParseSoftwareUpdatePrefs_AllUnset(t *testing.T) {
+	// An absent key is unset, not false, so a lower-precedence source can answer.
+	for name, d := range map[string]map[string]any{"empty": {}, "nil": nil} {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, softwareupdateSettings{}, parseSoftwareUpdatePrefs(d))
+		})
+	}
 }
 
-func TestParseSoftwareUpdateSettings_MixedBoolEncodings(t *testing.T) {
+func TestParseSoftwareUpdatePrefs_MixedBoolEncodings(t *testing.T) {
 	// `defaults write -int 1` and MDM-managed prefs both end up as
-	// non-bool encodings. boolFromPlist normalizes all of them.
+	// non-bool encodings. optBoolFromPlist normalizes all of them.
 	d := map[string]any{
 		"AutomaticCheckEnabled":            float64(1),
 		"AutomaticDownload":                int64(0),
@@ -57,19 +57,154 @@ func TestParseSoftwareUpdateSettings_MixedBoolEncodings(t *testing.T) {
 		"ConfigDataInstall":                "1",
 		"CriticalUpdateInstall":            "false",
 	}
-	s := parseSoftwareUpdateSettings(d)
-	assert.True(t, s.autoCheckEnabled, "float64(1) is truthy")
-	assert.False(t, s.autoDownloadEnabled, "int64(0) is falsy")
-	assert.True(t, s.autoInstallMacOSUpdates, `"true" is truthy`)
-	assert.True(t, s.installSystemDataFiles, `"1" is truthy`)
-	assert.False(t, s.installSecurityResponses, `"false" is falsy`)
+	s := parseSoftwareUpdatePrefs(d)
+	assertSetting(t, true, s.autoCheckEnabled, "float64(1) is truthy")
+	assertSetting(t, false, s.autoDownloadEnabled, "int64(0) is falsy")
+	assertSetting(t, true, s.autoInstallMacOSUpdates, `"true" is truthy`)
+	assertSetting(t, true, s.installSystemDataFiles, `"1" is truthy`)
+	assertSetting(t, false, s.installSecurityResponses, `"false" is falsy`)
 }
 
 // =============================================================================
-// boolFromPlist / timeFromPlist
+// parseSoftwareUpdateDDMState — persisted DDM declaration
 // =============================================================================
 
-func TestBoolFromPlist(t *testing.T) {
+func decodeSoftwareUpdateFixture(t *testing.T, name string) map[string]any {
+	t.Helper()
+	raw, err := os.ReadFile("testdata/macos-softwareupdate/" + name)
+	require.NoError(t, err)
+	d, err := plist.Decode(bytes.NewReader(raw))
+	require.NoError(t, err)
+	return d
+}
+
+// The fixtures are binary plists in the shape macOS writes to
+// /private/var/db/softwareupdate/SoftwareUpdateDDMStatePersistence.plist,
+// rebuilt with a placeholder declaration identifier.
+func TestParseSoftwareUpdateDDMState(t *testing.T) {
+	// Measured: macOS 26.7.3 (25G342) with a software update settings
+	// declaration forcing automatic download on, 2026-11-12. The key path and
+	// the integer 1 were read with `plutil -p`.
+	t.Run("AlwaysOn download, install keys Allowed", func(t *testing.T) {
+		s := parseSoftwareUpdateDDMState(decodeSoftwareUpdateFixture(t, "ddm-state-always-on.plist"))
+		assertSetting(t, true, s.autoDownloadEnabled)
+		assert.Nil(t, s.autoInstallMacOSUpdates, "Allowed leaves the key unset")
+		assert.Nil(t, s.installSystemDataFiles)
+		assert.Nil(t, s.installSecurityResponses)
+		assert.Nil(t, s.autoCheckEnabled, "the declaration has no check setting")
+		assert.Nil(t, s.lastSuccessfulCheck)
+	})
+
+	// Synthetic: every setting forced off, stored as 0, and the two install
+	// key names; no target showed this.
+	t.Run("AlwaysOff", func(t *testing.T) {
+		s := parseSoftwareUpdateDDMState(decodeSoftwareUpdateFixture(t, "ddm-state-always-off.plist"))
+		assertSetting(t, false, s.autoDownloadEnabled)
+		assertSetting(t, false, s.autoInstallMacOSUpdates)
+		assertSetting(t, false, s.installSystemDataFiles, "InstallSecurityUpdate covers system data files")
+		assertSetting(t, false, s.installSecurityResponses, "InstallSecurityUpdate covers Security Responses")
+	})
+
+	// Synthetic: a declaration that leaves every setting to the user, stored
+	// as absent keys; no target showed this.
+	t.Run("all Allowed", func(t *testing.T) {
+		s := parseSoftwareUpdateDDMState(decodeSoftwareUpdateFixture(t, "ddm-state-allowed.plist"))
+		assert.Equal(t, softwareupdateSettings{}, s)
+	})
+}
+
+// Synthetic: shapes the undocumented file could take; no target showed these.
+func TestParseSoftwareUpdateDDMState_UnexpectedShapes(t *testing.T) {
+	for name, d := range map[string]map[string]any{
+		"nil":                nil,
+		"empty":              {},
+		"no policy fields":   {"SUCorePersistedStateCoreVersion": "2.1.0"},
+		"policy not a dict":  {"SUCorePersistedStatePolicyFields": "x"},
+		"no global settings": {"SUCorePersistedStatePolicyFields": map[string]any{}},
+		"unknown enum value": {"SUCorePersistedStatePolicyFields": map[string]any{
+			"SUCoreDDMDeclarationGlobalSettings": map[string]any{"automaticallyDownload": float64(2)},
+		}},
+		"string value": {"SUCorePersistedStatePolicyFields": map[string]any{
+			"SUCoreDDMDeclarationGlobalSettings": map[string]any{"automaticallyDownload": "AlwaysOn"},
+		}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, softwareupdateSettings{}, parseSoftwareUpdateDDMState(d))
+		})
+	}
+}
+
+// =============================================================================
+// mergeSoftwareUpdateSettings — per-key precedence
+// =============================================================================
+
+// Synthetic: the preference values are invented to exercise precedence. Only
+// the always-on DDM fixture is measured.
+func TestMergeSoftwareUpdateSettings(t *testing.T) {
+	lastCheck := time.Date(2026, 11, 10, 14, 17, 58, 0, time.UTC)
+	localPrefs := map[string]any{
+		"AutomaticDownload":     false,
+		"CriticalUpdateInstall": true,
+		"LastSuccessfulDate":    lastCheck.Format(time.RFC3339),
+	}
+
+	t.Run("DDM declaration with no preference keys", func(t *testing.T) {
+		ddm := decodeSoftwareUpdateFixture(t, "ddm-state-always-on.plist")
+		s := mergeSoftwareUpdateSettings(
+			parseSoftwareUpdateDDMState(ddm),
+			parseSoftwareUpdatePrefs(nil),
+			parseSoftwareUpdatePrefs(map[string]any{"LastSessionSuccessful": true}),
+		)
+		assertSetting(t, true, s.autoDownloadEnabled)
+	})
+
+	t.Run("DDM declaration overrides managed and local preferences", func(t *testing.T) {
+		ddm := decodeSoftwareUpdateFixture(t, "ddm-state-always-off.plist")
+		s := mergeSoftwareUpdateSettings(
+			parseSoftwareUpdateDDMState(ddm),
+			parseSoftwareUpdatePrefs(map[string]any{"AutomaticDownload": true}),
+			parseSoftwareUpdatePrefs(localPrefs),
+		)
+		assertSetting(t, false, s.autoDownloadEnabled)
+		assertSetting(t, false, s.installSecurityResponses)
+	})
+
+	t.Run("partial profile leaves other keys to local preferences", func(t *testing.T) {
+		s := mergeSoftwareUpdateSettings(
+			parseSoftwareUpdateDDMState(nil),
+			parseSoftwareUpdatePrefs(map[string]any{"AutomaticCheckEnabled": true}),
+			parseSoftwareUpdatePrefs(localPrefs),
+		)
+		assertSetting(t, true, s.autoCheckEnabled)
+		assertSetting(t, false, s.autoDownloadEnabled, "local preference is not hidden by the profile")
+		assertSetting(t, true, s.installSecurityResponses)
+		require.NotNil(t, s.lastSuccessfulCheck, "LastSuccessfulDate is only ever in local preferences")
+		assert.True(t, s.lastSuccessfulCheck.Equal(lastCheck))
+	})
+
+	t.Run("managed profile overrides local preferences", func(t *testing.T) {
+		s := mergeSoftwareUpdateSettings(
+			parseSoftwareUpdatePrefs(map[string]any{"AutomaticDownload": true}),
+			parseSoftwareUpdatePrefs(localPrefs),
+		)
+		assertSetting(t, true, s.autoDownloadEnabled)
+	})
+
+	t.Run("nothing set", func(t *testing.T) {
+		s := mergeSoftwareUpdateSettings(
+			parseSoftwareUpdateDDMState(nil),
+			parseSoftwareUpdatePrefs(nil),
+			parseSoftwareUpdatePrefs(nil),
+		)
+		assert.Equal(t, softwareupdateSettings{}, s)
+	})
+}
+
+// =============================================================================
+// optBoolFromPlist / ddmSettingFromPlist / timeFromPlist
+// =============================================================================
+
+func TestOptBoolFromPlist(t *testing.T) {
 	d := map[string]any{
 		"realBool":  true,
 		"falseBool": false,
@@ -81,20 +216,49 @@ func TestBoolFromPlist(t *testing.T) {
 		"strTRUE":   "TRUE",
 		"strFalse":  "false",
 		"str1":      "1",
+		"str0":      "0",
+		"strJunk":   "maybe",
 		"junk":      []string{"not", "a", "bool"},
+		"nil":       nil,
 	}
-	assert.True(t, boolFromPlist(d, "realBool"))
-	assert.False(t, boolFromPlist(d, "falseBool"))
-	assert.True(t, boolFromPlist(d, "float1"))
-	assert.False(t, boolFromPlist(d, "float0"))
-	assert.True(t, boolFromPlist(d, "intTrue"))
-	assert.False(t, boolFromPlist(d, "intFalse"))
-	assert.True(t, boolFromPlist(d, "strTrue"))
-	assert.True(t, boolFromPlist(d, "strTRUE"), "case-insensitive string match")
-	assert.False(t, boolFromPlist(d, "strFalse"))
-	assert.True(t, boolFromPlist(d, "str1"))
-	assert.False(t, boolFromPlist(d, "junk"), "unknown shape is false, not panic")
-	assert.False(t, boolFromPlist(d, "missing"), "absent key is false")
+	assertSetting(t, true, optBoolFromPlist(d, "realBool"))
+	assertSetting(t, false, optBoolFromPlist(d, "falseBool"), "an explicit false is a value")
+	assertSetting(t, true, optBoolFromPlist(d, "float1"))
+	assertSetting(t, false, optBoolFromPlist(d, "float0"))
+	assertSetting(t, true, optBoolFromPlist(d, "intTrue"))
+	assertSetting(t, false, optBoolFromPlist(d, "intFalse"))
+	assertSetting(t, true, optBoolFromPlist(d, "strTrue"))
+	assertSetting(t, true, optBoolFromPlist(d, "strTRUE"), "case-insensitive string match")
+	assertSetting(t, false, optBoolFromPlist(d, "strFalse"))
+	assertSetting(t, true, optBoolFromPlist(d, "str1"))
+	assertSetting(t, false, optBoolFromPlist(d, "str0"))
+	assert.Nil(t, optBoolFromPlist(d, "strJunk"), "unrecognised string is unset")
+	assert.Nil(t, optBoolFromPlist(d, "junk"), "unknown shape is unset, not false")
+	assert.Nil(t, optBoolFromPlist(d, "nil"), "nil value is unset")
+	assert.Nil(t, optBoolFromPlist(d, "missing"), "absent key is unset")
+}
+
+func TestDDMSettingFromPlist(t *testing.T) {
+	d := map[string]any{
+		"alwaysOn":  float64(1),
+		"alwaysOff": float64(0),
+		"unknown":   float64(2),
+		"bool":      true,
+		"string":    "AlwaysOn",
+	}
+	assertSetting(t, true, ddmSettingFromPlist(d, "alwaysOn"))
+	assertSetting(t, false, ddmSettingFromPlist(d, "alwaysOff"))
+	assert.Nil(t, ddmSettingFromPlist(d, "unknown"), "an enum value macOS does not write is not guessed at")
+	assertSetting(t, true, ddmSettingFromPlist(d, "bool"))
+	assert.Nil(t, ddmSettingFromPlist(d, "string"))
+	assert.Nil(t, ddmSettingFromPlist(d, "missing"), "Allowed is stored as an absent key")
+}
+
+func assertSetting(t *testing.T, want bool, got *bool, msgAndArgs ...any) {
+	t.Helper()
+	if assert.NotNil(t, got, msgAndArgs...) {
+		assert.Equal(t, want, *got, msgAndArgs...)
+	}
 }
 
 func TestTimeFromPlist(t *testing.T) {
@@ -270,21 +434,6 @@ func TestStripPrefix(t *testing.T) {
 	rest, ok = stripPrefix("", "* Label:")
 	assert.False(t, ok)
 	assert.Equal(t, "", rest)
-}
-
-// AutomaticCheckEnabled is only written once someone changes the setting.
-// Its absence is not "off" -- automatic checking is on by default -- so the
-// key's presence has to be distinguished from its value.
-func TestKeyPresentInPlist(t *testing.T) {
-	d := map[string]any{
-		"AutomaticDownload": float64(1),
-		"ExplicitFalse":     false,
-		"ExplicitNil":       nil,
-	}
-	assert.True(t, keyPresentInPlist(d, "AutomaticDownload"))
-	assert.True(t, keyPresentInPlist(d, "ExplicitFalse"), "an explicit false is still a written key")
-	assert.False(t, keyPresentInPlist(d, "ExplicitNil"))
-	assert.False(t, keyPresentInPlist(d, "AutomaticCheckEnabled"))
 }
 
 func TestParseSoftwareUpdateSchedule(t *testing.T) {

@@ -5,6 +5,7 @@ package resources
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"strconv"
 	"strings"
@@ -17,14 +18,23 @@ import (
 	"go.mondoo.com/mql/providers/os/resources/plist"
 )
 
-// /Library/Managed Preferences/ takes precedence over /Library/Preferences/
-// — the former is populated by an MDM Configuration Profile and reflects
-// effective policy, the latter is the system-default location written by
-// `softwareupdate --schedule on` and friends.
-var softwareUpdatePlistPaths = []string{
-	"/Library/Managed Preferences/com.apple.SoftwareUpdate.plist",
-	"/Library/Preferences/com.apple.SoftwareUpdate.plist",
-}
+// Software Update settings come from three places, highest precedence first:
+//
+//  1. A Declarative Device Management `com.apple.configuration.softwareupdate.settings`
+//     declaration. macOS persists the resolved declaration in
+//     softwareUpdateDDMStatePath; it is not written to either preferences plist.
+//  2. A legacy `com.apple.SoftwareUpdate` configuration profile, which macOS
+//     writes to /Library/Managed Preferences/.
+//  3. The local preference in /Library/Preferences/, written by System Settings
+//     and `defaults write`.
+//
+// Precedence is resolved per key: a profile that sets only AutomaticCheckEnabled
+// leaves every other key to the local preference.
+const (
+	softwareUpdateDDMStatePath     = "/private/var/db/softwareupdate/SoftwareUpdateDDMStatePersistence.plist"
+	softwareUpdateManagedPlistPath = "/Library/Managed Preferences/com.apple.SoftwareUpdate.plist"
+	softwareUpdatePrefsPlistPath   = "/Library/Preferences/com.apple.SoftwareUpdate.plist"
+)
 
 type mqlMacosSoftwareupdateInternal struct {
 	settingsLock    sync.Mutex
@@ -32,13 +42,15 @@ type mqlMacosSoftwareupdateInternal struct {
 	settings        softwareupdateSettings
 }
 
+// softwareupdateSettings holds what the configuration sources say. A nil field
+// means no source set that key, which lets a lower-precedence source or, for
+// autoCheckEnabled, the live schedule answer instead.
 type softwareupdateSettings struct {
-	autoCheckEnabled         bool
-	autoCheckKeyPresent      bool
-	autoDownloadEnabled      bool
-	autoInstallMacOSUpdates  bool
-	installSystemDataFiles   bool
-	installSecurityResponses bool
+	autoCheckEnabled         *bool
+	autoDownloadEnabled      *bool
+	autoInstallMacOSUpdates  *bool
+	installSystemDataFiles   *bool
+	installSecurityResponses *bool
 	lastSuccessfulCheck      *time.Time
 }
 
@@ -46,12 +58,8 @@ func (s *mqlMacosSoftwareupdate) id() (string, error) {
 	return "macos.softwareupdate", nil
 }
 
-// fetchSettings reads the SoftwareUpdate preferences plist and caches
-// the parsed settings on the resource. Missing files (Mac on which no
-// SoftwareUpdate preference has ever been set, or a non-Darwin host)
-// leave the settings struct at its zero value — every accessor will
-// then read `false`/`nil`, which is what an auditor wants for an
-// un-policied device.
+// fetchSettings reads every Software Update configuration source once and
+// caches the merged result on the resource.
 func (s *mqlMacosSoftwareupdate) fetchSettings() (softwareupdateSettings, error) {
 	if s.settingsFetched {
 		return s.settings, nil
@@ -62,60 +70,112 @@ func (s *mqlMacosSoftwareupdate) fetchSettings() (softwareupdateSettings, error)
 		return s.settings, nil
 	}
 
-	parsed, err := s.readSoftwareUpdatePlist()
+	ddm, err := s.readPlist(softwareUpdateDDMStatePath)
 	if err != nil {
 		return softwareupdateSettings{}, err
 	}
-	s.settings = parsed
+	managed, err := s.readPlist(softwareUpdateManagedPlistPath)
+	if err != nil {
+		return softwareupdateSettings{}, err
+	}
+	prefs, err := s.readPlist(softwareUpdatePrefsPlistPath)
+	if err != nil {
+		return softwareupdateSettings{}, err
+	}
+
+	s.settings = mergeSoftwareUpdateSettings(
+		parseSoftwareUpdateDDMState(ddm),
+		parseSoftwareUpdatePrefs(managed),
+		parseSoftwareUpdatePrefs(prefs),
+	)
 	s.settingsFetched = true
 	return s.settings, nil
 }
 
-func (s *mqlMacosSoftwareupdate) readSoftwareUpdatePlist() (softwareupdateSettings, error) {
-	for _, path := range softwareUpdatePlistPaths {
-		res, err := NewResource(s.MqlRuntime, "file", map[string]*llx.RawData{
-			"path": llx.StringData(path),
-		})
-		if err != nil {
-			return softwareupdateSettings{}, err
-		}
-		f := res.(*mqlFile)
-		if exists := f.GetExists(); !exists.Data {
-			continue
-		}
-		content := f.GetContent()
-		if content.Error != nil {
-			return softwareupdateSettings{}, content.Error
-		}
-		if content.Data == "" {
-			continue
-		}
-		data, err := plist.Decode(bytes.NewReader([]byte(content.Data)))
-		if err != nil {
-			// If the managed prefs file is malformed for some reason,
-			// don't give up — fall through to the system prefs file.
-			continue
-		}
-		return parseSoftwareUpdateSettings(data), nil
+// readPlist decodes a plist file. A missing, empty or malformed file returns a
+// nil map, so that source contributes nothing and the next one is consulted.
+func (s *mqlMacosSoftwareupdate) readPlist(path string) (map[string]any, error) {
+	res, err := NewResource(s.MqlRuntime, "file", map[string]*llx.RawData{
+		"path": llx.StringData(path),
+	})
+	if err != nil {
+		return nil, err
 	}
-	// Neither file exists — return zero-valued settings.
-	return softwareupdateSettings{}, nil
+	f := res.(*mqlFile)
+	if exists := f.GetExists(); !exists.Data {
+		return nil, nil
+	}
+	content := f.GetContent()
+	if content.Error != nil {
+		return nil, content.Error
+	}
+	if content.Data == "" {
+		return nil, nil
+	}
+	data, err := plist.Decode(bytes.NewReader([]byte(content.Data)))
+	if err != nil {
+		log.Debug().Err(err).Str("path", path).Msg("macos.softwareupdate: cannot decode plist, ignoring it")
+		return nil, nil
+	}
+	return data, nil
 }
 
-// parseSoftwareUpdateSettings extracts the well-known keys from a
-// decoded SoftwareUpdate plist. Through the plist.Decode helper,
-// boolean keys come back as Go bools and dates round-trip through
-// JSON as RFC3339 strings, so the conversions here are straightforward.
-func parseSoftwareUpdateSettings(d map[string]any) softwareupdateSettings {
+// parseSoftwareUpdatePrefs reads the keys of a `com.apple.SoftwareUpdate`
+// preferences plist, managed or local.
+func parseSoftwareUpdatePrefs(d map[string]any) softwareupdateSettings {
 	return softwareupdateSettings{
-		autoCheckEnabled:         boolFromPlist(d, "AutomaticCheckEnabled"),
-		autoCheckKeyPresent:      keyPresentInPlist(d, "AutomaticCheckEnabled"),
-		autoDownloadEnabled:      boolFromPlist(d, "AutomaticDownload"),
-		autoInstallMacOSUpdates:  boolFromPlist(d, "AutomaticallyInstallMacOSUpdates"),
-		installSystemDataFiles:   boolFromPlist(d, "ConfigDataInstall"),
-		installSecurityResponses: boolFromPlist(d, "CriticalUpdateInstall"),
+		autoCheckEnabled:         optBoolFromPlist(d, "AutomaticCheckEnabled"),
+		autoDownloadEnabled:      optBoolFromPlist(d, "AutomaticDownload"),
+		autoInstallMacOSUpdates:  optBoolFromPlist(d, "AutomaticallyInstallMacOSUpdates"),
+		installSystemDataFiles:   optBoolFromPlist(d, "ConfigDataInstall"),
+		installSecurityResponses: optBoolFromPlist(d, "CriticalUpdateInstall"),
 		lastSuccessfulCheck:      timeFromPlist(d, "LastSuccessfulDate"),
 	}
+}
+
+// parseSoftwareUpdateDDMState reads the software update settings declaration
+// from the persisted DDM state, found under
+// SUCorePersistedStatePolicyFields.SUCoreDDMDeclarationGlobalSettings.
+//
+// The declaration's Automatic.Download, Automatic.InstallOSUpdates and
+// Automatic.InstallSecurityUpdate take the values Allowed, AlwaysOn and
+// AlwaysOff. macOS stores AlwaysOn as 1 and AlwaysOff as 0, and stores nothing
+// for Allowed, which leaves the choice to the user and so to the lower sources.
+//
+// InstallSecurityUpdate covers both Security Responses and system data files,
+// the two settings the legacy plist splits into CriticalUpdateInstall and
+// ConfigDataInstall.
+//
+// The file format is not documented by Apple. Anything other than the expected
+// shape contributes nothing rather than a value.
+func parseSoftwareUpdateDDMState(d map[string]any) softwareupdateSettings {
+	policy, _ := d["SUCorePersistedStatePolicyFields"].(map[string]any)
+	global, _ := policy["SUCoreDDMDeclarationGlobalSettings"].(map[string]any)
+	if global == nil {
+		return softwareupdateSettings{}
+	}
+	installSecurity := ddmSettingFromPlist(global, "automaticallyInstallSystemAndSecurityUpdates")
+	return softwareupdateSettings{
+		autoDownloadEnabled:      ddmSettingFromPlist(global, "automaticallyDownload"),
+		autoInstallMacOSUpdates:  ddmSettingFromPlist(global, "automaticallyInstallOSUpdates"),
+		installSystemDataFiles:   installSecurity,
+		installSecurityResponses: installSecurity,
+	}
+}
+
+// mergeSoftwareUpdateSettings resolves each key to the first source, in the
+// order given, that sets it.
+func mergeSoftwareUpdateSettings(sources ...softwareupdateSettings) softwareupdateSettings {
+	var out softwareupdateSettings
+	for _, src := range sources {
+		out.autoCheckEnabled = cmp.Or(out.autoCheckEnabled, src.autoCheckEnabled)
+		out.autoDownloadEnabled = cmp.Or(out.autoDownloadEnabled, src.autoDownloadEnabled)
+		out.autoInstallMacOSUpdates = cmp.Or(out.autoInstallMacOSUpdates, src.autoInstallMacOSUpdates)
+		out.installSystemDataFiles = cmp.Or(out.installSystemDataFiles, src.installSystemDataFiles)
+		out.installSecurityResponses = cmp.Or(out.installSecurityResponses, src.installSecurityResponses)
+		out.lastSuccessfulCheck = cmp.Or(out.lastSuccessfulCheck, src.lastSuccessfulCheck)
+	}
+	return out
 }
 
 // autoCheckEnabled reports whether macOS checks for updates on its own.
@@ -130,8 +190,8 @@ func (s *mqlMacosSoftwareupdate) autoCheckEnabled() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if v.autoCheckKeyPresent {
-		return v.autoCheckEnabled, nil
+	if v.autoCheckEnabled != nil {
+		return *v.autoCheckEnabled, nil
 	}
 	return s.scheduleEnabled()
 }
@@ -177,24 +237,26 @@ func parseSoftwareUpdateSchedule(stdout string) (bool, bool) {
 	return false, false
 }
 
+// A key no source sets reads false in the accessors below.
+
 func (s *mqlMacosSoftwareupdate) autoDownloadEnabled() (bool, error) {
 	v, err := s.fetchSettings()
-	return v.autoDownloadEnabled, err
+	return v.autoDownloadEnabled != nil && *v.autoDownloadEnabled, err
 }
 
 func (s *mqlMacosSoftwareupdate) autoInstallMacOSUpdates() (bool, error) {
 	v, err := s.fetchSettings()
-	return v.autoInstallMacOSUpdates, err
+	return v.autoInstallMacOSUpdates != nil && *v.autoInstallMacOSUpdates, err
 }
 
 func (s *mqlMacosSoftwareupdate) installSystemDataFiles() (bool, error) {
 	v, err := s.fetchSettings()
-	return v.installSystemDataFiles, err
+	return v.installSystemDataFiles != nil && *v.installSystemDataFiles, err
 }
 
 func (s *mqlMacosSoftwareupdate) installSecurityResponses() (bool, error) {
 	v, err := s.fetchSettings()
-	return v.installSecurityResponses, err
+	return v.installSecurityResponses != nil && *v.installSecurityResponses, err
 }
 
 func (s *mqlMacosSoftwareupdate) lastSuccessfulCheck() (*time.Time, error) {
@@ -427,43 +489,57 @@ func parseSoftwareUpdateSize(raw string) int64 {
 // shared plist helpers
 // =============================================================================
 
-// keyPresentInPlist reports whether the key carries a value the caller can
-// read. A missing key is not the same as a false one: several SoftwareUpdate
-// preferences default to on and are only written once someone changes them, so
-// the caller has to tell "nobody set this" apart from "somebody set it off".
+// optBoolFromPlist coerces a plist key to a bool, or nil when the key is absent
+// or holds something that is not a boolean. A missing key is not the same as a
+// false one: several SoftwareUpdate preferences default to on and are only
+// written once someone changes them, so "nobody set this" must stay
+// distinguishable from "somebody set it off".
 //
-// A key present with a nil value counts as absent, because it answers the
-// question no better than a missing key does: boolFromPlist has no case for
-// nil and would hand back false, which is the wrong-by-default reading this
-// helper exists to prevent. Reporting it as absent routes the caller to the
-// live `softwareupdate --schedule` lookup instead. Note this is about a nil
-// decoded value, not a written `<false/>`, which is a real answer and is
-// reported as present.
-func keyPresentInPlist(d map[string]any, key string) bool {
-	v, ok := d[key]
-	return ok && v != nil
-}
-
-// boolFromPlist coerces a plist key to bool. Through the plist.Decode
-// helper, real plist booleans arrive as `bool`; integer 0/1 fallbacks
-// (used historically by `defaults write -int`) arrive as `float64`
-// after the helper's JSON round-trip. Both shapes count.
-func boolFromPlist(d map[string]any, key string) bool {
+// Through plist.Decode, plist booleans arrive as `bool` and integers written
+// with `defaults write -int` arrive as `float64` after its JSON round-trip.
+// MDM-managed preferences sometimes encode booleans as "true"/"false" strings.
+func optBoolFromPlist(d map[string]any, key string) *bool {
+	var b bool
 	switch v := d[key].(type) {
 	case bool:
-		return v
+		b = v
 	case float64:
-		return v != 0
+		b = v != 0
 	case int64:
-		return v != 0
+		b = v != 0
 	case int:
-		return v != 0
+		b = v != 0
 	case string:
-		// MDM-managed preferences sometimes encode booleans as
-		// "true"/"false" strings. Be tolerant.
-		return strings.EqualFold(v, "true") || v == "1"
+		switch {
+		case strings.EqualFold(v, "true"), v == "1":
+			b = true
+		case strings.EqualFold(v, "false"), v == "0":
+			b = false
+		default:
+			return nil
+		}
+	default:
+		return nil
 	}
-	return false
+	return &b
+}
+
+// ddmSettingFromPlist reads one persisted DDM AlwaysOn (1) / AlwaysOff (0)
+// setting. Any other value is reported as unset rather than guessed at.
+func ddmSettingFromPlist(d map[string]any, key string) *bool {
+	var b bool
+	switch v := d[key].(type) {
+	case float64:
+		if v != 0 && v != 1 {
+			return nil
+		}
+		b = v == 1
+	case bool:
+		b = v
+	default:
+		return nil
+	}
+	return &b
 }
 
 // timeFromPlist parses an RFC3339 timestamp from a plist key. Plist
