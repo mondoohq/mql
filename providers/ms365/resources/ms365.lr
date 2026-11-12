@@ -2355,7 +2355,7 @@ private microsoft.auditLogs.provisioningEvent @defaults("activityDateTime provis
 }
 
 // Microsoft Entra authentication methods
-private microsoft.user.authenticationMethods @defaults("count") {
+private microsoft.user.authenticationMethods {
     // Count of authentication methods
     count() int
     // Phone numbers registered to the user
