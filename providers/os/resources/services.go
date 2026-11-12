@@ -4,9 +4,9 @@
 package resources
 
 import (
-	"errors"
 	"sync"
 
+	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -51,6 +51,12 @@ func initService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[str
 		return nil, nil, errors.New("cannot find service manager")
 	}
 
+	// Windows has no per-service lookup: Get enumerates every service, so
+	// resolve through the services list the runtime already caches.
+	if _, ok := osm.(*services.WindowsServiceManager); ok {
+		return initServiceFromList(runtime, lookupName)
+	}
+
 	svc, err := osm.Get(name)
 	if err != nil {
 		if errors.Is(err, services.ErrServiceNotFound) {
@@ -65,6 +71,28 @@ func initService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[str
 	}
 
 	return nil, res, nil
+}
+
+// servicesCreateLock makes concurrent lookups share one services resource:
+// CreateResource checks and stores in two steps, so parallel callers could
+// each build, and each enumerate, their own.
+var servicesCreateLock sync.Mutex
+
+func initServiceFromList(runtime *plugin.Runtime, lookupName string) (map[string]*llx.RawData, plugin.Resource, error) {
+	servicesCreateLock.Lock()
+	obj, err := CreateResource(runtime, "services", nil)
+	servicesCreateLock.Unlock()
+	if err != nil {
+		return nil, nil, err
+	}
+	svc, err := obj.(*mqlServices).byName(lookupName)
+	if err != nil {
+		return nil, nil, err
+	}
+	if svc == nil {
+		return nil, missingServiceResource(runtime, lookupName), nil
+	}
+	return nil, svc, nil
 }
 
 func createServiceResource(runtime *plugin.Runtime, service *services.Service) (plugin.Resource, error) {
@@ -101,6 +129,33 @@ func (x *mqlService) id() (string, error) {
 type mqlServicesInternal struct {
 	lock          sync.Mutex
 	namedServices map[string]*mqlService
+	// lookupLock serializes byName, which cannot hold lock across GetList
+	// because list takes lock itself.
+	lookupLock sync.Mutex
+}
+
+// byName returns the listed service with that name, nil when there is none.
+func (x *mqlServices) byName(name string) (*mqlService, error) {
+	x.lookupLock.Lock()
+	defer x.lookupLock.Unlock()
+
+	list := x.GetList()
+	if list.Error != nil {
+		return nil, list.Error
+	}
+
+	x.lock.Lock()
+	defer x.lock.Unlock()
+	// A list replayed from a recording never ran list, so nothing indexed it.
+	if x.namedServices == nil {
+		x.namedServices = make(map[string]*mqlService, len(list.Data))
+		for i := range list.Data {
+			if svc, ok := list.Data[i].(*mqlService); ok {
+				x.namedServices[svc.Name.Data] = svc
+			}
+		}
+	}
+	return x.namedServices[name], nil
 }
 
 func (x *mqlServices) list() ([]any, error) {
@@ -121,7 +176,7 @@ func (x *mqlServices) list() ([]any, error) {
 	services, err := osm.List()
 	if err != nil {
 		log.Debug().Err(err).Msg("mql[services]> could not retrieve service list")
-		return nil, errors.New("could not retrieve service list")
+		return nil, errors.Wrap(err, "could not retrieve service list")
 	}
 	log.Debug().Int("services", len(services)).Msg("mql[services]> running services")
 
