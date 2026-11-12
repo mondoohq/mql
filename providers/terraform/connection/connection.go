@@ -4,6 +4,8 @@
 package connection
 
 import (
+	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/hashicorp/hcl/v2"
@@ -66,6 +68,31 @@ func (c *Connection) Features() []byte {
 // connection reads a path the user gave.
 func (c *Connection) CloneRoot() string {
 	return c.cloneRoot
+}
+
+// RepositoryPath is path as a user sees it in the repository a git connection
+// cloned: relative to the clone, with forward slashes. The clone is a new
+// temporary directory on every scan, so this is the path a user can open, and
+// the same one on the next scan. A path outside the clone, and every path of a
+// connection that reads a path the user gave, is returned as given.
+func (c *Connection) RepositoryPath(path string) string {
+	if c.cloneRoot == "" {
+		return path
+	}
+	rel, err := filepath.Rel(c.cloneRoot, path)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return path
+	}
+	return filepath.ToSlash(rel)
+}
+
+// SourcePath is the file on disk that a RepositoryPath names: inside the clone
+// for a git connection's repository path, as given otherwise.
+func (c *Connection) SourcePath(path string) string {
+	if c.cloneRoot == "" || filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(c.cloneRoot, filepath.FromSlash(path))
 }
 
 func (c *Connection) Close() {

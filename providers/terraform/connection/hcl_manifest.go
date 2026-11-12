@@ -208,5 +208,24 @@ func NewHclGitConnection(id uint32, asset *inventory.Asset) (*Connection, error)
 	}
 	conn.closer = closer
 	conn.cloneRoot = path
+	labelGitURL(asset)
 	return conn, nil
+}
+
+// labelGitURL puts the repository a git connection cloned on the asset, as
+// the git-http-url label, without a ".git" suffix: the Kubernetes manifest
+// connection labels its assets the same way, so a Terraform file found in a
+// repository can be linked back to it.
+func labelGitURL(asset *inventory.Asset) {
+	if len(asset.Connections) == 0 {
+		return
+	}
+	gitURL := asset.Connections[0].Options[plugin.GitUrlOptionKey]
+	if gitURL == "" {
+		return
+	}
+	if asset.Labels == nil {
+		asset.Labels = map[string]string{}
+	}
+	asset.Labels[plugin.GitUrlOptionKey] = strings.TrimSuffix(gitURL, ".git")
 }
