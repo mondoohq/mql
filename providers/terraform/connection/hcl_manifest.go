@@ -217,6 +217,9 @@ func NewHclGitConnection(id uint32, asset *inventory.Asset) (*Connection, error)
 // connection labels its assets the same way, so a Terraform file found in a
 // repository can be linked back to it.
 func labelGitURL(asset *inventory.Asset) {
+	if len(asset.Connections) == 0 {
+		return
+	}
 	gitURL := asset.Connections[0].Options[plugin.GitUrlOptionKey]
 	if gitURL == "" {
 		return

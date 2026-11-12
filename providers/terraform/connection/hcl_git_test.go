@@ -90,4 +90,10 @@ func TestLabelGitURL(t *testing.T) {
 		labelGitURL(asset)
 		assert.Nil(t, asset.Labels)
 	})
+
+	t.Run("nothing without a connection", func(t *testing.T) {
+		asset := &inventory.Asset{}
+		labelGitURL(asset)
+		assert.Nil(t, asset.Labels)
+	})
 }
