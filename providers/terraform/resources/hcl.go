@@ -370,7 +370,7 @@ func (r *mqlTerraformContext) content(path string, rnge llx.Range) (string, erro
 	if files == nil {
 		return "", errors.New("missing terraform files in cache")
 	}
-	file := files[path]
+	file := files[conn.SourcePath(path)]
 	if file == nil {
 		return "", errors.New("failed to get contents for terraform file '" + path + "'")
 	}
@@ -414,7 +414,7 @@ func (g *mqlTerraformBlock) context() (*mqlTerraformContext, error) {
 	content := rnge.ExtractString(string(file.Bytes), llx.DefaultExtractConfig)
 
 	cobj, err := CreateResource(runtime, "terraform.context", map[string]*llx.RawData{
-		"path":    llx.StringData(block.DefRange.Filename),
+		"path":    llx.StringData(conn.RepositoryPath(block.DefRange.Filename)),
 		"range":   llx.RangeData(rnge),
 		"content": llx.StringData(content),
 	})
