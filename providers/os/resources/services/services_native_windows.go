@@ -8,10 +8,12 @@ package services
 import (
 	"errors"
 	"fmt"
+	"math"
 	"unsafe"
 
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
 )
 
 // listNativeWindowsServices lists the services the local Service Control
@@ -24,9 +26,9 @@ import (
 // for protected services even to an administrator, among them WinDefend,
 // mpssvc, RpcSs and Schedule.
 //
-// Any service it cannot read fails the whole call instead of being left out,
-// so the caller falls back to PowerShell rather than reporting an installed
-// service as missing.
+// Every enumerated service is returned. A service whose configuration cannot
+// be read is still listed, see queryConfig. Only a failed connection or
+// enumeration fails the call, and the caller then falls back to PowerShell.
 func listNativeWindowsServices() ([]*Service, error) {
 	scm, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT|windows.SC_MANAGER_ENUMERATE_SERVICE)
 	if err != nil {
@@ -46,11 +48,8 @@ func listNativeWindowsServices() ([]*Service, error) {
 	res := make([]*Service, 0, len(entries))
 	for i := range entries {
 		name := windows.UTF16PtrToString(entries[i].ServiceName)
-		startType, description, err := queryConfig(scm, name)
-		if err != nil {
-			return nil, fmt.Errorf("could not read the start type of service %q: %w", name, err)
-		}
-		res = append(res, newSCMService(name, description, entries[i].ServiceStatusProcess.CurrentState, startType))
+		enabled, description := queryConfig(scm, name)
+		res = append(res, newSCMService(name, description, entries[i].ServiceStatusProcess.CurrentState, enabled))
 	}
 
 	log.Debug().Int("count", len(res)).Msg("listed services through the service control manager")
@@ -82,32 +81,47 @@ func enumServices(scm windows.Handle) ([]byte, uint32, error) {
 	}
 }
 
-// queryConfig opens a service with SERVICE_QUERY_CONFIG only and returns its
-// dwStartType and description. A start type it cannot read fails the call. A
-// description it cannot read is empty instead: the description resource of
-// some services cannot be found (IsolationSession, PrintNotify and
-// WaaSMedicSvc on Windows 11), and that must not fail the whole listing. This
-// is also why it does not use mgr.Service.Config, which fails on it.
-func queryConfig(scm windows.Handle, name string) (uint32, string, error) {
-	namePtr, err := windows.UTF16PtrFromString(name)
-	if err != nil {
-		return 0, "", err
+// queryConfig opens a service with SERVICE_QUERY_CONFIG only and returns
+// whether it is enabled and its description. It does not fail: on Windows 11
+// 25H2 QueryServiceConfig fails for some services because it cannot resolve
+// their display name (IsolationSession, PrintNotify, WaaSMedicSvc), and
+// OpenService is denied to standard users for others. The start type then
+// comes from the registry, see resolveEnabled. A description it cannot read
+// is empty. This is also why it does not use mgr.Service.Config.
+func queryConfig(scm windows.Handle, name string) (bool, string) {
+	var h windows.Handle
+	namePtr, openErr := windows.UTF16PtrFromString(name)
+	if openErr == nil {
+		h, openErr = windows.OpenService(scm, namePtr, windows.SERVICE_QUERY_CONFIG)
 	}
-	h, err := windows.OpenService(scm, namePtr, windows.SERVICE_QUERY_CONFIG)
-	if err != nil {
-		return 0, "", err
+	if openErr == nil {
+		defer windows.CloseServiceHandle(h) //nolint:errcheck
 	}
-	defer windows.CloseServiceHandle(h) //nolint:errcheck
 
-	startType, err := queryStartType(h)
-	if err != nil {
-		return 0, "", err
+	enabled, src, scmErr, regErr := resolveEnabled(
+		func() (uint32, error) {
+			if openErr != nil {
+				return 0, openErr
+			}
+			return queryStartType(h)
+		},
+		func() (uint32, error) { return registryStartType(name) },
+	)
+	switch src {
+	case startTypeFromRegistry:
+		log.Debug().Err(scmErr).Str("service", name).Msg("could not read the service configuration, read its start type from the registry")
+	case startTypeUnknown:
+		log.Debug().Err(scmErr).AnErr("registry_error", regErr).Str("service", name).Msg("could not read the start type of the service, reporting it as enabled")
+	}
+
+	if openErr != nil {
+		return enabled, ""
 	}
 	description, err := queryDescription(h)
 	if err != nil {
 		log.Debug().Err(err).Str("service", name).Msg("could not read the service description")
 	}
-	return startType, description, nil
+	return enabled, description
 }
 
 // queryStartType reads just QUERY_SERVICE_CONFIG and returns its dwStartType.
@@ -124,6 +138,26 @@ func queryStartType(h windows.Handle) (uint32, error) {
 			return 0, err
 		}
 	}
+}
+
+// registryStartType reads the Start value of the service's key, where the
+// Service Control Manager stores dwStartType. Standard users can read it, also
+// for services they are denied SERVICE_QUERY_CONFIG on.
+func registryStartType(name string) (uint32, error) {
+	k, err := registry.OpenKey(registry.LOCAL_MACHINE, `SYSTEM\CurrentControlSet\Services\`+name, registry.QUERY_VALUE)
+	if err != nil {
+		return 0, err
+	}
+	defer k.Close() //nolint:errcheck
+
+	v, _, err := k.GetIntegerValue("Start")
+	if err != nil {
+		return 0, err
+	}
+	if v > math.MaxUint32 {
+		return 0, fmt.Errorf("start value %d out of range", v)
+	}
+	return uint32(v), nil
 }
 
 // queryDescription reads SERVICE_CONFIG_DESCRIPTION. Windows resolves

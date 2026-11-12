@@ -4,6 +4,8 @@
 package services
 
 import (
+	"fmt"
+
 	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
@@ -38,6 +40,39 @@ const (
 	scmStartDemand   uint32 = 3
 	scmStartDisabled uint32 = 4
 )
+
+// startTypeSource says where resolveEnabled got a service's start type from.
+type startTypeSource int
+
+const (
+	startTypeFromSCM startTypeSource = iota
+	startTypeFromRegistry
+	startTypeUnknown
+)
+
+// resolveEnabled reports whether a service is enabled, from its dwStartType
+// as the Service Control Manager returns it. When that fails for any reason,
+// it reads the Start value the Service Control Manager keeps in the registry,
+// and accepts only a documented start type from there. On Windows 11 25H2
+// both agree for every service whose configuration is readable.
+//
+// When neither can be read, the service counts as enabled. That is what the
+// PowerShell path reports for it: Get-Service returns no StartType, which
+// parses as 0 (boot start).
+func resolveEnabled(fromSCM, fromReg func() (uint32, error)) (enabled bool, src startTypeSource, scmErr, regErr error) {
+	startType, scmErr := fromSCM()
+	if scmErr == nil {
+		return scmStartTypeEnabled(startType), startTypeFromSCM, nil, nil
+	}
+	startType, regErr = fromReg()
+	if regErr == nil && startType > scmStartDisabled {
+		regErr = fmt.Errorf("undocumented start type %d", startType)
+	}
+	if regErr != nil {
+		return true, startTypeUnknown, scmErr, regErr
+	}
+	return scmStartTypeEnabled(startType), startTypeFromRegistry, scmErr, nil
+}
 
 // scmServiceState maps a Service Control Manager dwCurrentState to State.
 func scmServiceState(state uint32) State {
@@ -77,14 +112,14 @@ func scmStartTypeEnabled(startType uint32) bool {
 // newSCMService builds a Service from what the Service Control Manager reports
 // for it. It produces the same shape as WindowsService.Service does for the
 // PowerShell path.
-func newSCMService(name, description string, state, startType uint32) *Service {
+func newSCMService(name, description string, state uint32, enabled bool) *Service {
 	s := scmServiceState(state)
 	return &Service{
 		Name:        name,
 		Description: description,
 		Installed:   true,
 		Running:     s == ServiceRunning,
-		Enabled:     scmStartTypeEnabled(startType),
+		Enabled:     enabled,
 		State:       s,
 		Type:        "windows",
 	}
