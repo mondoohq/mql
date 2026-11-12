@@ -50,7 +50,7 @@ func TestRepositoryPath(t *testing.T) {
 	})
 
 	t.Run("a path outside the clone is kept", func(t *testing.T) {
-		outside := filepath.Join(filepath.Dir(root), "elsewhere", "main.tf")
+		outside := filepath.Join(t.TempDir(), "main.tf")
 		assert.Equal(t, outside, conn.RepositoryPath(outside))
 		assert.Equal(t, root, conn.RepositoryPath(root), "the clone itself")
 		assert.Equal(t, outside, conn.SourcePath(outside), "an absolute path is already on disk")
