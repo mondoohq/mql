@@ -142,8 +142,7 @@ Get-Service | Select-Object -Property Status, Name, DisplayName, StartType, @{Na
 func (s *WindowsServiceManager) List() ([]*Service, error) {
 	// With MONDOO_WINDOWS_NATIVE on and mql running on the Windows machine it
 	// scans, ask the Service Control Manager directly instead of starting
-	// PowerShell. If that fails for any service, use Get-Service for the whole
-	// list so nothing goes missing.
+	// PowerShell. If the services cannot be enumerated, use Get-Service.
 	if useNativeWindowsServices(s.conn, runtime.GOOS) {
 		res, err := listNativeWindowsServices()
 		if err == nil {
