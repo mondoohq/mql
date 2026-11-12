@@ -64,7 +64,7 @@ require (
 	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.12.1
 	go.mondoo.com/mql v0.0.0-20261109064811-87180a95a1f3
-	go.mondoo.com/ranger-rpc v0.8.1
+	go.mondoo.com/ranger-rpc v0.8.2
 	golang.org/x/oauth2 v0.37.0
 	golang.org/x/sync v0.24.0
 	google.golang.org/api v0.311.0
@@ -144,7 +144,6 @@ require (
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.9.2 // indirect
 	github.com/go-git/go-git/v5 v5.19.3 // indirect
-	github.com/go-jose/go-jose/v3 v3.0.5 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.9 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

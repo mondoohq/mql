@@ -38,7 +38,7 @@ require (
 	github.com/facebookincubator/nvdtools v0.1.5
 	github.com/glebarez/go-sqlite v1.23.0
 	github.com/go-git/go-git/v5 v5.19.3
-	github.com/go-jose/go-jose/v3 v3.0.5
+	github.com/go-jose/go-jose/v4 v4.1.9
 	github.com/go-ole/go-ole v1.3.0
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/gobwas/glob v1.1.0
@@ -102,8 +102,8 @@ require (
 	github.com/toravir/csd v0.0.0-20200911003203-13ae77ad849c
 	github.com/ulikunitz/xz v0.5.17
 	github.com/zclconf/go-cty v1.20.0
-	go.mondoo.com/mondoo-go v0.0.0-20261107000730-1a4a4b03bbd7
-	go.mondoo.com/ranger-rpc v0.8.1
+	go.mondoo.com/mondoo-go v0.0.0-20261112084338-6bd209e2cc03
+	go.mondoo.com/ranger-rpc v0.8.2
 	go.uber.org/goleak v1.3.0
 	go.uber.org/mock v0.6.0
 	golang.org/x/crypto v0.58.0
@@ -203,7 +203,6 @@ require (
 	github.com/getsentry/sentry-go v0.50.0 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.9.2 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.9 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/goccy/go-json v0.12.0 // indirect

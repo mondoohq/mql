@@ -315,8 +315,8 @@ github.com/go-git/go-git-fixtures/v4 v4.3.2-0.20231010084843-55a94097c399 h1:eMj
 github.com/go-git/go-git-fixtures/v4 v4.3.2-0.20231010084843-55a94097c399/go.mod h1:1OCfN199q1Jm3HZlxleg+Dw/mwps2Wbk9frAWm+4FII=
 github.com/go-git/go-git/v5 v5.19.3 h1:qHttbZ+Am7wEjdTpR1XMQ4rl42FK9SIXzZ4o9x7s6M4=
 github.com/go-git/go-git/v5 v5.19.3/go.mod h1:Ye4C8dVigkqrv9UsB4NMdSLV4yAIkLiIhW61gcOyhl4=
-github.com/go-jose/go-jose/v3 v3.0.5 h1:BLLJWbC4nMZOfuPVxoZIxeYsn6Nl2r1fITaJ78UQlVQ=
-github.com/go-jose/go-jose/v3 v3.0.5/go.mod h1:5b+7YgP7ZICgJDBdfjZaIt+H/9L9T/YQrVfLAMboGkQ=
+github.com/go-jose/go-jose/v4 v4.1.9 h1:pKfeQkig1NmgK4hJrZYXLEYURXfoJB61Larw0uIW4gY=
+github.com/go-jose/go-jose/v4 v4.1.9/go.mod h1:x4oUasVrzR7071A4TnHLGSPpNOm2a21K9Kf04k1rs08=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=
 github.com/go-logr/logr v1.4.4 h1:tG4xh9yMsRCAiodLVTxyrkzSZ9+o0L1Kg/+cPVcbP/8=
 github.com/go-logr/logr v1.4.4/go.mod h1:9T104GzyrTigFIr8wt5mBrctHMim0Nb2HLGrmQ40KvY=
@@ -607,7 +607,6 @@ github.com/stretchr/testify v1.2.2/go.mod h1:a8OnRcib4nhh0OaRAV+Yts87kKdq0PP7pXf
 github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UVUgZn+9EI=
 github.com/stretchr/testify v1.4.0/go.mod h1:j7eGeouHqKxXV5pUuKE4zz7dFj8WfuZ+81PSLYec5m4=
 github.com/stretchr/testify v1.5.1/go.mod h1:5W2xD1RspED5o8YsWQXVCued0rvSQ+mT+I5cxcmMvtA=
-github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/stretchr/testify v1.7.1/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/stretchr/testify v1.7.2/go.mod h1:R6va5+xMeoiuVRoj+gSkQ7d3FALtqAAGI1FQKckRals=
 github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO+kdMU+MU=
@@ -636,10 +635,10 @@ github.com/yuin/goldmark v1.2.1/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9dec
 github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
 github.com/zclconf/go-cty v1.20.0 h1:V2Mh9pu2xWPATCY7US3LnGBNSq/AAZDsqQZmmOAV7DI=
 github.com/zclconf/go-cty v1.20.0/go.mod h1:12W89jGn3JCOIQi7infWr9m80rOkb5RNYJqXMZcN4c8=
-go.mondoo.com/mondoo-go v0.0.0-20261107000730-1a4a4b03bbd7 h1:Wp7Fe9dQvVDXsyEQaFl2pcmtK8kV+v+YEFumlPA4azg=
-go.mondoo.com/mondoo-go v0.0.0-20261107000730-1a4a4b03bbd7/go.mod h1:J3cbROj7xBe3hARPrBpyoymBVx3Z6CDRpMgt/4xaOFA=
-go.mondoo.com/ranger-rpc v0.8.1 h1:DynUWByDnxI4wMHbFpXUMw+lndYJ21BAHOxrhGyVCD4=
-go.mondoo.com/ranger-rpc v0.8.1/go.mod h1:HP3hjWjgRFxCFAnY86YLMiY0bU7eqhKuP8Qm+QlFBbI=
+go.mondoo.com/mondoo-go v0.0.0-20261112084338-6bd209e2cc03 h1:TllPnLHIcLXwhkTCab4SoSKwvlcEiXoDRpkqii+aRt0=
+go.mondoo.com/mondoo-go v0.0.0-20261112084338-6bd209e2cc03/go.mod h1:3B3UE1ZIb67vyYTbK/ALwRvUfms++3cYPlYkZLW7QKM=
+go.mondoo.com/ranger-rpc v0.8.2 h1:VlknMvoFvhyxsrg5MMsqEm1YTDsPy72ECem5/80EYNY=
+go.mondoo.com/ranger-rpc v0.8.2/go.mod h1:g+7tUWYyWzS7uFkU8CnGg36t2kdiZ0XVbMhIc4MZS4o=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=
 go.opentelemetry.io/auto/sdk v1.2.1/go.mod h1:KRTj+aOaElaLi+wW1kO/DZRXwkF4C5xPbEe3ZiIhN7Y=
 go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.72.0 h1:LxwW/9ctSCv+QkE/cLR7M91ZIkXNMqJtEMi1vCw9U8s=

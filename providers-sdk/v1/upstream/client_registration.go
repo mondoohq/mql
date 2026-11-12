@@ -6,7 +6,7 @@ package upstream
 import (
 	"time"
 
-	"github.com/go-jose/go-jose/v3/jwt"
+	"github.com/go-jose/go-jose/v4/jwt"
 	unverified_jwt "github.com/golang-jwt/jwt/v5"
 )
 

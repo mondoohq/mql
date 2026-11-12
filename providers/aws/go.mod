@@ -202,7 +202,7 @@ require (
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.9.2 // indirect
 	github.com/go-git/go-git/v5 v5.19.3 // indirect
-	github.com/go-jose/go-jose/v3 v3.0.5 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.9 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
@@ -254,7 +254,7 @@ require (
 	github.com/skeema/knownhosts v1.3.3 // indirect
 	github.com/spf13/pflag v1.1.0 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
-	go.mondoo.com/ranger-rpc v0.8.1 // indirect
+	go.mondoo.com/ranger-rpc v0.8.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.72.0 // indirect
 	go.opentelemetry.io/otel v1.47.0 // indirect
