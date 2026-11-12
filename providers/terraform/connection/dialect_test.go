@@ -20,6 +20,7 @@ func TestParseDialect(t *testing.T) {
 		"OpenTofu":  DialectOpenTofu,
 		"  tofu  ":  DialectOpenTofu,
 		"terraform": DialectTerraform,
+		"tf":        DialectTerraform,
 		"":          DialectTerraform,
 		"nonsense":  DialectTerraform,
 	}
@@ -41,6 +42,7 @@ func TestDialectForConnector(t *testing.T) {
 		wantOK    bool
 	}{
 		{"terraform", DialectTerraform, true},
+		{"tf", DialectTerraform, true},
 		{"opentofu", DialectOpenTofu, true},
 		{"tofu", DialectOpenTofu, true},
 		{"OpenTofu", DialectOpenTofu, true},

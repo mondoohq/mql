@@ -1597,9 +1597,10 @@ var DefaultProviders Providers = map[string]*Provider{
 			Connectors: []plugin.Connector{
 
 				{
-					Name:  "terraform",
-					Use:   "terraform PATH",
-					Short: "Terraform HCL configurations, plan files, and state files",
+					Name:    "terraform",
+					Use:     "terraform PATH",
+					Short:   "Terraform HCL configurations, plan files, and state files",
+					Aliases: []string{"tf"},
 				},
 
 				{

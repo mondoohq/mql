@@ -46,9 +46,10 @@ var Config = plugin.Provider{
 	},
 	Connectors: []plugin.Connector{
 		{
-			Name:  "terraform",
-			Use:   "terraform PATH",
-			Short: "Terraform HCL configurations, plan files, and state files",
+			Name:    "terraform",
+			Aliases: []string{"tf"},
+			Use:     "terraform PATH",
+			Short:   "Terraform HCL configurations, plan files, and state files",
 			Long: `Use the terraform connector to query Terraform HCL, plan, or state files as well as directories of files.
 
 A directory is read the way Terraform itself reads it: the .tf, .tf.json,

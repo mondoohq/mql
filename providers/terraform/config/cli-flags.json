@@ -15,6 +15,9 @@
     },
     {
       "name": "terraform",
+      "aliases": [
+        "tf"
+      ],
       "flags": [
         {
           "long": "ignore-dot-terraform",
