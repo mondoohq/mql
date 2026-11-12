@@ -6,7 +6,7 @@ go 1.27.3
 
 require (
 	go.mondoo.com/mql v0.0.0-20261109064811-87180a95a1f3
-	go.mondoo.com/ranger-rpc v0.8.2-0.20261109192028-bc619a5b2f3d
+	go.mondoo.com/ranger-rpc v0.8.2
 	go.mongodb.org/mongo-driver/v2 v2.10.0
 )
 

@@ -82,7 +82,7 @@ require (
 	github.com/spf13/pflag v1.1.0 // indirect
 	github.com/tailscale/hujson v0.0.0-20260727124030-b80ff77dac4f // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
-	go.mondoo.com/ranger-rpc v0.8.2-0.20261109192028-bc619a5b2f3d // indirect
+	go.mondoo.com/ranger-rpc v0.8.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel v1.47.0 // indirect
 	go.opentelemetry.io/otel/log v1.47.0 // indirect

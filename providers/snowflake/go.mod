@@ -16,7 +16,7 @@ require (
 	github.com/snowflakedb/gosnowflake/v2 v2.4.0
 	github.com/stretchr/testify v1.12.1
 	go.mondoo.com/mql v0.0.0-20261109064811-87180a95a1f3
-	go.mondoo.com/ranger-rpc v0.8.2-0.20261109192028-bc619a5b2f3d
+	go.mondoo.com/ranger-rpc v0.8.2
 	golang.org/x/crypto v0.58.0
 )
 

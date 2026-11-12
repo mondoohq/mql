@@ -8,7 +8,7 @@ require (
 	github.com/elastic/elastic-transport-go/v8 v8.11.0
 	github.com/elastic/go-elasticsearch/v9 v9.5.2
 	go.mondoo.com/mql v0.0.0-20261109064811-87180a95a1f3
-	go.mondoo.com/ranger-rpc v0.8.2-0.20261109192028-bc619a5b2f3d
+	go.mondoo.com/ranger-rpc v0.8.2
 )
 
 require (

@@ -102,8 +102,8 @@ require (
 	github.com/toravir/csd v0.0.0-20200911003203-13ae77ad849c
 	github.com/ulikunitz/xz v0.5.17
 	github.com/zclconf/go-cty v1.20.0
-	go.mondoo.com/mondoo-go v0.0.0-20261109192112-0082db6325ab
-	go.mondoo.com/ranger-rpc v0.8.2-0.20261109192028-bc619a5b2f3d
+	go.mondoo.com/mondoo-go v0.0.0-20261112084338-6bd209e2cc03
+	go.mondoo.com/ranger-rpc v0.8.2
 	go.uber.org/goleak v1.3.0
 	go.uber.org/mock v0.6.0
 	golang.org/x/crypto v0.58.0

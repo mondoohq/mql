@@ -438,10 +438,10 @@ github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9de
 github.com/yuin/goldmark v1.2.1/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/zclconf/go-cty v1.20.0 h1:V2Mh9pu2xWPATCY7US3LnGBNSq/AAZDsqQZmmOAV7DI=
 github.com/zclconf/go-cty v1.20.0/go.mod h1:12W89jGn3JCOIQi7infWr9m80rOkb5RNYJqXMZcN4c8=
-go.mondoo.com/mondoo-go v0.0.0-20261109192112-0082db6325ab h1:c0FuIwxLZUoBntRrkA62v/imjxbx0Q0/yaWKQVKB8fk=
-go.mondoo.com/mondoo-go v0.0.0-20261109192112-0082db6325ab/go.mod h1:3B3UE1ZIb67vyYTbK/ALwRvUfms++3cYPlYkZLW7QKM=
-go.mondoo.com/ranger-rpc v0.8.2-0.20261109192028-bc619a5b2f3d h1:YjpZWn8Y0anst7rRfx7kHvwfkGTmDhuOWfJ1z3TOHP8=
-go.mondoo.com/ranger-rpc v0.8.2-0.20261109192028-bc619a5b2f3d/go.mod h1:g+7tUWYyWzS7uFkU8CnGg36t2kdiZ0XVbMhIc4MZS4o=
+go.mondoo.com/mondoo-go v0.0.0-20261112084338-6bd209e2cc03 h1:TllPnLHIcLXwhkTCab4SoSKwvlcEiXoDRpkqii+aRt0=
+go.mondoo.com/mondoo-go v0.0.0-20261112084338-6bd209e2cc03/go.mod h1:3B3UE1ZIb67vyYTbK/ALwRvUfms++3cYPlYkZLW7QKM=
+go.mondoo.com/ranger-rpc v0.8.2 h1:VlknMvoFvhyxsrg5MMsqEm1YTDsPy72ECem5/80EYNY=
+go.mondoo.com/ranger-rpc v0.8.2/go.mod h1:g+7tUWYyWzS7uFkU8CnGg36t2kdiZ0XVbMhIc4MZS4o=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=
 go.opentelemetry.io/auto/sdk v1.2.1/go.mod h1:KRTj+aOaElaLi+wW1kO/DZRXwkF4C5xPbEe3ZiIhN7Y=
 go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.72.0 h1:LxwW/9ctSCv+QkE/cLR7M91ZIkXNMqJtEMi1vCw9U8s=

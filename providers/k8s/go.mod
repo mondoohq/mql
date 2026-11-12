@@ -225,8 +225,8 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	github.com/zclconf/go-cty v1.20.0 // indirect
-	go.mondoo.com/mondoo-go v0.0.0-20261109192112-0082db6325ab // indirect
-	go.mondoo.com/ranger-rpc v0.8.2-0.20261109192028-bc619a5b2f3d // indirect
+	go.mondoo.com/mondoo-go v0.0.0-20261112084338-6bd209e2cc03 // indirect
+	go.mondoo.com/ranger-rpc v0.8.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.72.0 // indirect
 	go.opentelemetry.io/otel v1.47.0 // indirect

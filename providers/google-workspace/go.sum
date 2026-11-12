@@ -811,10 +811,10 @@ github.com/zclconf/go-cty-debug v0.0.0-20240509010212-0d6042c53940/go.mod h1:CmB
 go.etcd.io/etcd/api/v3 v3.5.1/go.mod h1:cbVKeC6lCfl7j/8jBhAK6aIYO9XOjdptoxU/nLQcPvs=
 go.etcd.io/etcd/client/pkg/v3 v3.5.1/go.mod h1:IJHfcCEKxYu1Os13ZdwCwIUTUVGYTSAM3YSwc9/Ac1g=
 go.etcd.io/etcd/client/v2 v2.305.1/go.mod h1:pMEacxZW7o8pg4CrFE7pquyCJJzZvkvdD2RibOCCCGs=
-go.mondoo.com/mondoo-go v0.0.0-20261109192112-0082db6325ab h1:c0FuIwxLZUoBntRrkA62v/imjxbx0Q0/yaWKQVKB8fk=
-go.mondoo.com/mondoo-go v0.0.0-20261109192112-0082db6325ab/go.mod h1:3B3UE1ZIb67vyYTbK/ALwRvUfms++3cYPlYkZLW7QKM=
-go.mondoo.com/ranger-rpc v0.8.2-0.20261109192028-bc619a5b2f3d h1:YjpZWn8Y0anst7rRfx7kHvwfkGTmDhuOWfJ1z3TOHP8=
-go.mondoo.com/ranger-rpc v0.8.2-0.20261109192028-bc619a5b2f3d/go.mod h1:g+7tUWYyWzS7uFkU8CnGg36t2kdiZ0XVbMhIc4MZS4o=
+go.mondoo.com/mondoo-go v0.0.0-20261112084338-6bd209e2cc03 h1:TllPnLHIcLXwhkTCab4SoSKwvlcEiXoDRpkqii+aRt0=
+go.mondoo.com/mondoo-go v0.0.0-20261112084338-6bd209e2cc03/go.mod h1:3B3UE1ZIb67vyYTbK/ALwRvUfms++3cYPlYkZLW7QKM=
+go.mondoo.com/ranger-rpc v0.8.2 h1:VlknMvoFvhyxsrg5MMsqEm1YTDsPy72ECem5/80EYNY=
+go.mondoo.com/ranger-rpc v0.8.2/go.mod h1:g+7tUWYyWzS7uFkU8CnGg36t2kdiZ0XVbMhIc4MZS4o=
 go.opencensus.io v0.21.0/go.mod h1:mSImk1erAIZhrmZN+AvHh14ztQfjbGwt4TtuofqLduU=
 go.opencensus.io v0.22.0/go.mod h1:+kGneAE2xo2IficOXnaByMWTGM9T73dGwxeWcUqIpI8=
 go.opencensus.io v0.22.2/go.mod h1:yxeiOL68Rb0Xd1ddK5vPZ/oVn4vY4Ynel7k9FzqtOIw=
