@@ -78,9 +78,10 @@ func decodeSoftwareUpdateFixture(t *testing.T, name string) map[string]any {
 	return d
 }
 
-// The fixtures are binary plists in the shape macOS writes to
+// The fixtures have the shape macOS writes to
 // /private/var/db/softwareupdate/SoftwareUpdateDDMStatePersistence.plist,
-// rebuilt with a placeholder declaration identifier.
+// with a placeholder declaration identifier. macOS writes the file as a binary
+// plist; the fixtures are its XML form so they can be read in review.
 func TestParseSoftwareUpdateDDMState(t *testing.T) {
 	// Measured: macOS 26.7.3 (25G342) with a software update settings
 	// declaration forcing automatic download on, 2026-11-12. The key path and
