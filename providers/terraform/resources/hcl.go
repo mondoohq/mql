@@ -60,7 +60,7 @@ func (t *mqlTerraform) files() ([]any, error) {
 	files := parser.Files()
 	for path := range files {
 		mqlTerraformFile, err := CreateResource(t.MqlRuntime, "terraform.file", map[string]*llx.RawData{
-			"path": llx.StringData(path),
+			"path": llx.StringData(conn.RepositoryPath(path)),
 		})
 		if err != nil {
 			return nil, err
@@ -396,6 +396,8 @@ func (g *mqlTerraformBlock) context() (*mqlTerraformContext, error) {
 	if files == nil {
 		return nil, errors.New("missing terraform files in cache")
 	}
+	// The parser's files are keyed by their path on disk; only the reported
+	// path is the one in the repository.
 	file := files[block.DefRange.Filename]
 	if file == nil {
 		return nil, errors.New("failed to get contents for terraform file '" + block.DefRange.Filename + "'")
@@ -1177,8 +1179,9 @@ func (g *mqlTerraformBlock) related() ([]any, error) {
 }
 
 func newFilePosRange(runtime *plugin.Runtime, r hcl.Range) (plugin.Resource, plugin.Resource, error) {
+	path := runtime.Connection.(*connection.Connection).RepositoryPath(r.Filename)
 	start, err := CreateResource(runtime, "terraform.fileposition", map[string]*llx.RawData{
-		"path":   llx.StringData(r.Filename),
+		"path":   llx.StringData(path),
 		"line":   llx.IntData(int64(r.Start.Line)),
 		"column": llx.IntData(int64(r.Start.Column)),
 		"byte":   llx.IntData(int64(r.Start.Byte)),
@@ -1188,7 +1191,7 @@ func newFilePosRange(runtime *plugin.Runtime, r hcl.Range) (plugin.Resource, plu
 	}
 
 	end, err := CreateResource(runtime, "terraform.fileposition", map[string]*llx.RawData{
-		"path":   llx.StringData(r.Filename),
+		"path":   llx.StringData(path),
 		"line":   llx.IntData(int64(r.End.Line)),
 		"column": llx.IntData(int64(r.End.Column)),
 		"byte":   llx.IntData(int64(r.End.Byte)),
@@ -1223,7 +1226,7 @@ func (t *mqlTerraformFile) blocks() ([]any, error) {
 	}
 
 	files := parser.Files()
-	file, ok := files[p]
+	file, ok := files[conn.SourcePath(p)]
 	if !ok || file == nil {
 		// The requested path isn't a parsed HCL file (unknown path, .tf.json,
 		// or case mismatch); there are no blocks to list rather than a panic.
