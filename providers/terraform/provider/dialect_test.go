@@ -150,6 +150,11 @@ func TestParseCLIDialect(t *testing.T) {
 		assert.Equal(t, "opentofu", conf.Options[connection.OptionDialect])
 	})
 
+	t.Run("the tf alias arrives as terraform", func(t *testing.T) {
+		conf := parse("tf")
+		assert.Equal(t, "terraform", conf.Options[connection.OptionDialect])
+	})
+
 	t.Run("a caller naming no connector records no dialect", func(t *testing.T) {
 		// The git-integration path: it knows a repository, not a tool, so the
 		// files on disk decide.

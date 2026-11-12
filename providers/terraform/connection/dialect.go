@@ -46,7 +46,7 @@ func DialectForConnector(name string) (Dialect, bool) {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "opentofu", "tofu":
 		return DialectOpenTofu, true
-	case "terraform":
+	case "terraform", "tf":
 		return DialectTerraform, true
 	default:
 		return "", false
