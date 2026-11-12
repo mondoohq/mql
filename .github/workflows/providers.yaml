@@ -375,8 +375,13 @@ jobs:
           token: ${{ steps.generate-token.outputs.token }}
           repository: "mondoohq/docs"
           event-type: update-mql-resources
+          # docs builds from the release index, which releasr is rewriting at
+          # this same moment and may still name the previous versions.
+          # `versions` is every provider's version on this commit; docs uses one
+          # only once its schema.json is published and it is newer than the index.
           client-payload: '{
               "mql_sha": "${{ github.sha }}",
+              "versions": ${{ toJSON(needs.scoping.outputs.versions) }},
               "run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }'
 
