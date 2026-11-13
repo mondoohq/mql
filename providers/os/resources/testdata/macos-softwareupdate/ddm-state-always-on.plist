@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>SUCorePersistedStateContentsType</key>
+	<string>SoftwareUpdateCorePersistedStateFile</string>
+	<key>SUCorePersistedStateCoreFields</key>
+	<dict/>
+	<key>SUCorePersistedStateCoreSecureCodedObjectsFields</key>
+	<dict/>
+	<key>SUCorePersistedStateCoreVersion</key>
+	<string>2.1.0</string>
+	<key>SUCorePersistedStatePolicyFields</key>
+	<dict>
+		<key>SUCoreDDMDeclarationGlobalSettings</key>
+		<dict>
+			<key>adminInstallRequired</key>
+			<integer>0</integer>
+			<key>automaticallyDownload</key>
+			<integer>1</integer>
+			<key>enableGlobalNotifications</key>
+			<true/>
+			<key>enableRapidSecurityResponse</key>
+			<true/>
+			<key>enableRapidSecurityResponseRollback</key>
+			<true/>
+			<key>serializedKeys</key>
+			<array>
+				<string>com.apple.RemoteManagement.SoftwareUpdateExtension.GlobalSettings/00000000-0000-0000-0000-000000000000:declaration</string>
+			</array>
+		</dict>
+	</dict>
+	<key>SUCorePersistedStatePolicySecureCodedObjectsFields</key>
+	<dict/>
+	<key>SUCorePersistedStatePolicyVersion</key>
+	<string>1.0</string>
+</dict>
+</plist>

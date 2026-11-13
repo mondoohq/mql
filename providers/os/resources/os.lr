@@ -16499,10 +16499,12 @@ private macos.preferences.user @defaults("user.name domain") {
 // macOS Software Update configuration and pending updates
 //
 // Automatic-update policy and the list of updates currently available
-// to install. Policy fields read from
-// `/Library/Preferences/com.apple.SoftwareUpdate.plist` (with
-// `/Library/Managed Preferences/` taking precedence when an MDM
-// configuration profile has been delivered). The `updates` list is
+// to install. Each policy field is resolved separately, highest
+// precedence first, from a Declarative Device Management software update
+// settings declaration, an MDM configuration profile
+// (`/Library/Managed Preferences/com.apple.SoftwareUpdate.plist`), and the
+// local preference (`/Library/Preferences/com.apple.SoftwareUpdate.plist`).
+// The `updates` list is
 // produced from `softwareupdate -l --no-scan` so it does not initiate
 // a network check.
 macos.softwareupdate @defaults("autoCheckEnabled autoInstallMacOSUpdates") {
