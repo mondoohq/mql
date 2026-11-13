@@ -1856,6 +1856,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"cloudflare.one.organization.disableEndUserAppCreation": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareOneOrganization).GetDisableEndUserAppCreation()).ToDataRes(types.Bool)
 	},
+	"cloudflare.one.organization.grantTrustToAllAccountsInOrg": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneOrganization).GetGrantTrustToAllAccountsInOrg()).ToDataRes(types.Bool)
+	},
+	"cloudflare.one.organization.trustedAccounts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneOrganization).GetTrustedAccounts()).ToDataRes(types.Array(types.Resource("cloudflare.account")))
+	},
 	"cloudflare.one.casbPosturePolicy.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareOneCasbPosturePolicy).GetId()).ToDataRes(types.String)
 	},
@@ -5145,6 +5151,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"cloudflare.one.organization.disableEndUserAppCreation": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCloudflareOneOrganization).DisableEndUserAppCreation, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.organization.grantTrustToAllAccountsInOrg": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneOrganization).GrantTrustToAllAccountsInOrg, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.organization.trustedAccounts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneOrganization).TrustedAccounts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"cloudflare.one.casbPosturePolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -12234,7 +12248,7 @@ func (c *mqlCloudflareOneServiceToken) GetUpdatedAt() *plugin.TValue[*time.Time]
 type mqlCloudflareOneOrganization struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlCloudflareOneOrganizationInternal it will be used here
+	mqlCloudflareOneOrganizationInternal
 	Name                                plugin.TValue[string]
 	AuthDomain                          plugin.TValue[string]
 	IsUiReadOnly                        plugin.TValue[bool]
@@ -12251,6 +12265,8 @@ type mqlCloudflareOneOrganization struct {
 	ServiceTokenInactivityThresholdDays plugin.TValue[int64]
 	StrictServiceTokenAuth              plugin.TValue[bool]
 	DisableEndUserAppCreation           plugin.TValue[bool]
+	GrantTrustToAllAccountsInOrg        plugin.TValue[bool]
+	TrustedAccounts                     plugin.TValue[[]any]
 }
 
 // createCloudflareOneOrganization creates a new instance of this resource
@@ -12347,6 +12363,28 @@ func (c *mqlCloudflareOneOrganization) GetStrictServiceTokenAuth() *plugin.TValu
 
 func (c *mqlCloudflareOneOrganization) GetDisableEndUserAppCreation() *plugin.TValue[bool] {
 	return &c.DisableEndUserAppCreation
+}
+
+func (c *mqlCloudflareOneOrganization) GetGrantTrustToAllAccountsInOrg() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.GrantTrustToAllAccountsInOrg, func() (bool, error) {
+		return c.grantTrustToAllAccountsInOrg()
+	})
+}
+
+func (c *mqlCloudflareOneOrganization) GetTrustedAccounts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TrustedAccounts, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cloudflare.one.organization", c.__id, "trustedAccounts")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.trustedAccounts()
+	})
 }
 
 // mqlCloudflareOneCasbPosturePolicy for the cloudflare.one.casbPosturePolicy resource

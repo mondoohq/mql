@@ -477,7 +477,9 @@ func (c *mqlCloudflareOne) organization() (*mqlCloudflareOneOrganization, error)
 		return nil, err
 	}
 
-	return res.(*mqlCloudflareOneOrganization), nil
+	o := res.(*mqlCloudflareOneOrganization)
+	o.accountID = c.AccountID
+	return o, nil
 }
 
 func (c *mqlCloudflareOneIdp) id() (string, error) {

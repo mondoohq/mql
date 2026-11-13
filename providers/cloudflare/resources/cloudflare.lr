@@ -1606,6 +1606,17 @@ private cloudflare.one.organization @defaults("name authDomain") {
 	// outside the review of an administrator. Null when the organization does
 	// not report the setting.
 	disableEndUserAppCreation bool
+	// Whether every account in the Cloudflare organization is trusted
+	//
+	// When true, every account in the same Cloudflare organization may use this
+	// account's cross-account Access resources, in addition to the accounts
+	// listed in trustedAccounts. Null when the trust settings cannot be read.
+	grantTrustToAllAccountsInOrg() bool
+	// Accounts explicitly trusted to use this account's cross-account Access resources
+	//
+	// At most 100 accounts. An account the scan's token cannot read reports its
+	// `id`, with its other fields null.
+	trustedAccounts() []cloudflare.account
 }
 
 // Cloudflare One CASB posture policy
