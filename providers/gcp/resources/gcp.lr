@@ -9339,6 +9339,12 @@ private gcp.project.cloudRunService.service @defaults("name") {
   iapEnabled bool
   // Whether Cloud Run threat detection is enabled for the service
   threatDetectionEnabled bool
+  // Whether SSH access into the service's running instances is enabled
+  //
+  // When true, users with permission can open an interactive SSH session into
+  // a running instance of the service. Null when the service does not report
+  // the setting.
+  sshEnabled bool
   // Launch stage
   launchStage string
   // Template used to create revisions for the service

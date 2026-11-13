@@ -595,6 +595,7 @@ func (g *mqlGcpProjectCloudRunService) services() ([]any, error) {
 			"invokerIamDisabled":            llx.BoolData(s.InvokerIamDisabled),
 			"iapEnabled":                    llx.BoolData(s.IapEnabled),
 			"threatDetectionEnabled":        llx.BoolData(s.ThreatDetectionEnabled),
+			"sshEnabled":                    llx.BoolDataPtr(s.SshEnabled),
 			"launchStage":                   llx.StringData(s.LaunchStage.String()),
 			"template":                      llx.ResourceData(mqlTemplate, "gcp.project.cloudRunService.service.revisionTemplate"),
 			"traffic":                       llx.ArrayData(mqlTraffic, types.Dict),

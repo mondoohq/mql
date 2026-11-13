@@ -10941,6 +10941,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.cloudRunService.service.threatDetectionEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectCloudRunServiceService).GetThreatDetectionEnabled()).ToDataRes(types.Bool)
 	},
+	"gcp.project.cloudRunService.service.sshEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectCloudRunServiceService).GetSshEnabled()).ToDataRes(types.Bool)
+	},
 	"gcp.project.cloudRunService.service.launchStage": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectCloudRunServiceService).GetLaunchStage()).ToDataRes(types.String)
 	},
@@ -32676,6 +32679,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.cloudRunService.service.threatDetectionEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectCloudRunServiceService).ThreatDetectionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.cloudRunService.service.sshEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectCloudRunServiceService).SshEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"gcp.project.cloudRunService.service.launchStage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -75968,6 +75975,7 @@ type mqlGcpProjectCloudRunServiceService struct {
 	InvokerIamDisabled                         plugin.TValue[bool]
 	IapEnabled                                 plugin.TValue[bool]
 	ThreatDetectionEnabled                     plugin.TValue[bool]
+	SshEnabled                                 plugin.TValue[bool]
 	LaunchStage                                plugin.TValue[string]
 	Template                                   plugin.TValue[*mqlGcpProjectCloudRunServiceServiceRevisionTemplate]
 	Traffic                                    plugin.TValue[[]any]
@@ -76108,6 +76116,10 @@ func (c *mqlGcpProjectCloudRunServiceService) GetIapEnabled() *plugin.TValue[boo
 
 func (c *mqlGcpProjectCloudRunServiceService) GetThreatDetectionEnabled() *plugin.TValue[bool] {
 	return &c.ThreatDetectionEnabled
+}
+
+func (c *mqlGcpProjectCloudRunServiceService) GetSshEnabled() *plugin.TValue[bool] {
+	return &c.SshEnabled
 }
 
 func (c *mqlGcpProjectCloudRunServiceService) GetLaunchStage() *plugin.TValue[string] {
