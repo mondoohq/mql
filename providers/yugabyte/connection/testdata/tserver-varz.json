@@ -1,0 +1,54 @@
+{
+ "flags": [
+  {
+   "name": "cql_proxy_bind_address",
+   "value": "fdac6ddb0721:9042",
+   "type": "Custom"
+  },
+  {
+   "name": "instance_uuid_override",
+   "value": "f98ec0e91cc04ae08563d0ac605fbf7a",
+   "type": "Custom"
+  },
+  {
+   "name": "ysql_pg_conf_csv",
+   "value": "yb_enable_cbo=on",
+   "type": "Custom"
+  },
+  {
+   "name": "placement_zone",
+   "value": "rack1",
+   "type": "NodeInfo"
+  },
+  {
+   "name": "webserver_port",
+   "value": "9000",
+   "type": "NodeInfo"
+  },
+  {
+   "name": "allow_insecure_connections",
+   "value": "true",
+   "type": "Default"
+  },
+  {
+   "name": "use_cassandra_authentication",
+   "value": "false",
+   "type": "Default"
+  },
+  {
+   "name": "use_client_to_server_encryption",
+   "value": "false",
+   "type": "Default"
+  },
+  {
+   "name": "ysql_enable_auth",
+   "value": "false",
+   "type": "Default"
+  },
+  {
+   "name": "ysql_hba_conf_csv",
+   "value": "***",
+   "type": "Default"
+  }
+ ]
+}

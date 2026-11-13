@@ -1,0 +1,1 @@
+{"version":1,"replication_info":{"live_replicas":{"num_replicas":1,"placement_blocks":[{"cloud_info":{"placement_cloud":"cloud1","placement_region":"datacenter1","placement_zone":"rack1"},"min_num_replicas":1}],"placement_uuid":"2ee350cd-24e6-4699-97e9-c8e96e17b994"}},"cluster_uuid":"c61dea9a-3164-4944-a283-491c2b9cc19e","universe_uuid":"84f0dde1-c9cd-4041-9f74-09f33df8105a"}

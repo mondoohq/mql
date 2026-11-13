@@ -1,0 +1,22 @@
+{
+ "8f738eba-f4db-43fb-ae4a-3298f8b890f2": {
+  "yb1:9000": {
+   "time_since_hb_sec": 0.690234792,
+   "status": "ALIVE",
+   "uptime_seconds": 25,
+   "cloud": "cloud1",
+   "region": "datacenter1",
+   "zone": "rack1",
+   "permanent_uuid": "d299c41004334e5b895a8d76313df4bf"
+  },
+  "yb2:9000": {
+   "time_since_hb_sec": 0.182381417,
+   "status": "ALIVE",
+   "uptime_seconds": 25,
+   "cloud": "cloud1",
+   "region": "datacenter1",
+   "zone": "rack1",
+   "permanent_uuid": "d56185d9b93e463e986f9d4031d94112"
+  }
+ }
+}
