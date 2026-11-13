@@ -160,3 +160,33 @@ func TestCoordinator_BuiltinProviderDoesNotRebuildTheSchema(t *testing.T) {
 	}
 	assert.Equal(t, built, aggregate())
 }
+
+// The version is what tells one state of the schema from another: it moves
+// when the aggregate is replaced and only then.
+func TestExtensibleSchema_Version(t *testing.T) {
+	s := newExtensibleSchema()
+	s.coordinator = newCoordinator()
+	version := func() uint64 {
+		_, v := s.SchemaVersion()
+		return v
+	}
+
+	first := &resources.Schema{Resources: map[string]*resources.ResourceInfo{
+		"eternity": {Fields: map[string]*resources.Field{"iii": {Provider: "first"}}, Provider: "first"},
+	}}
+	s.Add("first", first)
+	added := version()
+
+	s.Add("first", first)
+	assert.Equal(t, added, version(), "nothing changed")
+
+	s.Add("second", &resources.Schema{Resources: map[string]*resources.ResourceInfo{
+		"moment": {Fields: map[string]*resources.Field{"v": {Provider: "second"}}, Provider: "second"},
+	}})
+	assert.Greater(t, version(), added)
+
+	object, _ := s.SchemaVersion()
+	other := newExtensibleSchema()
+	otherObject, _ := other.SchemaVersion()
+	assert.NotEqual(t, object, otherObject, "two schemas are told apart whatever their versions")
+}
