@@ -32,7 +32,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/appmesh v1.44.12
 	github.com/aws/aws-sdk-go-v2/service/apprunner v1.48.12
 	// pin v1.63.0
-	github.com/aws/aws-sdk-go-v2/service/appstream v1.73.6
+	github.com/aws/aws-sdk-go-v2/service/appstream v1.63.0
 	github.com/aws/aws-sdk-go-v2/service/appsync v1.62.12
 	github.com/aws/aws-sdk-go-v2/service/athena v1.67.1
 	github.com/aws/aws-sdk-go-v2/service/autoscaling v1.82.0
