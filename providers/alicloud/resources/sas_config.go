@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	sasclient "github.com/alibabacloud-go/sas-20181203/v10/client"
+	sasclient "github.com/alibabacloud-go/sas-20181203/v11/client"
 	"github.com/alibabacloud-go/tea/tea"
 	"github.com/rs/zerolog/log"
 
