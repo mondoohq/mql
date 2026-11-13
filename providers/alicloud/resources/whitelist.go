@@ -138,10 +138,15 @@ func (r *mqlAlicloudMongodbInstance) whitelistAllowsAllAddresses() (bool, error)
 	return resolveWhitelistAllowsAllAddresses(r.GetSecurityIPList())
 }
 
-// whitelistAllowsAllAddresses reports whether the PolarDB cluster whitelist
-// admits every source address.
+// whitelistAllowsAllAddresses reports whether the PolarDB cluster whitelist or
+// any project whitelist admits every source address. Either one admitting all
+// sources is enough to expose the cluster.
 func (r *mqlAlicloudPolardbCluster) whitelistAllowsAllAddresses() (bool, error) {
-	return resolveWhitelistAllowsAllAddresses(r.GetAccessWhitelist())
+	open, err := resolveWhitelistAllowsAllAddresses(r.GetAccessWhitelist())
+	if err != nil || open {
+		return open, err
+	}
+	return resolveWhitelistAllowsAllAddresses(r.GetProjectAccessWhitelist())
 }
 
 // whitelistAllowsAllAddresses reports whether the Elasticsearch public endpoint

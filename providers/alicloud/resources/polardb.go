@@ -6,6 +6,7 @@ package resources
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	polardb "github.com/alibabacloud-go/polardb-20170801/v10/client"
@@ -25,6 +26,12 @@ type mqlAlicloudPolardbClusterInternal struct {
 	dbClusterId    string
 	cacheVpcID     string
 	cacheVswitchID string
+
+	whitelistLock    sync.Mutex
+	whitelistFetched bool
+	clusterWhitelist []any
+	projectWhitelist []any
+	whitelistErr     error
 }
 
 func polardbStr(s *string) string {
@@ -342,10 +349,30 @@ func (r *mqlAlicloudPolardbCluster) tdeEnabled() (bool, error) {
 }
 
 func (r *mqlAlicloudPolardbCluster) accessWhitelist() ([]any, error) {
+	cluster, _, err := r.fetchAccessWhitelists()
+	return cluster, err
+}
+
+func (r *mqlAlicloudPolardbCluster) projectAccessWhitelist() ([]any, error) {
+	_, project, err := r.fetchAccessWhitelists()
+	return project, err
+}
+
+// fetchAccessWhitelists reads the cluster's access whitelists once and shares
+// the result between the cluster-level and project-level fields.
+func (r *mqlAlicloudPolardbCluster) fetchAccessWhitelists() ([]any, []any, error) {
+	r.whitelistLock.Lock()
+	defer r.whitelistLock.Unlock()
+	if r.whitelistFetched {
+		return r.clusterWhitelist, r.projectWhitelist, r.whitelistErr
+	}
+	r.whitelistFetched = true
+
 	conn := r.MqlRuntime.Connection.(*connection.AlicloudConnection)
 	client, err := conn.PolarDBClient(r.region)
 	if err != nil {
-		return nil, err
+		r.whitelistErr = err
+		return nil, nil, err
 	}
 
 	dbClusterId := r.dbClusterId
@@ -353,25 +380,52 @@ func (r *mqlAlicloudPolardbCluster) accessWhitelist() ([]any, error) {
 		DBClusterId: &dbClusterId,
 	})
 	if err != nil {
-		return nil, err
+		r.whitelistErr = err
+		return nil, nil, err
 	}
+	var body *polardb.DescribeDBClusterAccessWhitelistResponseBody
+	if resp != nil {
+		body = resp.Body
+	}
+	r.clusterWhitelist, r.projectWhitelist = polardbWhitelistEntries(body)
+	return r.clusterWhitelist, r.projectWhitelist, nil
+}
 
-	res := []any{}
-	if resp == nil || resp.Body == nil || resp.Body.Items == nil {
-		return res, nil
+// polardbWhitelistEntries flattens the comma-separated SecurityIps of every
+// cluster whitelist group and every project whitelist into two entry lists.
+func polardbWhitelistEntries(body *polardb.DescribeDBClusterAccessWhitelistResponseBody) (cluster []any, project []any) {
+	cluster, project = []any{}, []any{}
+	if body == nil {
+		return cluster, project
 	}
-	for _, arr := range resp.Body.Items.DBClusterIPArray {
-		if arr == nil || arr.SecurityIps == nil {
-			continue
-		}
-		for ip := range strings.SplitSeq(*arr.SecurityIps, ",") {
-			ip = strings.TrimSpace(ip)
-			if ip != "" {
-				res = append(res, ip)
+	if body.Items != nil {
+		for _, arr := range body.Items.DBClusterIPArray {
+			if arr != nil {
+				cluster = appendSecurityIps(cluster, arr.SecurityIps)
 			}
 		}
 	}
-	return res, nil
+	if body.ProjectItems != nil {
+		for _, arr := range body.ProjectItems.DBClusterProjectIPArray {
+			if arr != nil {
+				project = appendSecurityIps(project, arr.SecurityIps)
+			}
+		}
+	}
+	return cluster, project
+}
+
+func appendSecurityIps(dst []any, securityIps *string) []any {
+	if securityIps == nil {
+		return dst
+	}
+	for ip := range strings.SplitSeq(*securityIps, ",") {
+		ip = strings.TrimSpace(ip)
+		if ip != "" {
+			dst = append(dst, ip)
+		}
+	}
+	return dst
 }
 
 func (r *mqlAlicloudPolardbCluster) endpoints() ([]any, error) {

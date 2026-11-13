@@ -3917,13 +3917,19 @@ alicloud.polardb.cluster {
   // gathered across every whitelist group. An entry of 0.0.0.0/0 means the
   // cluster accepts connections from any source.
   accessWhitelist() []string
+  // IP access whitelist entries set for projects on the cluster
+  //
+  // The flattened set of CIDR entries from every project whitelist, kept
+  // separately from accessWhitelist. An entry of 0.0.0.0/0 means the project
+  // accepts connections from any source.
+  projectAccessWhitelist() []string
   // Whether the IP whitelist admits every address
   //
-  // True when an entry in accessWhitelist admits any source address: the 0.0.0.0/0
-  // block, the bare 0.0.0.0 the console writes for it, any other block with a
-  // /0 prefix length, the % wildcard, an address range spanning the whole
-  // space, or ::/0. An empty whitelist reports false, and an entry that cannot
-  // be parsed is not counted as open.
+  // True when an entry in accessWhitelist or projectAccessWhitelist admits any
+  // source address: the 0.0.0.0/0 block, the bare 0.0.0.0 the console writes
+  // for it, any other block with a /0 prefix length, the % wildcard, an address
+  // range spanning the whole space, or ::/0. Empty whitelists report false, and
+  // an entry that cannot be parsed is not counted as open.
   whitelistAllowsAllAddresses() bool
   // Connection endpoints of the cluster
   //
@@ -7860,6 +7866,16 @@ private alicloud.sas.config {
   //
   // Empty when no automatic assessment is scheduled.
   configAssessmentCycleDays []int
+  // How often the automatic configuration assessment runs
+  //
+  // One of DAILY, WEEKLY, MONTHLY, or 6HOURLY. WEEKLY runs on
+  // configAssessmentCycleDays and MONTHLY on configAssessmentDaysOfMonth. Null
+  // when the policy does not report a frequency.
+  configAssessmentFrequency string
+  // Days of the month a MONTHLY configuration assessment runs
+  //
+  // Empty for every other frequency.
+  configAssessmentDaysOfMonth []int
   // Baseline standards the configuration assessment applies
   //
   // Empty when no standard is selected, in which case the assessment has

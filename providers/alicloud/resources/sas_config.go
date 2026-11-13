@@ -227,6 +227,34 @@ func (r *mqlAlicloudSasConfig) configAssessmentCycleDays() ([]any, error) {
 	return res, nil
 }
 
+func (r *mqlAlicloudSasConfig) configAssessmentFrequency() (string, error) {
+	cfg := r.checkConfig()
+	if cfg == nil || tea.StringValue(cfg.Frequency) == "" {
+		r.ConfigAssessmentFrequency.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *cfg.Frequency, nil
+}
+
+func (r *mqlAlicloudSasConfig) configAssessmentDaysOfMonth() ([]any, error) {
+	cfg := r.checkConfig()
+	if cfg == nil {
+		return []any{}, nil
+	}
+	return int32PtrsToInts(cfg.DaysOfMonth), nil
+}
+
+// int32PtrsToInts converts an SDK list of *int32 to MQL ints, skipping nils.
+func int32PtrsToInts(in []*int32) []any {
+	res := []any{}
+	for _, v := range in {
+		if v != nil {
+			res = append(res, int64(*v))
+		}
+	}
+	return res
+}
+
 func (r *mqlAlicloudSasConfig) configAssessmentStandards() ([]any, error) {
 	cfg := r.checkConfig()
 	if cfg == nil {
