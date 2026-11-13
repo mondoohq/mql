@@ -1800,6 +1800,7 @@ gcp.project.cloudRunService.service.revisionTemplate.volumes 9.0.0
 gcp.project.cloudRunService.service.revisionTemplate.vpcAccessConfig 13.16.3
 gcp.project.cloudRunService.service.satisfiesPzs 13.1.2
 gcp.project.cloudRunService.service.scalingMode 13.36.1
+gcp.project.cloudRunService.service.sshEnabled 14.8.2
 gcp.project.cloudRunService.service.template 9.0.0
 gcp.project.cloudRunService.service.terminalCondition 9.0.0
 gcp.project.cloudRunService.service.threatDetectionEnabled 13.32.1

@@ -24,7 +24,7 @@ require (
 	cloud.google.com/go/containeranalysis v0.21.1
 	cloud.google.com/go/datastream v1.24.1
 	cloud.google.com/go/deploy v1.35.1
-	cloud.google.com/go/discoveryengine v1.37.0
+	cloud.google.com/go/discoveryengine v1.38.0
 	cloud.google.com/go/dlp v1.39.1
 	cloud.google.com/go/documentai v1.52.0
 	cloud.google.com/go/eventarc v1.27.1
@@ -35,20 +35,20 @@ require (
 	cloud.google.com/go/iam v1.15.1
 	cloud.google.com/go/iap v1.19.1
 	cloud.google.com/go/ids v1.13.1
-	cloud.google.com/go/kms v1.36.1
+	cloud.google.com/go/kms v1.37.0
 	cloud.google.com/go/longrunning v1.5.0
 	cloud.google.com/go/memcache v1.19.1
-	cloud.google.com/go/memorystore v1.8.0
+	cloud.google.com/go/memorystore v1.9.0
 	cloud.google.com/go/modelarmor v1.6.0
 	cloud.google.com/go/monitoring v1.32.1
 	cloud.google.com/go/networkconnectivity v1.30.1
-	cloud.google.com/go/networkmanagement v1.33.0
+	cloud.google.com/go/networkmanagement v1.34.0
 	cloud.google.com/go/orgpolicy v1.22.1
 	cloud.google.com/go/privilegedaccessmanager v1.3.1
-	cloud.google.com/go/pubsub/v2 v2.8.1
+	cloud.google.com/go/pubsub/v2 v2.9.0
 	cloud.google.com/go/recommender v1.21.1
 	cloud.google.com/go/redis v1.29.0
-	cloud.google.com/go/run v1.24.1
+	cloud.google.com/go/run v1.25.0
 	cloud.google.com/go/scheduler v1.18.1
 	cloud.google.com/go/secretmanager v1.24.0
 	cloud.google.com/go/security v1.29.1
@@ -65,9 +65,9 @@ require (
 	github.com/stretchr/testify v1.12.1
 	go.mondoo.com/mql v0.0.0-20261109064811-87180a95a1f3
 	go.mondoo.com/ranger-rpc v0.8.2
-	golang.org/x/oauth2 v0.37.0
-	golang.org/x/sync v0.24.0
-	google.golang.org/api v0.311.0
+	golang.org/x/oauth2 v0.38.0
+	golang.org/x/sync v0.25.0
+	google.golang.org/api v0.314.0
 	// cloud.google.com/go/accesscontextmanager (v1.17.0) still imports
 	// google.golang.org/genproto/googleapis/identity/accesscontextmanager/type
 	// from this root module. go-genproto dropped that package in
@@ -220,7 +220,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.6 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/exp v0.0.0-20261106192419-47ce03d25ef0 // indirect
-	golang.org/x/mod v0.42.0 // indirect
+	golang.org/x/mod v0.43.0 // indirect
 	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/telemetry v0.0.0-20261021172232-6cd571d43fbb // indirect
