@@ -4,6 +4,7 @@
 package providers
 
 import (
+	"reflect"
 	"sync"
 
 	"github.com/rs/zerolog/log"
@@ -41,9 +42,29 @@ func newExtensibleSchema() extensibleSchema {
 
 func (x *extensibleSchema) Add(name string, schema resources.ResourcesSchema) {
 	x.sync.Lock()
+	defer x.sync.Unlock()
+
+	// Adding the schema that is already there under that name changes
+	// nothing, and rebuilding the aggregate for it is not free: it is every
+	// resource of every loaded provider, copied. A builtin provider is
+	// "started" again for every runtime that asks for it, with the same schema
+	// object each time, so a scan of many assets rebuilt the aggregate once
+	// per asset.
+	if sameSchemaObject(x.loaded[name], schema) && len(x.roAggregate.Resources) != 0 {
+		return
+	}
 	x.unsafeAdd(name, schema)
 	x.unsafeRefresh()
-	x.sync.Unlock()
+}
+
+// sameSchemaObject says whether two schemas are one object in memory. Two
+// schemas with the same content are not the same object.
+func sameSchemaObject(a, b resources.ResourcesSchema) bool {
+	if a == nil || b == nil {
+		return false
+	}
+	va, vb := reflect.ValueOf(a), reflect.ValueOf(b)
+	return va.Kind() == reflect.Pointer && vb.Kind() == reflect.Pointer && va.Pointer() == vb.Pointer()
 }
 
 func (x *extensibleSchema) Schema() *resources.Schema {
