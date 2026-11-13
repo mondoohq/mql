@@ -1391,8 +1391,9 @@ func truthyString(val any) bool {
 	return val.(string) != ""
 }
 
+// An empty list is falsy, as it is where a list is the result of a check.
 func truthyArray(val any) bool {
-	return true
+	return len(val.([]any)) != 0
 }
 
 func boolAndBoolV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {

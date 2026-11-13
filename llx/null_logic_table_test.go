@@ -39,10 +39,7 @@ func logicSamples(typ types.Type) []*RawData {
 			DictData(map[string]any{"a": int64(1)}), DictData(map[string]any{}), {Type: types.Dict},
 		}
 	case types.ArrayLike:
-		// No empty list: whether one is truthy differs between the builtins
-		// today (it is next to a bool, it is not next to a number), and is
-		// not what this test is about.
-		return []*RawData{ArrayData([]any{int64(1)}, types.Int), {Type: types.Array(types.Int)}}
+		return []*RawData{ArrayData([]any{int64(1)}, types.Int), ArrayData([]any{}, types.Int), {Type: types.Array(types.Int)}}
 	case types.MapLike:
 		typ := types.Map(types.String, types.Int)
 		return []*RawData{
