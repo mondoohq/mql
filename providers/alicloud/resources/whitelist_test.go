@@ -111,3 +111,18 @@ func TestResolveWhitelistAllowsAllAddresses(t *testing.T) {
 		assert.False(t, got)
 	})
 }
+
+func TestPolardbWhitelistAllowsAllAddressesIncludesProjects(t *testing.T) {
+	// Synthetic: the cluster whitelist is restricted and one project whitelist is open.
+	c := &mqlAlicloudPolardbCluster{}
+	c.AccessWhitelist = plugin.TValue[[]any]{Data: []any{"10.0.0.0/8"}, State: plugin.StateIsSet}
+	c.ProjectAccessWhitelist = plugin.TValue[[]any]{Data: []any{"0.0.0.0/0"}, State: plugin.StateIsSet}
+	open, err := c.whitelistAllowsAllAddresses()
+	assert.NoError(t, err)
+	assert.True(t, open, "an open project whitelist exposes the cluster")
+
+	c.ProjectAccessWhitelist = plugin.TValue[[]any]{Data: []any{"192.168.2.0/24"}, State: plugin.StateIsSet}
+	open, err = c.whitelistAllowsAllAddresses()
+	assert.NoError(t, err)
+	assert.False(t, open)
+}

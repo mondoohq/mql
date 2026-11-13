@@ -4248,6 +4248,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"alicloud.polardb.cluster.accessWhitelist": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudPolardbCluster).GetAccessWhitelist()).ToDataRes(types.Array(types.String))
 	},
+	"alicloud.polardb.cluster.projectAccessWhitelist": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudPolardbCluster).GetProjectAccessWhitelist()).ToDataRes(types.Array(types.String))
+	},
 	"alicloud.polardb.cluster.whitelistAllowsAllAddresses": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudPolardbCluster).GetWhitelistAllowsAllAddresses()).ToDataRes(types.Bool)
 	},
@@ -7577,6 +7580,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"alicloud.sas.config.configAssessmentCycleDays": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudSasConfig).GetConfigAssessmentCycleDays()).ToDataRes(types.Array(types.Int))
+	},
+	"alicloud.sas.config.configAssessmentFrequency": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudSasConfig).GetConfigAssessmentFrequency()).ToDataRes(types.String)
+	},
+	"alicloud.sas.config.configAssessmentDaysOfMonth": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudSasConfig).GetConfigAssessmentDaysOfMonth()).ToDataRes(types.Array(types.Int))
 	},
 	"alicloud.sas.config.configAssessmentStandards": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudSasConfig).GetConfigAssessmentStandards()).ToDataRes(types.Array(types.String))
@@ -13938,6 +13947,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAlicloudPolardbCluster).AccessWhitelist, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"alicloud.polardb.cluster.projectAccessWhitelist": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudPolardbCluster).ProjectAccessWhitelist, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"alicloud.polardb.cluster.whitelistAllowsAllAddresses": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAlicloudPolardbCluster).WhitelistAllowsAllAddresses, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
@@ -18708,6 +18721,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"alicloud.sas.config.configAssessmentCycleDays": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAlicloudSasConfig).ConfigAssessmentCycleDays, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.sas.config.configAssessmentFrequency": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudSasConfig).ConfigAssessmentFrequency, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.sas.config.configAssessmentDaysOfMonth": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudSasConfig).ConfigAssessmentDaysOfMonth, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"alicloud.sas.config.configAssessmentStandards": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -31350,6 +31371,7 @@ type mqlAlicloudPolardbCluster struct {
 	SslEnabled                  plugin.TValue[bool]
 	TdeEnabled                  plugin.TValue[bool]
 	AccessWhitelist             plugin.TValue[[]any]
+	ProjectAccessWhitelist      plugin.TValue[[]any]
 	WhitelistAllowsAllAddresses plugin.TValue[bool]
 	Endpoints                   plugin.TValue[[]any]
 	AuditLogEnabled             plugin.TValue[bool]
@@ -31591,6 +31613,12 @@ func (c *mqlAlicloudPolardbCluster) GetTdeEnabled() *plugin.TValue[bool] {
 func (c *mqlAlicloudPolardbCluster) GetAccessWhitelist() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.AccessWhitelist, func() ([]any, error) {
 		return c.accessWhitelist()
+	})
+}
+
+func (c *mqlAlicloudPolardbCluster) GetProjectAccessWhitelist() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ProjectAccessWhitelist, func() ([]any, error) {
+		return c.projectAccessWhitelist()
 	})
 }
 
@@ -42930,6 +42958,8 @@ type mqlAlicloudSasConfig struct {
 	ConfigAssessmentEnabled        plugin.TValue[bool]
 	ConfigAssessmentAutoAddEnabled plugin.TValue[bool]
 	ConfigAssessmentCycleDays      plugin.TValue[[]any]
+	ConfigAssessmentFrequency      plugin.TValue[string]
+	ConfigAssessmentDaysOfMonth    plugin.TValue[[]any]
 	ConfigAssessmentStandards      plugin.TValue[[]any]
 	WebPaths                       plugin.TValue[[]any]
 	NoticeConfigs                  plugin.TValue[[]any]
@@ -43004,6 +43034,14 @@ func (c *mqlAlicloudSasConfig) GetConfigAssessmentAutoAddEnabled() *plugin.TValu
 
 func (c *mqlAlicloudSasConfig) GetConfigAssessmentCycleDays() *plugin.TValue[[]any] {
 	return &c.ConfigAssessmentCycleDays
+}
+
+func (c *mqlAlicloudSasConfig) GetConfigAssessmentFrequency() *plugin.TValue[string] {
+	return &c.ConfigAssessmentFrequency
+}
+
+func (c *mqlAlicloudSasConfig) GetConfigAssessmentDaysOfMonth() *plugin.TValue[[]any] {
+	return &c.ConfigAssessmentDaysOfMonth
 }
 
 func (c *mqlAlicloudSasConfig) GetConfigAssessmentStandards() *plugin.TValue[[]any] {

@@ -1849,6 +1849,7 @@ alicloud.polardb.cluster.hotStandbyCluster 13.0.0
 alicloud.polardb.cluster.lockMode 13.0.0
 alicloud.polardb.cluster.memorySize 13.0.0
 alicloud.polardb.cluster.payType 13.0.0
+alicloud.polardb.cluster.projectAccessWhitelist 14.4.1
 alicloud.polardb.cluster.regionId 13.0.0
 alicloud.polardb.cluster.resourceGroup 13.3.2
 alicloud.polardb.cluster.resourceGroupId 13.0.0
@@ -2302,7 +2303,9 @@ alicloud.sas.baselineChecks 13.2.5
 alicloud.sas.config 13.5.1
 alicloud.sas.config.configAssessmentAutoAddEnabled 13.5.1
 alicloud.sas.config.configAssessmentCycleDays 13.5.1
+alicloud.sas.config.configAssessmentDaysOfMonth 14.4.1
 alicloud.sas.config.configAssessmentEnabled 13.5.1
+alicloud.sas.config.configAssessmentFrequency 14.4.1
 alicloud.sas.config.configAssessmentStandards 13.5.1
 alicloud.sas.config.noticeConfigs 13.5.1
 alicloud.sas.config.propertySchedules 13.5.1

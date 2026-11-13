@@ -6,6 +6,7 @@ package resources
 import (
 	"testing"
 
+	sasclient "github.com/alibabacloud-go/sas-20181203/v11/client"
 	tea "github.com/alibabacloud-go/tea/tea"
 	"github.com/stretchr/testify/assert"
 )
@@ -113,4 +114,31 @@ func TestSasPropertyScheduleTypes(t *testing.T) {
 		"scheduler_lkm_period",
 		"scheduler_sca_proxy_period",
 	}, sasPropertyScheduleTypes)
+}
+
+func TestSasConfigAssessmentSchedule(t *testing.T) {
+	// Synthetic: a monthly policy; no live Security Center tenant was available.
+	monthly := &mqlAlicloudSasConfig{}
+	monthly.checkDone = true
+	monthly.check = &sasclient.GetCheckConfigResponseBody{
+		Frequency:   tea.String("MONTHLY"),
+		DaysOfMonth: []*int32{tea.Int32(1), nil, tea.Int32(15)},
+	}
+	freq, err := monthly.configAssessmentFrequency()
+	assert.NoError(t, err)
+	assert.Equal(t, "MONTHLY", freq)
+	days, err := monthly.configAssessmentDaysOfMonth()
+	assert.NoError(t, err)
+	assert.Equal(t, []any{int64(1), int64(15)}, days)
+
+	// Synthetic: a policy that reports no frequency reads null, not empty.
+	unset := &mqlAlicloudSasConfig{}
+	unset.checkDone = true
+	unset.check = &sasclient.GetCheckConfigResponseBody{}
+	_, err = unset.configAssessmentFrequency()
+	assert.NoError(t, err)
+	assert.True(t, unset.ConfigAssessmentFrequency.IsNull())
+	days, err = unset.configAssessmentDaysOfMonth()
+	assert.NoError(t, err)
+	assert.Empty(t, days)
 }
