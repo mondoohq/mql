@@ -132,9 +132,7 @@ func (c *mqlCloudflareZone) originCACertificates() ([]any, error) {
 			"requestType":     llx.StringData(string(cert.RequestType)),
 			"requestValidity": llx.IntData(int64(cert.RequestedValidity)),
 			"expiresAt":       timeOrNil(parseRFC3339(cert.ExpiresOn)),
-			// cloudflare-go's origin CA certificate list response no longer
-			// exposes a revocation timestamp, so this field is always null.
-			"revokedAt": llx.NilData,
+			"revokedAt":       timeOrNil(cert.RevokedAt),
 		})
 		if err != nil {
 			return nil, err

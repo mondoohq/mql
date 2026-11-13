@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -28,14 +29,22 @@ func TestOriginCACertificates(t *testing.T) {
 
 	result, err := zone.originCACertificates()
 	require.NoError(t, err)
-	require.Len(t, result, 1)
+	require.Len(t, result, 2)
 
+	// Synthetic: an active certificate; the API omits revoked_at, so revokedAt is null, not year 1.
 	cert := result[0].(*mqlCloudflareZoneOriginCACertificate)
 	assert.Equal(t, "origincert-001", cert.Id.Data)
 	assert.Equal(t, "origin-rsa", cert.RequestType.Data)
 	assert.Equal(t, int64(5475), cert.RequestValidity.Data)
 	assert.Len(t, cert.Hostnames.Data, 2)
 	assert.False(t, cert.ExpiresAt.Data.IsZero())
+	assert.Nil(t, cert.RevokedAt.Data)
+
+	// Synthetic: a revoked certificate; no live account showed one.
+	revoked := result[1].(*mqlCloudflareZoneOriginCACertificate)
+	assert.Equal(t, "origincert-002", revoked.Id.Data)
+	require.NotNil(t, revoked.RevokedAt.Data)
+	assert.Equal(t, time.Date(2026, 10, 15, 8, 30, 0, 0, time.UTC), revoked.RevokedAt.Data.UTC())
 }
 
 func TestCustomCertificates(t *testing.T) {
