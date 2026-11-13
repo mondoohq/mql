@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -409,6 +410,68 @@ func TestDict_Methods_NotIn(t *testing.T) {
 			Expectation: true,
 		},
 	})
+}
+
+// TestDict_Ordering holds <, <=, > and >= to the plain meaning of the
+// operators wherever one side is a value from a dict, such as a value read
+// from JSON: with a dict on either side of an int, a float, a string, or
+// another dict.
+func TestDict_Ordering(t *testing.T) {
+	p := "parse.json('/dummy.json').params"
+	type operand struct {
+		code   string
+		dict   bool
+		number float64
+		text   string
+		isText bool
+	}
+	operands := []operand{
+		{code: "1", number: 1},
+		{code: "3", number: 3},
+		{code: "5", number: 5},
+		{code: "0.5", number: 0.5},
+		{code: "3.0", number: 3},
+		{code: p + "['1']", dict: true, number: 1},
+		{code: p + "['dict']['ee']", dict: true, number: 3},
+		{code: p + "['dict']['ek']", dict: true, number: 5},
+		{code: "'1'", isText: true, text: "1"},
+		{code: "'hello'", isText: true, text: "hello"},
+		{code: p + "['eins']", dict: true, isText: true, text: "1"},
+		{code: p + "['hello']", dict: true, isText: true, text: "hello"},
+	}
+
+	x := testutils.InitTester(testutils.LinuxMock())
+	for _, a := range operands {
+		for _, b := range operands {
+			if !a.dict && !b.dict || a.isText != b.isText {
+				continue
+			}
+			var cmp int
+			if a.isText {
+				cmp = strings.Compare(a.text, b.text)
+			} else if a.number < b.number {
+				cmp = -1
+			} else if a.number > b.number {
+				cmp = 1
+			}
+			for op, want := range map[string]bool{"<": cmp < 0, "<=": cmp <= 0, ">": cmp > 0, ">=": cmp >= 0} {
+				code := a.code + " " + op + " " + b.code
+				t.Run(code, func(t *testing.T) {
+					// The operands are reported next to the answer; the
+					// answer is the one boolean.
+					answered := false
+					for _, res := range x.TestQuery(t, code) {
+						if res.Data.Type == types.Bool {
+							require.NoError(t, res.Data.Error)
+							assert.Equal(t, want, res.Data.Value)
+							answered = true
+						}
+					}
+					assert.True(t, answered, "no answer")
+				})
+			}
+		}
+	}
 }
 
 func TestDict_Methods_InRange(t *testing.T) {
