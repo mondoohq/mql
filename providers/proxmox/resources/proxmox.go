@@ -8,6 +8,7 @@ import (
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers/proxmox/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func proxmoxConn(r *mqlProxmox) *connection.PveConnection {
@@ -200,7 +201,7 @@ func (r *mqlProxmox) roles() ([]any, error) {
 		}
 		res, err := CreateResource(r.MqlRuntime, "proxmox.role", map[string]*llx.RawData{
 			"id":      llx.StringData(role.RoleID),
-			"privs":   llx.ArrayData(privs, "\x02"),
+			"privs":   llx.ArrayData(privs, types.String),
 			"special": llx.BoolData(role.Special == 1),
 		})
 		if err != nil {

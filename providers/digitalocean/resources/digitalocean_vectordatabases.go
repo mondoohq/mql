@@ -8,6 +8,7 @@ import (
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers/digitalocean/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (r *mqlDigitalocean) vectorDatabases() ([]any, error) {
@@ -50,7 +51,7 @@ func (r *mqlDigitalocean) vectorDatabases() ([]any, error) {
 			"ownerUuid":           llx.StringData(v.OwnerUUID),
 			"status":              llx.StringData(v.Status),
 			"size":                llx.StringData(v.Size),
-			"tags":                llx.ArrayData(tags, "\x02"),
+			"tags":                llx.ArrayData(tags, types.String),
 			"createdAt":           llx.TimeData(v.CreatedAt),
 			"updatedAt":           llx.TimeData(v.UpdatedAt),
 			"weaviateVersion":     llx.StringData(weaviateVersion),

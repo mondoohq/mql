@@ -97,7 +97,7 @@ func initProxmoxGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (ma
 			}
 		}
 		args["comment"] = llx.StringData(g.Comment)
-		args["memberIds"] = llx.ArrayData(memberIds, "\x02")
+		args["memberIds"] = llx.ArrayData(memberIds, types.String)
 		return args, nil, nil
 	}
 	return nil, nil, fmt.Errorf("proxmox.group %q not found", groupID)
@@ -126,7 +126,7 @@ func initProxmoxRole(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 				privs = append(privs, p)
 			}
 		}
-		args["privs"] = llx.ArrayData(privs, "\x02")
+		args["privs"] = llx.ArrayData(privs, types.String)
 		args["special"] = llx.BoolData(r.Special == 1)
 		return args, nil, nil
 	}

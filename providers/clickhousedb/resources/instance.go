@@ -11,6 +11,7 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/clickhousedb/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func initClickhousedbInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -173,7 +174,7 @@ func (r *mqlClickhousedbInstance) settingsProfiles() ([]any, error) {
 			"storage":      llx.StringData(storage),
 			"numElements":  llx.IntData(int64(numElements)),
 			"appliesToAll": llx.BoolData(applyToAll),
-			"appliesTo":    llx.ArrayData(toAnySlice(applyToList), "string"),
+			"appliesTo":    llx.ArrayData(toAnySlice(applyToList), types.String),
 		})
 		if err != nil {
 			return nil, err
@@ -210,9 +211,9 @@ func (r *mqlClickhousedbInstance) quotas() ([]any, error) {
 			"__id":         llx.StringData(serverID + "/quota/" + name),
 			"name":         llx.StringData(name),
 			"storage":      llx.StringData(storage),
-			"keys":         llx.ArrayData(toAnySlice(keys), "string"),
+			"keys":         llx.ArrayData(toAnySlice(keys), types.String),
 			"appliesToAll": llx.BoolData(applyToAll),
-			"appliesTo":    llx.ArrayData(toAnySlice(applyToList), "string"),
+			"appliesTo":    llx.ArrayData(toAnySlice(applyToList), types.String),
 		})
 		if err != nil {
 			return nil, err

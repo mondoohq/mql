@@ -76,7 +76,7 @@ func (r *mqlDigitaloceanDatabase) replicas() ([]any, error) {
 			"status":     llx.StringData(rep.Status),
 			"createdAt":  llx.TimeData(rep.CreatedAt),
 			"size":       llx.StringData(rep.Size),
-			"tags":       llx.ArrayData(tags, "\x02"),
+			"tags":       llx.ArrayData(tags, types.String),
 		})
 		if err != nil {
 			return nil, err
@@ -185,7 +185,7 @@ func (r *mqlDigitalocean) vpcPeerings() ([]any, error) {
 		res, err := CreateResource(r.MqlRuntime, "digitalocean.vpcPeering", map[string]*llx.RawData{
 			"id":        llx.StringData(p.ID),
 			"name":      llx.StringData(p.Name),
-			"vpcIds":    llx.ArrayData(vpcIds, "\x02"),
+			"vpcIds":    llx.ArrayData(vpcIds, types.String),
 			"status":    llx.StringData(string(p.Status)),
 			"createdAt": llx.TimeData(p.CreatedAt),
 		})
@@ -244,9 +244,9 @@ func (r *mqlDigitaloceanKubernetesCluster) nodePools() ([]any, error) {
 			"autoScale": llx.BoolData(np.AutoScale),
 			"minNodes":  llx.IntData(int64(np.MinNodes)),
 			"maxNodes":  llx.IntData(int64(np.MaxNodes)),
-			"tags":      llx.ArrayData(npTags, "\x02"),
+			"tags":      llx.ArrayData(npTags, types.String),
 			"labels":    llx.DictData(labels),
-			"taints":    llx.ArrayData(taints, "\x13"),
+			"taints":    llx.ArrayData(taints, types.Dict),
 		})
 		if err != nil {
 			return nil, err
@@ -558,8 +558,8 @@ func newManifestResource(runtime *plugin.Runtime, m *godo.RepositoryManifest) (p
 		"compressedSizeBytes": llx.IntData(int64(m.CompressedSizeBytes)),
 		"sizeBytes":           llx.IntData(int64(m.SizeBytes)),
 		"updatedAt":           llx.TimeData(m.UpdatedAt),
-		"tags":                llx.ArrayData(tags, "string"),
-		"blobs":               llx.ArrayData(blobs, "dict"),
+		"tags":                llx.ArrayData(tags, types.String),
+		"blobs":               llx.ArrayData(blobs, types.Dict),
 	})
 }
 
@@ -735,7 +735,7 @@ func (r *mqlDigitalocean) apps() ([]any, error) {
 			"liveDomain":             llx.StringData(app.LiveDomain),
 			"projectId":              llx.StringData(app.ProjectID),
 			"activeDeploymentId":     llx.StringData(activeDeploymentId),
-			"domains":                llx.ArrayData(domains, "\x13"),
+			"domains":                llx.ArrayData(domains, types.Dict),
 
 			"enhancedThreatControlEnabled": llx.BoolData(app.Spec != nil && app.Spec.EnhancedThreatControlEnabled),
 			"secureHeaderKey":              llx.StringData(secureHeaderKey),
@@ -805,10 +805,10 @@ func (r *mqlDigitalocean) alertPolicies() ([]any, error) {
 			"value":       llx.FloatData(float64(p.Value)),
 			"window":      llx.StringData(p.Window),
 			"enabled":     llx.BoolData(p.Enabled),
-			"entities":    llx.ArrayData(entities, "\x02"),
-			"tags":        llx.ArrayData(pTags, "\x02"),
-			"alertEmails": llx.ArrayData(emails, "\x02"),
-			"alertSlack":  llx.ArrayData(slacks, "\x13"),
+			"entities":    llx.ArrayData(entities, types.String),
+			"tags":        llx.ArrayData(pTags, types.String),
+			"alertEmails": llx.ArrayData(emails, types.String),
+			"alertSlack":  llx.ArrayData(slacks, types.Dict),
 		})
 		if err != nil {
 			return nil, err
@@ -858,7 +858,7 @@ func (r *mqlDigitalocean) uptimeChecks() ([]any, error) {
 			"name":    llx.StringData(c.Name),
 			"type":    llx.StringData(c.Type),
 			"target":  llx.StringData(c.Target),
-			"regions": llx.ArrayData(regions, "\x02"),
+			"regions": llx.ArrayData(regions, types.String),
 			"enabled": llx.BoolData(c.Enabled),
 		})
 		if err != nil {
@@ -989,7 +989,7 @@ func (r *mqlDigitalocean) spacesKeys() ([]any, error) {
 		res, err := CreateResource(r.MqlRuntime, "digitalocean.spacesKey", map[string]*llx.RawData{
 			"name":      llx.StringData(k.Name),
 			"accessKey": llx.StringData(k.AccessKey),
-			"grants":    llx.ArrayData(grants, "\x13"),
+			"grants":    llx.ArrayData(grants, types.Dict),
 			"createdAt": llx.TimeDataPtr(parseDoTime(k.CreatedAt)),
 		})
 		if err != nil {

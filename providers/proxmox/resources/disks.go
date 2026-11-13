@@ -9,6 +9,7 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/proxmox/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // ---------------------------------------------------------------------------
@@ -76,7 +77,7 @@ func (r *mqlProxmoxNodeDisk) smart() (*mqlProxmoxNodeDiskSmart, error) {
 				"health":     llx.StringData("UNKNOWN"),
 				"type":       llx.StringData(""),
 				"text":       llx.StringData(""),
-				"attributes": llx.ArrayData([]any{}, "\x07"),
+				"attributes": llx.ArrayData([]any{}, types.Dict),
 			})
 			if err != nil {
 				return nil, err
@@ -107,7 +108,7 @@ func (r *mqlProxmoxNodeDisk) smart() (*mqlProxmoxNodeDiskSmart, error) {
 		"health":     llx.StringData(r.smartData.Health),
 		"type":       llx.StringData(r.smartData.Type),
 		"text":       llx.StringData(r.smartData.Text),
-		"attributes": llx.ArrayData(attrs, "\x07"),
+		"attributes": llx.ArrayData(attrs, types.Dict),
 	})
 	if err != nil {
 		return nil, err

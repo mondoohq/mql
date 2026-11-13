@@ -18,6 +18,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
 	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsMq) id() (string, error) {
@@ -257,7 +258,7 @@ func newMqlAwsMqConfiguration(runtime *plugin.Runtime, region string, cfg mq_typ
 			"latestRevisionCreated":     latestRevisionCreated,
 			"latestRevisionDescription": latestRevisionDescription,
 			"region":                    llx.StringData(region),
-			"tags":                      llx.MapData(tags, "string"),
+			"tags":                      llx.MapData(tags, types.String),
 		})
 	if err != nil {
 		return nil, err

@@ -178,8 +178,8 @@ func workflowToMql(a *mqlAtlassianJira, wf *models.WorkflowScheme) (any, error) 
 			"name":        llx.StringData(name),
 			"description": llx.StringData(wf.Description),
 			"isDefault":   llx.BoolData(wf.IsDefault),
-			"statuses":    llx.ArrayData(statuses, "string"),
-			"transitions": llx.ArrayData(transitions, "dict"),
+			"statuses":    llx.ArrayData(statuses, types.String),
+			"transitions": llx.ArrayData(transitions, types.Dict),
 		})
 }
 
@@ -300,7 +300,7 @@ func (a *mqlAtlassianJiraProject) roles() ([]any, error) {
 				"admin":            llx.BoolData(d.Admin),
 				"default":          llx.BoolData(d.Default),
 				"roleConfigurable": llx.BoolData(d.RoleConfigurable),
-				"actors":           llx.ArrayData(actors, "dict"),
+				"actors":           llx.ArrayData(actors, types.Dict),
 			})
 		if err != nil {
 			return nil, err

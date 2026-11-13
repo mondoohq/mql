@@ -17,6 +17,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
 	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // ---- Init functions for cross-referenced labeling resources ----
@@ -599,7 +600,7 @@ func (a *mqlAwsSagemaker) getWorkteams(conn *connection.AwsConnection) []*jobpoo
 							"lastUpdatedAt":     llx.TimeDataPtr(wt.LastUpdatedDate),
 							"workforceArn":      llx.StringDataPtr(wt.WorkforceArn),
 							"workteamUrl":       llx.StringDataPtr(wt.SubDomain),
-							"memberDefinitions": llx.ArrayData(memberDefs, "dict"),
+							"memberDefinitions": llx.ArrayData(memberDefs, types.Dict),
 						})
 					if err != nil {
 						return nil, err
