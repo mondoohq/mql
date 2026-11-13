@@ -131,33 +131,41 @@ func newMqlMwaaEnvironment(runtime *plugin.Runtime, accountID, region string, en
 		tags[k] = v
 	}
 
+	identityStoreID, identityStartURL := llx.NilData, llx.NilData
+	if ic := env.IdentityCenterConfiguration; ic != nil {
+		identityStoreID = llx.StringDataPtr(ic.IdentityStoreId)
+		identityStartURL = llx.StringDataPtr(ic.StartUrl)
+	}
+
 	res, err := CreateResource(runtime, ResourceAwsMwaaEnvironment, map[string]*llx.RawData{
-		"__id":                         llx.StringData(envArn),
-		"arn":                          llx.StringData(envArn),
-		"name":                         llx.StringDataPtr(env.Name),
-		"region":                       llx.StringData(region),
-		"status":                       llx.StringDataPtr(nonEmptyEnum(env.Status)),
-		"airflowVersion":               llx.StringDataPtr(env.AirflowVersion),
-		"environmentClass":             llx.StringDataPtr(env.EnvironmentClass),
-		"webserverAccessMode":          llx.StringDataPtr(nonEmptyEnum(env.WebserverAccessMode)),
-		"webserverUrl":                 llx.StringDataPtr(env.WebserverUrl),
-		"endpointManagement":           llx.StringDataPtr(nonEmptyEnum(env.EndpointManagement)),
-		"dagS3Path":                    llx.StringDataPtr(env.DagS3Path),
-		"pluginsS3Path":                llx.StringDataPtr(env.PluginsS3Path),
-		"requirementsS3Path":           llx.StringDataPtr(env.RequirementsS3Path),
-		"startupScriptS3Path":          llx.StringDataPtr(env.StartupScriptS3Path),
-		"logConfigurations":            llx.ArrayData(logConfigs, types.Resource(ResourceAwsMwaaEnvironmentLogConfiguration)),
-		"airflowConfigurationOptions":  llx.MapData(options, types.String),
-		"minWorkers":                   llx.IntDataPtr(env.MinWorkers),
-		"maxWorkers":                   llx.IntDataPtr(env.MaxWorkers),
-		"minWebservers":                llx.IntDataPtr(env.MinWebservers),
-		"maxWebservers":                llx.IntDataPtr(env.MaxWebservers),
-		"schedulers":                   llx.IntDataPtr(env.Schedulers),
-		"weeklyMaintenanceWindowStart": llx.StringDataPtr(env.WeeklyMaintenanceWindowStart),
-		"webserverVpcEndpointService":  llx.StringDataPtr(env.WebserverVpcEndpointService),
-		"databaseVpcEndpointService":   llx.StringDataPtr(env.DatabaseVpcEndpointService),
-		"createdAt":                    llx.TimeDataPtr(env.CreatedAt),
-		"tags":                         llx.MapData(tags, types.String),
+		"__id":                          llx.StringData(envArn),
+		"arn":                           llx.StringData(envArn),
+		"name":                          llx.StringDataPtr(env.Name),
+		"region":                        llx.StringData(region),
+		"status":                        llx.StringDataPtr(nonEmptyEnum(env.Status)),
+		"airflowVersion":                llx.StringDataPtr(env.AirflowVersion),
+		"environmentClass":              llx.StringDataPtr(env.EnvironmentClass),
+		"webserverAccessMode":           llx.StringDataPtr(nonEmptyEnum(env.WebserverAccessMode)),
+		"webserverUrl":                  llx.StringDataPtr(env.WebserverUrl),
+		"endpointManagement":            llx.StringDataPtr(nonEmptyEnum(env.EndpointManagement)),
+		"identityCenterIdentityStoreId": identityStoreID,
+		"identityCenterStartUrl":        identityStartURL,
+		"dagS3Path":                     llx.StringDataPtr(env.DagS3Path),
+		"pluginsS3Path":                 llx.StringDataPtr(env.PluginsS3Path),
+		"requirementsS3Path":            llx.StringDataPtr(env.RequirementsS3Path),
+		"startupScriptS3Path":           llx.StringDataPtr(env.StartupScriptS3Path),
+		"logConfigurations":             llx.ArrayData(logConfigs, types.Resource(ResourceAwsMwaaEnvironmentLogConfiguration)),
+		"airflowConfigurationOptions":   llx.MapData(options, types.String),
+		"minWorkers":                    llx.IntDataPtr(env.MinWorkers),
+		"maxWorkers":                    llx.IntDataPtr(env.MaxWorkers),
+		"minWebservers":                 llx.IntDataPtr(env.MinWebservers),
+		"maxWebservers":                 llx.IntDataPtr(env.MaxWebservers),
+		"schedulers":                    llx.IntDataPtr(env.Schedulers),
+		"weeklyMaintenanceWindowStart":  llx.StringDataPtr(env.WeeklyMaintenanceWindowStart),
+		"webserverVpcEndpointService":   llx.StringDataPtr(env.WebserverVpcEndpointService),
+		"databaseVpcEndpointService":    llx.StringDataPtr(env.DatabaseVpcEndpointService),
+		"createdAt":                     llx.TimeDataPtr(env.CreatedAt),
+		"tags":                          llx.MapData(tags, types.String),
 	})
 	if err != nil {
 		return nil, err

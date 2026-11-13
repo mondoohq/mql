@@ -1,7 +1,7 @@
 {
   "provider": "aws",
-  "version": "14.7.0",
-  "generated_at": "2026-11-09T09:51:53-08:00",
+  "version": "14.8.0",
+  "generated_at": "2026-11-12T21:09:48-08:00",
   "permissions": [
     "access-analyzer:GetFinding",
     "access-analyzer:ListAnalyzers",
@@ -7467,6 +7467,12 @@
       "service": "secretsmanager",
       "action": "DescribeSecret",
       "source_file": "aws_secretsmanager.go"
+    },
+    {
+      "permission": "secretsmanager:DescribeSecret",
+      "service": "secretsmanager",
+      "action": "DescribeSecret",
+      "source_file": "aws_secretsmanager_crossaccount.go"
     },
     {
       "permission": "secretsmanager:GetResourcePolicy",

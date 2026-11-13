@@ -653,6 +653,17 @@ func initAwsEcsTask(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 		args["ephemeralStorageSizeInGiB"] = llx.NilData
 	}
 
+	args["isolationMode"] = llx.NilData
+	args["attestationPolicyStatus"] = llx.NilData
+	if te := t.TrustedExecutionSummary; te != nil {
+		if te.IsolationMode != "" {
+			args["isolationMode"] = llx.StringData(string(te.IsolationMode))
+		}
+		if te.AttestationPolicyStatus != "" {
+			args["attestationPolicyStatus"] = llx.StringData(string(te.AttestationPolicyStatus))
+		}
+	}
+
 	res, err := CreateResource(runtime, "aws.ecs.task", args)
 	if err != nil {
 		return args, nil, err
@@ -1893,6 +1904,17 @@ func (a *mqlAwsEcsTaskDefinition) enableFaultInjection() (bool, error) {
 		return false, err
 	}
 	return convert.ToValue(a.cachedTD.EnableFaultInjection), nil
+}
+
+func (a *mqlAwsEcsTaskDefinition) isolationMode() (string, error) {
+	if err := a.fetchDetail(); err != nil {
+		return "", err
+	}
+	if a.cachedTD == nil || a.cachedTD.TrustedExecutionConfiguration == nil || a.cachedTD.TrustedExecutionConfiguration.IsolationMode == "" {
+		a.IsolationMode.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return string(a.cachedTD.TrustedExecutionConfiguration.IsolationMode), nil
 }
 
 func (a *mqlAwsEcsTaskDefinition) cpu() (string, error) {

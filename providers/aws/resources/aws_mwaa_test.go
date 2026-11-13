@@ -43,3 +43,26 @@ func TestMwaaBucketName(t *testing.T) {
 	assert.Empty(t, mwaaBucketName("my-dags"))
 	assert.Empty(t, mwaaBucketName("arn:aws:iam::123456789012:role/x"))
 }
+
+func TestMwaaIdentityCenter(t *testing.T) {
+	// Synthetic: no live environment with IAM Identity Center was available.
+	env, err := newMqlMwaaEnvironment(testRuntime(), "123456789012", "us-east-1", mwaatypes.Environment{
+		Arn:  aws.String("arn:aws:airflow:us-east-1:123456789012:environment/sso"),
+		Name: aws.String("sso"),
+		IdentityCenterConfiguration: &mwaatypes.IdentityCenterConfiguration{
+			IdentityStoreId: aws.String("d-1234567890"),
+			StartUrl:        aws.String("https://example.awsapps.com/start"),
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "d-1234567890", env.IdentityCenterIdentityStoreId.Data)
+	assert.Equal(t, "https://example.awsapps.com/start", env.IdentityCenterStartUrl.Data)
+
+	plain, err := newMqlMwaaEnvironment(testRuntime(), "123456789012", "us-east-1", mwaatypes.Environment{
+		Arn:  aws.String("arn:aws:airflow:us-east-1:123456789012:environment/plain"),
+		Name: aws.String("plain"),
+	})
+	require.NoError(t, err)
+	assert.True(t, plain.IdentityCenterIdentityStoreId.IsNull())
+	assert.True(t, plain.IdentityCenterStartUrl.IsNull())
+}
