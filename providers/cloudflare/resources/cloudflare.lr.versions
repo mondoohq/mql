@@ -456,6 +456,7 @@ cloudflare.one.organization.authDomain 13.1.0
 cloudflare.one.organization.autoRedirectToIdentity 13.1.0
 cloudflare.one.organization.createdAt 13.1.0
 cloudflare.one.organization.disableEndUserAppCreation 14.2.10
+cloudflare.one.organization.grantTrustToAllAccountsInOrg 14.3.2
 cloudflare.one.organization.isUiReadOnly 13.1.0
 cloudflare.one.organization.name 13.1.0
 cloudflare.one.organization.serviceTokenInactivityAction 14.0.1
@@ -463,6 +464,7 @@ cloudflare.one.organization.serviceTokenInactivityEnabled 14.0.1
 cloudflare.one.organization.serviceTokenInactivityThresholdDays 14.0.1
 cloudflare.one.organization.sessionDuration 13.1.0
 cloudflare.one.organization.strictServiceTokenAuth 14.1.1
+cloudflare.one.organization.trustedAccounts 14.3.2
 cloudflare.one.organization.updatedAt 13.1.0
 cloudflare.one.organization.userSeatExpirationInactiveTime 13.1.0
 cloudflare.one.organization.warpAuthNonBrowser401 13.8.1
