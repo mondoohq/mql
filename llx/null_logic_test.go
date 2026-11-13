@@ -158,3 +158,42 @@ func TestLogicBetweenScalarsAndCollectionsDoesNotPanic(t *testing.T) {
 		})
 	}
 }
+
+// An empty list is falsy on either side of && and ||, next to any type. A
+// list that is the result of a check fails when it is empty, and it counts
+// the same way here: `list.where(a) && list.where(b)` is true only if both
+// find something.
+func TestEmptyListIsFalsyInLogicalOperators(t *testing.T) {
+	runtime := testutils.LinuxMock()
+	empty := `[1,2].where(_ == 5)`
+	otherEmpty := `[1].where(_ == 7)`
+	found := `[1,2].where(_ == 2)`
+
+	for query, want := range map[string]bool{
+		empty + ` && ` + otherEmpty: false, // was true
+		empty + ` && ` + found:      false, // was true
+		found + ` && ` + empty:      false, // was true
+		found + ` && ` + found:      true,
+		empty + ` && true`:          false, // was true
+		`true && ` + empty:          false, // was true
+		found + ` && true`:          true,
+		empty + ` || ` + otherEmpty: false, // was true
+		empty + ` || false`:         false, // was true
+		`false || ` + empty:         false, // was true
+		empty + ` || ` + found:      true,
+		found + ` || false`:         true,
+		empty + ` || true`:          true,
+
+		// Next to a number or a string it was falsy already.
+		empty + ` && 1`:   false,
+		`"a" && ` + empty: false,
+	} {
+		t.Run(query, func(t *testing.T) {
+			res, err := exec.Exec(query, runtime, mql.Features{}, nil)
+			require.NoError(t, err)
+			require.NotNil(t, res)
+			require.NoError(t, res.Error)
+			assert.Equal(t, want, res.Value)
+		})
+	}
+}
