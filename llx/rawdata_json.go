@@ -27,28 +27,29 @@ func intKeys(m map[int]any) []int {
 	return keys
 }
 
-// MQL represents an unbounded int as math.MaxInt64 (Inf) or math.MinInt64
-// (-Inf). JSON has no token for infinity, so these export as the strings
-// "Inf" and "-Inf", the same way an infinite time exports as "Never".
+// MQL represents an unbounded int as math.MaxInt64 (Infinity) or math.MinInt64
+// (-Infinity). JSON has no token for infinity, so these export as the strings
+// "Infinity" and "-Infinity", spelled like the MQL literal, the same way an
+// infinite time exports as "Never".
 func int2json(i int64) string {
 	if i == math.MaxInt64 {
-		return `"Inf"`
+		return `"Infinity"`
 	}
 	if i == math.MinInt64 {
-		return `"-Inf"`
+		return `"-Infinity"`
 	}
 
 	return strconv.FormatInt(i, 10)
 }
 
 // JSON has no token for infinity or NaN, so these export as the strings
-// "Inf", "-Inf" and "NaN".
+// "Infinity", "-Infinity" and "NaN", spelled like the MQL literals.
 func float2json(f float64) string {
 	if math.IsInf(f, 1) {
-		return `"Inf"`
+		return `"Infinity"`
 	}
 	if math.IsInf(f, -1) {
-		return `"-Inf"`
+		return `"-Infinity"`
 	}
 	if math.IsNaN(f) {
 		return `"NaN"`

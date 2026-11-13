@@ -254,18 +254,18 @@ func TestRawDataJson_numbers(t *testing.T) {
 		{"negative int", types.Int, int64(-1), "-1"},
 		{"zero int", types.Int, int64(0), "0"},
 		{"int max-1", types.Int, int64(math.MaxInt64 - 1), "9223372036854775806"},
-		{"int infinity", types.Int, int64(math.MaxInt64), `"Inf"`},
-		{"int negative infinity", types.Int, int64(math.MinInt64), `"-Inf"`},
+		{"int infinity", types.Int, int64(math.MaxInt64), `"Infinity"`},
+		{"int negative infinity", types.Int, int64(math.MinInt64), `"-Infinity"`},
 		{"float", types.Float, 1.5, "1.5"},
-		{"float infinity", types.Float, math.Inf(1), `"Inf"`},
-		{"float negative infinity", types.Float, math.Inf(-1), `"-Inf"`},
+		{"float infinity", types.Float, math.Inf(1), `"Infinity"`},
+		{"float negative infinity", types.Float, math.Inf(-1), `"-Infinity"`},
 		{"float NaN", types.Float, math.NaN(), `"NaN"`},
 		{"dict int", types.Dict, int64(7), "7"},
-		{"dict int infinity", types.Dict, int64(math.MaxInt64), `"Inf"`},
-		{"dict float infinity", types.Dict, math.Inf(-1), `"-Inf"`},
+		{"dict int infinity", types.Dict, int64(math.MaxInt64), `"Infinity"`},
+		{"dict float infinity", types.Dict, math.Inf(-1), `"-Infinity"`},
 		{"dict float NaN", types.Dict, math.NaN(), `"NaN"`},
-		{"dict nested infinity", types.Dict, map[string]any{"a": int64(math.MaxInt64), "b": []any{math.Inf(1), 2.5}}, `{"a":"Inf","b":["Inf",2.5]}`},
-		{"int array with infinity", types.Array(types.Int), []any{int64(1), int64(math.MaxInt64)}, `[1,"Inf"]`},
+		{"dict nested infinity", types.Dict, map[string]any{"a": int64(math.MaxInt64), "b": []any{math.Inf(1), 2.5}}, `{"a":"Infinity","b":["Infinity",2.5]}`},
+		{"int array with infinity", types.Array(types.Int), []any{int64(1), int64(math.MaxInt64)}, `[1,"Infinity"]`},
 	}
 
 	for _, tc := range tests {
@@ -295,5 +295,5 @@ func TestRawDataJson_shadowEntryBlock(t *testing.T) {
 
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(res.Bytes(), &got))
-	assert.Equal(t, map[string]any{"user": "root", "maxdays": float64(99999), "inactivedays": "Inf"}, got)
+	assert.Equal(t, map[string]any{"user": "root", "maxdays": float64(99999), "inactivedays": "Infinity"}, got)
 }
