@@ -436,8 +436,8 @@ github.com/stackitcloud/stackit-sdk-go/services/modelexperiments v0.3.2 h1:9ptgH
 github.com/stackitcloud/stackit-sdk-go/services/modelexperiments v0.3.2/go.mod h1:awsNt1BD4IYhwXI/KhEvNiU5M6zXtAvUXPZO8YBAmIA=
 github.com/stackitcloud/stackit-sdk-go/services/modelserving v0.14.0 h1:dVhWESZ2Uxecw/lL63g5D37FAPkFn77yy5MivXbvi4E=
 github.com/stackitcloud/stackit-sdk-go/services/modelserving v0.14.0/go.mod h1:x9g2exWIyD2a/NeL6s6c7pBCte1QeiRQpJG64GKI9FU=
-github.com/stackitcloud/stackit-sdk-go/services/mongodbflex v1.13.0 h1:+7cw7kFNw2dZ3opWDusuW+GC+3lwf8mjpHtIvi2+wqs=
-github.com/stackitcloud/stackit-sdk-go/services/mongodbflex v1.13.0/go.mod h1:yNxGU6mwDzXX82/QfgxRzg2M3+ktVNKS1qPzT01QIi0=
+github.com/stackitcloud/stackit-sdk-go/services/mongodbflex v1.14.0 h1:GdCzKryyTnQM+al6ntIp8gBkJfy7htUGAbAb5xxTIvc=
+github.com/stackitcloud/stackit-sdk-go/services/mongodbflex v1.14.0/go.mod h1:yNxGU6mwDzXX82/QfgxRzg2M3+ktVNKS1qPzT01QIi0=
 github.com/stackitcloud/stackit-sdk-go/services/objectstorage v1.13.0 h1:lVFUq1AVW2wgiKjtcr8FeEY+Jxw3hBXyh7I+qWW6ad4=
 github.com/stackitcloud/stackit-sdk-go/services/objectstorage v1.13.0/go.mod h1:HAQToFb4LrI6jdOdOowApI3KLF3D0KzE9ne0Lty4wkw=
 github.com/stackitcloud/stackit-sdk-go/services/observability v0.26.0 h1:Dh7vvXKGDvUVX1jC2Y7BKnIitKV/se7N/cdDiPrOV9k=
@@ -464,8 +464,8 @@ github.com/stackitcloud/stackit-sdk-go/services/serviceenablement v1.8.0 h1:PsLX
 github.com/stackitcloud/stackit-sdk-go/services/serviceenablement v1.8.0/go.mod h1:izKsr/tJKDNPsgZ/LFQ2civLOICA75BKU06NNWgADIw=
 github.com/stackitcloud/stackit-sdk-go/services/sfs v0.13.1 h1:jlxd9ee8GX4wzQywyKiu9Jid6Mjqiru/QNm4OhUS70U=
 github.com/stackitcloud/stackit-sdk-go/services/sfs v0.13.1/go.mod h1:QDhu6jIIgqgO7l/wAGlfUDHC4Q20vfyUifh3a0qT3W4=
-github.com/stackitcloud/stackit-sdk-go/services/ske v1.22.0 h1:DNTwOlCLphNSr454IeqGo/eSIgxlajNzmx30gjyAdyk=
-github.com/stackitcloud/stackit-sdk-go/services/ske v1.22.0/go.mod h1:MfP4FhM/g/2C1PREHFyB8oLPzZ9Lrewq9R7z70361F8=
+github.com/stackitcloud/stackit-sdk-go/services/ske v1.23.0 h1:Jqwtn80Wy3ee+jJGoRiALkKuob/LidC7n3TBL2Ge6gQ=
+github.com/stackitcloud/stackit-sdk-go/services/ske v1.23.0/go.mod h1:MfP4FhM/g/2C1PREHFyB8oLPzZ9Lrewq9R7z70361F8=
 github.com/stackitcloud/stackit-sdk-go/services/sqlserverflex v1.20.0 h1:dHsxhHt2iVz+hhk5IW1AfW3ic5JVdC5C9FKqFMAMZy8=
 github.com/stackitcloud/stackit-sdk-go/services/sqlserverflex v1.20.0/go.mod h1:chULz8M6OKvzWEMVH/3DWKDb1UQab87O1KLJfWV0Vp4=
 github.com/stackitcloud/stackit-sdk-go/services/telemetrylink v0.6.0 h1:glsamuWGVTwzBk3yoWYmq8gDcDkJncepHRn/tDwSwjA=
@@ -474,8 +474,8 @@ github.com/stackitcloud/stackit-sdk-go/services/telemetryrouter v0.6.1 h1:RPMUjr
 github.com/stackitcloud/stackit-sdk-go/services/telemetryrouter v0.6.1/go.mod h1:e457u40HTJAVzw9YFP7Ri90otkJlgDqIphiDD5AZISI=
 github.com/stackitcloud/stackit-sdk-go/services/valkey v0.4.0 h1:75iJs+mZPnrGSlSoTZtKYYCyNqtqgx6JVChwJokcKVg=
 github.com/stackitcloud/stackit-sdk-go/services/valkey v0.4.0/go.mod h1:0crDO5v97ulHjVZVoFR2gJ4FCpEQeXGdM+V+AlZ6M6E=
-github.com/stackitcloud/stackit-sdk-go/services/vpn v0.15.3 h1:rtY3Pdup5W3ZNQFiNo6STnoKKxpfM4YWjMbaps3OZb4=
-github.com/stackitcloud/stackit-sdk-go/services/vpn v0.15.3/go.mod h1:CQ2Mv18PiEDsJ9ENp7BB7hS5nnS6bZmfWoneCzH+IjQ=
+github.com/stackitcloud/stackit-sdk-go/services/vpn v0.16.0 h1:G6ec8vtjGJUWr5SK1dvZGCRdFxa08mTMGDK6vSx1SgQ=
+github.com/stackitcloud/stackit-sdk-go/services/vpn v0.16.0/go.mod h1:CQ2Mv18PiEDsJ9ENp7BB7hS5nnS6bZmfWoneCzH+IjQ=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/testify v1.2.2/go.mod h1:a8OnRcib4nhh0OaRAV+Yts87kKdq0PP7pXfy6kDkUVs=
 github.com/stretchr/testify v1.4.0/go.mod h1:j7eGeouHqKxXV5pUuKE4zz7dFj8WfuZ+81PSLYec5m4=
