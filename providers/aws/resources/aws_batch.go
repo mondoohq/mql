@@ -1454,16 +1454,28 @@ func (a *mqlAwsBatchJobDefinition) eks() (*mqlAwsBatchJobDefinitionEksPodPropert
 		shareProcessNS = *pod.ShareProcessNamespace
 	}
 
+	podSC := pod.SecurityContext
+	if podSC == nil {
+		podSC = &batch_types.EksPodSecurityContext{}
+	}
+	podSeccompType, podSeccompLocal := batchSeccompProfileData(podSC.SeccompProfile)
+
 	res, err := CreateResource(a.MqlRuntime, "aws.batch.jobDefinition.eksPodProperties",
 		map[string]*llx.RawData{
-			"__id":                  llx.StringData(a.Arn.Data + "/eks"),
-			"serviceAccountName":    llx.StringData(convert.ToValue(pod.ServiceAccountName)),
-			"hostNetwork":           llx.BoolData(hostNetwork),
-			"shareProcessNamespace": llx.BoolData(shareProcessNS),
-			"dnsPolicy":             llx.StringData(convert.ToValue(pod.DnsPolicy)),
-			"imagePullSecrets":      llx.ArrayData(imagePullSecrets, types.String),
-			"metadata":              llx.DictData(metadata),
-			"volumes":               llx.ArrayData(volumes, types.Dict),
+			"__id":                              llx.StringData(a.Arn.Data + "/eks"),
+			"serviceAccountName":                llx.StringData(convert.ToValue(pod.ServiceAccountName)),
+			"hostNetwork":                       llx.BoolData(hostNetwork),
+			"shareProcessNamespace":             llx.BoolData(shareProcessNS),
+			"dnsPolicy":                         llx.StringData(convert.ToValue(pod.DnsPolicy)),
+			"imagePullSecrets":                  llx.ArrayData(imagePullSecrets, types.String),
+			"metadata":                          llx.DictData(metadata),
+			"volumes":                           llx.ArrayData(volumes, types.Dict),
+			"securityContextRunAsUser":          llx.IntDataPtr(podSC.RunAsUser),
+			"securityContextRunAsGroup":         llx.IntDataPtr(podSC.RunAsGroup),
+			"securityContextRunAsNonRoot":       llx.BoolDataPtr(podSC.RunAsNonRoot),
+			"securityContextFsGroup":            llx.IntDataPtr(podSC.FsGroup),
+			"securityContextSeccompProfileType": podSeccompType,
+			"securityContextSeccompProfileLocalhostProfile": podSeccompLocal,
 		})
 	if err != nil {
 		return nil, err
@@ -1535,8 +1547,16 @@ func buildBatchEksContainers(runtime *plugin.Runtime, idPrefix string, container
 		runAsNonRoot := false
 		runAsUser := int64(0)
 		runAsGroup := int64(0)
+		capAdd := []any{}
+		capDrop := []any{}
+		seccompType, seccompLocal := batchSeccompProfileData(nil)
 		if c.SecurityContext != nil {
 			sc := c.SecurityContext
+			if sc.Capabilities != nil {
+				capAdd = convert.SliceAnyToInterface(sc.Capabilities.Add)
+				capDrop = convert.SliceAnyToInterface(sc.Capabilities.Drop)
+			}
+			seccompType, seccompLocal = batchSeccompProfileData(sc.SeccompProfile)
 			if sc.Privileged != nil {
 				priv = *sc.Privileged
 			}
@@ -1569,11 +1589,15 @@ func buildBatchEksContainers(runtime *plugin.Runtime, idPrefix string, container
 				"resources":                 llx.DictData(resources),
 				"volumeMounts":              llx.ArrayData(volumeMounts, types.Dict),
 				"securityContextPrivileged": llx.BoolData(priv),
-				"securityContextAllowPrivilegeEscalation": llx.BoolData(allowEsc),
-				"securityContextReadOnlyRootFilesystem":   llx.BoolData(roRoot),
-				"securityContextRunAsNonRoot":             llx.BoolData(runAsNonRoot),
-				"securityContextRunAsUser":                llx.IntData(runAsUser),
-				"securityContextRunAsGroup":               llx.IntData(runAsGroup),
+				"securityContextAllowPrivilegeEscalation":       llx.BoolData(allowEsc),
+				"securityContextReadOnlyRootFilesystem":         llx.BoolData(roRoot),
+				"securityContextRunAsNonRoot":                   llx.BoolData(runAsNonRoot),
+				"securityContextRunAsUser":                      llx.IntData(runAsUser),
+				"securityContextRunAsGroup":                     llx.IntData(runAsGroup),
+				"securityContextCapabilitiesAdd":                llx.ArrayData(capAdd, types.String),
+				"securityContextCapabilitiesDrop":               llx.ArrayData(capDrop, types.String),
+				"securityContextSeccompProfileType":             seccompType,
+				"securityContextSeccompProfileLocalhostProfile": seccompLocal,
 			})
 		if err != nil {
 			return nil, err
@@ -1585,6 +1609,19 @@ func buildBatchEksContainers(runtime *plugin.Runtime, idPrefix string, container
 
 func (a *mqlAwsBatchJobDefinitionEksContainer) id() (string, error) {
 	return a.__id, nil
+}
+
+// batchSeccompProfileData maps a seccomp profile to its type and Localhost
+// path fields. An unset profile, or an unset type or path, reports null.
+func batchSeccompProfileData(p *batch_types.EksSeccompProfile) (profileType, localhostProfile *llx.RawData) {
+	if p == nil {
+		return llx.NilData, llx.NilData
+	}
+	profileType = llx.NilData
+	if p.Type != "" {
+		profileType = llx.StringData(string(p.Type))
+	}
+	return profileType, llx.StringDataPtr(p.LocalhostProfile)
 }
 
 // batchJobActiveStatuses lists non-terminal job statuses. Terminal statuses

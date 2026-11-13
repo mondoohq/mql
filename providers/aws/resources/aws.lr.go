@@ -326,6 +326,7 @@ const (
 	ResourceAwsShieldEmergencyContact                                           string = "aws.shield.emergencyContact"
 	ResourceAwsSecretsmanager                                                   string = "aws.secretsmanager"
 	ResourceAwsSecretsmanagerSecret                                             string = "aws.secretsmanager.secret"
+	ResourceAwsSecretsmanagerSecretCrossAccountReplica                          string = "aws.secretsmanager.secret.crossAccountReplica"
 	ResourceAwsSecretsmanagerSecretReplicaRegion                                string = "aws.secretsmanager.secret.replicaRegion"
 	ResourceAwsSecretsmanagerSecretVersion                                      string = "aws.secretsmanager.secret.version"
 	ResourceAwsSecretsmanagerSecretRotationRules                                string = "aws.secretsmanager.secret.rotationRules"
@@ -2343,6 +2344,10 @@ func init() {
 		"aws.secretsmanager.secret": {
 			Init:   initAwsSecretsmanagerSecret,
 			Create: createAwsSecretsmanagerSecret,
+		},
+		"aws.secretsmanager.secret.crossAccountReplica": {
+			// to override args, implement: initAwsSecretsmanagerSecretCrossAccountReplica(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsSecretsmanagerSecretCrossAccountReplica,
 		},
 		"aws.secretsmanager.secret.replicaRegion": {
 			// to override args, implement: initAwsSecretsmanagerSecretReplicaRegion(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -15010,6 +15015,30 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.secretsmanager.secret.deletedAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsSecretsmanagerSecret).GetDeletedAt()).ToDataRes(types.Time)
 	},
+	"aws.secretsmanager.secret.crossAccountReplicas": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecretsmanagerSecret).GetCrossAccountReplicas()).ToDataRes(types.Array(types.Resource("aws.secretsmanager.secret.crossAccountReplica")))
+	},
+	"aws.secretsmanager.secret.crossAccountPrimaryArn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecretsmanagerSecret).GetCrossAccountPrimaryArn()).ToDataRes(types.String)
+	},
+	"aws.secretsmanager.secret.crossAccountPrimaryStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecretsmanagerSecret).GetCrossAccountPrimaryStatus()).ToDataRes(types.String)
+	},
+	"aws.secretsmanager.secret.crossAccountPrimaryStatusMessage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecretsmanagerSecret).GetCrossAccountPrimaryStatusMessage()).ToDataRes(types.String)
+	},
+	"aws.secretsmanager.secret.crossAccountReplica.arn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecretsmanagerSecretCrossAccountReplica).GetArn()).ToDataRes(types.String)
+	},
+	"aws.secretsmanager.secret.crossAccountReplica.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecretsmanagerSecretCrossAccountReplica).GetStatus()).ToDataRes(types.String)
+	},
+	"aws.secretsmanager.secret.crossAccountReplica.statusMessage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecretsmanagerSecretCrossAccountReplica).GetStatusMessage()).ToDataRes(types.String)
+	},
+	"aws.secretsmanager.secret.crossAccountReplica.replicationRole": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecretsmanagerSecretCrossAccountReplica).GetReplicationRole()).ToDataRes(types.Resource("aws.iam.role"))
+	},
 	"aws.secretsmanager.secret.replicaRegion.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsSecretsmanagerSecretReplicaRegion).GetId()).ToDataRes(types.String)
 	},
@@ -15448,6 +15477,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.ecs.task.fargateEphemeralStorageKmsKey": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEcsTask).GetFargateEphemeralStorageKmsKey()).ToDataRes(types.Resource("aws.kms.key"))
 	},
+	"aws.ecs.task.isolationMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEcsTask).GetIsolationMode()).ToDataRes(types.String)
+	},
+	"aws.ecs.task.attestationPolicyStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEcsTask).GetAttestationPolicyStatus()).ToDataRes(types.String)
+	},
 	"aws.ecs.container.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEcsContainer).GetName()).ToDataRes(types.String)
 	},
@@ -15606,6 +15641,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.ecs.taskDefinition.enableFaultInjection": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEcsTaskDefinition).GetEnableFaultInjection()).ToDataRes(types.Bool)
+	},
+	"aws.ecs.taskDefinition.isolationMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEcsTaskDefinition).GetIsolationMode()).ToDataRes(types.String)
 	},
 	"aws.ecs.service.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEcsService).GetArn()).ToDataRes(types.String)
@@ -34210,6 +34248,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.batch.jobDefinition.eksPodProperties.volumes": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBatchJobDefinitionEksPodProperties).GetVolumes()).ToDataRes(types.Array(types.Dict))
 	},
+	"aws.batch.jobDefinition.eksPodProperties.securityContextRunAsUser": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBatchJobDefinitionEksPodProperties).GetSecurityContextRunAsUser()).ToDataRes(types.Int)
+	},
+	"aws.batch.jobDefinition.eksPodProperties.securityContextRunAsGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBatchJobDefinitionEksPodProperties).GetSecurityContextRunAsGroup()).ToDataRes(types.Int)
+	},
+	"aws.batch.jobDefinition.eksPodProperties.securityContextRunAsNonRoot": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBatchJobDefinitionEksPodProperties).GetSecurityContextRunAsNonRoot()).ToDataRes(types.Bool)
+	},
+	"aws.batch.jobDefinition.eksPodProperties.securityContextFsGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBatchJobDefinitionEksPodProperties).GetSecurityContextFsGroup()).ToDataRes(types.Int)
+	},
+	"aws.batch.jobDefinition.eksPodProperties.securityContextSeccompProfileType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBatchJobDefinitionEksPodProperties).GetSecurityContextSeccompProfileType()).ToDataRes(types.String)
+	},
+	"aws.batch.jobDefinition.eksPodProperties.securityContextSeccompProfileLocalhostProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBatchJobDefinitionEksPodProperties).GetSecurityContextSeccompProfileLocalhostProfile()).ToDataRes(types.String)
+	},
 	"aws.batch.jobDefinition.eksContainer.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBatchJobDefinitionEksContainer).GetName()).ToDataRes(types.String)
 	},
@@ -34251,6 +34307,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.batch.jobDefinition.eksContainer.securityContextRunAsGroup": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBatchJobDefinitionEksContainer).GetSecurityContextRunAsGroup()).ToDataRes(types.Int)
+	},
+	"aws.batch.jobDefinition.eksContainer.securityContextCapabilitiesAdd": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBatchJobDefinitionEksContainer).GetSecurityContextCapabilitiesAdd()).ToDataRes(types.Array(types.String))
+	},
+	"aws.batch.jobDefinition.eksContainer.securityContextCapabilitiesDrop": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBatchJobDefinitionEksContainer).GetSecurityContextCapabilitiesDrop()).ToDataRes(types.Array(types.String))
+	},
+	"aws.batch.jobDefinition.eksContainer.securityContextSeccompProfileType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBatchJobDefinitionEksContainer).GetSecurityContextSeccompProfileType()).ToDataRes(types.String)
+	},
+	"aws.batch.jobDefinition.eksContainer.securityContextSeccompProfileLocalhostProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBatchJobDefinitionEksContainer).GetSecurityContextSeccompProfileLocalhostProfile()).ToDataRes(types.String)
 	},
 	"aws.lightsail.instances": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsLightsail).GetInstances()).ToDataRes(types.Array(types.Resource("aws.lightsail.instance")))
@@ -40866,6 +40934,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.mwaa.environment.endpointManagement": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsMwaaEnvironment).GetEndpointManagement()).ToDataRes(types.String)
+	},
+	"aws.mwaa.environment.identityCenterIdentityStoreId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsMwaaEnvironment).GetIdentityCenterIdentityStoreId()).ToDataRes(types.String)
+	},
+	"aws.mwaa.environment.identityCenterStartUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsMwaaEnvironment).GetIdentityCenterStartUrl()).ToDataRes(types.String)
 	},
 	"aws.mwaa.environment.kmsKey": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsMwaaEnvironment).GetKmsKey()).ToDataRes(types.Resource("aws.kms.key"))
@@ -54873,6 +54947,42 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsSecretsmanagerSecret).DeletedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
+	"aws.secretsmanager.secret.crossAccountReplicas": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecretsmanagerSecret).CrossAccountReplicas, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.secretsmanager.secret.crossAccountPrimaryArn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecretsmanagerSecret).CrossAccountPrimaryArn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.secretsmanager.secret.crossAccountPrimaryStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecretsmanagerSecret).CrossAccountPrimaryStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.secretsmanager.secret.crossAccountPrimaryStatusMessage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecretsmanagerSecret).CrossAccountPrimaryStatusMessage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.secretsmanager.secret.crossAccountReplica.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecretsmanagerSecretCrossAccountReplica).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.secretsmanager.secret.crossAccountReplica.arn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecretsmanagerSecretCrossAccountReplica).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.secretsmanager.secret.crossAccountReplica.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecretsmanagerSecretCrossAccountReplica).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.secretsmanager.secret.crossAccountReplica.statusMessage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecretsmanagerSecretCrossAccountReplica).StatusMessage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.secretsmanager.secret.crossAccountReplica.replicationRole": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecretsmanagerSecretCrossAccountReplica).ReplicationRole, ok = plugin.RawToTValue[*mqlAwsIamRole](v.Value, v.Error)
+		return
+	},
 	"aws.secretsmanager.secret.replicaRegion.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsSecretsmanagerSecretReplicaRegion).__id, ok = v.Value.(string)
 		return
@@ -55509,6 +55619,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsEcsTask).FargateEphemeralStorageKmsKey, ok = plugin.RawToTValue[*mqlAwsKmsKey](v.Value, v.Error)
 		return
 	},
+	"aws.ecs.task.isolationMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEcsTask).IsolationMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.ecs.task.attestationPolicyStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEcsTask).AttestationPolicyStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"aws.ecs.container.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsEcsContainer).__id, ok = v.Value.(string)
 		return
@@ -55727,6 +55845,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.ecs.taskDefinition.enableFaultInjection": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsEcsTaskDefinition).EnableFaultInjection, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.ecs.taskDefinition.isolationMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEcsTaskDefinition).IsolationMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.ecs.service.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -82793,6 +82915,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsBatchJobDefinitionEksPodProperties).Volumes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"aws.batch.jobDefinition.eksPodProperties.securityContextRunAsUser": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBatchJobDefinitionEksPodProperties).SecurityContextRunAsUser, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aws.batch.jobDefinition.eksPodProperties.securityContextRunAsGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBatchJobDefinitionEksPodProperties).SecurityContextRunAsGroup, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aws.batch.jobDefinition.eksPodProperties.securityContextRunAsNonRoot": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBatchJobDefinitionEksPodProperties).SecurityContextRunAsNonRoot, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.batch.jobDefinition.eksPodProperties.securityContextFsGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBatchJobDefinitionEksPodProperties).SecurityContextFsGroup, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aws.batch.jobDefinition.eksPodProperties.securityContextSeccompProfileType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBatchJobDefinitionEksPodProperties).SecurityContextSeccompProfileType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.batch.jobDefinition.eksPodProperties.securityContextSeccompProfileLocalhostProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBatchJobDefinitionEksPodProperties).SecurityContextSeccompProfileLocalhostProfile, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"aws.batch.jobDefinition.eksContainer.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsBatchJobDefinitionEksContainer).__id, ok = v.Value.(string)
 		return
@@ -82851,6 +82997,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.batch.jobDefinition.eksContainer.securityContextRunAsGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsBatchJobDefinitionEksContainer).SecurityContextRunAsGroup, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aws.batch.jobDefinition.eksContainer.securityContextCapabilitiesAdd": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBatchJobDefinitionEksContainer).SecurityContextCapabilitiesAdd, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.batch.jobDefinition.eksContainer.securityContextCapabilitiesDrop": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBatchJobDefinitionEksContainer).SecurityContextCapabilitiesDrop, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.batch.jobDefinition.eksContainer.securityContextSeccompProfileType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBatchJobDefinitionEksContainer).SecurityContextSeccompProfileType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.batch.jobDefinition.eksContainer.securityContextSeccompProfileLocalhostProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBatchJobDefinitionEksContainer).SecurityContextSeccompProfileLocalhostProfile, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.lightsail.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -92431,6 +92593,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.mwaa.environment.endpointManagement": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsMwaaEnvironment).EndpointManagement, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.mwaa.environment.identityCenterIdentityStoreId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsMwaaEnvironment).IdentityCenterIdentityStoreId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.mwaa.environment.identityCenterStartUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsMwaaEnvironment).IdentityCenterStartUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.mwaa.environment.kmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -129552,32 +129722,36 @@ type mqlAwsSecretsmanagerSecret struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAwsSecretsmanagerSecretInternal
-	Arn                  plugin.TValue[string]
-	Region               plugin.TValue[string]
-	CreatedAt            plugin.TValue[*time.Time]
-	Description          plugin.TValue[string]
-	KmsKey               plugin.TValue[*mqlAwsKmsKey]
-	LastAccessedDate     plugin.TValue[*time.Time]
-	LastChangedDate      plugin.TValue[*time.Time]
-	LastRotatedDate      plugin.TValue[*time.Time]
-	Name                 plugin.TValue[string]
-	NextRotationDate     plugin.TValue[*time.Time]
-	OwningService        plugin.TValue[string]
-	PrimaryRegion        plugin.TValue[string]
-	RotationEnabled      plugin.TValue[bool]
-	RotationLambda       plugin.TValue[*mqlAwsLambdaFunction]
-	ExternalRotationRole plugin.TValue[*mqlAwsIamRole]
-	RotationRules        plugin.TValue[*mqlAwsSecretsmanagerSecretRotationRules]
-	Tags                 plugin.TValue[map[string]any]
-	CloudformationStack  plugin.TValue[*mqlAwsCloudformationStack]
-	ManagedBy            plugin.TValue[string]
-	ResourcePolicy       plugin.TValue[string]
-	PolicyStatements     plugin.TValue[[]any]
-	IsPublic             plugin.TValue[bool]
-	ReplicaRegions       plugin.TValue[[]any]
-	Type                 plugin.TValue[string]
-	Versions             plugin.TValue[[]any]
-	DeletedAt            plugin.TValue[*time.Time]
+	Arn                              plugin.TValue[string]
+	Region                           plugin.TValue[string]
+	CreatedAt                        plugin.TValue[*time.Time]
+	Description                      plugin.TValue[string]
+	KmsKey                           plugin.TValue[*mqlAwsKmsKey]
+	LastAccessedDate                 plugin.TValue[*time.Time]
+	LastChangedDate                  plugin.TValue[*time.Time]
+	LastRotatedDate                  plugin.TValue[*time.Time]
+	Name                             plugin.TValue[string]
+	NextRotationDate                 plugin.TValue[*time.Time]
+	OwningService                    plugin.TValue[string]
+	PrimaryRegion                    plugin.TValue[string]
+	RotationEnabled                  plugin.TValue[bool]
+	RotationLambda                   plugin.TValue[*mqlAwsLambdaFunction]
+	ExternalRotationRole             plugin.TValue[*mqlAwsIamRole]
+	RotationRules                    plugin.TValue[*mqlAwsSecretsmanagerSecretRotationRules]
+	Tags                             plugin.TValue[map[string]any]
+	CloudformationStack              plugin.TValue[*mqlAwsCloudformationStack]
+	ManagedBy                        plugin.TValue[string]
+	ResourcePolicy                   plugin.TValue[string]
+	PolicyStatements                 plugin.TValue[[]any]
+	IsPublic                         plugin.TValue[bool]
+	ReplicaRegions                   plugin.TValue[[]any]
+	Type                             plugin.TValue[string]
+	Versions                         plugin.TValue[[]any]
+	DeletedAt                        plugin.TValue[*time.Time]
+	CrossAccountReplicas             plugin.TValue[[]any]
+	CrossAccountPrimaryArn           plugin.TValue[string]
+	CrossAccountPrimaryStatus        plugin.TValue[string]
+	CrossAccountPrimaryStatusMessage plugin.TValue[string]
 }
 
 // createAwsSecretsmanagerSecret creates a new instance of this resource
@@ -129800,6 +129974,116 @@ func (c *mqlAwsSecretsmanagerSecret) GetVersions() *plugin.TValue[[]any] {
 func (c *mqlAwsSecretsmanagerSecret) GetDeletedAt() *plugin.TValue[*time.Time] {
 	return plugin.GetOrCompute[*time.Time](&c.DeletedAt, func() (*time.Time, error) {
 		return c.deletedAt()
+	})
+}
+
+func (c *mqlAwsSecretsmanagerSecret) GetCrossAccountReplicas() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.CrossAccountReplicas, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.secretsmanager.secret", c.__id, "crossAccountReplicas")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.crossAccountReplicas()
+	})
+}
+
+func (c *mqlAwsSecretsmanagerSecret) GetCrossAccountPrimaryArn() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.CrossAccountPrimaryArn, func() (string, error) {
+		return c.crossAccountPrimaryArn()
+	})
+}
+
+func (c *mqlAwsSecretsmanagerSecret) GetCrossAccountPrimaryStatus() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.CrossAccountPrimaryStatus, func() (string, error) {
+		return c.crossAccountPrimaryStatus()
+	})
+}
+
+func (c *mqlAwsSecretsmanagerSecret) GetCrossAccountPrimaryStatusMessage() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.CrossAccountPrimaryStatusMessage, func() (string, error) {
+		return c.crossAccountPrimaryStatusMessage()
+	})
+}
+
+// mqlAwsSecretsmanagerSecretCrossAccountReplica for the aws.secretsmanager.secret.crossAccountReplica resource
+type mqlAwsSecretsmanagerSecretCrossAccountReplica struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsSecretsmanagerSecretCrossAccountReplicaInternal
+	Arn             plugin.TValue[string]
+	Status          plugin.TValue[string]
+	StatusMessage   plugin.TValue[string]
+	ReplicationRole plugin.TValue[*mqlAwsIamRole]
+}
+
+// createAwsSecretsmanagerSecretCrossAccountReplica creates a new instance of this resource
+func createAwsSecretsmanagerSecretCrossAccountReplica(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsSecretsmanagerSecretCrossAccountReplica{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.secretsmanager.secret.crossAccountReplica", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsSecretsmanagerSecretCrossAccountReplica) MqlName() string {
+	return "aws.secretsmanager.secret.crossAccountReplica"
+}
+
+func (c *mqlAwsSecretsmanagerSecretCrossAccountReplica) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsSecretsmanagerSecretCrossAccountReplica) GetArn() *plugin.TValue[string] {
+	return &c.Arn
+}
+
+func (c *mqlAwsSecretsmanagerSecretCrossAccountReplica) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlAwsSecretsmanagerSecretCrossAccountReplica) GetStatusMessage() *plugin.TValue[string] {
+	return &c.StatusMessage
+}
+
+func (c *mqlAwsSecretsmanagerSecretCrossAccountReplica) GetReplicationRole() *plugin.TValue[*mqlAwsIamRole] {
+	return plugin.GetOrCompute[*mqlAwsIamRole](&c.ReplicationRole, func() (*mqlAwsIamRole, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.secretsmanager.secret.crossAccountReplica", c.__id, "replicationRole")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsIamRole), nil
+			}
+		}
+
+		return c.replicationRole()
 	})
 }
 
@@ -131277,6 +131561,8 @@ type mqlAwsEcsTask struct {
 	StoppedAt                     plugin.TValue[*time.Time]
 	EphemeralStorageSizeInGiB     plugin.TValue[int64]
 	FargateEphemeralStorageKmsKey plugin.TValue[*mqlAwsKmsKey]
+	IsolationMode                 plugin.TValue[string]
+	AttestationPolicyStatus       plugin.TValue[string]
 }
 
 // createAwsEcsTask creates a new instance of this resource
@@ -131454,6 +131740,14 @@ func (c *mqlAwsEcsTask) GetFargateEphemeralStorageKmsKey() *plugin.TValue[*mqlAw
 
 		return c.fargateEphemeralStorageKmsKey()
 	})
+}
+
+func (c *mqlAwsEcsTask) GetIsolationMode() *plugin.TValue[string] {
+	return &c.IsolationMode
+}
+
+func (c *mqlAwsEcsTask) GetAttestationPolicyStatus() *plugin.TValue[string] {
+	return &c.AttestationPolicyStatus
 }
 
 // mqlAwsEcsContainer for the aws.ecs.container resource
@@ -131714,6 +132008,7 @@ type mqlAwsEcsTaskDefinition struct {
 	ProxyConfiguration             plugin.TValue[any]
 	PlacementConstraints           plugin.TValue[[]any]
 	EnableFaultInjection           plugin.TValue[bool]
+	IsolationMode                  plugin.TValue[string]
 }
 
 // createAwsEcsTaskDefinition creates a new instance of this resource
@@ -131952,6 +132247,12 @@ func (c *mqlAwsEcsTaskDefinition) GetPlacementConstraints() *plugin.TValue[[]any
 func (c *mqlAwsEcsTaskDefinition) GetEnableFaultInjection() *plugin.TValue[bool] {
 	return plugin.GetOrCompute[bool](&c.EnableFaultInjection, func() (bool, error) {
 		return c.enableFaultInjection()
+	})
+}
+
+func (c *mqlAwsEcsTaskDefinition) GetIsolationMode() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.IsolationMode, func() (string, error) {
+		return c.isolationMode()
 	})
 }
 
@@ -201134,15 +201435,21 @@ type mqlAwsBatchJobDefinitionEksPodProperties struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAwsBatchJobDefinitionEksPodPropertiesInternal
-	ServiceAccountName    plugin.TValue[string]
-	HostNetwork           plugin.TValue[bool]
-	ShareProcessNamespace plugin.TValue[bool]
-	DnsPolicy             plugin.TValue[string]
-	ImagePullSecrets      plugin.TValue[[]any]
-	Metadata              plugin.TValue[any]
-	Containers            plugin.TValue[[]any]
-	InitContainers        plugin.TValue[[]any]
-	Volumes               plugin.TValue[[]any]
+	ServiceAccountName                            plugin.TValue[string]
+	HostNetwork                                   plugin.TValue[bool]
+	ShareProcessNamespace                         plugin.TValue[bool]
+	DnsPolicy                                     plugin.TValue[string]
+	ImagePullSecrets                              plugin.TValue[[]any]
+	Metadata                                      plugin.TValue[any]
+	Containers                                    plugin.TValue[[]any]
+	InitContainers                                plugin.TValue[[]any]
+	Volumes                                       plugin.TValue[[]any]
+	SecurityContextRunAsUser                      plugin.TValue[int64]
+	SecurityContextRunAsGroup                     plugin.TValue[int64]
+	SecurityContextRunAsNonRoot                   plugin.TValue[bool]
+	SecurityContextFsGroup                        plugin.TValue[int64]
+	SecurityContextSeccompProfileType             plugin.TValue[string]
+	SecurityContextSeccompProfileLocalhostProfile plugin.TValue[string]
 }
 
 // createAwsBatchJobDefinitionEksPodProperties creates a new instance of this resource
@@ -201242,25 +201549,53 @@ func (c *mqlAwsBatchJobDefinitionEksPodProperties) GetVolumes() *plugin.TValue[[
 	return &c.Volumes
 }
 
+func (c *mqlAwsBatchJobDefinitionEksPodProperties) GetSecurityContextRunAsUser() *plugin.TValue[int64] {
+	return &c.SecurityContextRunAsUser
+}
+
+func (c *mqlAwsBatchJobDefinitionEksPodProperties) GetSecurityContextRunAsGroup() *plugin.TValue[int64] {
+	return &c.SecurityContextRunAsGroup
+}
+
+func (c *mqlAwsBatchJobDefinitionEksPodProperties) GetSecurityContextRunAsNonRoot() *plugin.TValue[bool] {
+	return &c.SecurityContextRunAsNonRoot
+}
+
+func (c *mqlAwsBatchJobDefinitionEksPodProperties) GetSecurityContextFsGroup() *plugin.TValue[int64] {
+	return &c.SecurityContextFsGroup
+}
+
+func (c *mqlAwsBatchJobDefinitionEksPodProperties) GetSecurityContextSeccompProfileType() *plugin.TValue[string] {
+	return &c.SecurityContextSeccompProfileType
+}
+
+func (c *mqlAwsBatchJobDefinitionEksPodProperties) GetSecurityContextSeccompProfileLocalhostProfile() *plugin.TValue[string] {
+	return &c.SecurityContextSeccompProfileLocalhostProfile
+}
+
 // mqlAwsBatchJobDefinitionEksContainer for the aws.batch.jobDefinition.eksContainer resource
 type mqlAwsBatchJobDefinitionEksContainer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlAwsBatchJobDefinitionEksContainerInternal it will be used here
-	Name                                    plugin.TValue[string]
-	Image                                   plugin.TValue[string]
-	ImagePullPolicy                         plugin.TValue[string]
-	Command                                 plugin.TValue[[]any]
-	Args                                    plugin.TValue[[]any]
-	Env                                     plugin.TValue[map[string]any]
-	Resources                               plugin.TValue[any]
-	VolumeMounts                            plugin.TValue[[]any]
-	SecurityContextPrivileged               plugin.TValue[bool]
-	SecurityContextAllowPrivilegeEscalation plugin.TValue[bool]
-	SecurityContextReadOnlyRootFilesystem   plugin.TValue[bool]
-	SecurityContextRunAsNonRoot             plugin.TValue[bool]
-	SecurityContextRunAsUser                plugin.TValue[int64]
-	SecurityContextRunAsGroup               plugin.TValue[int64]
+	Name                                          plugin.TValue[string]
+	Image                                         plugin.TValue[string]
+	ImagePullPolicy                               plugin.TValue[string]
+	Command                                       plugin.TValue[[]any]
+	Args                                          plugin.TValue[[]any]
+	Env                                           plugin.TValue[map[string]any]
+	Resources                                     plugin.TValue[any]
+	VolumeMounts                                  plugin.TValue[[]any]
+	SecurityContextPrivileged                     plugin.TValue[bool]
+	SecurityContextAllowPrivilegeEscalation       plugin.TValue[bool]
+	SecurityContextReadOnlyRootFilesystem         plugin.TValue[bool]
+	SecurityContextRunAsNonRoot                   plugin.TValue[bool]
+	SecurityContextRunAsUser                      plugin.TValue[int64]
+	SecurityContextRunAsGroup                     plugin.TValue[int64]
+	SecurityContextCapabilitiesAdd                plugin.TValue[[]any]
+	SecurityContextCapabilitiesDrop               plugin.TValue[[]any]
+	SecurityContextSeccompProfileType             plugin.TValue[string]
+	SecurityContextSeccompProfileLocalhostProfile plugin.TValue[string]
 }
 
 // createAwsBatchJobDefinitionEksContainer creates a new instance of this resource
@@ -201354,6 +201689,22 @@ func (c *mqlAwsBatchJobDefinitionEksContainer) GetSecurityContextRunAsUser() *pl
 
 func (c *mqlAwsBatchJobDefinitionEksContainer) GetSecurityContextRunAsGroup() *plugin.TValue[int64] {
 	return &c.SecurityContextRunAsGroup
+}
+
+func (c *mqlAwsBatchJobDefinitionEksContainer) GetSecurityContextCapabilitiesAdd() *plugin.TValue[[]any] {
+	return &c.SecurityContextCapabilitiesAdd
+}
+
+func (c *mqlAwsBatchJobDefinitionEksContainer) GetSecurityContextCapabilitiesDrop() *plugin.TValue[[]any] {
+	return &c.SecurityContextCapabilitiesDrop
+}
+
+func (c *mqlAwsBatchJobDefinitionEksContainer) GetSecurityContextSeccompProfileType() *plugin.TValue[string] {
+	return &c.SecurityContextSeccompProfileType
+}
+
+func (c *mqlAwsBatchJobDefinitionEksContainer) GetSecurityContextSeccompProfileLocalhostProfile() *plugin.TValue[string] {
+	return &c.SecurityContextSeccompProfileLocalhostProfile
 }
 
 // mqlAwsLightsail for the aws.lightsail resource
@@ -225880,37 +226231,39 @@ type mqlAwsMwaaEnvironment struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAwsMwaaEnvironmentInternal
-	Arn                          plugin.TValue[string]
-	Name                         plugin.TValue[string]
-	Region                       plugin.TValue[string]
-	Status                       plugin.TValue[string]
-	AirflowVersion               plugin.TValue[string]
-	EnvironmentClass             plugin.TValue[string]
-	WebserverAccessMode          plugin.TValue[string]
-	WebserverUrl                 plugin.TValue[string]
-	EndpointManagement           plugin.TValue[string]
-	KmsKey                       plugin.TValue[*mqlAwsKmsKey]
-	ExecutionRole                plugin.TValue[*mqlAwsIamRole]
-	ServiceRole                  plugin.TValue[*mqlAwsIamRole]
-	SourceBucket                 plugin.TValue[*mqlAwsS3Bucket]
-	DagS3Path                    plugin.TValue[string]
-	PluginsS3Path                plugin.TValue[string]
-	RequirementsS3Path           plugin.TValue[string]
-	StartupScriptS3Path          plugin.TValue[string]
-	LogConfigurations            plugin.TValue[[]any]
-	Subnets                      plugin.TValue[[]any]
-	SecurityGroups               plugin.TValue[[]any]
-	AirflowConfigurationOptions  plugin.TValue[map[string]any]
-	MinWorkers                   plugin.TValue[int64]
-	MaxWorkers                   plugin.TValue[int64]
-	MinWebservers                plugin.TValue[int64]
-	MaxWebservers                plugin.TValue[int64]
-	Schedulers                   plugin.TValue[int64]
-	WeeklyMaintenanceWindowStart plugin.TValue[string]
-	WebserverVpcEndpointService  plugin.TValue[string]
-	DatabaseVpcEndpointService   plugin.TValue[string]
-	CreatedAt                    plugin.TValue[*time.Time]
-	Tags                         plugin.TValue[map[string]any]
+	Arn                           plugin.TValue[string]
+	Name                          plugin.TValue[string]
+	Region                        plugin.TValue[string]
+	Status                        plugin.TValue[string]
+	AirflowVersion                plugin.TValue[string]
+	EnvironmentClass              plugin.TValue[string]
+	WebserverAccessMode           plugin.TValue[string]
+	WebserverUrl                  plugin.TValue[string]
+	EndpointManagement            plugin.TValue[string]
+	IdentityCenterIdentityStoreId plugin.TValue[string]
+	IdentityCenterStartUrl        plugin.TValue[string]
+	KmsKey                        plugin.TValue[*mqlAwsKmsKey]
+	ExecutionRole                 plugin.TValue[*mqlAwsIamRole]
+	ServiceRole                   plugin.TValue[*mqlAwsIamRole]
+	SourceBucket                  plugin.TValue[*mqlAwsS3Bucket]
+	DagS3Path                     plugin.TValue[string]
+	PluginsS3Path                 plugin.TValue[string]
+	RequirementsS3Path            plugin.TValue[string]
+	StartupScriptS3Path           plugin.TValue[string]
+	LogConfigurations             plugin.TValue[[]any]
+	Subnets                       plugin.TValue[[]any]
+	SecurityGroups                plugin.TValue[[]any]
+	AirflowConfigurationOptions   plugin.TValue[map[string]any]
+	MinWorkers                    plugin.TValue[int64]
+	MaxWorkers                    plugin.TValue[int64]
+	MinWebservers                 plugin.TValue[int64]
+	MaxWebservers                 plugin.TValue[int64]
+	Schedulers                    plugin.TValue[int64]
+	WeeklyMaintenanceWindowStart  plugin.TValue[string]
+	WebserverVpcEndpointService   plugin.TValue[string]
+	DatabaseVpcEndpointService    plugin.TValue[string]
+	CreatedAt                     plugin.TValue[*time.Time]
+	Tags                          plugin.TValue[map[string]any]
 }
 
 // createAwsMwaaEnvironment creates a new instance of this resource
@@ -225984,6 +226337,14 @@ func (c *mqlAwsMwaaEnvironment) GetWebserverUrl() *plugin.TValue[string] {
 
 func (c *mqlAwsMwaaEnvironment) GetEndpointManagement() *plugin.TValue[string] {
 	return &c.EndpointManagement
+}
+
+func (c *mqlAwsMwaaEnvironment) GetIdentityCenterIdentityStoreId() *plugin.TValue[string] {
+	return &c.IdentityCenterIdentityStoreId
+}
+
+func (c *mqlAwsMwaaEnvironment) GetIdentityCenterStartUrl() *plugin.TValue[string] {
+	return &c.IdentityCenterStartUrl
 }
 
 func (c *mqlAwsMwaaEnvironment) GetKmsKey() *plugin.TValue[*mqlAwsKmsKey] {

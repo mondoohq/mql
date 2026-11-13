@@ -210,3 +210,51 @@ func TestBatchJobDefinitionImages(t *testing.T) {
 		assert.Equal(t, "7", byImage["docker.io/library/redis:7"]["tag"])
 	})
 }
+
+func TestBatchSeccompProfileData(t *testing.T) {
+	// Synthetic: no live EKS-backed Batch job definition was available.
+	typ, local := batchSeccompProfileData(nil)
+	assert.Nil(t, typ.Value, "an unset profile is null, not an empty string")
+	assert.Nil(t, local.Value)
+
+	typ, local = batchSeccompProfileData(&batch_types.EksSeccompProfile{Type: batch_types.EksSeccompProfileTypeUnconfined})
+	assert.Equal(t, "Unconfined", typ.Value)
+	assert.Nil(t, local.Value)
+
+	typ, local = batchSeccompProfileData(&batch_types.EksSeccompProfile{
+		Type:             batch_types.EksSeccompProfileTypeLocalhost,
+		LocalhostProfile: aws.String("profiles/audit.json"),
+	})
+	assert.Equal(t, "Localhost", typ.Value)
+	assert.Equal(t, "profiles/audit.json", local.Value)
+}
+
+func TestBuildBatchEksContainersCapabilities(t *testing.T) {
+	// Synthetic: one hardened container and one with no security context.
+	res, err := buildBatchEksContainers(testRuntime(), "arn:aws:batch:us-east-1:123456789012:job-definition/jd:1/eks/container", []batch_types.EksContainer{
+		{
+			Name:  aws.String("app"),
+			Image: aws.String("app:1"),
+			SecurityContext: &batch_types.EksContainerSecurityContext{
+				Capabilities: &batch_types.EksContainerLinuxCapabilities{
+					Add:  []string{"NET_ADMIN"},
+					Drop: []string{"ALL"},
+				},
+				SeccompProfile: &batch_types.EksSeccompProfile{Type: batch_types.EksSeccompProfileTypeRuntimeDefault},
+			},
+		},
+		{Name: aws.String("sidecar"), Image: aws.String("sidecar:1")},
+	})
+	require.NoError(t, err)
+	require.Len(t, res, 2)
+
+	app := res[0].(*mqlAwsBatchJobDefinitionEksContainer)
+	assert.Equal(t, []any{"NET_ADMIN"}, app.SecurityContextCapabilitiesAdd.Data)
+	assert.Equal(t, []any{"ALL"}, app.SecurityContextCapabilitiesDrop.Data)
+	assert.Equal(t, "RuntimeDefault", app.SecurityContextSeccompProfileType.Data)
+
+	sidecar := res[1].(*mqlAwsBatchJobDefinitionEksContainer)
+	assert.Empty(t, sidecar.SecurityContextCapabilitiesAdd.Data)
+	assert.Empty(t, sidecar.SecurityContextCapabilitiesDrop.Data)
+	assert.True(t, sidecar.SecurityContextSeccompProfileType.IsNull(), "no container profile defers to the pod's")
+}

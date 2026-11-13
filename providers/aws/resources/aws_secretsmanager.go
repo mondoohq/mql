@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -159,6 +160,7 @@ func initAwsSecretsmanagerSecret(runtime *plugin.Runtime, args map[string]*llx.R
 	mqlSecretRes.cacheRegion = region
 	mqlSecretRes.cacheType = convert.ToValue(resp.Type)
 	mqlSecretRes.cacheExternalRotationRoleArn = resp.ExternalSecretRotationRoleArn
+	mqlSecretRes.describeResp = resp
 	mqlSecretRes.DeletedAt = plugin.TValue[*time.Time]{Data: resp.DeletedDate, State: plugin.StateIsSet}
 
 	// We already have the replication status from DescribeSecret; populate
@@ -367,6 +369,9 @@ type mqlAwsSecretsmanagerSecretInternal struct {
 	cacheRegion                  string
 	cacheType                    string
 	cacheExternalRotationRoleArn *string
+
+	describeLock sync.Mutex
+	describeResp *secretsmanager.DescribeSecretOutput
 }
 
 func (a *mqlAwsSecretsmanagerSecret) externalRotationRole() (*mqlAwsIamRole, error) {

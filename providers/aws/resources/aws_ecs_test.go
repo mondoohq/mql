@@ -142,3 +142,23 @@ func TestEcsGpuDevices(t *testing.T) {
 	// Synthetic: an instance without GPU sharing support reports an empty list.
 	require.Equal(t, []any{}, ecsGpuDevices(nil))
 }
+
+func TestEcsTaskDefinitionIsolationMode(t *testing.T) {
+	// Synthetic: no live task definition with trusted execution was available.
+	td := &mqlAwsEcsTaskDefinition{}
+	td.fetched = true
+	td.cachedTD = &ecstypes.TaskDefinition{
+		TrustedExecutionConfiguration: &ecstypes.TrustedExecutionConfiguration{IsolationMode: ecstypes.IsolationModeConfidentialSandbox},
+	}
+	mode, err := td.isolationMode()
+	require.NoError(t, err)
+	require.Equal(t, "CONFIDENTIAL_SANDBOX", mode)
+
+	// Synthetic: a definition without the configuration reports null, not SHARED.
+	plain := &mqlAwsEcsTaskDefinition{}
+	plain.fetched = true
+	plain.cachedTD = &ecstypes.TaskDefinition{}
+	_, err = plain.isolationMode()
+	require.NoError(t, err)
+	require.True(t, plain.IsolationMode.IsNull())
+}

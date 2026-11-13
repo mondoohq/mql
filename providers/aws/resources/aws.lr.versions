@@ -1161,11 +1161,15 @@ aws.batch.jobDefinition.eksContainer.imagePullPolicy 13.14.1
 aws.batch.jobDefinition.eksContainer.name 13.14.1
 aws.batch.jobDefinition.eksContainer.resources 13.14.1
 aws.batch.jobDefinition.eksContainer.securityContextAllowPrivilegeEscalation 13.14.1
+aws.batch.jobDefinition.eksContainer.securityContextCapabilitiesAdd 14.8.1
+aws.batch.jobDefinition.eksContainer.securityContextCapabilitiesDrop 14.8.1
 aws.batch.jobDefinition.eksContainer.securityContextPrivileged 13.14.1
 aws.batch.jobDefinition.eksContainer.securityContextReadOnlyRootFilesystem 13.14.1
 aws.batch.jobDefinition.eksContainer.securityContextRunAsGroup 13.14.1
 aws.batch.jobDefinition.eksContainer.securityContextRunAsNonRoot 13.14.1
 aws.batch.jobDefinition.eksContainer.securityContextRunAsUser 13.14.1
+aws.batch.jobDefinition.eksContainer.securityContextSeccompProfileLocalhostProfile 14.8.1
+aws.batch.jobDefinition.eksContainer.securityContextSeccompProfileType 14.8.1
 aws.batch.jobDefinition.eksContainer.volumeMounts 13.14.1
 aws.batch.jobDefinition.eksPodProperties 13.14.1
 aws.batch.jobDefinition.eksPodProperties.containers 13.14.1
@@ -1174,6 +1178,12 @@ aws.batch.jobDefinition.eksPodProperties.hostNetwork 13.14.1
 aws.batch.jobDefinition.eksPodProperties.imagePullSecrets 13.14.1
 aws.batch.jobDefinition.eksPodProperties.initContainers 13.14.1
 aws.batch.jobDefinition.eksPodProperties.metadata 13.14.1
+aws.batch.jobDefinition.eksPodProperties.securityContextFsGroup 14.8.1
+aws.batch.jobDefinition.eksPodProperties.securityContextRunAsGroup 14.8.1
+aws.batch.jobDefinition.eksPodProperties.securityContextRunAsNonRoot 14.8.1
+aws.batch.jobDefinition.eksPodProperties.securityContextRunAsUser 14.8.1
+aws.batch.jobDefinition.eksPodProperties.securityContextSeccompProfileLocalhostProfile 14.8.1
+aws.batch.jobDefinition.eksPodProperties.securityContextSeccompProfileType 14.8.1
 aws.batch.jobDefinition.eksPodProperties.serviceAccountName 13.14.1
 aws.batch.jobDefinition.eksPodProperties.shareProcessNamespace 13.14.1
 aws.batch.jobDefinition.eksPodProperties.volumes 13.14.1
@@ -4956,6 +4966,7 @@ aws.ecs.service.vpcLatticeConfiguration.testListenerRule 14.2.1
 aws.ecs.service.vpcLatticeConfigurations 14.2.1
 aws.ecs.task 11.15.2
 aws.ecs.task.arn 11.15.2
+aws.ecs.task.attestationPolicyStatus 14.8.1
 aws.ecs.task.capacityProviderName 13.29.1
 aws.ecs.task.clusterName 11.15.2
 aws.ecs.task.connectivity 11.15.2
@@ -4968,6 +4979,7 @@ aws.ecs.task.ephemeralStorageSizeInGiB 13.29.1
 aws.ecs.task.fargateEphemeralStorageKmsKey 13.29.1
 aws.ecs.task.group 13.29.1
 aws.ecs.task.healthStatus 13.29.1
+aws.ecs.task.isolationMode 14.8.1
 aws.ecs.task.lastStatus 11.15.2
 aws.ecs.task.launchType 13.29.1
 aws.ecs.task.memory 13.29.1
@@ -5039,6 +5051,7 @@ aws.ecs.taskDefinition.executionRole 13.29.1
 aws.ecs.taskDefinition.executionRoleArn 11.15.2
 aws.ecs.taskDefinition.family 11.15.2
 aws.ecs.taskDefinition.ipcMode 11.15.2
+aws.ecs.taskDefinition.isolationMode 14.8.1
 aws.ecs.taskDefinition.memory 11.15.2
 aws.ecs.taskDefinition.networkMode 11.15.2
 aws.ecs.taskDefinition.pidMode 11.15.2
@@ -8420,6 +8433,8 @@ aws.mwaa.environment.databaseVpcEndpointService 14.1.1
 aws.mwaa.environment.endpointManagement 14.1.1
 aws.mwaa.environment.environmentClass 14.1.1
 aws.mwaa.environment.executionRole 14.1.1
+aws.mwaa.environment.identityCenterIdentityStoreId 14.8.1
+aws.mwaa.environment.identityCenterStartUrl 14.8.1
 aws.mwaa.environment.kmsKey 14.1.1
 aws.mwaa.environment.logConfiguration 14.1.1
 aws.mwaa.environment.logConfiguration.enabled 14.1.1
@@ -11196,6 +11211,15 @@ aws.secretsmanager.secret 11.15.2
 aws.secretsmanager.secret.arn 11.15.2
 aws.secretsmanager.secret.cloudformationStack 13.39.2
 aws.secretsmanager.secret.createdAt 11.15.2
+aws.secretsmanager.secret.crossAccountPrimaryArn 14.8.1
+aws.secretsmanager.secret.crossAccountPrimaryStatus 14.8.1
+aws.secretsmanager.secret.crossAccountPrimaryStatusMessage 14.8.1
+aws.secretsmanager.secret.crossAccountReplica 14.8.1
+aws.secretsmanager.secret.crossAccountReplica.arn 14.8.1
+aws.secretsmanager.secret.crossAccountReplica.replicationRole 14.8.1
+aws.secretsmanager.secret.crossAccountReplica.status 14.8.1
+aws.secretsmanager.secret.crossAccountReplica.statusMessage 14.8.1
+aws.secretsmanager.secret.crossAccountReplicas 14.8.1
 aws.secretsmanager.secret.deletedAt 13.12.1
 aws.secretsmanager.secret.description 11.15.2
 aws.secretsmanager.secret.externalRotationRole 13.38.2

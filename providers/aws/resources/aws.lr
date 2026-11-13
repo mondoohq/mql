@@ -9810,6 +9810,38 @@ aws.secretsmanager.secret @defaults("arn name") {
   versions() []aws.secretsmanager.secret.version
   // Date the secret is scheduled for deletion (null if not pending deletion)
   deletedAt() time
+  // Replicas of this secret in other AWS accounts
+  //
+  // Each entry is a copy of the secret's value that Secrets Manager keeps in
+  // sync in another account. Empty when the secret is not replicated across
+  // accounts.
+  crossAccountReplicas() []aws.secretsmanager.secret.crossAccountReplica
+  // ARN of the secret in another account that this secret is a replica of
+  //
+  // Null when this secret is not a cross-account replica. The primary lives
+  // in another account, so it is reported by ARN.
+  crossAccountPrimaryArn() string
+  // Replication status from the cross-account primary
+  //
+  // One of InSync, Failed, InProgress, Pending, or Detached. Null when this
+  // secret is not a cross-account replica.
+  crossAccountPrimaryStatus() string
+  // Details about the replication status from the cross-account primary
+  crossAccountPrimaryStatusMessage() string
+}
+
+// AWS Secrets Manager cross-account replica
+private aws.secretsmanager.secret.crossAccountReplica @defaults("arn status") {
+  // ARN of the replica secret in the other account
+  arn string
+  // Replication status: InSync, Failed, InProgress, or Detached
+  status string
+  // Details about the replication status
+  statusMessage string
+  // IAM role Secrets Manager assumes to replicate to this replica
+  //
+  // Null when the replica was associated without a role.
+  replicationRole() aws.iam.role
 }
 
 // AWS Secrets Manager secret replica region
@@ -10292,6 +10324,17 @@ private aws.ecs.task @defaults("lastStatus platformFamily platformVersion") {
   ephemeralStorageSizeInGiB int
   // KMS key encrypting the task's Fargate ephemeral storage (Fargate launch type)
   fargateEphemeralStorageKmsKey() aws.kms.key
+  // Isolation mode the task runs in
+  //
+  // One of SHARED, ISOLATED_SANDBOX, or CONFIDENTIAL_SANDBOX. The sandbox modes
+  // run the task in its own Nitro Sandbox, so other tasks on the same instance
+  // cannot read its memory or storage. Null when the API does not report one,
+  // which AWS treats as SHARED.
+  isolationMode string
+  // Status of the attestation policy for a CONFIDENTIAL_SANDBOX task
+  //
+  // Null for every other isolation mode.
+  attestationPolicyStatus string
 }
 
 // Amazon ECS container
@@ -10431,6 +10474,14 @@ private aws.ecs.taskDefinition @defaults("arn family revision") {
   placementConstraints() []dict
   // Whether fault injection is enabled for tasks using this definition
   enableFaultInjection() bool
+  // Isolation mode for tasks that use this definition
+  //
+  // One of SHARED, ISOLATED_SANDBOX, or CONFIDENTIAL_SANDBOX. The sandbox modes
+  // run each task in its own Nitro Sandbox, so tasks on the same instance cannot
+  // read each other's memory or storage, and CONFIDENTIAL_SANDBOX adds
+  // cryptographic attestation. Null when the definition sets no trusted
+  // execution configuration, which AWS treats as SHARED.
+  isolationMode() string
 }
 
 // Amazon ECS Service
@@ -29410,6 +29461,31 @@ private aws.batch.jobDefinition.eksPodProperties {
   initContainers() []aws.batch.jobDefinition.eksContainer
   // Pod volumes (emptyDir/hostPath/secret/configMap variants)
   volumes []dict
+  // UID containers run as when they do not set their own
+  //
+  // Null when the pod does not set it.
+  securityContextRunAsUser int
+  // GID containers run as when they do not set their own
+  //
+  // Null when the pod does not set it.
+  securityContextRunAsGroup int
+  // Whether Kubernetes refuses to start a container that would run as root
+  //
+  // Applies unless a container sets its own value. Null when the pod does not
+  // set it.
+  securityContextRunAsNonRoot bool
+  // Supplemental group applied to every container and to mounted volumes
+  //
+  // Null when the pod does not set it.
+  securityContextFsGroup int
+  // Default seccomp profile type for the pod's containers
+  //
+  // One of RuntimeDefault, Localhost, or Unconfined. Unconfined runs containers
+  // without syscall filtering. A container's own profile overrides this one.
+  // Null when the pod does not set it.
+  securityContextSeccompProfileType string
+  // Node path of the pod's default seccomp profile when its type is Localhost
+  securityContextSeccompProfileLocalhostProfile string
 }
 
 // AWS Batch EKS container spec. Security context is flattened onto the container for direct audit queries.
@@ -29442,6 +29518,22 @@ private aws.batch.jobDefinition.eksContainer @defaults("name image") {
   securityContextRunAsUser int
   // GID the container runs as
   securityContextRunAsGroup int
+  // Linux capabilities added to the container's default set
+  //
+  // Names without the CAP_ prefix, for example NET_ADMIN or SYS_ADMIN.
+  securityContextCapabilitiesAdd []string
+  // Linux capabilities removed from the container's default set
+  //
+  // Names without the CAP_ prefix. ALL drops every capability.
+  securityContextCapabilitiesDrop []string
+  // Seccomp profile type for the container
+  //
+  // One of RuntimeDefault, Localhost, or Unconfined. Unconfined runs the
+  // container without syscall filtering. Null when the container does not set
+  // one, in which case the pod's securityContextSeccompProfileType applies.
+  securityContextSeccompProfileType string
+  // Node path of the container's seccomp profile when its type is Localhost
+  securityContextSeccompProfileLocalhostProfile string
 }
 
 // Amazon Lightsail
@@ -36589,6 +36681,15 @@ private aws.mwaa.environment @defaults("name status region") {
   webserverUrl string
   // Who manages the VPC endpoints of the environment: SERVICE or CUSTOMER
   endpointManagement string
+  // Identity store of the IAM Identity Center instance users sign in through
+  //
+  // Set when Airflow UI access is authenticated through IAM Identity Center,
+  // for example d-1234567890. Null when the environment does not use it.
+  identityCenterIdentityStoreId string
+  // AWS access portal URL of the IAM Identity Center instance users sign in through
+  //
+  // Null when the environment does not use IAM Identity Center.
+  identityCenterStartUrl string
   // KMS key encrypting the environment
   //
   // Null when the environment is encrypted with an AWS owned key.
