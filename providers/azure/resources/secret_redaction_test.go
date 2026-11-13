@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	web "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appservice/armappservice/v6"
-	aci "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerinstance/armcontainerinstance/v2"
+	aci "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerinstance/armcontainerinstance/v3"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/redis/armredis/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
