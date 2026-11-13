@@ -11,13 +11,23 @@
       "expires_on": "2039-01-01T00:00:00Z",
       "certificate": "-----BEGIN CERTIFICATE-----\nMIIBkTCB...\n-----END CERTIFICATE-----",
       "csr": ""
+    },
+    {
+      "id": "origincert-002",
+      "hostnames": ["old.example.com"],
+      "request_type": "origin-ecc",
+      "requested_validity": 365,
+      "expires_on": "2027-03-01T00:00:00Z",
+      "revoked_at": "2026-10-15T08:30:00Z",
+      "certificate": "-----BEGIN CERTIFICATE-----\nMIIBkTCB...\n-----END CERTIFICATE-----",
+      "csr": ""
     }
   ],
   "result_info": {
     "page": 1,
     "per_page": 25,
     "total_pages": 1,
-    "count": 1,
-    "total_count": 1
+    "count": 2,
+    "total_count": 2
   }
 }
