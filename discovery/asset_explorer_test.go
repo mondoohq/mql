@@ -5,6 +5,7 @@ package discovery
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -116,6 +117,48 @@ func TestAssetExplorerCloseAsset(t *testing.T) {
 		assert.Nil(t, asset.Runtime)
 		assert.Nil(t, asset.Children, "Children should be nil'd to break reference chains")
 		assert.Nil(t, asset.Parent, "Parent should be nil'd to break reference chains")
+	})
+
+	// Disconnecting waits for the provider. While it does, the explorer has
+	// to stay usable: other assets finish and close, and the next one
+	// connects.
+	t.Run("the explorer is not locked while the runtime closes", func(t *testing.T) {
+		closing, release := make(chan struct{}), make(chan struct{})
+		original := closeRuntime
+		closeRuntime = func(*providers.Runtime) {
+			close(closing)
+			<-release
+		}
+		t.Cleanup(func() { closeRuntime = original })
+
+		asset := &TrackedAsset{
+			Asset:   &inventory.Asset{Name: "slow to disconnect"},
+			State:   AssetConnected,
+			Runtime: &providers.Runtime{},
+		}
+		other := &TrackedAsset{Asset: &inventory.Asset{Name: "other"}, State: AssetConnected}
+		e := newTestExplorer(asset, other)
+
+		closed := make(chan error, 1)
+		go func() { closed <- e.CloseAsset(asset) }()
+		<-closing
+
+		// The runtime is still closing. The asset is closed already, and
+		// the explorer answers.
+		answered := make(chan []*TrackedAsset, 1)
+		go func() { answered <- e.Connected() }()
+		select {
+		case connected := <-answered:
+			assert.Equal(t, []*TrackedAsset{other}, connected)
+		case <-time.After(5 * time.Second):
+			t.Fatal("the explorer is locked while a runtime closes")
+		}
+		require.NoError(t, e.CloseAsset(other))
+
+		close(release)
+		require.NoError(t, <-closed)
+		assert.Equal(t, AssetClosed, asset.State)
+		assert.Nil(t, asset.Runtime)
 	})
 
 	t.Run("close discovered asset fails", func(t *testing.T) {

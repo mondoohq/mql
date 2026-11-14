@@ -265,19 +265,18 @@ func (e *AssetExplorer) Connect(asset *TrackedAsset) (*TrackedAsset, error) {
 // gateway assets that were connected just to discover children.
 func (e *AssetExplorer) CloseAsset(asset *TrackedAsset) error {
 	e.mu.Lock()
-	defer e.mu.Unlock()
 
 	if !e.isKnown(asset) {
+		e.mu.Unlock()
 		return fmt.Errorf("asset %q is not tracked by this explorer", asset.Asset.GetName())
 	}
 
 	if asset.State != AssetConnected {
+		e.mu.Unlock()
 		return fmt.Errorf("asset %q is not connected (state: %d)", asset.Asset.GetName(), asset.State)
 	}
 
-	if asset.Runtime != nil {
-		asset.Runtime.Close()
-	}
+	runtime := asset.Runtime
 	asset.Runtime = nil
 	asset.State = AssetClosed
 
@@ -286,9 +285,22 @@ func (e *AssetExplorer) CloseAsset(asset *TrackedAsset) error {
 	// scan to finish. seenPlatformIDs preserves dedup state independently.
 	asset.Children = nil
 	asset.Parent = nil
+	e.mu.Unlock()
+
+	// Closing the runtime waits for its provider, so it is done after the
+	// lock is released: the asset is already closed as far as the explorer is
+	// concerned. Under the lock, every asset that finished scanning waited
+	// for the one before it to disconnect, and so did the next Connect.
+	if runtime != nil {
+		closeRuntime(runtime)
+	}
 
 	return nil
 }
+
+// closeRuntime is a variable so that a test can stand in for a provider that
+// is slow to disconnect.
+var closeRuntime = func(runtime *providers.Runtime) { runtime.Close() }
 
 // Errors returns all connection/discovery errors encountered so far.
 func (e *AssetExplorer) Errors() []*AssetWithError {
