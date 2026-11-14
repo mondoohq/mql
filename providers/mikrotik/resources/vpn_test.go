@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestL2tpServerArgs(t *testing.T) {
@@ -152,4 +153,23 @@ func TestOvpnServerArgsAbsentMenu(t *testing.T) {
 	assert.Nil(t, args["requireClientCertificate"].Value)
 	assert.Nil(t, args["ciphers"].Value)
 	assert.Nil(t, args["auth"].Value)
+}
+
+// TestOvpnServerArgsNamedServers covers releases that hold several named
+// OpenVPN servers, each row carrying `disabled` rather than `enabled`.
+func TestOvpnServerArgsNamedServers(t *testing.T) {
+	rows := liveRows(t, "interface-ovpn-server-server-7.25.json")
+	require.Len(t, rows, 2)
+
+	first := ovpnServerArgs(rows[0])
+	assert.Equal(t, "ovpn1", first["name"].Value)
+	assert.Equal(t, true, first["enabled"].Value)
+	assert.Equal(t, "any", first["tlsVersion"].Value)
+
+	second := ovpnServerArgs(rows[1])
+	assert.Equal(t, "ovpn2", second["name"].Value)
+	assert.Equal(t, false, second["enabled"].Value)
+
+	// the two servers must not collapse onto one cache entry
+	assert.NotEqual(t, first["__id"].Value, second["__id"].Value)
 }

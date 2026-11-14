@@ -493,6 +493,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mikrotik.ovpnServer": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotik).GetOvpnServer()).ToDataRes(types.Resource("mikrotik.interface.ovpnServer"))
 	},
+	"mikrotik.ovpnServers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotik).GetOvpnServers()).ToDataRes(types.Array(types.Resource("mikrotik.interface.ovpnServer")))
+	},
 	"mikrotik.ipsecProposals": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotik).GetIpsecProposals()).ToDataRes(types.Array(types.Resource("mikrotik.ip.ipsec.proposal")))
 	},
@@ -2011,6 +2014,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mikrotik.interface.sstpServer.vrf": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikInterfaceSstpServer).GetVrf()).ToDataRes(types.String)
 	},
+	"mikrotik.interface.ovpnServer.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikInterfaceOvpnServer).GetName()).ToDataRes(types.String)
+	},
 	"mikrotik.interface.ovpnServer.enabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikInterfaceOvpnServer).GetEnabled()).ToDataRes(types.Bool)
 	},
@@ -2653,6 +2659,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mikrotik.ovpnServer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMikrotik).OvpnServer, ok = plugin.RawToTValue[*mqlMikrotikInterfaceOvpnServer](v.Value, v.Error)
+		return
+	},
+	"mikrotik.ovpnServers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotik).OvpnServers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"mikrotik.ipsecProposals": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -4839,6 +4849,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMikrotikInterfaceOvpnServer).__id, ok = v.Value.(string)
 		return
 	},
+	"mikrotik.interface.ovpnServer.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikInterfaceOvpnServer).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"mikrotik.interface.ovpnServer.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMikrotikInterfaceOvpnServer).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
@@ -5592,6 +5606,7 @@ type mqlMikrotik struct {
 	PptpServer           plugin.TValue[*mqlMikrotikInterfacePptpServer]
 	SstpServer           plugin.TValue[*mqlMikrotikInterfaceSstpServer]
 	OvpnServer           plugin.TValue[*mqlMikrotikInterfaceOvpnServer]
+	OvpnServers          plugin.TValue[[]any]
 	IpsecProposals       plugin.TValue[[]any]
 	IpsecProfiles        plugin.TValue[[]any]
 	IpsecPeers           plugin.TValue[[]any]
@@ -6283,6 +6298,22 @@ func (c *mqlMikrotik) GetOvpnServer() *plugin.TValue[*mqlMikrotikInterfaceOvpnSe
 		}
 
 		return c.ovpnServer()
+	})
+}
+
+func (c *mqlMikrotik) GetOvpnServers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.OvpnServers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mikrotik", c.__id, "ovpnServers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.ovpnServers()
 	})
 }
 
@@ -10687,6 +10718,7 @@ type mqlMikrotikInterfaceOvpnServer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlMikrotikInterfaceOvpnServerInternal
+	Name                     plugin.TValue[string]
 	Enabled                  plugin.TValue[bool]
 	Port                     plugin.TValue[int64]
 	Protocol                 plugin.TValue[string]
@@ -10736,6 +10768,10 @@ func (c *mqlMikrotikInterfaceOvpnServer) MqlName() string {
 
 func (c *mqlMikrotikInterfaceOvpnServer) MqlID() string {
 	return c.__id
+}
+
+func (c *mqlMikrotikInterfaceOvpnServer) GetName() *plugin.TValue[string] {
+	return &c.Name
 }
 
 func (c *mqlMikrotikInterfaceOvpnServer) GetEnabled() *plugin.TValue[bool] {
