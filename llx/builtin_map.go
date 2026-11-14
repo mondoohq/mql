@@ -1466,6 +1466,14 @@ func dictMapV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawD
 		return nil, dref, err
 	}
 
+	// A block reports everything it computes: its value, and what the value
+	// was computed from. Only the first of those is what an element maps to.
+	block := e.ctx.code.Block(fref)
+	if block == nil || len(block.Entrypoints) == 0 {
+		return nil, 0, errors.New("failed to retrieve the function of the 'map' call")
+	}
+	value := e.ctx.code.Checksums[block.Entrypoints[0]]
+
 	ct := items.Type.Child()
 	mappedType := types.Unset
 	resMap := map[int]any{}
@@ -1474,6 +1482,9 @@ func dictMapV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawD
 	for it := range list {
 		i := it
 		err := e.runFunctionBlock([]*RawData{{Type: ct, Value: list[i]}}, fref, func(res *RawResult) {
+			if res.CodeID != value {
+				return
+			}
 			resList := func() []any {
 				l.Lock()
 				defer l.Unlock()

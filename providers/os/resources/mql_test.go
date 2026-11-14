@@ -4689,3 +4689,17 @@ func TestUserSystem(t *testing.T) {
 		},
 	})
 }
+
+// What `map` gives for an element is the value of its block, whatever else
+// the block computes on the way.
+func TestDict_MapGivesTheValueOfItsBlock(t *testing.T) {
+	doc := `parse.json(content: '{"l": [1, 2, 3], "n": 1, "s": ["a", "b"], "t": "b"}').params`
+	x := testutils.InitTester(testutils.LinuxMock())
+	x.TestSimple(t, []testutils.SimpleTest{
+		{Code: doc + `["l"].map(_ == ` + doc + `["n"])`, ResultIndex: 0, Expectation: []any{true, false, false}},
+		{Code: doc + `["l"].map(_ != ` + doc + `["n"])`, ResultIndex: 0, Expectation: []any{false, true, true}},
+		{Code: doc + `["s"].map(_ == ` + doc + `["t"])`, ResultIndex: 0, Expectation: []any{false, true}},
+		{Code: doc + `["l"].map(_ == 1)`, ResultIndex: 0, Expectation: []any{true, false, false}},
+		{Code: doc + `["l"].map(_)`, ResultIndex: 0, Expectation: []any{float64(1), float64(2), float64(3)}},
+	})
+}
