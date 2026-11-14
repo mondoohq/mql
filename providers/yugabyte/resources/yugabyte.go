@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -22,13 +23,36 @@ func ybConnection(runtime *plugin.Runtime) *connection.YugabyteConnection {
 	return runtime.Connection.(*connection.YugabyteConnection)
 }
 
-// ysqlQuery runs a read-only statement over YSQL and returns its rows.
+// ysqlTimeout bounds one YSQL statement, from sending it to reading its last
+// row, as the HTTP calls are bounded, so that a server that stops answering
+// cannot hold a scan.
+const ysqlTimeout = 30 * time.Second
+
+// ysqlQuery runs a read-only statement over YSQL and returns its rows. The
+// statement's deadline is released when the rows are closed.
 func ysqlQuery(runtime *plugin.Runtime, sql string, args ...any) (pgx.Rows, error) {
 	pool, err := ybConnection(runtime).YSQL()
 	if err != nil {
 		return nil, err
 	}
-	return pool.Query(context.Background(), sql, args...)
+	ctx, cancel := context.WithTimeout(context.Background(), ysqlTimeout)
+	rows, err := pool.Query(ctx, sql, args...)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	return &timedRows{Rows: rows, cancel: cancel}, nil
+}
+
+// timedRows releases the statement's deadline when the rows are closed.
+type timedRows struct {
+	pgx.Rows
+	cancel context.CancelFunc
+}
+
+func (r *timedRows) Close() {
+	r.Rows.Close()
+	r.cancel()
 }
 
 // isPermissionDenied reports whether YSQL refused a statement for lack of a

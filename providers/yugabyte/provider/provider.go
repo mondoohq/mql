@@ -91,9 +91,17 @@ func (s *Service) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLIRes, error)
 		}
 	}
 
-	conf.Credentials = append(conf.Credentials, vault.NewPasswordCredential(flagString("user"), flagString("password")))
-	// A second password credential is the YCQL one.
-	if ycqlUser, ycqlPassword := flagString("ycql-user"), flagString("ycql-password"); ycqlUser != "" || ycqlPassword != "" {
+	// The first password credential is the YSQL one and the second the YCQL
+	// one (connection.NewYugabyteConnection). The first is added only when a
+	// user or password was given, or to hold its place before a YCQL one, so
+	// that without flags the environment and each API's default user apply.
+	user, password := flagString("user"), flagString("password")
+	ycqlUser, ycqlPassword := flagString("ycql-user"), flagString("ycql-password")
+	hasYCQL := ycqlUser != "" || ycqlPassword != ""
+	if user != "" || password != "" || hasYCQL {
+		conf.Credentials = append(conf.Credentials, vault.NewPasswordCredential(user, password))
+	}
+	if hasYCQL {
 		conf.Credentials = append(conf.Credentials, vault.NewPasswordCredential(ycqlUser, ycqlPassword))
 	}
 
