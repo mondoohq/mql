@@ -4689,3 +4689,24 @@ func TestUserSystem(t *testing.T) {
 		},
 	})
 }
+
+// Mapping a list of resources that turns out to be empty gives an empty list
+// of what the block gives, as mapping a full one does: its first element is a
+// null of that type, and what the type has can be asked of it.
+func TestResource_MapOfAnEmptyListKeepsItsType(t *testing.T) {
+	none := "users.where(uid > 99999)"
+	x := testutils.InitTester(testutils.LinuxMock())
+	x.TestSimple(t, []testutils.SimpleTest{
+		{Code: none + ".map(name)", ResultIndex: 0, Expectation: []any{}},
+		{Code: none + ".map(name).unique", ResultIndex: 0, Expectation: []any{}},
+		{Code: none + ".map(name).first == null", ResultIndex: 1, Expectation: true},
+		{Code: none + ".map(name).first != null", ResultIndex: 1, Expectation: false},
+		{Code: none + `.map(name).first == "root"`, ResultIndex: 1, Expectation: false},
+		{Code: none + `.map(name).last == ""`, ResultIndex: 1, Expectation: false},
+		{Code: none + ".map(uid).first > 0", ResultIndex: 1, Expectation: false},
+		{Code: none + ".map(uid).unique.length == 0", ResultIndex: 1, Expectation: true},
+		// and one that is not empty is what it was
+		{Code: "users.where(uid == 0).map(name).first == \"root\"", ResultIndex: 1, Expectation: true},
+		{Code: "users.where(uid == 0).map(name).unique", ResultIndex: 0, Expectation: []any{"root"}},
+	})
+}
