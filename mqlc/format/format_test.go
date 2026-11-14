@@ -97,7 +97,7 @@ func TestFormat(t *testing.T) {
 		{
 			"switch",
 			"switch {\ncase a == 1 :\n  b\ndefault :\n  c\n}",
-			"switch {\n  case a == 1:\n  b\n  default:\n  c\n}",
+			"switch {\n  case a == 1:\n    b\n  default:\n    c\n}",
 		},
 	}
 
