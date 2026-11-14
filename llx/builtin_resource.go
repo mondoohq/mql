@@ -206,7 +206,13 @@ func resourceMapV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*
 	if !ok || len(list) == 0 {
 		// When the input list is empty or not an array(e.g. embedding), return an empty array
 		// so downstream array operations (e.g., $all) can execute without error.
-		return &RawData{Type: types.Array(types.Unset), Value: []any{}}, 0, nil
+		// It is an empty list of what the block gives, which the compiler
+		// announced for this call: what follows is looked up by that type.
+		typ := types.Array(types.Unset)
+		if announced := types.Type(chunk.Function.Type); announced != "" && announced.IsArray() {
+			typ = announced
+		}
+		return &RawData{Type: typ, Value: []any{}}, 0, nil
 	}
 
 	arg1 := chunk.Function.Args[1]
