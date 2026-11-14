@@ -182,10 +182,25 @@ type mqlMikrotikInterfaceOvpnServerInternal struct {
 	cacheCertificate string
 }
 
+// ovpnServerEnabled reports whether an OpenVPN server accepts connections.
+// Releases with a single OpenVPN server report `enabled`. Releases that hold
+// several named servers, such as 7.25.1, carry `disabled` on each row
+// instead.
+func ovpnServerEnabled(row map[string]string) *llx.RawData {
+	if _, ok := row["enabled"]; ok {
+		return boolField(row, "enabled")
+	}
+	if v, ok := row["disabled"]; ok {
+		return llx.BoolData(!parseBool(v))
+	}
+	return llx.NilData
+}
+
 func ovpnServerArgs(row map[string]string) map[string]*llx.RawData {
 	return map[string]*llx.RawData{
-		"__id":                     llx.StringData("mikrotik.interface.ovpnServer"),
-		"enabled":                  boolField(row, "enabled"),
+		"__id":                     llx.StringData(rowID("mikrotik.interface.ovpnServer/", row, row["name"])),
+		"name":                     llx.StringData(row["name"]),
+		"enabled":                  ovpnServerEnabled(row),
 		"port":                     intField(row, "port"),
 		"protocol":                 llx.StringData(row["protocol"]),
 		"mode":                     llx.StringData(row["mode"]),
@@ -204,6 +219,17 @@ func ovpnServerArgs(row map[string]string) map[string]*llx.RawData {
 	}
 }
 
+func newMikrotikOvpnServer(runtime *plugin.Runtime, row map[string]string) (plugin.Resource, error) {
+	res, err := CreateResource(runtime, "mikrotik.interface.ovpnServer", ovpnServerArgs(row))
+	if err != nil {
+		return nil, err
+	}
+	res.(*mqlMikrotikInterfaceOvpnServer).cacheCertificate = certificateRefName(row["certificate"])
+	return res, nil
+}
+
+// ovpnServer returns the first OpenVPN server. RouterOS releases that hold
+// several named servers list them all; ovpnServers returns every one.
 func (r *mqlMikrotik) ovpnServer() (*mqlMikrotikInterfaceOvpnServer, error) {
 	row, err := mikrotikConn(r.MqlRuntime).PrintOneOptional("/interface/ovpn-server/server")
 	if err != nil {
@@ -213,13 +239,19 @@ func (r *mqlMikrotik) ovpnServer() (*mqlMikrotikInterfaceOvpnServer, error) {
 		r.OvpnServer.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	res, err := CreateResource(r.MqlRuntime, "mikrotik.interface.ovpnServer", ovpnServerArgs(row))
+	res, err := newMikrotikOvpnServer(r.MqlRuntime, row)
 	if err != nil {
 		return nil, err
 	}
-	srv := res.(*mqlMikrotikInterfaceOvpnServer)
-	srv.cacheCertificate = certificateRefName(row["certificate"])
-	return srv, nil
+	return res.(*mqlMikrotikInterfaceOvpnServer), nil
+}
+
+func (r *mqlMikrotik) ovpnServers() ([]any, error) {
+	rows, err := mikrotikConn(r.MqlRuntime).PrintOptional("/interface/ovpn-server/server")
+	if err != nil {
+		return nil, err
+	}
+	return buildList(r.MqlRuntime, rows, newMikrotikOvpnServer)
 }
 
 func initMikrotikInterfaceOvpnServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -233,11 +265,10 @@ func initMikrotikInterfaceOvpnServer(runtime *plugin.Runtime, args map[string]*l
 	if len(row) == 0 {
 		return nil, nil, errNoMenu("/interface/ovpn-server/server")
 	}
-	res, err := CreateResource(runtime, "mikrotik.interface.ovpnServer", ovpnServerArgs(row))
+	res, err := newMikrotikOvpnServer(runtime, row)
 	if err != nil {
 		return nil, nil, err
 	}
-	res.(*mqlMikrotikInterfaceOvpnServer).cacheCertificate = certificateRefName(row["certificate"])
 	return nil, res, nil
 }
 

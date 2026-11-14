@@ -114,7 +114,12 @@ mikrotik @root {
   // SSTP server configuration
   sstpServer() mikrotik.interface.sstpServer
   // OpenVPN server configuration
+  //
+  // The first server listed. RouterOS releases that hold several named
+  // OpenVPN servers, such as 7.25.1, report all of them through ovpnServers.
   ovpnServer() mikrotik.interface.ovpnServer
+  // OpenVPN servers configured on the device
+  ovpnServers() []mikrotik.interface.ovpnServer
   // IPsec proposals offered for phase 2 negotiation
   ipsecProposals() []mikrotik.ip.ipsec.proposal
   // IPsec profiles used for key exchange negotiation
@@ -1709,8 +1714,15 @@ mikrotik.interface.sstpServer @defaults("enabled port verifyClientCertificate") 
 // `requireClientCertificate` off leaves PPP credentials as the only client
 // authentication, and a cipher list that still carries a 64-bit block cipher
 // leaves the tunnel open to a birthday-bound collision attack.
-mikrotik.interface.ovpnServer @defaults("enabled port requireClientCertificate") {
+mikrotik.interface.ovpnServer @defaults("name enabled port requireClientCertificate") {
+  // Server name
+  //
+  // Empty on releases with a single, unnamed OpenVPN server.
+  name string
   // Whether the OpenVPN server accepts connections
+  //
+  // Read from `enabled` on releases with a single server and from the
+  // inverse of `disabled` on releases with several named servers.
   enabled bool
   // Port the server listens on
   port int

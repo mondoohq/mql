@@ -85,6 +85,7 @@ func TestLiveRowsCoverEverySchemaField(t *testing.T) {
 		{"ip-ipsec-identity.json", "mikrotik.ip.ipsec.identity", ipsecIdentityArgs},
 		{"interface-l2tp-server-server.json", "mikrotik.interface.l2tpServer", l2tpServerArgs},
 		{"interface-sstp-server-server.json", "mikrotik.interface.sstpServer", sstpServerArgs},
+		{"interface-ovpn-server-server-7.25.json", "mikrotik.interface.ovpnServer", ovpnServerArgs},
 		{"system-script.json", "mikrotik.system.script", scriptArgs},
 		{"system-logging.json", "mikrotik.system.logging.rule", loggingRuleArgs},
 	} {
@@ -122,6 +123,7 @@ func TestLiveRowsDoNotPanic(t *testing.T) {
 		{"ip-ipsec-identity.json", ipsecIdentityArgs},
 		{"interface-l2tp-server-server.json", l2tpServerArgs},
 		{"interface-sstp-server-server.json", sstpServerArgs},
+		{"interface-ovpn-server-server-7.25.json", ovpnServerArgs},
 		{"system-script.json", scriptArgs},
 		{"system-logging.json", loggingRuleArgs},
 	} {
