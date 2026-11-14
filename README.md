@@ -213,6 +213,7 @@ To learn about Mondoo Platform, read the [Mondoo Platform docs](https://mondoo.c
 | VMware vSphere                | `vsphere`                  | `mql shell vsphere user@domain@host --ask-pass`                                                                                                 |
 | Weaviate vector database      | `weaviate`                 | `mql shell weaviate localhost --api-key API_KEY`                                                                                                |
 | Windows hosts                 | `local`, `ssh`, `winrm`    | `mql shell local`,<br></br>`mql shell ssh Administrator@IP_ADDRESS --ask-pass` or<br></br>`mql shell winrm Administrator@IP_ADDRESS --ask-pass` |
+| YugabyteDB cluster            | `yugabyte`                 | `mql shell yugabyte localhost`                                                                                                                  |
 | Zoom accounts                 | `zoom`                     | `mql shell zoom --account-id ACCOUNT_ID --client-id CLIENT_ID --client-secret CLIENT_SECRET`                                                    |
 | YARA rule scanning            | `yara`                     | `mql run local -c "yara.scan('/path/to/rules.yar').result"`                                                                                     |
 
