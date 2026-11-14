@@ -2243,6 +2243,12 @@ func regexNotDictV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (
 
 // dict ==/!= arrays
 
+// opDictCmpArray compares a list out of a dict with a list written in the
+// query, as two lists out of dicts. The elements of the two need not be of
+// the same Go type: a number out of JSON is a float64 and one in a query an
+// int64. That is fine because opDictCmpDict compares each pair with the
+// comparison of the left one's kind, and each of those takes any kind on the
+// right.
 func opDictCmpArray(left any, right any) bool {
 	if _, ok := left.([]any); ok {
 		return opDictCmpDict(left, right)
