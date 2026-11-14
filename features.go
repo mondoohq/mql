@@ -138,9 +138,14 @@ const (
 	// status: new
 	WindowsNative Feature = 25
 
+	// When an assessment (.all, .any, .none, .one) fails, record for each failing item only the fields its predicate compares, not the default fields of every resource the predicate passes through. For example, users.all(authMethods.registrationDetails != empty) no longer records authMethods' default fields, which can cost a provider call per item. The failing items' own default fields are still recorded. Changes the compiled code, and so the code IDs, of assessments whose predicate goes through a resource-typed field.
+	// start:  v14.x
+	// status: new
+	AssessmentLeafFields Feature = 26
+
 	// Placeholder to indicate how many feature flags exist. This number
 	// is changing with every new feature and cannot be used as a featureflag itself.
-	MAX_FEATURES byte = 26
+	MAX_FEATURES byte = 27
 )
 
 var FeaturesValue = map[string]Feature{
@@ -169,6 +174,7 @@ var FeaturesValue = map[string]Feature{
 	"RootedNamespace":              RootedNamespace,
 	"StructuredErrors":             StructuredErrors,
 	"WindowsNative":                WindowsNative,
+	"AssessmentLeafFields":         AssessmentLeafFields,
 }
 
 // DefaultFeatures are a set of default flags that are active
@@ -194,4 +200,5 @@ var AvailableFeatures = Features{
 	byte(RootedNamespace),
 	byte(StructuredErrors),
 	byte(WindowsNative),
+	byte(AssessmentLeafFields),
 }
