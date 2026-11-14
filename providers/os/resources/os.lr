@@ -1544,6 +1544,9 @@ package @defaults("name version") {
   //             (FreeBSD, DragonFly BSD)
   //   macOS     the application bundle path
   //   Windows   the install location from the uninstall registry
+  //   googet    the files googet recorded as installed for the package,
+  //             without directories; none for packages that install
+  //             through a script, such as the Compute Engine drivers
   //
   // Empty on package managers with no such record, among them flatpak, snap,
   // homebrew, nix, gentoo, and the NetBSD and OpenBSD package tools.

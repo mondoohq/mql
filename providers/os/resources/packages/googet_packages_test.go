@@ -15,42 +15,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Synthetic: the shape of googet's client.PackageState as encoding/json writes
-// it (exported Go field names, PkgSpec fields without omitempty always
-// present), modelled on the guest environment packages of a Compute Engine
-// Windows image. No target was measured for these values.
-const googetAgentState = `{
-  "SourceRepo": "https://packages.cloud.google.com/yuck/repos/google-compute-engine-stable",
-  "DownloadURL": "https://packages.cloud.google.com/yuck/pool/google-compute-engine-windows.x86_64.20240109.00.0@1.goo",
-  "Checksum": "aa11",
-  "LocalPath": "C:\\ProgramData\\GooGet\\cache\\google-compute-engine-windows.x86_64.20240109.00.0@1.goo",
-  "UnpackDir": "C:\\ProgramData\\GooGet\\cache\\google-compute-engine-windows.x86_64.20240109.00.0@1",
-  "PackageSpec": {
-    "Name": "google-compute-engine-windows",
-    "Version": "20240109.00.0@1",
-    "Arch": "x86_64",
-    "Description": "Google Compute Engine Windows agent",
-    "License": "http://www.apache.org/licenses/LICENSE-2.0",
-    "Authors": "Google Inc.",
-    "Replaces": null,
-    "Conflicts": null,
-    "Provides": null,
-    "Install": {"Path": "install.ps1"},
-    "Uninstall": {"Path": "uninstall.ps1"},
-    "Verify": {"Path": ""},
-    "ExternalProgramName": ""
-  },
-  "InstalledFiles": {
-    "C:\\Program Files\\Google\\Compute Engine\\agent": "",
-    "C:\\Program Files\\Google\\Compute Engine\\agent\\GCEWindowsAgent.exe": "0f3e",
-    "C:\\Program Files\\Google\\Compute Engine\\agent\\GCEWindowsAgentManifest.json": "77ab"
-  },
-  "InstallDate": 1704844800,
-  "InstalledApp": {"Name": "", "Reg": ""}
-}`
+// Measured: pkg_json rows of C:\ProgramData\GooGet\googet.db on a Compute
+// Engine windows-2022 image (googet 20261003.00.0@1), 2026-11-14. Copied
+// verbatim from the database with the sqlite3 CLI except ReleaseNotes, which
+// is left out. `googet installed` on that VM listed the same name, arch and
+// version for each.
+//
+// googet itself: InstalledFiles records directories with an empty checksum.
+const googetMeasuredGooGet = `{"SourceRepo":"https://packages.cloud.google.com/yuck/repos/google-compute-engine-stable","DownloadURL":"https://packages.cloud.google.com/yuck/pool/google-compute-engine-stable/e1674fc9ea06609451ccc5726e585a660e298c47ed5fd4283c27ef382c2fe356-googet-x86_64-20261003.00.0@1.goo","Checksum":"e1674fc9ea06609451ccc5726e585a660e298c47ed5fd4283c27ef382c2fe356","LocalPath":"C:\\ProgramData\\GooGet\\cache\\googet.x86_64.20261003.00.0@1.goo","UnpackDir":"","PackageSpec":{"Name":"googet","Version":"20261003.00.0@1","Arch":"x86_64","Description":"GooGet Package Manager","License":"http://www.apache.org/licenses/LICENSE-2.0","Authors":"Google LLC","Replaces":null,"Conflicts":null,"Provides":null,"Install":{"Path":"install_googet.ps1"},"Uninstall":{},"Verify":{},"Files":{"LICENSE":"<ProgramData>/GooGet/LICENSE.txt","THIRD_PARTY_LICENSES":"<ProgramData>/GooGet/THIRD_PARTY_LICENSES/","googet.exe":"<ProgramData>/GooGet/googet.exe"},"ExternalProgramName":""},"InstalledFiles":{"C:\\ProgramData\\GooGet\\LICENSE.txt":"c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4","C:\\ProgramData\\GooGet\\THIRD_PARTY_LICENSES":"","C:\\ProgramData\\GooGet\\THIRD_PARTY_LICENSES\\PowerShell":"","C:\\ProgramData\\GooGet\\THIRD_PARTY_LICENSES\\PowerShell\\openssh-portable":"","C:\\ProgramData\\GooGet\\THIRD_PARTY_LICENSES\\PowerShell\\openssh-portable\\LICENCE":"d6807e99f3d159145c659060f57c3fa74e109faa39326dbfc38674cb550fd104","C:\\ProgramData\\GooGet\\googet.exe":"93f927526830d64dd9437b229c3ae1a2779f9a36596183e6b0a10e3066e36e74"},"InstallDate":1792986102,"InstalledApp":{"Name":"","Reg":""}}`
+
+// A driver package installs through a script and records no files.
+const googetMeasuredBalloon = `{"SourceRepo":"https://packages.cloud.google.com/yuck/repos/google-compute-engine-stable","DownloadURL":"https://packages.cloud.google.com/yuck/pool/google-compute-engine-stable/dfceaa8df80c5ba1fe5c839388d44f4efc7104cd332213063a9d95e783e753fd-google-compute-engine-driver-balloon-x86_64-16.1.8@9.goo","Checksum":"dfceaa8df80c5ba1fe5c839388d44f4efc7104cd332213063a9d95e783e753fd","LocalPath":"C:\\ProgramData\\GooGet\\cache\\google-compute-engine-driver-balloon.x86_64.16.1.8@9.goo","UnpackDir":"","PackageSpec":{"Name":"google-compute-engine-driver-balloon","Version":"16.1.8@9","Arch":"x86_64","Description":"Google Compute Engine Windows Memory Balloon Drive","License":"BSD-3-Clause","Authors":"Google Inc.","Replaces":null,"Conflicts":null,"Provides":null,"Install":{"Path":"script\\install-driver.ps1","Args":["-Target","balloon"]},"Uninstall":{"Path":"script\\remove-driver.ps1","Args":["-Target","balloon"]},"Verify":{},"ExternalProgramName":""},"InstalledFiles":{},"InstallDate":1792986477,"InstalledApp":{"Name":"","Reg":""}}`
+
+// noarch package.
+const googetMeasuredSysprepSpec = `{"SourceRepo":"https://packages.cloud.google.com/yuck/repos/google-compute-engine-stable","PackageSpec":{"Name":"google-compute-engine-sysprep","Version":"20260206.01@1","Arch":"noarch","Authors":"Google Inc."},"InstalledFiles":{},"InstallDate":1792988927}`
 
 // Synthetic: a package converted from a pre-database googet.state, which
-// carries no InstallDate.
+// carries no InstallDate and no SourceRepo; no target showed this.
 const googetNoDateState = `{
   "SourceRepo": "",
   "PackageSpec": {"Name": "googet", "Version": "2.18.3@0", "Arch": "x86_64"},
@@ -58,21 +39,21 @@ const googetNoDateState = `{
 }`
 
 func TestParseGooGetState(t *testing.T) {
-	states, err := parseGooGetState([]byte("[" + googetAgentState + "," + googetNoDateState + "]"))
+	states, err := parseGooGetState([]byte("[" + googetMeasuredGooGet + "," + googetNoDateState + "]"))
 	require.NoError(t, err)
 	require.Len(t, states, 2)
 
 	s := states[0]
 	require.NotNil(t, s.PackageSpec)
 	assert.Equal(t, "https://packages.cloud.google.com/yuck/repos/google-compute-engine-stable", s.SourceRepo)
-	assert.Equal(t, "google-compute-engine-windows", s.PackageSpec.Name)
-	assert.Equal(t, "20240109.00.0@1", s.PackageSpec.Version)
+	assert.Equal(t, "googet", s.PackageSpec.Name)
+	assert.Equal(t, "20261003.00.0@1", s.PackageSpec.Version)
 	assert.Equal(t, "x86_64", s.PackageSpec.Arch)
-	assert.Equal(t, "Google Compute Engine Windows agent", s.PackageSpec.Description)
+	assert.Equal(t, "GooGet Package Manager", s.PackageSpec.Description)
 	assert.Equal(t, "http://www.apache.org/licenses/LICENSE-2.0", s.PackageSpec.License)
-	assert.Equal(t, "Google Inc.", s.PackageSpec.Authors)
-	assert.Equal(t, int64(1704844800), s.InstallDate)
-	assert.Len(t, s.InstalledFiles, 3)
+	assert.Equal(t, "Google LLC", s.PackageSpec.Authors)
+	assert.Equal(t, int64(1792986102), s.InstallDate)
+	assert.Len(t, s.InstalledFiles, 6)
 
 	assert.Equal(t, int64(0), states[1].InstallDate)
 }
@@ -83,34 +64,48 @@ func TestParseGooGetStateMalformed(t *testing.T) {
 }
 
 func TestGooGetPackages(t *testing.T) {
-	states, err := parseGooGetState([]byte("[" + googetAgentState + "," + googetNoDateState + `,{"SourceRepo":"x"}]`))
+	states, err := parseGooGetState([]byte("[" + googetMeasuredGooGet + "," + googetMeasuredBalloon + "," +
+		googetMeasuredSysprepSpec + "," + googetNoDateState + `,{"SourceRepo":"x"}]`))
 	require.NoError(t, err)
 
 	pkgs := googetPackages(states)
-	// The entry without a PackageSpec is skipped.
-	require.Len(t, pkgs, 2)
+	// Synthetic: the entry without a PackageSpec is skipped.
+	require.Len(t, pkgs, 4)
 
-	agent := pkgs[0]
-	assert.Equal(t, "google-compute-engine-windows", agent.Name)
-	assert.Equal(t, "20240109.00.0@1", agent.Version)
-	assert.Equal(t, "x86_64", agent.Arch)
-	assert.Equal(t, GooGetPkgFormat, agent.Format)
-	assert.Equal(t, "Google Compute Engine Windows agent", agent.Description)
-	assert.Equal(t, "http://www.apache.org/licenses/LICENSE-2.0", agent.License)
-	assert.Equal(t, "Google Inc.", agent.Vendor)
-	assert.Equal(t, time.Unix(1704844800, 0).UTC(), agent.InstallDate)
+	// Measured: the live scan of the VM reported these values.
+	g := pkgs[0]
+	assert.Equal(t, "googet", g.Name)
+	assert.Equal(t, "20261003.00.0@1", g.Version)
+	assert.Equal(t, "x86_64", g.Arch)
+	assert.Equal(t, GooGetPkgFormat, g.Format)
+	assert.Equal(t, "GooGet Package Manager", g.Description)
+	assert.Equal(t, "http://www.apache.org/licenses/LICENSE-2.0", g.License)
+	assert.Equal(t, "Google LLC", g.Vendor)
+	assert.Equal(t, time.Unix(1792986102, 0).UTC(), g.InstallDate)
 	assert.Equal(t,
-		"pkg:googet/google-compute-engine-windows@20240109.00.0%401?arch=x86_64&repository_url=https:%2F%2Fpackages.cloud.google.com%2Fyuck%2Frepos%2Fgoogle-compute-engine-stable",
-		agent.PUrl)
-	assert.Equal(t, PkgFilesIncluded, agent.FilesAvailable)
-	// The directory entry (empty checksum) is dropped; files are sorted.
+		"pkg:googet/googet@20261003.00.0%401?arch=x86_64&repository_url=https:%2F%2Fpackages.cloud.google.com%2Fyuck%2Frepos%2Fgoogle-compute-engine-stable",
+		g.PUrl)
+	assert.Equal(t, PkgFilesIncluded, g.FilesAvailable)
+	// The three directory entries (empty checksum) are dropped; files are sorted.
 	assert.Equal(t, []FileRecord{
-		{Path: `C:\Program Files\Google\Compute Engine\agent\GCEWindowsAgent.exe`, Digest: PkgDigest{Value: "0f3e", Algorithm: "sha256"}},
-		{Path: `C:\Program Files\Google\Compute Engine\agent\GCEWindowsAgentManifest.json`, Digest: PkgDigest{Value: "77ab", Algorithm: "sha256"}},
-	}, agent.Files)
+		{Path: `C:\ProgramData\GooGet\LICENSE.txt`, Digest: PkgDigest{Value: "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4", Algorithm: "sha256"}},
+		{Path: `C:\ProgramData\GooGet\THIRD_PARTY_LICENSES\PowerShell\openssh-portable\LICENCE`, Digest: PkgDigest{Value: "d6807e99f3d159145c659060f57c3fa74e109faa39326dbfc38674cb550fd104", Algorithm: "sha256"}},
+		{Path: `C:\ProgramData\GooGet\googet.exe`, Digest: PkgDigest{Value: "93f927526830d64dd9437b229c3ae1a2779f9a36596183e6b0a10e3066e36e74", Algorithm: "sha256"}},
+	}, g.Files)
 
-	noDate := pkgs[1]
-	assert.True(t, noDate.InstallDate.IsZero(), "an absent InstallDate stays zero, not 1970")
+	balloon := pkgs[1]
+	assert.Equal(t, "BSD-3-Clause", balloon.License)
+	assert.Empty(t, balloon.Files)
+
+	sysprep := pkgs[2]
+	assert.Equal(t, "noarch", sysprep.Arch)
+	assert.Equal(t,
+		"pkg:googet/google-compute-engine-sysprep@20260206.01%401?arch=noarch&repository_url=https:%2F%2Fpackages.cloud.google.com%2Fyuck%2Frepos%2Fgoogle-compute-engine-stable",
+		sysprep.PUrl)
+
+	// Synthetic: no install date stays zero, not 1970; no repo, no qualifier.
+	noDate := pkgs[3]
+	assert.True(t, noDate.InstallDate.IsZero())
 	assert.Equal(t, "pkg:googet/googet@2.18.3%400?arch=x86_64", noDate.PUrl)
 }
 
@@ -148,7 +143,7 @@ func writeGooGetDB(t *testing.T, rows ...string) []byte {
 
 func TestReadGooGetDB(t *testing.T) {
 	// A row that is not JSON is skipped without hiding the others.
-	data := writeGooGetDB(t, googetAgentState, "{broken", googetNoDateState)
+	data := writeGooGetDB(t, googetMeasuredBalloon, "{broken", googetNoDateState)
 
 	fs := afero.NewMemMapFs()
 	require.NoError(t, afero.WriteFile(fs, `C:\ProgramData\GooGet\googet.db`, data, 0o644))
@@ -156,12 +151,12 @@ func TestReadGooGetDB(t *testing.T) {
 	states, err := readGooGetDB(fs, `C:\ProgramData\GooGet\googet.db`)
 	require.NoError(t, err)
 	require.Len(t, states, 2)
-	assert.Equal(t, "google-compute-engine-windows", states[0].PackageSpec.Name)
+	assert.Equal(t, "google-compute-engine-driver-balloon", states[0].PackageSpec.Name)
 	assert.Equal(t, "googet", states[1].PackageSpec.Name)
 }
 
 func TestGooGetList(t *testing.T) {
-	db := writeGooGetDB(t, googetAgentState)
+	db := writeGooGetDB(t, googetMeasuredBalloon)
 	stale := []byte("[" + googetNoDateState + "]")
 
 	t.Run("database wins over the stale state file", func(t *testing.T) {
@@ -172,7 +167,7 @@ func TestGooGetList(t *testing.T) {
 		pkgs, err := (&GooGetPkgManager{conn: &memFsConn{fs: fs}}).List()
 		require.NoError(t, err)
 		require.Len(t, pkgs, 1)
-		assert.Equal(t, "google-compute-engine-windows", pkgs[0].Name)
+		assert.Equal(t, "google-compute-engine-driver-balloon", pkgs[0].Name)
 	})
 
 	t.Run("state file when there is no database", func(t *testing.T) {
@@ -193,7 +188,7 @@ func TestGooGetList(t *testing.T) {
 		pkgs, err := (&GooGetPkgManager{conn: &memFsConn{fs: fs}}).List()
 		require.NoError(t, err)
 		require.Len(t, pkgs, 1)
-		assert.Equal(t, "google-compute-engine-windows", pkgs[0].Name)
+		assert.Equal(t, "google-compute-engine-driver-balloon", pkgs[0].Name)
 	})
 
 	t.Run("unreadable database does not fail the inventory", func(t *testing.T) {
