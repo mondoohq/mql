@@ -60,6 +60,12 @@ func TestPackageLock(t *testing.T) {
 					"babel-cli": {
 						Version:  "6.10.1",
 						Resolved: "https://registry.npmjs.org/babel-cli/-/babel-cli-6.10.1.tgz",
+						Dependencies: map[string]packageLockDependency{
+							"babel-register": {
+								Version:  "6.9.0",
+								Resolved: "https://registry.npmjs.org/babel-register/-/babel-register-6.9.0.tgz",
+							},
+						},
 					},
 				},
 			},
@@ -76,6 +82,18 @@ func TestPackageLock(t *testing.T) {
 						Version:   "1.3.2",
 						Resolved:  "https://registry.npmjs.org/JSONStream/-/JSONStream-1.3.2.tgz",
 						Integrity: "sha1-wQI3G27Dp887hHygDCC7D85Mbeo=",
+						Dependencies: map[string]packageLockDependency{
+							"jsonparse": {
+								Version:   "1.3.1",
+								Resolved:  "https://registry.npmjs.org/jsonparse/-/jsonparse-1.3.1.tgz",
+								Integrity: "sha1-P02uSpH6wxX3EGL4UhzCOfE2YoA=",
+							},
+							"through": {
+								Version:   "2.3.8",
+								Resolved:  "https://registry.npmjs.org/through/-/through-2.3.8.tgz",
+								Integrity: "sha1-DdTJ/6q8NXlgsbckEV1+Doai4fU=",
+							},
+						},
 					},
 				},
 			},
