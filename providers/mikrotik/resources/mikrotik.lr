@@ -639,6 +639,9 @@ mikrotik.ip.service @defaults("name port disabled") {
   // TCP port the service listens on
   port int
   // Address range allowed to connect to the service
+  //
+  // Read from `available-from` on releases that use that name, such as
+  // RouterOS 7.25.1, and from `address` on earlier ones such as 7.23.2.
   address string
   // Name of the TLS certificate bound to the service
   //
