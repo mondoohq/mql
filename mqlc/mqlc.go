@@ -3231,6 +3231,13 @@ func Compile(input string, props PropsHandler, conf CompilerConfig) (*llx.CodeBu
 		}
 	}()
 
+	key, cacheable := compileCacheKey(input, conf)
+	if cacheable {
+		if res := cachedCompile(key, props); res != nil {
+			return res, nil
+		}
+	}
+
 	res, err := compile(input, props, conf)
 	if err != nil {
 		return res, err
@@ -3240,5 +3247,8 @@ func Compile(input string, props PropsHandler, conf CompilerConfig) (*llx.CodeBu
 		return res, errors.New("failed to compile: received an unspecified empty code structure")
 	}
 
+	if cacheable {
+		storeCompile(key, res)
+	}
 	return res, nil
 }
