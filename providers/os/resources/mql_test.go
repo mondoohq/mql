@@ -4689,3 +4689,53 @@ func TestUserSystem(t *testing.T) {
 		},
 	})
 }
+
+// A list or a map out of a dict equals an equal one: one from another dict,
+// and a list written out in the query, whatever its elements are.
+func TestDict_ListsAndMapsAreEqualToEqualOnes(t *testing.T) {
+	doc := `parse.json(content: '{"ints":[1,2],"same":[1,2],"other":[1,3],"short":[1],"strs":["a","b"],` +
+		`"bools":[true,false],"floats":[1.5,2.5],"map":{"k":1,"l":[1]},"samemap":{"k":1,"l":[1]},"othermap":{"k":2,"l":[1]},` +
+		`"nested":[[1],{"k":"v"}],"samenested":[[1],{"k":"v"}],"nulls":[null],"samenulls":[null],"lists":[[1],[2,3]]}').params`
+	x := testutils.InitTester(testutils.LinuxMock())
+	for _, c := range []struct {
+		left, right string
+		equal       bool
+	}{
+		// out of two dicts
+		{doc + `["ints"]`, doc + `["same"]`, true},
+		{doc + `["ints"]`, doc + `["other"]`, false},
+		{doc + `["ints"]`, doc + `["short"]`, false},
+		{doc + `["ints"]`, doc + `["strs"]`, false},
+		{doc + `["map"]`, doc + `["samemap"]`, true},
+		{doc + `["map"]`, doc + `["othermap"]`, false},
+		{doc + `["map"]`, doc + `["ints"]`, false},
+		{doc + `["nested"]`, doc + `["samenested"]`, true},
+		{doc + `["nulls"]`, doc + `["samenulls"]`, true},
+		// next to a list in the query
+		{doc + `["strs"]`, `["a", "b"]`, true},
+		{doc + `["ints"]`, `[1, 2]`, true},
+		{doc + `["ints"]`, `[1, 3]`, false},
+		{doc + `["ints"]`, `[1]`, false},
+		{doc + `["floats"]`, `[1.5, 2.5]`, true},
+		{doc + `["floats"]`, `[1.5, 2.0]`, false},
+		{doc + `["bools"]`, `[true, false]`, true},
+		{doc + `["bools"]`, `[true, true]`, false},
+		{doc + `["lists"]`, `[[1], [2, 3]]`, true},
+		{doc + `["lists"]`, `[[1], [2, 4]]`, false},
+	} {
+		for op, want := range map[string]bool{"==": c.equal, "!=": !c.equal} {
+			code := c.left + " " + op + " " + c.right
+			t.Run(code[len(doc)-len(`.params`)-1:], func(t *testing.T) {
+				answered := false
+				for _, res := range x.TestQuery(t, code) {
+					if res.Data.Type == types.Bool {
+						require.NoError(t, res.Data.Error)
+						assert.Equal(t, want, res.Data.Value)
+						answered = true
+					}
+				}
+				assert.True(t, answered, "no answer")
+			})
+		}
+	}
+}
