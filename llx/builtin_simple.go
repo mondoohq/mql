@@ -142,6 +142,65 @@ func boolAndOpV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64, fLef
 	return BoolData(fRight(v.Value)), 0, nil
 }
 
+// pairAndOpV2 and pairOrOpV2 are boolAndOpV2 and boolOrOpV2 for the builtins
+// that look at both sides in one function, which is every && and || between
+// two different types. A null side is falsy here as it is there: `a && b` is
+// false if either side is null, and with a null on one side of `a || b` the
+// other side decides. f is only called with two values that are not null.
+//
+// These builtins used to go through boolOpV2, which is the rule for ==: null
+// on both sides is true, null on one side is false. That made `a && b` true
+// when neither could be read, and `true || b` false when b was null.
+func pairAndOpV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64, f func(any, any) bool) (*RawData, uint64, error) {
+	v, dref, err := e.resolveValue(chunk.Function.Args[0], ref)
+	if err != nil {
+		return nil, 0, err
+	}
+	if dref != 0 {
+		return nil, dref, nil
+	}
+
+	if bind.Value == nil || v == nil || v.Value == nil {
+		return BoolData(false), 0, nil
+	}
+	return BoolData(f(bind.Value, v.Value)), 0, nil
+}
+
+func pairOrOpV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64, f func(any, any) bool) (*RawData, uint64, error) {
+	v, dref, err := e.resolveValue(chunk.Function.Args[0], ref)
+	if err != nil {
+		return nil, 0, err
+	}
+	if dref != 0 {
+		return nil, dref, nil
+	}
+
+	rightIsNull := v == nil || v.Value == nil
+	switch {
+	case bind.Value == nil && rightIsNull:
+		return BoolData(false), 0, nil
+	case bind.Value == nil:
+		return BoolData(truthyOperand(v.Value)), 0, nil
+	case rightIsNull:
+		return BoolData(truthyOperand(bind.Value)), 0, nil
+	}
+	return BoolData(f(bind.Value, v.Value)), 0, nil
+}
+
+// truthyOperand is the truthiness of one side of && or || on its own, as the
+// builtins for a pair of types have it: a number that is not zero, a string,
+// list or map that is not empty, any time.
+func truthyOperand(value any) bool {
+	if _, ok := value.(*time.Time); ok {
+		return true
+	}
+	return truthyDict(value)
+}
+
+func opAlwaysTrue(left any, right any) bool {
+	return true
+}
+
 func boolNotOpV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64, f func(any, any) bool) (*RawData, uint64, error) {
 	v, dref, err := e.resolveValue(chunk.Function.Args[0], ref)
 	if err != nil {
@@ -1467,19 +1526,35 @@ func arrayOrBoolV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*
 }
 
 func opBoolAndMap(left any, right any) bool {
-	return left.(bool) && (len(right.([]any)) != 0)
+	return left.(bool) && (len(right.(map[string]any)) != 0)
 }
 
 func opBoolOrMap(left any, right any) bool {
-	return left.(bool) || (len(right.([]any)) != 0)
+	return left.(bool) || (len(right.(map[string]any)) != 0)
+}
+
+func opMapAndBool(left any, right any) bool {
+	return right.(bool) && (len(left.(map[string]any)) != 0)
+}
+
+func opMapOrBool(left any, right any) bool {
+	return right.(bool) || (len(left.(map[string]any)) != 0)
+}
+
+func mapAndBoolV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
+	return pairAndOpV2(e, bind, chunk, ref, opMapAndBool)
+}
+
+func mapOrBoolV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
+	return pairOrOpV2(e, bind, chunk, ref, opMapOrBool)
 }
 
 func boolAndMapV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opBoolAndMap)
+	return pairAndOpV2(e, bind, chunk, ref, opBoolAndMap)
 }
 
 func boolOrMapV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opBoolOrMap)
+	return pairOrOpV2(e, bind, chunk, ref, opBoolOrMap)
 }
 
 // int &&/|| T
@@ -1501,19 +1576,19 @@ func opFloatOrInt(left any, right any) bool {
 }
 
 func intAndFloatV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opIntAndFloat)
+	return pairAndOpV2(e, bind, chunk, ref, opIntAndFloat)
 }
 
 func intOrFloatV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opIntOrFloat)
+	return pairOrOpV2(e, bind, chunk, ref, opIntOrFloat)
 }
 
 func floatAndIntV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opFloatAndInt)
+	return pairAndOpV2(e, bind, chunk, ref, opFloatAndInt)
 }
 
 func floatOrIntV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opFloatOrInt)
+	return pairOrOpV2(e, bind, chunk, ref, opFloatOrInt)
 }
 
 func opIntAndString(left any, right any) bool {
@@ -1533,35 +1608,35 @@ func opStringOrInt(left any, right any) bool {
 }
 
 func intAndStringV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opIntAndString)
+	return pairAndOpV2(e, bind, chunk, ref, opIntAndString)
 }
 
 func intOrStringV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opIntOrString)
+	return pairOrOpV2(e, bind, chunk, ref, opIntOrString)
 }
 
 func stringAndIntV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opStringAndInt)
+	return pairAndOpV2(e, bind, chunk, ref, opStringAndInt)
 }
 
 func stringOrIntV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opStringOrInt)
+	return pairOrOpV2(e, bind, chunk, ref, opStringOrInt)
 }
 
 func intAndRegexV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opIntAndString)
+	return pairAndOpV2(e, bind, chunk, ref, opIntAndString)
 }
 
 func intOrRegexV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opIntOrString)
+	return pairOrOpV2(e, bind, chunk, ref, opIntOrString)
 }
 
 func regexAndIntV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opStringAndInt)
+	return pairAndOpV2(e, bind, chunk, ref, opStringAndInt)
 }
 
 func regexOrIntV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opStringOrInt)
+	return pairOrOpV2(e, bind, chunk, ref, opStringOrInt)
 }
 
 func opIntAndArray(left any, right any) bool {
@@ -1581,19 +1656,19 @@ func opArrayOrInt(left any, right any) bool {
 }
 
 func intAndArrayV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opIntAndArray)
+	return pairAndOpV2(e, bind, chunk, ref, opIntAndArray)
 }
 
 func intOrArrayV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opIntOrArray)
+	return pairOrOpV2(e, bind, chunk, ref, opIntOrArray)
 }
 
 func arrayAndIntV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opArrayAndInt)
+	return pairAndOpV2(e, bind, chunk, ref, opArrayAndInt)
 }
 
 func arrayOrIntV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opArrayOrInt)
+	return pairOrOpV2(e, bind, chunk, ref, opArrayOrInt)
 }
 
 func opIntAndMap(left any, right any) bool {
@@ -1613,19 +1688,19 @@ func opMapOrInt(left any, right any) bool {
 }
 
 func intAndMapV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opIntAndMap)
+	return pairAndOpV2(e, bind, chunk, ref, opIntAndMap)
 }
 
 func intOrMapV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opIntOrMap)
+	return pairOrOpV2(e, bind, chunk, ref, opIntOrMap)
 }
 
 func mapAndIntV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opMapAndInt)
+	return pairAndOpV2(e, bind, chunk, ref, opMapAndInt)
 }
 
 func mapOrIntV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opMapOrInt)
+	return pairOrOpV2(e, bind, chunk, ref, opMapOrInt)
 }
 
 func int64InRange(e *blockExecutor, val int64, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
@@ -1804,35 +1879,35 @@ func opStringOrFloat(left any, right any) bool {
 }
 
 func floatAndStringV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opFloatAndString)
+	return pairAndOpV2(e, bind, chunk, ref, opFloatAndString)
 }
 
 func floatOrStringV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opFloatOrString)
+	return pairOrOpV2(e, bind, chunk, ref, opFloatOrString)
 }
 
 func stringAndFloatV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opStringAndFloat)
+	return pairAndOpV2(e, bind, chunk, ref, opStringAndFloat)
 }
 
 func stringOrFloatV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opStringOrFloat)
+	return pairOrOpV2(e, bind, chunk, ref, opStringOrFloat)
 }
 
 func floatAndRegexV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opFloatAndString)
+	return pairAndOpV2(e, bind, chunk, ref, opFloatAndString)
 }
 
 func floatOrRegexV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opFloatOrString)
+	return pairOrOpV2(e, bind, chunk, ref, opFloatOrString)
 }
 
 func regexAndFloatV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opStringAndFloat)
+	return pairAndOpV2(e, bind, chunk, ref, opStringAndFloat)
 }
 
 func regexOrFloatV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opStringOrFloat)
+	return pairOrOpV2(e, bind, chunk, ref, opStringOrFloat)
 }
 
 func opFloatAndArray(left any, right any) bool {
@@ -1852,19 +1927,19 @@ func opArrayOrFloat(left any, right any) bool {
 }
 
 func floatAndArrayV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opFloatAndArray)
+	return pairAndOpV2(e, bind, chunk, ref, opFloatAndArray)
 }
 
 func floatOrArrayV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opFloatOrArray)
+	return pairOrOpV2(e, bind, chunk, ref, opFloatOrArray)
 }
 
 func arrayAndFloatV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opArrayAndFloat)
+	return pairAndOpV2(e, bind, chunk, ref, opArrayAndFloat)
 }
 
 func arrayOrFloatV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opArrayOrFloat)
+	return pairOrOpV2(e, bind, chunk, ref, opArrayOrFloat)
 }
 
 func opFloatAndMap(left any, right any) bool {
@@ -1884,19 +1959,19 @@ func opMapOrFloat(left any, right any) bool {
 }
 
 func floatAndMapV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opFloatAndMap)
+	return pairAndOpV2(e, bind, chunk, ref, opFloatAndMap)
 }
 
 func floatOrMapV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opFloatOrMap)
+	return pairOrOpV2(e, bind, chunk, ref, opFloatOrMap)
 }
 
 func mapAndFloatV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opMapAndFloat)
+	return pairAndOpV2(e, bind, chunk, ref, opMapAndFloat)
 }
 
 func mapOrFloatV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opMapOrFloat)
+	return pairOrOpV2(e, bind, chunk, ref, opMapOrFloat)
 }
 
 // string &&/|| T
@@ -1918,67 +1993,67 @@ func regexOrStringV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) 
 }
 
 func opStringAndArray(left any, right any) bool {
-	return (left.(float64) != 0) && (len(right.([]any)) != 0)
+	return (left.(string) != "") && (len(right.([]any)) != 0)
 }
 
 func opArrayAndString(left any, right any) bool {
-	return (right.(float64) != 0) && (len(left.([]any)) != 0)
+	return (right.(string) != "") && (len(left.([]any)) != 0)
 }
 
 func opStringOrArray(left any, right any) bool {
-	return (left.(float64) != 0) || (len(right.([]any)) != 0)
+	return (left.(string) != "") || (len(right.([]any)) != 0)
 }
 
 func opArrayOrString(left any, right any) bool {
-	return (right.(float64) != 0) || (len(left.([]any)) != 0)
+	return (right.(string) != "") || (len(left.([]any)) != 0)
 }
 
 func stringAndArrayV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opStringAndArray)
+	return pairAndOpV2(e, bind, chunk, ref, opStringAndArray)
 }
 
 func stringOrArrayV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opStringOrArray)
+	return pairOrOpV2(e, bind, chunk, ref, opStringOrArray)
 }
 
 func arrayAndStringV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opArrayAndString)
+	return pairAndOpV2(e, bind, chunk, ref, opArrayAndString)
 }
 
 func arrayOrStringV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opArrayOrString)
+	return pairOrOpV2(e, bind, chunk, ref, opArrayOrString)
 }
 
 func opStringAndMap(left any, right any) bool {
-	return (left.(float64) != 0) && (len(right.(map[string]any)) != 0)
+	return (left.(string) != "") && (len(right.(map[string]any)) != 0)
 }
 
 func opMapAndString(left any, right any) bool {
-	return (right.(float64) != 0) && (len(left.(map[string]any)) != 0)
+	return (right.(string) != "") && (len(left.(map[string]any)) != 0)
 }
 
 func opStringOrMap(left any, right any) bool {
-	return (left.(float64) != 0) || (len(right.(map[string]any)) != 0)
+	return (left.(string) != "") || (len(right.(map[string]any)) != 0)
 }
 
 func opMapOrString(left any, right any) bool {
-	return (right.(float64) != 0) || (len(left.(map[string]any)) != 0)
+	return (right.(string) != "") || (len(left.(map[string]any)) != 0)
 }
 
 func stringAndMapV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opStringAndMap)
+	return pairAndOpV2(e, bind, chunk, ref, opStringAndMap)
 }
 
 func stringOrMapV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opStringOrMap)
+	return pairOrOpV2(e, bind, chunk, ref, opStringOrMap)
 }
 
 func mapAndStringV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opMapAndString)
+	return pairAndOpV2(e, bind, chunk, ref, opMapAndString)
 }
 
 func mapOrStringV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opMapOrString)
+	return pairOrOpV2(e, bind, chunk, ref, opMapOrString)
 }
 
 // string + T
@@ -1995,37 +2070,37 @@ func stringPlusStringV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint6
 // regex &&/|| array
 
 func regexAndArrayV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opStringAndArray)
+	return pairAndOpV2(e, bind, chunk, ref, opStringAndArray)
 }
 
 func regexOrArrayV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opStringOrArray)
+	return pairOrOpV2(e, bind, chunk, ref, opStringOrArray)
 }
 
 func arrayAndRegexV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opArrayAndString)
+	return pairAndOpV2(e, bind, chunk, ref, opArrayAndString)
 }
 
 func arrayOrRegexV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opArrayOrString)
+	return pairOrOpV2(e, bind, chunk, ref, opArrayOrString)
 }
 
 // regex &&/|| map
 
 func regexAndMapV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opStringAndMap)
+	return pairAndOpV2(e, bind, chunk, ref, opStringAndMap)
 }
 
 func regexOrMapV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opStringOrMap)
+	return pairOrOpV2(e, bind, chunk, ref, opStringOrMap)
 }
 
 func mapAndRegexV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opMapAndString)
+	return pairAndOpV2(e, bind, chunk, ref, opMapAndString)
 }
 
 func mapOrRegexV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opMapOrString)
+	return pairOrOpV2(e, bind, chunk, ref, opMapOrString)
 }
 
 // time &&/|| T
@@ -2040,19 +2115,19 @@ func opTimeAndBool(left any, right any) bool {
 }
 
 func boolAndTimeV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opBoolAndTime)
+	return pairAndOpV2(e, bind, chunk, ref, opBoolAndTime)
 }
 
 func boolOrTimeV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return BoolTrue, 0, nil
+	return pairOrOpV2(e, bind, chunk, ref, opAlwaysTrue)
 }
 
 func timeAndBoolV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opTimeAndBool)
+	return pairAndOpV2(e, bind, chunk, ref, opTimeAndBool)
 }
 
 func timeOrBoolV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return BoolTrue, 0, nil
+	return pairOrOpV2(e, bind, chunk, ref, opAlwaysTrue)
 }
 
 func opIntAndTime(left any, right any) bool {
@@ -2064,19 +2139,19 @@ func opTimeAndInt(left any, right any) bool {
 }
 
 func intAndTimeV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opIntAndTime)
+	return pairAndOpV2(e, bind, chunk, ref, opIntAndTime)
 }
 
 func intOrTimeV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return BoolTrue, 0, nil
+	return pairOrOpV2(e, bind, chunk, ref, opAlwaysTrue)
 }
 
 func timeAndIntV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opTimeAndInt)
+	return pairAndOpV2(e, bind, chunk, ref, opTimeAndInt)
 }
 
 func timeOrIntV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return BoolTrue, 0, nil
+	return pairOrOpV2(e, bind, chunk, ref, opAlwaysTrue)
 }
 
 func opFloatAndTime(left any, right any) bool {
@@ -2088,19 +2163,19 @@ func opTimeAndFloat(left any, right any) bool {
 }
 
 func floatAndTimeV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opFloatAndTime)
+	return pairAndOpV2(e, bind, chunk, ref, opFloatAndTime)
 }
 
 func floatOrTimeV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return BoolTrue, 0, nil
+	return pairOrOpV2(e, bind, chunk, ref, opAlwaysTrue)
 }
 
 func timeAndFloatV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opTimeAndFloat)
+	return pairAndOpV2(e, bind, chunk, ref, opTimeAndFloat)
 }
 
 func timeOrFloatV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return BoolTrue, 0, nil
+	return pairOrOpV2(e, bind, chunk, ref, opAlwaysTrue)
 }
 
 func opStringAndTime(left any, right any) bool {
@@ -2112,19 +2187,19 @@ func opTimeAndString(left any, right any) bool {
 }
 
 func stringAndTimeV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opStringAndTime)
+	return pairAndOpV2(e, bind, chunk, ref, opStringAndTime)
 }
 
 func stringOrTimeV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return BoolTrue, 0, nil
+	return pairOrOpV2(e, bind, chunk, ref, opAlwaysTrue)
 }
 
 func timeAndStringV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opTimeAndString)
+	return pairAndOpV2(e, bind, chunk, ref, opTimeAndString)
 }
 
 func timeOrStringV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return BoolTrue, 0, nil
+	return pairOrOpV2(e, bind, chunk, ref, opAlwaysTrue)
 }
 
 func opRegexAndTime(left any, right any) bool {
@@ -2136,27 +2211,27 @@ func opTimeAndRegex(left any, right any) bool {
 }
 
 func regexAndTimeV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opRegexAndTime)
+	return pairAndOpV2(e, bind, chunk, ref, opRegexAndTime)
 }
 
 func regexOrTimeV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return BoolTrue, 0, nil
+	return pairOrOpV2(e, bind, chunk, ref, opAlwaysTrue)
 }
 
 func timeAndRegexV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opTimeAndRegex)
+	return pairAndOpV2(e, bind, chunk, ref, opTimeAndRegex)
 }
 
 func timeOrRegexV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return BoolTrue, 0, nil
+	return pairOrOpV2(e, bind, chunk, ref, opAlwaysTrue)
 }
 
 func timeAndTimeV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return BoolTrue, 0, nil
+	return pairAndOpV2(e, bind, chunk, ref, opAlwaysTrue)
 }
 
 func timeOrTimeV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return BoolTrue, 0, nil
+	return pairOrOpV2(e, bind, chunk, ref, opAlwaysTrue)
 }
 
 func opTimeAndArray(left any, right any) bool {
@@ -2164,11 +2239,11 @@ func opTimeAndArray(left any, right any) bool {
 }
 
 func timeAndArrayV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opTimeAndArray)
+	return pairAndOpV2(e, bind, chunk, ref, opTimeAndArray)
 }
 
 func timeOrArrayV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return BoolTrue, 0, nil
+	return pairOrOpV2(e, bind, chunk, ref, opAlwaysTrue)
 }
 
 func opTimeAndMap(left any, right any) bool {
@@ -2180,19 +2255,19 @@ func opMapAndTime(left any, right any) bool {
 }
 
 func timeAndMapV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opTimeAndMap)
+	return pairAndOpV2(e, bind, chunk, ref, opTimeAndMap)
 }
 
 func timeOrMapV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return BoolTrue, 0, nil
+	return pairOrOpV2(e, bind, chunk, ref, opAlwaysTrue)
 }
 
 func mapAndTimeV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return boolOpV2(e, bind, chunk, ref, opMapAndTime)
+	return pairAndOpV2(e, bind, chunk, ref, opMapAndTime)
 }
 
 func mapOrTimeV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return BoolTrue, 0, nil
+	return pairOrOpV2(e, bind, chunk, ref, opAlwaysTrue)
 }
 
 // string methods
