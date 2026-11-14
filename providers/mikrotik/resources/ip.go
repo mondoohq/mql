@@ -154,12 +154,23 @@ func initMikrotikIpPool(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 
 // --- ip.service ---
 
+// serviceAddress returns the source restriction of an /ip/service row.
+// RouterOS 7.25.1 reports it as `available-from`; 7.23.2 and earlier call
+// it `address`. A row that carries neither, such as the dynamic `btest` and
+// `discover` entries, yields an empty string.
+func serviceAddress(row map[string]string) string {
+	if v, ok := row["available-from"]; ok {
+		return v
+	}
+	return row["address"]
+}
+
 func newMikrotikService(runtime *plugin.Runtime, row map[string]string) (plugin.Resource, error) {
 	res, err := CreateResource(runtime, "mikrotik.ip.service", map[string]*llx.RawData{
 		"__id":        llx.StringData("mikrotik.ip.service/" + row["name"]),
 		"name":        llx.StringData(row["name"]),
 		"port":        intField(row, "port"),
-		"address":     llx.StringData(row["address"]),
+		"address":     llx.StringData(serviceAddress(row)),
 		"certificate": llx.StringData(row["certificate"]),
 		"tlsVersion":  llx.StringData(row["tls-version"]),
 		"vrf":         llx.StringData(row["vrf"]),
