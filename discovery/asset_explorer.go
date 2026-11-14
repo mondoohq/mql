@@ -81,6 +81,10 @@ type AssetExplorerConfig struct {
 type AssetExplorer struct {
 	mu sync.Mutex
 
+	// closeRuntime closes the runtime of an asset. It is only set by tests,
+	// to stand in for a provider that is slow to disconnect.
+	closeRuntime func(*providers.Runtime)
+
 	allAssets []*TrackedAsset
 
 	// seenPlatformIDs records every platform ID encountered during discovery
@@ -265,19 +269,18 @@ func (e *AssetExplorer) Connect(asset *TrackedAsset) (*TrackedAsset, error) {
 // gateway assets that were connected just to discover children.
 func (e *AssetExplorer) CloseAsset(asset *TrackedAsset) error {
 	e.mu.Lock()
-	defer e.mu.Unlock()
 
 	if !e.isKnown(asset) {
+		e.mu.Unlock()
 		return fmt.Errorf("asset %q is not tracked by this explorer", asset.Asset.GetName())
 	}
 
 	if asset.State != AssetConnected {
+		e.mu.Unlock()
 		return fmt.Errorf("asset %q is not connected (state: %d)", asset.Asset.GetName(), asset.State)
 	}
 
-	if asset.Runtime != nil {
-		asset.Runtime.Close()
-	}
+	runtime := asset.Runtime
 	asset.Runtime = nil
 	asset.State = AssetClosed
 
@@ -286,8 +289,27 @@ func (e *AssetExplorer) CloseAsset(asset *TrackedAsset) error {
 	// scan to finish. seenPlatformIDs preserves dedup state independently.
 	asset.Children = nil
 	asset.Parent = nil
+	e.mu.Unlock()
+
+	// Closing the runtime waits for its provider, so it is done after the
+	// lock is released: the asset is already closed as far as the explorer is
+	// concerned. Under the lock, every asset that finished scanning waited
+	// for the one before it to disconnect, and so did the next Connect.
+	e.close(runtime)
 
 	return nil
+}
+
+// close closes a runtime, if there is one. It must not be called with e.mu
+// held: closing waits for the provider.
+func (e *AssetExplorer) close(runtime *providers.Runtime) {
+	switch {
+	case runtime == nil:
+	case e.closeRuntime != nil:
+		e.closeRuntime(runtime)
+	default:
+		runtime.Close()
+	}
 }
 
 // Errors returns all connection/discovery errors encountered so far.
@@ -304,16 +326,21 @@ func (e *AssetExplorer) Errors() []*AssetWithError {
 // After Shutdown the AssetExplorer should not be used.
 func (e *AssetExplorer) Shutdown() {
 	e.mu.Lock()
-	defer e.mu.Unlock()
-
+	var runtimes []*providers.Runtime
 	for _, a := range e.allAssets {
 		if a.State == AssetConnected {
 			if a.Runtime != nil {
-				a.Runtime.Close()
+				runtimes = append(runtimes, a.Runtime)
 			}
 			a.Runtime = nil
 			a.State = AssetClosed
 		}
+	}
+	e.mu.Unlock()
+
+	// As in CloseAsset: the runtimes are closed outside the lock.
+	for _, runtime := range runtimes {
+		e.close(runtime)
 	}
 }
 

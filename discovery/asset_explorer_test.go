@@ -5,6 +5,7 @@ package discovery
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -118,6 +119,47 @@ func TestAssetExplorerCloseAsset(t *testing.T) {
 		assert.Nil(t, asset.Parent, "Parent should be nil'd to break reference chains")
 	})
 
+	// Disconnecting waits for the provider. While it does, the explorer has
+	// to stay usable: other assets finish and close, and the next one
+	// connects.
+	t.Run("the explorer is not locked while the runtime closes", func(t *testing.T) {
+		closing, release := make(chan struct{}), make(chan struct{})
+
+		asset := &TrackedAsset{
+			Asset:   &inventory.Asset{Name: "slow to disconnect"},
+			State:   AssetConnected,
+			Runtime: &providers.Runtime{},
+		}
+		other := &TrackedAsset{Asset: &inventory.Asset{Name: "other"}, State: AssetConnected}
+		e := newTestExplorer(asset, other)
+		e.closeRuntime = func(*providers.Runtime) {
+			close(closing)
+			<-release
+		}
+
+		closed := make(chan error, 1)
+		go func() { closed <- e.CloseAsset(asset) }()
+		<-closing
+
+		// The runtime is still closing. The asset is closed already, and
+		// the explorer answers.
+		answered := make(chan []*TrackedAsset, 1)
+		go func() { answered <- e.Connected() }()
+		select {
+		case connected := <-answered:
+			assert.Equal(t, []*TrackedAsset{other}, connected)
+		case <-time.After(5 * time.Second):
+			t.Fatal("the explorer is locked while a runtime closes")
+		}
+		// other has no runtime, so closing it does not reach closeRuntime.
+		require.NoError(t, e.CloseAsset(other))
+
+		close(release)
+		require.NoError(t, <-closed)
+		assert.Equal(t, AssetClosed, asset.State)
+		assert.Nil(t, asset.Runtime)
+	})
+
 	t.Run("close discovered asset fails", func(t *testing.T) {
 		asset := &TrackedAsset{
 			Asset: &inventory.Asset{Name: "child"},
@@ -163,6 +205,44 @@ func TestAssetExplorerShutdown(t *testing.T) {
 	assert.Equal(t, AssetClosed, connected1.State)
 	assert.Equal(t, AssetClosed, connected2.State)
 	assert.Equal(t, AssetDiscovered, discovered.State) // unchanged
+}
+
+// Shutdown closes every runtime that is still open, and like CloseAsset it
+// does not hold the lock while it waits for them.
+func TestAssetExplorerShutdownClosesRuntimesOutsideTheLock(t *testing.T) {
+	first := &TrackedAsset{Asset: &inventory.Asset{Name: "a"}, State: AssetConnected, Runtime: &providers.Runtime{}}
+	second := &TrackedAsset{Asset: &inventory.Asset{Name: "b"}, State: AssetConnected, Runtime: &providers.Runtime{}}
+	e := newTestExplorer(first, second)
+
+	closing, release := make(chan struct{}, 2), make(chan struct{})
+	e.closeRuntime = func(*providers.Runtime) {
+		closing <- struct{}{}
+		<-release
+	}
+
+	done := make(chan struct{})
+	go func() {
+		e.Shutdown()
+		close(done)
+	}()
+	<-closing
+
+	// The first runtime is still closing. Both assets are closed already,
+	// and the explorer answers.
+	answered := make(chan []*TrackedAsset, 1)
+	go func() { answered <- e.Connected() }()
+	select {
+	case connected := <-answered:
+		assert.Empty(t, connected)
+	case <-time.After(5 * time.Second):
+		t.Fatal("the explorer is locked while Shutdown closes a runtime")
+	}
+
+	close(release)
+	<-done
+	assert.Len(t, closing, 1, "the second runtime was closed as well")
+	assert.Nil(t, first.Runtime)
+	assert.Nil(t, second.Runtime)
 }
 
 func TestAssetExplorerConnectAlreadyConnected(t *testing.T) {
