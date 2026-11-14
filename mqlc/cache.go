@@ -8,7 +8,6 @@ import (
 	"os"
 	"reflect"
 	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -52,9 +51,11 @@ type versionedSchema interface {
 }
 
 type compileKey struct {
-	input   string
-	conf    string
-	schema  uintptr
+	input string
+	conf  string
+	// schema is the schema itself, not its address: the key keeps it alive,
+	// so another schema cannot come to sit where it was.
+	schema  versionedSchema
 	version uint64
 }
 
@@ -78,6 +79,10 @@ const compileCacheLimit = 8192
 // compileCacheKey is the key of a compile, or false if this compile cannot
 // be cached: statistics are being collected, or something it depends on has
 // no identity to key on.
+//
+// A compile with a source of translations is one of those. What the source
+// answers is only known by asking it, per provider, while compiling, and it
+// belongs to one runtime: there is nothing of it to put in a key.
 func compileCacheKey(input string, conf CompilerConfig) (compileKey, bool) {
 	if !compileCacheEnabled {
 		return compileKey{}, false
@@ -85,28 +90,24 @@ func compileCacheKey(input string, conf CompilerConfig) (compileKey, bool) {
 	if _, quiet := conf.Stats.(compilerStatsNull); !quiet {
 		return compileKey{}, false
 	}
-	schema, ok := conf.Schema.(versionedSchema)
-	if !ok {
+	if conf.Translations != nil {
 		return compileKey{}, false
 	}
-	key := compileKey{input: input}
-	key.schema, key.version = schema.SchemaVersion()
-
-	translations := uintptr(0)
-	if conf.Translations != nil {
-		v := reflect.ValueOf(conf.Translations)
-		if v.Kind() != reflect.Pointer {
-			return compileKey{}, false
-		}
-		translations = v.Pointer()
+	schema, ok := conf.Schema.(versionedSchema)
+	// Only a pointer is the same schema when it compares equal.
+	if !ok || reflect.ValueOf(schema).Kind() != reflect.Pointer {
+		return compileKey{}, false
 	}
+	key := compileKey{input: input, schema: schema}
+	_, key.version = schema.SchemaVersion()
+
 	floor := make([]string, 0, len(conf.DowngradeFloor))
 	for provider, version := range conf.DowngradeFloor {
 		floor = append(floor, provider+"="+version)
 	}
 	sort.Strings(floor)
-	key.conf = fmt.Sprintf("%t|%x|%t|%s|%s|%t|%x|%s", conf.UseAssetContext, []byte(conf.Features), conf.Strict,
-		conf.AssetRoot, conf.DeclaredAssetRoot, conf.RootedNamespace, translations, strings.Join(floor, ","))
+	key.conf = fmt.Sprintf("%t|%x|%t|%q|%q|%t|%q", conf.UseAssetContext, []byte(conf.Features), conf.Strict,
+		conf.AssetRoot, conf.DeclaredAssetRoot, conf.RootedNamespace, floor)
 	return key, true
 }
 
@@ -123,6 +124,9 @@ func cachedCompile(key compileKey, props PropsHandler) *llx.CodeBundle {
 	if bundle == nil {
 		return nil
 	}
+	// The check reads a bundle that a caller who changes it may be writing
+	// at that moment. That is the fault it is there to find, not one it
+	// can guard against: it is for trying a program out, not for running it.
 	if entry.aside != nil && !proto.Equal(bundle, entry.aside) {
 		compileCacheChanged.Add(1)
 		log.Error().Str("query", key.input).

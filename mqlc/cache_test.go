@@ -23,6 +23,11 @@ type versioned struct {
 
 func (v *versioned) SchemaVersion() (uintptr, uint64) { return 1, v.version }
 
+// noTranslations is a source of translations that has none.
+type noTranslations struct{}
+
+func (noTranslations) TranslationsFor(string) []*llx.TranslationStep { return nil }
+
 // countingProps counts how often properties are asked for.
 type countingProps struct {
 	SimpleProps
@@ -95,13 +100,28 @@ func TestCompileCache(t *testing.T) {
 		_, err = Compile(query, props(), strict)
 		require.NoError(t, err)
 		assert.Len(t, compileCache.entries, 3)
+
+		// Two configurations that differ only in where one root ends and
+		// the next begins are two configurations.
+		one, other := cached, cached
+		one.AssetRoot, one.DeclaredAssetRoot = "a|b", "c"
+		other.AssetRoot, other.DeclaredAssetRoot = "a", "b|c"
+		first, ok := compileCacheKey(query, one)
+		require.True(t, ok)
+		second, ok := compileCacheKey(query, other)
+		require.True(t, ok)
+		assert.NotEqual(t, first, second)
 	})
 
-	t.Run("not when statistics are collected, and not for a schema without versions", func(t *testing.T) {
+	t.Run("not with statistics or translations, and not for a schema without versions", func(t *testing.T) {
 		before := len(compileCache.entries)
 		stats := cached
 		stats.EnableStats()
 		_, err := Compile(query, props(), stats)
+		require.NoError(t, err)
+		translated := cached
+		translated.Translations = noTranslations{}
+		_, err = Compile(`mondoo.build`, nil, translated)
 		require.NoError(t, err)
 		_, err = Compile(`mondoo.build`, nil, NewConfig(plain, mql.DefaultFeatures))
 		require.NoError(t, err)
