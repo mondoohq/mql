@@ -236,8 +236,14 @@ func layout(toks []token) []line {
 		groups[len(groups)-1] = append(groups[len(groups)-1], t)
 	}
 
+	// each open bracket remembers the indent of its line, and whether it is
+	// the `{` of a switch, whose case bodies sit one level under their case
+	type frame struct {
+		indent int
+		sw     bool
+	}
 	res := make([]line, 0, len(groups))
-	var stack []int      // indent of the line each open bracket sits on
+	var stack []frame
 	trailingDot := false // the previous line ended in `.`, as in `a.where(x).`
 	for _, g := range groups {
 		if len(g) == 0 {
@@ -248,10 +254,14 @@ func layout(toks []token) []line {
 		first := g[0]
 		indent := 0
 		if first.kind == kClose && len(stack) > 0 {
-			indent = stack[len(stack)-1]
+			indent = stack[len(stack)-1].indent
 		} else {
 			if len(stack) > 0 {
-				indent = stack[len(stack)-1] + 1
+				top := stack[len(stack)-1]
+				indent = top.indent + 1
+				if top.sw && first.value != "case" && first.value != "default" {
+					indent++
+				}
 			}
 			// a chain continued on its own line sits one level under its resource
 			if trailingDot || first.kind == kOp && (first.value == "." || first.value == "?") {
@@ -275,7 +285,8 @@ func layout(toks []token) []line {
 			sb.WriteString(t.value)
 			switch t.kind {
 			case kOpen:
-				stack = append(stack, indent)
+				sw := t.value == "{" && i > 0 && g[i-1].kind == kOperand && g[i-1].value == "switch"
+				stack = append(stack, frame{indent: indent, sw: sw})
 			case kClose:
 				if len(stack) > 0 {
 					stack = stack[:len(stack)-1]
