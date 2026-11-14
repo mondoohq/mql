@@ -30,11 +30,26 @@ func firewallRuleArgs(prefix string, row map[string]string) map[string]*llx.RawD
 		"logPrefix":      llx.StringData(row["log-prefix"]),
 		"bytes":          intField(row, "bytes"),
 		"packets":        intField(row, "packets"),
-		"disabled":       boolField(row, "disabled"),
+		"disabled":       firewallRuleDisabled(row),
 		"dynamic":        boolField(row, "dynamic"),
 		"invalid":        boolField(row, "invalid"),
 		"comment":        llx.StringData(row["comment"]),
 	}
+}
+
+// firewallRuleDisabled reports whether a firewall rule is disabled. RouterOS
+// omits `disabled` from the print reply of a rule that has never been
+// disabled, and reports "true" or "false" once it has been toggled; this holds
+// for filter, NAT, mangle, and raw rules on IPv4 and IPv6 (observed on 7.23.2
+// and 7.25.1). An absent attribute on a real reply row, one carrying the
+// ".id" handle, therefore means the rule is enabled. A row without ".id" was
+// not read from a device, so it keeps reporting null rather than a
+// fabricated false.
+func firewallRuleDisabled(row map[string]string) *llx.RawData {
+	if _, ok := row["disabled"]; !ok && row[".id"] != "" {
+		return llx.BoolData(false)
+	}
+	return boolField(row, "disabled")
 }
 
 // --- ip.firewall.mangle ---
