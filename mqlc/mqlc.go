@@ -2332,6 +2332,16 @@ func (c *compiler) compileOperand(operand *parser.Operand) (*llx.Primitive, erro
 		// special case for empty: there's no ref for an empty value
 		// since we're not really referencing anything
 		res = llx.EmptyPrimitive
+		// So there is nothing to call anything on either. `empty.length`
+		// gets here, and so does `x == empty` with a next line that starts
+		// with `[`, which goes on with this one.
+		if len(calls) > 0 {
+			what := "a field"
+			if calls[0].Accessor != nil {
+				what = "an element"
+			}
+			return nil, errors.New("cannot ask for " + what + " of `empty`")
+		}
 	} else {
 		id := *operand.Value.Ident
 		orgcalls := calls
