@@ -1304,10 +1304,11 @@ mikrotik.ipv6.firewall.nat @defaults("chain action disabled") {
 // posture lives in this separate menu. `strongCrypto` is off in the shipped
 // RouterOS default, which leaves SHA1, CBC mode ciphers, and 1024-bit
 // Diffie-Hellman acceptable; `allowNoneCrypto` permits an entirely unencrypted
-// session; `hostKeySize` and `hostKeyType` describe the key the server presents;
+// session on releases that still have that setting; `passwordAuthentication`
+// controls when password login is offered; `hostKeySize` and `hostKeyType` describe the key the server presents;
 // and `forwardingEnabled` controls whether the server will tunnel other traffic
 // for a logged-in client.
-mikrotik.ssh @defaults("strongCrypto allowNoneCrypto hostKeyType hostKeySize") {
+mikrotik.ssh @defaults("strongCrypto passwordAuthentication hostKeyType hostKeySize") {
   // Whether only strong ciphers, MACs, and key exchange groups are accepted
   //
   // RouterOS ships this disabled, which leaves SHA1, CBC mode ciphers, and
@@ -1316,7 +1317,8 @@ mikrotik.ssh @defaults("strongCrypto allowNoneCrypto hostKeyType hostKeySize") {
   // Whether a session with no encryption is accepted
   //
   // When enabled the server will negotiate the "none" cipher, carrying the
-  // login and the session in the clear.
+  // login and the session in the clear. Null on releases that no longer have
+  // the `allow-none-crypto` setting, such as RouterOS 7.23.2 and 7.25.1.
   allowNoneCrypto bool
   // Size of the server host key in bits
   hostKeySize int
@@ -1329,7 +1331,16 @@ mikrotik.ssh @defaults("strongCrypto allowNoneCrypto hostKeyType hostKeySize") {
   // Reported as an enum rather than a flag: one of no, local, remote, or both.
   forwardingEnabled string
   // Whether password login is offered even when a public key is configured
+  //
+  // Read from `always-allow-password-login` on releases that have it, and
+  // otherwise derived from `password-authentication`, where only `yes`
+  // offers a password to a user who has a key.
   alwaysAllowPasswordLogin bool
+  // When the server offers password login
+  //
+  // One of yes, yes-if-no-key, or no. Empty on releases that predate the
+  // setting and use alwaysAllowPasswordLogin instead.
+  passwordAuthentication string
   // Ciphers the server offers
   //
   // Null on RouterOS versions that do not expose cipher selection through this
