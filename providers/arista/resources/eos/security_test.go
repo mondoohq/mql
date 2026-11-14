@@ -264,6 +264,54 @@ password policy lax
 	assert.Equal(t, 16, p.MinimumLength)
 }
 
+// TestParsePasswordPolicy_NestedUnderManagementSecurity uses the shape
+// `show running-config all` returns on EOS 4.34: the policy sits inside
+// `management security` next to the device-wide minimum length, with a `!`
+// separator and the unset rules rendered as `no ...`.
+func TestParsePasswordPolicy_NestedUnderManagementSecurity(t *testing.T) {
+	cfg := `management security
+   no entropy source
+   password minimum length 15
+   no password encryption-key common
+   !
+   password policy STRONG
+      no minimum changed
+      minimum digits 1
+      minimum length 12
+      no minimum lower
+!
+hostname sw
+`
+	p := ParsePasswordPolicy(cfg)
+	assert.Equal(t, "STRONG", p.PolicyName)
+	assert.Equal(t, 1, p.MinimumDigits)
+	assert.Equal(t, 15, p.MinimumLength)
+}
+
+// TestParsePasswordPolicy_GlobalMinimumLengthOnly covers the device-wide
+// setting with no named policy, and its unset form.
+func TestParsePasswordPolicy_GlobalMinimumLengthOnly(t *testing.T) {
+	p := ParsePasswordPolicy("management security\n   password minimum length 15\n!\n")
+	assert.Equal(t, "", p.PolicyName)
+	assert.Equal(t, 15, p.MinimumLength)
+
+	p = ParsePasswordPolicy("management security\n   no password minimum length\n!\n")
+	assert.Equal(t, 0, p.MinimumLength)
+}
+
+// TestParsePasswordPolicy_NestedPolicyLengthWithoutGlobal reports the policy's
+// own minimum length when the device-wide one is unset.
+func TestParsePasswordPolicy_NestedPolicyLengthWithoutGlobal(t *testing.T) {
+	cfg := `management security
+   no password minimum length
+   !
+   password policy STRONG
+      minimum length 12
+`
+	p := ParsePasswordPolicy(cfg)
+	assert.Equal(t, 12, p.MinimumLength)
+}
+
 func TestParseNtpAuth(t *testing.T) {
 	cfg := `ntp authenticate
 ntp authentication-key 1 sha1 7 abc123

@@ -1669,6 +1669,10 @@ private arista.eos.passwordPolicy {
   // Configured `password policy <name>` (empty = no policy block)
   policyName string
   // Minimum password length (0 = unset)
+  //
+  // From `password minimum length` under `management security`, which applies
+  // to every local secret. When that is unset, the `minimum length` of the
+  // policy named in policyName.
   minimumLength int
   // Minimum digit characters required
   minimumDigits int

@@ -513,14 +513,20 @@ type PasswordPolicy struct {
 var (
 	// EOS does not enforce token order on the lockout clauses (failure /
 	// window / duration), so each clause is matched independently.
-	pwLockoutFailureRe     = regexp.MustCompile(`failure\s+(\d+)`)
-	pwLockoutWindowRe      = regexp.MustCompile(`window\s+(\d+)`)
-	pwLockoutDurationRe    = regexp.MustCompile(`duration\s+(\d+)`)
-	passwordPolicyHeaderRe = regexp.MustCompile(`(?m)^password policy\s+(\S+)\s*$`)
+	pwLockoutFailureRe  = regexp.MustCompile(`failure\s+(\d+)`)
+	pwLockoutWindowRe   = regexp.MustCompile(`window\s+(\d+)`)
+	pwLockoutDurationRe = regexp.MustCompile(`duration\s+(\d+)`)
+	// EOS renders a policy nested under `management security`, so the header
+	// is matched at any indentation and its indent is captured to find where
+	// the block ends.
+	passwordPolicyHeaderRe = regexp.MustCompile(`(?m)^([ \t]*)password policy\s+(\S+)\s*$`)
+	// The device-wide floor, also under `management security`.
+	passwordMinimumLengthRe = regexp.MustCompile(`^password minimum length\s+(\d+)$`)
 )
 
 func ParsePasswordPolicy(runningConfig string) *PasswordPolicy {
 	p := &PasswordPolicy{}
+	globalMinimumLength := 0
 
 	// Top-level policy lines.
 	scanner := bufio.NewScanner(strings.NewReader(runningConfig))
@@ -543,6 +549,10 @@ func ParsePasswordPolicy(runningConfig string) *PasswordPolicy {
 			p.LogOnFailure = true
 		case line == "aaa authentication policy on-success log":
 			p.LogOnSuccess = true
+		default:
+			if m := passwordMinimumLengthRe.FindStringSubmatch(line); m != nil {
+				globalMinimumLength, _ = strconv.Atoi(m[1])
+			}
 		}
 	}
 
@@ -583,6 +593,13 @@ func ParsePasswordPolicy(runningConfig string) *PasswordPolicy {
 		}
 	}
 
+	// `password minimum length` applies to every local secret, where a named
+	// policy applies only where it is referenced, so the device-wide value is
+	// the one reported when both are set.
+	if globalMinimumLength > 0 {
+		p.MinimumLength = globalMinimumLength
+	}
+
 	return p
 }
 
@@ -599,16 +616,18 @@ func findPolicyBlock(runningConfig string) (string, string) {
 	// Prefer the "default" policy if it exists; otherwise take the first.
 	chosen := locs[0]
 	for _, loc := range locs {
-		if runningConfig[loc[2]:loc[3]] == "default" {
+		if runningConfig[loc[4]:loc[5]] == "default" {
 			chosen = loc
 			break
 		}
 	}
 
-	name := runningConfig[chosen[2]:chosen[3]]
+	indent := chosen[3] - chosen[2]
+	name := runningConfig[chosen[4]:chosen[5]]
 	rest := runningConfig[chosen[1]:]
 
-	// Walk lines until we hit the next non-indented, non-comment line.
+	// Walk lines until one is indented no deeper than the header, which
+	// belongs to the enclosing or the next config block.
 	var b strings.Builder
 	scanner := bufio.NewScanner(strings.NewReader(rest))
 	for scanner.Scan() {
@@ -617,9 +636,7 @@ func findPolicyBlock(runningConfig string) (string, string) {
 		if trimmed == "" || strings.HasPrefix(trimmed, "!") {
 			continue
 		}
-		// Stop when we hit a line at column 0 that isn't a comment — this
-		// belongs to the next config block.
-		if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
+		if len(line)-len(strings.TrimLeft(line, " \t")) <= indent {
 			break
 		}
 		b.WriteString(trimmed)
