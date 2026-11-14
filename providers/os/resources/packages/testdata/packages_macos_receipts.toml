@@ -61,6 +61,8 @@ content = """<?xml version="1.0" encoding="UTF-8"?>
 	<date>2026-09-19T04:30:45Z</date>
 	<key>InstallPrefixPath</key>
 	<string>Applications</string>
+	<key>InstallProcessName</key>
+	<string>appstored</string>
 	<key>PackageIdentifier</key>
 	<string>com.bitwarden.desktop</string>
 	<key>PackageVersion</key>

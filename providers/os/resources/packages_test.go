@@ -417,3 +417,107 @@ func TestPackageMacosCannotBeQueriedOnItsOwn(t *testing.T) {
 	assert.Nil(t, res)
 	assert.Equal(t, args, got)
 }
+
+// fakeSourcesPkgManager answers where its packages came from, and counts how
+// often it is asked.
+type fakeSourcesPkgManager struct {
+	packages.OperatingSystemPkgManager
+	sources []packages.Source
+	err     error
+	calls   int
+}
+
+func (f *fakeSourcesPkgManager) Name() string { return "fake" }
+
+func (f *fakeSourcesPkgManager) Sources(pkgs []packages.Package) ([]packages.Source, error) {
+	f.calls++
+	return f.sources, f.err
+}
+
+func TestPackageSourceSurface(t *testing.T) {
+	args := make(map[string]*llx.RawData, 20)
+	yes, no := true, false
+	osPkgs := []packages.Package{
+		{Name: "nginx", Version: "1.30.5-1~bookworm", Arch: "amd64", Format: packages.DpkgPkgFormat},
+		{Name: "libc6", Version: "2.36-9+deb12u14", Arch: "amd64", Format: packages.DpkgPkgFormat},
+		{Name: "acme", Version: "1.0", Arch: "all", Format: packages.DpkgPkgFormat},
+	}
+	pm := &fakeSourcesPkgManager{sources: []packages.Source{
+		{OSProvided: &no, Channel: packages.ChannelVendorRepository, Name: "nginx", URL: "http://nginx.org/packages/debian"},
+		{OSProvided: &yes, Channel: packages.ChannelOS, Name: "Debian", URL: "http://deb.debian.org/debian"},
+		{Channel: packages.ChannelUnknown},
+	}}
+	runtime := &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}
+	shared := &pkgSources{pm: pm, pkgs: osPkgs}
+	var got []*mqlPackage
+	for i := range osPkgs {
+		p := createTestPackage(t, runtime, args, &osPkgs[i])
+		p.sources, p.sourceIdx = shared, i
+		got = append(got, p)
+	}
+
+	nginx := got[0].GetOsProvided()
+	require.NoError(t, nginx.Error)
+	assert.False(t, nginx.Data)
+	assert.False(t, nginx.IsNull(), "a known false is not null")
+	src := got[0].GetSource()
+	require.NoError(t, src.Error)
+	require.NotNil(t, src.Data)
+	assert.Equal(t, "vendor-repository", src.Data.Channel.Data)
+	assert.Equal(t, "nginx", src.Data.Name.Data)
+	assert.Equal(t, "http://nginx.org/packages/debian", src.Data.Url.Data)
+	assert.Equal(t, got[0].__id+"/source", src.Data.__id)
+
+	assert.True(t, got[1].GetOsProvided().Data)
+
+	unknown := got[2].GetOsProvided()
+	require.NoError(t, unknown.Error)
+	assert.True(t, unknown.IsNull(), "nothing on the system answered")
+	assert.Equal(t, "unknown", got[2].GetSource().Data.Channel.Data)
+
+	assert.Equal(t, 1, pm.calls, "sources are resolved once per package manager, not once per package")
+}
+
+func TestPkgSourcesFallBackToFormat(t *testing.T) {
+	osPkgs := []packages.Package{
+		{Name: "lxd", Format: packages.SnapPkgFormat},
+		{Name: "KB5034441", Format: "windows/hotfix"},
+	}
+	t.Run("a resolver that fails", func(t *testing.T) {
+		s := &pkgSources{pm: &fakeSourcesPkgManager{err: assert.AnError}, pkgs: osPkgs}
+		assert.Equal(t, packages.ChannelSnap, s.lookup(0).Channel)
+		assert.Equal(t, packages.ChannelOS, s.lookup(1).Channel)
+	})
+	t.Run("a resolver that answers for the wrong number of packages", func(t *testing.T) {
+		s := &pkgSources{pm: &fakeSourcesPkgManager{sources: []packages.Source{{Channel: "os"}}}, pkgs: osPkgs}
+		assert.Equal(t, packages.ChannelSnap, s.lookup(0).Channel)
+	})
+	t.Run("a manager without a resolver", func(t *testing.T) {
+		s := &pkgSources{pm: &fakeUpdatesPkgManager{}, pkgs: osPkgs}
+		assert.Equal(t, packages.ChannelSnap, s.lookup(0).Channel)
+		assert.Nil(t, s.lookup(5), "out of range")
+	})
+}
+
+func TestPackageSourceOfANamedPackageThatIsNotInstalled(t *testing.T) {
+	runtime := &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}
+	res := &mqlPackage{}
+	res.MqlRuntime = runtime
+	// a package list() did not build has nothing to report
+	osp := res.GetOsProvided()
+	require.NoError(t, osp.Error)
+	assert.True(t, osp.IsNull())
+	src := res.GetSource()
+	require.NoError(t, src.Error)
+	assert.Nil(t, src.Data)
+}
+
+func TestPackageSourceCannotBeQueriedOnItsOwn(t *testing.T) {
+	_, _, err := initPackageSource(nil, map[string]*llx.RawData{})
+	require.Error(t, err)
+	args := map[string]*llx.RawData{"__id": llx.StringData("deb://nginx/1.30.5/amd64/source")}
+	got, res, err := initPackageSource(nil, args)
+	require.NoError(t, err)
+	assert.Nil(t, res)
+	assert.Equal(t, args, got)
+}
