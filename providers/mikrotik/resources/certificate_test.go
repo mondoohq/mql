@@ -202,3 +202,30 @@ func TestSshArgsAbsentMenu(t *testing.T) {
 	assert.Nil(t, args["ciphers"].Value)
 	assert.Equal(t, "", args["hostKeyType"].Value)
 }
+
+// TestSshArgsPasswordAuthentication covers releases that replaced
+// always-allow-password-login with password-authentication.
+func TestSshArgsPasswordAuthentication(t *testing.T) {
+	for value, always := range map[string]bool{"yes": true, "yes-if-no-key": false, "no": false} {
+		t.Run(value, func(t *testing.T) {
+			args := sshArgs(map[string]string{"password-authentication": value, "strong-crypto": "true"})
+			assert.Equal(t, value, args["passwordAuthentication"].Value)
+			assert.Equal(t, always, args["alwaysAllowPasswordLogin"].Value)
+			// the setting no longer exists on these releases
+			assert.Nil(t, args["allowNoneCrypto"].Value)
+		})
+	}
+
+	t.Run("live 7.23.2 row", func(t *testing.T) {
+		row := liveRows(t, "ip-ssh.json")[0]
+		args := sshArgs(row)
+		assert.Equal(t, "yes-if-no-key", args["passwordAuthentication"].Value)
+		assert.Equal(t, false, args["alwaysAllowPasswordLogin"].Value)
+	})
+
+	t.Run("old flag wins when present", func(t *testing.T) {
+		args := sshArgs(map[string]string{"always-allow-password-login": "yes"})
+		assert.Equal(t, true, args["alwaysAllowPasswordLogin"].Value)
+		assert.Equal(t, "", args["passwordAuthentication"].Value)
+	})
+}

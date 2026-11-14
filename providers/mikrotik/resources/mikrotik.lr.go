@@ -1717,6 +1717,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mikrotik.ssh.alwaysAllowPasswordLogin": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikSsh).GetAlwaysAllowPasswordLogin()).ToDataRes(types.Bool)
 	},
+	"mikrotik.ssh.passwordAuthentication": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikSsh).GetPasswordAuthentication()).ToDataRes(types.String)
+	},
 	"mikrotik.ssh.ciphers": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikSsh).GetCiphers()).ToDataRes(types.Array(types.String))
 	},
@@ -4406,6 +4409,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mikrotik.ssh.alwaysAllowPasswordLogin": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMikrotikSsh).AlwaysAllowPasswordLogin, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"mikrotik.ssh.passwordAuthentication": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikSsh).PasswordAuthentication, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"mikrotik.ssh.ciphers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -9791,6 +9798,7 @@ type mqlMikrotikSsh struct {
 	HostKeyType              plugin.TValue[string]
 	ForwardingEnabled        plugin.TValue[string]
 	AlwaysAllowPasswordLogin plugin.TValue[bool]
+	PasswordAuthentication   plugin.TValue[string]
 	Ciphers                  plugin.TValue[[]any]
 }
 
@@ -9848,6 +9856,10 @@ func (c *mqlMikrotikSsh) GetForwardingEnabled() *plugin.TValue[string] {
 
 func (c *mqlMikrotikSsh) GetAlwaysAllowPasswordLogin() *plugin.TValue[bool] {
 	return &c.AlwaysAllowPasswordLogin
+}
+
+func (c *mqlMikrotikSsh) GetPasswordAuthentication() *plugin.TValue[string] {
+	return &c.PasswordAuthentication
 }
 
 func (c *mqlMikrotikSsh) GetCiphers() *plugin.TValue[[]any] {

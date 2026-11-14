@@ -16,9 +16,27 @@ func sshArgs(row map[string]string) map[string]*llx.RawData {
 		"hostKeySize":              intField(row, "host-key-size"),
 		"hostKeyType":              llx.StringData(row["host-key-type"]),
 		"forwardingEnabled":        llx.StringData(row["forwarding-enabled"]),
-		"alwaysAllowPasswordLogin": boolField(row, "always-allow-password-login"),
+		"alwaysAllowPasswordLogin": alwaysAllowPasswordLogin(row),
+		"passwordAuthentication":   llx.StringData(row["password-authentication"]),
 		"ciphers":                  listField(row, "ciphers"),
 	}
+}
+
+// alwaysAllowPasswordLogin reports whether the server offers password login
+// to a user who also has a public key. Older RouterOS releases carry this as
+// the `always-allow-password-login` flag. RouterOS 7.23.2 and 7.25.1 replace
+// the flag with `password-authentication`, where `yes` is the old enabled
+// state and `yes-if-no-key` and `no` both withhold the password prompt from a
+// user with a key. The value is null when the device reports neither.
+func alwaysAllowPasswordLogin(row map[string]string) *llx.RawData {
+	if _, ok := row["always-allow-password-login"]; ok {
+		return boolField(row, "always-allow-password-login")
+	}
+	v, ok := row["password-authentication"]
+	if !ok || v == "" {
+		return llx.NilData
+	}
+	return llx.BoolData(v == "yes")
 }
 
 func (r *mqlMikrotik) ssh() (*mqlMikrotikSsh, error) {

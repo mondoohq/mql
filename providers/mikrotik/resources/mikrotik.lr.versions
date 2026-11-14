@@ -606,6 +606,7 @@ mikrotik.ssh.ciphers 13.0.11
 mikrotik.ssh.forwardingEnabled 13.0.11
 mikrotik.ssh.hostKeySize 13.0.11
 mikrotik.ssh.hostKeyType 13.0.11
+mikrotik.ssh.passwordAuthentication 14.0.13
 mikrotik.ssh.strongCrypto 13.0.11
 mikrotik.sstpServer 13.0.11
 mikrotik.system 13.0.0
