@@ -117,15 +117,15 @@ func readClaudePluginRecords(afs *afero.Afero, configDir string) ([]claudePlugin
 	return records, nil
 }
 
-// claudePluginID is the resource id of a plugin install record. A user
-// install keeps the historical "<name>/<scope>" id; project and local installs
-// add the project path, since one plugin is installed once per project.
-func claudePluginID(name, scope, projectPath string) string {
-	id := "claude.code.plugin/" + name + "/" + scope
+// claudePluginID is the resource id of a plugin install record, scoped to the
+// claude.code instance's configDir. Project and local installs add the project
+// path, since one plugin is installed once per project.
+func claudePluginID(configDir, name, scope, projectPath string) string {
+	keys := []string{name, scope}
 	if projectPath != "" {
-		id += "/" + projectPath
+		keys = append(keys, projectPath)
 	}
-	return id
+	return aiChildID("claude.code.plugin", configDir, keys...)
 }
 
 // claudePluginMarketplace returns the marketplace part of a plugin name of
@@ -169,7 +169,7 @@ func (r *mqlClaudeCode) plugins() ([]any, error) {
 	result := make([]any, 0, len(records))
 	for _, rec := range records {
 		res, err := NewResource(r.MqlRuntime, "claude.code.plugin", map[string]*llx.RawData{
-			"__id":         llx.StringData(claudePluginID(rec.name, rec.entry.Scope, rec.entry.ProjectPath)),
+			"__id":         llx.StringData(claudePluginID(r.configDir(), rec.name, rec.entry.Scope, rec.entry.ProjectPath)),
 			"name":         llx.StringData(rec.name),
 			"version":      llx.StringData(rec.entry.Version),
 			"scope":        llx.StringData(rec.entry.Scope),
@@ -229,7 +229,7 @@ func (r *mqlClaudeCode) marketplaces() ([]any, error) {
 	for _, name := range names {
 		m := markets[name]
 		res, err := NewResource(r.MqlRuntime, "claude.code.marketplace", map[string]*llx.RawData{
-			"__id":            llx.StringData("claude.code.marketplace/" + name),
+			"__id":            llx.StringData(aiChildID("claude.code.marketplace", r.configDir(), name)),
 			"name":            llx.StringData(name),
 			"sourceType":      llx.StringData(m.Source.Source),
 			"repo":            llx.StringData(m.Source.Repo),
@@ -251,9 +251,9 @@ func (r *mqlClaudeCode) marketplaces() ([]any, error) {
 // server a plugin declares. Claude Code registers it as
 // "plugin:<plugin>:<server>", which the id follows; the server keeps its own
 // name. Plugin servers are scoped to the project of a project or local install.
-func claudePluginMcpServerResource(runtime *plugin.Runtime, pluginName, project string, s mcpServerSpec) (plugin.Resource, error) {
+func claudePluginMcpServerResource(runtime *plugin.Runtime, configDir, pluginName, project string, s mcpServerSpec) (plugin.Resource, error) {
 	fields := map[string]*llx.RawData{
-		"__id":        llx.StringData(claudeMcpServerID(project, "plugin:"+pluginName+":"+s.name)),
+		"__id":        llx.StringData(claudeMcpServerID(configDir, project, "plugin:"+pluginName+":"+s.name)),
 		"name":        llx.StringData(s.name),
 		"project":     llx.StringData(project),
 		"type":        llx.StringData(s.transport),
@@ -282,7 +282,7 @@ type mqlClaudeCodePluginInternal struct {
 }
 
 func (r *mqlClaudeCodePlugin) id() (string, error) {
-	return claudePluginID(r.Name.Data, r.Scope.Data, r.ProjectPath.Data), nil
+	return claudePluginID("", r.Name.Data, r.Scope.Data, r.ProjectPath.Data), nil
 }
 
 func (r *mqlClaudeCodePlugin) loadManifest() agentPlugin {
@@ -329,9 +329,13 @@ func (r *mqlClaudeCodePlugin) skills() ([]any, error) {
 }
 
 func (r *mqlClaudeCodePlugin) mcpServers() ([]any, error) {
+	configDir := ""
+	if r.parent != nil {
+		configDir = r.parent.configDir()
+	}
 	var result []any
 	for _, s := range r.loadManifest().mcpServers {
-		res, err := claudePluginMcpServerResource(r.MqlRuntime, r.Name.Data, r.ProjectPath.Data, s)
+		res, err := claudePluginMcpServerResource(r.MqlRuntime, configDir, r.Name.Data, r.ProjectPath.Data, s)
 		if err != nil {
 			return nil, err
 		}

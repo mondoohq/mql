@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"sigs.k8s.io/yaml"
 )
 
@@ -155,4 +156,18 @@ func TestGooseActiveProviderAndModel(t *testing.T) {
 	assert.Equal(t, "claude-sonnet", legacy.activeModel())
 
 	assert.Empty(t, (&gooseConfig{}).activeModel())
+}
+
+func TestGooseChildrenPerUser(t *testing.T) {
+	rt := newAIToolsTestRuntime(t, perUserFiles(map[string]string{
+		"/home/{u}/.config/goose/config.yaml": "extensions:\n  developer:\n    enabled: true\n    description: {u} ext\n",
+	}))
+	assertPerUser(t, childValues(t, rt, "goose", ".config/goose", func(p plugin.Resource) (string, string, error) {
+		l := p.(*mqlGoose).GetExtensions()
+		s, err := only[*mqlGooseExtension](t, l.Data, l.Error)
+		if err != nil {
+			return "", "", err
+		}
+		return s.MqlID(), s.Description.Data, nil
+	}), "%s ext")
 }

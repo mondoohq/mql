@@ -82,11 +82,14 @@ func TestReadClaudePluginRecordsMissing(t *testing.T) {
 // Every project install of a plugin needs its own id, or the resource cache
 // reports the first install for all of them.
 func TestClaudePluginIDPerProject(t *testing.T) {
-	assert.Equal(t, "claude.code.plugin/frontend-design@claude-plugins-official/user",
-		claudePluginID("frontend-design@claude-plugins-official", "user", ""))
+	assert.Equal(t, "claude.code.plugin//home/alice/.claude/frontend-design@claude-plugins-official/user",
+		claudePluginID("/home/alice/.claude", "frontend-design@claude-plugins-official", "user", ""))
 	assert.NotEqual(t,
-		claudePluginID("frontend-design@claude-plugins-official", "project", "/home/alice/dev/a"),
-		claudePluginID("frontend-design@claude-plugins-official", "project", "/home/alice/dev/b"))
+		claudePluginID("/home/alice/.claude", "frontend-design@claude-plugins-official", "project", "/home/alice/dev/a"),
+		claudePluginID("/home/alice/.claude", "frontend-design@claude-plugins-official", "project", "/home/alice/dev/b"))
+	assert.NotEqual(t,
+		claudePluginID("/home/alice/.claude", "frontend-design@claude-plugins-official", "user", ""),
+		claudePluginID("/home/bob/.claude", "frontend-design@claude-plugins-official", "user", ""))
 }
 
 func TestClaudePluginMarketplace(t *testing.T) {
