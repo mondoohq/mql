@@ -573,6 +573,10 @@ func (x *mqlPackages) list() ([]any, error) {
 		}
 	}
 
+	// googet registers each package it installs in Add/Remove Programs as well,
+	// so the Windows registry reader lists it a second time.
+	osPkgs, osPkgUpdates = packages.DropGooGetRegistryDuplicates(osPkgs, osPkgUpdates)
+
 	// A Yocto image can use any package backend -- opkg, rpm or deb -- and each
 	// emits its own purl type (pkg:opkg, pkg:rpm, pkg:deb), none of which match
 	// the Yocto vulnerability advisories. On a Yocto platform a package IS a

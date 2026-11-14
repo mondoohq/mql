@@ -239,6 +239,11 @@ func ResolveSystemPkgManagers(conn shared.Connection) ([]OperatingSystemPkgManag
 		pms = append(pms, &MacOSPkgManager{conn: conn, platform: asset.Platform})
 	case asset.Platform.Name == "windows":
 		pms = append(pms, &WinPkgManager{conn: conn, platform: asset.Platform})
+		// GooGet installs the Compute Engine guest environment, which has no
+		// Add/Remove Programs entry for the registry reader to find.
+		if hasGooGet(conn.FileSystem()) {
+			pms = append(pms, &GooGetPkgManager{conn: conn})
+		}
 	// Flatcar Container Linux is the continuation of CoreOS Container Linux
 	// and keeps its design: /usr is immutable and the image ships no package
 	// manager and no package database at all (verified on a live
