@@ -4689,3 +4689,19 @@ func TestUserSystem(t *testing.T) {
 		},
 	})
 }
+
+// A map has no order of its own. What `keys` and `values` give is in the
+// order of the keys, the same on every run, and the two go together.
+func TestDict_KeysAndValuesComeInTheOrderOfTheKeys(t *testing.T) {
+	doc := `parse.json(content: '{"m": {"d": 4, "b": 2, "e": 5, "a": 1, "c": 3}}').params["m"]`
+	x := testutils.InitTester(testutils.LinuxMock())
+	for range 20 {
+		x.TestSimple(t, []testutils.SimpleTest{
+			{Code: doc + ".keys", ResultIndex: 0, Expectation: []any{"a", "b", "c", "d", "e"}},
+			{Code: doc + ".values", ResultIndex: 0, Expectation: []any{float64(1), float64(2), float64(3), float64(4), float64(5)}},
+			{Code: doc + ".keys.first", ResultIndex: 0, Expectation: "a"},
+			{Code: doc + ".values.last", ResultIndex: 0, Expectation: float64(5)},
+			{Code: "sshd.config.params.keys.first", ResultIndex: 0, Expectation: "AddressFamily"},
+		})
+	}
+}
