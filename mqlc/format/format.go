@@ -427,7 +427,7 @@ func breakLine(toks []*token) bool {
 				closeAt = j
 				break
 			}
-			size += len(code[j].value) + 1
+			size += utf8.RuneCountInString(code[j].value) + 1
 		}
 		if size > bestLen {
 			best, bestClose, bestLen = i, closeAt, size
