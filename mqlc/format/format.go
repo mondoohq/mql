@@ -202,7 +202,7 @@ func space(a, b *token) bool {
 	case b.kind == kOp && b.value == "?":
 		return false
 	case a.kind == kOp && a.value == "?":
-		return !(b.kind == kOpen && b.value == "[")
+		return b.kind != kOpen || b.value != "["
 	case a.unary:
 		return false
 	case a.kind == kOperand && a.value == "if" && b.value == "(":
@@ -423,7 +423,6 @@ func breakLine(toks []*token) bool {
 		if len(idx) >= 2 && breakBefore(idx) {
 			return true
 		}
-		idx = idx[:0]
 	}
 
 	// 5. open the widest top-level bracket: content on its own lines
