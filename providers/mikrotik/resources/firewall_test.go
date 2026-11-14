@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRowID(t *testing.T) {
@@ -171,4 +172,22 @@ func TestConnectionTrackingArgsAbsentMenu(t *testing.T) {
 	assert.Nil(t, args["looseTcpTracking"].Value)
 	assert.Nil(t, args["totalEntries"].Value)
 	assert.Nil(t, args["maxEntries"].Value)
+}
+
+// TestFirewallRuleDisabledAbsent covers RouterOS omitting `disabled` from a
+// rule that was never disabled. Every row in the captured filter fixture is
+// enabled and none carries the attribute.
+func TestFirewallRuleDisabledAbsent(t *testing.T) {
+	rows := liveRows(t, "ip-firewall-filter.json")
+	require.NotEmpty(t, rows)
+	for _, row := range rows {
+		_, has := row["disabled"]
+		require.False(t, has, "fixture row %s carries disabled", row[".id"])
+		assert.Equal(t, false, firewallRuleDisabled(row).Value, row[".id"])
+	}
+
+	assert.Equal(t, true, firewallRuleDisabled(map[string]string{".id": "*1", "disabled": "true"}).Value)
+	assert.Equal(t, false, firewallRuleDisabled(map[string]string{".id": "*1", "disabled": "false"}).Value)
+	// not read from a device: stays null
+	assert.Nil(t, firewallRuleDisabled(map[string]string{}).Value)
 }
