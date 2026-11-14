@@ -120,6 +120,30 @@ func TestCompileCache(t *testing.T) {
 		assert.Equal(t, 1, p.asked)
 	})
 
+	t.Run("checked, a caller that changes a shared bundle is found", func(t *testing.T) {
+		compileCacheShared, compileCacheVerify, compileCache.entries = true, true, nil
+		defer func() { compileCacheShared, compileCacheVerify = false, false }()
+		found := compileCacheChanged.Load()
+
+		one, err := Compile(query, props(), cached)
+		require.NoError(t, err)
+		two, err := Compile(query, props(), cached)
+		require.NoError(t, err)
+		assert.Same(t, one, two)
+		assert.Equal(t, found, compileCacheChanged.Load(), "nobody changed it")
+
+		id := one.CodeV2.Id
+		one.CodeV2.Id = "changed"
+		three, err := Compile(query, props(), cached)
+		require.NoError(t, err)
+		assert.Equal(t, found+1, compileCacheChanged.Load())
+		assert.Equal(t, id, three.CodeV2.Id, "what is handed out is the bundle as it was compiled")
+		four, err := Compile(query, props(), cached)
+		require.NoError(t, err)
+		assert.Same(t, three, four)
+		assert.Equal(t, found+1, compileCacheChanged.Load(), "and it is found once")
+	})
+
 	t.Run("a query that does not compile is not kept", func(t *testing.T) {
 		before := len(compileCache.entries)
 		_, err := Compile(`mondoo.nosuchfield`, nil, cached)

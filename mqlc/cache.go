@@ -10,7 +10,9 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"google.golang.org/protobuf/proto"
 )
@@ -33,7 +35,15 @@ var (
 	// bundle, not a copy of it. That is only right for callers that treat a
 	// compiled bundle as read-only, which is how the executors treat it; it
 	// is what keeps a scan from holding one copy of a policy's code per asset.
-	compileCacheShared = os.Getenv("MQL_COMPILE_CACHE") == "share"
+	compileCacheShared = os.Getenv("MQL_COMPILE_CACHE") == "share" || compileCacheVerify
+	// MQL_COMPILE_CACHE=verify is the shared mode with a check: every time a
+	// bundle is handed out again it is compared with a copy kept aside. A
+	// caller that changed a bundle it was given is logged, and the bundle is
+	// replaced. It is how to find out whether a program can use the shared
+	// mode.
+	compileCacheVerify = os.Getenv("MQL_COMPILE_CACHE") == "verify"
+	// compileCacheChanged counts the changed bundles the check found.
+	compileCacheChanged atomic.Uint64
 )
 
 // versionedSchema is a schema that can tell one state of itself from another.
@@ -50,8 +60,15 @@ type compileKey struct {
 
 var compileCache = struct {
 	sync.RWMutex
-	entries map[compileKey]*llx.CodeBundle
+	entries map[compileKey]compiled
 }{}
+
+// compiled is a kept bundle and, where bundles are checked, the copy of it
+// that nobody else has.
+type compiled struct {
+	bundle *llx.CodeBundle
+	aside  *llx.CodeBundle
+}
 
 // A cached bundle is kept by everything that decides it. Too many of them
 // and the cache starts over: this is for the queries of the policies in use,
@@ -100,10 +117,20 @@ func compileCacheKey(input string, conf CompilerConfig) (compileKey, bool) {
 // keep track of what a query used.
 func cachedCompile(key compileKey, props PropsHandler) *llx.CodeBundle {
 	compileCache.RLock()
-	bundle := compileCache.entries[key]
+	entry := compileCache.entries[key]
 	compileCache.RUnlock()
+	bundle := entry.bundle
 	if bundle == nil {
 		return nil
+	}
+	if entry.aside != nil && !proto.Equal(bundle, entry.aside) {
+		compileCacheChanged.Add(1)
+		log.Error().Str("query", key.input).
+			Msg("a caller changed a compiled query it shares with others; MQL_COMPILE_CACHE=share is not safe for this program")
+		bundle = proto.Clone(entry.aside).(*llx.CodeBundle)
+		compileCache.Lock()
+		compileCache.entries[key] = compiled{bundle: bundle, aside: entry.aside}
+		compileCache.Unlock()
 	}
 	for name, typ := range bundle.Props {
 		if props == nil {
@@ -125,10 +152,14 @@ func storeCompile(key compileKey, bundle *llx.CodeBundle) {
 	if !compileCacheShared {
 		kept = proto.Clone(bundle).(*llx.CodeBundle)
 	}
+	entry := compiled{bundle: kept}
+	if compileCacheVerify {
+		entry.aside = proto.Clone(bundle).(*llx.CodeBundle)
+	}
 	compileCache.Lock()
 	if compileCache.entries == nil || len(compileCache.entries) >= compileCacheLimit {
-		compileCache.entries = map[compileKey]*llx.CodeBundle{}
+		compileCache.entries = map[compileKey]compiled{}
 	}
-	compileCache.entries[key] = kept
+	compileCache.entries[key] = entry
 	compileCache.Unlock()
 }
