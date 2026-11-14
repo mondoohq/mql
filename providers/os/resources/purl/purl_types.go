@@ -36,6 +36,10 @@ var (
 	TypeBrew Type = "brew"
 	// TypeChocolatey is a pkg:chocolatey purl.
 	TypeChocolatey Type = "chocolatey"
+	// TypeGooGet is a pkg:googet purl for packages installed by GooGet, the
+	// Windows package manager on Compute Engine images. Not (yet) in the formal
+	// purl-spec registry.
+	TypeGooGet Type = "googet"
 	// TypeFlatpak is a pkg:flatpak purl.
 	//
 	// The namespace is the REMOTE the application was installed from, not a
@@ -90,6 +94,7 @@ var (
 		TypeSnap:          {},
 		TypeBrew:          {},
 		TypeChocolatey:    {},
+		TypeGooGet:        {},
 		TypeGithub:        {},
 	}
 )
