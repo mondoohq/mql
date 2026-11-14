@@ -532,6 +532,21 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"fastly": {
+		Provider: &plugin.Provider{
+			Name:            "fastly",
+			ID:              "go.mondoo.com/mql/providers/fastly",
+			ConnectionTypes: []string{"fastly"},
+			Connectors: []plugin.Connector{
+				{
+					Name:  "fastly",
+					Use:   "fastly",
+					Short: "a Fastly account",
+				},
+			},
+		},
+	},
+
 	"fortios": {
 		Provider: &plugin.Provider{
 			Name:            "fortios",
