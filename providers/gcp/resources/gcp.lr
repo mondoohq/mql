@@ -6690,7 +6690,7 @@ private gcp.project.pubsubService.subscription.config @defaults("topic.name ackD
   retainAckedMessages bool
   // How long to retain messages in the backlog after they're published
   retentionDuration time
-  // Conditions for a subscription's expiration
+  // Time to live of an inactive subscription; null when the subscription never expires
   expirationPolicy time
   // The labels associated with this subscription
   labels map[string]string

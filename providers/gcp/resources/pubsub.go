@@ -595,10 +595,6 @@ func (g *mqlGcpProjectPubsubServiceSubscription) config() (*mqlGcpProjectPubsubS
 		return nil, err
 	}
 
-	var expPolicy time.Time
-	if cfg.ExpirationPolicy != nil && cfg.ExpirationPolicy.Ttl != nil {
-		expPolicy = llx.DurationToTime(int64(cfg.ExpirationPolicy.Ttl.AsDuration().Seconds()))
-	}
 
 	var deadLetterDict map[string]any
 	if cfg.DeadLetterPolicy != nil {
@@ -660,7 +656,7 @@ func (g *mqlGcpProjectPubsubServiceSubscription) config() (*mqlGcpProjectPubsubS
 		"ackDeadline":                   llx.TimeData(llx.DurationToTime(int64(cfg.AckDeadlineSeconds))),
 		"retainAckedMessages":           llx.BoolData(cfg.RetainAckedMessages),
 		"retentionDuration":             llx.TimeData(pbDurationToTime(cfg.MessageRetentionDuration)),
-		"expirationPolicy":              llx.TimeData(expPolicy),
+		"expirationPolicy":              subscriptionExpirationPolicy(cfg.ExpirationPolicy),
 		"labels":                        llx.MapData(convert.MapToInterfaceMap(cfg.Labels), types.String),
 		"enableMessageOrdering":         llx.BoolData(cfg.EnableMessageOrdering),
 		"enableExactlyOnceDelivery":     llx.BoolData(cfg.EnableExactlyOnceDelivery),
@@ -1265,4 +1261,14 @@ func (g *mqlGcpProjectPubsubServiceTopicConfig) kmsKey() (*mqlGcpProjectKmsServi
 // isEnabled reports whether the API is enabled on this project.
 func (g *mqlGcpProjectPubsubService) isEnabled() (bool, error) {
 	return g.resolveEnabled(g.MqlRuntime, g.ProjectId, service_pubsub)
+}
+
+// subscriptionExpirationPolicy returns the subscription's time to live. An
+// expiration policy without a TTL means the subscription never expires, which
+// is reported as null rather than a zero duration.
+func subscriptionExpirationPolicy(p *pubsubpb.ExpirationPolicy) *llx.RawData {
+	if p == nil || p.Ttl == nil {
+		return llx.NilData
+	}
+	return llx.TimeData(llx.DurationToTime(int64(p.Ttl.AsDuration().Seconds())))
 }
