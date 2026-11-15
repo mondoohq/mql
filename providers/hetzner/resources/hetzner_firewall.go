@@ -289,12 +289,7 @@ func firewallRuleAdmitsAnySource(r hcloud.FirewallRule) bool {
 	if r.Direction != hcloud.FirewallRuleDirectionIn {
 		return false
 	}
-	for _, ip := range r.SourceIPs {
-		if cidrAdmitsInternet(ip) {
-			return true
-		}
-	}
-	return false
+	return sourcesAdmitInternet(r.SourceIPs)
 }
 
 // parseFirewallPortRange turns a Hetzner firewall port ("22", "1024-5000", or

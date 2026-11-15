@@ -972,12 +972,13 @@ private hetzner.firewall.rule @defaults("direction protocol port openToInternet"
   description string
   // Whether the rule admits inbound traffic from any address
   //
-  // True for an inbound rule whose `sourceIps` contains 0.0.0.0/0, ::/0, or a
-  // range as broad: an IPv4 prefix shorter than /8 outside 224.0.0.0/3, or an
-  // IPv6 prefix shorter than /12 that overlaps 2000::/3. 0.0.0.0/1 paired with
-  // 128.0.0.0/1 admits every address, and so does 2000::/3. Private ranges such
-  // as 10.0.0.0/8 and fc00::/7 never count.
-  // Always false for outbound rules.
+  // True for an inbound rule whose `sourceIps`, taken together, admit the
+  // internet. The ranges are merged per address family and limited to IPv4
+  // outside 224.0.0.0/3 and IPv6 inside 2000::/3. The rule counts when that
+  // union contains an aligned IPv4 /7 or IPv6 /11, or covers at least half of
+  // that space. 0.0.0.0/0, ::/0, 0.0.0.0/1 paired with 128.0.0.0/1, 2000::/3,
+  // and 256 /8s all count. Private ranges such as 10.0.0.0/8 and fc00::/7 never
+  // do. Always false for outbound rules.
   openToInternet bool
 }
 

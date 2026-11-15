@@ -4,8 +4,10 @@
 package resources
 
 import (
+	"cmp"
 	"fmt"
 	"net"
+	"slices"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud"
 	"go.mondoo.com/mql/llx"
@@ -13,8 +15,8 @@ import (
 )
 
 // firewallRuleOpenToInternet reports whether a Hetzner firewall rule dict is an
-// inbound rule whose source admits the internet: 0.0.0.0/0, ::/0, or another
-// range broad enough to count as the same thing (see cidrAdmitsInternet).
+// inbound rule whose source admits the internet: 0.0.0.0/0, ::/0, or ranges
+// that together count as the same thing (see sourcesAdmitInternet).
 func firewallRuleOpenToInternet(rule map[string]any) bool {
 	if direction, _ := rule["direction"].(string); direction != "in" {
 		return false
@@ -23,46 +25,136 @@ func firewallRuleOpenToInternet(rule map[string]any) bool {
 	if !ok {
 		return false
 	}
+	nets := make([]net.IPNet, 0, len(sources))
 	for _, s := range sources {
 		cidr, ok := s.(string)
 		if !ok {
 			continue
 		}
-		if _, ipNet, err := net.ParseCIDR(cidr); err == nil && cidrAdmitsInternet(*ipNet) {
-			return true
+		if _, ipNet, err := net.ParseCIDR(cidr); err == nil {
+			nets = append(nets, *ipNet)
 		}
 	}
-	return false
+	return sourcesAdmitInternet(nets)
 }
 
-var (
-	// ipv4MulticastAndReserved is 224.0.0.0/3: multicast plus the reserved
-	// 240.0.0.0/4. No internet host sends from it.
-	ipv4MulticastAndReserved = net.IPNet{IP: net.IPv4(224, 0, 0, 0).To4(), Mask: net.CIDRMask(3, 32)}
-	// ipv6GlobalUnicast is 2000::/3, the IPv6 space routed on the internet.
-	ipv6GlobalUnicast = net.IPNet{IP: net.ParseIP("2000::"), Mask: net.CIDRMask(3, 128)}
-)
+// sourcesAdmitInternet reports whether a rule's source ranges, taken together,
+// admit a large part of the internet in either address family.
+//
+// 0.0.0.0/0 and ::/0 are the common case, but 0.0.0.0/1 plus 128.0.0.0/1,
+// 2000::/3, or 256 adjacent /8s admit every internet host just the same, and so
+// does a list of many narrow ranges whose union covers most of the address
+// space. The verdict therefore depends on the union of the ranges, not on how
+// they are written. A family is open when that union, restricted to the space
+// internet hosts send from (IPv4 outside 224.0.0.0/3, IPv6 inside 2000::/3),
+// either:
+//
+//   - contains an aligned IPv4 /7 or IPv6 /11, the next size up from the blocks
+//     IANA allocates to the regional registries, or
+//   - covers at least half of that space, however it is scattered.
+//
+// Private ranges never qualify on the first test: 10.0.0.0/8 is not a /7, and
+// fc00::/7 lies outside 2000::/3. IPv6 ranges longer than /64 are ignored, since
+// no realistic number of them adds up to either threshold, and so are IPv4
+// ranges written as IPv4-mapped IPv6.
+func sourcesAdmitInternet(nets []net.IPNet) bool {
+	var spans4, spans6 []addrSpan
+	for _, n := range nets {
+		span, v4, ok := ipNetSpan(n)
+		switch {
+		case !ok:
+		case v4:
+			spans4 = append(spans4, span)
+		default:
+			spans6 = append(spans6, span)
+		}
+	}
+	return ipv4InternetSpace.admittedBy(spans4) || ipv6InternetSpace.admittedBy(spans6)
+}
 
-// cidrAdmitsInternet reports whether a source range admits a large part of
-// the internet. 0.0.0.0/0 and ::/0 are the common case, but splitting the
-// space into 0.0.0.0/1 and 128.0.0.0/1, or writing 2000::/3, admits every
-// internet host just the same. The threshold is the size of the blocks IANA
-// allocates to the regional registries: an IPv4 prefix shorter than /8 that
-// is not multicast or reserved space, or an IPv6 prefix shorter than /12 that
-// overlaps global unicast. Private ranges never qualify: 10.0.0.0/8 is not
-// shorter than /8, and fc00::/7 does not overlap 2000::/3.
-func cidrAdmitsInternet(n net.IPNet) bool {
+// addrSpan is an inclusive range of addresses. IPv4 spans hold the 32-bit
+// address; IPv6 spans hold the top 64 bits, so one unit is a /64.
+type addrSpan struct{ lo, hi uint64 }
+
+// ipNetSpan converts a network to the span it covers and reports its family.
+// It reports false for an IPv6 network longer than /64, an IPv4-mapped IPv6
+// network, or a malformed mask.
+func ipNetSpan(n net.IPNet) (addrSpan, bool, bool) {
 	ones, bits := n.Mask.Size()
 	switch bits {
 	case 32:
-		return ones < 8 && !ipv4MulticastAndReserved.Contains(n.IP)
-	case 128:
-		if n.IP.To4() != nil {
-			return false
+		ip := n.IP.Mask(n.Mask).To4()
+		if ip == nil {
+			return addrSpan{}, false, false
 		}
-		return ones < 12 && (n.Contains(ipv6GlobalUnicast.IP) || ipv6GlobalUnicast.Contains(n.IP))
+		lo := uint64(ip[0])<<24 | uint64(ip[1])<<16 | uint64(ip[2])<<8 | uint64(ip[3])
+		return addrSpan{lo, lo + (uint64(1) << (32 - ones)) - 1}, true, true
+	case 128:
+		ip := n.IP.Mask(n.Mask)
+		if len(ip) != net.IPv6len || n.IP.To4() != nil || ones > 64 {
+			return addrSpan{}, false, false
+		}
+		if ones == 0 {
+			return addrSpan{0, ^uint64(0)}, false, true
+		}
+		var lo uint64
+		for _, x := range ip[:8] {
+			lo = lo<<8 | uint64(x)
+		}
+		return addrSpan{lo, lo + (uint64(1) << (64 - ones)) - 1}, false, true
 	}
-	return false
+	return addrSpan{}, false, false
+}
+
+// mergeSpans returns the union of spans as sorted, disjoint, non-adjacent spans.
+func mergeSpans(spans []addrSpan) []addrSpan {
+	sorted := slices.Clone(spans)
+	slices.SortFunc(sorted, func(a, b addrSpan) int { return cmp.Compare(a.lo, b.lo) })
+	out := []addrSpan{}
+	for _, sp := range sorted {
+		if n := len(out); n > 0 && (sp.lo <= out[n-1].hi || sp.lo-out[n-1].hi == 1) {
+			out[n-1].hi = max(out[n-1].hi, sp.hi)
+			continue
+		}
+		out = append(out, sp)
+	}
+	return out
+}
+
+// internetSpace is the part of an address family internet hosts send from, in
+// addrSpan units, with the block size whose presence alone counts as open.
+type internetSpace struct {
+	lo, hi uint64
+	block  uint64
+}
+
+var (
+	// IPv4 outside 224.0.0.0/3 (multicast plus the reserved 240.0.0.0/4); the
+	// block is a /7.
+	ipv4InternetSpace = internetSpace{lo: 0, hi: 224<<24 - 1, block: 1 << 25}
+	// IPv6 2000::/3, the space routed on the internet, in /64 units; the block
+	// is a /11.
+	ipv6InternetSpace = internetSpace{lo: 0x2000 << 48, hi: 0x3fff_ffff_ffff_ffff, block: 1 << 53}
+)
+
+// admittedBy reports whether the union of spans opens this space to the
+// internet: it contains an aligned block, or covers at least half the space.
+func (s internetSpace) admittedBy(spans []addrSpan) bool {
+	var total uint64
+	for _, sp := range mergeSpans(spans) {
+		lo, hi := max(sp.lo, s.lo), min(sp.hi, s.hi)
+		if lo > hi {
+			continue
+		}
+		total += hi - lo + 1
+		// s.lo is block-aligned, so the first aligned block at or after lo
+		// starts here.
+		start := (lo + s.block - 1) / s.block * s.block
+		if start <= hi && hi-start >= s.block-1 {
+			return true
+		}
+	}
+	return total >= (s.hi-s.lo+1)/2
 }
 
 // firewallBindingRules pairs a firewall binding's application status with the
