@@ -14960,7 +14960,7 @@ private gcp.project.dataflowService.job @defaults("name currentState") {
   // Region/location of the job
   location string
   // Resource labels
-  labels map[string]string
+  labels() map[string]string
   // Execution environment the job runs in
   //
   // Raw environment configuration, with keys including
@@ -14970,11 +14970,11 @@ private gcp.project.dataflowService.job @defaults("name currentState") {
   // `sdkPipelineOptions`, and `flexResourceSchedulingGoal`. See `kmsKey`
   // for the resolved encryption key and `workerIpConfiguration` for the
   // resolved worker IP setting.
-  environment dict
+  environment() dict
   // Customer-managed Cloud KMS key protecting pipeline state and shuffle data at rest
   kmsKey() gcp.project.kmsService.keyring.cryptokey
   // VM IP configuration of the job's worker pools (WORKER_IP_PUBLIC, WORKER_IP_PRIVATE, or WORKER_IP_UNSPECIFIED)
-  workerIpConfiguration string
+  workerIpConfiguration() string
   // SDK pipeline description
   //
   // Description of the compiled pipeline, with keys `displayData`
@@ -14982,7 +14982,7 @@ private gcp.project.dataflowService.job @defaults("name currentState") {
   // execution descriptions), `originalPipelineTransform` (per-transform
   // descriptions and the collections between them), and `stepNamesHash`
   // (hash of the submitted pipeline step names).
-  pipelineDescription dict
+  pipelineDescription() dict
   // Timestamp of the current state
   currentStateTime time
 }

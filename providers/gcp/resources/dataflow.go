@@ -6,12 +6,13 @@ package resources
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/providers/gcp/connection"
-	"go.mondoo.com/mql/types"
 	dataflow "google.golang.org/api/dataflow/v1b3"
 	"google.golang.org/api/option"
 )
@@ -55,42 +56,24 @@ func (g *mqlGcpProjectDataflowService) jobs() ([]any, error) {
 	}
 
 	var res []any
-	// Use aggregated list to get jobs across all locations
+	// The aggregated list returns only the summary view: no environment,
+	// labels or pipeline description, whatever view is requested. Those are
+	// fetched per job, on first use, by jobDescription.
 	call := svc.Projects.Jobs.Aggregated(projectId)
 	if err := call.Pages(ctx, func(page *dataflow.ListJobsResponse) error {
 		for _, job := range page.Jobs {
-			env, _ := convert.JsonToDict(job.Environment)
-			pipelineDesc, _ := convert.JsonToDict(job.PipelineDescription)
-
-			workerIpConfiguration := ""
-			if job.Environment != nil {
-				for _, wp := range job.Environment.WorkerPools {
-					if wp != nil && wp.IpConfiguration != "" {
-						workerIpConfiguration = wp.IpConfiguration
-						break
-					}
-				}
-			}
-
 			mqlJob, err := CreateResource(g.MqlRuntime, "gcp.project.dataflowService.job", map[string]*llx.RawData{
-				"projectId":             llx.StringData(projectId),
-				"id":                    llx.StringData(job.Id),
-				"name":                  llx.StringData(job.Name),
-				"type":                  llx.StringData(job.Type),
-				"currentState":          llx.StringData(job.CurrentState),
-				"createTime":            llx.TimeDataPtr(parseTime(job.CreateTime)),
-				"location":              llx.StringData(job.Location),
-				"labels":                llx.MapData(convert.MapToInterfaceMap(job.Labels), types.String),
-				"environment":           llx.DictData(env),
-				"workerIpConfiguration": llx.StringData(workerIpConfiguration),
-				"pipelineDescription":   llx.DictData(pipelineDesc),
-				"currentStateTime":      llx.TimeDataPtr(parseTime(job.CurrentStateTime)),
+				"projectId":        llx.StringData(projectId),
+				"id":               llx.StringData(job.Id),
+				"name":             llx.StringData(job.Name),
+				"type":             llx.StringData(job.Type),
+				"currentState":     llx.StringData(job.CurrentState),
+				"createTime":       llx.TimeDataPtr(parseTime(job.CreateTime)),
+				"location":         llx.StringData(job.Location),
+				"currentStateTime": llx.TimeDataPtr(parseTime(job.CurrentStateTime)),
 			})
 			if err != nil {
 				return err
-			}
-			if job.Environment != nil {
-				mqlJob.(*mqlGcpProjectDataflowServiceJob).cacheKmsKeyName = job.Environment.ServiceKmsKeyName
 			}
 			res = append(res, mqlJob)
 		}
@@ -111,11 +94,122 @@ func (g *mqlGcpProjectDataflowService) jobs() ([]any, error) {
 }
 
 type mqlGcpProjectDataflowServiceJobInternal struct {
-	cacheKmsKeyName string
+	descLock    sync.Mutex
+	descFetched bool
+	desc        *dataflow.Job
+	descErr     error
+}
+
+// jobDescription fetches the job with JOB_VIEW_DESCRIPTION, which carries the
+// environment, labels and pipeline description the aggregated list omits. It
+// returns nil when the job is no longer retained (NotFound) or not readable.
+func (g *mqlGcpProjectDataflowServiceJob) jobDescription() (*dataflow.Job, error) {
+	g.descLock.Lock()
+	defer g.descLock.Unlock()
+	if g.descFetched {
+		return g.desc, g.descErr
+	}
+	g.descFetched = true
+
+	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
+	client, err := conn.Client(dataflow.CloudPlatformScope)
+	if err != nil {
+		g.descErr = err
+		return nil, err
+	}
+	ctx := context.Background()
+	svc, err := dataflow.NewService(ctx, option.WithHTTPClient(client))
+	if err != nil {
+		g.descErr = err
+		return nil, err
+	}
+
+	job, err := svc.Projects.Locations.Jobs.Get(g.ProjectId.Data, g.Location.Data, g.Id.Data).View("JOB_VIEW_DESCRIPTION").Context(ctx).Do()
+	if err != nil {
+		if isSkippable(err) {
+			log.Debug().Err(err).Str("job", g.Id.Data).Msg("could not describe dataflow job")
+			return nil, nil
+		}
+		g.descErr = err
+		return nil, err
+	}
+	g.desc = job
+	return job, nil
+}
+
+func (g *mqlGcpProjectDataflowServiceJob) labels() (map[string]any, error) {
+	job, err := g.jobDescription()
+	if err != nil {
+		return nil, err
+	}
+	if job == nil {
+		g.Labels.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return convert.MapToInterfaceMap(job.Labels), nil
+}
+
+func (g *mqlGcpProjectDataflowServiceJob) environment() (map[string]any, error) {
+	job, err := g.jobDescription()
+	if err != nil {
+		return nil, err
+	}
+	if job == nil || job.Environment == nil {
+		g.Environment.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return convert.JsonToDict(job.Environment)
+}
+
+func (g *mqlGcpProjectDataflowServiceJob) pipelineDescription() (map[string]any, error) {
+	job, err := g.jobDescription()
+	if err != nil {
+		return nil, err
+	}
+	if job == nil || job.PipelineDescription == nil {
+		g.PipelineDescription.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return convert.JsonToDict(job.PipelineDescription)
+}
+
+func (g *mqlGcpProjectDataflowServiceJob) workerIpConfiguration() (string, error) {
+	job, err := g.jobDescription()
+	if err != nil {
+		return "", err
+	}
+	if job == nil {
+		g.WorkerIpConfiguration.State = plugin.StateIsNull | plugin.StateIsSet
+		return "", nil
+	}
+	return dataflowWorkerIpConfiguration(job.Environment), nil
+}
+
+// dataflowWorkerIpConfiguration returns the first IP configuration set on a
+// worker pool, or "" when none is: the API omits it for the default, public
+// worker IPs.
+func dataflowWorkerIpConfiguration(env *dataflow.Environment) string {
+	if env == nil {
+		return ""
+	}
+	for _, wp := range env.WorkerPools {
+		if wp != nil && wp.IpConfiguration != "" {
+			return wp.IpConfiguration
+		}
+	}
+	return ""
 }
 
 func (g *mqlGcpProjectDataflowServiceJob) kmsKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
-	return newKmsCryptoKeyRef(g.MqlRuntime, &g.KmsKey, g.cacheKmsKeyName)
+	job, err := g.jobDescription()
+	if err != nil {
+		return nil, err
+	}
+	keyName := ""
+	if job != nil && job.Environment != nil {
+		keyName = job.Environment.ServiceKmsKeyName
+	}
+	return newKmsCryptoKeyRef(g.MqlRuntime, &g.KmsKey, keyName)
 }
 
 func (g *mqlGcpProjectDataflowServiceJob) id() (string, error) {
