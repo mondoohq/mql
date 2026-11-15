@@ -376,6 +376,33 @@ func (o *mqlOciOkeCluster) fetchCluster() (*containerengine.Cluster, error) {
 	})
 }
 
+// okeSupportedKubernetesVersions returns the versions OKE offers for new
+// clusters, which is the set it supports. Nil options yield an empty list, so
+// a cluster's version is never found in it by accident.
+func okeSupportedKubernetesVersions(opts *containerengine.ClusterOptions) []any {
+	if opts == nil {
+		return []any{}
+	}
+	return stringsToAny(opts.KubernetesVersions)
+}
+
+func (o *mqlOciOkeCluster) supportedKubernetesVersions() ([]any, error) {
+	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
+
+	svc, err := conn.ContainerEngineClient(o.cacheRegion)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := svc.GetClusterOptions(context.Background(), containerengine.GetClusterOptionsRequest{
+		ClusterOptionId: new("all"),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return okeSupportedKubernetesVersions(&resp.ClusterOptions), nil
+}
+
 func (o *mqlOciOkeCluster) kmsKey() (*mqlOciKmsKey, error) {
 	cluster, err := o.fetchCluster()
 	if err != nil {

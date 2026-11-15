@@ -8382,6 +8382,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"oci.oke.cluster.availableKubernetesUpgrades": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciOkeCluster).GetAvailableKubernetesUpgrades()).ToDataRes(types.Array(types.String))
 	},
+	"oci.oke.cluster.supportedKubernetesVersions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciOkeCluster).GetSupportedKubernetesVersions()).ToDataRes(types.Array(types.String))
+	},
 	"oci.oke.cluster.isPodSecurityPolicyEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciOkeCluster).GetIsPodSecurityPolicyEnabled()).ToDataRes(types.Bool)
 	},
@@ -23999,6 +24002,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"oci.oke.cluster.availableKubernetesUpgrades": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciOkeCluster).AvailableKubernetesUpgrades, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"oci.oke.cluster.supportedKubernetesVersions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciOkeCluster).SupportedKubernetesVersions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"oci.oke.cluster.isPodSecurityPolicyEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -57427,6 +57434,7 @@ type mqlOciOkeCluster struct {
 	IsImagePolicyEnabled           plugin.TValue[bool]
 	ImagePolicyKmsKeys             plugin.TValue[[]any]
 	AvailableKubernetesUpgrades    plugin.TValue[[]any]
+	SupportedKubernetesVersions    plugin.TValue[[]any]
 	IsPodSecurityPolicyEnabled     plugin.TValue[bool]
 	IsKubernetesDashboardEnabled   plugin.TValue[bool]
 	IsTillerEnabled                plugin.TValue[bool]
@@ -57594,6 +57602,12 @@ func (c *mqlOciOkeCluster) GetImagePolicyKmsKeys() *plugin.TValue[[]any] {
 
 func (c *mqlOciOkeCluster) GetAvailableKubernetesUpgrades() *plugin.TValue[[]any] {
 	return &c.AvailableKubernetesUpgrades
+}
+
+func (c *mqlOciOkeCluster) GetSupportedKubernetesVersions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SupportedKubernetesVersions, func() ([]any, error) {
+		return c.supportedKubernetesVersions()
+	})
 }
 
 func (c *mqlOciOkeCluster) GetIsPodSecurityPolicyEnabled() *plugin.TValue[bool] {

@@ -7814,7 +7814,16 @@ private oci.oke.cluster @defaults("name") {
   // but names no key, which admits every image.
   imagePolicyKmsKeys() []oci.kms.key
   // Available Kubernetes version upgrades
+  //
+  // Lists every version the control plane can move to next, patch releases
+  // included, so its length does not measure how far behind the cluster is.
   availableKubernetesUpgrades []string
+  // Kubernetes versions OKE supports in the cluster's region
+  //
+  // Read from the cluster options OKE publishes for new clusters, which name
+  // each version it currently supports and drop a version once its support
+  // ends. A kubernetesVersion absent from this list is out of support.
+  supportedKubernetesVersions() []string
   // Whether Pod Security Policy admission controller is enabled
   isPodSecurityPolicyEnabled bool
   // Whether the Kubernetes Dashboard add-on is deployed
