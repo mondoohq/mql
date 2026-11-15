@@ -174,12 +174,11 @@ func (a *mqlAwsApigatewayRestapi) stages() ([]any, error) {
 		return nil, errors.Wrap(err, "could not gather AWS API Gateway stages")
 	}
 	res := []any{}
+	// Tag filters select which APIs are discovered; they do not apply to the
+	// stages of an API that was selected. A stage carries its own tags, usually
+	// none, so filtering here emptied the list and every stages.all(...) check
+	// passed on an API scanned with a tag filter.
 	for _, stage := range stagesResp.Item {
-		if conn.Filters.General.IsFilteredOutByTags(stage.Tags) {
-			log.Debug().Interface("stage", stage.StageName).Msg("skipping api gateway stage due to filters")
-			continue
-		}
-
 		dictMethodSettings, err := convert.JsonToDict(stage.MethodSettings)
 		if err != nil {
 			return nil, err
