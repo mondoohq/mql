@@ -3784,7 +3784,7 @@ aws.sagemaker {
   clusters() []aws.sagemaker.cluster
   // List of SageMaker feature groups
   featureGroups() []aws.sagemaker.featureGroup
-  // List of SageMaker model packages (excludes packages within model package groups)
+  // List of SageMaker model packages, both unversioned packages and the versions registered in model package groups
   modelPackages() []aws.sagemaker.modelPackage
   // List of SageMaker model package groups
   modelPackageGroups() []aws.sagemaker.modelPackageGroup
