@@ -24,3 +24,12 @@ func TestOkeSupportedKubernetesVersionsNil(t *testing.T) {
 	assert.Equal(t, []any{}, okeSupportedKubernetesVersions(nil))
 	assert.Equal(t, []any{}, okeSupportedKubernetesVersions(&containerengine.ClusterOptions{}))
 }
+
+// Clusters in one region share one options fetch; another region or another
+// connection gets its own.
+func TestOkeSupportedVersionsEntry(t *testing.T) {
+	first := okeSupportedVersionsEntry("1/us-ashburn-1")
+	assert.Same(t, first, okeSupportedVersionsEntry("1/us-ashburn-1"))
+	assert.NotSame(t, first, okeSupportedVersionsEntry("1/us-phoenix-1"))
+	assert.NotSame(t, first, okeSupportedVersionsEntry("2/us-ashburn-1"))
+}
