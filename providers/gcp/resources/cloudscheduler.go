@@ -15,8 +15,10 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/gcp/connection"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
+	locationpb "google.golang.org/genproto/googleapis/cloud/location"
 )
 
 // initGcpProjectCloudSchedulerService fills in the project the service belongs to when the
@@ -114,19 +116,35 @@ func (g *mqlGcpProjectCloudSchedulerService) jobs() ([]any, error) {
 	}
 	defer client.Close()
 
-	it := client.ListJobs(ctx, &schedulerpb.ListJobsRequest{
-		Parent: fmt.Sprintf("projects/%s/locations/-", projectId),
+	// ListJobs rejects the locations/- wildcard with InvalidArgument
+	// ("Location '-' is not a valid location"), so list the locations the
+	// service offers and query each one.
+	locations, err := listSchedulerLocations(ctx, client, projectId)
+	if err != nil {
+		return nil, err
+	}
+	jobs, err := listSchedulerJobsPerLocation(ctx, locations, func(ctx context.Context, location string) ([]*schedulerpb.Job, error) {
+		var out []*schedulerpb.Job
+		it := client.ListJobs(ctx, &schedulerpb.ListJobsRequest{
+			Parent: fmt.Sprintf("projects/%s/locations/%s", projectId, location),
+		})
+		for {
+			job, err := it.Next()
+			if err == iterator.Done {
+				return out, nil
+			}
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, job)
+		}
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	var res []any
-	for {
-		job, err := it.Next()
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
+	for _, job := range jobs {
 
 		retryConfig, err := schedulerRetryConfig(g.MqlRuntime, job.Name, job.RetryConfig)
 		if err != nil {
@@ -241,4 +259,54 @@ func schedulerRetryConfig(runtime *plugin.Runtime, parentName string, rc *schedu
 	}
 	return newRetryConfigResource(runtime, parentName,
 		int64(rc.RetryCount), minBackoff, maxBackoff, int64(rc.MaxDoublings), maxRetryDuration)
+}
+
+func listSchedulerLocations(ctx context.Context, client *scheduler.CloudSchedulerClient, projectId string) ([]string, error) {
+	it := client.ListLocations(ctx, &locationpb.ListLocationsRequest{
+		Name: fmt.Sprintf("projects/%s", projectId),
+	})
+	var locations []string
+	for {
+		l, err := it.Next()
+		if err == iterator.Done {
+			return locations, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		locations = append(locations, l.LocationId)
+	}
+}
+
+// listSchedulerJobsPerLocation runs list in every location and returns the
+// results in location order. A location that refuses the call (PermissionDenied,
+// NotFound) contributes nothing; any other error fails the whole listing, so a
+// project is never reported as having no jobs because a call failed.
+func listSchedulerJobsPerLocation[T any](ctx context.Context, locations []string, list func(context.Context, string) ([]T, error)) ([]T, error) {
+	perLocation := make([][]T, len(locations))
+	grp, grpCtx := errgroup.WithContext(ctx)
+	grp.SetLimit(10)
+	for i, loc := range locations {
+		grp.Go(func() error {
+			items, err := list(grpCtx, loc)
+			if err != nil {
+				if isSkippable(err) {
+					log.Debug().Err(err).Str("location", loc).Msg("cloud scheduler: skipping location")
+					return nil
+				}
+				return err
+			}
+			perLocation[i] = items
+			return nil
+		})
+	}
+	if err := grp.Wait(); err != nil {
+		return nil, err
+	}
+
+	var res []T
+	for _, items := range perLocation {
+		res = append(res, items...)
+	}
+	return res, nil
 }
