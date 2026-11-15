@@ -29,6 +29,39 @@ func TestIsAnyAddress(t *testing.T) {
 	}
 }
 
+func TestAddressesCoverInternet(t *testing.T) {
+	cases := []struct {
+		name      string
+		addresses []string
+		want      bool
+	}{
+		{"empty", nil, false},
+		{"ipv4 any", []string{"0.0.0.0/0"}, true},
+		{"ipv6 any", []string{"::/0"}, true},
+		{"ipv6 any, non-canonical", []string{"::0/0"}, true},
+		{"split ipv4 halves", []string{"128.0.0.0/1", "0.0.0.0/1"}, true},
+		{"split ipv4 quarters with overlap", []string{"0.0.0.0/2", "64.0.0.0/2", "0.0.0.0/1", "128.0.0.0/2", "192.0.0.0/2"}, true},
+		{"ipv4 gap", []string{"0.0.0.0/2", "128.0.0.0/1"}, false},
+		{"one ipv4 half", []string{"0.0.0.0/1"}, false},
+		{"broad prefix that leaves addresses out", []string{"10.0.0.0/8"}, false},
+		{"split ipv6 halves", []string{"::/1", "8000::/1"}, true},
+		{"ipv4 and ipv6 halves do not combine", []string{"0.0.0.0/1", "8000::/1"}, false},
+		{"ipv4-mapped any", []string{"::ffff:0.0.0.0/96"}, true},
+		{"load balancer cidr prefix", []string{"cidr:0.0.0.0/0"}, true},
+		{"load balancer split cidr prefixes", []string{"cidr:0.0.0.0/1", "cidr:128.0.0.0/1"}, true},
+		{"load balancer ip prefix", []string{"ip:203.0.113.10"}, false},
+		{"host address", []string{"203.0.113.10"}, false},
+		{"unspecified address", []string{"0.0.0.0"}, true},
+		{"padded", []string{" 0.0.0.0/0 "}, true},
+		{"unparseable counts as open", []string{"not-an-address"}, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			assert.Equal(t, c.want, addressesCoverInternet(c.addresses))
+		})
+	}
+}
+
 func TestDatabaseRuleOpensToInternet(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -83,6 +116,14 @@ func TestDatabaseTrustedSourcesAllowAny(t *testing.T) {
 			true,
 		},
 		{
+			"ip rules that together cover the internet",
+			[]any{
+				map[string]any{"type": "ip_addr", "value": "0.0.0.0/1"},
+				map[string]any{"type": "ip_addr", "value": "128.0.0.0/1"},
+			},
+			true,
+		},
+		{
 			"only resource-scoped rules",
 			[]any{
 				map[string]any{"type": "tag", "value": "web"},
@@ -118,6 +159,9 @@ func TestLoadBalancerFirewallAllowsAny(t *testing.T) {
 		{"allow includes any-address v4", []any{"203.0.113.0/24", "0.0.0.0/0"}, true},
 		{"allow includes any-address v6", []any{"::/0"}, true},
 		{"non-string entry ignored", []any{42, "10.0.0.0/8"}, false},
+		{"cidr-prefixed any-address", []any{"cidr:0.0.0.0/0"}, true},
+		{"cidr-prefixed split halves", []any{"cidr:0.0.0.0/1", "cidr:128.0.0.0/1"}, true},
+		{"ip-prefixed host only", []any{"ip:198.51.100.7"}, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
