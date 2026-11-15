@@ -18,6 +18,11 @@ import (
 	"go.mondoo.com/mql/llx"
 )
 
+// These tests exercise lockfile_errors.go through every language collector
+// (lockfileCollectors), since what they check is that each collector hands its
+// read and parse errors to explicitLockfileError instead of dropping them.
+// Tests of one ecosystem's parsing live in that ecosystem's _test.go.
+
 // unreadableFs refuses to open the files in files, the way a mode 0600 file
 // owned by root refuses a scan that is not root, and refuses to stat or open
 // anything below the directories in dirs, the way a mode 0700 directory does.
