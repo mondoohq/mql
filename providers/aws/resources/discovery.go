@@ -1274,6 +1274,9 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 
 		for i := range cs.Data {
 			f := cs.Data[i].(*mqlAwsEmrCluster)
+			if !emrClusterIsDiscoverable(f.Status.Data) {
+				continue
+			}
 
 			region, err := GetRegionFromArn(f.Arn.Data)
 			if err != nil {
