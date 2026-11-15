@@ -25,6 +25,7 @@ func TestFirewallRuleOpenToInternet(t *testing.T) {
 		{"inbound ipv4 split in halves", map[string]any{"direction": "in", "sourceIps": []any{"0.0.0.0/1", "128.0.0.0/1"}}, true},
 		{"inbound ipv6 global unicast", map[string]any{"direction": "in", "sourceIps": []any{"2000::/3"}}, true},
 		{"inbound private ipv4", map[string]any{"direction": "in", "sourceIps": []any{"10.0.0.0/8"}}, false},
+		{"inbound host bits set", map[string]any{"direction": "in", "sourceIps": []any{"10.0.0.1/0"}}, true},
 		{"inbound unparseable source", map[string]any{"direction": "in", "sourceIps": []any{"not-a-cidr"}}, false},
 		{"outbound any", map[string]any{"direction": "out", "sourceIps": []any{"0.0.0.0/0"}}, false},
 		{"no sources", map[string]any{"direction": "in"}, false},
@@ -61,6 +62,13 @@ func TestCidrAdmitsInternet(t *testing.T) {
 		{"fc00::/7", false},
 		{"fe80::/10", false},
 		{"4000::/2", false},
+		// net.ParseCIDR masks host bits and accepts any IPv6 spelling, so
+		// non-canonical forms resolve to the same network.
+		{"10.0.0.1/0", true},
+		{"255.0.0.0/0", true},
+		{"0::/0", true},
+		{"2000:0::/3", true},
+		{"2A01:4F8::/8", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.cidr, func(t *testing.T) {
