@@ -19175,6 +19175,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.serviceBusService.namespace.disableLocalAuth": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionServiceBusServiceNamespace).GetDisableLocalAuth()).ToDataRes(types.Bool)
 	},
+	"azure.subscription.serviceBusService.namespace.minimumTlsVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionServiceBusServiceNamespace).GetMinimumTlsVersion()).ToDataRes(types.String)
+	},
 	"azure.subscription.serviceBusService.namespace.zoneRedundant": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionServiceBusServiceNamespace).GetZoneRedundant()).ToDataRes(types.Bool)
 	},
@@ -48723,6 +48726,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.serviceBusService.namespace.disableLocalAuth": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionServiceBusServiceNamespace).DisableLocalAuth, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.serviceBusService.namespace.minimumTlsVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionServiceBusServiceNamespace).MinimumTlsVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.serviceBusService.namespace.zoneRedundant": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -113839,6 +113846,7 @@ type mqlAzureSubscriptionServiceBusServiceNamespace struct {
 	Status                          plugin.TValue[string]
 	ServiceBusEndpoint              plugin.TValue[string]
 	DisableLocalAuth                plugin.TValue[bool]
+	MinimumTlsVersion               plugin.TValue[string]
 	ZoneRedundant                   plugin.TValue[bool]
 	ProvisioningState               plugin.TValue[string]
 	CmkKeySource                    plugin.TValue[string]
@@ -113927,6 +113935,10 @@ func (c *mqlAzureSubscriptionServiceBusServiceNamespace) GetServiceBusEndpoint()
 
 func (c *mqlAzureSubscriptionServiceBusServiceNamespace) GetDisableLocalAuth() *plugin.TValue[bool] {
 	return &c.DisableLocalAuth
+}
+
+func (c *mqlAzureSubscriptionServiceBusServiceNamespace) GetMinimumTlsVersion() *plugin.TValue[string] {
+	return &c.MinimumTlsVersion
 }
 
 func (c *mqlAzureSubscriptionServiceBusServiceNamespace) GetZoneRedundant() *plugin.TValue[bool] {
