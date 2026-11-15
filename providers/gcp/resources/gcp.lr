@@ -2314,7 +2314,9 @@ private gcp.project.computeService.instance.exposure @defaults("internetReachabl
   internetReachable bool
   // Whether the instance has an external IP
   hasPublicIp bool
-  // Whether a firewall rule or network firewall policy rule that applies to the instance admits inbound traffic from any address (0.0.0.0/0 or ::/0)
+  // Whether a firewall rule or network firewall policy rule that applies to the instance admits inbound traffic from the internet
+  //
+  // A rule counts when its source ranges are 0.0.0.0/0 or ::/0, or together cover most of the internet.
   firewallAllowsIngress bool
   // Legacy VPC firewall rules that apply to the instance and admit ingress from any address
   openIngressFirewalls []gcp.project.computeService.firewall
@@ -3013,7 +3015,9 @@ private gcp.project.computeService.firewall @defaults("name") {
   disabled bool
   // Source ranges
   sourceRanges []string
-  // Whether this rule allows ingress traffic from the public internet (INGRESS, enabled, has allow rules, sourceRanges contains 0.0.0.0/0 or ::/0)
+  // Whether this rule allows ingress traffic from the public internet
+  //
+  // True for an enabled INGRESS rule with allow entries whose sourceRanges are 0.0.0.0/0 or ::/0, or together cover most of the internet.
   openToInternet() bool
   // Whether this rule permits SSH (tcp/22) from the public internet (narrower form of openToInternet for the SSH-specific port check)
   allowsSshFromInternet() bool

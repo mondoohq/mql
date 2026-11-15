@@ -350,6 +350,9 @@ func TestOpenSourceFamilies(t *testing.T) {
 		{"one v4 half", fwSources("128.0.0.0/1"), true, false},
 		{"v6 global unicast", fwSources("2000::/3"), false, true},
 		{"v6 unique local", fwSources("fc00::/7"), false, false},
+		{"256 /8s together", v4Slash8s(0, 255, 1), true, false},
+		{"/9s covering everything but 224.0.0.0/3", v4Slash9s(0, 223), true, false},
+		{"/8s with too many gaps", v4Slash8s(1, 221, 2), false, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -666,6 +669,8 @@ func TestCoveredSourceFamilies(t *testing.T) {
 		{"quarters with overlap", fwSources("0.0.0.0/2", "64.0.0.0/2", "100.0.0.0/8", "128.0.0.0/1"), true, false},
 		{"one v4 half", fwSources("0.0.0.0/1"), false, false},
 		{"gap between ranges", fwSources("0.0.0.0/2", "128.0.0.0/1"), false, false},
+		{"256 /8s together", v4Slash8s(0, 255, 1), true, false},
+		{"/9s leaving out 224.0.0.0/3", v4Slash9s(0, 223), false, false},
 		{"v6 global unicast is not all of v6", fwSources("2000::/3"), false, false},
 		{"empty", nil, false, false},
 	}
