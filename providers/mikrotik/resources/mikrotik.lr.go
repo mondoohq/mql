@@ -1323,6 +1323,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mikrotik.user.comment": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikUser).GetComment()).ToDataRes(types.String)
 	},
+	"mikrotik.user.inactivityPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikUser).GetInactivityPolicy()).ToDataRes(types.String)
+	},
+	"mikrotik.user.inactivityTimeout": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikUser).GetInactivityTimeout()).ToDataRes(types.String)
+	},
 	"mikrotik.user.userGroup": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikUser).GetUserGroup()).ToDataRes(types.Resource("mikrotik.userGroup"))
 	},
@@ -3857,6 +3863,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mikrotik.user.comment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMikrotikUser).Comment, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mikrotik.user.inactivityPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikUser).InactivityPolicy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mikrotik.user.inactivityTimeout": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikUser).InactivityTimeout, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"mikrotik.user.userGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -8793,13 +8807,15 @@ type mqlMikrotikUser struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlMikrotikUserInternal
-	Name         plugin.TValue[string]
-	Group        plugin.TValue[string]
-	Address      plugin.TValue[string]
-	LastLoggedIn plugin.TValue[string]
-	Disabled     plugin.TValue[bool]
-	Comment      plugin.TValue[string]
-	UserGroup    plugin.TValue[*mqlMikrotikUserGroup]
+	Name              plugin.TValue[string]
+	Group             plugin.TValue[string]
+	Address           plugin.TValue[string]
+	LastLoggedIn      plugin.TValue[string]
+	Disabled          plugin.TValue[bool]
+	Comment           plugin.TValue[string]
+	InactivityPolicy  plugin.TValue[string]
+	InactivityTimeout plugin.TValue[string]
+	UserGroup         plugin.TValue[*mqlMikrotikUserGroup]
 }
 
 // createMikrotikUser creates a new instance of this resource
@@ -8856,6 +8872,14 @@ func (c *mqlMikrotikUser) GetDisabled() *plugin.TValue[bool] {
 
 func (c *mqlMikrotikUser) GetComment() *plugin.TValue[string] {
 	return &c.Comment
+}
+
+func (c *mqlMikrotikUser) GetInactivityPolicy() *plugin.TValue[string] {
+	return &c.InactivityPolicy
+}
+
+func (c *mqlMikrotikUser) GetInactivityTimeout() *plugin.TValue[string] {
+	return &c.InactivityTimeout
 }
 
 func (c *mqlMikrotikUser) GetUserGroup() *plugin.TValue[*mqlMikrotikUserGroup] {

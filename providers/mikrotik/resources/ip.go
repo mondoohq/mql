@@ -394,16 +394,22 @@ type mqlMikrotikUserInternal struct {
 	cacheGroup string
 }
 
+func userArgs(row map[string]string) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":              llx.StringData("mikrotik.user/" + row["name"]),
+		"name":              llx.StringData(row["name"]),
+		"group":             llx.StringData(row["group"]),
+		"address":           llx.StringData(row["address"]),
+		"lastLoggedIn":      llx.StringData(row["last-logged-in"]),
+		"disabled":          boolField(row, "disabled"),
+		"comment":           llx.StringData(row["comment"]),
+		"inactivityPolicy":  llx.StringData(row["inactivity-policy"]),
+		"inactivityTimeout": llx.StringData(row["inactivity-timeout"]),
+	}
+}
+
 func newMikrotikUser(runtime *plugin.Runtime, row map[string]string) (plugin.Resource, error) {
-	res, err := CreateResource(runtime, "mikrotik.user", map[string]*llx.RawData{
-		"__id":         llx.StringData("mikrotik.user/" + row["name"]),
-		"name":         llx.StringData(row["name"]),
-		"group":        llx.StringData(row["group"]),
-		"address":      llx.StringData(row["address"]),
-		"lastLoggedIn": llx.StringData(row["last-logged-in"]),
-		"disabled":     boolField(row, "disabled"),
-		"comment":      llx.StringData(row["comment"]),
-	})
+	res, err := CreateResource(runtime, "mikrotik.user", userArgs(row))
 	if err != nil {
 		return nil, err
 	}

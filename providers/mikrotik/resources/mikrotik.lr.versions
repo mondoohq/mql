@@ -745,6 +745,8 @@ mikrotik.user.address 13.0.0
 mikrotik.user.comment 13.0.0
 mikrotik.user.disabled 13.0.0
 mikrotik.user.group 13.0.0
+mikrotik.user.inactivityPolicy 14.1.1
+mikrotik.user.inactivityTimeout 14.1.1
 mikrotik.user.lastLoggedIn 13.0.0
 mikrotik.user.name 13.0.0
 mikrotik.user.settings 14.1.1

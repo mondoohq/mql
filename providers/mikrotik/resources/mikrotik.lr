@@ -889,8 +889,9 @@ mikrotik.ip.neighbor @defaults("identity address macAddress") {
 // accounts exist, which are disabled, and where each may log in from is
 // central to hardening the device. The `name` field selects the user and
 // exposes the address range the user may log in from, the last login time,
-// and whether the account is disabled. The `userGroup` field points to the
-// permission group whose policies govern what the user may do.
+// whether the account is disabled, and what happens to an idle session. The
+// `userGroup` field points to the permission group whose policies govern what
+// the user may do.
 mikrotik.user @defaults("name group disabled") {
   // User name
   name string
@@ -904,6 +905,19 @@ mikrotik.user @defaults("name group disabled") {
   disabled bool
   // Optional comment attached to the user
   comment string
+  // What happens to the user's idle management session
+  //
+  // One of none, logout, or lockscreen. With none, the default, an idle
+  // session stays open and usable indefinitely, so a terminal or Winbox
+  // window left unattended keeps full access. logout closes the session
+  // after inactivityTimeout, and lockscreen locks it until the password is
+  // entered again.
+  inactivityPolicy string
+  // Idle time after which inactivityPolicy applies
+  //
+  // Formatted as a RouterOS duration, for example 10m, the default. Applies
+  // only when inactivityPolicy is logout or lockscreen.
+  inactivityTimeout string
   // Permission group the user belongs to
   userGroup() mikrotik.userGroup
 }
