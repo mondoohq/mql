@@ -6687,6 +6687,7 @@ azure.subscription.serviceBusService.namespace.disableLocalAuth 13.3.3
 azure.subscription.serviceBusService.namespace.id 13.3.3
 azure.subscription.serviceBusService.namespace.location 13.3.3
 azure.subscription.serviceBusService.namespace.metricId 13.35.1
+azure.subscription.serviceBusService.namespace.minimumTlsVersion 14.8.1
 azure.subscription.serviceBusService.namespace.name 13.3.3
 azure.subscription.serviceBusService.namespace.networkRules 13.12.2
 azure.subscription.serviceBusService.namespace.networkRules.defaultAction 13.12.2

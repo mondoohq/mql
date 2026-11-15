@@ -16467,6 +16467,8 @@ azure.subscription.serviceBusService.namespace @defaults("id name location") {
   serviceBusEndpoint string
   // Whether local (SAS key) authentication is disabled
   disableLocalAuth bool
+  // Minimum TLS version the namespace accepts from clients (1.0, 1.1, 1.2, or 1.3)
+  minimumTlsVersion string
   // Whether the namespace is zone-redundant
   zoneRedundant bool
   // Provisioning state
