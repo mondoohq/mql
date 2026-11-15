@@ -56,6 +56,13 @@ func TestFlattenAuthenticationType(t *testing.T) {
 			want: "CUSTOM_AUTHENTICATION",
 		},
 		{
+			name: "dynamic authentication maps to DYNAMIC_AUTHENTICATION",
+			rp: &apigateway.ApiSpecificationRequestPolicies{
+				DynamicAuthentication: &apigateway.DynamicAuthenticationPolicy{},
+			},
+			want: "DYNAMIC_AUTHENTICATION",
+		},
+		{
 			name: "unknown SDK type maps to UNKNOWN",
 			rp: &apigateway.ApiSpecificationRequestPolicies{
 				Authentication: unknownAuthPolicy{},
@@ -96,6 +103,37 @@ func TestFlattenIsAnonymousAccessAllowed(t *testing.T) {
 				Authentication: apigateway.JwtAuthenticationPolicy{IsAnonymousAccessAllowed: &no},
 			},
 			want: false,
+		},
+		{
+			name: "dynamic authentication with every server closed",
+			rp: &apigateway.ApiSpecificationRequestPolicies{
+				DynamicAuthentication: &apigateway.DynamicAuthenticationPolicy{
+					AuthenticationServers: []apigateway.AuthenticationServerPolicy{
+						{AuthenticationServerDetail: apigateway.JwtAuthenticationPolicy{IsAnonymousAccessAllowed: &no}},
+						{AuthenticationServerDetail: apigateway.CustomAuthenticationPolicy{}},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "dynamic authentication with one server open",
+			rp: &apigateway.ApiSpecificationRequestPolicies{
+				DynamicAuthentication: &apigateway.DynamicAuthenticationPolicy{
+					AuthenticationServers: []apigateway.AuthenticationServerPolicy{
+						{AuthenticationServerDetail: apigateway.JwtAuthenticationPolicy{IsAnonymousAccessAllowed: &no}},
+						{AuthenticationServerDetail: apigateway.TokenAuthenticationPolicy{IsAnonymousAccessAllowed: &yes}},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "dynamic authentication with no servers",
+			rp: &apigateway.ApiSpecificationRequestPolicies{
+				DynamicAuthentication: &apigateway.DynamicAuthenticationPolicy{},
+			},
+			want: true,
 		},
 		{
 			name: "JWT with unset anonymous flag",
