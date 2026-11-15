@@ -107216,7 +107216,7 @@ func (c *mqlGcpProjectContainerAnalysisServiceNote) GetUpdated() *plugin.TValue[
 type mqlGcpProjectCloudBuildService struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlGcpProjectCloudBuildServiceInternal it will be used here
+	mqlGcpProjectCloudBuildServiceInternal
 	ProjectId   plugin.TValue[string]
 	Triggers    plugin.TValue[[]any]
 	WorkerPools plugin.TValue[[]any]

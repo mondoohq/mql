@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	cloudbuild "cloud.google.com/go/cloudbuild/apiv1/v2"
@@ -16,11 +17,85 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/gcp/connection"
 	"go.mondoo.com/mql/types"
+	"golang.org/x/sync/errgroup"
+	cloudbuildrest "google.golang.org/api/cloudbuild/v2"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
+
+type mqlGcpProjectCloudBuildServiceInternal struct {
+	locationsLock sync.Mutex
+	locations     []string
+}
+
+// cloudBuildLocations returns the locations Cloud Build offers to the
+// project, the global location included. The v1 API has no locations
+// endpoint; the v2 one lists the same set.
+func (g *mqlGcpProjectCloudBuildService) cloudBuildLocations(ctx context.Context) ([]string, error) {
+	g.locationsLock.Lock()
+	defer g.locationsLock.Unlock()
+	if g.locations != nil {
+		return g.locations, nil
+	}
+
+	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
+	client, err := conn.Client(cloudbuildrest.CloudPlatformScope)
+	if err != nil {
+		return nil, err
+	}
+	svc, err := cloudbuildrest.NewService(ctx, option.WithHTTPClient(client))
+	if err != nil {
+		return nil, err
+	}
+
+	locations := []string{}
+	err = svc.Projects.Locations.List(fmt.Sprintf("projects/%s", g.ProjectId.Data)).PageSize(100).Pages(ctx, func(page *cloudbuildrest.ListLocationsResponse) error {
+		for _, l := range page.Locations {
+			locations = append(locations, l.LocationId)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	g.locations = locations
+	return locations, nil
+}
+
+// listCloudBuildPerLocation runs list in every location and returns the
+// results in location order. A location that answers with a "does not apply
+// here" error (InvalidArgument for worker pools in the global location,
+// PermissionDenied, NotFound) contributes nothing; any other error fails the
+// whole listing, so a project is never reported as having no triggers or
+// pools because a call failed.
+func listCloudBuildPerLocation[T any](ctx context.Context, locations []string, list func(context.Context, string) ([]T, error)) ([]T, error) {
+	perLocation := make([][]T, len(locations))
+	grp, grpCtx := errgroup.WithContext(ctx)
+	grp.SetLimit(10)
+	for i, location := range locations {
+		grp.Go(func() error {
+			items, err := list(grpCtx, location)
+			if err != nil {
+				if isInapplicable(err) {
+					log.Debug().Err(err).Str("location", location).Msg("cloud build: skipping location")
+					return nil
+				}
+				return err
+			}
+			perLocation[i] = items
+			return nil
+		})
+	}
+	if err := grp.Wait(); err != nil {
+		return nil, err
+	}
+
+	var res []T
+	for _, items := range perLocation {
+		res = append(res, items...)
+	}
+	return res, nil
+}
 
 type mqlGcpProjectCloudBuildServiceWorkerPoolNetworkConfigInternal struct {
 	cachePeeredNetwork string
@@ -65,24 +140,35 @@ func (g *mqlGcpProjectCloudBuildService) triggers() ([]any, error) {
 	}
 	defer client.Close()
 
-	// NOTE: The Cloud Build ListBuildTriggers API does not support the
-	// locations/- wildcard (returns InvalidArgument). This means only global
-	// triggers are returned; regional triggers require enumerating locations
-	// individually, which is not yet implemented.
-	it := client.ListBuildTriggers(ctx, &cloudbuildpb.ListBuildTriggersRequest{
-		Parent:    fmt.Sprintf("projects/%s/locations/global", projectId),
-		ProjectId: projectId,
+	locations, err := g.cloudBuildLocations(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// ListBuildTriggers rejects the locations/- wildcard with InvalidArgument,
+	// so list every location the API offers, the global one included.
+	triggers, err := listCloudBuildPerLocation(ctx, locations, func(ctx context.Context, location string) ([]*cloudbuildpb.BuildTrigger, error) {
+		var out []*cloudbuildpb.BuildTrigger
+		it := client.ListBuildTriggers(ctx, &cloudbuildpb.ListBuildTriggersRequest{
+			Parent:    fmt.Sprintf("projects/%s/locations/%s", projectId, location),
+			ProjectId: projectId,
+		})
+		for {
+			trigger, err := it.Next()
+			if err == iterator.Done {
+				return out, nil
+			}
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, trigger)
+		}
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	var res []any
-	for {
-		trigger, err := it.Next()
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
+	for _, trigger := range triggers {
 
 		var createTime *time.Time
 		if trigger.CreateTime != nil {
@@ -130,17 +216,16 @@ func (g *mqlGcpProjectCloudBuildService) triggers() ([]any, error) {
 		}
 
 		args := map[string]*llx.RawData{
-			"projectId":      llx.StringData(projectId),
-			"name":           llx.StringData(trigger.Name),
-			"triggerId":      llx.StringData(trigger.Id),
-			"description":    llx.StringData(trigger.Description),
-			"disabled":       llx.BoolData(trigger.Disabled),
-			"tags":           llx.ArrayData(tags, types.String),
-			"filename":       llx.StringData(trigger.GetFilename()),
-			"filter":         llx.StringData(trigger.Filter),
-			"substitutions":  llx.MapData(substitutions, types.String),
-			"serviceAccount": llx.StringData(trigger.ServiceAccount),
-			"createTime":     llx.TimeDataPtr(createTime),
+			"projectId":     llx.StringData(projectId),
+			"name":          llx.StringData(trigger.Name),
+			"triggerId":     llx.StringData(trigger.Id),
+			"description":   llx.StringData(trigger.Description),
+			"disabled":      llx.BoolData(trigger.Disabled),
+			"tags":          llx.ArrayData(tags, types.String),
+			"filename":      llx.StringData(trigger.GetFilename()),
+			"filter":        llx.StringData(trigger.Filter),
+			"substitutions": llx.MapData(substitutions, types.String),
+			"createTime":    llx.TimeDataPtr(createTime),
 		}
 		if github != nil {
 			args["github"] = llx.ResourceData(github, "gcp.project.cloudBuildService.trigger.githubEventsConfig")
@@ -398,26 +483,35 @@ func (g *mqlGcpProjectCloudBuildService) workerPools() ([]any, error) {
 	}
 	defer client.Close()
 
-	it := client.ListWorkerPools(ctx, &cloudbuildpb.ListWorkerPoolsRequest{
-		Parent: fmt.Sprintf("projects/%s/locations/-", projectId),
+	locations, err := g.cloudBuildLocations(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// ListWorkerPools rejects the locations/- wildcard with InvalidArgument, so
+	// list every location. The global location has no worker pools and answers
+	// InvalidArgument as well; listCloudBuildPerLocation skips it.
+	pools, err := listCloudBuildPerLocation(ctx, locations, func(ctx context.Context, location string) ([]*cloudbuildpb.WorkerPool, error) {
+		var out []*cloudbuildpb.WorkerPool
+		it := client.ListWorkerPools(ctx, &cloudbuildpb.ListWorkerPoolsRequest{
+			Parent: fmt.Sprintf("projects/%s/locations/%s", projectId, location),
+		})
+		for {
+			wp, err := it.Next()
+			if err == iterator.Done {
+				return out, nil
+			}
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, wp)
+		}
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	var res []any
-	for {
-		wp, err := it.Next()
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			// The wildcard location "-" may not be supported; treat InvalidArgument as empty
-			if s, ok := status.FromError(err); ok && s.Code() == codes.InvalidArgument {
-				break
-			}
-			if isSkippable(err) {
-				break
-			}
-			return nil, err
-		}
+	for _, wp := range pools {
 
 		var createTime, updateTime *time.Time
 		if wp.CreateTime != nil {
