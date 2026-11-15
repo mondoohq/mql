@@ -7228,6 +7228,7 @@ azure.subscription.sqlService.server.tenantId 13.23.1
 azure.subscription.sqlService.server.type 9.0.1
 azure.subscription.sqlService.server.version 11.4.28
 azure.subscription.sqlService.server.virtualNetworkRules 9.0.1
+azure.subscription.sqlService.server.vulnerabilityAssessmentExpressEnabled 14.8.1
 azure.subscription.sqlService.server.vulnerabilityAssessmentSettings 9.0.1
 azure.subscription.sqlService.server.vulnerabilityassessmentsettings 9.0.1
 azure.subscription.sqlService.server.vulnerabilityassessmentsettings.id 9.0.1

@@ -8878,6 +8878,15 @@ private azure.subscription.sqlService.server @defaults("name location properties
   administratorLogin string
   // SQL Database server vulnerability assessment settings
   vulnerabilityAssessmentSettings() azure.subscription.sqlService.server.vulnerabilityassessmentsettings
+  // Whether vulnerability assessment express configuration is enabled
+  //
+  // Express configuration is the default vulnerability assessment mode for new
+  // servers. It runs recurring scans without a storage account and is reported
+  // separately from vulnerabilityAssessmentSettings, whose recurringScanEnabled
+  // stays false on a server that uses express configuration. True when the
+  // server's express configuration state is "Enabled", false when "Disabled",
+  // null when the server has no express configuration resource.
+  vulnerabilityAssessmentExpressEnabled() bool
   virtualNetworkRules() []azure.subscription.sqlService.virtualNetworkRule
   // Server key type for the encryption protector ("AzureKeyVault" or "ServiceManaged")
   encryptionProtectorServerKeyType() string
