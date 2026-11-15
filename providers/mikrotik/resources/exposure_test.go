@@ -200,3 +200,38 @@ func TestSocksArgsAbsentMenu(t *testing.T) {
 	assert.Nil(t, args["port"].Value)
 	assert.Nil(t, args["version"].Value)
 }
+
+func TestWebProxyArgs(t *testing.T) {
+	// RouterOS 7.25.1 default: off, listening on 8080 if turned on
+	def := webProxyArgs(liveRows(t, "ip-proxy.json")[0])
+	assert.Equal(t, "mikrotik.ip.proxy", def["__id"].Value)
+	assert.Equal(t, false, def["enabled"].Value)
+	assert.Equal(t, []any{int64(8080)}, def["ports"].Value)
+	assert.Equal(t, false, def["anonymous"].Value)
+	assert.Equal(t, "::", def["parentProxy"].Value)
+	assert.Equal(t, int64(0), def["parentProxyPort"].Value)
+	assert.Equal(t, "::", def["srcAddress"].Value)
+	assert.Equal(t, int64(600), def["maxClientConnections"].Value)
+
+	// several ports and an upstream proxy, as RouterOS 7.25.1 reports them
+	chained := webProxyArgs(map[string]string{
+		"enabled":           "true",
+		"anonymous":         "true",
+		"port":              "8080,3128",
+		"parent-proxy":      "192.0.2.10",
+		"parent-proxy-port": "3128",
+		"src-address":       "192.0.2.1",
+	})
+	assert.Equal(t, true, chained["enabled"].Value)
+	assert.Equal(t, true, chained["anonymous"].Value)
+	assert.Equal(t, []any{int64(8080), int64(3128)}, chained["ports"].Value)
+	assert.Equal(t, "192.0.2.10", chained["parentProxy"].Value)
+	assert.Equal(t, int64(3128), chained["parentProxyPort"].Value)
+}
+
+func TestWebProxyArgsAbsentMenu(t *testing.T) {
+	args := webProxyArgs(map[string]string{})
+	assert.Nil(t, args["enabled"].Value)
+	assert.Nil(t, args["ports"].Value)
+	assert.Nil(t, args["anonymous"].Value)
+}

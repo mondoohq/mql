@@ -142,6 +142,8 @@ mikrotik @root {
   cloud() mikrotik.ip.cloud
   // SOCKS proxy server configuration
   socks() mikrotik.ip.socks
+  // Web proxy server configuration
+  webProxy() mikrotik.ip.proxy
   // RoMON layer 2 management configuration
   romon() mikrotik.tool.romon
   // Bandwidth test server configuration
@@ -2256,6 +2258,45 @@ mikrotik.ip.socks @defaults("enabled version authMethod port") {
   //
   // Formatted as a RouterOS duration, for example 2m.
   connectionIdleTimeout string
+}
+
+// MikroTik web proxy server
+//
+// Web proxy settings read from `/ip/proxy`. An enabled web proxy fetches HTTP
+// content on behalf of its clients, so any client that can reach one of
+// `ports` makes requests that appear to come from the device. Unless access
+// rules or firewall rules restrict who may use it, an enabled proxy reachable
+// from the internet is an open proxy that others can use to reach internal
+// hosts or to relay abuse. `parentProxy` names an upstream proxy all requests
+// are forwarded through.
+mikrotik.ip.proxy @defaults("enabled ports anonymous") {
+  // Whether the web proxy accepts connections
+  //
+  // False by default on RouterOS.
+  enabled bool
+  // TCP ports the web proxy listens on
+  //
+  // 8080 by default.
+  ports []int
+  // Whether the proxy hides the client's address from the servers it contacts
+  //
+  // When false, the default, forwarded requests carry the client's address in
+  // the X-Forwarded-For header.
+  anonymous bool
+  // Upstream proxy requests are forwarded through
+  //
+  // `::`, the default, means none.
+  parentProxy string
+  // Port of the upstream proxy
+  //
+  // 0 when no upstream proxy is set.
+  parentProxyPort int
+  // Source address the proxy uses for outgoing connections
+  //
+  // `::`, the default, lets the device choose.
+  srcAddress string
+  // Maximum number of concurrent client connections
+  maxClientConnections int
 }
 
 // MikroTik RoMON configuration

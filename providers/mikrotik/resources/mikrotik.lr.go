@@ -68,6 +68,7 @@ const (
 	ResourceMikrotikToolMacServer                string = "mikrotik.tool.macServer"
 	ResourceMikrotikIpCloud                      string = "mikrotik.ip.cloud"
 	ResourceMikrotikIpSocks                      string = "mikrotik.ip.socks"
+	ResourceMikrotikIpProxy                      string = "mikrotik.ip.proxy"
 	ResourceMikrotikToolRomon                    string = "mikrotik.tool.romon"
 	ResourceMikrotikToolBandwidthServer          string = "mikrotik.tool.bandwidthServer"
 	ResourceMikrotikContainer                    string = "mikrotik.container"
@@ -288,6 +289,10 @@ func init() {
 		"mikrotik.ip.socks": {
 			Init:   initMikrotikIpSocks,
 			Create: createMikrotikIpSocks,
+		},
+		"mikrotik.ip.proxy": {
+			Init:   initMikrotikIpProxy,
+			Create: createMikrotikIpProxy,
 		},
 		"mikrotik.tool.romon": {
 			Init:   initMikrotikToolRomon,
@@ -543,6 +548,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"mikrotik.socks": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotik).GetSocks()).ToDataRes(types.Resource("mikrotik.ip.socks"))
+	},
+	"mikrotik.webProxy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotik).GetWebProxy()).ToDataRes(types.Resource("mikrotik.ip.proxy"))
 	},
 	"mikrotik.romon": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotik).GetRomon()).ToDataRes(types.Resource("mikrotik.tool.romon"))
@@ -2407,6 +2415,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mikrotik.ip.socks.connectionIdleTimeout": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikIpSocks).GetConnectionIdleTimeout()).ToDataRes(types.String)
 	},
+	"mikrotik.ip.proxy.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikIpProxy).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"mikrotik.ip.proxy.ports": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikIpProxy).GetPorts()).ToDataRes(types.Array(types.Int))
+	},
+	"mikrotik.ip.proxy.anonymous": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikIpProxy).GetAnonymous()).ToDataRes(types.Bool)
+	},
+	"mikrotik.ip.proxy.parentProxy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikIpProxy).GetParentProxy()).ToDataRes(types.String)
+	},
+	"mikrotik.ip.proxy.parentProxyPort": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikIpProxy).GetParentProxyPort()).ToDataRes(types.Int)
+	},
+	"mikrotik.ip.proxy.srcAddress": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikIpProxy).GetSrcAddress()).ToDataRes(types.String)
+	},
+	"mikrotik.ip.proxy.maxClientConnections": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikIpProxy).GetMaxClientConnections()).ToDataRes(types.Int)
+	},
 	"mikrotik.tool.romon.enabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikToolRomon).GetEnabled()).ToDataRes(types.Bool)
 	},
@@ -2788,6 +2817,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mikrotik.socks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMikrotik).Socks, ok = plugin.RawToTValue[*mqlMikrotikIpSocks](v.Value, v.Error)
+		return
+	},
+	"mikrotik.webProxy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotik).WebProxy, ok = plugin.RawToTValue[*mqlMikrotikIpProxy](v.Value, v.Error)
 		return
 	},
 	"mikrotik.romon": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -5478,6 +5511,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMikrotikIpSocks).ConnectionIdleTimeout, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"mikrotik.ip.proxy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikIpProxy).__id, ok = v.Value.(string)
+		return
+	},
+	"mikrotik.ip.proxy.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikIpProxy).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"mikrotik.ip.proxy.ports": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikIpProxy).Ports, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"mikrotik.ip.proxy.anonymous": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikIpProxy).Anonymous, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"mikrotik.ip.proxy.parentProxy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikIpProxy).ParentProxy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mikrotik.ip.proxy.parentProxyPort": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikIpProxy).ParentProxyPort, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"mikrotik.ip.proxy.srcAddress": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikIpProxy).SrcAddress, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mikrotik.ip.proxy.maxClientConnections": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikIpProxy).MaxClientConnections, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
 	"mikrotik.tool.romon.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMikrotikToolRomon).__id, ok = v.Value.(string)
 		return
@@ -5799,6 +5864,7 @@ type mqlMikrotik struct {
 	MacServer            plugin.TValue[*mqlMikrotikToolMacServer]
 	Cloud                plugin.TValue[*mqlMikrotikIpCloud]
 	Socks                plugin.TValue[*mqlMikrotikIpSocks]
+	WebProxy             plugin.TValue[*mqlMikrotikIpProxy]
 	Romon                plugin.TValue[*mqlMikrotikToolRomon]
 	BandwidthServer      plugin.TValue[*mqlMikrotikToolBandwidthServer]
 	Containers           plugin.TValue[[]any]
@@ -6674,6 +6740,22 @@ func (c *mqlMikrotik) GetSocks() *plugin.TValue[*mqlMikrotikIpSocks] {
 		}
 
 		return c.socks()
+	})
+}
+
+func (c *mqlMikrotik) GetWebProxy() *plugin.TValue[*mqlMikrotikIpProxy] {
+	return plugin.GetOrCompute[*mqlMikrotikIpProxy](&c.WebProxy, func() (*mqlMikrotikIpProxy, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mikrotik", c.__id, "webProxy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMikrotikIpProxy), nil
+			}
+		}
+
+		return c.webProxy()
 	})
 }
 
@@ -12098,6 +12180,80 @@ func (c *mqlMikrotikIpSocks) GetMaxConnections() *plugin.TValue[int64] {
 
 func (c *mqlMikrotikIpSocks) GetConnectionIdleTimeout() *plugin.TValue[string] {
 	return &c.ConnectionIdleTimeout
+}
+
+// mqlMikrotikIpProxy for the mikrotik.ip.proxy resource
+type mqlMikrotikIpProxy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMikrotikIpProxyInternal it will be used here
+	Enabled              plugin.TValue[bool]
+	Ports                plugin.TValue[[]any]
+	Anonymous            plugin.TValue[bool]
+	ParentProxy          plugin.TValue[string]
+	ParentProxyPort      plugin.TValue[int64]
+	SrcAddress           plugin.TValue[string]
+	MaxClientConnections plugin.TValue[int64]
+}
+
+// createMikrotikIpProxy creates a new instance of this resource
+func createMikrotikIpProxy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMikrotikIpProxy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("mikrotik.ip.proxy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMikrotikIpProxy) MqlName() string {
+	return "mikrotik.ip.proxy"
+}
+
+func (c *mqlMikrotikIpProxy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMikrotikIpProxy) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlMikrotikIpProxy) GetPorts() *plugin.TValue[[]any] {
+	return &c.Ports
+}
+
+func (c *mqlMikrotikIpProxy) GetAnonymous() *plugin.TValue[bool] {
+	return &c.Anonymous
+}
+
+func (c *mqlMikrotikIpProxy) GetParentProxy() *plugin.TValue[string] {
+	return &c.ParentProxy
+}
+
+func (c *mqlMikrotikIpProxy) GetParentProxyPort() *plugin.TValue[int64] {
+	return &c.ParentProxyPort
+}
+
+func (c *mqlMikrotikIpProxy) GetSrcAddress() *plugin.TValue[string] {
+	return &c.SrcAddress
+}
+
+func (c *mqlMikrotikIpProxy) GetMaxClientConnections() *plugin.TValue[int64] {
+	return &c.MaxClientConnections
 }
 
 // mqlMikrotikToolRomon for the mikrotik.tool.romon resource

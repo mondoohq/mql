@@ -95,6 +95,26 @@ func listField(row map[string]string, key string) *llx.RawData {
 	return llx.ArrayData(splitList(v), types.String)
 }
 
+// intListField splits a RouterOS comma-separated numeric attribute, such as a
+// list of ports, into a list of integers, or returns null when the device did
+// not report the attribute. Entries that are not numbers are dropped rather
+// than read as 0, which would be a port of its own.
+func intListField(row map[string]string, key string) *llx.RawData {
+	v, ok := row[key]
+	if !ok {
+		return llx.NilData
+	}
+	out := []any{}
+	for _, p := range splitList(v) {
+		n, err := strconv.ParseInt(p.(string), 10, 64)
+		if err != nil {
+			continue
+		}
+		out = append(out, n)
+	}
+	return llx.ArrayData(out, types.Int)
+}
+
 // presenceField reports whether the device holds a value for a secret
 // attribute (an IPsec pre-shared key, a RADIUS shared secret, a private key)
 // without reading the secret itself into the result. It is null when the menu

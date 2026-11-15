@@ -291,3 +291,35 @@ func (r *mqlMikrotik) socks() (*mqlMikrotikIpSocks, error) {
 func initMikrotikIpSocks(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	return singletonInit(runtime, "/ip/socks", args, socksArgs)
 }
+
+// --- ip.proxy ---
+
+func webProxyArgs(row map[string]string) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":                 llx.StringData("mikrotik.ip.proxy"),
+		"enabled":              boolField(row, "enabled"),
+		"ports":                intListField(row, "port"),
+		"anonymous":            boolField(row, "anonymous"),
+		"parentProxy":          llx.StringData(row["parent-proxy"]),
+		"parentProxyPort":      intField(row, "parent-proxy-port"),
+		"srcAddress":           llx.StringData(row["src-address"]),
+		"maxClientConnections": intField(row, "max-client-connections"),
+	}
+}
+
+func (r *mqlMikrotik) webProxy() (*mqlMikrotikIpProxy, error) {
+	res, ok, err := singletonAccessor[*mqlMikrotikIpProxy](
+		r.MqlRuntime, "/ip/proxy", "mikrotik.ip.proxy", webProxyArgs)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		r.WebProxy.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return res, nil
+}
+
+func initMikrotikIpProxy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	return singletonInit(runtime, "/ip/proxy", args, webProxyArgs)
+}
