@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/rs/zerolog/log"
 )
 
 // procSelfFiles are read together, by one reader, so the identity in
@@ -102,6 +104,8 @@ func procVisibility(procSelf string) error {
 	}
 
 	if euid < 0 || fsgid < 0 || !haveCaps {
+		log.Debug().Str("hidepid", mode).Int64("euid", euid).Int64("fsgid", fsgid).Bool("capEff", haveCaps).
+			Msg("processes> /proc is mounted with hidepid but /proc/self/status has no readable Uid, Gid or CapEff, assuming every process is visible")
 		return nil
 	}
 	if capEff&(1<<capSysPtrace) != 0 {
