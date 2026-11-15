@@ -9219,7 +9219,14 @@ private oci.database.autonomousDatabase @defaults("name") {
   // The standby's own access control list. When it diverges from
   // whitelistedIps the standby may be reachable from networks the primary
   // blocks, so compare the two when auditing disaster-recovery exposure.
+  // Not enforced while arePrimaryWhitelistedIpsUsed is true.
   standbyWhitelistedIps []string
+  // Whether the Data Guard standby enforces the primary's access control list
+  //
+  // When true the standby admits the sources in whitelistedIps and ignores
+  // standbyWhitelistedIps; when false it enforces standbyWhitelistedIps.
+  // Null when OCI reports neither, as for a database without a standby.
+  arePrimaryWhitelistedIpsUsed bool
   // Whether auto-scaling is enabled
   isAutoScalingEnabled bool
   // Whether local Data Guard is enabled

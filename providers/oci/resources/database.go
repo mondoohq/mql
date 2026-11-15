@@ -314,6 +314,7 @@ func (o *mqlOciDatabase) autonomousDatabases() ([]any, error) {
 					"isAccessControlEnabled":               llx.BoolDataPtr(a.IsAccessControlEnabled),
 					"whitelistedIps":                       llx.ArrayData(convert.SliceAnyToInterface(a.WhitelistedIps), types.String),
 					"standbyWhitelistedIps":                llx.ArrayData(convert.SliceAnyToInterface(a.StandbyWhitelistedIps), types.String),
+					"arePrimaryWhitelistedIpsUsed":         llx.BoolDataPtr(a.ArePrimaryWhitelistedIpsUsed),
 					"isAutoScalingEnabled":                 llx.BoolDataPtr(a.IsAutoScalingEnabled),
 					"isLocalDataGuardEnabled":              llx.BoolDataPtr(a.IsLocalDataGuardEnabled),
 					"isRemoteDataGuardEnabled":             llx.BoolDataPtr(a.IsRemoteDataGuardEnabled),

@@ -1560,6 +1560,7 @@ oci.dataSafe.userAssessment.type 13.5.5
 oci.dataSafe.userAssessments 13.5.5
 oci.database 13.1.1
 oci.database.autonomousDatabase 13.1.1
+oci.database.autonomousDatabase.arePrimaryWhitelistedIpsUsed 14.5.2
 oci.database.autonomousDatabase.backupRetentionPeriodInDays 13.10.1
 oci.database.autonomousDatabase.backups 13.4.1
 oci.database.autonomousDatabase.compartment 13.6.2
