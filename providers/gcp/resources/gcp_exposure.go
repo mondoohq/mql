@@ -441,6 +441,7 @@ func coveredSourceFamilies(sourceRanges []any) (v4 bool, v6 bool) {
 			}
 			continue
 		}
+		// prefixSpan masks host bits itself.
 		if span, ok := prefixSpan(p); ok {
 			spans = append(spans, span)
 		}
