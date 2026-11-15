@@ -183,6 +183,9 @@ func TestPublicAccessIsUnknown(t *testing.T) {
 }
 
 func TestCidrsAdmitInternet(t *testing.T) {
+	// All cases are synthetic CIDR arithmetic on documentation-range addresses
+	// (RFC 5737, RFC 3849), not data from a live cluster. The empty-list case
+	// follows EKS's documented default of publicAccessCidrs = 0.0.0.0/0.
 	tests := []struct {
 		name  string
 		cidrs []any
@@ -232,6 +235,9 @@ func eksClusterForExposure(runtime *plugin.Runtime, publicAccess *plugin.TValue[
 // publicAccessCidrs and not the cluster security groups, which apply only to
 // the private endpoint.
 func TestEksClusterExposure(t *testing.T) {
+	// All cases are synthetic combinations of endpoint access, public access
+	// CIDRs and security group state, using documentation-range addresses;
+	// none is captured from a live cluster.
 	tests := []struct {
 		name                  string
 		publicAccess          bool
