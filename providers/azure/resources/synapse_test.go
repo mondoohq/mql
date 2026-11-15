@@ -15,9 +15,10 @@ func TestStorageAccountNameFromURL(t *testing.T) {
 		url  string
 		want string
 	}{
-		// Measured: defaultDataLakeStorage of a workspace created with
-		// `az synapse workspace create`, 2026-11-14. resourceId was null.
-		{"data lake endpoint", "https://mavdatasyncracig.dfs.core.windows.net", "mavdatasyncracig"},
+		// URL shape measured from defaultDataLakeStorage of a workspace created
+		// with `az synapse workspace create`, 2026-11-14 (resourceId was null);
+		// the account name is a placeholder.
+		{"data lake endpoint", "https://synapsedemo01.dfs.core.windows.net", "synapsedemo01"},
 		// Synthesized: other endpoint shapes the same field can carry.
 		{"trailing slash", "https://acct01.dfs.core.windows.net/", "acct01"},
 		{"blob endpoint", "https://acct01.blob.core.windows.net", "acct01"},
