@@ -1,0 +1,7 @@
+[
+ {
+  "allow-disable-external-interface": "false",
+  "enabled": "false",
+  "show-dummy-rule": "true"
+ }
+]

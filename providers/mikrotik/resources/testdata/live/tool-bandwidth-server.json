@@ -1,0 +1,10 @@
+[
+ {
+  "allocate-udp-ports-from": "2000",
+  "allowed-addresses4": "",
+  "allowed-addresses6": "",
+  "authenticate": "true",
+  "enabled": "true",
+  "max-sessions": "100"
+ }
+]

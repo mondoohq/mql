@@ -88,6 +88,14 @@ func TestLiveRowsCoverEverySchemaField(t *testing.T) {
 		{"interface-ovpn-server-server-7.25.json", "mikrotik.interface.ovpnServer", ovpnServerArgs},
 		{"system-script.json", "mikrotik.system.script", scriptArgs},
 		{"system-logging.json", "mikrotik.system.logging.rule", loggingRuleArgs},
+		{"user-settings.json", "mikrotik.user.settings", userSettingsArgs},
+		{"user.json", "mikrotik.user", userArgs},
+		{"system-logging-action-tls-7.25.json", "mikrotik.system.logging.action", loggingActionArgs},
+		{"tool-bandwidth-server.json", "mikrotik.tool.bandwidthServer", bandwidthServerArgs},
+		{"ip-socks.json", "mikrotik.ip.socks", socksArgs},
+		{"ip-proxy.json", "mikrotik.ip.proxy", webProxyArgs},
+		{"ip-upnp.json", "mikrotik.ip.upnp", upnpArgs},
+		{"system-package-update-7.25.json", "mikrotik.system.update", updateArgs},
 	} {
 		t.Run(tc.fixture, func(t *testing.T) {
 			rows := liveRows(t, tc.fixture)
@@ -126,6 +134,17 @@ func TestLiveRowsDoNotPanic(t *testing.T) {
 		{"interface-ovpn-server-server-7.25.json", ovpnServerArgs},
 		{"system-script.json", scriptArgs},
 		{"system-logging.json", loggingRuleArgs},
+		{"user-settings.json", userSettingsArgs},
+		{"user.json", userArgs},
+		{"system-logging-action.json", loggingActionArgs},
+		{"system-logging-action-tls-7.25.json", loggingActionArgs},
+		{"tool-bandwidth-server.json", bandwidthServerArgs},
+		{"ip-socks.json", socksArgs},
+		{"ip-proxy.json", webProxyArgs},
+		{"ip-upnp.json", upnpArgs},
+		{"system-package-update.json", updateArgs},
+		{"system-package-update-7.25.json", updateArgs},
+		{"system-package-update-checked-7.25.json", updateArgs},
 	} {
 		t.Run(tc.fixture, func(t *testing.T) {
 			for _, row := range liveRows(t, tc.fixture) {

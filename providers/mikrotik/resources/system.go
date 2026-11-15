@@ -191,9 +191,10 @@ func updateArgs(row map[string]string) map[string]*llx.RawData {
 		"__id":             llx.StringData("mikrotik.system.update"),
 		"channel":          llx.StringData(row["channel"]),
 		"installedVersion": llx.StringData(row["installed-version"]),
-		"latestVersion":    llx.StringData(row["latest-version"]),
+		"latestVersion":    stringField(row, "latest-version"),
 		"updateAvailable":  llx.BoolDataPtr(updateAvailable(row["installed-version"], row["latest-version"])),
-		"status":           llx.StringData(row["status"]),
+		"status":           stringField(row, "status"),
+		"checked":          llx.BoolData(strings.TrimSpace(row["latest-version"]) != ""),
 	}
 }
 

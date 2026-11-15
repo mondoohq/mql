@@ -171,6 +171,45 @@ func TestUpdateArgsNeverChecked(t *testing.T) {
 		"installed-version": "7.16.2",
 	})
 
-	assert.Equal(t, "", args["latestVersion"].Value)
+	assert.Nil(t, args["latestVersion"].Value)
 	assert.Nil(t, args["updateAvailable"].Value)
+	assert.Nil(t, args["status"].Value)
+	assert.Equal(t, false, args["checked"].Value)
+}
+
+func TestUpdateArgsAfterBoot(t *testing.T) {
+	// RouterOS 7.25.1 right after boot: the device has not asked the update
+	// server, and reading the menu does not make it ask
+	args := updateArgs(liveRows(t, "system-package-update-7.25.json")[0])
+	assert.Equal(t, "stable", args["channel"].Value)
+	assert.Equal(t, "7.25.1", args["installedVersion"].Value)
+	assert.Nil(t, args["latestVersion"].Value)
+	assert.Nil(t, args["updateAvailable"].Value)
+	assert.Nil(t, args["status"].Value)
+	assert.Equal(t, false, args["checked"].Value)
+}
+
+func TestUpdateArgsChecked(t *testing.T) {
+	rows := liveRows(t, "system-package-update-checked-7.25.json")
+	require.Len(t, rows, 3)
+
+	current := updateArgs(rows[0])
+	assert.Equal(t, "7.25.1", current["latestVersion"].Value)
+	assert.Equal(t, "System is already up to date", current["status"].Value)
+	assert.Equal(t, false, current["updateAvailable"].Value)
+	assert.Equal(t, true, current["checked"].Value)
+
+	behind := updateArgs(rows[1])
+	assert.Equal(t, "development", behind["channel"].Value)
+	assert.Equal(t, "7.26beta5", behind["latestVersion"].Value)
+	assert.Equal(t, "New version is available", behind["status"].Value)
+	assert.Equal(t, true, behind["updateAvailable"].Value)
+	assert.Equal(t, true, behind["checked"].Value)
+
+	// a check that could not reach the update server leaves no answer
+	failed := updateArgs(rows[2])
+	assert.Nil(t, failed["latestVersion"].Value)
+	assert.Contains(t, failed["status"].Value, "ERROR:")
+	assert.Nil(t, failed["updateAvailable"].Value)
+	assert.Equal(t, false, failed["checked"].Value)
 }
