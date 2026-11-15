@@ -139,3 +139,35 @@ func TestRomonArgsAbsentMenu(t *testing.T) {
 	assert.Nil(t, args["enabled"].Value)
 	assert.Nil(t, args["hasSecrets"].Value)
 }
+
+func TestBandwidthServerArgs(t *testing.T) {
+	// RouterOS 7.25.1 default: enabled, open to every address
+	def := bandwidthServerArgs(liveRows(t, "tool-bandwidth-server.json")[0])
+	assert.Equal(t, "mikrotik.tool.bandwidthServer", def["__id"].Value)
+	assert.Equal(t, true, def["enabled"].Value)
+	assert.Equal(t, true, def["authenticate"].Value)
+	// an empty allow-list is an empty list, not null: the device reported it
+	assert.Equal(t, []any{}, def["allowedAddresses4"].Value)
+	assert.Equal(t, []any{}, def["allowedAddresses6"].Value)
+	assert.Equal(t, int64(100), def["maxSessions"].Value)
+	assert.Equal(t, int64(2000), def["allocateUdpPortsFrom"].Value)
+
+	restricted := bandwidthServerArgs(map[string]string{
+		"enabled":            "false",
+		"authenticate":       "false",
+		"allowed-addresses4": "192.0.2.0/24,198.51.100.7/32",
+		"allowed-addresses6": "2001:db8::/32",
+	})
+	assert.Equal(t, false, restricted["enabled"].Value)
+	assert.Equal(t, false, restricted["authenticate"].Value)
+	assert.Equal(t, []any{"192.0.2.0/24", "198.51.100.7/32"}, restricted["allowedAddresses4"].Value)
+	assert.Equal(t, []any{"2001:db8::/32"}, restricted["allowedAddresses6"].Value)
+}
+
+func TestBandwidthServerArgsAbsentMenu(t *testing.T) {
+	args := bandwidthServerArgs(map[string]string{})
+	assert.Nil(t, args["enabled"].Value)
+	assert.Nil(t, args["authenticate"].Value)
+	assert.Nil(t, args["allowedAddresses4"].Value)
+	assert.Nil(t, args["maxSessions"].Value)
+}

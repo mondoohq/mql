@@ -68,6 +68,7 @@ const (
 	ResourceMikrotikToolMacServer                string = "mikrotik.tool.macServer"
 	ResourceMikrotikIpCloud                      string = "mikrotik.ip.cloud"
 	ResourceMikrotikToolRomon                    string = "mikrotik.tool.romon"
+	ResourceMikrotikToolBandwidthServer          string = "mikrotik.tool.bandwidthServer"
 	ResourceMikrotikContainer                    string = "mikrotik.container"
 	ResourceMikrotikContainerConfig              string = "mikrotik.container.config"
 	ResourceMikrotikRadiusClient                 string = "mikrotik.radius.client"
@@ -286,6 +287,10 @@ func init() {
 		"mikrotik.tool.romon": {
 			Init:   initMikrotikToolRomon,
 			Create: createMikrotikToolRomon,
+		},
+		"mikrotik.tool.bandwidthServer": {
+			Init:   initMikrotikToolBandwidthServer,
+			Create: createMikrotikToolBandwidthServer,
 		},
 		"mikrotik.container": {
 			// to override args, implement: initMikrotikContainer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -533,6 +538,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"mikrotik.romon": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotik).GetRomon()).ToDataRes(types.Resource("mikrotik.tool.romon"))
+	},
+	"mikrotik.bandwidthServer": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotik).GetBandwidthServer()).ToDataRes(types.Resource("mikrotik.tool.bandwidthServer"))
 	},
 	"mikrotik.containers": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotik).GetContainers()).ToDataRes(types.Array(types.Resource("mikrotik.container")))
@@ -2382,6 +2390,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mikrotik.tool.romon.hasSecrets": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikToolRomon).GetHasSecrets()).ToDataRes(types.Bool)
 	},
+	"mikrotik.tool.bandwidthServer.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikToolBandwidthServer).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"mikrotik.tool.bandwidthServer.authenticate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikToolBandwidthServer).GetAuthenticate()).ToDataRes(types.Bool)
+	},
+	"mikrotik.tool.bandwidthServer.allowedAddresses4": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikToolBandwidthServer).GetAllowedAddresses4()).ToDataRes(types.Array(types.String))
+	},
+	"mikrotik.tool.bandwidthServer.allowedAddresses6": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikToolBandwidthServer).GetAllowedAddresses6()).ToDataRes(types.Array(types.String))
+	},
+	"mikrotik.tool.bandwidthServer.maxSessions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikToolBandwidthServer).GetMaxSessions()).ToDataRes(types.Int)
+	},
+	"mikrotik.tool.bandwidthServer.allocateUdpPortsFrom": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikToolBandwidthServer).GetAllocateUdpPortsFrom()).ToDataRes(types.Int)
+	},
 	"mikrotik.container.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikContainer).GetName()).ToDataRes(types.String)
 	},
@@ -2736,6 +2762,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mikrotik.romon": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMikrotik).Romon, ok = plugin.RawToTValue[*mqlMikrotikToolRomon](v.Value, v.Error)
+		return
+	},
+	"mikrotik.bandwidthServer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotik).BandwidthServer, ok = plugin.RawToTValue[*mqlMikrotikToolBandwidthServer](v.Value, v.Error)
 		return
 	},
 	"mikrotik.containers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -5406,6 +5436,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMikrotikToolRomon).HasSecrets, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"mikrotik.tool.bandwidthServer.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikToolBandwidthServer).__id, ok = v.Value.(string)
+		return
+	},
+	"mikrotik.tool.bandwidthServer.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikToolBandwidthServer).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"mikrotik.tool.bandwidthServer.authenticate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikToolBandwidthServer).Authenticate, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"mikrotik.tool.bandwidthServer.allowedAddresses4": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikToolBandwidthServer).AllowedAddresses4, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"mikrotik.tool.bandwidthServer.allowedAddresses6": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikToolBandwidthServer).AllowedAddresses6, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"mikrotik.tool.bandwidthServer.maxSessions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikToolBandwidthServer).MaxSessions, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"mikrotik.tool.bandwidthServer.allocateUdpPortsFrom": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikToolBandwidthServer).AllocateUdpPortsFrom, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
 	"mikrotik.container.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMikrotikContainer).__id, ok = v.Value.(string)
 		return
@@ -5683,6 +5741,7 @@ type mqlMikrotik struct {
 	MacServer            plugin.TValue[*mqlMikrotikToolMacServer]
 	Cloud                plugin.TValue[*mqlMikrotikIpCloud]
 	Romon                plugin.TValue[*mqlMikrotikToolRomon]
+	BandwidthServer      plugin.TValue[*mqlMikrotikToolBandwidthServer]
 	Containers           plugin.TValue[[]any]
 	ContainerConfig      plugin.TValue[*mqlMikrotikContainerConfig]
 	RadiusClients        plugin.TValue[[]any]
@@ -6556,6 +6615,22 @@ func (c *mqlMikrotik) GetRomon() *plugin.TValue[*mqlMikrotikToolRomon] {
 		}
 
 		return c.romon()
+	})
+}
+
+func (c *mqlMikrotik) GetBandwidthServer() *plugin.TValue[*mqlMikrotikToolBandwidthServer] {
+	return plugin.GetOrCompute[*mqlMikrotikToolBandwidthServer](&c.BandwidthServer, func() (*mqlMikrotikToolBandwidthServer, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mikrotik", c.__id, "bandwidthServer")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMikrotikToolBandwidthServer), nil
+			}
+		}
+
+		return c.bandwidthServer()
 	})
 }
 
@@ -11933,6 +12008,75 @@ func (c *mqlMikrotikToolRomon) GetId() *plugin.TValue[string] {
 
 func (c *mqlMikrotikToolRomon) GetHasSecrets() *plugin.TValue[bool] {
 	return &c.HasSecrets
+}
+
+// mqlMikrotikToolBandwidthServer for the mikrotik.tool.bandwidthServer resource
+type mqlMikrotikToolBandwidthServer struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMikrotikToolBandwidthServerInternal it will be used here
+	Enabled              plugin.TValue[bool]
+	Authenticate         plugin.TValue[bool]
+	AllowedAddresses4    plugin.TValue[[]any]
+	AllowedAddresses6    plugin.TValue[[]any]
+	MaxSessions          plugin.TValue[int64]
+	AllocateUdpPortsFrom plugin.TValue[int64]
+}
+
+// createMikrotikToolBandwidthServer creates a new instance of this resource
+func createMikrotikToolBandwidthServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMikrotikToolBandwidthServer{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("mikrotik.tool.bandwidthServer", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMikrotikToolBandwidthServer) MqlName() string {
+	return "mikrotik.tool.bandwidthServer"
+}
+
+func (c *mqlMikrotikToolBandwidthServer) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMikrotikToolBandwidthServer) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlMikrotikToolBandwidthServer) GetAuthenticate() *plugin.TValue[bool] {
+	return &c.Authenticate
+}
+
+func (c *mqlMikrotikToolBandwidthServer) GetAllowedAddresses4() *plugin.TValue[[]any] {
+	return &c.AllowedAddresses4
+}
+
+func (c *mqlMikrotikToolBandwidthServer) GetAllowedAddresses6() *plugin.TValue[[]any] {
+	return &c.AllowedAddresses6
+}
+
+func (c *mqlMikrotikToolBandwidthServer) GetMaxSessions() *plugin.TValue[int64] {
+	return &c.MaxSessions
+}
+
+func (c *mqlMikrotikToolBandwidthServer) GetAllocateUdpPortsFrom() *plugin.TValue[int64] {
+	return &c.AllocateUdpPortsFrom
 }
 
 // mqlMikrotikContainer for the mikrotik.container resource

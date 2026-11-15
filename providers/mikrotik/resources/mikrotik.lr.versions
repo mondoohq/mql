@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: BUSL-1.1
 
 mikrotik 13.0.0
+mikrotik.bandwidthServer 14.1.1
 mikrotik.bridges 13.0.0
 mikrotik.certificate 13.0.11
 mikrotik.certificate.akid 13.0.11
@@ -727,6 +728,13 @@ mikrotik.system.uptime 13.0.0
 mikrotik.system.version 13.0.0
 mikrotik.system.writeSectSinceReboot 13.0.0
 mikrotik.system.writeSectTotal 13.0.0
+mikrotik.tool.bandwidthServer 14.1.1
+mikrotik.tool.bandwidthServer.allocateUdpPortsFrom 14.1.1
+mikrotik.tool.bandwidthServer.allowedAddresses4 14.1.1
+mikrotik.tool.bandwidthServer.allowedAddresses6 14.1.1
+mikrotik.tool.bandwidthServer.authenticate 14.1.1
+mikrotik.tool.bandwidthServer.enabled 14.1.1
+mikrotik.tool.bandwidthServer.maxSessions 14.1.1
 mikrotik.tool.macServer 13.0.11
 mikrotik.tool.macServer.allowedInterfaceList 13.0.11
 mikrotik.tool.macServer.macTelnetOnAllInterfaces 13.0.11

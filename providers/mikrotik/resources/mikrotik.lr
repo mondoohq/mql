@@ -142,6 +142,8 @@ mikrotik @root {
   cloud() mikrotik.ip.cloud
   // RoMON layer 2 management configuration
   romon() mikrotik.tool.romon
+  // Bandwidth test server configuration
+  bandwidthServer() mikrotik.tool.bandwidthServer
   // Containers configured on the device
   containers() []mikrotik.container
   // Container subsystem configuration
@@ -2242,6 +2244,36 @@ mikrotik.tool.romon @defaults("enabled id hasSecrets") {
   // Without one, any RoMON-speaking device on the wire can join the mesh. The
   // secret itself is never read or exposed.
   hasSecrets bool
+}
+
+// MikroTik bandwidth test server
+//
+// Bandwidth test server settings read from `/tool/bandwidth-server`. The
+// server answers MikroTik bandwidth test clients by generating or absorbing
+// as much TCP or UDP traffic as the link carries, so a reachable server lets
+// a remote client saturate the device's links and CPU on demand. RouterOS
+// enables it by default. `authenticate` decides whether a client must log in
+// with a device account first, and `allowedAddresses4` and
+// `allowedAddresses6` restrict which clients may connect at all.
+mikrotik.tool.bandwidthServer @defaults("enabled authenticate maxSessions") {
+  // Whether the bandwidth test server accepts connections
+  //
+  // True by default on RouterOS.
+  enabled bool
+  // Whether a client must log in with a device account before testing
+  authenticate bool
+  // IPv4 addresses and networks allowed to connect
+  //
+  // Empty, the default, allows every IPv4 client.
+  allowedAddresses4 []string
+  // IPv6 addresses and networks allowed to connect
+  //
+  // Empty, the default, allows every IPv6 client.
+  allowedAddresses6 []string
+  // Maximum number of concurrent test sessions
+  maxSessions int
+  // First UDP port the server allocates for UDP tests
+  allocateUdpPortsFrom int
 }
 
 // MikroTik container

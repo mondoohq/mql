@@ -229,3 +229,34 @@ func (r *mqlMikrotik) romon() (*mqlMikrotikToolRomon, error) {
 func initMikrotikToolRomon(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	return singletonInit(runtime, "/tool/romon", args, romonArgs)
 }
+
+// --- tool.bandwidthServer ---
+
+func bandwidthServerArgs(row map[string]string) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":                 llx.StringData("mikrotik.tool.bandwidthServer"),
+		"enabled":              boolField(row, "enabled"),
+		"authenticate":         boolField(row, "authenticate"),
+		"allowedAddresses4":    listField(row, "allowed-addresses4"),
+		"allowedAddresses6":    listField(row, "allowed-addresses6"),
+		"maxSessions":          intField(row, "max-sessions"),
+		"allocateUdpPortsFrom": intField(row, "allocate-udp-ports-from"),
+	}
+}
+
+func (r *mqlMikrotik) bandwidthServer() (*mqlMikrotikToolBandwidthServer, error) {
+	res, ok, err := singletonAccessor[*mqlMikrotikToolBandwidthServer](
+		r.MqlRuntime, "/tool/bandwidth-server", "mikrotik.tool.bandwidthServer", bandwidthServerArgs)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		r.BandwidthServer.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return res, nil
+}
+
+func initMikrotikToolBandwidthServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	return singletonInit(runtime, "/tool/bandwidth-server", args, bandwidthServerArgs)
+}
