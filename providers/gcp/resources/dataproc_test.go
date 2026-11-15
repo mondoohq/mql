@@ -138,3 +138,36 @@ func TestDataprocResourceNameFromUri(t *testing.T) {
 		assert.Equal(t, want, dataprocResourceNameFromUri(in), "dataprocResourceNameFromUri(%q)", in)
 	}
 }
+
+func TestDataprocEffectiveSshEnabled(t *testing.T) {
+	tests := []struct {
+		name         string
+		ic           *dataproc.IdentityConfig
+		imageVersion string
+		want         bool
+		wantKnown    bool
+	}{
+		// Measured: single-node clusters created 2026-11-15; the API returned no
+		// securityConfig for the 2.2 cluster and identityConfig {enableSsh: false}
+		// for the 2.3 one created with enableSsh false.
+		{"2.2 image, no setting: enabled by default", nil, "2.2.89-debian12", true, true},
+		{"2.3 image, explicit false", &dataproc.IdentityConfig{}, "2.3.38-debian12", false, true},
+		// Synthetic: the documented defaults and the remaining shapes; no target showed these.
+		{"3.1 image, no setting: disabled by default", nil, "3.1.2-debian12", false, true},
+		{"3.0 image, no setting: enabled by default", nil, "3.0-debian12", true, true},
+		{"explicit true on a 3.1 image", &dataproc.IdentityConfig{EnableSsh: true}, "3.1.0", true, true},
+		{"user mapping without enableSsh falls back to the image default",
+			&dataproc.IdentityConfig{UserServiceAccountMapping: map[string]string{"a@example.com": "sa@example.com"}}, "2.2.10-debian12", true, true},
+		{"unparseable image version is unknown", nil, "", false, false},
+		{"custom image without a numeric version is unknown", nil, "custom", false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, known := dataprocEffectiveSshEnabled(tt.ic, tt.imageVersion)
+			assert.Equal(t, tt.wantKnown, known)
+			if known {
+				assert.Equal(t, tt.want, got)
+			}
+		})
+	}
+}
