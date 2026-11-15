@@ -680,6 +680,7 @@ gcp.project.appEngineService.firewallRules 13.19.2
 gcp.project.appEngineService.projectId 11.6.6
 gcp.project.appEngineService.service 11.6.6
 gcp.project.appEngineService.service.id 11.6.6
+gcp.project.appEngineService.service.ingressTrafficAllowed 14.9.1
 gcp.project.appEngineService.service.labels 11.6.6
 gcp.project.appEngineService.service.name 11.6.6
 gcp.project.appEngineService.service.projectId 11.6.6

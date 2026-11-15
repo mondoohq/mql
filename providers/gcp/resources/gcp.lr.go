@@ -14271,6 +14271,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.appEngineService.service.split": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectAppEngineServiceService).GetSplit()).ToDataRes(types.Dict)
 	},
+	"gcp.project.appEngineService.service.ingressTrafficAllowed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAppEngineServiceService).GetIngressTrafficAllowed()).ToDataRes(types.String)
+	},
 	"gcp.project.appEngineService.service.versions": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectAppEngineServiceService).GetVersions()).ToDataRes(types.Array(types.Resource("gcp.project.appEngineService.version")))
 	},
@@ -37539,6 +37542,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.appEngineService.service.split": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectAppEngineServiceService).Split, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.appEngineService.service.ingressTrafficAllowed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAppEngineServiceService).IngressTrafficAllowed, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"gcp.project.appEngineService.service.versions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -87507,12 +87514,13 @@ type mqlGcpProjectAppEngineServiceService struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlGcpProjectAppEngineServiceServiceInternal it will be used here
-	ProjectId plugin.TValue[string]
-	Id        plugin.TValue[string]
-	Name      plugin.TValue[string]
-	Labels    plugin.TValue[map[string]any]
-	Split     plugin.TValue[any]
-	Versions  plugin.TValue[[]any]
+	ProjectId             plugin.TValue[string]
+	Id                    plugin.TValue[string]
+	Name                  plugin.TValue[string]
+	Labels                plugin.TValue[map[string]any]
+	Split                 plugin.TValue[any]
+	IngressTrafficAllowed plugin.TValue[string]
+	Versions              plugin.TValue[[]any]
 }
 
 // createGcpProjectAppEngineServiceService creates a new instance of this resource
@@ -87570,6 +87578,10 @@ func (c *mqlGcpProjectAppEngineServiceService) GetLabels() *plugin.TValue[map[st
 
 func (c *mqlGcpProjectAppEngineServiceService) GetSplit() *plugin.TValue[any] {
 	return &c.Split
+}
+
+func (c *mqlGcpProjectAppEngineServiceService) GetIngressTrafficAllowed() *plugin.TValue[string] {
+	return &c.IngressTrafficAllowed
 }
 
 func (c *mqlGcpProjectAppEngineServiceService) GetVersions() *plugin.TValue[[]any] {
