@@ -158,7 +158,7 @@ func (g *mqlGcpProjectDataflowServiceJob) environment() (map[string]any, error) 
 		g.Environment.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
-	return convert.JsonToDict(job.Environment)
+	return convert.JsonToDict(dataflowEnvironmentSummary(job.Environment))
 }
 
 func (g *mqlGcpProjectDataflowServiceJob) pipelineDescription() (map[string]any, error) {
@@ -170,7 +170,96 @@ func (g *mqlGcpProjectDataflowServiceJob) pipelineDescription() (map[string]any,
 		g.PipelineDescription.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
-	return convert.JsonToDict(job.PipelineDescription)
+	return convert.JsonToDict(dataflowPipelineSummary(job.PipelineDescription))
+}
+
+// The job description carries the arguments the pipeline was launched with:
+// environment.sdkPipelineOptions, environment.userAgent,
+// environment.internalExperiments, worker pool metadata and pool arguments,
+// and displayData on the pipeline and on each transform. Those routinely hold
+// connection strings, passwords and tokens, so the dicts below are built from
+// an allowlist of the settings that describe how the job runs, and none of
+// those fields is read.
+
+type dataflowEnvironmentAllowlist struct {
+	ServiceAccountEmail        string                        `json:"serviceAccountEmail,omitempty"`
+	ServiceKmsKeyName          string                        `json:"serviceKmsKeyName,omitempty"`
+	WorkerRegion               string                        `json:"workerRegion,omitempty"`
+	WorkerZone                 string                        `json:"workerZone,omitempty"`
+	TempStoragePrefix          string                        `json:"tempStoragePrefix,omitempty"`
+	ShuffleMode                string                        `json:"shuffleMode,omitempty"`
+	StreamingMode              string                        `json:"streamingMode,omitempty"`
+	FlexResourceSchedulingGoal string                        `json:"flexResourceSchedulingGoal,omitempty"`
+	WorkerPools                []dataflowWorkerPoolAllowlist `json:"workerPools,omitempty"`
+}
+
+type dataflowWorkerPoolAllowlist struct {
+	Kind            string `json:"kind,omitempty"`
+	MachineType     string `json:"machineType,omitempty"`
+	NumWorkers      int64  `json:"numWorkers,omitempty"`
+	IpConfiguration string `json:"ipConfiguration,omitempty"`
+	Network         string `json:"network,omitempty"`
+	Subnetwork      string `json:"subnetwork,omitempty"`
+	Zone            string `json:"zone,omitempty"`
+	DiskSizeGb      int64  `json:"diskSizeGb,omitempty"`
+	DiskType        string `json:"diskType,omitempty"`
+}
+
+func dataflowEnvironmentSummary(env *dataflow.Environment) dataflowEnvironmentAllowlist {
+	out := dataflowEnvironmentAllowlist{
+		ServiceAccountEmail:        env.ServiceAccountEmail,
+		ServiceKmsKeyName:          env.ServiceKmsKeyName,
+		WorkerRegion:               env.WorkerRegion,
+		WorkerZone:                 env.WorkerZone,
+		TempStoragePrefix:          env.TempStoragePrefix,
+		ShuffleMode:                env.ShuffleMode,
+		StreamingMode:              env.StreamingMode,
+		FlexResourceSchedulingGoal: env.FlexResourceSchedulingGoal,
+	}
+	for _, wp := range env.WorkerPools {
+		if wp == nil {
+			continue
+		}
+		out.WorkerPools = append(out.WorkerPools, dataflowWorkerPoolAllowlist{
+			Kind:            wp.Kind,
+			MachineType:     wp.MachineType,
+			NumWorkers:      wp.NumWorkers,
+			IpConfiguration: wp.IpConfiguration,
+			Network:         wp.Network,
+			Subnetwork:      wp.Subnetwork,
+			Zone:            wp.Zone,
+			DiskSizeGb:      wp.DiskSizeGb,
+			DiskType:        wp.DiskType,
+		})
+	}
+	return out
+}
+
+type dataflowPipelineAllowlist struct {
+	StepNamesHash             string                  `json:"stepNamesHash,omitempty"`
+	OriginalPipelineTransform []dataflowStepAllowlist `json:"originalPipelineTransform,omitempty"`
+	ExecutionPipelineStage    []dataflowStepAllowlist `json:"executionPipelineStage,omitempty"`
+}
+
+type dataflowStepAllowlist struct {
+	Id   string `json:"id,omitempty"`
+	Name string `json:"name,omitempty"`
+	Kind string `json:"kind,omitempty"`
+}
+
+func dataflowPipelineSummary(pd *dataflow.PipelineDescription) dataflowPipelineAllowlist {
+	out := dataflowPipelineAllowlist{StepNamesHash: pd.StepNamesHash}
+	for _, t := range pd.OriginalPipelineTransform {
+		if t != nil {
+			out.OriginalPipelineTransform = append(out.OriginalPipelineTransform, dataflowStepAllowlist{Id: t.Id, Name: t.Name, Kind: t.Kind})
+		}
+	}
+	for _, st := range pd.ExecutionPipelineStage {
+		if st != nil {
+			out.ExecutionPipelineStage = append(out.ExecutionPipelineStage, dataflowStepAllowlist{Id: st.Id, Name: st.Name, Kind: st.Kind})
+		}
+	}
+	return out
 }
 
 func (g *mqlGcpProjectDataflowServiceJob) workerIpConfiguration() (string, error) {

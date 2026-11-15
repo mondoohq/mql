@@ -14963,13 +14963,15 @@ private gcp.project.dataflowService.job @defaults("name currentState") {
   labels() map[string]string
   // Execution environment the job runs in
   //
-  // Raw environment configuration, with keys including
-  // `serviceAccountEmail`, `serviceKmsKeyName`, `workerPools`,
-  // `workerRegion`, `workerZone`, `tempStoragePrefix`, `experiments`,
-  // `serviceOptions`, `shuffleMode`, `streamingMode`, `usePublicIps`,
-  // `sdkPipelineOptions`, and `flexResourceSchedulingGoal`. See `kmsKey`
-  // for the resolved encryption key and `workerIpConfiguration` for the
-  // resolved worker IP setting.
+  // Keys `serviceAccountEmail`, `serviceKmsKeyName`, `workerRegion`,
+  // `workerZone`, `tempStoragePrefix`, `shuffleMode`, `streamingMode`,
+  // `flexResourceSchedulingGoal`, and `workerPools` (each with `kind`,
+  // `machineType`, `numWorkers`, `ipConfiguration`, `network`, `subnetwork`,
+  // `zone`, `diskSizeGb`, `diskType`). Pipeline options, user agent,
+  // experiments and worker metadata are left out because they carry the
+  // arguments the pipeline was launched with. See `kmsKey` for the resolved
+  // encryption key and `workerIpConfiguration` for the resolved worker IP
+  // setting.
   environment() dict
   // Customer-managed Cloud KMS key protecting pipeline state and shuffle data at rest
   kmsKey() gcp.project.kmsService.keyring.cryptokey
@@ -14977,11 +14979,10 @@ private gcp.project.dataflowService.job @defaults("name currentState") {
   workerIpConfiguration() string
   // SDK pipeline description
   //
-  // Description of the compiled pipeline, with keys `displayData`
-  // (pipeline-level display data), `executionPipelineStage` (per-stage
-  // execution descriptions), `originalPipelineTransform` (per-transform
-  // descriptions and the collections between them), and `stepNamesHash`
-  // (hash of the submitted pipeline step names).
+  // Keys `executionPipelineStage` and `originalPipelineTransform` (each entry
+  // with `id`, `name` and `kind`) and `stepNamesHash` (hash of the submitted
+  // pipeline step names). Display data is left out because it carries the
+  // pipeline's launch arguments.
   pipelineDescription() dict
   // Timestamp of the current state
   currentStateTime time
