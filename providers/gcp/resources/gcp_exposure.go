@@ -5,7 +5,6 @@ package resources
 
 import (
 	"net/netip"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -13,26 +12,13 @@ import (
 	"go.mondoo.com/mql/types"
 )
 
-// openCIDRs are the source ranges that mean "the entire internet".
-var openCIDRs = map[string]struct{}{
-	"0.0.0.0/0": {},
-	"::/0":      {},
-}
-
-// isOpenCIDR reports whether a CIDR string represents the whole internet
-// (IPv4 0.0.0.0/0 or IPv6 ::/0). Surrounding whitespace is tolerated.
-func isOpenCIDR(cidr string) bool {
-	_, ok := openCIDRs[strings.TrimSpace(cidr)]
-	return ok
-}
-
 // gkeControlPlaneInternetReachable derives whether a GKE cluster's control
 // plane (Kubernetes API server) is reachable from the public internet.
 //
 // It is reachable when the public IP endpoint is enabled AND either:
 //   - master authorized networks is NOT enforced (any source IP may connect), or
-//   - the authorized-networks allowlist itself contains an open CIDR
-//     (0.0.0.0/0 or ::/0), which whitelists the entire internet.
+//   - the authorized-networks allowlist admits the internet: 0.0.0.0/0, ::/0,
+//     or ranges that together cover most of it (see internetSourceFamilies).
 //
 // When the public endpoint is disabled the control plane is private and never
 // internet-reachable, regardless of the authorized-networks configuration.
@@ -43,7 +29,12 @@ func gkeControlPlaneInternetReachable(publicEndpointEnabled, authorizedNetworksE
 	if !authorizedNetworksEnforced {
 		return true
 	}
-	return slices.ContainsFunc(authorizedCIDRs, isOpenCIDR)
+	ranges := make([]any, 0, len(authorizedCIDRs))
+	for _, c := range authorizedCIDRs {
+		ranges = append(ranges, c)
+	}
+	v4, v6 := internetSourceFamilies(ranges)
+	return v4 || v6
 }
 
 func (g *mqlGcpProjectGkeServiceCluster) controlPlaneInternetReachable() (bool, error) {
@@ -828,8 +819,8 @@ func (g *mqlGcpProjectComputeServiceInstance) exposure() (*mqlGcpProjectComputeS
 }
 
 // internetReachable reports whether the Cloud SQL instance is reachable from the
-// internet: it has a public IP and an authorized network that admits any address
-// (0.0.0.0/0). Reuses the existing publicIpEnabled and hasOpenAuthorizedNetworks
+// internet: it has a public IP and authorized networks that admit the internet
+// (see sqlAuthorizedNetworksOpen). Reuses the existing publicIpEnabled and hasOpenAuthorizedNetworks
 // signals.
 func (g *mqlGcpProjectSqlServiceInstance) internetReachable() (bool, error) {
 	public := g.GetPublicIpEnabled()

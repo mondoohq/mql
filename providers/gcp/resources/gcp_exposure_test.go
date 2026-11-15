@@ -5,25 +5,13 @@ package resources
 
 import "testing"
 
-func TestIsOpenCIDR(t *testing.T) {
-	tests := []struct {
-		cidr string
-		want bool
-	}{
-		{"0.0.0.0/0", true},
-		{"::/0", true},
-		{" 0.0.0.0/0 ", true},
-		{"10.0.0.0/8", false},
-		{"192.168.1.0/24", false},
-		{"0.0.0.0/32", false},
-		{"", false},
-		{"2001:db8::/32", false},
+// anyStrings converts a list of CIDR strings held as []any to []string.
+func anyStrings(list []any) []string {
+	out := make([]string, 0, len(list))
+	for _, v := range list {
+		out = append(out, v.(string))
 	}
-	for _, tt := range tests {
-		if got := isOpenCIDR(tt.cidr); got != tt.want {
-			t.Errorf("isOpenCIDR(%q) = %v, want %v", tt.cidr, got, tt.want)
-		}
-	}
+	return out
 }
 
 func TestGkeControlPlaneInternetReachable(t *testing.T) {
@@ -75,6 +63,41 @@ func TestGkeControlPlaneInternetReachable(t *testing.T) {
 			manEnforced:    true,
 			cidrs:          []string{"::/0"},
 			want:           true,
+		},
+		{
+			name:           "public endpoint with ipv4 halves in allowlist is reachable",
+			publicEndpoint: true,
+			manEnforced:    true,
+			cidrs:          []string{"0.0.0.0/1", "128.0.0.0/1"},
+			want:           true,
+		},
+		{
+			name:           "public endpoint with 256 /8s in allowlist is reachable",
+			publicEndpoint: true,
+			manEnforced:    true,
+			cidrs:          anyStrings(v4Slash8s(0, 255, 1)),
+			want:           true,
+		},
+		{
+			name:           "public endpoint with /9s covering 0-223 in allowlist is reachable",
+			publicEndpoint: true,
+			manEnforced:    true,
+			cidrs:          anyStrings(v4Slash9s(0, 223)),
+			want:           true,
+		},
+		{
+			name:           "public endpoint with ipv6 /12s forming a /11 is reachable",
+			publicEndpoint: true,
+			manEnforced:    true,
+			cidrs:          []string{"203.0.113.0/24", "2000::/12", "2010::/12"},
+			want:           true,
+		},
+		{
+			name:           "public endpoint with scattered /8s under half is not reachable",
+			publicEndpoint: true,
+			manEnforced:    true,
+			cidrs:          anyStrings(v4Slash8s(1, 221, 2)),
+			want:           false,
 		},
 		{
 			name:           "public endpoint with empty enforced allowlist is not reachable",

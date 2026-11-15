@@ -1219,17 +1219,26 @@ func (g *mqlGcpProjectSqlServiceInstanceSettingsIpConfiguration) hasOpenAuthoriz
 	if g.AuthorizedNetworks.Error != nil {
 		return false, g.AuthorizedNetworks.Error
 	}
-	for _, n := range g.AuthorizedNetworks.Data {
+	return sqlAuthorizedNetworksOpen(g.AuthorizedNetworks.Data), nil
+}
+
+// sqlAuthorizedNetworksOpen reports whether a Cloud SQL instance's authorized
+// networks, taken together, admit the internet: 0.0.0.0/0, ::/0, or entries
+// that together cover most of it (see internetSourceFamilies). Each entry is a
+// dict whose value is the authorized CIDR.
+func sqlAuthorizedNetworksOpen(networks []any) bool {
+	ranges := make([]any, 0, len(networks))
+	for _, n := range networks {
 		entry, ok := n.(map[string]any)
 		if !ok {
 			continue
 		}
-		value, _ := entry["value"].(string)
-		if value == "0.0.0.0/0" || value == "::/0" {
-			return true, nil
+		if value, ok := entry["value"].(string); ok {
+			ranges = append(ranges, value)
 		}
 	}
-	return false, nil
+	v4, v6 := internetSourceFamilies(ranges)
+	return v4 || v6
 }
 
 func (g *mqlGcpProjectSqlServiceInstanceSettingsIpConfigurationPscConfig) id() (string, error) {

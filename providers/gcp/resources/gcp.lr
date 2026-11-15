@@ -3966,7 +3966,7 @@ private gcp.project.sqlService.instance @defaults("name") {
   settings gcp.project.sqlService.instance.settings
   // Whether the instance is reachable on a public IP (flat hoist of settings.ipConfiguration.ipv4Enabled)
   publicIpEnabled() bool
-  // Whether the instance is reachable from the internet (a public IP and an authorized network open to 0.0.0.0/0)
+  // Whether the instance is reachable from the internet (a public IP and authorized networks that admit the internet)
   internetReachable() bool
   // Whether IAM database authentication is enabled
   //
@@ -4482,10 +4482,16 @@ private gcp.project.sqlService.instance.settings.ipConfiguration {
   //
   // Each entry is a CIDR allow-list rule: value is the authorized CIDR range,
   // name is an optional label, and expirationTime, when set, is when the rule
-  // stops applying. An entry with value 0.0.0.0/0 exposes the instance to the
-  // entire internet. See hasOpenAuthorizedNetworks for that check.
+  // stops applying. An entry with value 0.0.0.0/0, or entries that together
+  // cover most of the internet, expose the instance to it. See
+  // hasOpenAuthorizedNetworks for that check.
   authorizedNetworks []dict
-  // Whether any authorized network entry uses 0.0.0.0/0 or ::/0 (public internet)
+  // Whether the authorized networks admit the public internet
+  //
+  // True when the entries are 0.0.0.0/0 or ::/0, or together cover most of the
+  // internet: their union, limited to IPv4 outside 224.0.0.0/3 and IPv6 inside
+  // 2000::/3, contains an aligned IPv4 /7 or IPv6 /11 or covers at least half
+  // of that space.
   hasOpenAuthorizedNetworks() bool
   // Whether the instance is assigned a public IP address
   ipv4Enabled bool
@@ -5488,8 +5494,8 @@ private gcp.project.gkeService.cluster @defaults("name description location stat
   //
   // True when the control plane has a public IP endpoint enabled AND either
   // master authorized networks is not enforced (any source may reach it) or
-  // the authorized-networks allowlist contains an open CIDR (0.0.0.0/0 or
-  // ::/0). False means the API server is private or restricted to specific
+  // the authorized-networks allowlist admits the internet: 0.0.0.0/0, ::/0, or
+  // ranges that together cover most of it. False means the API server is private or restricted to specific
   // source ranges. Derived from cached cluster fields; no extra API calls.
   controlPlaneInternetReachable() bool
   // Logging components enabled on the control plane
