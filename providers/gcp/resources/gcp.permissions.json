@@ -84,6 +84,7 @@
     "cloudasset.assets.searchAllIamPolicies",
     "cloudasset.assets.searchAllResources",
     "cloudbuild.builds.list",
+    "cloudbuild.locations.list",
     "cloudbuild.workerpools.list",
     "clouddeploy.deliveryPipelines.list",
     "clouddeploy.releases.list",
@@ -837,6 +838,12 @@
       "permission": "cloudbuild.builds.list",
       "service": "cloudbuild",
       "action": "ListBuilds",
+      "source_file": "cloudbuild.go"
+    },
+    {
+      "permission": "cloudbuild.locations.list",
+      "service": "cloudbuild",
+      "action": "Locations.List",
       "source_file": "cloudbuild.go"
     },
     {

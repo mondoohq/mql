@@ -122,6 +122,7 @@ var validatedGCPPermissions = []string{
 	"cloudasset.assets.searchAllIamPolicies",
 	"cloudasset.assets.searchAllResources",
 	"cloudbuild.builds.list",
+	"cloudbuild.locations.list",
 	"cloudbuild.workerpools.list",
 	"clouddeploy.deliveryPipelines.list",
 	"clouddeploy.releases.list",
