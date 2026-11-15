@@ -5441,11 +5441,10 @@ private oci.loadBalancer.listener @defaults("name") {
   sslProtocols []string
   // SSL cipher suite name
   //
-  // Deprecated in favor of sslCipherSuite, which resolves the same name to
-  // the suite itself. Kept because it also carries the OCI-predefined suite
-  // names, which are not part of the load balancer's own collection and so
-  // do not resolve.
-  sslCipherSuiteName @maturity("deprecated") @replaced_by("oci.loadBalancer.listener.sslCipherSuite") string
+  // The only field that names an OCI-predefined suite such as
+  // oci-modern-ssl-cipher-suite-v1. Those suites are not part of the load
+  // balancer's own collection, so sslCipherSuite is null for them.
+  sslCipherSuiteName string
   // Cipher suite the listener negotiates with
   //
   // Resolves the load balancer's named cipher suite, whose ciphers list is
