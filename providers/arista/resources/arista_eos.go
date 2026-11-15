@@ -310,6 +310,23 @@ func (v *mqlAristaEosNtp) id() (string, error) {
 	return "arista.eos.ntp", nil
 }
 
+// initAristaEosNtp fills status when the resource is created on its own.
+// arista.eos.ntp is a public resource with the same name as the root field
+// that returns it, so the dotted path `arista.eos.ntp.status` builds the
+// resource directly rather than calling that field, and without this the
+// status would never be set.
+func initAristaEosNtp(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if _, ok := args["status"]; ok {
+		return args, nil, nil
+	}
+	ntp, err := aristaClient(runtime).NtpStatus()
+	if err != nil {
+		return nil, nil, err
+	}
+	args["status"] = llx.StringData(ntp.Status)
+	return args, nil, nil
+}
+
 func (a *mqlAristaEos) snmp() (*mqlAristaEosSnmpSetting, error) {
 	eos := aristaClient(a.MqlRuntime)
 

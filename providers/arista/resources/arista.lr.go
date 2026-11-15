@@ -133,7 +133,7 @@ func init() {
 			Create: createAristaEosStormControl,
 		},
 		"arista.eos.ntp": {
-			// to override args, implement: initAristaEosNtp(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initAristaEosNtp,
 			Create: createAristaEosNtp,
 		},
 		"arista.eos.ntp.server": {
