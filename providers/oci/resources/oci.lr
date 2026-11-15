@@ -9206,17 +9206,26 @@ private oci.database.autonomousDatabase @defaults("name") {
   whitelistedIps []string
   // Whether the database is reachable from the public internet
   //
-  // True when the database has a public endpoint (no private endpoint) and
-  // either access control is disabled or its allow-list admits any address
-  // (0.0.0.0/0 or 0.0.0.0). mTLS may still be required to connect, but the
-  // listener itself is reachable from the internet.
+  // True when the database has a public endpoint and either access control
+  // is disabled or its allow-list admits any address (0.0.0.0/0, 0.0.0.0, or
+  // an internet-wide range). A private endpoint database counts when public
+  // access is also allowed on it and that allow-list admits any address.
+  // mTLS may still be required to connect, but the listener itself is
+  // reachable from the internet.
   internetReachable() bool
   // Allowed client IP addresses for the Data Guard standby (ACL)
   //
   // The standby's own access control list. When it diverges from
   // whitelistedIps the standby may be reachable from networks the primary
   // blocks, so compare the two when auditing disaster-recovery exposure.
+  // Not enforced while arePrimaryWhitelistedIpsUsed is true.
   standbyWhitelistedIps []string
+  // Whether the Data Guard standby enforces the primary's access control list
+  //
+  // When true the standby admits the sources in whitelistedIps and ignores
+  // standbyWhitelistedIps; when false it enforces standbyWhitelistedIps.
+  // Null when OCI reports neither, as for a database without a standby.
+  arePrimaryWhitelistedIpsUsed bool
   // Whether auto-scaling is enabled
   isAutoScalingEnabled bool
   // Whether local Data Guard is enabled

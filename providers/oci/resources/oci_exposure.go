@@ -1030,38 +1030,47 @@ func (n *mqlOciNetworkLoadBalancerLoadBalancer) exposure() (*mqlOciNetworkExposu
 }
 
 // internetReachable reports whether the autonomous database listener is
-// reachable from the public internet: it has a public endpoint (no private
-// endpoint) and either access control is disabled or its allow-list admits any
-// address. mTLS may still be required to connect, but the endpoint is reachable.
+// reachable from the public internet: it has a public endpoint and either
+// access control is disabled or its allow-list admits any address. mTLS may
+// still be required to connect, but the endpoint is reachable.
 func (a *mqlOciDatabaseAutonomousDatabase) internetReachable() (bool, error) {
 	privateEndpoint := a.GetPrivateEndpointIp()
 	if privateEndpoint.Error != nil {
 		return false, privateEndpoint.Error
 	}
-	// A private endpoint means the database is only reachable inside the VCN.
-	if strings.TrimSpace(privateEndpoint.Data) != "" {
-		return false, nil
-	}
-
-	// isAccessControlEnabled governs only Exadata Cloud@Customer databases; for
-	// Autonomous Database Serverless - the default, and the great majority of
-	// deployments - OCI ignores it and enforces whitelistedIps instead. Gating
-	// on the flag first therefore reported every correctly restricted serverless
-	// database as reachable from anywhere, without ever reading its allow list.
-	// So the allow list decides whenever there is one, for either platform.
 	whitelist := a.GetWhitelistedIps()
 	if whitelist.Error != nil {
 		return false, whitelist.Error
 	}
-	if len(whitelist.Data) > 0 {
-		return ociWhitelistOpensInternet(whitelist.Data), nil
-	}
-
 	accessControl := a.GetIsAccessControlEnabled()
 	if accessControl.Error != nil {
 		return false, accessControl.Error
 	}
+	publicAccess := a.cachePublicEndpoint != "" || a.cachePublicConnectionUrls != nil
+	return adbInternetReachable(privateEndpoint.Data, publicAccess, whitelist.Data, accessControl.Data), nil
+}
+
+// adbInternetReachable decides autonomous database reachability from its
+// network settings.
+//
+// A private endpoint database is reachable only inside the VCN unless public
+// access is also allowed on it, in which case OCI publishes a public endpoint
+// and the allow-list governs that endpoint exactly as it does for a public
+// database. Reading every private endpoint database as closed missed one whose
+// public access list admits any address.
+//
+// isAccessControlEnabled governs only Exadata Cloud@Customer databases; for
+// Autonomous Database Serverless - the default, and the great majority of
+// deployments - OCI ignores it and enforces whitelistedIps instead. So the
+// allow list decides whenever there is one, for either platform.
+func adbInternetReachable(privateEndpointIp string, publicAccess bool, whitelist []any, accessControlEnabled bool) bool {
+	if strings.TrimSpace(privateEndpointIp) != "" {
+		return publicAccess && ociWhitelistOpensInternet(whitelist)
+	}
+	if len(whitelist) > 0 {
+		return ociWhitelistOpensInternet(whitelist)
+	}
 	// An empty allow list means "no ACL at all" on serverless (reachable), but
 	// on Exadata Cloud@Customer with access control enabled it denies everyone.
-	return !accessControl.Data, nil
+	return !accessControlEnabled
 }

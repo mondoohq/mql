@@ -9552,6 +9552,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"oci.database.autonomousDatabase.standbyWhitelistedIps": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciDatabaseAutonomousDatabase).GetStandbyWhitelistedIps()).ToDataRes(types.Array(types.String))
 	},
+	"oci.database.autonomousDatabase.arePrimaryWhitelistedIpsUsed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciDatabaseAutonomousDatabase).GetArePrimaryWhitelistedIpsUsed()).ToDataRes(types.Bool)
+	},
 	"oci.database.autonomousDatabase.isAutoScalingEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciDatabaseAutonomousDatabase).GetIsAutoScalingEnabled()).ToDataRes(types.Bool)
 	},
@@ -25676,6 +25679,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"oci.database.autonomousDatabase.standbyWhitelistedIps": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciDatabaseAutonomousDatabase).StandbyWhitelistedIps, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"oci.database.autonomousDatabase.arePrimaryWhitelistedIpsUsed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciDatabaseAutonomousDatabase).ArePrimaryWhitelistedIpsUsed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"oci.database.autonomousDatabase.isAutoScalingEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -61646,6 +61653,7 @@ type mqlOciDatabaseAutonomousDatabase struct {
 	WhitelistedIps                       plugin.TValue[[]any]
 	InternetReachable                    plugin.TValue[bool]
 	StandbyWhitelistedIps                plugin.TValue[[]any]
+	ArePrimaryWhitelistedIpsUsed         plugin.TValue[bool]
 	IsAutoScalingEnabled                 plugin.TValue[bool]
 	IsLocalDataGuardEnabled              plugin.TValue[bool]
 	IsRemoteDataGuardEnabled             plugin.TValue[bool]
@@ -61814,6 +61822,10 @@ func (c *mqlOciDatabaseAutonomousDatabase) GetInternetReachable() *plugin.TValue
 
 func (c *mqlOciDatabaseAutonomousDatabase) GetStandbyWhitelistedIps() *plugin.TValue[[]any] {
 	return &c.StandbyWhitelistedIps
+}
+
+func (c *mqlOciDatabaseAutonomousDatabase) GetArePrimaryWhitelistedIpsUsed() *plugin.TValue[bool] {
+	return &c.ArePrimaryWhitelistedIpsUsed
 }
 
 func (c *mqlOciDatabaseAutonomousDatabase) GetIsAutoScalingEnabled() *plugin.TValue[bool] {
