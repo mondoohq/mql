@@ -636,6 +636,7 @@ mikrotik.system.freeMemory 13.0.0
 mikrotik.system.identity 13.0.0
 mikrotik.system.logging.action 13.0.11
 mikrotik.system.logging.action.bsdSyslog 13.0.11
+mikrotik.system.logging.action.checkCertificate 14.1.1
 mikrotik.system.logging.action.diskFileCount 13.0.11
 mikrotik.system.logging.action.diskFileName 13.0.11
 mikrotik.system.logging.action.diskLinesPerFile 13.0.11
@@ -644,7 +645,9 @@ mikrotik.system.logging.action.memoryLines 13.0.11
 mikrotik.system.logging.action.memoryStopOnFull 13.0.11
 mikrotik.system.logging.action.name 13.0.11
 mikrotik.system.logging.action.remote 13.0.11
+mikrotik.system.logging.action.remoteLogFormat 14.1.1
 mikrotik.system.logging.action.remotePort 13.0.11
+mikrotik.system.logging.action.remoteProtocol 14.1.1
 mikrotik.system.logging.action.srcAddress 13.0.11
 mikrotik.system.logging.action.syslogFacility 13.0.11
 mikrotik.system.logging.action.syslogSeverity 13.0.11

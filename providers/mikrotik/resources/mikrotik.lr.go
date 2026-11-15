@@ -2274,6 +2274,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mikrotik.system.logging.action.remotePort": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikSystemLoggingAction).GetRemotePort()).ToDataRes(types.Int)
 	},
+	"mikrotik.system.logging.action.remoteProtocol": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikSystemLoggingAction).GetRemoteProtocol()).ToDataRes(types.String)
+	},
+	"mikrotik.system.logging.action.remoteLogFormat": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikSystemLoggingAction).GetRemoteLogFormat()).ToDataRes(types.String)
+	},
+	"mikrotik.system.logging.action.checkCertificate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikSystemLoggingAction).GetCheckCertificate()).ToDataRes(types.Bool)
+	},
 	"mikrotik.system.logging.action.srcAddress": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikSystemLoggingAction).GetSrcAddress()).ToDataRes(types.String)
 	},
@@ -5235,6 +5244,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mikrotik.system.logging.action.remotePort": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMikrotikSystemLoggingAction).RemotePort, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"mikrotik.system.logging.action.remoteProtocol": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikSystemLoggingAction).RemoteProtocol, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mikrotik.system.logging.action.remoteLogFormat": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikSystemLoggingAction).RemoteLogFormat, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mikrotik.system.logging.action.checkCertificate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikSystemLoggingAction).CheckCertificate, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"mikrotik.system.logging.action.srcAddress": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -11528,6 +11549,9 @@ type mqlMikrotikSystemLoggingAction struct {
 	Target           plugin.TValue[string]
 	Remote           plugin.TValue[string]
 	RemotePort       plugin.TValue[int64]
+	RemoteProtocol   plugin.TValue[string]
+	RemoteLogFormat  plugin.TValue[string]
+	CheckCertificate plugin.TValue[bool]
 	SrcAddress       plugin.TValue[string]
 	BsdSyslog        plugin.TValue[bool]
 	SyslogFacility   plugin.TValue[string]
@@ -11587,6 +11611,18 @@ func (c *mqlMikrotikSystemLoggingAction) GetRemote() *plugin.TValue[string] {
 
 func (c *mqlMikrotikSystemLoggingAction) GetRemotePort() *plugin.TValue[int64] {
 	return &c.RemotePort
+}
+
+func (c *mqlMikrotikSystemLoggingAction) GetRemoteProtocol() *plugin.TValue[string] {
+	return &c.RemoteProtocol
+}
+
+func (c *mqlMikrotikSystemLoggingAction) GetRemoteLogFormat() *plugin.TValue[string] {
+	return &c.RemoteLogFormat
+}
+
+func (c *mqlMikrotikSystemLoggingAction) GetCheckCertificate() *plugin.TValue[bool] {
+	return &c.CheckCertificate
 }
 
 func (c *mqlMikrotikSystemLoggingAction) GetSrcAddress() *plugin.TValue[string] {

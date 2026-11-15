@@ -2076,7 +2076,8 @@ mikrotik.system.logging.rule @defaults("topics disabled invalid") {
 // the entries actually go: `memory` is a ring buffer a reboot erases, `disk`
 // survives a reboot but not a reformat, and `remote` sends the entries to a
 // syslog collector, which is the only target that survives the device itself.
-// For a remote action, `remote` and `remotePort` name the collector.
+// For a remote action, `remote` and `remotePort` name the collector and
+// `remoteProtocol` says whether the stream to it is encrypted.
 mikrotik.system.logging.action @defaults("name target remote") {
   // Action name
   name string
@@ -2088,6 +2089,21 @@ mikrotik.system.logging.action @defaults("name target remote") {
   remote string
   // Port of the syslog collector, for a remote target
   remotePort int
+  // Transport used to reach the syslog collector, for a remote target
+  //
+  // One of udp, the default, tcp, or tls. udp and tcp send every entry in
+  // cleartext, so anyone on the path can read or alter the log stream. Only
+  // tls encrypts it.
+  remoteProtocol string
+  // Format entries are sent in, for a remote target
+  //
+  // One of default, syslog, or cef.
+  remoteLogFormat string
+  // Whether the collector's TLS certificate is validated
+  //
+  // Reported only when remoteProtocol is tls. Without validation, a TLS
+  // stream can be intercepted by anything able to present a certificate.
+  checkCertificate bool
   // Source address used when sending to a collector
   srcAddress string
   // Whether entries are sent in BSD syslog format
