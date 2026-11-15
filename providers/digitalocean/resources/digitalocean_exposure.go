@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"cmp"
 	"fmt"
 	"net/netip"
 	"slices"
@@ -32,12 +33,25 @@ func isAnyAddress(cidr string) bool {
 	return c == "0.0.0.0" || c == "::"
 }
 
-// addressesCoverInternet reports whether a list of source addresses admits
-// every internet address: the IPv4 entries together cover 0.0.0.0/0, or the
-// IPv6 entries together cover ::/0. Split ranges such as 0.0.0.0/1 plus
-// 128.0.0.0/1 count as open, which matters because DigitalOcean rejects a /0
-// mask on some resources (database trusted sources) but accepts the halves.
-// A broad prefix that leaves any address out, such as a /8, does not.
+// addressesCoverInternet reports whether a list of source addresses, taken
+// together, admits a large part of the internet in either address family.
+//
+// 0.0.0.0/0 and ::/0 are the common case, but 0.0.0.0/1 plus 128.0.0.0/1,
+// 2000::/3, or 256 adjacent /8s admit every internet host just the same, and so
+// does a list of many narrow ranges whose union covers most of the address
+// space. Split ranges matter because DigitalOcean rejects a /0 mask on some
+// resources (database trusted sources) but accepts the halves. The verdict
+// therefore depends on the union of the addresses, not on how they are
+// written. A family is open when that union, restricted to the space internet
+// hosts send from (IPv4 outside 224.0.0.0/3, IPv6 inside 2000::/3), either:
+//
+//   - contains an aligned IPv4 /7 or IPv6 /11, the next size up from the blocks
+//     IANA allocates to the regional registries, or
+//   - covers at least half of that space, however it is scattered.
+//
+// Private ranges never qualify on the first test: 10.0.0.0/8 is not a /7, and
+// fc00::/7 lies outside 2000::/3. IPv6 ranges longer than /64 are ignored,
+// since no realistic number of them adds up to either threshold.
 //
 // Entries may carry the "cidr:" or "ip:" prefix that load balancer firewall
 // rules use. A bare address is a single host, except the unspecified
@@ -46,7 +60,7 @@ func isAnyAddress(cidr string) bool {
 // read never reads as restricted. An empty list admits nothing; callers
 // decide what an empty list means for their resource.
 func addressesCoverInternet(addresses []string) bool {
-	var v4, v6 []netip.Prefix
+	var v4, v6 []addrSpan
 	for _, a := range addresses {
 		s := strings.TrimSpace(a)
 		if i := strings.IndexByte(s, ':'); i > 0 {
@@ -70,46 +84,93 @@ func addressesCoverInternet(addresses []string) bool {
 		if p.Addr().Is4In6() && p.Bits() >= 96 {
 			p = netip.PrefixFrom(p.Addr().Unmap(), p.Bits()-96)
 		}
-		if p.Addr().Is4() {
-			v4 = append(v4, p)
-		} else {
-			v6 = append(v6, p)
+		span, ok := prefixSpan(p)
+		switch {
+		case !ok:
+		case p.Addr().Is4():
+			v4 = append(v4, span)
+		default:
+			v6 = append(v6, span)
 		}
 	}
-	return prefixesCoverAll(v4, netip.IPv4Unspecified()) ||
-		prefixesCoverAll(v6, netip.IPv6Unspecified())
+	return ipv4InternetSpace.admittedBy(v4) || ipv6InternetSpace.admittedBy(v6)
 }
 
-// prefixesCoverAll reports whether the prefixes, taken together, cover every
-// address from first to the end of its address family.
-func prefixesCoverAll(prefixes []netip.Prefix, first netip.Addr) bool {
-	slices.SortFunc(prefixes, func(a, b netip.Prefix) int {
-		return a.Addr().Compare(b.Addr())
-	})
-	next := first
-	for _, p := range prefixes {
-		if next.Less(p.Addr()) {
-			return false
-		}
-		last := lastAddr(p)
-		if !last.Less(next) {
-			if !last.Next().IsValid() {
-				return true
-			}
-			next = last.Next()
-		}
+// addrSpan is an inclusive range of addresses. IPv4 spans hold the 32-bit
+// address; IPv6 spans hold the top 64 bits, so one unit is a /64.
+type addrSpan struct{ lo, hi uint64 }
+
+// prefixSpan converts a masked prefix to the span it covers. An IPv6 prefix
+// longer than /64 reports false.
+func prefixSpan(p netip.Prefix) (addrSpan, bool) {
+	if p.Addr().Is4() {
+		b := p.Addr().As4()
+		lo := uint64(b[0])<<24 | uint64(b[1])<<16 | uint64(b[2])<<8 | uint64(b[3])
+		return addrSpan{lo, lo + (uint64(1) << (32 - p.Bits())) - 1}, true
 	}
-	return false
+	if p.Bits() > 64 {
+		return addrSpan{}, false
+	}
+	if p.Bits() == 0 {
+		return addrSpan{0, ^uint64(0)}, true
+	}
+	b := p.Addr().As16()
+	var lo uint64
+	for _, x := range b[:8] {
+		lo = lo<<8 | uint64(x)
+	}
+	return addrSpan{lo, lo + (uint64(1) << (64 - p.Bits())) - 1}, true
 }
 
-// lastAddr returns the highest address inside a masked prefix.
-func lastAddr(p netip.Prefix) netip.Addr {
-	b := p.Addr().AsSlice()
-	for i := p.Bits(); i < len(b)*8; i++ {
-		b[i/8] |= 1 << (7 - uint(i%8))
+// mergeSpans returns the union of spans as sorted, disjoint, non-adjacent spans.
+func mergeSpans(spans []addrSpan) []addrSpan {
+	sorted := slices.Clone(spans)
+	slices.SortFunc(sorted, func(a, b addrSpan) int { return cmp.Compare(a.lo, b.lo) })
+	out := []addrSpan{}
+	for _, sp := range sorted {
+		if n := len(out); n > 0 && (sp.lo <= out[n-1].hi || sp.lo-out[n-1].hi == 1) {
+			out[n-1].hi = max(out[n-1].hi, sp.hi)
+			continue
+		}
+		out = append(out, sp)
 	}
-	a, _ := netip.AddrFromSlice(b)
-	return a
+	return out
+}
+
+// internetSpace is the part of an address family internet hosts send from, in
+// addrSpan units, with the block size whose presence alone counts as open.
+type internetSpace struct {
+	lo, hi uint64
+	block  uint64
+}
+
+var (
+	// IPv4 outside 224.0.0.0/3 (multicast plus the reserved 240.0.0.0/4); the
+	// block is a /7.
+	ipv4InternetSpace = internetSpace{lo: 0, hi: 224<<24 - 1, block: 1 << 25}
+	// IPv6 2000::/3, the space routed on the internet, in /64 units; the block
+	// is a /11.
+	ipv6InternetSpace = internetSpace{lo: 0x2000 << 48, hi: 0x3fff_ffff_ffff_ffff, block: 1 << 53}
+)
+
+// admittedBy reports whether the union of spans opens this space to the
+// internet: it contains an aligned block, or covers at least half the space.
+func (s internetSpace) admittedBy(spans []addrSpan) bool {
+	var total uint64
+	for _, sp := range mergeSpans(spans) {
+		lo, hi := max(sp.lo, s.lo), min(sp.hi, s.hi)
+		if lo > hi {
+			continue
+		}
+		total += hi - lo + 1
+		// s.lo is block-aligned, so the first aligned block at or after lo
+		// starts here.
+		start := (lo + s.block - 1) / s.block * s.block
+		if start <= hi && hi-start >= s.block-1 {
+			return true
+		}
+	}
+	return total >= (s.hi-s.lo+1)/2
 }
 
 // stringEntries returns the string elements of a list, skipping any other
@@ -165,7 +226,8 @@ func databaseTrustedSourcesAllowAny(rules []any) bool {
 // allow/deny list of sources written as "cidr:<range>" or "ip:<address>":
 // when the allow list is empty every source is permitted (subject to the deny
 // list); when it is non-empty only those sources are permitted, so it is open
-// to the internet only if its entries together cover every address.
+// to the internet only if its entries together cover most of it (see
+// addressesCoverInternet).
 func loadBalancerFirewallAllowsAny(allow []any) bool {
 	if len(allow) == 0 {
 		return true
