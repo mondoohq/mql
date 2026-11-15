@@ -493,39 +493,9 @@ func (a *mqlAzureSubscriptionServiceFabricServiceClusterDiagnosticsStorageAccoun
 		return nil, nil
 	}
 
-	conn, ok := a.MqlRuntime.Connection.(*connection.AzureConnection)
-	if !ok {
-		return nil, errors.New("invalid connection provided, it is not an Azure connection")
-	}
-
-	res, err := NewResource(a.MqlRuntime, ResourceAzureSubscriptionStorageService, map[string]*llx.RawData{
-		"subscriptionId": llx.StringData(conn.SubId()),
-	})
-	if err != nil {
-		return nil, err
-	}
-	storage, ok := res.(*mqlAzureSubscriptionStorageService)
-	if !ok {
-		return nil, errors.New("could not resolve the azure storage service")
-	}
-
-	accounts := storage.GetAccounts()
-	if accounts.Error != nil {
-		return nil, accounts.Error
-	}
-
-	for _, entry := range accounts.Data {
-		account, ok := entry.(*mqlAzureSubscriptionStorageServiceAccount)
-		if ok && account.Name.Data == a.cacheStorageAccountName {
-			return account, nil
-		}
-	}
-	// A tag filter may have left the account out of the list.
-	for _, entry := range tagFilteredOutOfType(a.MqlRuntime, ResourceAzureSubscriptionStorageServiceAccount) {
-		account, ok := entry.(*mqlAzureSubscriptionStorageServiceAccount)
-		if ok && account.Name.Data == a.cacheStorageAccountName {
-			return account, nil
-		}
+	account, err := storageAccountByName(a.MqlRuntime, a.cacheStorageAccountName)
+	if err != nil || account != nil {
+		return account, err
 	}
 
 	// The diagnostics account may live in another subscription, which this
