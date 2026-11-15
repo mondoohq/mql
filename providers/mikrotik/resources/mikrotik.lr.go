@@ -67,6 +67,7 @@ const (
 	ResourceMikrotikIpNeighborSettings           string = "mikrotik.ip.neighbor.settings"
 	ResourceMikrotikToolMacServer                string = "mikrotik.tool.macServer"
 	ResourceMikrotikIpCloud                      string = "mikrotik.ip.cloud"
+	ResourceMikrotikIpSocks                      string = "mikrotik.ip.socks"
 	ResourceMikrotikToolRomon                    string = "mikrotik.tool.romon"
 	ResourceMikrotikToolBandwidthServer          string = "mikrotik.tool.bandwidthServer"
 	ResourceMikrotikContainer                    string = "mikrotik.container"
@@ -283,6 +284,10 @@ func init() {
 		"mikrotik.ip.cloud": {
 			Init:   initMikrotikIpCloud,
 			Create: createMikrotikIpCloud,
+		},
+		"mikrotik.ip.socks": {
+			Init:   initMikrotikIpSocks,
+			Create: createMikrotikIpSocks,
 		},
 		"mikrotik.tool.romon": {
 			Init:   initMikrotikToolRomon,
@@ -535,6 +540,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"mikrotik.cloud": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotik).GetCloud()).ToDataRes(types.Resource("mikrotik.ip.cloud"))
+	},
+	"mikrotik.socks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotik).GetSocks()).ToDataRes(types.Resource("mikrotik.ip.socks"))
 	},
 	"mikrotik.romon": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotik).GetRomon()).ToDataRes(types.Resource("mikrotik.tool.romon"))
@@ -2381,6 +2389,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mikrotik.ip.cloud.backToHomeVpn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikIpCloud).GetBackToHomeVpn()).ToDataRes(types.String)
 	},
+	"mikrotik.ip.socks.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikIpSocks).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"mikrotik.ip.socks.authMethod": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikIpSocks).GetAuthMethod()).ToDataRes(types.String)
+	},
+	"mikrotik.ip.socks.port": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikIpSocks).GetPort()).ToDataRes(types.Int)
+	},
+	"mikrotik.ip.socks.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikIpSocks).GetVersion()).ToDataRes(types.Int)
+	},
+	"mikrotik.ip.socks.maxConnections": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikIpSocks).GetMaxConnections()).ToDataRes(types.Int)
+	},
+	"mikrotik.ip.socks.connectionIdleTimeout": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikIpSocks).GetConnectionIdleTimeout()).ToDataRes(types.String)
+	},
 	"mikrotik.tool.romon.enabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikToolRomon).GetEnabled()).ToDataRes(types.Bool)
 	},
@@ -2758,6 +2784,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mikrotik.cloud": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMikrotik).Cloud, ok = plugin.RawToTValue[*mqlMikrotikIpCloud](v.Value, v.Error)
+		return
+	},
+	"mikrotik.socks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotik).Socks, ok = plugin.RawToTValue[*mqlMikrotikIpSocks](v.Value, v.Error)
 		return
 	},
 	"mikrotik.romon": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -5420,6 +5450,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMikrotikIpCloud).BackToHomeVpn, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"mikrotik.ip.socks.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikIpSocks).__id, ok = v.Value.(string)
+		return
+	},
+	"mikrotik.ip.socks.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikIpSocks).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"mikrotik.ip.socks.authMethod": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikIpSocks).AuthMethod, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mikrotik.ip.socks.port": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikIpSocks).Port, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"mikrotik.ip.socks.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikIpSocks).Version, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"mikrotik.ip.socks.maxConnections": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikIpSocks).MaxConnections, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"mikrotik.ip.socks.connectionIdleTimeout": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikIpSocks).ConnectionIdleTimeout, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"mikrotik.tool.romon.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMikrotikToolRomon).__id, ok = v.Value.(string)
 		return
@@ -5740,6 +5798,7 @@ type mqlMikrotik struct {
 	DiscoverySettings    plugin.TValue[*mqlMikrotikIpNeighborSettings]
 	MacServer            plugin.TValue[*mqlMikrotikToolMacServer]
 	Cloud                plugin.TValue[*mqlMikrotikIpCloud]
+	Socks                plugin.TValue[*mqlMikrotikIpSocks]
 	Romon                plugin.TValue[*mqlMikrotikToolRomon]
 	BandwidthServer      plugin.TValue[*mqlMikrotikToolBandwidthServer]
 	Containers           plugin.TValue[[]any]
@@ -6599,6 +6658,22 @@ func (c *mqlMikrotik) GetCloud() *plugin.TValue[*mqlMikrotikIpCloud] {
 		}
 
 		return c.cloud()
+	})
+}
+
+func (c *mqlMikrotik) GetSocks() *plugin.TValue[*mqlMikrotikIpSocks] {
+	return plugin.GetOrCompute[*mqlMikrotikIpSocks](&c.Socks, func() (*mqlMikrotikIpSocks, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mikrotik", c.__id, "socks")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMikrotikIpSocks), nil
+			}
+		}
+
+		return c.socks()
 	})
 }
 
@@ -11954,6 +12029,75 @@ func (c *mqlMikrotikIpCloud) GetStatus() *plugin.TValue[string] {
 
 func (c *mqlMikrotikIpCloud) GetBackToHomeVpn() *plugin.TValue[string] {
 	return &c.BackToHomeVpn
+}
+
+// mqlMikrotikIpSocks for the mikrotik.ip.socks resource
+type mqlMikrotikIpSocks struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMikrotikIpSocksInternal it will be used here
+	Enabled               plugin.TValue[bool]
+	AuthMethod            plugin.TValue[string]
+	Port                  plugin.TValue[int64]
+	Version               plugin.TValue[int64]
+	MaxConnections        plugin.TValue[int64]
+	ConnectionIdleTimeout plugin.TValue[string]
+}
+
+// createMikrotikIpSocks creates a new instance of this resource
+func createMikrotikIpSocks(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMikrotikIpSocks{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("mikrotik.ip.socks", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMikrotikIpSocks) MqlName() string {
+	return "mikrotik.ip.socks"
+}
+
+func (c *mqlMikrotikIpSocks) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMikrotikIpSocks) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlMikrotikIpSocks) GetAuthMethod() *plugin.TValue[string] {
+	return &c.AuthMethod
+}
+
+func (c *mqlMikrotikIpSocks) GetPort() *plugin.TValue[int64] {
+	return &c.Port
+}
+
+func (c *mqlMikrotikIpSocks) GetVersion() *plugin.TValue[int64] {
+	return &c.Version
+}
+
+func (c *mqlMikrotikIpSocks) GetMaxConnections() *plugin.TValue[int64] {
+	return &c.MaxConnections
+}
+
+func (c *mqlMikrotikIpSocks) GetConnectionIdleTimeout() *plugin.TValue[string] {
+	return &c.ConnectionIdleTimeout
 }
 
 // mqlMikrotikToolRomon for the mikrotik.tool.romon resource

@@ -140,6 +140,8 @@ mikrotik @root {
   macServer() mikrotik.tool.macServer
   // IP Cloud dynamic DNS configuration
   cloud() mikrotik.ip.cloud
+  // SOCKS proxy server configuration
+  socks() mikrotik.ip.socks
   // RoMON layer 2 management configuration
   romon() mikrotik.tool.romon
   // Bandwidth test server configuration
@@ -2223,6 +2225,37 @@ mikrotik.ip.cloud @defaults("ddnsEnabled dnsName status") {
   status string
   // Back To Home VPN state
   backToHomeVpn string
+}
+
+// MikroTik SOCKS proxy server
+//
+// SOCKS proxy settings read from `/ip/socks`. An enabled SOCKS server relays
+// TCP connections on behalf of its clients, so they appear to come from the
+// device itself. With `authMethod` none, any client that can reach `port`
+// uses the device as an open relay into the networks behind it and out to
+// the internet. SOCKS version 4 carries no password authentication at all,
+// so only `version` 5 with `authMethod` password requires clients to log in.
+mikrotik.ip.socks @defaults("enabled version authMethod port") {
+  // Whether the SOCKS server accepts connections
+  //
+  // False by default on RouterOS.
+  enabled bool
+  // How SOCKS 5 clients authenticate
+  //
+  // One of none, the default, or password.
+  authMethod string
+  // TCP port the SOCKS server listens on
+  port int
+  // SOCKS protocol version the server speaks
+  //
+  // 4, the default, or 5.
+  version int
+  // Maximum number of concurrent client connections
+  maxConnections int
+  // Time after which an idle connection is closed
+  //
+  // Formatted as a RouterOS duration, for example 2m.
+  connectionIdleTimeout string
 }
 
 // MikroTik RoMON configuration

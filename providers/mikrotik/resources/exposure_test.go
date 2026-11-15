@@ -171,3 +171,32 @@ func TestBandwidthServerArgsAbsentMenu(t *testing.T) {
 	assert.Nil(t, args["allowedAddresses4"].Value)
 	assert.Nil(t, args["maxSessions"].Value)
 }
+
+func TestSocksArgs(t *testing.T) {
+	// RouterOS 7.25.1 default: off, but SOCKS 4 with no authentication if
+	// anyone turns it on
+	def := socksArgs(liveRows(t, "ip-socks.json")[0])
+	assert.Equal(t, "mikrotik.ip.socks", def["__id"].Value)
+	assert.Equal(t, false, def["enabled"].Value)
+	assert.Equal(t, "none", def["authMethod"].Value)
+	assert.Equal(t, int64(1080), def["port"].Value)
+	assert.Equal(t, int64(4), def["version"].Value)
+	assert.Equal(t, int64(200), def["maxConnections"].Value)
+	assert.Equal(t, "2m", def["connectionIdleTimeout"].Value)
+
+	authenticated := socksArgs(map[string]string{
+		"enabled":     "true",
+		"auth-method": "password",
+		"version":     "5",
+	})
+	assert.Equal(t, true, authenticated["enabled"].Value)
+	assert.Equal(t, "password", authenticated["authMethod"].Value)
+	assert.Equal(t, int64(5), authenticated["version"].Value)
+}
+
+func TestSocksArgsAbsentMenu(t *testing.T) {
+	args := socksArgs(map[string]string{})
+	assert.Nil(t, args["enabled"].Value)
+	assert.Nil(t, args["port"].Value)
+	assert.Nil(t, args["version"].Value)
+}

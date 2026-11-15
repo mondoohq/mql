@@ -466,6 +466,13 @@ mikrotik.ip.service.name 13.0.0
 mikrotik.ip.service.port 13.0.0
 mikrotik.ip.service.tlsVersion 13.0.0
 mikrotik.ip.service.vrf 13.0.0
+mikrotik.ip.socks 14.1.1
+mikrotik.ip.socks.authMethod 14.1.1
+mikrotik.ip.socks.connectionIdleTimeout 14.1.1
+mikrotik.ip.socks.enabled 14.1.1
+mikrotik.ip.socks.maxConnections 14.1.1
+mikrotik.ip.socks.port 14.1.1
+mikrotik.ip.socks.version 14.1.1
 mikrotik.ipAddresses 13.0.0
 mikrotik.ipsecIdentities 13.0.11
 mikrotik.ipsecPeers 13.0.11
@@ -602,6 +609,7 @@ mikrotik.snmp.trapCommunity 13.0.0
 mikrotik.snmp.trapGenerators 13.0.0
 mikrotik.snmp.trapVersion 13.0.0
 mikrotik.snmpCommunities 13.0.11
+mikrotik.socks 14.1.1
 mikrotik.ssh 13.0.11
 mikrotik.ssh.allowNoneCrypto 13.0.11
 mikrotik.ssh.alwaysAllowPasswordLogin 13.0.11

@@ -260,3 +260,34 @@ func (r *mqlMikrotik) bandwidthServer() (*mqlMikrotikToolBandwidthServer, error)
 func initMikrotikToolBandwidthServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	return singletonInit(runtime, "/tool/bandwidth-server", args, bandwidthServerArgs)
 }
+
+// --- ip.socks ---
+
+func socksArgs(row map[string]string) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":                  llx.StringData("mikrotik.ip.socks"),
+		"enabled":               boolField(row, "enabled"),
+		"authMethod":            llx.StringData(row["auth-method"]),
+		"port":                  intField(row, "port"),
+		"version":               intField(row, "version"),
+		"maxConnections":        intField(row, "max-connections"),
+		"connectionIdleTimeout": llx.StringData(row["connection-idle-timeout"]),
+	}
+}
+
+func (r *mqlMikrotik) socks() (*mqlMikrotikIpSocks, error) {
+	res, ok, err := singletonAccessor[*mqlMikrotikIpSocks](
+		r.MqlRuntime, "/ip/socks", "mikrotik.ip.socks", socksArgs)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		r.Socks.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return res, nil
+}
+
+func initMikrotikIpSocks(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	return singletonInit(runtime, "/ip/socks", args, socksArgs)
+}
