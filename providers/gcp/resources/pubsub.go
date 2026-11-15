@@ -595,7 +595,6 @@ func (g *mqlGcpProjectPubsubServiceSubscription) config() (*mqlGcpProjectPubsubS
 		return nil, err
 	}
 
-
 	var deadLetterDict map[string]any
 	if cfg.DeadLetterPolicy != nil {
 		deadLetterDict = map[string]any{
