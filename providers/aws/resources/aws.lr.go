@@ -8379,6 +8379,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.iam.virtualmfadevice.user": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsIamVirtualmfadevice).GetUser()).ToDataRes(types.Resource("aws.iam.user"))
 	},
+	"aws.iam.virtualmfadevice.userArn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsIamVirtualmfadevice).GetUserArn()).ToDataRes(types.String)
+	},
 	"aws.iam.samlProvider.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsIamSamlProvider).GetArn()).ToDataRes(types.String)
 	},
@@ -45277,6 +45280,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.iam.virtualmfadevice.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsIamVirtualmfadevice).User, ok = plugin.RawToTValue[*mqlAwsIamUser](v.Value, v.Error)
+		return
+	},
+	"aws.iam.virtualmfadevice.userArn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsIamVirtualmfadevice).UserArn, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.iam.samlProvider.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -104434,6 +104441,7 @@ type mqlAwsIamVirtualmfadevice struct {
 	SerialNumber plugin.TValue[string]
 	EnableDate   plugin.TValue[*time.Time]
 	User         plugin.TValue[*mqlAwsIamUser]
+	UserArn      plugin.TValue[string]
 }
 
 // createAwsIamVirtualmfadevice creates a new instance of this resource
@@ -104495,6 +104503,10 @@ func (c *mqlAwsIamVirtualmfadevice) GetUser() *plugin.TValue[*mqlAwsIamUser] {
 
 		return c.user()
 	})
+}
+
+func (c *mqlAwsIamVirtualmfadevice) GetUserArn() *plugin.TValue[string] {
+	return &c.UserArn
 }
 
 // mqlAwsIamSamlProvider for the aws.iam.samlProvider resource

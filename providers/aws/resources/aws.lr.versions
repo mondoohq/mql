@@ -7051,6 +7051,7 @@ aws.iam.virtualmfadevice 11.15.2
 aws.iam.virtualmfadevice.enableDate 11.15.2
 aws.iam.virtualmfadevice.serialNumber 11.15.2
 aws.iam.virtualmfadevice.user 11.15.2
+aws.iam.virtualmfadevice.userArn 14.9.1
 aws.identitycenter 13.6.3
 aws.identitycenter.accountAssignment 13.6.3
 aws.identitycenter.accountAssignment.accountId 13.6.3

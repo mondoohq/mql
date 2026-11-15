@@ -744,12 +744,7 @@ func (a *mqlAwsIam) virtualMfaDevices() ([]any, error) {
 	for i := range devicesResp.VirtualMFADevices {
 		device := devicesResp.VirtualMFADevices[i]
 
-		args := map[string]*llx.RawData{
-			"serialNumber": llx.StringDataPtr(device.SerialNumber),
-			"enableDate":   llx.TimeDataPtr(device.EnableDate),
-		}
-
-		mqlAwsIamMfaDevice, err := CreateResource(a.MqlRuntime, ResourceAwsIamVirtualmfadevice, args)
+		mqlAwsIamMfaDevice, err := CreateResource(a.MqlRuntime, ResourceAwsIamVirtualmfadevice, virtualMfaDeviceArgs(device))
 		if err != nil {
 			return nil, err
 		}
@@ -762,6 +757,21 @@ func (a *mqlAwsIam) virtualMfaDevices() ([]any, error) {
 	}
 
 	return res, nil
+}
+
+// virtualMfaDeviceArgs builds the resource fields for one listed virtual MFA
+// device. userArn comes from the assignment itself, so it is set for a device
+// assigned to the root user too, which has an ARN but no IAM user name.
+func virtualMfaDeviceArgs(device iamtypes.VirtualMFADevice) map[string]*llx.RawData {
+	var userArn *string
+	if device.User != nil {
+		userArn = device.User.Arn
+	}
+	return map[string]*llx.RawData{
+		"serialNumber": llx.StringDataPtr(device.SerialNumber),
+		"enableDate":   llx.TimeDataPtr(device.EnableDate),
+		"userArn":      llx.StringDataPtr(userArn),
+	}
 }
 
 func (a *mqlAwsIamVirtualmfadevice) user() (*mqlAwsIamUser, error) {

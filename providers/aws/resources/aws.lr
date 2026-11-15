@@ -3344,7 +3344,15 @@ private aws.iam.virtualmfadevice @defaults("serialNumber") {
   // Time when the MFA device was enabled
   enableDate time
   // User associated with the MFA device
+  //
+  // Null for a device assigned to the account root user, which is not an IAM
+  // user. See userArn for the assignment of every device.
   user() aws.iam.user
+  // ARN of the principal the device is assigned to
+  //
+  // Set for every assigned device, including one assigned to the account root
+  // user, whose ARN ends in `:root`. Null when the device is not assigned.
+  userArn string
 }
 
 // AWS IAM SAML 2.0 identity provider
