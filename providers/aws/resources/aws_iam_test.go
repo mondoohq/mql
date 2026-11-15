@@ -5,7 +5,10 @@ package resources
 
 import (
 	"testing"
+	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/llx"
@@ -97,4 +100,41 @@ func TestIsServiceLinkedRolePath(t *testing.T) {
 			assert.Equal(t, tc.want, isServiceLinkedRolePath(tc.path))
 		})
 	}
+}
+
+func TestVirtualMfaDeviceArgsUserArn(t *testing.T) {
+	enabled := time.Date(2023, 1, 8, 9, 25, 27, 0, time.UTC)
+
+	t.Run("assigned to root", func(t *testing.T) {
+		// Root device: ListVirtualMFADevices reports the root user by ARN with no
+		// UserName. Account ID and serial number are placeholders.
+		args := virtualMfaDeviceArgs(iamtypes.VirtualMFADevice{
+			SerialNumber: aws.String("arn:aws:iam::123456789012:mfa/authenticator"),
+			EnableDate:   aws.Time(enabled),
+			User:         &iamtypes.User{Arn: aws.String("arn:aws:iam::123456789012:root")},
+		})
+		assert.Equal(t, "arn:aws:iam::123456789012:root", args["userArn"].Value)
+	})
+
+	t.Run("assigned to an IAM user", func(t *testing.T) {
+		// IAM user device: the response carries both the ARN and the UserName.
+		// Account ID and names are placeholders.
+		args := virtualMfaDeviceArgs(iamtypes.VirtualMFADevice{
+			SerialNumber: aws.String("arn:aws:iam::123456789012:mfa/alice"),
+			EnableDate:   aws.Time(enabled),
+			User: &iamtypes.User{
+				Arn:      aws.String("arn:aws:iam::123456789012:user/alice"),
+				UserName: aws.String("alice"),
+			},
+		})
+		assert.Equal(t, "arn:aws:iam::123456789012:user/alice", args["userArn"].Value)
+	})
+
+	t.Run("unassigned", func(t *testing.T) {
+		// A device created but never enabled has no User. Placeholder serial number.
+		args := virtualMfaDeviceArgs(iamtypes.VirtualMFADevice{
+			SerialNumber: aws.String("arn:aws:iam::123456789012:mfa/spare"),
+		})
+		assert.Nil(t, args["userArn"].Value)
+	})
 }
