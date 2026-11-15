@@ -356,6 +356,7 @@ func (o *mqlOciDatabase) autonomousDatabases() ([]any, error) {
 				mqlAdb.cacheSourceID = stringValue(a.SourceId)
 				mqlAdb.cacheConnectionUrls = a.ConnectionUrls
 				mqlAdb.cachePublicConnectionUrls = a.PublicConnectionUrls
+				mqlAdb.cachePublicEndpoint = stringValue(a.PublicEndpoint)
 				res = append(res, mqlAdb)
 			}
 
@@ -372,6 +373,7 @@ type mqlOciDatabaseAutonomousDatabaseInternal struct {
 	cacheSourceID             string
 	cacheConnectionUrls       *database.AutonomousDatabaseConnectionUrls
 	cachePublicConnectionUrls *database.AutonomousDatabaseConnectionUrls
+	cachePublicEndpoint       string
 }
 
 // newOciAutonomousDatabaseConsoleUrls builds one console-URL resource. The
