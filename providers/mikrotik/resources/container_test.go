@@ -148,3 +148,25 @@ func TestUserAaaArgsAbsentMenu(t *testing.T) {
 	assert.Nil(t, args["accounting"].Value)
 	assert.Nil(t, args["excludeGroups"].Value)
 }
+
+func TestUserSettingsArgs(t *testing.T) {
+	// RouterOS 7.25.1 out of the box: no password policy at all
+	open := userSettingsArgs(liveRows(t, "user-settings.json")[0])
+	assert.Equal(t, "mikrotik.user.settings", open["__id"].Value)
+	assert.Equal(t, int64(0), open["minimumPasswordLength"].Value)
+	assert.Equal(t, int64(0), open["minimumCategories"].Value)
+
+	enforced := userSettingsArgs(map[string]string{
+		"minimum-password-length": "12",
+		"minimum-categories":      "3",
+	})
+	assert.Equal(t, int64(12), enforced["minimumPasswordLength"].Value)
+	assert.Equal(t, int64(3), enforced["minimumCategories"].Value)
+}
+
+func TestUserSettingsArgsAbsentMenu(t *testing.T) {
+	// an unreported policy must not read as a genuine 0
+	args := userSettingsArgs(map[string]string{})
+	assert.Nil(t, args["minimumPasswordLength"].Value)
+	assert.Nil(t, args["minimumCategories"].Value)
+}

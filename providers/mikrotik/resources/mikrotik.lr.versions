@@ -747,6 +747,9 @@ mikrotik.user.disabled 13.0.0
 mikrotik.user.group 13.0.0
 mikrotik.user.lastLoggedIn 13.0.0
 mikrotik.user.name 13.0.0
+mikrotik.user.settings 14.1.1
+mikrotik.user.settings.minimumCategories 14.1.1
+mikrotik.user.settings.minimumPasswordLength 14.1.1
 mikrotik.user.userGroup 13.0.0
 mikrotik.userAaa 13.0.11
 mikrotik.userGroup 14.0.0
@@ -755,6 +758,7 @@ mikrotik.userGroup.name 14.0.0
 mikrotik.userGroup.policy 14.0.0
 mikrotik.userGroup.skin 14.0.0
 mikrotik.userGroups 13.0.0
+mikrotik.userSettings 14.1.1
 mikrotik.users 13.0.0
 mikrotik.vlans 13.0.0
 mikrotik.wifiInterfaces 13.0.0

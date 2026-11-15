@@ -72,6 +72,7 @@ const (
 	ResourceMikrotikContainerConfig              string = "mikrotik.container.config"
 	ResourceMikrotikRadiusClient                 string = "mikrotik.radius.client"
 	ResourceMikrotikUserAaa                      string = "mikrotik.user.aaa"
+	ResourceMikrotikUserSettings                 string = "mikrotik.user.settings"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -301,6 +302,10 @@ func init() {
 		"mikrotik.user.aaa": {
 			Init:   initMikrotikUserAaa,
 			Create: createMikrotikUserAaa,
+		},
+		"mikrotik.user.settings": {
+			Init:   initMikrotikUserSettings,
+			Create: createMikrotikUserSettings,
 		},
 	}
 }
@@ -540,6 +545,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"mikrotik.userAaa": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotik).GetUserAaa()).ToDataRes(types.Resource("mikrotik.user.aaa"))
+	},
+	"mikrotik.userSettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotik).GetUserSettings()).ToDataRes(types.Resource("mikrotik.user.settings"))
 	},
 	"mikrotik.system.identity": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikSystem).GetIdentity()).ToDataRes(types.String)
@@ -2485,6 +2493,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mikrotik.user.aaa.excludeGroups": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikUserAaa).GetExcludeGroups()).ToDataRes(types.Array(types.String))
 	},
+	"mikrotik.user.settings.minimumPasswordLength": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikUserSettings).GetMinimumPasswordLength()).ToDataRes(types.Int)
+	},
+	"mikrotik.user.settings.minimumCategories": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikUserSettings).GetMinimumCategories()).ToDataRes(types.Int)
+	},
 }
 
 func GetData(resource plugin.Resource, field string, args map[string]*llx.RawData) *plugin.DataRes {
@@ -2723,6 +2737,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mikrotik.userAaa": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMikrotik).UserAaa, ok = plugin.RawToTValue[*mqlMikrotikUserAaa](v.Value, v.Error)
+		return
+	},
+	"mikrotik.userSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotik).UserSettings, ok = plugin.RawToTValue[*mqlMikrotikUserSettings](v.Value, v.Error)
 		return
 	},
 	"mikrotik.system.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -5537,6 +5555,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMikrotikUserAaa).ExcludeGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"mikrotik.user.settings.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikUserSettings).__id, ok = v.Value.(string)
+		return
+	},
+	"mikrotik.user.settings.minimumPasswordLength": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikUserSettings).MinimumPasswordLength, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"mikrotik.user.settings.minimumCategories": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikUserSettings).MinimumCategories, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
 }
 
 func SetData(resource plugin.Resource, field string, val *llx.RawData) error {
@@ -5622,6 +5652,7 @@ type mqlMikrotik struct {
 	ContainerConfig      plugin.TValue[*mqlMikrotikContainerConfig]
 	RadiusClients        plugin.TValue[[]any]
 	UserAaa              plugin.TValue[*mqlMikrotikUserAaa]
+	UserSettings         plugin.TValue[*mqlMikrotikUserSettings]
 }
 
 // createMikrotik creates a new instance of this resource
@@ -6554,6 +6585,22 @@ func (c *mqlMikrotik) GetUserAaa() *plugin.TValue[*mqlMikrotikUserAaa] {
 		}
 
 		return c.userAaa()
+	})
+}
+
+func (c *mqlMikrotik) GetUserSettings() *plugin.TValue[*mqlMikrotikUserSettings] {
+	return plugin.GetOrCompute[*mqlMikrotikUserSettings](&c.UserSettings, func() (*mqlMikrotikUserSettings, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mikrotik", c.__id, "userSettings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMikrotikUserSettings), nil
+			}
+		}
+
+		return c.userSettings()
 	})
 }
 
@@ -12216,4 +12263,53 @@ func (c *mqlMikrotikUserAaa) GetInterimUpdate() *plugin.TValue[string] {
 
 func (c *mqlMikrotikUserAaa) GetExcludeGroups() *plugin.TValue[[]any] {
 	return &c.ExcludeGroups
+}
+
+// mqlMikrotikUserSettings for the mikrotik.user.settings resource
+type mqlMikrotikUserSettings struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMikrotikUserSettingsInternal it will be used here
+	MinimumPasswordLength plugin.TValue[int64]
+	MinimumCategories     plugin.TValue[int64]
+}
+
+// createMikrotikUserSettings creates a new instance of this resource
+func createMikrotikUserSettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMikrotikUserSettings{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("mikrotik.user.settings", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMikrotikUserSettings) MqlName() string {
+	return "mikrotik.user.settings"
+}
+
+func (c *mqlMikrotikUserSettings) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMikrotikUserSettings) GetMinimumPasswordLength() *plugin.TValue[int64] {
+	return &c.MinimumPasswordLength
+}
+
+func (c *mqlMikrotikUserSettings) GetMinimumCategories() *plugin.TValue[int64] {
+	return &c.MinimumCategories
 }

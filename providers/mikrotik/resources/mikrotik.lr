@@ -150,6 +150,8 @@ mikrotik @root {
   radiusClients() []mikrotik.radius.client
   // AAA settings that govern RADIUS use for device logins
   userAaa() mikrotik.user.aaa
+  // Password policy applied to local user accounts
+  userSettings() mikrotik.user.settings
 }
 
 // MikroTik system information
@@ -2369,4 +2371,24 @@ mikrotik.user.aaa @defaults("useRadius defaultGroup accounting") {
   interimUpdate string
   // Permission groups excluded from RADIUS authentication
   excludeGroups []string
+}
+
+// MikroTik local password policy
+//
+// Password policy read from `/user/settings`. RouterOS enforces it whenever a
+// local account's password is set or changed, and rejects a password that is
+// shorter than `minimumPasswordLength` or draws on fewer than
+// `minimumCategories` character categories. Both default to 0, so a device
+// that was never configured accepts any password for any account, including
+// a single character.
+mikrotik.user.settings @defaults("minimumPasswordLength minimumCategories") {
+  // Minimum length of a local account password
+  //
+  // 0, the default, sets no minimum.
+  minimumPasswordLength int
+  // Minimum number of character categories a password must draw on
+  //
+  // From 0 to 4. The categories are lowercase letters, uppercase letters,
+  // digits, and symbols. 0, the default, requires none.
+  minimumCategories int
 }

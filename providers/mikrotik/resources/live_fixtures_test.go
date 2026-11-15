@@ -88,6 +88,7 @@ func TestLiveRowsCoverEverySchemaField(t *testing.T) {
 		{"interface-ovpn-server-server-7.25.json", "mikrotik.interface.ovpnServer", ovpnServerArgs},
 		{"system-script.json", "mikrotik.system.script", scriptArgs},
 		{"system-logging.json", "mikrotik.system.logging.rule", loggingRuleArgs},
+		{"user-settings.json", "mikrotik.user.settings", userSettingsArgs},
 	} {
 		t.Run(tc.fixture, func(t *testing.T) {
 			rows := liveRows(t, tc.fixture)
@@ -126,6 +127,7 @@ func TestLiveRowsDoNotPanic(t *testing.T) {
 		{"interface-ovpn-server-server-7.25.json", ovpnServerArgs},
 		{"system-script.json", scriptArgs},
 		{"system-logging.json", loggingRuleArgs},
+		{"user-settings.json", userSettingsArgs},
 	} {
 		t.Run(tc.fixture, func(t *testing.T) {
 			for _, row := range liveRows(t, tc.fixture) {
