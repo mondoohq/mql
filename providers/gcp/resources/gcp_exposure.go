@@ -4,7 +4,9 @@
 package resources
 
 import (
+	"net/netip"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -71,8 +73,8 @@ func (g *mqlGcpProjectGkeServiceCluster) controlPlaneInternetReachable() (bool, 
 }
 
 // firewallRuleOpenIngress reports whether a firewall rule admits inbound traffic
-// from any address — an enabled INGRESS rule whose source ranges include
-// 0.0.0.0/0 or ::/0.
+// from the internet — an enabled INGRESS rule whose source ranges include
+// 0.0.0.0/0, ::/0, or another range broad enough to count as the same thing.
 func firewallRuleOpenIngress(isAllow bool, direction string, disabled bool, sourceRanges []any) bool {
 	// A GCP VPC firewall rule is exclusively an allow rule or a deny rule. Only
 	// allow rules can open ingress; a broad-source INGRESS deny rule (a common
@@ -195,12 +197,7 @@ func policyRuleOpenIngress(action, direction string, disabled bool, srcIpRanges 
 	if disabled || !strings.EqualFold(direction, "INGRESS") || !strings.EqualFold(action, "allow") {
 		return false
 	}
-	for _, s := range srcIpRanges {
-		if cidr, ok := s.(string); ok && isOpenCIDR(cidr) {
-			return true
-		}
-	}
-	return false
+	return firewallSourceRangesContainPublic(srcIpRanges)
 }
 
 // policyRuleTargetsInstance reports whether a policy rule's targeting applies to
@@ -417,12 +414,12 @@ func (t firewallTraffic) covers(other firewallTraffic) bool {
 	return t.ports.covers(other.ports)
 }
 
-// openSourceFamilies reports which address families a rule's source ranges open
-// to the whole internet.
+// openSourceFamilies reports which address families an allow rule's source
+// ranges open to the internet.
 //
-// Only the two all-address blocks count. A set of narrower ranges that together
-// span the internet is not recognized, which leaves an allow rule counted as
-// open and a deny rule counted as not covering: both err toward reporting an
+// A family counts when any of its ranges admits a large part of the internet
+// (see firewallPrefixAdmitsInternet): 0.0.0.0/0 and ::/0, but also 0.0.0.0/1
+// plus 128.0.0.0/1 or 2000::/3. Erring wide here errs toward reporting an
 // instance reachable.
 func openSourceFamilies(sourceRanges []any) (v4 bool, v6 bool) {
 	for _, s := range sourceRanges {
@@ -430,13 +427,61 @@ func openSourceFamilies(sourceRanges []any) (v4 bool, v6 bool) {
 		if !ok {
 			continue
 		}
-		switch strings.TrimSpace(cidr) {
-		case "0.0.0.0/0":
+		p, err := netip.ParsePrefix(strings.TrimSpace(cidr))
+		if err != nil || !firewallPrefixAdmitsInternet(p) {
+			continue
+		}
+		if p.Addr().Is4() {
 			v4 = true
-		case "::/0":
+		} else {
 			v6 = true
 		}
 	}
+	return v4, v6
+}
+
+// coveredSourceFamilies reports which address families a deny rule's source
+// ranges block entirely.
+//
+// A deny shadows an allow only for traffic it actually covers, so the test is
+// the opposite of openSourceFamilies: IPv4 counts when the ranges together span
+// all of 0.0.0.0/0, such as 0.0.0.0/1 plus 128.0.0.0/1, and IPv6 counts only
+// for a zero-length prefix. A deny on 0.0.0.0/1 alone leaves half the internet
+// allowed, so it covers nothing.
+func coveredSourceFamilies(sourceRanges []any) (v4 bool, v6 bool) {
+	type span struct{ lo, hi uint64 }
+	spans := []span{}
+	for _, s := range sourceRanges {
+		cidr, ok := s.(string)
+		if !ok {
+			continue
+		}
+		p, err := netip.ParsePrefix(strings.TrimSpace(cidr))
+		if err != nil {
+			continue
+		}
+		p = p.Masked()
+		if !p.Addr().Is4() {
+			if p.Bits() == 0 {
+				v6 = true
+			}
+			continue
+		}
+		b := p.Addr().As4()
+		lo := uint64(b[0])<<24 | uint64(b[1])<<16 | uint64(b[2])<<8 | uint64(b[3])
+		spans = append(spans, span{lo, lo + (uint64(1) << (32 - p.Bits())) - 1})
+	}
+	sort.Slice(spans, func(i, j int) bool { return spans[i].lo < spans[j].lo })
+	var next uint64
+	for _, sp := range spans {
+		if sp.lo > next {
+			break
+		}
+		if sp.hi+1 > next {
+			next = sp.hi + 1
+		}
+	}
+	v4 = next > 0xFFFFFFFF
 	return v4, v6
 }
 
@@ -463,7 +508,13 @@ func ingressFromInternet(direction string, disabled bool, sourceRanges []any) bo
 // nothing. Both directions keep an input that could not be read from reporting
 // an instance as protected.
 func ingressTraffic(sourceRanges []any, protocols map[string]any, widenUnreadable bool) []firewallTraffic {
+	// widenUnreadable is true for allow rules and false for deny rules, which
+	// is also the split between "admits part of the internet" and "blocks all
+	// of it".
 	v4, v6 := openSourceFamilies(sourceRanges)
+	if !widenUnreadable {
+		v4, v6 = coveredSourceFamilies(sourceRanges)
+	}
 	families := []bool{}
 	if v4 {
 		families = append(families, false)
