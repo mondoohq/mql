@@ -205,3 +205,19 @@ func TestPackageLock(t *testing.T) {
 		})
 	}
 }
+
+func TestPackageLockResolvedUnmarshal(t *testing.T) {
+	var r packageLockResolved
+	require.NoError(t, json.Unmarshal([]byte(`"https://registry.npmjs.org/a/-/a-1.0.0.tgz"`), &r))
+	assert.Equal(t, packageLockResolved("https://registry.npmjs.org/a/-/a-1.0.0.tgz"), r)
+
+	// Synthetic: npm 6 writes false for a bundled package.
+	require.NoError(t, json.Unmarshal([]byte(`false`), &r))
+	assert.Equal(t, packageLockResolved(""), r)
+
+	// Synthetic: npm never writes a number; the error names the field and value.
+	err := json.Unmarshal([]byte(`42`), &r)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "resolved")
+	assert.Contains(t, err.Error(), "42")
+}

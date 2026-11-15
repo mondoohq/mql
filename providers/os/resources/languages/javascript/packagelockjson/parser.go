@@ -5,6 +5,7 @@ package packagelockjson
 
 import (
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -160,7 +161,7 @@ func (r *packageLockResolved) UnmarshalJSON(data []byte) error {
 	}
 	var b bool
 	if err := json.Unmarshal(data, &b); err != nil {
-		return err
+		return fmt.Errorf("package-lock resolved: expected a string or false, got %s", data)
 	}
 	*r = ""
 	return nil
