@@ -10,6 +10,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	emrtypes "github.com/aws/aws-sdk-go-v2/service/emr/types"
 	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
@@ -596,6 +597,22 @@ func addConnectionInfoToEc2Asset(instance *mqlAwsEc2Instance, accountId string, 
 func ec2InstanceIsDiscoverable(state string) bool {
 	switch state {
 	case string(types.InstanceStateNameTerminated), string(types.InstanceStateNameShuttingDown):
+		return false
+	default:
+		return true
+	}
+}
+
+// emrClusterIsDiscoverable reports whether an aws.emr.cluster status dict
+// describes a cluster that still exists. ListClusters keeps returning
+// terminated clusters for up to two months.
+func emrClusterIsDiscoverable(status any) bool {
+	m, ok := status.(map[string]any)
+	if !ok {
+		return true
+	}
+	switch m["State"] {
+	case string(emrtypes.ClusterStateTerminated), string(emrtypes.ClusterStateTerminatedWithErrors):
 		return false
 	default:
 		return true
