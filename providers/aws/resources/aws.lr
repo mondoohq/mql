@@ -25987,10 +25987,36 @@ private aws.directoryservice.directory @defaults("directoryId name type stage re
   shareStatus string
   // Notes associated with shared directory
   shareNotes string
+  // Accounts this directory is shared with
+  //
+  // Owner-side view of each share, from `DescribeSharedDirectories`. Empty for
+  // directories shared into this account (type SharedMicrosoftAD), whose
+  // sharing state is in `shareMethod`, `shareStatus`, and `shareNotes`.
+  sharedDirectories() []aws.directoryservice.directory.sharedDirectory
   // Tags associated with the directory
   tags() map[string]string
   // Region where the directory exists
   region string
+}
+
+// Share of a Directory Service directory with another AWS account
+private aws.directoryservice.directory.sharedDirectory @defaults("sharedAccountId shareMethod shareStatus") {
+  // AWS account ID the directory is shared with
+  sharedAccountId string
+  // Identifier of the shared directory in the consumer account
+  sharedDirectoryId string
+  // Sharing method: ORGANIZATIONS (within the AWS organization) or HANDSHAKE (any AWS account)
+  shareMethod string
+  // Sharing status
+  //
+  // One of: Shared, PendingAcceptance, Rejected, Rejecting, RejectFailed, Sharing, ShareFailed, Deleted, Deleting.
+  shareStatus string
+  // Notes sent with the share invitation
+  shareNotes string
+  // Time when the directory was shared
+  createdAt time
+  // Time when the share was last updated
+  updatedAt time
 }
 
 // RADIUS server settings for MFA authentication

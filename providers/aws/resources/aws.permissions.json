@@ -324,6 +324,7 @@
     "drs:GetLaunchConfiguration",
     "drs:GetReplicationConfiguration",
     "ds:DescribeDirectories",
+    "ds:DescribeSharedDirectories",
     "ds:ListTagsForResource",
     "dsql:GetCluster",
     "dsql:GetStream",
@@ -3141,6 +3142,12 @@
       "service": "ds",
       "action": "DescribeDirectories",
       "source_file": "aws_workdocs.go"
+    },
+    {
+      "permission": "ds:DescribeSharedDirectories",
+      "service": "ds",
+      "action": "DescribeSharedDirectories",
+      "source_file": "aws_directoryservice.go"
     },
     {
       "permission": "ds:ListTagsForResource",

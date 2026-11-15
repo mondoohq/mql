@@ -3296,6 +3296,15 @@ aws.directoryservice.directory.region 11.15.6
 aws.directoryservice.directory.shareMethod 11.15.6
 aws.directoryservice.directory.shareNotes 11.15.6
 aws.directoryservice.directory.shareStatus 11.15.6
+aws.directoryservice.directory.sharedDirectories 14.9.1
+aws.directoryservice.directory.sharedDirectory 14.9.1
+aws.directoryservice.directory.sharedDirectory.createdAt 14.9.1
+aws.directoryservice.directory.sharedDirectory.shareMethod 14.9.1
+aws.directoryservice.directory.sharedDirectory.shareNotes 14.9.1
+aws.directoryservice.directory.sharedDirectory.shareStatus 14.9.1
+aws.directoryservice.directory.sharedDirectory.sharedAccountId 14.9.1
+aws.directoryservice.directory.sharedDirectory.sharedDirectoryId 14.9.1
+aws.directoryservice.directory.sharedDirectory.updatedAt 14.9.1
 aws.directoryservice.directory.shortName 11.15.6
 aws.directoryservice.directory.size 11.15.6
 aws.directoryservice.directory.ssoEnabled 11.15.6
