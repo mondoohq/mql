@@ -1580,7 +1580,7 @@ func init() {
 			Create: createGcpProjectMonitoringServiceServiceSlo,
 		},
 		"gcp.project.binaryAuthorizationControl": {
-			// to override args, implement: initGcpProjectBinaryAuthorizationControl(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectBinaryAuthorizationControl,
 			Create: createGcpProjectBinaryAuthorizationControl,
 		},
 		"gcp.project.binaryAuthorizationControl.policy": {
@@ -1892,7 +1892,7 @@ func init() {
 			Create: createGcpProjectFilestoreServiceInstanceNetwork,
 		},
 		"gcp.project.cloudTasksService": {
-			// to override args, implement: initGcpProjectCloudTasksService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectCloudTasksService,
 			Create: createGcpProjectCloudTasksService,
 		},
 		"gcp.project.cloudTasksService.queue": {
@@ -1912,7 +1912,7 @@ func init() {
 			Create: createGcpProjectCloudSchedulerServiceJob,
 		},
 		"gcp.project.appEngineService": {
-			// to override args, implement: initGcpProjectAppEngineService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectAppEngineService,
 			Create: createGcpProjectAppEngineService,
 		},
 		"gcp.project.appEngineService.firewallRule": {
@@ -1936,7 +1936,7 @@ func init() {
 			Create: createGcpProjectAppEngineServiceVersionNetworkInterface,
 		},
 		"gcp.project.apiGatewayService": {
-			// to override args, implement: initGcpProjectApiGatewayService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectApiGatewayService,
 			Create: createGcpProjectApiGatewayService,
 		},
 		"gcp.project.apiGatewayService.api": {
@@ -1952,7 +1952,7 @@ func init() {
 			Create: createGcpProjectApiGatewayServiceGateway,
 		},
 		"gcp.project.workstationsService": {
-			// to override args, implement: initGcpProjectWorkstationsService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectWorkstationsService,
 			Create: createGcpProjectWorkstationsService,
 		},
 		"gcp.project.workstationsService.cluster": {
@@ -1960,7 +1960,7 @@ func init() {
 			Create: createGcpProjectWorkstationsServiceCluster,
 		},
 		"gcp.project.workbenchService": {
-			// to override args, implement: initGcpProjectWorkbenchService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectWorkbenchService,
 			Create: createGcpProjectWorkbenchService,
 		},
 		"gcp.project.workbenchService.instance": {
@@ -1968,7 +1968,7 @@ func init() {
 			Create: createGcpProjectWorkbenchServiceInstance,
 		},
 		"gcp.project.notebooksService": {
-			// to override args, implement: initGcpProjectNotebooksService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectNotebooksService,
 			Create: createGcpProjectNotebooksService,
 		},
 		"gcp.project.notebooksService.instance": {
@@ -1976,7 +1976,7 @@ func init() {
 			Create: createGcpProjectNotebooksServiceInstance,
 		},
 		"gcp.project.composerService": {
-			// to override args, implement: initGcpProjectComposerService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectComposerService,
 			Create: createGcpProjectComposerService,
 		},
 		"gcp.project.composerService.environment": {
@@ -1984,7 +1984,7 @@ func init() {
 			Create: createGcpProjectComposerServiceEnvironment,
 		},
 		"gcp.project.healthcareService": {
-			// to override args, implement: initGcpProjectHealthcareService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectHealthcareService,
 			Create: createGcpProjectHealthcareService,
 		},
 		"gcp.project.healthcareService.dataset": {
@@ -2080,7 +2080,7 @@ func init() {
 			Create: createGcpProjectComputeServiceInstanceTemplateInstanceProperties,
 		},
 		"gcp.project.cloudDeployService": {
-			// to override args, implement: initGcpProjectCloudDeployService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectCloudDeployService,
 			Create: createGcpProjectCloudDeployService,
 		},
 		"gcp.project.cloudDeployService.deliveryPipeline": {
@@ -2096,7 +2096,7 @@ func init() {
 			Create: createGcpProjectCloudDeployServiceRelease,
 		},
 		"gcp.project.dataflowService": {
-			// to override args, implement: initGcpProjectDataflowService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectDataflowService,
 			Create: createGcpProjectDataflowService,
 		},
 		"gcp.project.dataflowService.job": {
@@ -2620,7 +2620,7 @@ func init() {
 			Create: createGcpProjectContainerAnalysisServiceNote,
 		},
 		"gcp.project.cloudBuildService": {
-			// to override args, implement: initGcpProjectCloudBuildService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectCloudBuildService,
 			Create: createGcpProjectCloudBuildService,
 		},
 		"gcp.project.cloudBuildService.trigger": {
@@ -2708,7 +2708,7 @@ func init() {
 			Create: createGcpProjectPrivilegedAccessManagerServiceGrant,
 		},
 		"gcp.project.iapService": {
-			// to override args, implement: initGcpProjectIapService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectIapService,
 			Create: createGcpProjectIapService,
 		},
 		"gcp.project.iapService.brand": {
@@ -2724,7 +2724,7 @@ func init() {
 			Create: createGcpProjectIapServiceTunnelDestGroup,
 		},
 		"gcp.project.sourceRepositoriesService": {
-			// to override args, implement: initGcpProjectSourceRepositoriesService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectSourceRepositoriesService,
 			Create: createGcpProjectSourceRepositoriesService,
 		},
 		"gcp.project.sourceRepositoriesService.repo": {
