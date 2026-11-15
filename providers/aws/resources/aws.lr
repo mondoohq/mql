@@ -25987,7 +25987,7 @@ private aws.directoryservice.directory @defaults("directoryId name type stage re
   shareStatus string
   // Notes associated with shared directory
   shareNotes string
-  // Accounts this directory is shared with
+  // Directories shared from this directory to other AWS accounts
   //
   // Owner-side view of each share, from `DescribeSharedDirectories`. Empty for
   // directories shared into this account (type SharedMicrosoftAD), whose
@@ -26002,6 +26002,9 @@ private aws.directoryservice.directory @defaults("directoryId name type stage re
 // Share of a Directory Service directory with another AWS account
 private aws.directoryservice.directory.sharedDirectory @defaults("sharedAccountId shareMethod shareStatus") {
   // AWS account ID the directory is shared with
+  //
+  // A plain ID rather than an `aws.account` reference: the consumer is a
+  // different account, which this connection cannot read as a resource.
   sharedAccountId string
   // Identifier of the shared directory in the consumer account
   sharedDirectoryId string

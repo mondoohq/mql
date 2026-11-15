@@ -230,6 +230,15 @@ func (a *mqlAwsDirectoryserviceDirectory) sharedDirectories() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
+			if Is400AccessDeniedError(err) {
+				// Null, not an empty list: a check over the shares must not pass
+				// on a directory whose shares could not be read.
+				if !plugin.StructuredErrors() {
+					log.Warn().Str("region", a.Region.Data).Msg("access denied for ds:DescribeSharedDirectories")
+					return nil, nil
+				}
+				return nil, llx.Forbidden(err, llx.WithPermissions("ds:DescribeSharedDirectories"))
+			}
 			return nil, err
 		}
 		for _, sd := range page.SharedDirectories {
