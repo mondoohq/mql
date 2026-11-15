@@ -73,6 +73,17 @@ func boolField(row map[string]string, key string) *llx.RawData {
 	return llx.BoolData(parseBool(v))
 }
 
+// stringField returns the RouterOS attribute at key, or null when the device
+// did not report it. Use it where an absent attribute carries meaning of its
+// own and must not read as an empty string.
+func stringField(row map[string]string, key string) *llx.RawData {
+	v, ok := row[key]
+	if !ok {
+		return llx.NilData
+	}
+	return llx.StringData(v)
+}
+
 // intField returns the RouterOS numeric attribute at key, or null when the
 // device did not report it, so an unreported counter or size does not read as
 // a genuine zero.

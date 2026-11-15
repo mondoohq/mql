@@ -1,0 +1,9 @@
+[
+ {
+  "channel": "stable",
+  "check-certificate": "yes",
+  "installed-version": "7.25.1",
+  "ip-version": "auto",
+  "mode": "https"
+ }
+]

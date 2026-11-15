@@ -739,6 +739,7 @@ mikrotik.system.totalHddSpace 13.0.0
 mikrotik.system.totalMemory 13.0.0
 mikrotik.system.update 13.0.11
 mikrotik.system.update.channel 13.0.11
+mikrotik.system.update.checked 14.1.1
 mikrotik.system.update.installedVersion 13.0.11
 mikrotik.system.update.latestVersion 13.0.11
 mikrotik.system.update.status 13.0.11

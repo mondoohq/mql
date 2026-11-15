@@ -1600,6 +1600,15 @@ mikrotik.system.routerboot @defaults("protectedRouterboot protected bootDevice")
 // behind" check. The channel is a finding of its own: `development` or
 // `testing` on a production router means it takes builds that have not been
 // through a stable release.
+//
+// RouterOS learns the latest version only by contacting MikroTik's update
+// server, which it does when someone runs `check-for-updates`, when the
+// channel is changed, or when a scheduled script does so. It forgets the
+// answer on reboot. Reading this menu never starts a check, so on most devices
+// `latestVersion` and `updateAvailable` are null and `checked` is false. Use
+// `checked` to tell a device that was not checked apart from one that is up
+// to date, and `buildTime` on `mikrotik.system` for an age-based check that
+// needs no answer from the update server.
 mikrotik.system.update @defaults("channel installedVersion latestVersion updateAvailable") {
   // Release channel the device takes updates from
   //
@@ -1609,17 +1618,27 @@ mikrotik.system.update @defaults("channel installedVersion latestVersion updateA
   installedVersion string
   // Latest RouterOS version offered on the channel
   //
-  // Empty until the device has checked the channel, which it does not do on
-  // its own.
+  // Null until the device has checked the channel since it last booted.
   latestVersion string
   // Whether a newer version is available on the channel
   //
   // Compares latestVersion against installedVersion. Null when the device has
-  // not checked the channel, since not having looked is not the same as being
-  // up to date.
+  // not checked the channel since it last booted, since not having looked is
+  // not the same as being up to date.
   updateAvailable bool
   // Status of the last update check
+  //
+  // For example `System is already up to date`, `New version is available`,
+  // `finding out latest version...` while a check runs, or a message starting
+  // with `ERROR:` when the update server could not be reached. Null when no
+  // check has run since the device last booted.
   status string
+  // Whether the device holds an answer from the update server
+  //
+  // True once a check has returned latestVersion since the device last
+  // booted. False when no check has run, a check is still running, or the
+  // last check failed; updateAvailable is null in all three cases.
+  checked bool
 }
 
 // MikroTik L2TP server configuration

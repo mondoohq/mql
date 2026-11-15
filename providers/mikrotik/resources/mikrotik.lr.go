@@ -1955,6 +1955,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mikrotik.system.update.status": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikSystemUpdate).GetStatus()).ToDataRes(types.String)
 	},
+	"mikrotik.system.update.checked": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikSystemUpdate).GetChecked()).ToDataRes(types.Bool)
+	},
 	"mikrotik.interface.l2tpServer.enabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikInterfaceL2tpServer).GetEnabled()).ToDataRes(types.Bool)
 	},
@@ -4846,6 +4849,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mikrotik.system.update.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMikrotikSystemUpdate).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mikrotik.system.update.checked": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikSystemUpdate).Checked, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"mikrotik.interface.l2tpServer.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -10733,6 +10740,7 @@ type mqlMikrotikSystemUpdate struct {
 	LatestVersion    plugin.TValue[string]
 	UpdateAvailable  plugin.TValue[bool]
 	Status           plugin.TValue[string]
+	Checked          plugin.TValue[bool]
 }
 
 // createMikrotikSystemUpdate creates a new instance of this resource
@@ -10785,6 +10793,10 @@ func (c *mqlMikrotikSystemUpdate) GetUpdateAvailable() *plugin.TValue[bool] {
 
 func (c *mqlMikrotikSystemUpdate) GetStatus() *plugin.TValue[string] {
 	return &c.Status
+}
+
+func (c *mqlMikrotikSystemUpdate) GetChecked() *plugin.TValue[bool] {
+	return &c.Checked
 }
 
 // mqlMikrotikInterfaceL2tpServer for the mikrotik.interface.l2tpServer resource

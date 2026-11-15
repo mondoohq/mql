@@ -138,3 +138,10 @@ func TestIntListField(t *testing.T) {
 	assert.Equal(t, []any{}, intListField(map[string]string{"port": ""}, "port").Value)
 	assert.Nil(t, intListField(map[string]string{}, "port").Value)
 }
+
+func TestStringField(t *testing.T) {
+	assert.Equal(t, "7.25.1", stringField(map[string]string{"v": "7.25.1"}, "v").Value)
+	// reported but empty stays an empty string
+	assert.Equal(t, "", stringField(map[string]string{"v": ""}, "v").Value)
+	assert.Nil(t, stringField(map[string]string{}, "v").Value)
+}
