@@ -531,7 +531,7 @@ private digitalocean.hostedAgentConnection @defaults("provider status actorId") 
 // succeeded, failed). The `ingressRules` and `egressRules` control
 // incoming and outgoing traffic, each rule exposing protocol, ports, and
 // the `openToInternet` predicate that flags rules reachable from any
-// address (0.0.0.0/0 or ::/0), plus references to the droplets, load
+// address (0.0.0.0/0, ::/0, or ranges that together cover either), plus references to the droplets, load
 // balancers, and Kubernetes clusters it targets. The `tags` select
 // protected droplets by tag, and `droplets` resolves the full set
 // covered by the firewall (by direct ID or matching tag).
@@ -584,7 +584,8 @@ private digitalocean.firewall.pendingChange @defaults("status removing") {
 // range like "8000-9000", or "0"/"all" for every port). `action` is
 // allow or deny. `openToInternet` is true when the rule admits traffic
 // from any address, that is, when it is an allow rule and
-// `sourceAddresses` contains 0.0.0.0/0 or ::/0, which makes auditing
+// `sourceAddresses` covers every IPv4 or IPv6 address, as 0.0.0.0/0 or
+// ::/0 or as ranges such as 0.0.0.0/1 plus 128.0.0.0/1, which makes auditing
 // publicly reachable ports a single predicate. The source is otherwise
 // described by `sourceAddresses` (CIDRs), `sourceTags`, and the
 // `sourceDroplets`, `sourceLoadBalancers`, and `sourceKubernetesClusters`
@@ -604,8 +605,10 @@ private digitalocean.firewall.ingressRule @defaults("protocol ports openToIntern
   action string
   // Whether the rule admits traffic from any address
   //
-  // True for an allow rule whose source addresses include 0.0.0.0/0 or
-  // ::/0. A deny rule over those ranges blocks traffic and is not open.
+  // True for an allow rule whose source addresses together cover every
+  // IPv4 or IPv6 address: 0.0.0.0/0, ::/0, or ranges such as 0.0.0.0/1
+  // plus 128.0.0.0/1. A deny rule over those ranges blocks traffic and is
+  // not open.
   openToInternet bool
   // Source address CIDRs trusted by this rule
   sourceAddresses []string
@@ -644,7 +647,8 @@ private digitalocean.network.exposure @defaults("internetReachable hasPublicIp")
 // range like "8000-9000", or "0"/"all" for every port). `action` is
 // allow or deny. `openToInternet` is true when the rule permits traffic
 // to any address, that is, when it is an allow rule and
-// `destinationAddresses` contains 0.0.0.0/0 or ::/0. The destination is
+// `destinationAddresses` covers every IPv4 or IPv6 address, as 0.0.0.0/0
+// or ::/0 or as ranges that add up to either. The destination is
 // otherwise described by `destinationAddresses` (CIDRs), `destinationTags`,
 // and the `destinationDroplets`, `destinationLoadBalancers`, and
 // `destinationKubernetesClusters` the rule allows.
@@ -663,8 +667,9 @@ private digitalocean.firewall.egressRule @defaults("protocol ports openToInterne
   action string
   // Whether the rule permits traffic to any address
   //
-  // True for an allow rule whose destination addresses include 0.0.0.0/0
-  // or ::/0. A deny rule over those ranges blocks traffic and is not open.
+  // True for an allow rule whose destination addresses together cover
+  // every IPv4 or IPv6 address: 0.0.0.0/0, ::/0, or ranges that add up to
+  // either. A deny rule over those ranges blocks traffic and is not open.
   openToInternet bool
   // Destination address CIDRs allowed by this rule
   destinationAddresses []string
@@ -734,7 +739,7 @@ digitalocean.database @defaults("id name engine") {
   firewallRules() []dict
   // Whether the cluster is reachable from the internet
   //
-  // True when the cluster has a public connection endpoint and its trusted-source firewall rules admit any address (an ip_addr rule of 0.0.0.0/0 or ::/0), or when no trusted-source rules are configured at all, which leaves the public endpoint open to every address.
+  // True when the cluster has a public connection endpoint and its trusted-source firewall rules admit any address (ip_addr rules that together cover every IPv4 or IPv6 address, such as 0.0.0.0/1 plus 128.0.0.0/1), or when no trusted-source rules are configured at all, which leaves the public endpoint open to every address.
   internetReachable() bool
   // Public connection host
   connectionHost string
@@ -1578,7 +1583,8 @@ digitalocean.kubernetes.cluster @defaults("id name version") {
   // control-plane firewall is enabled and its allowed source addresses
   // exclude the whole internet. hasPublicIp reflects the published
   // endpoint, and firewallAllowsIngress is true when the firewall is off
-  // or admits 0.0.0.0/0 or ::/0. openIngressRules stays empty because the
+  // or its allowed addresses together cover every IPv4 or IPv6 address.
+  // openIngressRules stays empty because the
   // control-plane firewall is a source address list rather than a set of
   // cloud-firewall rules.
   exposure() digitalocean.network.exposure
