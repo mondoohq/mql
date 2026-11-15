@@ -212,8 +212,9 @@ var subvolumeFsTypes = map[string]bool{
 // MountPrunes decides how a search from `from` stays on the filesystem that
 // holds it. On a filesystem with subvolumes it returns the mount points below
 // from, outermost first, and true: the search must prune those rather than use
-// -xdev. Otherwise, and when from is not an absolute path or no mount holds
-// it, it returns false and -xdev is right.
+// -xdev. Otherwise, and when from is not an absolute path, no mount holds it,
+// or the mount points would make the command too long (see maxPruneArgLen),
+// it returns false and -xdev is used.
 func MountPrunes(from string, mounts []mount.MountPoint) ([]string, bool) {
 	if !path.IsAbs(from) {
 		return nil, false
@@ -251,13 +252,25 @@ func MountPrunes(from string, mounts []mount.MountPoint) ([]string, bool) {
 
 	// A mount below one that is already pruned is never reached.
 	prunes := []string{}
+	size := 0
 	for _, mp := range below {
 		if !underAny(mp, prunes) {
 			prunes = append(prunes, mp)
+			size += len(mp) + len(" -o -path ''")
 		}
+	}
+	if size > maxPruneArgLen {
+		return nil, false
 	}
 	return prunes, true
 }
+
+// maxPruneArgLen caps the -path terms a pruning search adds to its command.
+// The command reaches the target's shell as the one argument of `sh -c`, and
+// Linux refuses a single argument longer than MAX_ARG_STRLEN (128 KiB), so a
+// mount table too large for this budget leaves the search on -xdev. Half the
+// limit leaves room for the rest of the command and for quoting.
+const maxPruneArgLen = 64 * 1024
 
 func underAny(p string, dirs []string) bool {
 	for _, d := range dirs {

@@ -4,6 +4,7 @@
 package filesfind
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -211,6 +212,23 @@ func TestMountPrunes(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMountPrunesTooLong(t *testing.T) {
+	// Synthetic: a btrfs root with more mount points below it than one
+	// argument can carry, as on a Kubernetes node with many pod volumes.
+	mounts := []mount.MountPoint{{MountPoint: "/", FSType: "btrfs"}}
+	for i := 0; i < 1000; i++ {
+		mounts = append(mounts, mount.MountPoint{MountPoint: fmt.Sprintf("/var/lib/kubelet/pods/%036d/volumes/kubernetes.io~projected/kube-api-access", i), FSType: "tmpfs"})
+	}
+	prunes, ok := MountPrunes("/", mounts)
+	assert.False(t, ok)
+	assert.Empty(t, prunes)
+
+	// the same search with a tenth of the mounts fits
+	prunes, ok = MountPrunes("/", mounts[:101])
+	assert.True(t, ok)
+	assert.Len(t, prunes, 100)
 }
 
 func TestBuildFilesFindCmdPruningMounts(t *testing.T) {

@@ -318,10 +318,12 @@ func (l *mqlFilesFind) linuxMounts() []mount.MountPoint {
 		"command": llx.StringData(procMountsCmd),
 	})
 	if err != nil {
+		log.Debug().Err(err).Msg("files.find> cannot read the mount table, searching with -xdev")
 		return nil
 	}
 	out := raw.(*mqlCommand).GetStdout()
 	if out.Error != nil {
+		log.Debug().Err(out.Error).Msg("files.find> cannot read the mount table, searching with -xdev")
 		return nil
 	}
 	return mount.ParseLinuxProcMount(strings.NewReader(out.Data))
