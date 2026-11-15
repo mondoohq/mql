@@ -11840,7 +11840,7 @@ private azure.subscription.monitorService.logprofile @defaults("id name location
   properties dict
   // ID of the log profile storage account
   storageAccountId string
-  // Log profile storage account
+  // Storage account the log profile archives to; null when none is configured or the named account could not be read
   storageAccount() azure.subscription.storageService.account
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
@@ -11858,7 +11858,7 @@ private azure.subscription.monitorService.diagnosticsetting @defaults("id name")
   properties dict
   // ID of the diagnostic setting storage account
   storageAccountId string
-  // Storage account logs are archived to; null when no storage destination is configured or the named account could not be read
+  // Storage account the setting archives logs to; null when no storage destination is configured or the named account could not be read
   storageAccount() azure.subscription.storageService.account
   // ID of the Log Analytics workspace logs are sent to; empty when no workspace destination is configured
   workspaceId string

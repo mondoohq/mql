@@ -953,7 +953,17 @@ func (a *mqlAzureSubscriptionMonitorServiceLogprofile) storageAccount() (*mqlAzu
 		a.StorageAccount.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	return getStorageAccount(a.StorageAccountId.Data, a.MqlRuntime, a.MqlRuntime.Connection.(*connection.AzureConnection))
+	account, err := getStorageAccount(a.StorageAccountId.Data, a.MqlRuntime, a.MqlRuntime.Connection.(*connection.AzureConnection))
+	if err != nil {
+		if diagnosticDestinationUnreadable(err) {
+			log.Warn().Err(err).Str("storageAccount", a.StorageAccountId.Data).Str("logProfile", a.Id.Data).
+				Msg("log profile names a storage account that could not be read")
+			a.StorageAccount.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		return nil, err
+	}
+	return account, nil
 }
 
 // storageAccount resolves the storage account the setting archives to. It
@@ -988,7 +998,7 @@ func (a *mqlAzureSubscriptionMonitorServiceDiagnosticsetting) storageAccount() (
 // destination could not be read, rather than that the read
 // itself broke. A deleted destination answers 404 and one the caller cannot see
 // answers 403; both leave the destination unreadable, which the field reports
-// as null alongside the raw workspaceId. Anything else -- a server error, a
+// as null alongside the raw workspaceId or storageAccountId. Anything else -- a server error, a
 // throttle, a transport failure -- is a broken read and must surface as an
 // error rather than be dressed up as a dangling reference.
 func diagnosticDestinationUnreadable(err error) bool {
