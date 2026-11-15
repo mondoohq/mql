@@ -144,6 +144,8 @@ mikrotik @root {
   socks() mikrotik.ip.socks
   // Web proxy server configuration
   webProxy() mikrotik.ip.proxy
+  // UPnP service configuration
+  upnp() mikrotik.ip.upnp
   // RoMON layer 2 management configuration
   romon() mikrotik.tool.romon
   // Bandwidth test server configuration
@@ -2297,6 +2299,31 @@ mikrotik.ip.proxy @defaults("enabled ports anonymous") {
   srcAddress string
   // Maximum number of concurrent client connections
   maxClientConnections int
+}
+
+// MikroTik UPnP service
+//
+// Universal Plug and Play settings read from `/ip/upnp`. With UPnP enabled,
+// any host on an internal UPnP interface can ask the device to open inbound
+// port forwards to itself without authentication, so a single compromised or
+// misbehaving LAN host can expose services to the internet without an
+// administrator's involvement. `allowDisableExternalInterface` additionally
+// lets those hosts disable the external interface.
+mikrotik.ip.upnp @defaults("enabled allowDisableExternalInterface") {
+  // Whether the UPnP service answers requests
+  //
+  // False by default on RouterOS.
+  enabled bool
+  // Whether UPnP clients may disable the external interface
+  //
+  // False by default. When true, any host that can speak UPnP to the device
+  // can take its external connection down.
+  allowDisableExternalInterface bool
+  // Whether a placeholder forwarding rule is shown to clients
+  //
+  // True by default. Works around clients that refuse to use UPnP when the
+  // device reports no existing rules.
+  showDummyRule bool
 }
 
 // MikroTik RoMON configuration

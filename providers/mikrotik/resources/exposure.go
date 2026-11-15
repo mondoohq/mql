@@ -323,3 +323,31 @@ func (r *mqlMikrotik) webProxy() (*mqlMikrotikIpProxy, error) {
 func initMikrotikIpProxy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	return singletonInit(runtime, "/ip/proxy", args, webProxyArgs)
 }
+
+// --- ip.upnp ---
+
+func upnpArgs(row map[string]string) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":                          llx.StringData("mikrotik.ip.upnp"),
+		"enabled":                       boolField(row, "enabled"),
+		"allowDisableExternalInterface": boolField(row, "allow-disable-external-interface"),
+		"showDummyRule":                 boolField(row, "show-dummy-rule"),
+	}
+}
+
+func (r *mqlMikrotik) upnp() (*mqlMikrotikIpUpnp, error) {
+	res, ok, err := singletonAccessor[*mqlMikrotikIpUpnp](
+		r.MqlRuntime, "/ip/upnp", "mikrotik.ip.upnp", upnpArgs)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		r.Upnp.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return res, nil
+}
+
+func initMikrotikIpUpnp(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	return singletonInit(runtime, "/ip/upnp", args, upnpArgs)
+}

@@ -235,3 +235,28 @@ func TestWebProxyArgsAbsentMenu(t *testing.T) {
 	assert.Nil(t, args["ports"].Value)
 	assert.Nil(t, args["anonymous"].Value)
 }
+
+func TestUpnpArgs(t *testing.T) {
+	// RouterOS 7.25.1 default: off
+	def := upnpArgs(liveRows(t, "ip-upnp.json")[0])
+	assert.Equal(t, "mikrotik.ip.upnp", def["__id"].Value)
+	assert.Equal(t, false, def["enabled"].Value)
+	assert.Equal(t, false, def["allowDisableExternalInterface"].Value)
+	assert.Equal(t, true, def["showDummyRule"].Value)
+
+	on := upnpArgs(map[string]string{
+		"enabled":                          "true",
+		"allow-disable-external-interface": "true",
+		"show-dummy-rule":                  "false",
+	})
+	assert.Equal(t, true, on["enabled"].Value)
+	assert.Equal(t, true, on["allowDisableExternalInterface"].Value)
+	assert.Equal(t, false, on["showDummyRule"].Value)
+}
+
+func TestUpnpArgsAbsentMenu(t *testing.T) {
+	args := upnpArgs(map[string]string{})
+	assert.Nil(t, args["enabled"].Value)
+	assert.Nil(t, args["allowDisableExternalInterface"].Value)
+	assert.Nil(t, args["showDummyRule"].Value)
+}

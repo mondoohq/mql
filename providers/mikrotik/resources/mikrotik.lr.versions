@@ -481,6 +481,10 @@ mikrotik.ip.socks.enabled 14.1.1
 mikrotik.ip.socks.maxConnections 14.1.1
 mikrotik.ip.socks.port 14.1.1
 mikrotik.ip.socks.version 14.1.1
+mikrotik.ip.upnp 14.1.1
+mikrotik.ip.upnp.allowDisableExternalInterface 14.1.1
+mikrotik.ip.upnp.enabled 14.1.1
+mikrotik.ip.upnp.showDummyRule 14.1.1
 mikrotik.ipAddresses 13.0.0
 mikrotik.ipsecIdentities 13.0.11
 mikrotik.ipsecPeers 13.0.11
@@ -761,6 +765,7 @@ mikrotik.tool.romon 13.0.11
 mikrotik.tool.romon.enabled 13.0.11
 mikrotik.tool.romon.hasSecrets 13.0.11
 mikrotik.tool.romon.id 13.0.11
+mikrotik.upnp 14.1.1
 mikrotik.user 13.0.0
 mikrotik.user.aaa 13.0.11
 mikrotik.user.aaa.accounting 13.0.11

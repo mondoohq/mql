@@ -94,6 +94,7 @@ func TestLiveRowsCoverEverySchemaField(t *testing.T) {
 		{"tool-bandwidth-server.json", "mikrotik.tool.bandwidthServer", bandwidthServerArgs},
 		{"ip-socks.json", "mikrotik.ip.socks", socksArgs},
 		{"ip-proxy.json", "mikrotik.ip.proxy", webProxyArgs},
+		{"ip-upnp.json", "mikrotik.ip.upnp", upnpArgs},
 	} {
 		t.Run(tc.fixture, func(t *testing.T) {
 			rows := liveRows(t, tc.fixture)
@@ -139,6 +140,7 @@ func TestLiveRowsDoNotPanic(t *testing.T) {
 		{"tool-bandwidth-server.json", bandwidthServerArgs},
 		{"ip-socks.json", socksArgs},
 		{"ip-proxy.json", webProxyArgs},
+		{"ip-upnp.json", upnpArgs},
 	} {
 		t.Run(tc.fixture, func(t *testing.T) {
 			for _, row := range liveRows(t, tc.fixture) {

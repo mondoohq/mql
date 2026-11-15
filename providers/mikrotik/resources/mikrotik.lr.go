@@ -69,6 +69,7 @@ const (
 	ResourceMikrotikIpCloud                      string = "mikrotik.ip.cloud"
 	ResourceMikrotikIpSocks                      string = "mikrotik.ip.socks"
 	ResourceMikrotikIpProxy                      string = "mikrotik.ip.proxy"
+	ResourceMikrotikIpUpnp                       string = "mikrotik.ip.upnp"
 	ResourceMikrotikToolRomon                    string = "mikrotik.tool.romon"
 	ResourceMikrotikToolBandwidthServer          string = "mikrotik.tool.bandwidthServer"
 	ResourceMikrotikContainer                    string = "mikrotik.container"
@@ -293,6 +294,10 @@ func init() {
 		"mikrotik.ip.proxy": {
 			Init:   initMikrotikIpProxy,
 			Create: createMikrotikIpProxy,
+		},
+		"mikrotik.ip.upnp": {
+			Init:   initMikrotikIpUpnp,
+			Create: createMikrotikIpUpnp,
 		},
 		"mikrotik.tool.romon": {
 			Init:   initMikrotikToolRomon,
@@ -551,6 +556,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"mikrotik.webProxy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotik).GetWebProxy()).ToDataRes(types.Resource("mikrotik.ip.proxy"))
+	},
+	"mikrotik.upnp": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotik).GetUpnp()).ToDataRes(types.Resource("mikrotik.ip.upnp"))
 	},
 	"mikrotik.romon": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotik).GetRomon()).ToDataRes(types.Resource("mikrotik.tool.romon"))
@@ -2436,6 +2444,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mikrotik.ip.proxy.maxClientConnections": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikIpProxy).GetMaxClientConnections()).ToDataRes(types.Int)
 	},
+	"mikrotik.ip.upnp.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikIpUpnp).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"mikrotik.ip.upnp.allowDisableExternalInterface": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikIpUpnp).GetAllowDisableExternalInterface()).ToDataRes(types.Bool)
+	},
+	"mikrotik.ip.upnp.showDummyRule": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikIpUpnp).GetShowDummyRule()).ToDataRes(types.Bool)
+	},
 	"mikrotik.tool.romon.enabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikToolRomon).GetEnabled()).ToDataRes(types.Bool)
 	},
@@ -2821,6 +2838,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mikrotik.webProxy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMikrotik).WebProxy, ok = plugin.RawToTValue[*mqlMikrotikIpProxy](v.Value, v.Error)
+		return
+	},
+	"mikrotik.upnp": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotik).Upnp, ok = plugin.RawToTValue[*mqlMikrotikIpUpnp](v.Value, v.Error)
 		return
 	},
 	"mikrotik.romon": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -5543,6 +5564,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMikrotikIpProxy).MaxClientConnections, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
+	"mikrotik.ip.upnp.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikIpUpnp).__id, ok = v.Value.(string)
+		return
+	},
+	"mikrotik.ip.upnp.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikIpUpnp).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"mikrotik.ip.upnp.allowDisableExternalInterface": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikIpUpnp).AllowDisableExternalInterface, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"mikrotik.ip.upnp.showDummyRule": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikIpUpnp).ShowDummyRule, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"mikrotik.tool.romon.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMikrotikToolRomon).__id, ok = v.Value.(string)
 		return
@@ -5865,6 +5902,7 @@ type mqlMikrotik struct {
 	Cloud                plugin.TValue[*mqlMikrotikIpCloud]
 	Socks                plugin.TValue[*mqlMikrotikIpSocks]
 	WebProxy             plugin.TValue[*mqlMikrotikIpProxy]
+	Upnp                 plugin.TValue[*mqlMikrotikIpUpnp]
 	Romon                plugin.TValue[*mqlMikrotikToolRomon]
 	BandwidthServer      plugin.TValue[*mqlMikrotikToolBandwidthServer]
 	Containers           plugin.TValue[[]any]
@@ -6756,6 +6794,22 @@ func (c *mqlMikrotik) GetWebProxy() *plugin.TValue[*mqlMikrotikIpProxy] {
 		}
 
 		return c.webProxy()
+	})
+}
+
+func (c *mqlMikrotik) GetUpnp() *plugin.TValue[*mqlMikrotikIpUpnp] {
+	return plugin.GetOrCompute[*mqlMikrotikIpUpnp](&c.Upnp, func() (*mqlMikrotikIpUpnp, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mikrotik", c.__id, "upnp")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMikrotikIpUpnp), nil
+			}
+		}
+
+		return c.upnp()
 	})
 }
 
@@ -12254,6 +12308,60 @@ func (c *mqlMikrotikIpProxy) GetSrcAddress() *plugin.TValue[string] {
 
 func (c *mqlMikrotikIpProxy) GetMaxClientConnections() *plugin.TValue[int64] {
 	return &c.MaxClientConnections
+}
+
+// mqlMikrotikIpUpnp for the mikrotik.ip.upnp resource
+type mqlMikrotikIpUpnp struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMikrotikIpUpnpInternal it will be used here
+	Enabled                       plugin.TValue[bool]
+	AllowDisableExternalInterface plugin.TValue[bool]
+	ShowDummyRule                 plugin.TValue[bool]
+}
+
+// createMikrotikIpUpnp creates a new instance of this resource
+func createMikrotikIpUpnp(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMikrotikIpUpnp{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("mikrotik.ip.upnp", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMikrotikIpUpnp) MqlName() string {
+	return "mikrotik.ip.upnp"
+}
+
+func (c *mqlMikrotikIpUpnp) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMikrotikIpUpnp) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlMikrotikIpUpnp) GetAllowDisableExternalInterface() *plugin.TValue[bool] {
+	return &c.AllowDisableExternalInterface
+}
+
+func (c *mqlMikrotikIpUpnp) GetShowDummyRule() *plugin.TValue[bool] {
+	return &c.ShowDummyRule
 }
 
 // mqlMikrotikToolRomon for the mikrotik.tool.romon resource
