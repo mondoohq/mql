@@ -81,28 +81,21 @@ func (h *hclFileLoader) GetParser() *hclparse.Parser {
 // scan — a false negative with no error to notice.
 func ReadTfVarsFromFile(filename string, terraformVars map[string]*hcl.Attribute) error {
 	f, ok := classifyConfigFile(filename)
-	if !ok {
+	if !ok || (f.class != classVarsJSON && f.class != classVars) {
 		return nil
+	}
+
+	src, err := os.ReadFile(filename)
+	if err != nil {
+		return err
 	}
 
 	var variableFile *hcl.File
 	var diags hcl.Diagnostics
-
-	switch f.class {
-	case classVarsJSON:
-		src, err := os.ReadFile(filename)
-		if err != nil {
-			return err
-		}
+	if f.class == classVarsJSON {
 		variableFile, diags = json.Parse(src, filename)
-	case classVars:
-		src, err := os.ReadFile(filename)
-		if err != nil {
-			return err
-		}
+	} else {
 		variableFile, diags = hclsyntax.ParseConfig(src, filename, hcl.Pos{Line: 1, Column: 1})
-	default:
-		return nil
 	}
 
 	// Parse diagnostics are not fatal — a partially readable tfvars file still
