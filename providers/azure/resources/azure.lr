@@ -11858,7 +11858,7 @@ private azure.subscription.monitorService.diagnosticsetting @defaults("id name")
   properties dict
   // ID of the diagnostic setting storage account
   storageAccountId string
-  // Diagnostic setting storage account
+  // Storage account logs are archived to; null when no storage destination is configured or the named account could not be read
   storageAccount() azure.subscription.storageService.account
   // ID of the Log Analytics workspace logs are sent to; empty when no workspace destination is configured
   workspaceId string
