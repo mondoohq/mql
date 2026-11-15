@@ -101,12 +101,12 @@ func TestBGPNeighborsParsing(t *testing.T) {
 
 func TestBGPSummaryGetCmd(t *testing.T) {
 	s := &showIPBgpSummary{}
-	assert.Equal(t, "show ip bgp summary", s.GetCmd())
+	assert.Equal(t, "show ip bgp summary vrf all", s.GetCmd())
 }
 
 func TestBGPNeighborsGetCmd(t *testing.T) {
 	s := &showIPBgpNeighbors{}
-	assert.Equal(t, "show ip bgp neighbors", s.GetCmd())
+	assert.Equal(t, "show ip bgp neighbors vrf all", s.GetCmd())
 }
 
 func TestBGPSummaryEmptyVRFs(t *testing.T) {
