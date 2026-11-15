@@ -5,6 +5,8 @@ package resources
 
 import (
 	"fmt"
+	"net/netip"
+	"slices"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
@@ -153,19 +155,73 @@ func newNetworkExposure(runtime *plugin.Runtime, id string, publiclyAccessible, 
 	return res.(*mqlAwsNetworkExposure), nil
 }
 
-// cidrsAdmitInternet reports whether a source allow-list admits every address,
-// for either address family. An empty list counts as open: EKS applies
-// 0.0.0.0/0 when no public access CIDRs are given.
+// cidrsAdmitInternet reports whether a source allow-list admits any internet
+// source: the IPv4 entries together cover 0.0.0.0/0, or the IPv6 entries
+// together cover ::/0. Split ranges such as 0.0.0.0/1 plus 128.0.0.0/1 count
+// as open. A broad prefix that leaves any address out, such as a /8, does not.
+//
+// An entry that does not parse as a prefix counts as open, so a value this
+// function cannot read never reads as restricted. An empty list also counts as
+// open: EKS applies 0.0.0.0/0 when no public access CIDRs are given, and
+// describe-cluster returns that value rather than an empty list.
 func cidrsAdmitInternet(cidrs []any) bool {
 	if len(cidrs) == 0 {
 		return true
 	}
+	var v4, v6 []netip.Prefix
 	for _, c := range cidrs {
-		if s, ok := c.(string); ok && (s == "0.0.0.0/0" || s == "::/0") {
+		s, ok := c.(string)
+		if !ok {
 			return true
+		}
+		p, err := netip.ParsePrefix(strings.TrimSpace(s))
+		if err != nil {
+			return true
+		}
+		p = p.Masked()
+		if p.Addr().Is4In6() && p.Bits() >= 96 {
+			p = netip.PrefixFrom(p.Addr().Unmap(), p.Bits()-96)
+		}
+		if p.Addr().Is4() {
+			v4 = append(v4, p)
+		} else {
+			v6 = append(v6, p)
+		}
+	}
+	return prefixesCoverAll(v4, netip.IPv4Unspecified()) ||
+		prefixesCoverAll(v6, netip.IPv6Unspecified())
+}
+
+// prefixesCoverAll reports whether the union of prefixes, all of one address
+// family starting at first, covers that family's whole address space.
+func prefixesCoverAll(prefixes []netip.Prefix, first netip.Addr) bool {
+	slices.SortFunc(prefixes, func(a, b netip.Prefix) int {
+		return a.Addr().Compare(b.Addr())
+	})
+	next := first
+	for _, p := range prefixes {
+		if next.Less(p.Addr()) {
+			return false
+		}
+		last := lastAddr(p)
+		if !last.Less(next) {
+			if !last.Next().IsValid() {
+				return true
+			}
+			next = last.Next()
 		}
 	}
 	return false
+}
+
+// lastAddr returns the highest address in a masked prefix.
+func lastAddr(p netip.Prefix) netip.Addr {
+	b := p.Addr().AsSlice()
+	for i := p.Bits(); i < len(b)*8; i++ {
+		b[i/8] |= 0x80 >> (i % 8)
+	}
+	a, _ := netip.AddrFromSlice(b)
+	return a
 }
 
 // buildNetworkExposureFromGroups is buildNetworkExposure for callers holding

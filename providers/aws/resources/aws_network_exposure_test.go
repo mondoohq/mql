@@ -183,11 +183,35 @@ func TestPublicAccessIsUnknown(t *testing.T) {
 }
 
 func TestCidrsAdmitInternet(t *testing.T) {
-	assert.True(t, cidrsAdmitInternet(nil), "EKS applies 0.0.0.0/0 when no CIDRs are given")
-	assert.True(t, cidrsAdmitInternet([]any{"0.0.0.0/0"}))
-	assert.True(t, cidrsAdmitInternet([]any{"203.0.113.0/24", "::/0"}))
-	assert.False(t, cidrsAdmitInternet([]any{"203.0.113.7/32"}))
-	assert.False(t, cidrsAdmitInternet([]any{"0.0.0.0/1", "128.0.0.0/1"}))
+	tests := []struct {
+		name  string
+		cidrs []any
+		want  bool
+	}{
+		{"empty list, EKS applies 0.0.0.0/0", nil, true},
+		{"IPv4 default", []any{"0.0.0.0/0"}, true},
+		{"IPv6 default alongside a narrow range", []any{"203.0.113.0/24", "::/0"}, true},
+		{"IPv6 default written as ::0/0", []any{"::0/0"}, true},
+		{"whitespace-padded default", []any{" 0.0.0.0/0 "}, true},
+		{"unparseable entry", []any{"not-a-cidr"}, true},
+		{"unparseable entry beside a narrow range", []any{"203.0.113.7/32", "0.0.0.0"}, true},
+		{"IPv4 halves", []any{"128.0.0.0/1", "0.0.0.0/1"}, true},
+		{"IPv6 halves", []any{"::/1", "8000::/1"}, true},
+		{"IPv4 quarters with an overlap", []any{"0.0.0.0/2", "64.0.0.0/2", "0.0.0.0/1", "128.0.0.0/2", "192.0.0.0/2"}, true},
+		{"unmasked host bits", []any{"10.1.2.3/0"}, true},
+		{"IPv4-mapped IPv6 default", []any{"::ffff:0.0.0.0/96"}, true},
+		{"single address", []any{"203.0.113.7/32"}, false},
+		{"lower IPv4 half only", []any{"0.0.0.0/1"}, false},
+		{"upper IPv6 half only", []any{"8000::/1"}, false},
+		{"broad but not total", []any{"0.0.0.0/8", "10.0.0.0/8"}, false},
+		{"halves missing one address", []any{"0.0.0.0/1", "128.0.0.0/2", "192.0.0.0/3", "224.0.0.0/4", "240.0.0.0/5", "248.0.0.0/6", "252.0.0.0/7", "254.0.0.0/8", "255.0.0.0/9", "255.128.0.0/10", "255.192.0.0/11", "255.224.0.0/12", "255.240.0.0/13", "255.248.0.0/14", "255.252.0.0/15", "255.254.0.0/16", "255.255.0.0/17", "255.255.128.0/18", "255.255.192.0/19", "255.255.224.0/20", "255.255.240.0/21", "255.255.248.0/22", "255.255.252.0/23", "255.255.254.0/24", "255.255.255.0/25", "255.255.255.128/26", "255.255.255.192/27", "255.255.255.224/28", "255.255.255.240/29", "255.255.255.248/30", "255.255.255.252/31", "255.255.255.254/32"}, false},
+		{"IPv4 and IPv6 halves do not combine", []any{"0.0.0.0/1", "8000::/1"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, cidrsAdmitInternet(tt.cidrs))
+		})
+	}
 }
 
 // eksClusterForExposure builds a cluster with every field exposure() reads
@@ -242,6 +266,12 @@ func TestEksClusterExposure(t *testing.T) {
 			sgsOpen:               new(true),
 			wantInternetReachable: false,
 			wantSgAllows:          true,
+		},
+		{
+			name:                  "public endpoint with no CIDRs listed is reachable",
+			publicAccess:          true,
+			cidrs:                 []any{},
+			wantInternetReachable: true,
 		},
 		{
 			name:                  "private-only endpoint is not reachable",
