@@ -5,6 +5,7 @@ package resources
 
 import (
 	"fmt"
+	"net"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud"
 	"go.mondoo.com/mql/llx"
@@ -12,7 +13,8 @@ import (
 )
 
 // firewallRuleOpenToInternet reports whether a Hetzner firewall rule dict is an
-// inbound rule whose source admits any address (0.0.0.0/0 or ::/0).
+// inbound rule whose source admits the internet: 0.0.0.0/0, ::/0, or another
+// range broad enough to count as the same thing (see cidrAdmitsInternet).
 func firewallRuleOpenToInternet(rule map[string]any) bool {
 	if direction, _ := rule["direction"].(string); direction != "in" {
 		return false
@@ -22,9 +24,43 @@ func firewallRuleOpenToInternet(rule map[string]any) bool {
 		return false
 	}
 	for _, s := range sources {
-		if cidr, ok := s.(string); ok && (cidr == "0.0.0.0/0" || cidr == "::/0") {
+		cidr, ok := s.(string)
+		if !ok {
+			continue
+		}
+		if _, ipNet, err := net.ParseCIDR(cidr); err == nil && cidrAdmitsInternet(*ipNet) {
 			return true
 		}
+	}
+	return false
+}
+
+var (
+	// ipv4MulticastAndReserved is 224.0.0.0/3: multicast plus the reserved
+	// 240.0.0.0/4. No internet host sends from it.
+	ipv4MulticastAndReserved = net.IPNet{IP: net.IPv4(224, 0, 0, 0).To4(), Mask: net.CIDRMask(3, 32)}
+	// ipv6GlobalUnicast is 2000::/3, the IPv6 space routed on the internet.
+	ipv6GlobalUnicast = net.IPNet{IP: net.ParseIP("2000::"), Mask: net.CIDRMask(3, 128)}
+)
+
+// cidrAdmitsInternet reports whether a source range admits a large part of
+// the internet. 0.0.0.0/0 and ::/0 are the common case, but splitting the
+// space into 0.0.0.0/1 and 128.0.0.0/1, or writing 2000::/3, admits every
+// internet host just the same. The threshold is the size of the blocks IANA
+// allocates to the regional registries: an IPv4 prefix shorter than /8 that
+// is not multicast or reserved space, or an IPv6 prefix shorter than /12 that
+// overlaps global unicast. Private ranges never qualify: 10.0.0.0/8 is not
+// shorter than /8, and fc00::/7 does not overlap 2000::/3.
+func cidrAdmitsInternet(n net.IPNet) bool {
+	ones, bits := n.Mask.Size()
+	switch bits {
+	case 32:
+		return ones < 8 && !ipv4MulticastAndReserved.Contains(n.IP)
+	case 128:
+		if n.IP.To4() != nil {
+			return false
+		}
+		return ones < 12 && (n.Contains(ipv6GlobalUnicast.IP) || ipv6GlobalUnicast.Contains(n.IP))
 	}
 	return false
 }

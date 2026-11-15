@@ -9,6 +9,7 @@ import (
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFirewallRuleOpenToInternet(t *testing.T) {
@@ -21,6 +22,10 @@ func TestFirewallRuleOpenToInternet(t *testing.T) {
 		{"inbound any ipv6", map[string]any{"direction": "in", "sourceIps": []any{"::/0"}}, true},
 		{"inbound mixed with any", map[string]any{"direction": "in", "sourceIps": []any{"10.0.0.0/8", "0.0.0.0/0"}}, true},
 		{"inbound scoped source", map[string]any{"direction": "in", "sourceIps": []any{"203.0.113.0/24"}}, false},
+		{"inbound ipv4 split in halves", map[string]any{"direction": "in", "sourceIps": []any{"0.0.0.0/1", "128.0.0.0/1"}}, true},
+		{"inbound ipv6 global unicast", map[string]any{"direction": "in", "sourceIps": []any{"2000::/3"}}, true},
+		{"inbound private ipv4", map[string]any{"direction": "in", "sourceIps": []any{"10.0.0.0/8"}}, false},
+		{"inbound unparseable source", map[string]any{"direction": "in", "sourceIps": []any{"not-a-cidr"}}, false},
 		{"outbound any", map[string]any{"direction": "out", "sourceIps": []any{"0.0.0.0/0"}}, false},
 		{"no sources", map[string]any{"direction": "in"}, false},
 		{"empty", map[string]any{}, false},
@@ -28,6 +33,40 @@ func TestFirewallRuleOpenToInternet(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, firewallRuleOpenToInternet(tt.rule))
+		})
+	}
+}
+
+func TestCidrAdmitsInternet(t *testing.T) {
+	tests := []struct {
+		cidr string
+		want bool
+	}{
+		{"0.0.0.0/0", true},
+		{"0.0.0.0/1", true},
+		{"128.0.0.0/1", true},
+		{"192.0.0.0/2", true},
+		{"0.0.0.0/7", true},
+		{"10.0.0.0/8", false},
+		{"11.0.0.0/8", false},
+		{"203.0.113.0/24", false},
+		{"224.0.0.0/3", false},
+		{"240.0.0.0/4", false},
+		{"::/0", true},
+		{"::/2", true},
+		{"2000::/3", true},
+		{"2a00::/8", true},
+		{"2a00::/12", false},
+		{"2001:db8::/32", false},
+		{"fc00::/7", false},
+		{"fe80::/10", false},
+		{"4000::/2", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.cidr, func(t *testing.T) {
+			_, n, err := net.ParseCIDR(tt.cidr)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, cidrAdmitsInternet(*n))
 		})
 	}
 }
