@@ -2983,6 +2983,6 @@ func TestGlobReadsEveryDeclaredFieldName(t *testing.T) {
 		}
 	}
 	for name := range names {
-		assert.True(t, read[name], "`{ * }` does not read the field %q; add it to globKeywordFields", name)
+		assert.True(t, read[name], "`{ * }` does not read the field %q; add it to globKeywordFields in mqlc/mqlc.go", name)
 	}
 }
