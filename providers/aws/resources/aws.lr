@@ -7465,7 +7465,8 @@ private aws.elb.loadbalancer @defaults("name region elbType scheme dnsName") {
 // similar) is reachable from the internet: whether it is configured for public
 // access and whether an attached security group opens it to the internet, with
 // the specific ingress rules. Shared by resources whose exposure follows the
-// public-toggle-plus-security-group model.
+// public-toggle-plus-security-group model, and by EKS clusters, whose public
+// endpoint is gated by its public access CIDRs instead.
 private aws.network.exposure @defaults("internetReachable publiclyAccessible") {
   // Whether the resource is reachable from the internet (configured for public access and an attached security group permits public ingress)
   internetReachable bool
@@ -23149,10 +23150,15 @@ aws.eks.cluster @defaults("arn version status") {
   publicAccessCidrs() []string
   // Internet exposure of the Kubernetes API server endpoint
   //
-  // Combines the public-endpoint setting with the cluster security groups. Read
-  // it together with `publicAccessCidrs`: that field narrows a public endpoint
-  // to specific source ranges, so a cluster reporting internetReachable may
-  // still answer only a short allow-list rather than the whole internet.
+  // `publiclyAccessible` is the public-endpoint setting. `internetReachable` is
+  // true when the public endpoint is enabled and `publicAccessCidrs` admits any
+  // internet source: its IPv4 entries together cover 0.0.0.0/0, or its IPv6
+  // entries together cover ::/0, including split ranges such as two /1s. A
+  // broad prefix that leaves any address out, such as a /8, is not reported as
+  // internet reachable; read `publicAccessCidrs` for those. An entry that does
+  // not parse counts as open. Security groups apply only to the private
+  // endpoint, so `securityGroupAllowsIngress` and `openIngressRules` describe
+  // the additional security groups without changing the verdict.
   exposure() aws.network.exposure
   // List of EKS access entries for RBAC
   accessEntries() []aws.eks.accessEntry
