@@ -303,11 +303,12 @@ func extractHclCodeSnippet(file *hcl.File, fileRange hcl.Range) string {
 }
 
 // blockID mirrors mqlTerraformBlock.id(): a block is identified by its source
-// position. Generated blocks append a suffix to it so each for_each element
-// gets its own identity.
-func blockID(block *hcl.Block) string {
+// position, with the path as the block's fileposition records it. Generated
+// blocks append a suffix to it so each for_each element gets its own identity.
+func blockID(runtime *plugin.Runtime, block *hcl.Block) string {
 	r := block.TypeRange
-	return "terraform.block/" + r.Filename + "/" +
+	path := runtime.Connection.(*connection.Connection).RepositoryPath(r.Filename)
+	return "terraform.block/" + path + "/" +
 		strconv.Itoa(r.Start.Line) + "/" + strconv.Itoa(r.Start.Column)
 }
 
@@ -337,7 +338,7 @@ func newMqlHclBlock(runtime *plugin.Runtime, block *hcl.Block, file *hcl.File, i
 	// block that is built but never registered fails later with
 	// "resource 'terraform.block' (id: ...) doesn't exist".
 	if idSuffix != "" {
-		args["__id"] = llx.StringData(blockID(block) + "/" + idSuffix)
+		args["__id"] = llx.StringData(blockID(runtime, block) + "/" + idSuffix)
 	}
 
 	res, err := CreateResource(runtime, "terraform.block", args)
