@@ -212,9 +212,10 @@ private hetzner.network.exposure @defaults("internetReachable hasPublicIp") {
   firewallAllowsIngress bool
   // Ingress rules or services that admit traffic from any address
   //
-  // For a server, the firewall inbound rules whose source is 0.0.0.0/0 or ::/0,
-  // each with keys direction, protocol, sourceIps, destinationIps, and optional
-  // port and description. For a load balancer, the public forwarding services,
+  // For a server, the firewall inbound rules whose source admits the internet
+  // (the rules hetzner.firewall.rule reports as openToInternet), each with keys
+  // direction, protocol, sourceIps, destinationIps, and optional port and
+  // description. For a load balancer, the public forwarding services,
   // each with keys protocol, listenPort, and destinationPort.
   openIngressRules []dict
 }
@@ -971,7 +972,11 @@ private hetzner.firewall.rule @defaults("direction protocol port openToInternet"
   description string
   // Whether the rule admits inbound traffic from any address
   //
-  // True for an inbound rule whose `sourceIps` contains 0.0.0.0/0 or ::/0.
+  // True for an inbound rule whose `sourceIps` contains 0.0.0.0/0, ::/0, or a
+  // range as broad: an IPv4 prefix shorter than /8 outside 224.0.0.0/3, or an
+  // IPv6 prefix shorter than /12 that overlaps 2000::/3. 0.0.0.0/1 paired with
+  // 128.0.0.0/1 admits every address, and so does 2000::/3. Private ranges such
+  // as 10.0.0.0/8 and fc00::/7 never count.
   // Always false for outbound rules.
   openToInternet bool
 }
