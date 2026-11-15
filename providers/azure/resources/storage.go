@@ -1241,15 +1241,21 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) encryptionKey() (*mqlAzureSu
 }
 
 func getStorageAccount(id string, runtime *plugin.Runtime, azureConnection *connection.AzureConnection) (*mqlAzureSubscriptionStorageServiceAccount, error) {
-	client, err := storage.NewAccountsClient(azureConnection.SubId(), azureConnection.Token(), &arm.ClientOptions{
-		ClientOptions: azureConnection.ClientOptions(),
-	})
+	resourceID, err := ParseResourceID(id)
 	if err != nil {
 		return nil, err
 	}
 
-	// parse the id
-	resourceID, err := ParseResourceID(id)
+	// The account can live in another subscription: diagnostic settings
+	// commonly archive to a central logging subscription. Query the
+	// subscription the ID names rather than the one being scanned.
+	subscriptionID := resourceID.SubscriptionID
+	if subscriptionID == "" {
+		subscriptionID = azureConnection.SubId()
+	}
+	client, err := storage.NewAccountsClient(subscriptionID, azureConnection.Token(), &arm.ClientOptions{
+		ClientOptions: azureConnection.ClientOptions(),
+	})
 	if err != nil {
 		return nil, err
 	}
