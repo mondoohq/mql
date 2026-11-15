@@ -13401,6 +13401,12 @@ private gcp.project.appEngineService.service @defaults("id") {
   // COOKIE, IP, or RANDOM) and `allocations` (map of version ID to the
   // fraction of traffic it receives).
   split dict
+  // Which traffic may reach the service
+  //
+  // One of INGRESS_TRAFFIC_ALLOWED_ALL, INGRESS_TRAFFIC_ALLOWED_INTERNAL_ONLY or
+  // INGRESS_TRAFFIC_ALLOWED_INTERNAL_AND_LB. A service that never set it allows
+  // all traffic and reports INGRESS_TRAFFIC_ALLOWED_ALL.
+  ingressTrafficAllowed string
   // Versions of this service
   versions() []gcp.project.appEngineService.version
 }
