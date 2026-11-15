@@ -165,6 +165,7 @@
     "compute.zones.list",
     "container.clusters.list",
     "containeranalysis.occurrences.list",
+    "dataflow.jobs.get",
     "dataflow.jobs.list",
     "dataplex.assets.list",
     "dataplex.lakes.list",
@@ -1397,6 +1398,12 @@
       "service": "containeranalysis",
       "action": "GetGrafeasClient",
       "source_file": "container_analysis.go"
+    },
+    {
+      "permission": "dataflow.jobs.get",
+      "service": "dataflow",
+      "action": "Jobs.Get",
+      "source_file": "dataflow.go"
     },
     {
       "permission": "dataflow.jobs.list",

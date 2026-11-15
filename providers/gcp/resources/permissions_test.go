@@ -207,6 +207,7 @@ var validatedGCPPermissions = []string{
 	"compute.zones.list",
 	"container.clusters.list",
 	"containeranalysis.occurrences.list",
+	"dataflow.jobs.get",
 	"dataflow.jobs.list",
 	"dataplex.assets.list",
 	"dataplex.lakes.list",

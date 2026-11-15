@@ -92572,11 +92572,15 @@ func (c *mqlGcpProjectDataflowServiceJob) GetLocation() *plugin.TValue[string] {
 }
 
 func (c *mqlGcpProjectDataflowServiceJob) GetLabels() *plugin.TValue[map[string]any] {
-	return &c.Labels
+	return plugin.GetOrCompute[map[string]any](&c.Labels, func() (map[string]any, error) {
+		return c.labels()
+	})
 }
 
 func (c *mqlGcpProjectDataflowServiceJob) GetEnvironment() *plugin.TValue[any] {
-	return &c.Environment
+	return plugin.GetOrCompute[any](&c.Environment, func() (any, error) {
+		return c.environment()
+	})
 }
 
 func (c *mqlGcpProjectDataflowServiceJob) GetKmsKey() *plugin.TValue[*mqlGcpProjectKmsServiceKeyringCryptokey] {
@@ -92596,11 +92600,15 @@ func (c *mqlGcpProjectDataflowServiceJob) GetKmsKey() *plugin.TValue[*mqlGcpProj
 }
 
 func (c *mqlGcpProjectDataflowServiceJob) GetWorkerIpConfiguration() *plugin.TValue[string] {
-	return &c.WorkerIpConfiguration
+	return plugin.GetOrCompute[string](&c.WorkerIpConfiguration, func() (string, error) {
+		return c.workerIpConfiguration()
+	})
 }
 
 func (c *mqlGcpProjectDataflowServiceJob) GetPipelineDescription() *plugin.TValue[any] {
-	return &c.PipelineDescription
+	return plugin.GetOrCompute[any](&c.PipelineDescription, func() (any, error) {
+		return c.pipelineDescription()
+	})
 }
 
 func (c *mqlGcpProjectDataflowServiceJob) GetCurrentStateTime() *plugin.TValue[*time.Time] {
