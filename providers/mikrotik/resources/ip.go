@@ -403,8 +403,8 @@ func userArgs(row map[string]string) map[string]*llx.RawData {
 		"lastLoggedIn":      llx.StringData(row["last-logged-in"]),
 		"disabled":          boolField(row, "disabled"),
 		"comment":           llx.StringData(row["comment"]),
-		"inactivityPolicy":  llx.StringData(row["inactivity-policy"]),
-		"inactivityTimeout": llx.StringData(row["inactivity-timeout"]),
+		"inactivityPolicy":  stringField(row, "inactivity-policy"),
+		"inactivityTimeout": stringField(row, "inactivity-timeout"),
 	}
 }
 

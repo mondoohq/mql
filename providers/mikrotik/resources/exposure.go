@@ -267,11 +267,11 @@ func socksArgs(row map[string]string) map[string]*llx.RawData {
 	return map[string]*llx.RawData{
 		"__id":                  llx.StringData("mikrotik.ip.socks"),
 		"enabled":               boolField(row, "enabled"),
-		"authMethod":            llx.StringData(row["auth-method"]),
+		"authMethod":            stringField(row, "auth-method"),
 		"port":                  intField(row, "port"),
 		"version":               intField(row, "version"),
 		"maxConnections":        intField(row, "max-connections"),
-		"connectionIdleTimeout": llx.StringData(row["connection-idle-timeout"]),
+		"connectionIdleTimeout": stringField(row, "connection-idle-timeout"),
 	}
 }
 
@@ -300,9 +300,9 @@ func webProxyArgs(row map[string]string) map[string]*llx.RawData {
 		"enabled":              boolField(row, "enabled"),
 		"ports":                intListField(row, "port"),
 		"anonymous":            boolField(row, "anonymous"),
-		"parentProxy":          llx.StringData(row["parent-proxy"]),
+		"parentProxy":          stringField(row, "parent-proxy"),
 		"parentProxyPort":      intField(row, "parent-proxy-port"),
-		"srcAddress":           llx.StringData(row["src-address"]),
+		"srcAddress":           stringField(row, "src-address"),
 		"maxClientConnections": intField(row, "max-client-connections"),
 	}
 }

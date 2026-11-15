@@ -199,6 +199,8 @@ func TestSocksArgsAbsentMenu(t *testing.T) {
 	assert.Nil(t, args["enabled"].Value)
 	assert.Nil(t, args["port"].Value)
 	assert.Nil(t, args["version"].Value)
+	assert.Nil(t, args["authMethod"].Value)
+	assert.Nil(t, args["connectionIdleTimeout"].Value)
 }
 
 func TestWebProxyArgs(t *testing.T) {
@@ -234,6 +236,8 @@ func TestWebProxyArgsAbsentMenu(t *testing.T) {
 	assert.Nil(t, args["enabled"].Value)
 	assert.Nil(t, args["ports"].Value)
 	assert.Nil(t, args["anonymous"].Value)
+	assert.Nil(t, args["parentProxy"].Value)
+	assert.Nil(t, args["srcAddress"].Value)
 }
 
 func TestUpnpArgs(t *testing.T) {

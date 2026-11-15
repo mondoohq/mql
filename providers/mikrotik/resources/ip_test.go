@@ -28,7 +28,8 @@ func TestUserArgsInactivity(t *testing.T) {
 
 func TestUserArgsWithoutInactivitySettings(t *testing.T) {
 	args := userArgs(map[string]string{"name": "legacy", "disabled": "false"})
-	assert.Equal(t, "", args["inactivityPolicy"].Value)
-	assert.Equal(t, "", args["inactivityTimeout"].Value)
+	// Releases that predate the settings omit them; they read null, not "".
+	assert.Nil(t, args["inactivityPolicy"].Value)
+	assert.Nil(t, args["inactivityTimeout"].Value)
 	assert.Equal(t, false, args["disabled"].Value)
 }
