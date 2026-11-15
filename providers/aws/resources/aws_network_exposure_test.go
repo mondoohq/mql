@@ -181,3 +181,105 @@ func TestPublicAccessIsUnknown(t *testing.T) {
 	assert.False(t, publicAccessIsUnknown(knownPublicAccess(false)))
 	assert.False(t, publicAccessIsUnknown(knownPublicAccess(true)))
 }
+
+func TestCidrsAdmitInternet(t *testing.T) {
+	assert.True(t, cidrsAdmitInternet(nil), "EKS applies 0.0.0.0/0 when no CIDRs are given")
+	assert.True(t, cidrsAdmitInternet([]any{"0.0.0.0/0"}))
+	assert.True(t, cidrsAdmitInternet([]any{"203.0.113.0/24", "::/0"}))
+	assert.False(t, cidrsAdmitInternet([]any{"203.0.113.7/32"}))
+	assert.False(t, cidrsAdmitInternet([]any{"0.0.0.0/1", "128.0.0.0/1"}))
+}
+
+// eksClusterForExposure builds a cluster with every field exposure() reads
+// already resolved, so no AWS call is made.
+func eksClusterForExposure(runtime *plugin.Runtime, publicAccess *plugin.TValue[bool], cidrs []any, sgs *plugin.TValue[[]any]) *mqlAwsEksCluster {
+	c := &mqlAwsEksCluster{MqlRuntime: runtime}
+	c.Arn = plugin.TValue[string]{Data: "arn:aws:eks:us-east-1:000000000000:cluster/test", State: plugin.StateIsSet}
+	c.EndpointPublicAccess = *publicAccess
+	c.PublicAccessCidrs = plugin.TValue[[]any]{Data: cidrs, State: plugin.StateIsSet}
+	if sgs == nil {
+		sgs = &plugin.TValue[[]any]{Data: []any{}, State: plugin.StateIsSet}
+	}
+	c.ClusterSecurityGroups = *sgs
+	return c
+}
+
+// TestEksClusterExposure pins that the public endpoint's verdict follows
+// publicAccessCidrs and not the cluster security groups, which apply only to
+// the private endpoint.
+func TestEksClusterExposure(t *testing.T) {
+	tests := []struct {
+		name                  string
+		publicAccess          bool
+		cidrs                 []any
+		sgsOpen               *bool
+		wantInternetReachable bool
+		wantSgAllows          bool
+	}{
+		{
+			name:                  "public endpoint restricted to one address is not reachable",
+			publicAccess:          true,
+			cidrs:                 []any{"203.0.113.7/32"},
+			wantInternetReachable: false,
+		},
+		{
+			name:                  "public endpoint open to the internet behind a closed security group is reachable",
+			publicAccess:          true,
+			cidrs:                 []any{"0.0.0.0/0"},
+			sgsOpen:               new(false),
+			wantInternetReachable: true,
+		},
+		{
+			name:                  "public endpoint open over IPv6 is reachable",
+			publicAccess:          true,
+			cidrs:                 []any{"::/0"},
+			wantInternetReachable: true,
+		},
+		{
+			name:                  "restricted public endpoint with a world-open security group is not reachable",
+			publicAccess:          true,
+			cidrs:                 []any{"203.0.113.0/24"},
+			sgsOpen:               new(true),
+			wantInternetReachable: false,
+			wantSgAllows:          true,
+		},
+		{
+			name:                  "private-only endpoint is not reachable",
+			publicAccess:          false,
+			cidrs:                 []any{"0.0.0.0/0"},
+			sgsOpen:               new(true),
+			wantInternetReachable: false,
+			wantSgAllows:          true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runtime := testRuntime()
+			var sgs *plugin.TValue[[]any]
+			if tt.sgsOpen != nil {
+				sgs = securityGroupsTValue(runtime, *tt.sgsOpen)
+			}
+			cluster := eksClusterForExposure(runtime, knownPublicAccess(tt.publicAccess), tt.cidrs, sgs)
+
+			exposure, err := cluster.exposure()
+			require.NoError(t, err)
+			require.NotNil(t, exposure)
+
+			assert.Equal(t, tt.publicAccess, exposure.PubliclyAccessible.Data)
+			assert.False(t, exposure.InternetReachable.IsNull())
+			assert.Equal(t, tt.wantInternetReachable, exposure.InternetReachable.Data)
+			assert.Equal(t, tt.wantSgAllows, exposure.SecurityGroupAllowsIngress.Data)
+		})
+	}
+}
+
+func TestEksClusterExposureNullPublicAccess(t *testing.T) {
+	runtime := testRuntime()
+	cluster := eksClusterForExposure(runtime, nullPublicAccess(), []any{"0.0.0.0/0"}, nil)
+
+	exposure, err := cluster.exposure()
+	require.NoError(t, err)
+	assert.True(t, exposure.PubliclyAccessible.IsNull())
+	assert.True(t, exposure.InternetReachable.IsNull())
+}

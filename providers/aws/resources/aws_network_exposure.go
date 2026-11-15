@@ -114,17 +114,58 @@ func buildNetworkExposure(runtime *plugin.Runtime, id string, publiclyAccessible
 		internetReachableData = llx.BoolData(internetReachable)
 	}
 
+	return newNetworkExposure(runtime, id, publiclyAccessibleData, internetReachableData, openRules)
+}
+
+// buildAllowListExposure creates an aws.network.exposure for an endpoint whose
+// public side is gated by its own source allow-list rather than by security
+// groups. internetReachable is the public toggle combined with whether that
+// allow-list admits the whole internet. The security groups are still reported
+// through securityGroupAllowsIngress and openIngressRules, but do not change the
+// verdict. A null public-access toggle stays null, as in buildNetworkExposure.
+func buildAllowListExposure(runtime *plugin.Runtime, id string, publiclyAccessible *plugin.TValue[bool], allowListOpen bool, sgs *plugin.TValue[[]any]) (*mqlAwsNetworkExposure, error) {
+	openRules, err := openIngressRulesFromSecurityGroups(sgs)
+	if err != nil {
+		return nil, err
+	}
+
+	publiclyAccessibleData := llx.NilData
+	internetReachableData := llx.NilData
+	if !publicAccessIsUnknown(publiclyAccessible) {
+		publiclyAccessibleData = llx.BoolData(publiclyAccessible.Data)
+		internetReachableData = llx.BoolData(publiclyAccessible.Data && allowListOpen)
+	}
+
+	return newNetworkExposure(runtime, id, publiclyAccessibleData, internetReachableData, openRules)
+}
+
+func newNetworkExposure(runtime *plugin.Runtime, id string, publiclyAccessible, internetReachable *llx.RawData, openRules []any) (*mqlAwsNetworkExposure, error) {
 	res, err := CreateResource(runtime, "aws.network.exposure", map[string]*llx.RawData{
 		"__id":                       llx.StringData(id),
-		"internetReachable":          internetReachableData,
-		"publiclyAccessible":         publiclyAccessibleData,
-		"securityGroupAllowsIngress": llx.BoolData(sgAllows),
+		"internetReachable":          internetReachable,
+		"publiclyAccessible":         publiclyAccessible,
+		"securityGroupAllowsIngress": llx.BoolData(len(openRules) > 0),
 		"openIngressRules":           llx.ArrayData(openRules, types.Resource("aws.ec2.securitygroup.ippermission")),
 	})
 	if err != nil {
 		return nil, err
 	}
 	return res.(*mqlAwsNetworkExposure), nil
+}
+
+// cidrsAdmitInternet reports whether a source allow-list admits every address,
+// for either address family. An empty list counts as open: EKS applies
+// 0.0.0.0/0 when no public access CIDRs are given.
+func cidrsAdmitInternet(cidrs []any) bool {
+	if len(cidrs) == 0 {
+		return true
+	}
+	for _, c := range cidrs {
+		if s, ok := c.(string); ok && (s == "0.0.0.0/0" || s == "::/0") {
+			return true
+		}
+	}
+	return false
 }
 
 // buildNetworkExposureFromGroups is buildNetworkExposure for callers holding
@@ -252,9 +293,9 @@ func (a *mqlAwsDocumentdbCluster) exposure() (*mqlAwsNetworkExposure, error) {
 }
 
 // exposure reports the internet exposure of the cluster's Kubernetes API server
-// endpoint. publicAccessCidrs can narrow a public endpoint to specific source
-// ranges; it is left on the cluster rather than folded in here, so a caller sees
-// both the verdict and the allow-list.
+// endpoint. The public endpoint is gated by publicAccessCidrs alone; security
+// groups apply only to the private endpoint, so they are reported but do not
+// decide internetReachable.
 func (a *mqlAwsEksCluster) exposure() (*mqlAwsNetworkExposure, error) {
 	arn := a.GetArn()
 	if arn.Error != nil {
@@ -264,7 +305,12 @@ func (a *mqlAwsEksCluster) exposure() (*mqlAwsNetworkExposure, error) {
 	if publicAccess.Error != nil {
 		return nil, publicAccess.Error
 	}
-	return buildNetworkExposure(a.MqlRuntime, arn.Data+"/exposure", publicAccess, a.GetClusterSecurityGroups())
+	cidrs := a.GetPublicAccessCidrs()
+	if cidrs.Error != nil {
+		return nil, cidrs.Error
+	}
+	return buildAllowListExposure(a.MqlRuntime, arn.Data+"/exposure", publicAccess,
+		cidrsAdmitInternet(cidrs.Data), a.GetClusterSecurityGroups())
 }
 
 // exposure reports the internet exposure of tasks the service runs.
