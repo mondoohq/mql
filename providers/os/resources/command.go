@@ -107,6 +107,10 @@ func commandResult(cmd *mqlCommand) (commandRun, error) {
 	// others in place, and Go does not order a field read against a call in one
 	// composite literal.
 	run := commandRun{exitcode: exit.Data, stdout: stdout.Data}
+	// A stderr error is not returned. On a resource created with only exitcode
+	// and stdout, reading stderr runs the command, which fails on a connection
+	// that cannot run it; the exitcode and stdout already read are still the
+	// measured result.
 	run.stderr = cmd.GetStderr().Data
 	return run, nil
 }
