@@ -3816,6 +3816,7 @@ oci.oke.cluster.securityAttributes 13.8.2
 oci.oke.cluster.serviceLbSubnets 13.20.1
 oci.oke.cluster.servicesCidr 13.20.1
 oci.oke.cluster.state 13.0.6
+oci.oke.cluster.supportedKubernetesVersions 14.5.2
 oci.oke.cluster.systemTags 13.12.2
 oci.oke.cluster.timeCredentialExpiration 13.20.1
 oci.oke.cluster.timeUpdated 13.20.1
