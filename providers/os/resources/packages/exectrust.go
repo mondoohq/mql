@@ -125,6 +125,14 @@ func commandUID(conn shared.Connection) (int64, bool) {
 // commandPaths caches commandPath per connection id.
 var commandPaths sync.Map // uint32 -> string
 
+// ForgetConnection drops what commandUID and commandPath cached for the
+// connection id. The provider calls it when the connection closes, so a
+// long-running provider does not keep an entry for every connection it served.
+func ForgetConnection(id uint32) {
+	commandUIDs.Delete(id)
+	commandPaths.Delete(id)
+}
+
 // commandPath returns the PATH that commands run with on the target, which
 // for a sudo scan is sudo's secure_path. false when it is unknown.
 func commandPath(conn shared.Connection) (string, bool) {

@@ -531,3 +531,20 @@ func TestEnvSplitStringQuoting(t *testing.T) {
 	// plain -S still runs
 	assert.Empty(t, run("#!/usr/bin/env -S A=1 bash -e\n"))
 }
+
+func TestForgetConnection(t *testing.T) {
+	// Synthetic: two connections' cached values, one connection closed.
+	commandUIDs.Store(uint32(901), int64(0))
+	commandPaths.Store(uint32(901), "/usr/bin")
+	commandUIDs.Store(uint32(902), int64(1000))
+	t.Cleanup(func() { ForgetConnection(902) })
+
+	ForgetConnection(901)
+
+	_, ok := commandUIDs.Load(uint32(901))
+	assert.False(t, ok)
+	_, ok = commandPaths.Load(uint32(901))
+	assert.False(t, ok)
+	_, ok = commandUIDs.Load(uint32(902))
+	assert.True(t, ok, "another connection's entry is kept")
+}
