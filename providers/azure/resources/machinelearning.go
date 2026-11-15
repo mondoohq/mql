@@ -7,15 +7,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	ml "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/machinelearning/armmachinelearning/v4"
-	"github.com/rs/zerolog/log"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -212,10 +209,8 @@ func (a *mqlAzureSubscriptionMachineLearningService) workspaces() ([]any, error)
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			var respErr *azcore.ResponseError
-			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden {
-				log.Warn().Err(err).Msg("could not list machine learning workspaces due to access denied")
-				return keepTagMatches(a.MqlRuntime, res), nil
+			if isAzureAccessDenied(err) {
+				return refusedCollection(&a.Workspaces, err, "Microsoft.MachineLearningServices/workspaces/read")
 			}
 			return nil, err
 		}
@@ -474,10 +469,8 @@ func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) onlineEndpoints() 
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			var respErr *azcore.ResponseError
-			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden {
-				log.Warn().Err(err).Msg("could not list machine learning online endpoints due to access denied")
-				return res, nil
+			if isAzureAccessDenied(err) {
+				return refusedCollection(&a.OnlineEndpoints, err, "Microsoft.MachineLearningServices/workspaces/onlineEndpoints/read")
 			}
 			return nil, err
 		}
@@ -628,10 +621,8 @@ func (a *mqlAzureSubscriptionMachineLearningServiceWorkspaceOnlineEndpoint) depl
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			var respErr *azcore.ResponseError
-			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden {
-				log.Warn().Err(err).Msg("could not list machine learning online deployments due to access denied")
-				return res, nil
+			if isAzureAccessDenied(err) {
+				return refusedCollection(&a.Deployments, err, "Microsoft.MachineLearningServices/workspaces/onlineEndpoints/deployments/read")
 			}
 			return nil, err
 		}
@@ -733,10 +724,8 @@ func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) serverlessEndpoint
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			var respErr *azcore.ResponseError
-			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden {
-				log.Warn().Err(err).Msg("could not list machine learning serverless endpoints due to access denied")
-				return res, nil
+			if isAzureAccessDenied(err) {
+				return refusedCollection(&a.ServerlessEndpoints, err, "Microsoft.MachineLearningServices/workspaces/serverlessEndpoints/read")
 			}
 			return nil, err
 		}
@@ -831,10 +820,8 @@ func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) computes() ([]any,
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			var respErr *azcore.ResponseError
-			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden {
-				log.Warn().Err(err).Msg("could not list machine learning computes due to access denied")
-				return res, nil
+			if isAzureAccessDenied(err) {
+				return refusedCollection(&a.Computes, err, "Microsoft.MachineLearningServices/workspaces/computes/read")
 			}
 			return nil, err
 		}
@@ -943,10 +930,8 @@ func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) models() ([]any, e
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			var respErr *azcore.ResponseError
-			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden {
-				log.Warn().Err(err).Msg("could not list machine learning models due to access denied")
-				return res, nil
+			if isAzureAccessDenied(err) {
+				return refusedCollection(&a.Models, err, "Microsoft.MachineLearningServices/workspaces/models/read")
 			}
 			return nil, err
 		}

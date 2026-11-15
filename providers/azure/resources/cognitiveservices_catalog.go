@@ -32,13 +32,6 @@ func cognitiveServicesAccountScope(resourceId string) (subscriptionId, resourceG
 	return parsed.SubscriptionID, parsed.ResourceGroup, parsed.Path["accounts"], nil
 }
 
-// isAzureForbidden reports whether err is an Azure 403, which the listers below
-// degrade to an empty collection rather than failing the whole query.
-func isAzureForbidden(err error) bool {
-	var respErr *azcore.ResponseError
-	return errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden
-}
-
 // isAzureNotFoundOrBadRequest reports whether err is a 404 or 400. The
 // capability-host and encryption-scope surfaces are newer than the accounts
 // they hang off, so an account that predates them (or a SKU that does not
@@ -92,9 +85,8 @@ func (a *mqlAzureSubscriptionCognitiveServicesServiceAccount) models() ([]any, e
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			if isAzureForbidden(err) {
-				log.Warn().Err(err).Msg("could not list cognitive services account models due to access denied")
-				return res, nil
+			if isAzureAccessDenied(err) {
+				return refusedCollection(&a.Models, err, "Microsoft.CognitiveServices/accounts/models/read")
 			}
 			return nil, err
 		}
@@ -268,9 +260,8 @@ func (a *mqlAzureSubscriptionCognitiveServicesServiceAccount) raiBlocklists() ([
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			if isAzureForbidden(err) {
-				log.Warn().Err(err).Msg("could not list cognitive services RAI blocklists due to access denied")
-				return res, nil
+			if isAzureAccessDenied(err) {
+				return refusedCollection(&a.RaiBlocklists, err, "Microsoft.CognitiveServices/accounts/raiBlocklists/read")
 			}
 			if isAzureNotFoundOrBadRequest(err) {
 				log.Debug().Err(err).Msg("cognitive services RAI blocklists are not available on this account")
@@ -347,9 +338,8 @@ func (a *mqlAzureSubscriptionCognitiveServicesServiceAccountRaiBlocklist) items(
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			if isAzureForbidden(err) {
-				log.Warn().Err(err).Msg("could not list cognitive services RAI blocklist items due to access denied")
-				return res, nil
+			if isAzureAccessDenied(err) {
+				return refusedCollection(&a.Items, err, "Microsoft.CognitiveServices/accounts/raiBlocklists/raiBlocklistItems/read")
 			}
 			return nil, err
 		}
@@ -422,9 +412,8 @@ func (a *mqlAzureSubscriptionCognitiveServicesServiceAccount) encryptionScopes()
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			if isAzureForbidden(err) {
-				log.Warn().Err(err).Msg("could not list cognitive services encryption scopes due to access denied")
-				return res, nil
+			if isAzureAccessDenied(err) {
+				return refusedCollection(&a.EncryptionScopes, err, "Microsoft.CognitiveServices/accounts/encryptionScopes/read")
 			}
 			if isAzureNotFoundOrBadRequest(err) {
 				log.Debug().Err(err).Msg("cognitive services encryption scopes are not available on this account")
@@ -518,6 +507,9 @@ func (a *mqlAzureSubscriptionCognitiveServicesServiceAccount) capabilityHosts() 
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
+			if isAzureAccessDenied(err) {
+				return refusedCollection(&a.CapabilityHosts, err, "Microsoft.CognitiveServices/accounts/capabilityHosts/read")
+			}
 			if handled, hErr := handleCapabilityHostListError(err); handled {
 				return res, hErr
 			}
@@ -598,6 +590,9 @@ func (a *mqlAzureSubscriptionCognitiveServicesServiceAccountProject) capabilityH
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
+			if isAzureAccessDenied(err) {
+				return refusedCollection(&a.CapabilityHosts, err, "Microsoft.CognitiveServices/accounts/projects/capabilityHosts/read")
+			}
 			if handled, hErr := handleCapabilityHostListError(err); handled {
 				return res, hErr
 			}
@@ -641,14 +636,10 @@ func (a *mqlAzureSubscriptionCognitiveServicesServiceAccountProject) capabilityH
 }
 
 // handleCapabilityHostListError reports whether the error is one the listers
-// degrade to an empty collection: access denied, or a surface the account or
-// project does not offer. Returns (true, nil) when the caller should return what
-// it has so far.
+// degrade to an empty collection: a surface the account or project does not
+// offer. Returns (true, nil) when the caller should return what it has so far.
+// Callers handle a refused read (403) before this, through refusedCollection.
 func handleCapabilityHostListError(err error) (bool, error) {
-	if isAzureForbidden(err) {
-		log.Warn().Err(err).Msg("could not list cognitive services capability hosts due to access denied")
-		return true, nil
-	}
 	if isAzureNotFoundOrBadRequest(err) {
 		log.Debug().Err(err).Msg("cognitive services capability hosts are not available here")
 		return true, nil
