@@ -159,8 +159,18 @@ func isWebAppKind(kind string) bool {
 	return !isFunctionAppKind(kind)
 }
 
+// isSqlServerKind reports whether an ARM "Microsoft.Sql/servers" resource is
+// a SQL logical server the customer manages. A regular server has kind
+// "v12.0". Every Synapse workspace also owns a hidden server of kind
+// "v12.0,analytics" in its managed resource group, whose deny assignment
+// refuses every write, so its findings can't be remediated there. The
+// workspace is discovered as its own asset.
+func isSqlServerKind(kind string) bool {
+	return !strings.Contains(strings.ToLower(kind), "analytics")
+}
+
 var genericDiscoverySpecs = []genericDiscoverySpec{
-	{armType: "Microsoft.Sql/servers", discoveryTarget: DiscoverySqlServers, service: "sql", objectType: "server"},
+	{armType: "Microsoft.Sql/servers", discoveryTarget: DiscoverySqlServers, service: "sql", objectType: "server", matchKind: isSqlServerKind},
 	{armType: "Microsoft.DBforMySQL/flexibleServers", discoveryTarget: DiscoveryMySqlFlexibleServers, service: "mysql", objectType: "flexible-server"},
 	{armType: "Microsoft.DBforPostgreSQL/flexibleServers", discoveryTarget: DiscoveryPostgresFlexibleServers, service: "postgresql", objectType: "flexible-server"},
 	{armType: "Microsoft.ContainerService/managedClusters", discoveryTarget: DiscoveryAksClusters, service: "aks", objectType: "cluster"},

@@ -513,3 +513,36 @@ func TestGenericDiscoverySpecsResolveToCatalogPlatforms(t *testing.T) {
 		})
 	}
 }
+
+func TestMatchSpecSqlServerKind(t *testing.T) {
+	candidates := []genericDiscoverySpec{}
+	for _, s := range genericDiscoverySpecs {
+		if strings.EqualFold(s.armType, "Microsoft.Sql/servers") {
+			candidates = append(candidates, s)
+		}
+	}
+	require.NotEmpty(t, candidates)
+
+	tests := []struct {
+		kind string
+		want bool
+	}{
+		// Measured: ARM resource list, regular SQL logical server, 2026-11.
+		{kind: "v12.0", want: true},
+		// Measured: ARM resource list, SQL server owned by a Synapse workspace, 2026-11.
+		{kind: "v12.0,analytics", want: false},
+		// Synthetic: ARM kind values are not case-stable across APIs.
+		{kind: "V12.0,Analytics", want: false},
+		// Synthetic: a server without a kind is still discovered.
+		{kind: "", want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.kind, func(t *testing.T) {
+			spec, ok := matchSpec(candidates, tt.kind)
+			require.Equal(t, tt.want, ok)
+			if ok {
+				require.Equal(t, DiscoverySqlServers, spec.discoveryTarget)
+			}
+		})
+	}
+}
