@@ -8932,9 +8932,9 @@ private gcp.project.dataprocService.cluster.config {
   // nodes, which is interactive access to the data plane rather than access
   // mediated by the Dataproc jobs API. The platform default depends on the
   // image: enabled for image versions before 3.1, disabled from 3.1 onward,
-  // and settable at creation time from image version 2.3.30. Hoisted from the
-  // `security` dict's identityConfig.enableSsh key, which omits the value when
-  // SSH is disabled.
+  // and settable at creation time from image version 2.3.30. Reports the
+  // explicit identityConfig.enableSsh setting when the API returns one, and
+  // the image default otherwise. Null when the image version cannot be parsed.
   sshEnabled bool
   // Shared Compute Engine configuration
   gceCluster gcp.project.dataprocService.cluster.config.gceCluster
