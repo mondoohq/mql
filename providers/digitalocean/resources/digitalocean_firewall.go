@@ -48,11 +48,11 @@ func firewallRuleAction(action godo.FirewallRuleAction) string {
 	return string(action)
 }
 
-// openToInternet reports whether a rule admits traffic from (or to) every
-// address: it allows traffic and its source/destination CIDRs together cover
-// the IPv4 or IPv6 "everything" range, as a single /0 or as ranges such as
-// 0.0.0.0/1 plus 128.0.0.0/1. A deny rule over that range blocks traffic
-// rather than admitting it.
+// openToInternet reports whether a rule admits traffic from (or to) the
+// internet: it allows traffic and its source/destination CIDRs together cover
+// most of the internet (see addressesCoverInternet), as a single /0 or as
+// ranges such as 0.0.0.0/1 plus 128.0.0.0/1. A deny rule over that range
+// blocks traffic rather than admitting it.
 func openToInternet(action godo.FirewallRuleAction, addresses []string) bool {
 	if !strings.EqualFold(firewallRuleAction(action), string(godo.FirewallRuleActionAllow)) {
 		return false
