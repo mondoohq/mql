@@ -3440,6 +3440,13 @@ func (a *mqlAwsSagemaker) modelPackages() ([]any, error) {
 	return res, nil
 }
 
+// modelPackagesListInput lists versioned and unversioned packages. With no
+// ModelPackageType, ListModelPackages returns only unversioned packages, so
+// every version registered in a model package group would be left out.
+func modelPackagesListInput() *sagemaker.ListModelPackagesInput {
+	return &sagemaker.ListModelPackagesInput{ModelPackageType: sagemakerTypes.ModelPackageTypeBoth}
+}
+
 func (a *mqlAwsSagemaker) getModelPackages(conn *connection.AwsConnection) []*jobpool.Job {
 	tasks := make([]*jobpool.Job, 0)
 	regions, err := conn.Regions()
@@ -3453,7 +3460,7 @@ func (a *mqlAwsSagemaker) getModelPackages(conn *connection.AwsConnection) []*jo
 			ctx := context.Background()
 			res := []any{}
 
-			paginator := sagemaker.NewListModelPackagesPaginator(svc, &sagemaker.ListModelPackagesInput{})
+			paginator := sagemaker.NewListModelPackagesPaginator(svc, modelPackagesListInput())
 			for paginator.HasMorePages() {
 				page, err := paginator.NextPage(ctx)
 				if err != nil {
