@@ -19,6 +19,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/sshutil"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -109,20 +110,6 @@ func parseLegacyDSAPrivateKey(der []byte) (*dsa.PrivateKey, bool) {
 	}, true
 }
 
-// parseSSHDSAPublicKey decodes an "ssh-dss" public key blob (RFC 4253
-// section 6.6), which x/crypto/ssh no longer parses.
-func parseSSHDSAPublicKey(blob []byte) (*dsa.PublicKey, bool) {
-	var w struct {
-		Type       string
-		P, Q, G, Y *big.Int
-		Rest       []byte `ssh:"rest"`
-	}
-	if err := ssh.Unmarshal(blob, &w); err != nil || w.Type != ssh.InsecureKeyAlgoDSA || len(w.Rest) != 0 || w.P.Sign() <= 0 {
-		return nil, false
-	}
-	return &dsa.PublicKey{Parameters: dsa.Parameters{P: w.P, Q: w.Q, G: w.G}, Y: w.Y}, true
-}
-
 const opensshKeyMagic = "openssh-key-v1\x00"
 
 // opensshKeyHeader is the unencrypted part of an openssh-key-v1 private key
@@ -148,15 +135,11 @@ func inspectOpenSSHKeyHeader(data []byte) (privateKeyInfo, bool) {
 	if err := ssh.Unmarshal(data[len(opensshKeyMagic):], &hdr); err != nil || hdr.NumKeys != 1 {
 		return privateKeyInfo{}, false
 	}
-	info := privateKeyInfo{Encrypted: hdr.CipherName != "none"}
-	if dsaPub, ok := parseSSHDSAPublicKey(hdr.PubKey); ok {
-		info.Algorithm, info.Bits = publicKeyAlgorithmBits(dsaPub)
-		return info, true
-	}
-	pub, err := ssh.ParsePublicKey(hdr.PubKey)
+	pub, err := sshutil.ParsePublicKeyBlob(hdr.PubKey)
 	if err != nil {
 		return privateKeyInfo{}, false
 	}
+	info := privateKeyInfo{Encrypted: hdr.CipherName != "none"}
 	if cpk, ok := pub.(ssh.CryptoPublicKey); ok {
 		info.Algorithm, info.Bits = publicKeyAlgorithmBits(cpk.CryptoPublicKey())
 	}
