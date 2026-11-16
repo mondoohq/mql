@@ -10,8 +10,10 @@ import (
 	"crypto/ed25519"
 	"crypto/mldsa"
 	"crypto/rsa"
+	"encoding/asn1"
 	"encoding/pem"
 	"errors"
+	"math/big"
 	"sync"
 
 	"github.com/rs/zerolog/log"
@@ -72,16 +74,53 @@ func inspectPrivateKey(data []byte) (privateKeyInfo, error) {
 		// PKCS#8 encrypted keys (`openssl pkcs8 -topk8 -v2 aes256`) are not
 		// supported by x/crypto/ssh; the algorithm sits inside the ciphertext.
 		return privateKeyInfo{Encrypted: true}, nil
+	case "DSA PRIVATE KEY":
+		// x/crypto/ssh no longer reads DSA keys (removed in v0.59.0).
+		if key, ok := parseLegacyDSAPrivateKey(block.Bytes); ok {
+			return privateKeyInfo{Algorithm: "DSA", Bits: int64(key.P.BitLen())}, nil
+		}
 	case "OPENSSH PRIVATE KEY":
-		// x/crypto/ssh decodes OpenSSH-format RSA, ECDSA and Ed25519 keys
-		// only. A DSA key written by ssh-keygen 7.8 or later fails with
-		// "ssh: unhandled key type", but the format stores the public key
-		// and cipher name in the clear, which is all that is reported here.
+		// x/crypto/ssh does not decode OpenSSH-format DSA keys, which
+		// ssh-keygen 7.8 and later write, but the format stores the public
+		// key and cipher name in the clear, which is all that is reported here.
 		if info, ok := inspectOpenSSHKeyHeader(block.Bytes); ok {
 			return info, nil
 		}
 	}
 	return privateKeyInfo{}, err
+}
+
+// legacyDSAPrivateKey is the body of a "DSA PRIVATE KEY" PEM block, as
+// OpenSSL and ssh-keygen before 7.8 write it.
+type legacyDSAPrivateKey struct {
+	Version       int
+	P, Q, G, Y, X *big.Int
+}
+
+func parseLegacyDSAPrivateKey(der []byte) (*dsa.PrivateKey, bool) {
+	var k legacyDSAPrivateKey
+	rest, err := asn1.Unmarshal(der, &k)
+	if err != nil || len(rest) != 0 || k.Version != 0 || k.P == nil || k.P.Sign() <= 0 {
+		return nil, false
+	}
+	return &dsa.PrivateKey{
+		PublicKey: dsa.PublicKey{Parameters: dsa.Parameters{P: k.P, Q: k.Q, G: k.G}, Y: k.Y},
+		X:         k.X,
+	}, true
+}
+
+// parseSSHDSAPublicKey decodes an "ssh-dss" public key blob (RFC 4253
+// section 6.6), which x/crypto/ssh no longer parses.
+func parseSSHDSAPublicKey(blob []byte) (*dsa.PublicKey, bool) {
+	var w struct {
+		Type       string
+		P, Q, G, Y *big.Int
+		Rest       []byte `ssh:"rest"`
+	}
+	if err := ssh.Unmarshal(blob, &w); err != nil || w.Type != ssh.InsecureKeyAlgoDSA || len(w.Rest) != 0 || w.P.Sign() <= 0 {
+		return nil, false
+	}
+	return &dsa.PublicKey{Parameters: dsa.Parameters{P: w.P, Q: w.Q, G: w.G}, Y: w.Y}, true
 }
 
 const opensshKeyMagic = "openssh-key-v1\x00"
@@ -109,11 +148,15 @@ func inspectOpenSSHKeyHeader(data []byte) (privateKeyInfo, bool) {
 	if err := ssh.Unmarshal(data[len(opensshKeyMagic):], &hdr); err != nil || hdr.NumKeys != 1 {
 		return privateKeyInfo{}, false
 	}
+	info := privateKeyInfo{Encrypted: hdr.CipherName != "none"}
+	if dsaPub, ok := parseSSHDSAPublicKey(hdr.PubKey); ok {
+		info.Algorithm, info.Bits = publicKeyAlgorithmBits(dsaPub)
+		return info, true
+	}
 	pub, err := ssh.ParsePublicKey(hdr.PubKey)
 	if err != nil {
 		return privateKeyInfo{}, false
 	}
-	info := privateKeyInfo{Encrypted: hdr.CipherName != "none"}
 	if cpk, ok := pub.(ssh.CryptoPublicKey); ok {
 		info.Algorithm, info.Bits = publicKeyAlgorithmBits(cpk.CryptoPublicKey())
 	}

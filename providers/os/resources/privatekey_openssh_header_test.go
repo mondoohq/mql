@@ -26,8 +26,12 @@ func opensshDSAKey(t *testing.T, encrypted bool) []byte {
 	var key dsa.PrivateKey
 	require.NoError(t, dsa.GenerateParameters(&key.Parameters, rand.Reader, dsa.L1024N160))
 	require.NoError(t, dsa.GenerateKey(&key, rand.Reader))
-	pub, err := ssh.NewPublicKey(&key.PublicKey)
-	require.NoError(t, err)
+	// x/crypto/ssh no longer marshals DSA keys; this is the "ssh-dss" blob
+	// of RFC 4253 section 6.6.
+	pub := ssh.Marshal(struct {
+		Type       string
+		P, Q, G, Y *big.Int
+	}{ssh.InsecureKeyAlgoDSA, key.P, key.Q, key.G, key.Y})
 
 	check := uint32(0x5eed)
 	priv := ssh.Marshal(struct {
@@ -60,7 +64,7 @@ func opensshDSAKey(t *testing.T, encrypted bool) []byte {
 		CipherName, KdfName, KdfOpts string
 		NumKeys                      uint32
 		PubKey, PrivKeyBlock         []byte
-	}{cipher, kdf, kdfOpts, 1, pub.Marshal(), priv})...)
+	}{cipher, kdf, kdfOpts, 1, pub, priv})...)
 	return pem.EncodeToMemory(&pem.Block{Type: "OPENSSH PRIVATE KEY", Bytes: body})
 }
 
