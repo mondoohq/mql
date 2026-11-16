@@ -80,16 +80,20 @@ func ParsePublicKeyBlob(blob []byte) (ssh.PublicKey, error) {
 	return nil, err
 }
 
+// keyAlgoDSA is the "ssh-dss" key type. x/crypto/ssh deprecated its own
+// constant when it dropped DSA.
+const keyAlgoDSA = "ssh-dss"
+
 // dsaPublicKey is an "ssh-dss" key. It reports the key and its parameters;
 // it cannot verify signatures.
 type dsaPublicKey dsa.PublicKey
 
 var errDSAVerify = errors.New("ssh: DSA signatures are not supported")
 
-func (k *dsaPublicKey) Type() string { return ssh.InsecureKeyAlgoDSA }
+func (k *dsaPublicKey) Type() string { return keyAlgoDSA }
 
 func (k *dsaPublicKey) Marshal() []byte {
-	return ssh.Marshal(dsaWire{ssh.InsecureKeyAlgoDSA, k.P, k.Q, k.G, k.Y, nil})
+	return ssh.Marshal(dsaWire{keyAlgoDSA, k.P, k.Q, k.G, k.Y, nil})
 }
 
 func (k *dsaPublicKey) Verify([]byte, *ssh.Signature) error { return errDSAVerify }
@@ -105,7 +109,7 @@ type dsaWire struct {
 
 func parseDSAPublicKey(blob []byte) (*dsaPublicKey, bool) {
 	var w dsaWire
-	if err := ssh.Unmarshal(blob, &w); err != nil || w.Type != ssh.InsecureKeyAlgoDSA || len(w.Rest) != 0 || w.P.Sign() <= 0 {
+	if err := ssh.Unmarshal(blob, &w); err != nil || w.Type != keyAlgoDSA || len(w.Rest) != 0 || w.P.Sign() <= 0 {
 		return nil, false
 	}
 	return &dsaPublicKey{Parameters: dsa.Parameters{P: w.P, Q: w.Q, G: w.G}, Y: w.Y}, true
@@ -118,10 +122,10 @@ func parseDSAAuthorizedKey(line []byte) (*dsaPublicKey, string, []string, bool) 
 	in := bytes.TrimSpace(line)
 	var options []string
 	keyType, rest := cutField(in)
-	if string(keyType) != ssh.InsecureKeyAlgoDSA {
+	if string(keyType) != keyAlgoDSA {
 		options, in = cutOptions(in)
 		keyType, rest = cutField(in)
-		if string(keyType) != ssh.InsecureKeyAlgoDSA {
+		if string(keyType) != keyAlgoDSA {
 			return nil, "", nil, false
 		}
 	}
