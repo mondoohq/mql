@@ -138,9 +138,14 @@ const (
 	// status: new
 	WindowsNative Feature = 25
 
+	// The client retries an upstream call that the server refuses with ResourceExhausted, waiting the server's RetryInfo delay. A server may only refuse calls from clients that advertise this feature.
+	// start:  v14.x
+	// status: new
+	RateLimitRetry Feature = 26
+
 	// Placeholder to indicate how many feature flags exist. This number
 	// is changing with every new feature and cannot be used as a featureflag itself.
-	MAX_FEATURES byte = 26
+	MAX_FEATURES byte = 27
 )
 
 var FeaturesValue = map[string]Feature{
@@ -169,6 +174,7 @@ var FeaturesValue = map[string]Feature{
 	"RootedNamespace":              RootedNamespace,
 	"StructuredErrors":             StructuredErrors,
 	"WindowsNative":                WindowsNative,
+	"RateLimitRetry":               RateLimitRetry,
 }
 
 // DefaultFeatures are a set of default flags that are active
@@ -194,4 +200,5 @@ var AvailableFeatures = Features{
 	byte(RootedNamespace),
 	byte(StructuredErrors),
 	byte(WindowsNative),
+	byte(RateLimitRetry),
 }
