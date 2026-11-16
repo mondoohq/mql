@@ -31,7 +31,7 @@ func opensshDSAKey(t *testing.T, encrypted bool) []byte {
 	pub := ssh.Marshal(struct {
 		Type       string
 		P, Q, G, Y *big.Int
-	}{ssh.InsecureKeyAlgoDSA, key.P, key.Q, key.G, key.Y})
+	}{"ssh-dss", key.P, key.Q, key.G, key.Y})
 
 	check := uint32(0x5eed)
 	priv := ssh.Marshal(struct {
