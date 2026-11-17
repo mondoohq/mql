@@ -17,6 +17,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/fs"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/types"
 	"go.mondoo.com/mql/utils/syncx"
 )
 
@@ -108,12 +109,27 @@ func TestFilesFindWithoutFindWalksTheFileSystem(t *testing.T) {
 
 type optionFindFS struct {
 	afero.Fs
-	cross []bool
+	cross   []bool
+	exclude [][]string
 }
 
 func (f *optionFindFS) FindWithOptions(from string, r *regexp.Regexp, typ string, perm *uint32, depth *int, options fsutil.FindOptions) ([]string, error) {
 	f.cross = append(f.cross, options.CrossFileSystems)
+	f.exclude = append(f.exclude, options.Exclude)
 	return []string{"/etc/example.conf"}, nil
+}
+
+func TestFilesFindForwardsExclude(t *testing.T) {
+	f := &optionFindFS{Fs: afero.NewMemMapFs()}
+	rt := memFSRuntime(t, f)
+	res, err := CreateResource(rt, "files.find", map[string]*llx.RawData{
+		"from":    llx.StringData("/home"),
+		"exclude": llx.ArrayData([]any{"node_modules", ".*", "node_modules"}, types.String),
+	})
+	require.NoError(t, err)
+	_, err = res.(*mqlFilesFind).fsFilesFind(rt.Connection.(shared.Connection))
+	require.NoError(t, err)
+	require.Equal(t, [][]string{{".*", "node_modules"}}, f.exclude, "sorted, without duplicates")
 }
 func TestFilesFindForwardsMountScope(t *testing.T) {
 	for _, cross := range []bool{false, true} {
@@ -141,11 +157,16 @@ func TestFilesFindIDKeepsDepthZero(t *testing.T) {
 		Depth: plugin.TValue[int64]{Data: 1, State: plugin.StateIsSet},
 	}
 
+	excluded := &mqlFilesFind{
+		From:    plugin.TValue[string]{Data: `C:\mqltest`, State: plugin.StateIsSet},
+		Exclude: plugin.TValue[[]any]{Data: []any{"node_modules"}, State: plugin.StateIsSet},
+	}
+
 	ids := map[string]bool{}
-	for _, f := range []*mqlFilesFind{unbounded, depth0, depth1} {
+	for _, f := range []*mqlFilesFind{unbounded, depth0, depth1, excluded} {
 		id, err := f.id()
 		require.NoError(t, err)
 		ids[id] = true
 	}
-	assert.Len(t, ids, 3)
+	assert.Len(t, ids, 4)
 }

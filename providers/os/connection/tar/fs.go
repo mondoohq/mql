@@ -11,6 +11,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -440,6 +441,10 @@ func (fs *FS) Find(from string, r *regexp.Regexp, typ string, perm *uint32, dept
 func (fs *FS) FindWithOptions(from string, r *regexp.Regexp, typ string, perm *uint32, depth *int, options fsutil.FindOptions) ([]string, error) {
 	// An archive has no mounted sub-filesystems. Keep its indexed search, but
 	// apply the same cancellation and result budgets as a live filesystem.
+	excluded, err := fsutil.ExcludeMatcher(options.Exclude)
+	if err != nil {
+		return nil, err
+	}
 	budget, cancel := fsutil.NewFindBudget(options)
 	defer cancel()
 	if err := budget.Check(); err != nil {
@@ -477,6 +482,11 @@ func (fs *FS) FindWithOptions(from string, r *regexp.Regexp, typ string, perm *u
 		if !depthMatch(from, p, depth) {
 			continue
 		}
+		// every directory between root and the entry is one the walk entered
+		parents, last := excludeComponents(root, k)
+		if excluded != nil && slices.ContainsFunc(parents, excluded) {
+			continue
+		}
 		if r != nil && !r.MatchString(p) {
 			continue
 		}
@@ -495,6 +505,9 @@ func (fs *FS) FindWithOptions(from string, r *regexp.Regexp, typ string, perm *u
 			}
 		}
 
+		if excluded != nil && last != "" && target.Typeflag == tar.TypeDir && excluded(last) {
+			continue
+		}
 		if len(types) > 0 && !matchesFindType(types, entry, target) {
 			continue
 		}
@@ -510,6 +523,16 @@ func (fs *FS) FindWithOptions(from string, r *regexp.Regexp, typ string, perm *u
 	// in another order on every scan
 	sort.Strings(list)
 	return list, nil
+}
+
+// excludeComponents splits the path of k below root into the directories it
+// passes through and its own name. Both are empty for root itself.
+func excludeComponents(root, k string) ([]string, string) {
+	if k == root {
+		return nil, ""
+	}
+	parts := strings.Split(strings.TrimPrefix(k[len(root):], "/"), "/")
+	return parts[:len(parts)-1], parts[len(parts)-1]
 }
 
 // findRoot returns the archive path a search from `from` walks: from itself,

@@ -20,6 +20,7 @@ func TestUnixFilesCmdGeneration(t *testing.T) {
 		Depth       *int64
 		HasGNUFind  bool
 		NoMaxDepth  bool
+		Exclude     []string
 		ExpectedCmd string
 	}{
 		{
@@ -141,10 +142,26 @@ func TestUnixFilesCmdGeneration(t *testing.T) {
 			NoMaxDepth:  true,
 			ExpectedCmd: "find -L \"/opt/a*b/\" -xdev -path '/opt/a\\*b/?*/?*/?*' -prune -o -perm -0 -print",
 		},
+		{
+			// excluded directories are pruned, but never from itself
+			From:        "/home",
+			Search:      "package.json",
+			Exclude:     []string{"node_modules", ".*"},
+			HasGNUFind:  true,
+			ExpectedCmd: "find -L \"/home\" -xdev \\( -path '/home' -o -xtype l -prune -o -true \\) \\( -type d \\( -name 'node_modules' -o -name '.*' \\) ! -path '/home' \\) -prune -o -perm -0 -name 'package.json' -print",
+		},
+		{
+			// a quote in an exclude glob reaches find verbatim
+			From:        "/opt/a*b",
+			Exclude:     []string{"it's"},
+			Depth:       new(int64(1)),
+			NoMaxDepth:  true,
+			ExpectedCmd: "find -L \"/opt/a*b\" -xdev -path '/opt/a\\*b/?*/?*' -prune -o \\( -type d \\( -name 'it'\\''s' \\) ! -path '/opt/a\\*b' \\) -prune -o -perm -0 -print",
+		},
 	}
 
 	for _, tt := range tests {
-		cmd := BuildFilesFindCmd(tt.From, tt.Xdev, tt.FileType, tt.Regex, tt.Permission, tt.Search, tt.Depth, FindFlavor{GNU: tt.HasGNUFind, NoMaxDepth: tt.NoMaxDepth})
+		cmd := BuildFilesFindCmd(tt.From, tt.Xdev, tt.FileType, tt.Regex, tt.Permission, tt.Search, tt.Depth, tt.Exclude, FindFlavor{GNU: tt.HasGNUFind, NoMaxDepth: tt.NoMaxDepth})
 		assert.Equal(t, tt.ExpectedCmd, cmd)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"path"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -57,7 +58,32 @@ func (l *mqlFilesFind) id() (string, error) {
 		id.WriteString(" permissions=" + filesfind.Octal2string(l.Permissions.Data))
 	}
 
+	exclude, err := l.excludeGlobs()
+	if err != nil {
+		return "", err
+	}
+	if len(exclude) > 0 {
+		id.WriteString(" exclude=" + strconv.Quote(strings.Join(exclude, "\x00")))
+	}
+
 	return id.String(), nil
+}
+
+// excludeGlobs returns the exclude globs, sorted and without duplicates.
+func (l *mqlFilesFind) excludeGlobs() ([]string, error) {
+	if l.Exclude.Error != nil {
+		return nil, l.Exclude.Error
+	}
+	res := make([]string, 0, len(l.Exclude.Data))
+	for _, x := range l.Exclude.Data {
+		s, ok := x.(string)
+		if !ok {
+			return nil, fmt.Errorf("files.find exclude must be a list of strings, got %T", x)
+		}
+		res = append(res, s)
+	}
+	slices.Sort(res)
+	return slices.Compact(res), nil
 }
 
 func (l *mqlFilesFind) list() ([]any, error) {
@@ -140,7 +166,12 @@ func (l *mqlFilesFind) fsFilesFind(conn shared.Connection) ([]string, error) {
 		return nil, err
 	}
 
-	found, err := fsSearch.FindWithOptions(l.From.Data, compiledRegexp, l.Type.Data, perm, depth, fsutil.FindOptions{CrossFileSystems: l.Xdev.Data})
+	exclude, err := l.excludeGlobs()
+	if err != nil {
+		return nil, err
+	}
+
+	found, err := fsSearch.FindWithOptions(l.From.Data, compiledRegexp, l.Type.Data, perm, depth, fsutil.FindOptions{CrossFileSystems: l.Xdev.Data, Exclude: exclude})
 	if err != nil || matchesName == nil {
 		return found, err
 	}
@@ -189,7 +220,15 @@ func (l *mqlFilesFind) unixFilesFindCmd(conn shared.Connection) ([]string, error
 		depth = &l.Depth.Data
 	}
 
-	callCmd := filesfind.BuildFilesFindCmd(l.From.Data, l.Xdev.Data, l.Type.Data, l.Regex.Data, l.Permissions.Data, l.Name.Data, depth, filesfind.FindFlavor{GNU: l.hasGNUFind(), NoMaxDepth: l.findLacksMaxDepth()})
+	exclude, err := l.excludeGlobs()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := fsutil.ExcludeMatcher(exclude); err != nil {
+		return nil, err
+	}
+
+	callCmd := filesfind.BuildFilesFindCmd(l.From.Data, l.Xdev.Data, l.Type.Data, l.Regex.Data, l.Permissions.Data, l.Name.Data, depth, exclude, filesfind.FindFlavor{GNU: l.hasGNUFind(), NoMaxDepth: l.findLacksMaxDepth()})
 	rawCmd, err := CreateResource(l.MqlRuntime, "command", map[string]*llx.RawData{
 		"command": llx.StringData(callCmd),
 	})
@@ -256,7 +295,15 @@ func (l *mqlFilesFind) windowsPowershellCmd() ([]string, error) {
 		depth = &l.Depth.Data
 	}
 
-	pwshScript := filesfind.BuildPowershellCmd(l.From.Data, l.Xdev.Data, l.Type.Data, l.Regex.Data, l.Permissions.Data, l.Name.Data, depth)
+	exclude, err := l.excludeGlobs()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := fsutil.ExcludeMatcher(exclude); err != nil {
+		return nil, err
+	}
+
+	pwshScript := filesfind.BuildPowershellCmd(l.From.Data, l.Xdev.Data, l.Type.Data, l.Regex.Data, l.Permissions.Data, l.Name.Data, depth, exclude)
 	rawCmd, err := CreateResource(l.MqlRuntime, "powershell", map[string]*llx.RawData{
 		"script": llx.StringData(pwshScript),
 	})

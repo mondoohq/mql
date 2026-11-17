@@ -595,3 +595,28 @@ func TestFindWithOptionsBudgets(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"/etc/a", "/etc/b"}, found)
 }
+
+func TestTarFindExclude(t *testing.T) {
+	fs := findFixtureFs(t)
+	search := func(from string, exclude ...string) []string {
+		t.Helper()
+		res, err := fs.FindWithOptions(from, nil, "", nil, nil, fsutil.FindOptions{Exclude: exclude})
+		require.NoError(t, err)
+		return res
+	}
+
+	assert.Equal(t, []string{
+		"/etc/c3-links",
+		"/etc/c3-links/broken",
+		"/etc/c3-links/hard1",
+		"/etc/c3-links/hard2",
+		"/etc/c3-links/realdirx",
+		"/etc/c3-links/realdirx/x.conf",
+		"/etc/c3-links/target.conf",
+		"/etc/c3-links/tofile",
+	}, search("/etc/c3-links", "realdir", "todir"), "neither the directory, its entries nor a link to a directory are reported")
+	assert.NotContains(t, search("/etc/c3-links", "real*"), "/etc/c3-links/realdirx/x.conf", "a glob as with find -name")
+	assert.Contains(t, search("/etc/c3-links", "tofile"), "/etc/c3-links/tofile", "a link to a file is not a directory")
+	assert.Equal(t, []string{"/etc/c3-links/realdir", "/etc/c3-links/realdir/in.conf"},
+		search("/etc/c3-links/realdir", "realdir"), "from is searched even when its name matches")
+}

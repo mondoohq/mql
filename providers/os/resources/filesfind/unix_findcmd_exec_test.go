@@ -66,10 +66,10 @@ func TestBuildFilesFindCmd_SymlinkStartIsWalked(t *testing.T) {
 	require.NoError(t, os.Symlink("usr/bin", weird))
 
 	bin := filepath.Join(root, "bin")
-	suid := runFind(t, BuildFilesFindCmd(bin, false, "file", "", 0o4000, "", nil, FindFlavor{GNU: true}))
+	suid := runFind(t, BuildFilesFindCmd(bin, false, "file", "", 0o4000, "", nil, nil, FindFlavor{GNU: true}))
 	assert.Equal(t, []string{filepath.Join(bin, "su")}, suid)
 
-	all := runFind(t, BuildFilesFindCmd(bin, false, "", "", 0o777, "", nil, FindFlavor{GNU: true}))
+	all := runFind(t, BuildFilesFindCmd(bin, false, "", "", 0o777, "", nil, nil, FindFlavor{GNU: true}))
 	assert.Equal(t, []string{
 		bin,
 		filepath.Join(bin, "linkdir"),
@@ -79,10 +79,50 @@ func TestBuildFilesFindCmd_SymlinkStartIsWalked(t *testing.T) {
 		filepath.Join(bin, "sub", "f"),
 	}, all)
 
-	weirdSuid := runFind(t, BuildFilesFindCmd(weird, false, "file", "", 0o4000, "", nil, FindFlavor{GNU: true}))
+	weirdSuid := runFind(t, BuildFilesFindCmd(weird, false, "file", "", 0o4000, "", nil, nil, FindFlavor{GNU: true}))
 	assert.Equal(t, []string{filepath.Join(weird, "su")}, weirdSuid)
 
 	// a start path that is a real directory is unchanged
-	real := runFind(t, BuildFilesFindCmd(usrBin, false, "file", "", 0o4000, "", nil, FindFlavor{GNU: true}))
+	real := runFind(t, BuildFilesFindCmd(usrBin, false, "file", "", 0o4000, "", nil, nil, FindFlavor{GNU: true}))
 	assert.Equal(t, []string{filepath.Join(usrBin, "su")}, real)
+}
+
+// Synthetic: a project tree with installed packages, the shape files.find
+// exclude exists for.
+func TestBuildFilesFindCmd_Exclude(t *testing.T) {
+	root := t.TempDir()
+	for _, p := range []string{
+		"u/proj/package.json",
+		"u/proj/node_modules/a/package.json",
+		"u/proj/node_modules/a/node_modules/b/package.json",
+		"u/.cache/x/package.json",
+		// a file is never excluded, only a directory is
+		"u/proj/docs/node_modules",
+	} {
+		require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(root, p)), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(root, p), nil, 0o644))
+	}
+	// a link with an excluded name is not entered, even where find -L follows links
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "u", "other"), 0o755))
+	require.NoError(t, os.Symlink("../proj/node_modules", filepath.Join(root, "u", "other", "node_modules")))
+	rel := func(paths []string) []string {
+		for i := range paths {
+			paths[i] = strings.TrimPrefix(paths[i], root+"/")
+		}
+		return paths
+	}
+
+	for _, gnu := range []bool{false, true} {
+		if gnu {
+			requireGNUFind(t)
+		}
+		flavor := FindFlavor{GNU: gnu}
+		assert.Equal(t, []string{"u/.cache/x/package.json", "u/proj/docs/node_modules", "u/proj/package.json"},
+			rel(runFind(t, BuildFilesFindCmd(root, false, "file", "", 0o777, "", nil, []string{"node_modules"}, flavor))), "gnu=%v", gnu)
+		assert.Equal(t, []string{"u/proj/package.json"},
+			rel(runFind(t, BuildFilesFindCmd(root, false, "", "", 0o777, "package.json", nil, []string{"node_modules", ".*"}, flavor))), "gnu=%v", gnu)
+		nm := filepath.Join(root, "u", "proj", "node_modules")
+		assert.Equal(t, []string{"u/proj/node_modules/a/package.json"},
+			rel(runFind(t, BuildFilesFindCmd(nm, false, "file", "", 0o777, "", nil, []string{"node_modules"}, flavor))), "from is searched: gnu=%v", gnu)
+	}
 }

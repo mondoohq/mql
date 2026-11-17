@@ -370,3 +370,44 @@ func TestFindFilesAbsentRoot(t *testing.T) {
 		require.Empty(t, found)
 	}
 }
+
+// Synthetic: a project tree with installed packages, the shape files.find
+// exclude exists for.
+func TestFindFilesExclude(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	mkFile(t, fs, "home/u/proj/package.json")
+	mkFile(t, fs, "home/u/proj/node_modules/a/package.json")
+	mkFile(t, fs, "home/u/proj/node_modules/a/node_modules/b/package.json")
+	mkFile(t, fs, "home/u/.cache/x/package.json")
+	// a file is never excluded, only a directory is
+	mkFile(t, fs, "home/u/proj/docs/node_modules")
+	iofs := afero.NewIOFS(fs)
+
+	search := func(from string, exclude ...string) []string {
+		t.Helper()
+		found, err := FindFilesWithOptions(iofs, from, nil, "f", nil, nil, FindOptions{CrossFileSystems: true, Exclude: exclude})
+		require.NoError(t, err)
+		return found
+	}
+
+	assert.ElementsMatch(t, []string{
+		"home/u/proj/package.json",
+		"home/u/proj/docs/node_modules",
+		"home/u/.cache/x/package.json",
+	}, search("home", "node_modules"))
+	assert.ElementsMatch(t, []string{
+		"home/u/proj/package.json",
+		"home/u/proj/docs/node_modules",
+	}, search("home", "node_modules", ".*"), "a glob as with find -name")
+	assert.Len(t, search("home"), 5, "no exclude searches every directory")
+	assert.ElementsMatch(t, []string{
+		"home/u/proj/node_modules/a/package.json",
+	}, search("home/u/proj/node_modules", "node_modules"), "from is searched even when its name matches")
+
+	dirs, err := FindFilesWithOptions(iofs, "home/u/proj", nil, "d", nil, nil, FindOptions{CrossFileSystems: true, Exclude: []string{"node_modules"}})
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"home/u/proj", "home/u/proj/docs"}, dirs, "an excluded directory is not reported")
+
+	_, err = FindFilesWithOptions(iofs, "home", nil, "f", nil, nil, FindOptions{CrossFileSystems: true, Exclude: []string{"["}})
+	assert.Error(t, err)
+}
