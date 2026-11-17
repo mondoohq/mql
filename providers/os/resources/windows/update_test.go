@@ -267,6 +267,57 @@ func TestIsOperatingSystemUpdate(t *testing.T) {
 			want:       true,
 		},
 		{
+			name:  "24H2 cumulative update has no for clause",
+			title: "2026-10 Security Update (KB5127648) (26200.9711)",
+			want:  true,
+		},
+		{
+			name:  "24H2 hotpatch September",
+			title: "2026-09 Security Update (Hotpatch capable) (KB5129241) (26200.9448)",
+			want:  true,
+		},
+		{
+			name:  "24H2 hotpatch November",
+			title: "2026-11 Security Update (Hotpatch capable) (KB5132043) (26200.9911)",
+			want:  true,
+		},
+		{
+			name:  "dotnet framework without trailing build",
+			title: "2026-10 .NET Framework Security Update (KB5127690)",
+			want:  false,
+		},
+		{
+			name:  "security update without trailing build",
+			title: "2026-10 Security Update (KB5127648)",
+			want:  false,
+		},
+		{
+			name:       "windows security platform",
+			title:      "Update for Windows Security platform - KB5007651 (Version 10.0.29680.1000) - Current Channel (Broad)",
+			categories: []string{"Windows Security platform"},
+			want:       false,
+		},
+		{
+			name:  "defender antimalware platform current channel",
+			title: "Update for Microsoft Defender Antivirus antimalware platform - KB4052623 (Version 4.18.26100.4) - Current Channel (Broad)",
+			want:  false,
+		},
+		{
+			name:  "malicious software removal tool v5.146",
+			title: "Windows Malicious Software Removal Tool x64 - v5.146 (KB890830)",
+			want:  false,
+		},
+		{
+			name:  "audio driver update",
+			title: "Microsoft Corporation AudioProcessingObject Driver Update (1.0.4.7057)",
+			want:  false,
+		},
+		{
+			name:  "security intelligence update current channel",
+			title: "Security Intelligence Update for Microsoft Defender Antivirus - KB2267602 (Version 1.463.43.0) - Current Channel (Broad)",
+			want:  false,
+		},
+		{
 			name:  "title naming no product",
 			title: "Some vendor tool 1.2.3",
 			want:  false,
@@ -445,4 +496,27 @@ func TestWUAResultsQueryFiltersOSServices(t *testing.T) {
 	for _, r := range q {
 		assert.Less(t, r, rune(128), "script must be ASCII")
 	}
+}
+
+// On a 25H2 hotpatch host the newest OS update must win over a newer Windows
+// Security platform update; this mirrors the selection in lastInstalledWindows.
+func TestNewestOperatingSystemUpdateIgnoresSecurityPlatform(t *testing.T) {
+	type entry struct {
+		title      string
+		categories []string
+		date       time.Time
+	}
+	entries := []entry{
+		{"Update for Windows Security platform - KB5007651 (Version 10.0.29680.1000) - Current Channel (Broad)", []string{"Windows Security platform"}, time.Date(2026, 10, 30, 17, 0, 5, 0, time.UTC)},
+		{"2026-10 Security Update (KB5127648) (26200.9711)", nil, time.Date(2026, 10, 14, 17, 12, 45, 0, time.UTC)},
+		{"2026-09 Security Update (Hotpatch capable) (KB5129241) (26200.9448)", nil, time.Date(2026, 10, 11, 17, 12, 26, 0, time.UTC)},
+		{"2026-11 Security Update (Hotpatch capable) (KB5132043) (26200.9911)", nil, time.Date(2026, 11, 12, 17, 0, 0, 0, time.UTC)},
+	}
+	var newest time.Time
+	for _, e := range entries {
+		if IsOperatingSystemUpdate(e.categories, "", e.title) && e.date.After(newest) {
+			newest = e.date
+		}
+	}
+	assert.Equal(t, time.Date(2026, 11, 12, 17, 0, 0, 0, time.UTC), newest)
 }
