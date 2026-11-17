@@ -3,8 +3,6 @@
 
 package eos
 
-import "errors"
-
 // VrrpGroup represents a single VRRP virtual router as returned by
 // `show vrrp all | json`. Field tags follow the EOS eAPI JSON schema.
 type VrrpGroup struct {
@@ -50,6 +48,5 @@ func (eos *Eos) VrrpGroups() ([]VrrpGroup, error) {
 // because its platform does not have the feature, which leaves nothing of it
 // to report.
 func IsUnsupportedOnPlatform(err error) bool {
-	var cerr *CommandError
-	return errors.As(err, &cerr) && cerr.HasMessage("not supported on this hardware platform")
+	return refusedWith(err, "not supported on this hardware platform")
 }

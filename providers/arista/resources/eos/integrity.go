@@ -4,7 +4,6 @@
 package eos
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/aristanetworks/goeapi"
@@ -105,8 +104,7 @@ func (eos *Eos) BootConfig() (*showBootConfig, error) {
 func (eos *Eos) StartupConfig() (string, error) {
 	res, err := eos.runCommand("show "+goeapi.StartupConfig, "text")
 	if err != nil {
-		var cerr *CommandError
-		if errors.As(err, &cerr) && cerr.HasMessage("startup-config (No such file or directory)") {
+		if refusedWith(err, "startup-config (No such file or directory)") {
 			return "", nil
 		}
 		return "", fmt.Errorf("could not read %s: %w", goeapi.StartupConfig, err)

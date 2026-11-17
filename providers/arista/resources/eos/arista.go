@@ -4,7 +4,6 @@
 package eos
 
 import (
-	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -530,8 +529,7 @@ type PowerSupply struct {
 func (eos *Eos) ShowEnvironmentPower() (*showEnvironmentPower, error) {
 	shRsp := &showEnvironmentPower{}
 	if err := eos.runJSON(shRsp.GetCmd(), shRsp); err != nil {
-		var cerr *CommandError
-		if errors.As(err, &cerr) && cerr.HasMessage("no power supplies connected") {
+		if refusedWith(err, "no power supplies connected") {
 			return &showEnvironmentPower{PowerSupplies: map[string]PowerSupply{}}, nil
 		}
 		return nil, err

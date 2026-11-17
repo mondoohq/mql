@@ -4,9 +4,11 @@
 package eos
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/go-viper/mapstructure/v2"
 )
 
 // CommandError is a command the device refused, with the reasons EOS gave.
@@ -42,6 +44,13 @@ func (e *CommandError) HasMessage(text string) bool {
 	return false
 }
 
+// refusedWith reports whether err is a command the device refused with a
+// reason that contains text.
+func refusedWith(err error, text string) bool {
+	var cerr *CommandError
+	return errors.As(err, &cerr) && cerr.HasMessage(text)
+}
+
 // runCommand runs one command and returns its result. It goes through the
 // node's connection rather than goeapi's RunCommands or command handles,
 // which discard the response, and with it EOS's reasons, whenever the device
@@ -63,16 +72,23 @@ func (eos *Eos) runCommand(cmd, encoding string) (map[string]any, error) {
 }
 
 // runJSON runs a command with JSON output and decodes its result into out.
+// The result arrives already parsed into a map, so it is decoded by the json
+// struct tags the same way goeapi's command handles decode theirs.
 func (eos *Eos) runJSON(cmd string, out any) error {
 	res, err := eos.runCommand(cmd, "json")
 	if err != nil {
 		return err
 	}
-	raw, err := json.Marshal(res)
+	return decodeResult(cmd, res, out)
+}
+
+// decodeResult decodes one command's parsed JSON result into out.
+func decodeResult(cmd string, res map[string]any, out any) error {
+	dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{TagName: "json", Result: out})
 	if err != nil {
 		return err
 	}
-	if err := json.Unmarshal(raw, out); err != nil {
+	if err := dec.Decode(res); err != nil {
 		return fmt.Errorf("could not decode %q: %w", cmd, err)
 	}
 	return nil
