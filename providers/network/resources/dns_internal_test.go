@@ -11,6 +11,7 @@ import (
 	"go.mondoo.com/mql"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 func TestParseSPF(t *testing.T) {
@@ -177,6 +178,78 @@ func TestRecordsArePartialWhenATypeLookupFailed(t *testing.T) {
 	res, err := d.records(map[string]any{"AAAA": map[string]any{"type": "AAAA", "rCode": "NXDOMAIN"}})
 	assert.NoError(t, err)
 	assert.Empty(t, res)
+}
+
+// records and authoritativeRecords answer the same name, class and type, and
+// differ in the TTL: the resolver's remaining cache time against the value the
+// zone configures. Resources are cached by id, so the two must not share one,
+// or whichever field a query reads first supplies the TTL for both.
+func TestAuthoritativeRecordsKeepTheirOwnTTL(t *testing.T) {
+	answer := func(ttl float64) map[string]any {
+		return map[string]any{"A": map[string]any{
+			"name": "example.com.", "class": "IN", "type": "A", "rCode": "NOERROR",
+			"ttl": ttl, "rData": []any{"192.0.2.1"},
+		}}
+	}
+	cached, configured := answer(5), answer(300)
+
+	ttlOf := func(t *testing.T, recs []any) int64 {
+		t.Helper()
+		require.Len(t, recs, 1)
+		return recs[0].(*mqlDnsRecord).Ttl.Data
+	}
+
+	for name, authoritativeFirst := range map[string]bool{"records first": false, "authoritative first": true} {
+		t.Run(name, func(t *testing.T) {
+			d := &mqlDns{
+				MqlRuntime: &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}},
+				Fqdn:       plugin.TValue[string]{Data: "example.com", State: plugin.StateIsSet},
+			}
+
+			var recs, auth []any
+			var err error
+			if authoritativeFirst {
+				auth, err = d.authoritativeRecords(configured)
+				require.NoError(t, err)
+				recs, err = d.records(cached)
+				require.NoError(t, err)
+			} else {
+				recs, err = d.records(cached)
+				require.NoError(t, err)
+				auth, err = d.authoritativeRecords(configured)
+				require.NoError(t, err)
+			}
+
+			assert.Equal(t, int64(5), ttlOf(t, recs))
+			assert.Equal(t, int64(300), ttlOf(t, auth))
+		})
+	}
+}
+
+// A failed MX lookup leaves the entry without data. Read as an empty list, it
+// passed every check over the domain's mail exchangers without one being read.
+func TestMxReportsAFailedLookup(t *testing.T) {
+	d := &mqlDns{Fqdn: plugin.TValue[string]{Data: "example.com", State: plugin.StateIsSet}}
+	params := map[string]any{"MX": map[string]any{
+		"type":         "MX",
+		"rCode":        "",
+		"errorMessage": "read udp: i/o timeout",
+	}}
+
+	t.Run("structured errors", func(t *testing.T) {
+		withStructuredErrors(t, true)
+		_, err := d.mx(params)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, llx.ErrTargetUnavailable)
+		assert.Contains(t, err.Error(), "the MX records of example.com")
+	})
+
+	t.Run("v13", func(t *testing.T) {
+		withStructuredErrors(t, false)
+		entries, err := d.mx(params)
+		require.NoError(t, err)
+		assert.Empty(t, entries)
+	})
 }
 
 func withStructuredErrors(t *testing.T, on bool) {
