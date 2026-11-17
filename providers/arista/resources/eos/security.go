@@ -162,14 +162,17 @@ func ParseAaaConfig(runningConfig string) *AaaConfig {
 //	   idle-timeout 30
 //	   server-port 22
 //	   no shutdown
-//	   authentication mode keyboard-interactive
-//	   protocol version 2
+//	   authentication protocol keyboard-interactive public-key
 //	   cipher aes256-gcm@openssh.com aes256-ctr
 //	   key-exchange curve25519-sha256 ecdh-sha2-nistp521
 //	   mac hmac-sha2-512-etm@openssh.com
-//	   hostkey rsa key-size 4096
+//	   hostkey server ecdsa-nistp521 ed25519 rsa
+//	   default client-alive interval
+//	   default client-alive count-max
 //
-// Lines that aren't recognized are ignored.
+// Older releases render `authentication mode <mode>` and
+// `protocol version <n>`; both forms are read. Lines that aren't recognized
+// are ignored.
 type SshSettings struct {
 	Enabled            bool
 	ProtocolVersion    string
@@ -211,9 +214,86 @@ type SshSettings struct {
 	LogLevel string
 	// ClientAliveInterval is the `client-alive interval` in seconds, and
 	// ClientAliveCountMax the `client-alive count-max`. Together they end a
-	// session whose peer has gone away. 0 when unset.
-	ClientAliveInterval int
-	ClientAliveCountMax int
+	// session whose peer has gone away. The running-config renders a value
+	// left at its default as `default client-alive interval`, without the
+	// number; the ...Set fields are false then, and the effective value has
+	// to come from the SSH daemon's configuration (see ParseSshdClientAlive).
+	ClientAliveInterval    int
+	ClientAliveIntervalSet bool
+	ClientAliveCountMax    int
+	ClientAliveCountMaxSet bool
+}
+
+// DefaultSshProtocolVersion is the SSH protocol version EOS's SSH daemon
+// speaks. EOS ships OpenSSH (8.7 on EOS 4.33), which dropped SSH-1 in 7.6,
+// and the sshd_config EOS generates says `Protocol 2`. Newer EOS releases no
+// longer render a `protocol version` line, so this is reported when the
+// running-config has none.
+const DefaultSshProtocolVersion = "2"
+
+// Fallback client-alive values, used only when the generated sshd_config
+// cannot be read (for example when command authorization denies `bash`).
+// They are the values EOS 4.33 writes to /etc/ssh/sshd_config for
+// `default client-alive interval` and `default client-alive count-max`
+// (`ClientAliveInterval 200`, `ClientAliveCountMax 3`).
+const (
+	DefaultSshClientAliveInterval = 200
+	DefaultSshClientAliveCountMax = 3
+)
+
+// SshdConfigPath is the sshd configuration EOS generates from
+// `management ssh` for the default routing instance. Per-instance copies
+// (`sshd_config-<vrf>`) carry the same client-alive settings.
+const SshdConfigPath = "/etc/ssh/sshd_config"
+
+// ParseSshdClientAlive reads ClientAliveInterval and ClientAliveCountMax from
+// an sshd_config. ok is false for a value the file does not set.
+func ParseSshdClientAlive(sshdConfig string) (interval int, intervalOk bool, countMax int, countMaxOk bool) {
+	for line := range strings.SplitSeq(sshdConfig, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			continue
+		}
+		n, err := strconv.Atoi(fields[1])
+		if err != nil {
+			continue
+		}
+		// sshd keywords are case-insensitive, and the first occurrence wins.
+		switch strings.ToLower(fields[0]) {
+		case "clientaliveinterval":
+			if !intervalOk {
+				interval, intervalOk = n, true
+			}
+		case "clientalivecountmax":
+			if !countMaxOk {
+				countMax, countMaxOk = n, true
+			}
+		}
+	}
+	return interval, intervalOk, countMax, countMaxOk
+}
+
+// parseHostkeyLine returns the host key algorithms a `hostkey` line offers.
+// EOS 4.33 renders them on one line as `hostkey server <alg> <alg> ...`;
+// older releases wrote one algorithm per line, e.g. `hostkey rsa key-size
+// 4096`. `hostkey server cert ...` and `hostkey client ...` name no
+// algorithm.
+func parseHostkeyLine(rest string) []string {
+	fields := strings.Fields(rest)
+	if len(fields) == 0 {
+		return nil
+	}
+	switch fields[0] {
+	case "client":
+		return nil
+	case "server":
+		if len(fields) < 2 || fields[1] == "cert" {
+			return nil
+		}
+		return fields[1:]
+	default:
+		return fields[:1]
+	}
 }
 
 func ParseSshSettings(runningConfig string) *SshSettings {
@@ -221,8 +301,9 @@ func ParseSshSettings(runningConfig string) *SshSettings {
 		// EOS default: SSH enabled unless an explicit "shutdown" is present
 		Enabled: true,
 		// EOS default for `authentication empty-passwords`.
-		EmptyPasswords: "auto",
-		Vrfs:           []string{},
+		EmptyPasswords:  "auto",
+		ProtocolVersion: DefaultSshProtocolVersion,
+		Vrfs:            []string{},
 	}
 
 	// SectionBody keeps the block's indentation so a nested `vrf` sub-block
@@ -294,17 +375,19 @@ func ParseSshSettings(runningConfig string) *SshSettings {
 		case strings.HasPrefix(line, "client-alive interval "):
 			n, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(line, "client-alive interval ")))
 			if err == nil {
-				s.ClientAliveInterval = n
+				s.ClientAliveInterval, s.ClientAliveIntervalSet = n, true
 			}
 		case strings.HasPrefix(line, "client-alive count-max "):
 			n, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(line, "client-alive count-max ")))
 			if err == nil {
-				s.ClientAliveCountMax = n
+				s.ClientAliveCountMax, s.ClientAliveCountMaxSet = n, true
 			}
 		case strings.HasPrefix(line, "authentication empty-passwords "):
 			s.EmptyPasswords = strings.TrimSpace(strings.TrimPrefix(line, "authentication empty-passwords "))
 		case strings.HasPrefix(line, "log-level "):
 			s.LogLevel = strings.TrimSpace(strings.TrimPrefix(line, "log-level "))
+		case strings.HasPrefix(line, "authentication protocol "):
+			s.AuthenticationMode = strings.Join(strings.Fields(strings.TrimPrefix(line, "authentication protocol ")), " ")
 		case strings.HasPrefix(line, "authentication mode "):
 			s.AuthenticationMode = strings.TrimSpace(strings.TrimPrefix(line, "authentication mode "))
 		case strings.HasPrefix(line, "cipher "):
@@ -314,7 +397,7 @@ func ParseSshSettings(runningConfig string) *SshSettings {
 		case strings.HasPrefix(line, "mac "):
 			s.Macs = strings.Fields(strings.TrimPrefix(line, "mac "))
 		case strings.HasPrefix(line, "hostkey "):
-			s.HostkeyAlgorithms = append(s.HostkeyAlgorithms, strings.TrimSpace(strings.TrimPrefix(line, "hostkey ")))
+			s.HostkeyAlgorithms = append(s.HostkeyAlgorithms, parseHostkeyLine(strings.TrimPrefix(line, "hostkey "))...)
 		case line == "fips restrictions":
 			s.FipsRestrictions = true
 		}

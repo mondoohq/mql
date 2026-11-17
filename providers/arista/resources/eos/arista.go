@@ -70,6 +70,27 @@ func configTextFromResponse(res map[string]any, config string) (string, error) {
 	return out, nil
 }
 
+// SshdConfig returns the sshd configuration EOS generates from
+// `management ssh`. No show command reports the effective client-alive
+// settings, and the running-config renders them as `default client-alive
+// interval` without the number, so this reads the file through the `bash`
+// command. It fails where command authorization denies `bash`.
+func (eos *Eos) SshdConfig() (string, error) {
+	cmd := "bash timeout 10 cat " + SshdConfigPath
+	res, err := eos.node.RunCommands([]string{cmd}, "text")
+	if err != nil {
+		return "", fmt.Errorf("could not read %s: %w", SshdConfigPath, err)
+	}
+	if len(res.Result) == 0 {
+		return "", fmt.Errorf("could not read %s: empty response", SshdConfigPath)
+	}
+	out, ok := res.Result[0]["output"].(string)
+	if !ok || strings.TrimSpace(out) == "" {
+		return "", fmt.Errorf("could not read %s: response carried no output", SshdConfigPath)
+	}
+	return out, nil
+}
+
 func (eos *Eos) SystemConfig() map[string]string {
 	// get api system module
 	sys := module.System(eos.node)

@@ -8688,7 +8688,7 @@ func (c *mqlAristaEosAaaServerGroup) GetServers() *plugin.TValue[[]any] {
 type mqlAristaEosSshSettings struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlAristaEosSshSettingsInternal it will be used here
+	mqlAristaEosSshSettingsInternal
 	Enabled                plugin.TValue[bool]
 	ProtocolVersion        plugin.TValue[string]
 	IdleTimeout            plugin.TValue[int64]
@@ -8811,11 +8811,15 @@ func (c *mqlAristaEosSshSettings) GetLogLevel() *plugin.TValue[string] {
 }
 
 func (c *mqlAristaEosSshSettings) GetClientAliveInterval() *plugin.TValue[int64] {
-	return &c.ClientAliveInterval
+	return plugin.GetOrCompute[int64](&c.ClientAliveInterval, func() (int64, error) {
+		return c.clientAliveInterval()
+	})
 }
 
 func (c *mqlAristaEosSshSettings) GetClientAliveCountMax() *plugin.TValue[int64] {
-	return &c.ClientAliveCountMax
+	return plugin.GetOrCompute[int64](&c.ClientAliveCountMax, func() (int64, error) {
+		return c.clientAliveCountMax()
+	})
 }
 
 // mqlAristaEosSnmpCommunity for the arista.eos.snmpCommunity resource

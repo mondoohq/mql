@@ -98,8 +98,103 @@ end
 	assert.Equal(t, []string{"aes256-gcm@openssh.com", "aes256-ctr"}, s.Ciphers)
 	assert.Equal(t, []string{"curve25519-sha256", "ecdh-sha2-nistp521"}, s.KeyExchange)
 	assert.Equal(t, []string{"hmac-sha2-512-etm@openssh.com"}, s.Macs)
-	assert.Contains(t, s.HostkeyAlgorithms, "rsa key-size 4096")
+	assert.Equal(t, []string{"rsa"}, s.HostkeyAlgorithms)
 	assert.True(t, s.FipsRestrictions)
+}
+
+// sshAllDefaults is `show running-config all` of `management ssh` on EOS
+// 4.33 with only the crypto lists configured: every other setting is
+// rendered at its default.
+const sshAllDefaults = `management ssh
+   idle-timeout 0
+   authentication protocol keyboard-interactive public-key
+   server-port 22
+   cipher aes256-ctr aes128-ctr
+   key-exchange diffie-hellman-group14-sha1
+   mac hmac-sha1
+   rekey frequency 3 gbytes
+   rekey interval 0 seconds
+   hostkey server ecdsa-nistp521 ed25519 rsa
+   connection limit 50
+   connection per-host 20
+   no fips restrictions
+   no hostkey client strict-checking
+   authentication empty-passwords auto
+   default client-alive interval
+   default client-alive count-max
+   no verify dns
+   no shutdown
+   login timeout 120
+   log-level info
+   no hostkey server cert
+   !
+   authentication x509
+      no server ssl profile
+      no username domain omit
+!
+`
+
+func TestParseSshSettings_Eos433Defaults(t *testing.T) {
+	s := ParseSshSettings(sshAllDefaults)
+	assert.Equal(t, "keyboard-interactive public-key", s.AuthenticationMode)
+	assert.Equal(t, []string{"ecdsa-nistp521", "ed25519", "rsa"}, s.HostkeyAlgorithms)
+	// EOS 4.33 renders no `protocol version`; its sshd speaks SSH-2 only.
+	assert.Equal(t, "2", s.ProtocolVersion)
+	// `default client-alive ...` carries no number: the value is the
+	// daemon's, which the resource reads from the sshd configuration.
+	assert.False(t, s.ClientAliveIntervalSet)
+	assert.False(t, s.ClientAliveCountMaxSet)
+	assert.Equal(t, "auto", s.EmptyPasswords)
+	assert.Equal(t, 120, s.LoginTimeout)
+}
+
+func TestParseSshSettings_Eos433Configured(t *testing.T) {
+	cfg := `management ssh
+   authentication protocol public-key
+   hostkey server ecdsa-nistp256 rsa
+   hostkey server cert ssh-host.cert
+   client-alive interval 60
+   client-alive count-max 5
+!
+`
+	s := ParseSshSettings(cfg)
+	assert.Equal(t, "public-key", s.AuthenticationMode)
+	assert.Equal(t, []string{"ecdsa-nistp256", "rsa"}, s.HostkeyAlgorithms)
+	assert.True(t, s.ClientAliveIntervalSet)
+	assert.Equal(t, 60, s.ClientAliveInterval)
+	assert.True(t, s.ClientAliveCountMaxSet)
+	assert.Equal(t, 5, s.ClientAliveCountMax)
+}
+
+func TestParseSshSettings_AbsentProtocolVersionIsTwo(t *testing.T) {
+	assert.Equal(t, "2", ParseSshSettings("hostname switch1\n").ProtocolVersion)
+}
+
+func TestParseSshdClientAlive(t *testing.T) {
+	// Excerpt of the /etc/ssh/sshd_config EOS 4.33 generates for
+	// `default client-alive interval` and `default client-alive count-max`.
+	conf := `Protocol 2
+Port 22
+LoginGraceTime 120
+ClientAliveInterval 200
+ClientAliveCountMax 3
+HostKey /persist/secure/ssh_host_rsa_key
+`
+	interval, intervalOk, countMax, countMaxOk := ParseSshdClientAlive(conf)
+	assert.True(t, intervalOk)
+	assert.Equal(t, 200, interval)
+	assert.True(t, countMaxOk)
+	assert.Equal(t, 3, countMax)
+
+	// sshd keywords are case-insensitive, and the first one wins.
+	interval, intervalOk, _, countMaxOk = ParseSshdClientAlive("clientaliveinterval 30\nClientAliveInterval 90\n")
+	assert.True(t, intervalOk)
+	assert.Equal(t, 30, interval)
+	assert.False(t, countMaxOk)
+
+	_, intervalOk, _, countMaxOk = ParseSshdClientAlive("# ClientAliveInterval 0\n")
+	assert.False(t, intervalOk)
+	assert.False(t, countMaxOk)
 }
 
 func TestParseSshSettings_Shutdown(t *testing.T) {

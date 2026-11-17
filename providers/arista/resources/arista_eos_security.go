@@ -5,7 +5,9 @@ package resources
 
 import (
 	"strconv"
+	"sync"
 
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/arista/resources/eos"
@@ -139,9 +141,62 @@ func sshSettingsArgs(s *eos.SshSettings) map[string]*llx.RawData {
 		"connectionPerHostLimit": llx.IntData(int64(s.ConnectionPerHostLimit)),
 		"emptyPasswords":         llx.StringData(s.EmptyPasswords),
 		"logLevel":               llx.StringData(s.LogLevel),
-		"clientAliveInterval":    llx.IntData(int64(s.ClientAliveInterval)),
-		"clientAliveCountMax":    llx.IntData(int64(s.ClientAliveCountMax)),
 	}
+}
+
+// sshSettingsComputedFields are the fields sshSettingsArgs leaves out on
+// purpose: they are computed on access, because their default can only be
+// read from the device with a further command.
+var sshSettingsComputedFields = map[string]bool{
+	"clientAliveInterval": true,
+	"clientAliveCountMax": true,
+}
+
+type mqlAristaEosSshSettingsInternal struct {
+	parsed *eos.SshSettings
+
+	sshdOnce     sync.Once
+	sshdInterval int
+	sshdCountMax int
+}
+
+// sshdClientAlive returns the client-alive values the SSH daemon runs with,
+// read from the sshd_config EOS generates. Where that file cannot be read, or
+// does not set a value, it returns the EOS default for it.
+func (a *mqlAristaEosSshSettings) sshdClientAlive() (int, int) {
+	a.sshdOnce.Do(func() {
+		a.sshdInterval = eos.DefaultSshClientAliveInterval
+		a.sshdCountMax = eos.DefaultSshClientAliveCountMax
+		conf, err := aristaClient(a.MqlRuntime).SshdConfig()
+		if err != nil {
+			log.Debug().Err(err).Msg("arista> could not read the sshd configuration, using the EOS client-alive defaults")
+			return
+		}
+		interval, intervalOk, countMax, countMaxOk := eos.ParseSshdClientAlive(conf)
+		if intervalOk {
+			a.sshdInterval = interval
+		}
+		if countMaxOk {
+			a.sshdCountMax = countMax
+		}
+	})
+	return a.sshdInterval, a.sshdCountMax
+}
+
+func (a *mqlAristaEosSshSettings) clientAliveInterval() (int64, error) {
+	if a.parsed != nil && a.parsed.ClientAliveIntervalSet {
+		return int64(a.parsed.ClientAliveInterval), nil
+	}
+	interval, _ := a.sshdClientAlive()
+	return int64(interval), nil
+}
+
+func (a *mqlAristaEosSshSettings) clientAliveCountMax() (int64, error) {
+	if a.parsed != nil && a.parsed.ClientAliveCountMaxSet {
+		return int64(a.parsed.ClientAliveCountMax), nil
+	}
+	_, countMax := a.sshdClientAlive()
+	return int64(countMax), nil
 }
 
 func (a *mqlAristaEos) sshSettings() (*mqlAristaEosSshSettings, error) {
@@ -155,7 +210,9 @@ func (a *mqlAristaEos) sshSettings() (*mqlAristaEosSshSettings, error) {
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlAristaEosSshSettings), nil
+	r := res.(*mqlAristaEosSshSettings)
+	r.parsed = s
+	return r, nil
 }
 
 // =====================================================================
