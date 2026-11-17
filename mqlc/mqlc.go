@@ -2911,9 +2911,18 @@ func (c *compiler) addValueFieldChunks(ref uint64, autoExpandRef uint64) {
 		return true
 	})
 
+	leafFieldsOnly := c.Features.IsActive(mql.AssessmentLeafFields)
 	visitTreeNodes(&assessmentBlockTree, assessmentBlockTree.nodes[0], make([]string, 0, 16), func(tree *fieldTree, node *fieldTreeNode, path []string) {
 		// add the node to the assessment block tree
 		chunkAdded := addToTree(&defaultFieldsBlockTree, path, defaultFieldsRef, defaultFieldsBlock, node.chunk)
+		// A resource the predicate only passes through (authMethods in
+		// authMethods.registrationDetails) stays in the block as the binding of
+		// its children but is not an entrypoint: postCompile expands every
+		// resource entrypoint with its @defaults, which would run fields the
+		// check never asked for, for every failing item.
+		if leafFieldsOnly && len(node.children) != 0 && types.Type(node.chunk.Function.GetType()).IsResource() {
+			return
+		}
 		if chunkAdded && node.chunk.Function != nil {
 			defaultFieldsBlock.Entrypoints = append(defaultFieldsBlock.Entrypoints, (defaultFieldsRef&0xFFFFFFFF00000000)|uint64(len(defaultFieldsBlock.Chunks)))
 		}
