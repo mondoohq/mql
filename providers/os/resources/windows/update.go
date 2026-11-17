@@ -236,6 +236,10 @@ var nonOSProductMarkers = []string{
 	"silverlight",
 	"microsoft edge",
 	"defender",
+	// The Defender platform ("Update for Windows Security platform - KB5007651
+	// (Version 10.0.29680.1000)") ships every few weeks, independent of OS
+	// patching, and its product name starts with "Windows".
+	"windows security platform",
 	"malicious software removal tool",
 	"security intelligence",
 	"skype",
@@ -287,7 +291,53 @@ func IsOperatingSystemUpdate(categories []string, classification string, title s
 		return true
 	}
 
+	// Windows 11 24H2/25H2 cumulative and hotpatch updates name no product at
+	// all; the trailing OS build is the signal.
+	if osBuildTitleRegexp.MatchString(title) {
+		return true
+	}
+
 	return strings.HasPrefix(strings.ToLower(titleProduct(title)), "windows")
+}
+
+// osBuildTitleRegexp matches the title shape Windows 11 24H2/25H2 uses for
+// monthly cumulative updates and hotpatches, which have no " for Windows"
+// clause and often no categories or classification:
+//
+//	"2026-10 Security Update (KB5127648) (26200.9711)"
+//	"2026-09 Security Update (Hotpatch capable) (KB5129241) (26200.9448)"
+//
+// The trailing "(major.ubr)" OS build is what marks it as an operating system
+// update; a title without it, such as
+// "2026-10 .NET Framework Security Update (KB5127690)", does not match.
+var osBuildTitleRegexp = regexp.MustCompile(`^\d{4}-\d{2} [\w .-]*Update (\(Hotpatch capable\) )?\(KB\d+\) \(\d+\.\d+\)$`)
+
+// OSUpdateCandidate is the part of a Windows Update Agent history entry that
+// decides whether it counts as an operating system update, and when.
+type OSUpdateCandidate struct {
+	Categories     []string
+	Classification string
+	Title          string
+	Date           *time.Time
+}
+
+// NewestOperatingSystemUpdate returns the newest install date among the
+// candidates that are operating system updates. Candidates with a nil or zero
+// date are skipped. It returns the zero time when none qualifies.
+func NewestOperatingSystemUpdate(entries []OSUpdateCandidate) time.Time {
+	var newest time.Time
+	for _, e := range entries {
+		if e.Date == nil || e.Date.IsZero() {
+			continue
+		}
+		if !IsOperatingSystemUpdate(e.Categories, e.Classification, e.Title) {
+			continue
+		}
+		if e.Date.After(newest) {
+			newest = *e.Date
+		}
+	}
+	return newest
 }
 
 // namesNonOSProduct reports whether s names one of the products the agent
