@@ -484,6 +484,56 @@ func TestParseControlPlanePolicer_NoPolicyAfterApplied(t *testing.T) {
 	assert.Empty(t, c.PolicyName)
 }
 
+func TestParseControlPlanePolicer_SystemControlPlane(t *testing.T) {
+	// `show running-config all` of a hardened switch (EOS 4.37). EOS renders
+	// the block as `system control-plane` and refuses the bare form.
+	cfg := `system control-plane
+   no tcp mss ceiling
+   no ip access-group ingress default
+   ip access-group CIS-CP-ACL in
+   ip access-group CIS-CP-ACL vrf MGMT in
+   no ipv6 access-group ingress default
+   ipv6 access-group default-control-plane-acl in
+   ipv6 access-group default-control-plane-acl vrf MGMT in
+   service-policy input copp-system-policy
+!
+`
+	c := ParseControlPlanePolicer(cfg)
+	assert.True(t, c.Configured)
+	assert.True(t, c.PolicyApplied)
+	assert.Equal(t, "copp-system-policy", c.PolicyName)
+	assert.Equal(t, "CIS-CP-ACL", c.IPAccessGroup)
+	assert.Equal(t, "default-control-plane-acl", c.IP6AccessGroup)
+}
+
+func TestParseControlPlanePolicer_DefaultACL(t *testing.T) {
+	// A stock switch binds the default control-plane ACL (EOS 4.30).
+	cfg := `system control-plane
+   no tcp mss ceiling
+   ip access-group default-control-plane-acl in
+   ipv6 access-group default-control-plane-acl in
+!
+`
+	c := ParseControlPlanePolicer(cfg)
+	assert.True(t, c.Configured)
+	assert.Equal(t, "default-control-plane-acl", c.IPAccessGroup)
+	assert.Equal(t, "default-control-plane-acl", c.IP6AccessGroup)
+	assert.False(t, c.PolicyApplied)
+}
+
+func TestParseControlPlanePolicer_IngressDefaultIsAnotherSetting(t *testing.T) {
+	// `no ip access-group ingress default` does not unbind the ACL, and a
+	// per-VRF binding is not the default VRF's.
+	cfg := `system control-plane
+   ip access-group CP-ACL in
+   ip access-group OTHER vrf MGMT in
+   no ip access-group ingress default
+!
+`
+	c := ParseControlPlanePolicer(cfg)
+	assert.Equal(t, "CP-ACL", c.IPAccessGroup)
+}
+
 func TestParsePortSecurity(t *testing.T) {
 	cfg := `interface Ethernet1
    switchport mode access

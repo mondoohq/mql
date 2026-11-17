@@ -799,21 +799,25 @@ func ParseNtpAuth(runningConfig string) *NtpAuthState {
 }
 
 // ControlPlanePolicer describes Control-Plane Policing (CoPP) coverage from
-// the `control-plane` section of running-config.
+// the `system control-plane` section of running-config (`control-plane` on
+// releases older than any EOS 4.30 renders).
 //
-//	control-plane
-//	   no service-policy input copp-system-policy
+//	system control-plane
+//	   ip access-group default-control-plane-acl in
+//	   ipv6 access-group default-control-plane-acl in
 //
 // Or, configured:
 //
-//	control-plane
+//	system control-plane
 //	   ip access-group COPP-IN in
+//	   ip access-group COPP-IN vrf MGMT in
 //	   service-policy input copp-system-policy
 //
 // Without a service policy applied, the device has no CoPP protection
-// against control-plane DoS — a high-impact misconfiguration.
+// against control-plane DoS — a high-impact misconfiguration. The access
+// groups are the default VRF's; a `vrf <name>` binding is another VRF's.
 type ControlPlanePolicer struct {
-	// Configured indicates whether a `control-plane` block exists.
+	// Configured indicates whether a control-plane block exists.
 	Configured bool
 	// PolicyApplied is true if a `service-policy input <name>` line is
 	// present (and not negated).
@@ -824,7 +828,13 @@ type ControlPlanePolicer struct {
 }
 
 func ParseControlPlanePolicer(runningConfig string) *ControlPlanePolicer {
-	block := GetSection(strings.NewReader(runningConfig), "control-plane")
+	// Every EOS release this provider meets renders `system control-plane`
+	// and rejects the bare `control-plane` command; the bare form is kept
+	// for configurations written for older releases.
+	block := GetSection(strings.NewReader(runningConfig), "system control-plane")
+	if block == "" {
+		block = GetSection(strings.NewReader(runningConfig), "control-plane")
+	}
 	c := &ControlPlanePolicer{}
 	if block == "" {
 		return c
@@ -847,23 +857,39 @@ func ParseControlPlanePolicer(runningConfig string) *ControlPlanePolicer {
 			if len(parts) >= 3 {
 				c.PolicyName = parts[2]
 			}
-		case strings.HasPrefix(line, "no ip access-group "):
-			c.IPAccessGroup = ""
-		case strings.HasPrefix(line, "ip access-group "):
-			parts := strings.Fields(line)
-			if len(parts) >= 3 {
-				c.IPAccessGroup = parts[2]
-			}
-		case strings.HasPrefix(line, "no ipv6 access-group "):
-			c.IP6AccessGroup = ""
-		case strings.HasPrefix(line, "ipv6 access-group "):
-			parts := strings.Fields(line)
-			if len(parts) >= 3 {
-				c.IP6AccessGroup = parts[2]
+		default:
+			if acl, family, negated, ok := defaultVrfAccessGroup(line); ok {
+				if negated {
+					acl = ""
+				}
+				if family == "ip" {
+					c.IPAccessGroup = acl
+				} else {
+					c.IP6AccessGroup = acl
+				}
 			}
 		}
 	}
 	return c
+}
+
+// defaultVrfAccessGroup reads a control-plane ACL binding of the default VRF:
+// `[no] ip|ipv6 access-group <name> in`. A binding with `vrf <name>` belongs
+// to that VRF, and `no ip access-group ingress default` is a different
+// setting, so neither is one.
+func defaultVrfAccessGroup(line string) (acl, family string, negated, ok bool) {
+	fields := strings.Fields(line)
+	if len(fields) > 0 && fields[0] == "no" {
+		negated = true
+		fields = fields[1:]
+	}
+	if len(fields) != 4 || fields[1] != "access-group" || fields[3] != "in" {
+		return "", "", false, false
+	}
+	if fields[0] != "ip" && fields[0] != "ipv6" {
+		return "", "", false, false
+	}
+	return fields[2], fields[0], negated, true
 }
 
 // PortSecurityConfig captures `switchport port-security` settings on an
