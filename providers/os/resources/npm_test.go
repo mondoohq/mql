@@ -83,6 +83,44 @@ func TestNpmPackage_unique(t *testing.T) {
 	require.Equal(t, "yosay/usr/local/lib/node_modules/generator-code/package.json", pkg3.MqlID())
 }
 
+// Synthetic: a default location holds a package; paths: [] must not reach it.
+func TestNpmPackages_emptyPathsSearchesNothing(t *testing.T) {
+	mockFS := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(mockFS, "/usr/local/lib/node_modules/yo/package.json",
+		[]byte(`{"name": "yo", "version": "5.0.0"}`), 0o644))
+	conn, err := fs.NewFileSystemConnectionWithFs(0, &inventory.Config{}, &inventory.Asset{}, "", nil, mockFS)
+	require.NoError(t, err)
+	r := &plugin.Runtime{
+		Resources:  &syncx.Map[plugin.Resource]{},
+		Connection: conn,
+		Callback:   &providerCallbacks{},
+	}
+
+	defaults, err := CreateResource(r, "npm.packages", map[string]*llx.RawData{})
+	require.NoError(t, err)
+	defaultList := defaults.(*mqlNpmPackages).GetList()
+	require.NoError(t, defaultList.Error)
+	require.Len(t, defaultList.Data, 1)
+
+	res, err := CreateResource(r, "npm.packages", map[string]*llx.RawData{
+		"paths": llx.ArrayData([]any{}, types.String),
+	})
+	require.NoError(t, err)
+	empty := res.(*mqlNpmPackages)
+	assert.NotEqual(t, defaults.MqlID(), empty.MqlID())
+
+	list := empty.GetList()
+	require.NoError(t, list.Error)
+	assert.Empty(t, list.Data)
+	direct := empty.GetDirectDependencies()
+	require.NoError(t, direct.Error)
+	assert.Empty(t, direct.Data)
+	assert.True(t, empty.GetRoot().IsNull())
+	paths := empty.GetPaths()
+	require.NoError(t, paths.Error)
+	assert.Empty(t, paths.Data)
+}
+
 // Mock callbacks for testing
 // These are needed during calls to CreateSharedResource
 type providerCallbacks struct{}
