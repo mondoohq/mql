@@ -1,0 +1,380 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+import core
+
+option provider = "go.mondoo.com/mql/providers/yugabyte"
+option go_package = "go.mondoo.com/mql/providers/yugabyte/resources"
+option root = "yugabyte"
+
+// YugabyteDB cluster
+//
+// Root of the YugabyteDB provider. The connected cluster and everything
+// queryable through it (masters, tablet servers and their flags, the YSQL
+// and YCQL APIs) is reached from yugabyte.cluster.
+yugabyte @root {
+}
+
+// YugabyteDB cluster
+//
+// The connected cluster: its UUID, release, replication factor and health,
+// its masters and tablet servers with their flags, and the YSQL and YCQL
+// APIs. Cluster data comes from the master HTTP API; YSQL and YCQL data from
+// SQL and CQL connections to the configured host.
+yugabyte.cluster @defaults("uuid version") {
+  // Cluster UUID
+  uuid string
+  // YugabyteDB release the connected master runs, for example "2025.2.8.1"
+  version string
+  // Number of replicas of every tablet, from the live placement of the cluster configuration
+  replicationFactor int
+  // Masters of the cluster
+  masters() []yugabyte.master
+  // Tablet servers of the cluster
+  tservers() []yugabyte.tserver
+  // Cluster health, as the leader master reports it
+  //
+  // Keys: deadNodes (UUIDs of tablet servers that stopped sending
+  // heartbeats), underReplicatedTablets and leaderlessTablets (tablet IDs),
+  // and mostRecentUptime (seconds since the most recently started tablet
+  // server started).
+  health() dict
+  // YSQL API, the PostgreSQL-compatible SQL interface
+  ysql() yugabyte.ysql
+  // YCQL API, the Cassandra-compatible query interface
+  ycql() yugabyte.ycql
+}
+
+// YugabyteDB master
+//
+// A master server of the cluster: its UUID, addresses, whether it is the
+// Raft leader, how long it has been running, and its flags. The uuid field
+// selects the master, for example
+// yugabyte.cluster.masters.where(isLeader == true).
+yugabyte.master @defaults("uuid address isLeader") {
+  // Permanent UUID of the master
+  uuid string
+  // HTTP address of the master, as host:port
+  address string
+  // RPC address of the master, as host:port
+  rpcAddress string
+  // Whether the master answers: "ALIVE", or the error code the leader got when it asked the master, for example "NETWORK_ERROR"
+  status string
+  // Whether the master is the Raft leader of the master group
+  isLeader bool
+  // Seconds since the master started
+  uptime int
+  // Flags the master runs with
+  //
+  // Read from the master's own /api/v1/varz. Values of sensitive flags read
+  // "***".
+  flags() []yugabyte.flag
+}
+
+// YugabyteDB tablet server
+//
+// A tablet server (tserver) of the cluster: its UUID, HTTP address, liveness,
+// uptime, and flags. The uuid field selects the tablet server.
+yugabyte.tserver @defaults("uuid address status") {
+  // Permanent UUID of the tablet server
+  uuid string
+  // HTTP address of the tablet server, as host:port
+  address string
+  // Liveness the master reports: "ALIVE" or "DEAD"
+  status string
+  // Seconds since the tablet server started
+  uptime int
+  // Flags the tablet server runs with
+  //
+  // Read from the tablet server's own /api/v1/varz. Values of sensitive
+  // flags, such as ysql_hba_conf_csv, read "***".
+  flags() []yugabyte.flag
+}
+
+// YugabyteDB flag
+//
+// One flag (gflag) of a master or tablet server. The name field selects the
+// flag, for example
+// yugabyte.cluster.tservers[0].flags.where(name == "ysql_enable_auth").
+yugabyte.flag @defaults("name value") {
+  // Flag name, for example "use_node_to_node_encryption"
+  name string
+  // Current value, as a string; "***" for a sensitive flag
+  value string
+  // Where the value comes from: "Default", "Custom", "Auto", or "NodeInfo"
+  //
+  // "Custom" is set on the command line or in a flag file, "Auto" is an auto
+  // flag the cluster promoted, and "NodeInfo" describes the node.
+  type string
+}
+
+// YugabyteDB YSQL API
+//
+// The PostgreSQL-compatible SQL interface: its version, whether it enforces
+// authentication and TLS, the settings of the connected tablet server, the
+// roles, host-based authentication rules, and databases, and the extensions,
+// tables, functions, and table privileges of the connected database.
+yugabyte.ysql @defaults("version authenticationEnabled") {
+  // Server version, for example "PostgreSQL 15.12-YB-2025.2.8.1-b0 on aarch64-unknown-linux-gnu, ..."
+  version() string
+  // Whether YSQL requires authentication
+  //
+  // True when every tablet server runs with the ysql_enable_auth flag. With
+  // it off, every connection is trusted, whatever the host-based
+  // authentication rules say.
+  authenticationEnabled() bool
+  // Whether YSQL and YCQL clients must use TLS
+  //
+  // True when every tablet server runs with the
+  // use_client_to_server_encryption flag.
+  tlsEnabled() bool
+  // Runtime settings of the YSQL server of the connected tablet server
+  settings() []yugabyte.ysql.setting
+  // Roles and users
+  roles() []yugabyte.ysql.role
+  // Host-based authentication rules of the connected tablet server, in the order YSQL evaluates them
+  hbaRules() []yugabyte.ysql.hbaRule
+  // Databases
+  databases() []yugabyte.ysql.database
+  // Extensions installed in the connected database
+  extensions() []yugabyte.ysql.extension
+  // Tables, views, and other relations of the connected database, without the system schemas
+  tables() []yugabyte.ysql.table
+  // Functions and procedures of the connected database, without the system schemas
+  functions() []yugabyte.ysql.function
+  // Privileges granted on the relations of the connected database, without the system schemas
+  grants() []yugabyte.ysql.grant
+}
+
+// YugabyteDB YSQL setting
+//
+// One runtime setting from pg_settings. The name field selects the setting,
+// for example yugabyte.cluster.ysql.settings.where(name == "password_encryption").
+yugabyte.ysql.setting @defaults("name value") {
+  // Setting name
+  name string
+  // Current value
+  value string
+  // Where the value comes from, for example "default", "configuration file", "command line", or "override"
+  source string
+  // When the setting can be changed, for example "postmaster", "sighup", "superuser", or "user"
+  context string
+  // Whether a changed value waits for a restart to take effect
+  pendingRestart bool
+}
+
+// YugabyteDB YSQL role
+//
+// A role or user and its attributes from pg_roles: whether it is a
+// superuser, can log in, create roles or databases, or bypass row-level
+// security, and the roles it is a member of. The name field selects the
+// role, for example yugabyte.cluster.ysql.roles.where(name == "yugabyte").
+yugabyte.ysql.role @defaults("name isSuperuser canLogin") {
+  // Role name
+  name string
+  // Whether the role is a superuser
+  isSuperuser bool
+  // Whether the role can log in
+  canLogin bool
+  // Whether the role can create roles
+  canCreateRole bool
+  // Whether the role can create databases
+  canCreateDb bool
+  // Whether the role bypasses row-level security
+  bypassRls bool
+  // Roles this role is a direct member of
+  memberOf() []yugabyte.ysql.role
+  // Whether the role has a password
+  //
+  // Read from pg_authid, which only a superuser can read. The password hash
+  // is never exposed.
+  hasPassword() bool
+  // Whether the role's password is its own name
+  //
+  // True when the stored SCRAM-SHA-256 or MD5 hash verifies with the role
+  // name as the password, as for the yugabyte role with password "yugabyte".
+  // The provider checks the hash and never exposes it. False for a role
+  // without a password. Read from pg_authid, which only a superuser can read.
+  passwordEqualsName() bool
+}
+
+// YugabyteDB YSQL host-based authentication rule
+//
+// One rule of the host-based authentication configuration of the connected
+// tablet server, from pg_hba_file_rules. The first rule matching a
+// connection's type, database, user, and address decides how it
+// authenticates; method "reject" refuses it.
+yugabyte.ysql.hbaRule @defaults("type databases users address method") {
+  // Line of the rule in the configuration file; rules are evaluated in this order
+  lineNumber int
+  // Connection type: "local", "host", "hostssl", "hostnossl", "hostgssenc", or "hostnogssenc"
+  type string
+  // Databases the rule applies to; "all" matches every database
+  databases []string
+  // Users the rule applies to; "all" matches every user
+  users []string
+  // Client address the rule applies to: an address, a CIDR range, a hostname, "all", "samehost", or "samenet"; empty for local connections
+  address string
+  // Netmask of the address, when given separately
+  netmask string
+  // Authentication method, for example "trust", "md5", "scram-sha-256", "cert", "ldap", or "reject"
+  method string
+  // Method options, as name=value pairs
+  options map[string]string
+  // Why the line could not be processed; empty for a valid rule
+  error string
+}
+
+// YugabyteDB YSQL database
+//
+// A database, its owner, and whether it accepts connections. The name field
+// selects the database.
+yugabyte.ysql.database @defaults("name") {
+  // Database name
+  name string
+  // Role that owns the database
+  owner() yugabyte.ysql.role
+  // Whether the database accepts connections
+  allowConnections bool
+  // Whether the database is a template
+  isTemplate bool
+  // Maximum number of concurrent connections; -1 for no limit
+  connectionLimit int
+}
+
+// YugabyteDB YSQL extension
+//
+// An extension installed in the connected database, for example pgaudit.
+yugabyte.ysql.extension @defaults("name version") {
+  // Extension name
+  name string
+  // Installed version
+  version string
+  // Schema the extension's objects live in
+  schema string
+}
+
+// YugabyteDB YSQL table
+//
+// A table, view, or other relation of the connected database, with its owner,
+// row-level security state, and privileges.
+yugabyte.ysql.table @defaults("schema name rowSecurity") {
+  // Relation name
+  name string
+  // Schema the relation belongs to, for example "public"
+  schema string
+  // Relation kind: "table", "partitioned table", "view", "materialized view", "foreign table", or "sequence"
+  kind string
+  // Role that owns the relation
+  owner() yugabyte.ysql.role
+  // Whether row-level security is enabled on the table
+  rowSecurity bool
+  // Whether row-level security also applies to the table owner
+  forceRowSecurity bool
+  // Privileges granted on the relation
+  grants() []yugabyte.ysql.grant
+}
+
+// YugabyteDB YSQL function
+//
+// A function or procedure of the connected database: its schema, owner, and
+// whether it runs with its owner's privileges.
+yugabyte.ysql.function @defaults("schema name securityDefiner") {
+  // Function name
+  name string
+  // Schema the function belongs to
+  schema string
+  // Argument types that, with the name, identify the function, for example "integer, text"
+  arguments string
+  // Language the function is written in, for example "plpgsql" or "sql"
+  language string
+  // Whether the function runs with the privileges of its owner (SECURITY DEFINER)
+  securityDefiner bool
+  // Settings the function sets when it runs, as name=value, for example "search_path=pg_catalog"
+  configuration []string
+  // Role that owns the function
+  owner() yugabyte.ysql.role
+}
+
+// YugabyteDB YSQL privilege grant
+//
+// One privilege held by a grantee on a relation, for example SELECT on a
+// table. The grantee "PUBLIC" stands for every role. The privileges a
+// relation's owner holds are listed too.
+yugabyte.ysql.grant @defaults("grantee privilege schema object") {
+  // Role the privilege is granted to, or "PUBLIC"
+  grantee string
+  // Role the privilege is granted to; null for PUBLIC
+  role() yugabyte.ysql.role
+  // Privilege, for example "SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", or "TRIGGER"
+  privilege string
+  // Kind of the object the privilege is on, for example "table" or "view"
+  objectType string
+  // Schema of the object
+  schema string
+  // Name of the object
+  object string
+  // Whether the grantee may grant the privilege to other roles
+  isGrantable bool
+}
+
+// YugabyteDB YCQL API
+//
+// The Cassandra-compatible query interface: whether it enforces
+// authentication and TLS, its roles, and its keyspaces.
+yugabyte.ycql @defaults("authenticationEnabled tlsEnabled") {
+  // Whether YCQL requires authentication
+  //
+  // True when every tablet server runs with the use_cassandra_authentication
+  // flag.
+  authenticationEnabled() bool
+  // Whether YSQL and YCQL clients must use TLS
+  //
+  // True when every tablet server runs with the
+  // use_client_to_server_encryption flag.
+  tlsEnabled() bool
+  // Roles, from system_auth.roles
+  roles() []yugabyte.ycql.role
+  // Keyspaces, from system_schema.keyspaces
+  keyspaces() []yugabyte.ycql.keyspace
+}
+
+// YugabyteDB YCQL role
+//
+// A YCQL role: whether it can log in, whether it is a superuser, and the
+// roles it is a member of. The name field selects the role, for example
+// yugabyte.cluster.ycql.roles.where(name == "cassandra").
+yugabyte.ycql.role @defaults("name isSuperuser canLogin") {
+  // Role name
+  name string
+  // Whether the role is a superuser
+  isSuperuser bool
+  // Whether the role can log in
+  canLogin bool
+  // Roles this role is a direct member of
+  memberOf() []yugabyte.ycql.role
+  // Whether the role has a password
+  //
+  // The password hash is never exposed.
+  hasPassword bool
+  // Whether the role's password is its own name
+  //
+  // True when the stored bcrypt hash verifies with the role name as the
+  // password, as for the cassandra role with password "cassandra". The
+  // provider checks the hash and never exposes it. False for a role without
+  // a password.
+  passwordEqualsName() bool
+}
+
+// YugabyteDB YCQL keyspace
+//
+// A keyspace and its replication settings. The name field selects the
+// keyspace.
+yugabyte.ycql.keyspace @defaults("name") {
+  // Keyspace name
+  name string
+  // Whether writes go through the commit log
+  durableWrites bool
+  // Replication settings, for example class and replication_factor
+  replication map[string]string
+}
