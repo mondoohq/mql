@@ -1151,8 +1151,6 @@ func (v *mqlAristaEosMlag) id() (string, error) {
 	return "arista.eos.mlag", nil
 }
 
-type mqlAristaEosMlagInternal struct{}
-
 // parsedConfig reads the peering settings from the running-config. See
 // eos.ParseMlagConfig for why goeapi's parse of the same block is not used.
 func (a *mqlAristaEosMlag) parsedConfig() (eos.MlagConfig, error) {

@@ -7518,7 +7518,7 @@ func (c *mqlAristaEosPrefixListEntry) GetLe() *plugin.TValue[int64] {
 type mqlAristaEosMlag struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	mqlAristaEosMlagInternal
+	// optional: if you define mqlAristaEosMlagInternal it will be used here
 	DomainId       plugin.TValue[string]
 	LocalInterface plugin.TValue[string]
 	PeerAddress    plugin.TValue[string]
