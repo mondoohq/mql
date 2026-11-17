@@ -4,6 +4,7 @@
 package eos
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -523,25 +524,18 @@ type PowerSupply struct {
 	Managed       bool    `json:"managed"`
 }
 
-// ShowEnvironmentPower returns power supply status
+// ShowEnvironmentPower returns power supply status. A device without power
+// supplies of its own (cEOS, vEOS) refuses the command with "There seem to be
+// no power supplies connected."; that is an empty list, not a failed read.
 func (eos *Eos) ShowEnvironmentPower() (*showEnvironmentPower, error) {
 	shRsp := &showEnvironmentPower{}
-
-	handle, err := eos.node.GetHandle("json")
-	if err != nil {
+	if err := eos.runJSON(shRsp.GetCmd(), shRsp); err != nil {
+		var cerr *CommandError
+		if errors.As(err, &cerr) && cerr.HasMessage("no power supplies connected") {
+			return &showEnvironmentPower{PowerSupplies: map[string]PowerSupply{}}, nil
+		}
 		return nil, err
 	}
-	err = handle.AddCommand(shRsp)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := handle.Call(); err != nil {
-		return nil, err
-	}
-
-	handle.Close()
-
 	return shRsp, nil
 }
 

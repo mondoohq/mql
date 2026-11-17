@@ -3,7 +3,12 @@
 
 package eos
 
-import "github.com/aristanetworks/goeapi"
+import (
+	"errors"
+	"fmt"
+
+	"github.com/aristanetworks/goeapi"
+)
 
 // Extension is one installed EOS extension.
 //
@@ -92,6 +97,19 @@ func (eos *Eos) BootConfig() (*showBootConfig, error) {
 // StartupConfig returns the saved configuration the device loads on boot.
 // StartupConfig returns the configuration the device would come back with
 // after a reload. See RunningConfig for why the error is not discarded.
+//
+// A device whose configuration was never saved has no startup-config, and
+// EOS refuses the read with "% Error displaying flash:/startup-config (No
+// such file or directory)". It would come back from a reload with an empty
+// configuration, so that reads as an empty startup-config, not as an error.
 func (eos *Eos) StartupConfig() (string, error) {
-	return configText(eos.node, goeapi.StartupConfig, "")
+	res, err := eos.runCommand("show "+goeapi.StartupConfig, "text")
+	if err != nil {
+		var cerr *CommandError
+		if errors.As(err, &cerr) && cerr.HasMessage("startup-config (No such file or directory)") {
+			return "", nil
+		}
+		return "", fmt.Errorf("could not read %s: %w", goeapi.StartupConfig, err)
+	}
+	return configTextFromResponse(res, goeapi.StartupConfig)
 }
