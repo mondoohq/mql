@@ -54,7 +54,7 @@ func dirWritable(dir string) bool {
 	if err != nil {
 		return false
 	}
-	_ = os.Remove(d)
+	_ = os.RemoveAll(d)
 	return true
 }
 
