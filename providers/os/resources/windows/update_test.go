@@ -499,24 +499,24 @@ func TestWUAResultsQueryFiltersOSServices(t *testing.T) {
 }
 
 // On a 25H2 hotpatch host the newest OS update must win over a newer Windows
-// Security platform update; this mirrors the selection in lastInstalledWindows.
-func TestNewestOperatingSystemUpdateIgnoresSecurityPlatform(t *testing.T) {
-	type entry struct {
-		title      string
-		categories []string
-		date       time.Time
+// Security platform update.
+func TestNewestOperatingSystemUpdate(t *testing.T) {
+	d := func(m time.Month, day int) *time.Time {
+		v := time.Date(2026, m, day, 17, 0, 0, 0, time.UTC)
+		return &v
 	}
-	entries := []entry{
-		{"Update for Windows Security platform - KB5007651 (Version 10.0.29680.1000) - Current Channel (Broad)", []string{"Windows Security platform"}, time.Date(2026, 10, 30, 17, 0, 5, 0, time.UTC)},
-		{"2026-10 Security Update (KB5127648) (26200.9711)", nil, time.Date(2026, 10, 14, 17, 12, 45, 0, time.UTC)},
-		{"2026-09 Security Update (Hotpatch capable) (KB5129241) (26200.9448)", nil, time.Date(2026, 10, 11, 17, 12, 26, 0, time.UTC)},
-		{"2026-11 Security Update (Hotpatch capable) (KB5132043) (26200.9911)", nil, time.Date(2026, 11, 12, 17, 0, 0, 0, time.UTC)},
-	}
-	var newest time.Time
-	for _, e := range entries {
-		if IsOperatingSystemUpdate(e.categories, "", e.title) && e.date.After(newest) {
-			newest = e.date
-		}
-	}
-	assert.Equal(t, time.Date(2026, 11, 12, 17, 0, 0, 0, time.UTC), newest)
+	platform := OSUpdateCandidate{Title: "Update for Windows Security platform - KB5007651 (Version 10.0.29680.1000) - Current Channel (Broad)", Categories: []string{"Windows Security platform"}, Date: d(10, 30)}
+	oct := OSUpdateCandidate{Title: "2026-10 Security Update (KB5127648) (26200.9711)", Date: d(10, 14)}
+	nov := OSUpdateCandidate{Title: "2026-11 Security Update (Hotpatch capable) (KB5132043) (26200.9911)", Date: d(11, 12)}
+
+	assert.Equal(t, *d(11, 12), NewestOperatingSystemUpdate([]OSUpdateCandidate{platform, oct, nov}))
+	assert.Equal(t, *d(10, 14), NewestOperatingSystemUpdate([]OSUpdateCandidate{platform, oct}))
+
+	nilDate := nov
+	nilDate.Date = nil
+	zeroDate := nov
+	zeroDate.Date = &time.Time{}
+	assert.Equal(t, *d(10, 14), NewestOperatingSystemUpdate([]OSUpdateCandidate{nilDate, zeroDate, oct}))
+	assert.True(t, NewestOperatingSystemUpdate([]OSUpdateCandidate{platform, nilDate}).IsZero())
+	assert.True(t, NewestOperatingSystemUpdate(nil).IsZero())
 }

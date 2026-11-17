@@ -312,6 +312,34 @@ func IsOperatingSystemUpdate(categories []string, classification string, title s
 // "2026-10 .NET Framework Security Update (KB5127690)", does not match.
 var osBuildTitleRegexp = regexp.MustCompile(`^\d{4}-\d{2} [\w .-]*Update (\(Hotpatch capable\) )?\(KB\d+\) \(\d+\.\d+\)$`)
 
+// OSUpdateCandidate is the part of a Windows Update Agent history entry that
+// decides whether it counts as an operating system update, and when.
+type OSUpdateCandidate struct {
+	Categories     []string
+	Classification string
+	Title          string
+	Date           *time.Time
+}
+
+// NewestOperatingSystemUpdate returns the newest install date among the
+// candidates that are operating system updates. Candidates with a nil or zero
+// date are skipped. It returns the zero time when none qualifies.
+func NewestOperatingSystemUpdate(entries []OSUpdateCandidate) time.Time {
+	var newest time.Time
+	for _, e := range entries {
+		if e.Date == nil || e.Date.IsZero() {
+			continue
+		}
+		if !IsOperatingSystemUpdate(e.Categories, e.Classification, e.Title) {
+			continue
+		}
+		if e.Date.After(newest) {
+			newest = *e.Date
+		}
+	}
+	return newest
+}
+
 // namesNonOSProduct reports whether s names one of the products the agent
 // services that are not the operating system.
 func namesNonOSProduct(s string) bool {
