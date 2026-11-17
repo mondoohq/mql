@@ -638,6 +638,45 @@ func (eos *Eos) ShowInventory() (*showInventory, error) {
 	return shRsp, nil
 }
 
+// MlagConfig is the peering of the `mlag configuration` block. Each value is
+// empty when the block does not set it.
+type MlagConfig struct {
+	DomainID       string
+	LocalInterface string
+	PeerAddress    string
+	PeerLink       string
+}
+
+// ParseMlagConfig reads the peering settings of the `mlag configuration`
+// block. It replaces goeapi's MlagConfig parse, whose patterns match the
+// keyword anywhere on a line: `show running-config all` renders `no
+// peer-address heartbeat` and (from EOS 4.33) `inactive forwarding peer-link
+// restricted` on every switch, which it read as peer address `heartbeat` and
+// peer link `restricted` on a switch without MLAG. Only a line that is
+// exactly `<keyword> <value>` sets a value here; `peer-address heartbeat
+// <address> ...` is the heartbeat destination, not the peer.
+func ParseMlagConfig(runningConfig string) MlagConfig {
+	c := MlagConfig{}
+	block := GetSection(strings.NewReader(runningConfig), "mlag configuration")
+	for _, line := range strings.Split(block, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			continue
+		}
+		switch fields[0] {
+		case "domain-id":
+			c.DomainID = fields[1]
+		case "local-interface":
+			c.LocalInterface = fields[1]
+		case "peer-address":
+			c.PeerAddress = fields[1]
+		case "peer-link":
+			c.PeerLink = fields[1]
+		}
+	}
+	return c
+}
+
 // MlagInterface represents a Port-Channel interface with an MLAG ID
 type MlagInterface struct {
 	Name   string

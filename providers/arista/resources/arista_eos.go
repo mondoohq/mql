@@ -1161,57 +1161,34 @@ func (v *mqlAristaEosMlag) id() (string, error) {
 	return "arista.eos.mlag", nil
 }
 
-type mqlAristaEosMlagInternal struct {
-	configFetched bool
-	mlagConfig    *module.MlagConfig
-	lock          sync.Mutex
-}
-
-func (a *mqlAristaEosMlag) fetchConfig() *module.MlagConfig {
-	if a.configFetched {
-		return a.mlagConfig
+// parsedConfig reads the peering settings from the running-config. See
+// eos.ParseMlagConfig for why goeapi's parse of the same block is not used.
+func (a *mqlAristaEosMlag) parsedConfig() (eos.MlagConfig, error) {
+	rc, err := fetchRunningConfig(a.MqlRuntime)
+	if err != nil {
+		return eos.MlagConfig{}, err
 	}
-	a.lock.Lock()
-	defer a.lock.Unlock()
-	if a.configFetched {
-		return a.mlagConfig
-	}
-	eosClient := aristaClient(a.MqlRuntime)
-	a.mlagConfig = eosClient.MlagConfig()
-	a.configFetched = true
-	return a.mlagConfig
+	return eos.ParseMlagConfig(rc), nil
 }
 
 func (a *mqlAristaEosMlag) domainId() (string, error) {
-	cfg := a.fetchConfig()
-	if cfg == nil {
-		return "", nil
-	}
-	return cfg.DomainID(), nil
+	cfg, err := a.parsedConfig()
+	return cfg.DomainID, err
 }
 
 func (a *mqlAristaEosMlag) localInterface() (string, error) {
-	cfg := a.fetchConfig()
-	if cfg == nil {
-		return "", nil
-	}
-	return cfg.LocalInterface(), nil
+	cfg, err := a.parsedConfig()
+	return cfg.LocalInterface, err
 }
 
 func (a *mqlAristaEosMlag) peerAddress() (string, error) {
-	cfg := a.fetchConfig()
-	if cfg == nil {
-		return "", nil
-	}
-	return cfg.PeerAddress(), nil
+	cfg, err := a.parsedConfig()
+	return cfg.PeerAddress, err
 }
 
 func (a *mqlAristaEosMlag) peerLink() (string, error) {
-	cfg := a.fetchConfig()
-	if cfg == nil {
-		return "", nil
-	}
-	return cfg.PeerLink(), nil
+	cfg, err := a.parsedConfig()
+	return cfg.PeerLink, err
 }
 
 // shutdown reports whether MLAG is administratively down. See bgp.enabled for
