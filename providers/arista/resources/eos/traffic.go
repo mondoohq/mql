@@ -6,6 +6,7 @@ package eos
 import (
 	"bufio"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -223,8 +224,19 @@ func ParseSflowConfig(runningConfig string) *SflowConfig {
 			cfg.Enabled = !negated
 
 		case "sample":
-			if len(fields) > 1 {
-				cfg.SampleRate = atoiOrZero(fields[1])
+			// `sflow sample <rate>` or `sflow sample dangerous <rate>`. The
+			// keyword also carries other settings (`sflow sample truncate size
+			// 128`, `sflow sample output interface`), which `show
+			// running-config all` renders after the rate, so only a numeric
+			// argument is the rate.
+			rate := fields[1:]
+			if len(rate) > 0 && rate[0] == "dangerous" {
+				rate = rate[1:]
+			}
+			if len(rate) > 0 {
+				if n, err := strconv.Atoi(rate[0]); err == nil {
+					cfg.SampleRate = n
+				}
 			}
 
 		case "polling-interval":
