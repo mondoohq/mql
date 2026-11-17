@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"crypto/dsa" //nolint:staticcheck // legacy DSA keys are what this tests
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
@@ -150,6 +151,39 @@ func TestPrivatekeyEncryptedLegacyPEM(t *testing.T) {
 	_, err = pk.publicKeyBits()
 	require.NoError(t, err)
 	require.True(t, pk.PublicKeyBits.IsNull())
+}
+
+// Synthetic: a legacy "DSA PRIVATE KEY" PEM block, as `openssl dsa` and
+// ssh-keygen before 7.8 write it. x/crypto/ssh stopped reading DSA keys in
+// v0.59.0, so the body is decoded here.
+func TestPrivatekeyLegacyDSAPEM(t *testing.T) {
+	var key dsa.PrivateKey
+	require.NoError(t, dsa.GenerateParameters(&key.Parameters, rand.Reader, dsa.L2048N224))
+	require.NoError(t, dsa.GenerateKey(&key, rand.Reader))
+	der, err := asn1.Marshal(legacyDSAPrivateKey{P: key.P, Q: key.Q, G: key.G, Y: key.Y, X: key.X})
+	require.NoError(t, err)
+
+	t.Run("plain", func(t *testing.T) {
+		data := pem.EncodeToMemory(&pem.Block{Type: "DSA PRIVATE KEY", Bytes: der})
+		info, err := inspectPrivateKey(data)
+		require.NoError(t, err)
+		require.Equal(t, privateKeyInfo{Algorithm: "DSA", Bits: 2048}, info)
+	})
+
+	t.Run("encrypted", func(t *testing.T) {
+		//nolint:staticcheck // x509.EncryptPEMBlock is deprecated but produces the legacy fixture
+		block, err := x509.EncryptPEMBlock(rand.Reader, "DSA PRIVATE KEY", der, []byte("secret"), x509.PEMCipherAES256)
+		require.NoError(t, err)
+		info, err := inspectPrivateKey(pem.EncodeToMemory(block))
+		require.NoError(t, err)
+		require.Equal(t, privateKeyInfo{Encrypted: true, Algorithm: "DSA"}, info)
+	})
+
+	t.Run("malformed", func(t *testing.T) {
+		data := pem.EncodeToMemory(&pem.Block{Type: "DSA PRIVATE KEY", Bytes: der[:len(der)/2]})
+		_, err := inspectPrivateKey(data)
+		require.Error(t, err)
+	})
 }
 
 func TestPrivatekeyEncryptedOpenSSH(t *testing.T) {

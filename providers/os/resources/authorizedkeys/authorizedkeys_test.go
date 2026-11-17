@@ -4,12 +4,17 @@
 package authorizedkeys
 
 import (
+	"crypto/dsa" //nolint:staticcheck // legacy DSA keys are what this tests
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
+	"math/big"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/ssh"
 )
 
 func TestAuthorizedKeyParser(t *testing.T) {
@@ -43,6 +48,36 @@ no-touch-required sk-ecdsa-sha2-nistp256@openssh.com AAAAInNrLWVjZHNhLXNoYTItbml
 	assert.Equal(t, int64(4096), entries[0].Bits())
 
 	assert.Equal(t, "AAAAB3NzaC1yc2EAAAADAQABAAACAQDYuKamN4JXNYmolm+A9hM+xYanupG1VgbM/k0NwPiIPUdiU82IPbP7bunsngnOatSDyCrKrhL9FV3wuHFFBX0QE9KpS8bcIcT3ySsi3wgYV95P7anb7YhliDDx2w/QB97kCnAKjGFS1yphS6px0i9B29tGVJa22ODs/hebIKUCYKC9/+fnZ+bIqte1HctDP2lDBzMa/7j8BUXSwnTDXtAuEz5eSMIpv1ZdUdaSuO8xFbB0xrBHQJKuqboLPo3NSOCg6uhopO6GucZuNLJnqVLkyEPTKH0nv/8smz/q3v1GOGz8ZS0DIpkretKZmRB1VDhNqsAiOAWUTmg56xO7VZnlEvQRtyG8qyQHjlj6SDGtvxPDY58lz5nhIV9K6L7gHrOIcbSif5ZCt0e4DrKGaYXgH+mwIh2TMC2OCU6Xr6FRVQ9fBhilqMXuFIIezShN0hZb6mUCLkLVOzBBRKuz17S2a8twsuxix7ixqJPsIF3sI88tbxrFkSGSM02dhrmyZbkMr586rktVBB4T+8A28HJr4l9jkU0uk3l3le5bMcXhEuDkJUBnwEXEXfZa8Lw4sg2VuFgw0Ah0kw0/mAorpsFahXstNgrHhy3HoPKDCw/a/sXL4+fE72I1L96Lb7HOxTrdhEGnd65W4mPlTnbGW9YDQqTfZgRlpuffqQuWWYXolw==", entries[0].Base64Key())
+}
+
+// Synthetic: an authorized_keys file with an ssh-dss key between two other
+// keys. x/crypto/ssh stopped parsing ssh-dss in v0.59.0; the DSA line must
+// neither fail the file nor drop the keys around it.
+func TestParseDSAKey(t *testing.T) {
+	var key dsa.PrivateKey
+	require.NoError(t, dsa.GenerateParameters(&key.Parameters, rand.Reader, dsa.L1024N160))
+	require.NoError(t, dsa.GenerateKey(&key, rand.Reader))
+	b64 := base64.StdEncoding.EncodeToString(ssh.Marshal(struct {
+		Type       string
+		P, Q, G, Y *big.Int
+	}{"ssh-dss", key.P, key.Q, key.G, key.Y}))
+
+	content := longLineTestKey + " first\n" +
+		`from="10.0.0.1" ssh-dss ` + b64 + " legacy@host\n" +
+		longLineTestKey + " last\n"
+
+	entries, err := Parse(strings.NewReader(content))
+	require.NoError(t, err)
+	require.Len(t, entries, 3)
+
+	dss := entries[1]
+	assert.Equal(t, int64(2), dss.Line)
+	assert.Equal(t, "ssh-dss", dss.Key.Type())
+	assert.Equal(t, "legacy@host", dss.Label)
+	assert.Equal(t, []string{`from="10.0.0.1"`}, dss.Options)
+	assert.Equal(t, int64(1024), dss.Bits())
+	assert.Equal(t, b64, dss.Base64Key())
+	assert.Equal(t, "last", entries[2].Label)
 }
 
 // ed25519 public key used by the long-line tests.

@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 
 	"golang.org/x/sync/errgroup"
@@ -132,12 +133,22 @@ func (a *mqlAwsNetworkfirewall) getFirewalls(conn *connection.AwsConnection) []*
 						proxyListeners = append(proxyListeners, d)
 					}
 				}
-				natGatewayIds := make([]string, 0, len(f.NatGatewayMappings))
-				for _, ngm := range f.NatGatewayMappings {
-					if ngm.NatGatewayId != nil {
-						natGatewayIds = append(natGatewayIds, *ngm.NatGatewayId)
+				// The NAT gateways a proxy mode firewall uses are reported per
+				// Availability Zone in the firewall status sync states.
+				natGatewayIds := []string{}
+				if detail.FirewallStatus != nil {
+					for _, ss := range detail.FirewallStatus.SyncStates {
+						for _, nga := range ss.NatGatewayAttachments {
+							if nga.NatGatewayId != nil {
+								natGatewayIds = append(natGatewayIds, *nga.NatGatewayId)
+							}
+						}
 					}
 				}
+				sort.Strings(natGatewayIds)
+				// A proxy mode firewall does not preserve the source address: it has
+				// proxy settings and NAT gateways that Network Firewall creates for it.
+				noSourcePreservation := f.ProxySettings != nil || len(f.NatGatewayCreateMappings) > 0 || len(natGatewayIds) > 0
 
 				mqlFirewall, err := CreateResource(a.MqlRuntime, "aws.networkfirewall.firewall",
 					map[string]*llx.RawData{
@@ -151,7 +162,7 @@ func (a *mqlAwsNetworkfirewall) getFirewalls(conn *connection.AwsConnection) []*
 						"firewallPolicyArn":              llx.StringDataPtr(f.FirewallPolicyArn),
 						"subnetMappings":                 llx.ArrayData(subnetMappings, types.Dict),
 						"encryptionType":                 llx.StringData(encryptionType),
-						"noSourcePreservation":           llx.BoolData(f.NoSourcePreservation),
+						"noSourcePreservation":           llx.BoolData(noSourcePreservation),
 						"proxyListeners":                 llx.ArrayData(proxyListeners, types.Dict),
 						"tags":                           llx.MapData(tags, types.String),
 					})

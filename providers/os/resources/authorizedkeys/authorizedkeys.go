@@ -14,6 +14,7 @@ import (
 	"io"
 	"strings"
 
+	"go.mondoo.com/mql/providers-sdk/v1/util/sshutil"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -85,7 +86,7 @@ func Parse(r io.Reader) ([]Entry, error) {
 			continue
 		}
 
-		key, comment, options, _, err := ssh.ParseAuthorizedKey([]byte(line))
+		key, comment, options, err := sshutil.ParseAuthorizedKeyLine([]byte(line))
 		if err != nil {
 			return nil, err
 		}
