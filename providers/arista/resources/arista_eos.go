@@ -1018,6 +1018,22 @@ func (a *mqlAristaEos) bgp() (*mqlAristaEosBgp, error) {
 func (a *mqlAristaEosBgp) vrfs() ([]any, error) {
 	eosClient := aristaClient(a.MqlRuntime)
 
+	// The operational view says whether a session is up; the configured view
+	// says whether it is protected. Both are needed to describe a peer.
+	rc, err := fetchRunningConfig(a.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+
+	// A device without a `router bgp` block has no BGP VRFs. From EOS 4.31
+	// on, `show ip bgp summary vrf all` fails on such a device ("BGP
+	// inactive") instead of returning no VRFs, which made this field, and
+	// every check that reads it, an error on every switch that does not run
+	// BGP.
+	if !eos.ParseBlockAdminState(rc, "router bgp ").Configured {
+		return []any{}, nil
+	}
+
 	summary, err := eosClient.BGPSummary()
 	if err != nil {
 		return nil, err
@@ -1029,12 +1045,6 @@ func (a *mqlAristaEosBgp) vrfs() ([]any, error) {
 		neighbors = nil
 	}
 
-	// The operational view says whether a session is up; the configured view
-	// says whether it is protected. Both are needed to describe a peer.
-	rc, err := fetchRunningConfig(a.MqlRuntime)
-	if err != nil {
-		return nil, err
-	}
 	configuredPeers := map[string]eos.BgpNeighborConfig{}
 	for _, n := range eos.ParseBgpConfig(rc).Neighbors {
 		configuredPeers[n.VRF+"/"+n.PeerAddress] = n
