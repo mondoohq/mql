@@ -25,6 +25,10 @@ const (
 
 	retryBaseBackoff = 500 * time.Millisecond
 	retryMaxBackoff  = 30 * time.Second
+
+	// maxRetryInfoDelay caps a server's RetryInfo delay, so a server can pace
+	// clients but not stall them.
+	maxRetryInfoDelay = 60 * time.Second
 )
 
 // WithRetry runs fn up to DefaultRetryAttempts times. fn reports whether its
@@ -80,7 +84,7 @@ func RetryInfoDelay(err error) (time.Duration, bool) {
 	for _, d := range st.Details() {
 		if ri, ok := d.(*errdetails.RetryInfo); ok {
 			if delay := ri.GetRetryDelay().AsDuration(); delay > 0 {
-				return delay, true
+				return min(delay, maxRetryInfoDelay), true
 			}
 		}
 	}

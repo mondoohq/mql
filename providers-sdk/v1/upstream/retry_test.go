@@ -139,6 +139,13 @@ func TestRetryInfoDelay(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, 7*time.Second, d)
 
+	long, err := status.New(codes.ResourceExhausted, "busy").
+		WithDetails(&errdetails.RetryInfo{RetryDelay: durationpb.New(24 * time.Hour)})
+	require.NoError(t, err)
+	d, ok = RetryInfoDelay(long.Err())
+	assert.True(t, ok)
+	assert.Equal(t, 60*time.Second, d, "capped")
+
 	_, ok = RetryInfoDelay(status.Error(codes.ResourceExhausted, "busy"))
 	assert.False(t, ok)
 	_, ok = RetryInfoDelay(errors.New("plain"))
