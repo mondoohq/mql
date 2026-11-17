@@ -42,6 +42,13 @@ func BuildPowershellCmd(from string, xdev bool, fileType string, regex string, p
 	if depth == nil || *depth > 0 {
 		script.WriteString("if ($items.Count -eq 1 -and $items[0].PSIsContainer) {\n")
 		script.WriteString("  $items += @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue")
+		// -Filter matches names in the file system API, so entries that don't
+		// match never become objects. Its wildcards also match 8.3 short names
+		// and know no [] ranges or ` escapes, so -like below still decides and
+		// a name using those is only matched there.
+		if search != "" && !strings.ContainsAny(search, "[]`") {
+			script.WriteString(" -Filter $SearchName")
+		}
 		if depth == nil {
 			script.WriteString(" -Recurse")
 		} else if *depth > 1 {
