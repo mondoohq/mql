@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/ranger-rpc/codes"
 	"go.mondoo.com/ranger-rpc/status"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 func TestRetryableRPCError(t *testing.T) {
@@ -127,4 +129,37 @@ func TestRetryRPC_FailsFastOnPermanent(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Equal(t, 1, calls, "permanent RPC error must not retry")
+}
+
+func TestRetryInfoDelay(t *testing.T) {
+	st, err := status.New(codes.ResourceExhausted, "busy").
+		WithDetails(&errdetails.RetryInfo{RetryDelay: durationpb.New(7 * time.Second)})
+	require.NoError(t, err)
+	d, ok := RetryInfoDelay(st.Err())
+	assert.True(t, ok)
+	assert.Equal(t, 7*time.Second, d)
+
+	_, ok = RetryInfoDelay(status.Error(codes.ResourceExhausted, "busy"))
+	assert.False(t, ok)
+	_, ok = RetryInfoDelay(errors.New("plain"))
+	assert.False(t, ok)
+}
+
+func TestRetryRPC_WaitsRetryInfoDelay(t *testing.T) {
+	st, err := status.New(codes.ResourceExhausted, "busy").
+		WithDetails(&errdetails.RetryInfo{RetryDelay: durationpb.New(50 * time.Millisecond)})
+	require.NoError(t, err)
+
+	calls := 0
+	start := time.Now()
+	err = RetryRPC(context.Background(), "op", func() error {
+		calls++
+		if calls == 1 {
+			return st.Err()
+		}
+		return nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 2, calls)
+	assert.GreaterOrEqual(t, time.Since(start), 50*time.Millisecond)
 }
