@@ -1721,7 +1721,7 @@ private arista.eos.ntpAuthKey @defaults("id hashAlgo trusted") {
 // underlying arista.eos.acl resources so audits can inspect the rules
 // actually enforced.
 arista.eos.controlPlanePolicer {
-  // Whether a `control-plane` block exists in the running-config
+  // Whether a `system control-plane` block exists in the running-config
   configured bool
   // Whether a `service-policy input <name>` is applied
   policyApplied bool
