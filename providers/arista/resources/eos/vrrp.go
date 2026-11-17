@@ -30,21 +30,23 @@ func (s *showVrrp) GetCmd() string {
 
 // VrrpGroups returns the VRRP groups configured on the device. Returns an
 // empty slice if VRRP is not configured (the EOS response is an empty
-// virtualRouters array, not an error).
+// virtualRouters array, not an error), and on a platform without VRRP, where
+// EOS refuses the command as "% Unavailable command (not supported on this
+// hardware platform)" (cEOS before 4.35, for example).
 func (eos *Eos) VrrpGroups() ([]VrrpGroup, error) {
 	shRsp := &showVrrp{}
-
-	handle, err := eos.node.GetHandle("json")
-	if err != nil {
+	if err := eos.runJSON(shRsp.GetCmd(), shRsp); err != nil {
+		if IsUnsupportedOnPlatform(err) {
+			return []VrrpGroup{}, nil
+		}
 		return nil, err
 	}
-	if err := handle.AddCommand(shRsp); err != nil {
-		return nil, err
-	}
-	if err := handle.Call(); err != nil {
-		return nil, err
-	}
-	handle.Close()
-
 	return shRsp.VirtualRouters, nil
+}
+
+// IsUnsupportedOnPlatform reports whether the device refused a command
+// because its platform does not have the feature, which leaves nothing of it
+// to report.
+func IsUnsupportedOnPlatform(err error) bool {
+	return refusedWith(err, "not supported on this hardware platform")
 }
