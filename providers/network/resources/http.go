@@ -286,7 +286,13 @@ func (x *mqlHttpHeader) id() (string, error) {
 func parseStsDirectives(raw []any) (preload bool, includeSubDomains bool, maxAge *llx.RawData) {
 	maxAge = llx.NilData
 	parseHeaderFields(raw, func(key string, value string) {
-		// RFC 6797 section 6.1: directive names are case-insensitive
+		// RFC 6797 section 6.1: directive names are case-insensitive, LWS may
+		// surround the "=", and a value may be a token or a quoted-string
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
+			value = value[1 : len(value)-1]
+		}
 		switch strings.ToLower(key) {
 		case "preload":
 			preload = true
