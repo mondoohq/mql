@@ -13,6 +13,7 @@ import (
 
 	"go.mondoo.com/ranger-rpc/codes"
 	"go.mondoo.com/ranger-rpc/status"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 )
 
 // Retry tuning for upstream calls. Transient failures (network blips, 5xx, 429,
@@ -24,6 +25,10 @@ const (
 
 	retryBaseBackoff = 500 * time.Millisecond
 	retryMaxBackoff  = 30 * time.Second
+
+	// maxRetryInfoDelay caps a server's RetryInfo delay, so a server can pace
+	// clients but not stall them.
+	maxRetryInfoDelay = 60 * time.Second
 )
 
 // WithRetry runs fn up to DefaultRetryAttempts times. fn reports whether its
@@ -56,15 +61,34 @@ func WithRetry(ctx context.Context, what string, fn func() (retryable bool, retr
 }
 
 // RetryRPC retries a Mondoo upstream RPC on transient errors (see
-// RetryableRPCError) with bounded exponential backoff. Permanent errors
+// RetryableRPCError) with bounded exponential backoff, or with the server's
+// RetryInfo delay when the error carries one. Permanent errors
 // (Unauthenticated, PermissionDenied, InvalidArgument, NotFound, …) fail fast
 // without spending the attempt budget. The call must be idempotent — the caller
 // is responsible for only wrapping RPCs that are safe to repeat.
 func RetryRPC(ctx context.Context, what string, fn func() error) error {
 	return WithRetry(ctx, what, func() (bool, time.Duration, error) {
 		err := fn()
-		return RetryableRPCError(err), 0, err
+		wait, _ := RetryInfoDelay(err)
+		return RetryableRPCError(err), wait, err
 	})
+}
+
+// RetryInfoDelay extracts google.rpc.RetryInfo.retry_delay from a ranger status
+// error. It reports false when there is no positive delay.
+func RetryInfoDelay(err error) (time.Duration, bool) {
+	st, ok := status.FromError(err)
+	if !ok {
+		return 0, false
+	}
+	for _, d := range st.Details() {
+		if ri, ok := d.(*errdetails.RetryInfo); ok {
+			if delay := ri.GetRetryDelay().AsDuration(); delay > 0 {
+				return min(delay, maxRetryInfoDelay), true
+			}
+		}
+	}
+	return 0, false
 }
 
 // RetryableRPCError reports whether a ranger RPC error is transient and worth
