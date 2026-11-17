@@ -29,7 +29,7 @@ func TestWindowsPowershellCmdGeneration(t *testing.T) {
 		{
 			TestTitle: "basic file search",
 			From:      "C:\\Users\\john\\.aws",
-			FileType:  "file",
+			FileType:  "f",
 			ExpectedCmd: `$Path = @'
 C:\Users\john\.aws
 '@
@@ -45,7 +45,7 @@ $items | Select-Object -ExpandProperty FullName
 		{
 			TestTitle: "directory search with depth",
 			From:      "C:\\Program Files",
-			FileType:  "directory",
+			FileType:  "d",
 			Depth:     &depth1,
 			ExpectedCmd: `$Path = @'
 C:\Program Files
@@ -134,7 +134,7 @@ $items | Select-Object -ExpandProperty FullName
 		{
 			TestTitle: "symlink search",
 			From:      "C:\\Links",
-			FileType:  "symlink",
+			FileType:  "l",
 			ExpectedCmd: `$Path = @'
 C:\Links
 '@
@@ -177,7 +177,7 @@ $items | Select-Object -ExpandProperty FullName
 		{
 			TestTitle: "combined filters - file type, search, and depth",
 			From:      "C:\\Projects",
-			FileType:  "file",
+			FileType:  "f",
 			Search:    "*.go",
 			Depth:     &depth5,
 			ExpectedCmd: `$Path = @'
@@ -199,7 +199,7 @@ $items | Select-Object -ExpandProperty FullName
 		{
 			TestTitle:  "all filters combined",
 			From:       "C:\\Source",
-			FileType:   "file",
+			FileType:   "f",
 			Search:     "*.txt",
 			Regex:      ".*test.*",
 			Permission: 0o644,
