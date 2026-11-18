@@ -6,6 +6,7 @@ package connection
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/vault"
+	"golang.org/x/net/publicsuffix"
 )
 
 // DefaultAPIURL is the API of the Codesphere SaaS installation. Private Cloud
@@ -97,10 +99,12 @@ func ParseAPIURL(raw string) (*url.URL, error) {
 	return u, nil
 }
 
-// newHTTPClient returns a client that keeps request headers across redirects.
-// The API redirects some calls to the host of the data center that serves the
-// object, and the default client drops the Authorization header on a redirect
-// to another host, which turns every such call into a 401.
+// newHTTPClient returns a client that keeps the API token across redirects to
+// the installation's own data centers. The API redirects some calls to the
+// host of the data center that serves the object, and the default client drops
+// the Authorization header on any redirect to another host, which turns every
+// such call into a 401. The token is only sent on to a host on the same
+// registrable domain as the API, and never over a downgrade to plain http.
 func newHTTPClient() *http.Client {
 	return &http.Client{
 		Timeout: 60 * time.Second,
@@ -108,16 +112,41 @@ func newHTTPClient() *http.Client {
 			if len(via) >= 10 {
 				return http.ErrUseLastResponse
 			}
-			for key, values := range via[0].Header {
-				if req.Header.Get(key) == "" {
-					for _, v := range values {
-						req.Header.Add(key, v)
-					}
-				}
+			first := via[0]
+			auth := first.Header.Get("Authorization")
+			if auth != "" && req.Header.Get("Authorization") == "" && trustedRedirect(first.URL, req.URL) {
+				req.Header.Set("Authorization", auth)
 			}
 			return nil
 		},
 	}
+}
+
+// trustedRedirect reports whether a redirect from the API to target may carry
+// the API token: the scheme must not downgrade from https, and the target host
+// must share the API host's registrable domain (eTLD+1), so a redirect off the
+// installation's domain cannot collect the token.
+func trustedRedirect(api, target *url.URL) bool {
+	if api.Scheme == "https" && target.Scheme != "https" {
+		return false
+	}
+	apiHost, targetHost := strings.ToLower(api.Hostname()), strings.ToLower(target.Hostname())
+	if apiHost == targetHost {
+		return true
+	}
+	// An IP address has no registrable domain; only the same address counts.
+	if net.ParseIP(apiHost) != nil || net.ParseIP(targetHost) != nil {
+		return false
+	}
+	apiDomain, err := publicsuffix.EffectiveTLDPlusOne(apiHost)
+	if err != nil {
+		return false
+	}
+	targetDomain, err := publicsuffix.EffectiveTLDPlusOne(targetHost)
+	if err != nil {
+		return false
+	}
+	return apiDomain == targetDomain
 }
 
 func (c *CodesphereConnection) Name() string {

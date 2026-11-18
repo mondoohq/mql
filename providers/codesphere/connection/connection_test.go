@@ -4,8 +4,11 @@
 package connection
 
 import (
+	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -46,29 +49,59 @@ func testConnection(t *testing.T, apiURL string) *CodesphereConnection {
 }
 
 // Synthetic: the API redirects a call to the data center that serves the
-// object, on another host; the token must survive the redirect.
-func TestRedirectKeepsAuthorization(t *testing.T) {
-	var gotAuth string
-	dc := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotAuth = r.Header.Get("Authorization")
-		w.Header().Set("Content-Type", "application/json")
+// object, on another host. The token follows to a data center on the API's
+// domain and never to another domain. Every host name resolves to one test
+// server, which records the Authorization header each host received.
+func TestRedirectAuthorization(t *testing.T) {
+	gotAuth := map[string]string{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := r.Host
+		if i := strings.IndexByte(host, ':'); i >= 0 {
+			host = host[:i]
+		}
+		if host == "api.example.com" {
+			http.Redirect(w, r, "http://"+r.URL.Query().Get("to")+"/teams", http.StatusTemporaryRedirect)
+			return
+		}
+		gotAuth[host] = r.Header.Get("Authorization")
 		_, _ = w.Write([]byte(`[]`))
 	}))
-	defer dc.Close()
-	// Same server, different host name, so the default client would drop the
-	// header.
-	dcURL := strings.Replace(dc.URL, "127.0.0.1", "localhost", 1)
+	defer srv.Close()
 
-	front := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, dcURL+r.URL.Path, http.StatusTemporaryRedirect)
-	}))
-	defer front.Close()
+	client := newHTTPClient()
+	client.Transport = &http.Transport{
+		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, network, srv.Listener.Addr().String())
+		},
+	}
+	for _, to := range []string{"dc1.example.com", "evil.example.org"} {
+		req, err := http.NewRequest(http.MethodGet, "http://api.example.com/teams?to="+to, nil)
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer test-token")
+		res, err := client.Do(req)
+		require.NoError(t, err)
+		res.Body.Close()
+	}
+	// The default client would drop the token here, since the hosts differ.
+	assert.Equal(t, "Bearer test-token", gotAuth["dc1.example.com"])
+	assert.Empty(t, gotAuth["evil.example.org"])
+}
 
-	conn := testConnection(t, front.URL)
-	list, _, err := conn.API().TeamsAPI.TeamsListTeams(conn.Context()).Execute()
-	require.NoError(t, err)
-	assert.Empty(t, list)
-	assert.Equal(t, "Bearer test-token", gotAuth)
+// Synthetic: which redirect targets may receive the API token.
+func TestTrustedRedirect(t *testing.T) {
+	u := func(s string) *url.URL {
+		v, err := url.Parse(s)
+		require.NoError(t, err)
+		return v
+	}
+	api := u("https://cloud.codesphere.com/api")
+	assert.True(t, trustedRedirect(api, u("https://cloud.codesphere.com/api/teams")))
+	assert.True(t, trustedRedirect(api, u("https://2.codesphere.com/api/teams")), "data center on the same domain")
+	assert.False(t, trustedRedirect(api, u("http://2.codesphere.com/api/teams")), "no downgrade to http")
+	assert.False(t, trustedRedirect(api, u("https://codesphere.com.evil.example/api")), "look-alike domain")
+	assert.False(t, trustedRedirect(api, u("https://evil.example/api")))
+	assert.False(t, trustedRedirect(u("https://cs.github.io/api"), u("https://other.github.io/api")), "public suffix is not a shared domain")
+	assert.False(t, trustedRedirect(u("http://127.0.0.1:8080/api"), u("http://127.0.0.2:8080/api")), "IP addresses have no registrable domain")
 }
 
 func TestNewConnectionRequiresToken(t *testing.T) {

@@ -216,21 +216,25 @@ func floatDataPtr(v *float32) *llx.RawData {
 }
 
 // redactGitURL masks credentials embedded in a repository URL, so a credential
-// in the URL shows up as a finding without leaking. Over http(s) a token is as
-// often the user name (https://<token>@host/repo) as the password, so the whole
-// user info is masked; for other schemes only the password is. An scp-style
-// SSH remote (git@host:org/repo) carries no secret and is kept. Anything else
-// that does not parse is returned empty rather than risk returning a secret.
+// in the URL shows up as a finding without leaking. A token can sit in the user
+// name as well as the password (https://<token>@host/repo), so the whole user
+// info is masked, in every scheme and in scp-style remotes. The one exception
+// is the plain user "git" with no password, the conventional SSH user that
+// carries no secret. Anything that does not parse is returned empty rather
+// than risk returning a secret.
 func redactGitURL(raw *string) *string {
 	if raw == nil {
 		return nil
 	}
 	s := *raw
 	if !strings.Contains(s, "://") {
-		if scpRemote.MatchString(s) {
-			return &s
+		m := scpRemote.FindStringSubmatch(s)
+		switch {
+		case m == nil:
+			s = ""
+		case m[1] != sshUser:
+			s = redacted + s[len(m[1]):]
 		}
-		s = ""
 		return &s
 	}
 	u, err := url.Parse(s)
@@ -238,19 +242,24 @@ func redactGitURL(raw *string) *string {
 		s = ""
 		return &s
 	}
-	if u.User != nil && (u.Scheme == "http" || u.Scheme == "https") {
-		u.User = url.User(redacted)
-		s = u.String()
-		return &s
+	if u.User != nil {
+		_, hasPassword := u.User.Password()
+		if hasPassword || u.User.Username() != sshUser {
+			u.User = url.User(redacted)
+		}
 	}
-	s = u.Redacted()
+	s = u.String()
 	return &s
 }
 
-const redacted = "xxxxx"
+const (
+	redacted = "xxxxx"
+	sshUser  = "git"
+)
 
-// scpRemote matches an scp-style SSH remote such as git@github.com:org/repo.git.
-var scpRemote = regexp.MustCompile(`^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^/]`)
+// scpRemote matches an scp-style SSH remote such as git@github.com:org/repo.git
+// and captures its user.
+var scpRemote = regexp.MustCompile(`^([^@/:\s]+)@[A-Za-z0-9.-]+:[^/]`)
 
 // roleName maps the numeric resource group role the API returns to the name
 // the Codesphere CLI prints for it. The CLI also treats -1 as admin.
