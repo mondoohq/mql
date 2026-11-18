@@ -70,13 +70,20 @@ type Detection struct {
 	Healthy         bool
 }
 
-// Detect returns every catalog product found on the asset, in catalog order.
-// A product with no signature for the asset's platform is never considered, so
-// a Linux asset is never reported as running a Windows-only agent.
+// Detect returns every Catalog product found on the asset, in catalog order.
 func Detect(inv Inventory) []Detection {
+	return DetectIn(Catalog, inv)
+}
+
+// DetectIn returns every product of catalog found on the asset, in catalog
+// order. The matcher knows nothing about what kind of agent a catalog
+// describes, so the rmm catalog uses it as well. A product with no signature
+// for the asset's platform is never considered, so a Linux asset is never
+// reported as running a Windows-only agent.
+func DetectIn(catalog []Product, inv Inventory) []Detection {
 	var found []Detection
-	for i := range Catalog {
-		product := Catalog[i]
+	for i := range catalog {
+		product := catalog[i]
 		sig, ok := product.Platforms[inv.Platform]
 		if !ok {
 			continue

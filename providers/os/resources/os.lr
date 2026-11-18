@@ -74,6 +74,7 @@ alias os.base.processes = processes
 alias os.base.runningBinaries = runningBinaries
 alias os.base.python = python
 alias os.base.qualia = qualia
+alias os.base.rmm = rmm
 alias os.base.roo = roo
 alias os.base.squid = squid
 alias os.base.tomcat = tomcat
@@ -21847,6 +21848,97 @@ private mdm.intune @defaults("deviceId tenantId") {
   deviceId string
   // Microsoft Entra tenant the device is enrolled in
   tenantId string
+}
+
+// Remote monitoring and management agents
+//
+// Remote monitoring and management (RMM), remote access, patch management, and
+// client management agents recognized on this asset. products lists every
+// agent that was found, each carrying the packages, services, and processes
+// that make it up. installed and healthy answer the fleet-wide questions
+// directly, and the product ids let an audit allow only the approved tool, for
+// example `rmm.products.all(id == "ninjaone")` fails on an asset that also
+// runs any other recognized agent. Agents are recognized on Windows, Linux,
+// and macOS.
+//
+// Recognized agents. Select one by its `id`, for example
+// `rmm.products.where(id == "connectwise-screenconnect")`. An agent not listed
+// here is not reported, so installed reads false on an asset managed only by
+// an unlisted tool, and a platform without a mark is not checked for that
+// agent.
+//
+// | id | Product | Vendor | Category | Windows | Linux | macOS |
+// |---|---|---|---|:---:|:---:|:---:|
+// | `atera` | Atera Agent | Atera | rmm | ✓ | ✓ | ✓ |
+// | `connectwise-automate` | ConnectWise Automate Agent | ConnectWise | rmm | ✓ | ✓ | ✓ |
+// | `datto-rmm` | Datto RMM Agent | Datto | rmm | ✓ | ✓ | ✓ |
+// | `kaseya-vsa` | Kaseya VSA Agent | Kaseya | rmm | ✓ | ✓ | |
+// | `kaseya-vsa-x` | Kaseya VSA X Agent | Kaseya | rmm | ✓ | | ✓ |
+// | `n-able-n-central` | N-able N-central Agent | N-able | rmm | ✓ | | ✓ |
+// | `n-able-n-sight` | N-able N-sight RMM Agent | N-able | rmm | ✓ | ✓ | ✓ |
+// | `ninjaone` | NinjaOne Agent | NinjaOne | rmm | ✓ | ✓ | ✓ |
+// | `syncro` | Syncro Agent | Syncro | rmm | ✓ | ✓ | |
+// | `tactical-rmm` | Tactical RMM Agent | AmidaWare | rmm | ✓ | ✓ | ✓ |
+// | `connectwise-screenconnect` | ConnectWise ScreenConnect Client | ConnectWise | remoteAccess | ✓ | ✓ | ✓ |
+// | `automox` | Automox Agent | Automox | patchManagement | ✓ | ✓ | ✓ |
+// | `baramundi` | baramundi Management Agent | baramundi software | clientManagement | ✓ | | |
+// | `matrix42` | Matrix42 UEM Agent, and the Empirum Agent it replaced | Matrix42 | clientManagement | ✓ | | ✓ |
+// | `microsoft-configmgr` | Microsoft Configuration Manager Client (SCCM, MECM) | Microsoft | clientManagement | ✓ | | |
+// | `opsi` | opsi Client Agent | uib | clientManagement | ✓ | ✓ | ✓ |
+rmm @defaults("installed healthy") @maturity("preview") {
+  // Every recognized management agent found on this asset
+  products() []rmm.product
+  // Whether at least one recognized agent is installed
+  installed() bool
+  // Whether every installed agent is running, and enabled to start at boot where the platform reports it
+  healthy() bool
+}
+
+// Remote management agent
+//
+// A single agent recognized on this asset. The `id` field selects the
+// product, for example `rmm.products.where(id == "datto-rmm")`. installed,
+// running, and enabled report the agent's own components, and healthy
+// combines them for the platform the asset runs.
+private rmm.product @defaults("name vendor installed healthy") {
+  // Stable identifier for the product, for example datto-rmm
+  id string
+  // Product name
+  name string
+  // Vendor that publishes the product
+  vendor string
+  // Product category
+  //
+  // One of rmm, remoteAccess, patchManagement, or clientManagement.
+  category string
+  // Whether the agent is installed
+  installed bool
+  // Whether the agent is running
+  //
+  // Every service the agent needs is running, or, for an agent recognized
+  // by its process, a live process of the agent exists.
+  running bool
+  // Whether every service the agent needs is enabled to start at boot
+  //
+  // Null on platforms whose service manager does not report a distinct
+  // boot-start setting, which includes launchd on macOS, and for agents
+  // recognized by their process.
+  enabled bool
+  // Whether the agent is installed, running, and enabled where boot-start is reported
+  healthy bool
+  // Version of the agent, null when no matched package reports one
+  version string
+  // Signals that identified the agent
+  //
+  // Each entry names what matched: `package`, `path`, `service`, or
+  // `process`.
+  detectedBy []string
+  // Services that make up the agent
+  services() []service
+  // Packages that installed the agent
+  packages() []package
+  // Processes the agent is running, empty unless the agent is recognized by its process
+  processes() []process
 }
 
 // Windows Package Manager (winget)

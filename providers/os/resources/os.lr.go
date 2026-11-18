@@ -647,6 +647,8 @@ const (
 	ResourceEdrProduct                                     string = "edr.product"
 	ResourceMdm                                            string = "mdm"
 	ResourceMdmIntune                                      string = "mdm.intune"
+	ResourceRmm                                            string = "rmm"
+	ResourceRmmProduct                                     string = "rmm.product"
 	ResourceWinget                                         string = "winget"
 	ResourceWingetSource                                   string = "winget.source"
 	ResourceIdp                                            string = "idp"
@@ -3369,6 +3371,14 @@ func init() {
 		"mdm.intune": {
 			Init:   initMdmIntune,
 			Create: createMdmIntune,
+		},
+		"rmm": {
+			// to override args, implement: initRmm(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createRmm,
+		},
+		"rmm.product": {
+			// to override args, implement: initRmmProduct(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createRmmProduct,
 		},
 		"winget": {
 			// to override args, implement: initWinget(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -19752,6 +19762,54 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"mdm.intune.tenantId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMdmIntune).GetTenantId()).ToDataRes(types.String)
+	},
+	"rmm.products": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRmm).GetProducts()).ToDataRes(types.Array(types.Resource("rmm.product")))
+	},
+	"rmm.installed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRmm).GetInstalled()).ToDataRes(types.Bool)
+	},
+	"rmm.healthy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRmm).GetHealthy()).ToDataRes(types.Bool)
+	},
+	"rmm.product.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRmmProduct).GetId()).ToDataRes(types.String)
+	},
+	"rmm.product.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRmmProduct).GetName()).ToDataRes(types.String)
+	},
+	"rmm.product.vendor": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRmmProduct).GetVendor()).ToDataRes(types.String)
+	},
+	"rmm.product.category": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRmmProduct).GetCategory()).ToDataRes(types.String)
+	},
+	"rmm.product.installed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRmmProduct).GetInstalled()).ToDataRes(types.Bool)
+	},
+	"rmm.product.running": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRmmProduct).GetRunning()).ToDataRes(types.Bool)
+	},
+	"rmm.product.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRmmProduct).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"rmm.product.healthy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRmmProduct).GetHealthy()).ToDataRes(types.Bool)
+	},
+	"rmm.product.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRmmProduct).GetVersion()).ToDataRes(types.String)
+	},
+	"rmm.product.detectedBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRmmProduct).GetDetectedBy()).ToDataRes(types.Array(types.String))
+	},
+	"rmm.product.services": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRmmProduct).GetServices()).ToDataRes(types.Array(types.Resource("service")))
+	},
+	"rmm.product.packages": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRmmProduct).GetPackages()).ToDataRes(types.Array(types.Resource("package")))
+	},
+	"rmm.product.processes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRmmProduct).GetProcesses()).ToDataRes(types.Array(types.Resource("process")))
 	},
 	"winget.installed": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWinget).GetInstalled()).ToDataRes(types.Bool)
@@ -47864,6 +47922,78 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mdm.intune.tenantId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMdmIntune).TenantId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"rmm.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRmm).__id, ok = v.Value.(string)
+		return
+	},
+	"rmm.products": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRmm).Products, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"rmm.installed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRmm).Installed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"rmm.healthy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRmm).Healthy, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"rmm.product.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRmmProduct).__id, ok = v.Value.(string)
+		return
+	},
+	"rmm.product.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRmmProduct).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"rmm.product.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRmmProduct).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"rmm.product.vendor": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRmmProduct).Vendor, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"rmm.product.category": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRmmProduct).Category, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"rmm.product.installed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRmmProduct).Installed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"rmm.product.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRmmProduct).Running, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"rmm.product.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRmmProduct).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"rmm.product.healthy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRmmProduct).Healthy, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"rmm.product.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRmmProduct).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"rmm.product.detectedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRmmProduct).DetectedBy, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"rmm.product.services": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRmmProduct).Services, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"rmm.product.packages": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRmmProduct).Packages, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"rmm.product.processes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRmmProduct).Processes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"winget.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -120635,6 +120765,226 @@ func (c *mqlMdmIntune) GetDeviceId() *plugin.TValue[string] {
 
 func (c *mqlMdmIntune) GetTenantId() *plugin.TValue[string] {
 	return &c.TenantId
+}
+
+// mqlRmm for the rmm resource
+type mqlRmm struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlRmmInternal
+	Products  plugin.TValue[[]any]
+	Installed plugin.TValue[bool]
+	Healthy   plugin.TValue[bool]
+}
+
+// createRmm creates a new instance of this resource
+func createRmm(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlRmm{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("rmm", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlRmm) MqlName() string {
+	return "rmm"
+}
+
+func (c *mqlRmm) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlRmm) GetProducts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Products, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("rmm", c.__id, "products")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.products()
+	})
+}
+
+func (c *mqlRmm) GetInstalled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Installed, func() (bool, error) {
+		return c.installed()
+	})
+}
+
+func (c *mqlRmm) GetHealthy() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Healthy, func() (bool, error) {
+		return c.healthy()
+	})
+}
+
+// mqlRmmProduct for the rmm.product resource
+type mqlRmmProduct struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlRmmProductInternal
+	Id         plugin.TValue[string]
+	Name       plugin.TValue[string]
+	Vendor     plugin.TValue[string]
+	Category   plugin.TValue[string]
+	Installed  plugin.TValue[bool]
+	Running    plugin.TValue[bool]
+	Enabled    plugin.TValue[bool]
+	Healthy    plugin.TValue[bool]
+	Version    plugin.TValue[string]
+	DetectedBy plugin.TValue[[]any]
+	Services   plugin.TValue[[]any]
+	Packages   plugin.TValue[[]any]
+	Processes  plugin.TValue[[]any]
+}
+
+// createRmmProduct creates a new instance of this resource
+func createRmmProduct(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlRmmProduct{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("rmm.product", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlRmmProduct) MqlName() string {
+	return "rmm.product"
+}
+
+func (c *mqlRmmProduct) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlRmmProduct) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlRmmProduct) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlRmmProduct) GetVendor() *plugin.TValue[string] {
+	return &c.Vendor
+}
+
+func (c *mqlRmmProduct) GetCategory() *plugin.TValue[string] {
+	return &c.Category
+}
+
+func (c *mqlRmmProduct) GetInstalled() *plugin.TValue[bool] {
+	return &c.Installed
+}
+
+func (c *mqlRmmProduct) GetRunning() *plugin.TValue[bool] {
+	return &c.Running
+}
+
+func (c *mqlRmmProduct) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlRmmProduct) GetHealthy() *plugin.TValue[bool] {
+	return &c.Healthy
+}
+
+func (c *mqlRmmProduct) GetVersion() *plugin.TValue[string] {
+	return &c.Version
+}
+
+func (c *mqlRmmProduct) GetDetectedBy() *plugin.TValue[[]any] {
+	return &c.DetectedBy
+}
+
+func (c *mqlRmmProduct) GetServices() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Services, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("rmm.product", c.__id, "services")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.services()
+	})
+}
+
+func (c *mqlRmmProduct) GetPackages() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Packages, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("rmm.product", c.__id, "packages")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.packages()
+	})
+}
+
+func (c *mqlRmmProduct) GetProcesses() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Processes, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("rmm.product", c.__id, "processes")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.processes()
+	})
 }
 
 // mqlWinget for the winget resource
