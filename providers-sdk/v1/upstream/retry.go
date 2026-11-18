@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/ranger-rpc/codes"
 	"go.mondoo.com/ranger-rpc/status"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -31,33 +32,51 @@ const (
 	maxRetryInfoDelay = 60 * time.Second
 )
 
-// WithRetry runs fn up to DefaultRetryAttempts times. fn reports whether its
-// error is retryable and an optional explicit wait (e.g. a parsed Retry-After
-// header). Backoff is exponential with full jitter, capped at retryMaxBackoff,
-// and aborts promptly on context cancellation. A nil error returns immediately;
-// `what` labels the operation in the returned error.
+// paceBudget is how long WithRetry keeps waiting on a server that names a
+// delay. Those waits do not use up an attempt: a busy server that paces its
+// clients is not failing, and a burst can take longer to drain than
+// DefaultRetryAttempts waits of maxRetryInfoDelay.
+var paceBudget = 10 * time.Minute
+
+// WithRetry runs fn until it succeeds, fails with a permanent error, or has
+// failed DefaultRetryAttempts times. fn reports whether its error is retryable
+// and an optional explicit wait (e.g. a parsed Retry-After header or RetryInfo).
+// A failure with an explicit wait does not count as an attempt while the waits
+// fit in paceBudget. Backoff is exponential with full jitter, capped at
+// retryMaxBackoff, and aborts promptly on context cancellation. A nil error
+// returns immediately; `what` labels the operation in the returned error.
 func WithRetry(ctx context.Context, what string, fn func() (retryable bool, retryAfter time.Duration, err error)) error {
 	var lastErr error
-	for attempt := 1; attempt <= DefaultRetryAttempts; attempt++ {
+	start := time.Now()
+	calls, failures := 0, 0
+	for {
+		calls++
 		retryable, retryAfter, err := fn()
 		if err == nil {
 			return nil
 		}
 		lastErr = err
-		if !retryable || attempt == DefaultRetryAttempts {
+		paced := retryAfter > 0 && time.Since(start)+retryAfter <= paceBudget
+		if !paced {
+			failures++
+		}
+		if !retryable || failures == DefaultRetryAttempts {
 			break
 		}
 		wait := retryAfter
 		if wait <= 0 {
-			wait = retryBackoff(attempt)
+			wait = retryBackoff(failures)
+		}
+		if paced {
+			log.Info().Str("call", what).Dur("retry_in", wait).Msg("server is busy, retrying")
 		}
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("%s: %w (after %d attempt(s), last error: %v)", what, ctx.Err(), attempt, lastErr)
+			return fmt.Errorf("%s: %w (after %d attempt(s), last error: %v)", what, ctx.Err(), calls, lastErr)
 		case <-time.After(wait):
 		}
 	}
-	return fmt.Errorf("%s (after %d attempt(s)): %w", what, DefaultRetryAttempts, lastErr)
+	return fmt.Errorf("%s (after %d attempt(s)): %w", what, calls, lastErr)
 }
 
 // RetryRPC retries a Mondoo upstream RPC on transient errors (see
