@@ -320,8 +320,9 @@ var Catalog = []edr.Product{
 		Category: CategoryRemoteAccess,
 		Platforms: map[string]edr.Signature{
 			edr.PlatformWindows: {
-				// Observed: "ScreenConnect Client (fadf03a29d9b4fea)". The
-				// service carries the same name.
+				// Observed: "ScreenConnect Client (<instance>)", where the
+				// instance is a hex string naming the server the client
+				// reports to. The service carries the same name.
 				PackagePattern:    screenConnectWindows,
 				ServicePattern:    screenConnectWindows,
 				BootStartReported: true,
@@ -332,7 +333,7 @@ var Catalog = []edr.Product{
 				BootStartReported: true,
 			},
 			edr.PlatformMacOS: {
-				// Observed: the app is "connectwisecontrol-eda30266fe5049af".
+				// Observed: the app is "connectwisecontrol-<instance>".
 				PackagePattern: screenConnectUnix,
 				ServicePattern: screenConnectUnix,
 			},

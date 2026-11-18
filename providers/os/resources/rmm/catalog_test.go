@@ -419,14 +419,16 @@ func healthyCases() []healthyCase {
 
 		// --- ConnectWise ScreenConnect ---
 		{
-			// Observed: ScreenConnect Client (fadf03a29d9b4fea) 26.1.25.9592.
+			// Observed: ScreenConnect Client (<instance>) 26.1.25.9592. The
+			// instance names the server the client reports to, so a
+			// placeholder stands in for the one seen.
 			name:    "ScreenConnect on Windows",
 			id:      "connectwise-screenconnect",
 			version: "26.1.25.9592",
 			inv: edr.Inventory{
 				Platform: edr.PlatformWindows,
-				Packages: []edr.Package{pkg("ScreenConnect Client (fadf03a29d9b4fea)", "26.1.25.9592")},
-				Services: []edr.Service{svc("ScreenConnect Client (fadf03a29d9b4fea)", true, true)},
+				Packages: []edr.Package{pkg("ScreenConnect Client (1a2b3c4d5e6f7a8b)", "26.1.25.9592")},
+				Services: []edr.Service{svc("ScreenConnect Client (1a2b3c4d5e6f7a8b)", true, true)},
 			},
 		},
 		{
@@ -436,22 +438,23 @@ func healthyCases() []healthyCase {
 			version: "26.1.25.9592",
 			inv: edr.Inventory{
 				Platform: edr.PlatformLinux,
-				Packages: []edr.Package{pkg("connectwisecontrol-fadf03a29d9b4fea", "26.1.25.9592")},
-				Services: []edr.Service{svc("connectwisecontrol-fadf03a29d9b4fea.service", true, true)},
+				Packages: []edr.Package{pkg("connectwisecontrol-1a2b3c4d5e6f7a8b", "26.1.25.9592")},
+				Services: []edr.Service{svc("connectwisecontrol-1a2b3c4d5e6f7a8b.service", true, true)},
 			},
 		},
 		{
-			// Observed: connectwisecontrol-eda30266fe5049af 26.6. The labels are
-			// from public uninstall scripts.
+			// Observed: connectwisecontrol-<instance> 26.6, with a placeholder
+			// instance as on Windows. The labels are from public uninstall
+			// scripts.
 			name:    "ScreenConnect on macOS",
 			id:      "connectwise-screenconnect",
 			version: "26.6",
 			inv: edr.Inventory{
 				Platform: edr.PlatformMacOS,
-				Packages: []edr.Package{pkg("connectwisecontrol-eda30266fe5049af", "26.6")},
+				Packages: []edr.Package{pkg("connectwisecontrol-8b7a6f5e4d3c2b1a", "26.6")},
 				Services: []edr.Service{
-					svc("connectwisecontrol-eda30266fe5049af", true, true),
-					svc("connectwisecontrol-eda30266fe5049af-onlogin", true, true),
+					svc("connectwisecontrol-8b7a6f5e4d3c2b1a", true, true),
+					svc("connectwisecontrol-8b7a6f5e4d3c2b1a-onlogin", true, true),
 				},
 			},
 		},
@@ -778,10 +781,10 @@ func TestScreenConnectLoginAgentsDoNotStandInForTheDaemon(t *testing.T) {
 	// unloaded; no target showed this.
 	d := detectOne(t, edr.Inventory{
 		Platform: edr.PlatformMacOS,
-		Packages: []edr.Package{pkg("connectwisecontrol-eda30266fe5049af", "26.6")},
+		Packages: []edr.Package{pkg("connectwisecontrol-8b7a6f5e4d3c2b1a", "26.6")},
 		Services: []edr.Service{
-			svc("connectwisecontrol-eda30266fe5049af-onlogin", true, true),
-			svc("connectwisecontrol-eda30266fe5049af-prelogin", true, true),
+			svc("connectwisecontrol-8b7a6f5e4d3c2b1a-onlogin", true, true),
+			svc("connectwisecontrol-8b7a6f5e4d3c2b1a-prelogin", true, true),
 		},
 	}, "connectwise-screenconnect")
 	assert.False(t, d.Running)
@@ -793,11 +796,11 @@ func TestScreenConnectReportsEveryInstance(t *testing.T) {
 	inv := edr.Inventory{
 		Platform: edr.PlatformWindows,
 		Packages: []edr.Package{
-			pkg("ScreenConnect Client (fadf03a29d9b4fea)", "26.1.25.9592"),
+			pkg("ScreenConnect Client (1a2b3c4d5e6f7a8b)", "26.1.25.9592"),
 			pkg("ScreenConnect Client (0123456789abcdef)", "24.3.7.8999"),
 		},
 		Services: []edr.Service{
-			svc("ScreenConnect Client (fadf03a29d9b4fea)", true, true),
+			svc("ScreenConnect Client (1a2b3c4d5e6f7a8b)", true, true),
 			svc("ScreenConnect Client (0123456789abcdef)", false, true),
 		},
 	}
@@ -879,12 +882,12 @@ func TestSeveralAgentsOnOneAsset(t *testing.T) {
 		Platform: edr.PlatformWindows,
 		Packages: []edr.Package{
 			pkg("Datto RMM", "4.4.11965.11965"),
-			pkg("ScreenConnect Client (fadf03a29d9b4fea)", "26.1.25.9592"),
+			pkg("ScreenConnect Client (1a2b3c4d5e6f7a8b)", "26.1.25.9592"),
 			pkg("Microsoft Configuration Manager", "5.0.9135.1001"),
 		},
 		Services: []edr.Service{
 			svc("CagService", true, true),
-			svc("ScreenConnect Client (fadf03a29d9b4fea)", true, true),
+			svc("ScreenConnect Client (1a2b3c4d5e6f7a8b)", true, true),
 			svc("CcmExec", true, true),
 		},
 	}))
