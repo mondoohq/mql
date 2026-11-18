@@ -468,6 +468,7 @@ mikrotik.ip.service.address 13.0.0
 mikrotik.ip.service.certificate 13.0.0
 mikrotik.ip.service.certificateRef 13.0.11
 mikrotik.ip.service.disabled 13.0.0
+mikrotik.ip.service.dynamic 14.2.1
 mikrotik.ip.service.invalid 13.0.0
 mikrotik.ip.service.maxSessions 13.0.0
 mikrotik.ip.service.name 13.0.0

@@ -674,6 +674,12 @@ mikrotik.ip.service @defaults("name port disabled") {
   disabled bool
   // Whether the service configuration is invalid
   invalid bool
+  // Whether RouterOS created the entry rather than an administrator
+  //
+  // Dynamic entries, such as btest, discover, or ipsec, report a listener
+  // that another feature opened. They carry no source restriction of their
+  // own, because the feature that opened them controls access.
+  dynamic bool
   // Certificate bound to the service, resolved in the device certificate store
   //
   // Null when the service has no certificate bound, which for www-ssl and
