@@ -1,0 +1,26 @@
+{
+  "connectors": [
+    {
+      "name": "codesphere",
+      "flags": [
+        {
+          "long": "api",
+          "type": "String"
+        },
+        {
+          "long": "org",
+          "type": "String"
+        },
+        {
+          "long": "resource-group",
+          "short": "G",
+          "type": "String"
+        },
+        {
+          "long": "token",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}
