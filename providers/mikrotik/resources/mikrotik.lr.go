@@ -1109,6 +1109,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mikrotik.ip.service.invalid": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikIpService).GetInvalid()).ToDataRes(types.Bool)
 	},
+	"mikrotik.ip.service.dynamic": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikIpService).GetDynamic()).ToDataRes(types.Bool)
+	},
 	"mikrotik.ip.service.certificateRef": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikIpService).GetCertificateRef()).ToDataRes(types.Resource("mikrotik.certificate"))
 	},
@@ -3643,6 +3646,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mikrotik.ip.service.invalid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMikrotikIpService).Invalid, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"mikrotik.ip.service.dynamic": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikIpService).Dynamic, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"mikrotik.ip.service.certificateRef": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -8413,6 +8420,7 @@ type mqlMikrotikIpService struct {
 	MaxSessions    plugin.TValue[int64]
 	Disabled       plugin.TValue[bool]
 	Invalid        plugin.TValue[bool]
+	Dynamic        plugin.TValue[bool]
 	CertificateRef plugin.TValue[*mqlMikrotikCertificate]
 }
 
@@ -8482,6 +8490,10 @@ func (c *mqlMikrotikIpService) GetDisabled() *plugin.TValue[bool] {
 
 func (c *mqlMikrotikIpService) GetInvalid() *plugin.TValue[bool] {
 	return &c.Invalid
+}
+
+func (c *mqlMikrotikIpService) GetDynamic() *plugin.TValue[bool] {
+	return &c.Dynamic
 }
 
 func (c *mqlMikrotikIpService) GetCertificateRef() *plugin.TValue[*mqlMikrotikCertificate] {
