@@ -186,17 +186,25 @@ func dictTTL(m map[string]any) (int64, bool) {
 }
 
 func (d *mqlDns) records(params any) ([]any, error) {
-	return d.recordsFromParams(params)
+	return d.recordsFromParams(params, "")
 }
 
 // authoritativeRecords parses the same shape as records, from answers the
 // authoritative nameservers gave rather than a caching resolver. The records
 // are the same; their TTLs are the configured values.
+//
+// The records carry an id of their own. Resources are cached by id, and a
+// record's default id is its name, class and type, which the cached and the
+// authoritative answer share. Without a separate id, whichever of the two
+// fields a query read first supplied the TTL for both, so a TTL read here
+// reported the resolver's countdown whenever the same query also read records.
 func (d *mqlDns) authoritativeRecords(authoritativeParams any) ([]any, error) {
-	return d.recordsFromParams(authoritativeParams)
+	return d.recordsFromParams(authoritativeParams, "authoritative/")
 }
 
-func (d *mqlDns) recordsFromParams(params any) ([]any, error) {
+// recordsFromParams builds dns.record resources from a params dict. idPrefix
+// keeps records parsed from different sources apart in the resource cache.
+func (d *mqlDns) recordsFromParams(params any, idPrefix string) ([]any, error) {
 	// NOTE: mql does not cache the results of GetRecords since it has an input argument
 	// Iterations over map keys are not deterministic and therefore we need to sort the keys
 
@@ -244,11 +252,15 @@ func (d *mqlDns) recordsFromParams(params any) ([]any, error) {
 		} else {
 			ttl = llx.NilData
 		}
+		name := r["name"].(string)
+		class := r["class"].(string)
+		typ := r["type"].(string)
 		o, err := CreateResource(d.MqlRuntime, "dns.record", map[string]*llx.RawData{
-			"name":  llx.StringData(r["name"].(string)),
+			"__id":  llx.StringData("dns.record/" + idPrefix + name + "/" + class + "/" + typ),
+			"name":  llx.StringData(name),
 			"ttl":   ttl,
-			"class": llx.StringData(r["class"].(string)),
-			"type":  llx.StringData(r["type"].(string)),
+			"class": llx.StringData(class),
+			"type":  llx.StringData(typ),
 			"rdata": llx.ArrayData(llx.TArr2Raw(r["rData"].([]any)), types.String),
 		})
 		if err != nil {
@@ -285,6 +297,13 @@ func (d *mqlDns) mx(params any) ([]any, error) {
 	}
 
 	r := record.(map[string]any)
+
+	// A lookup that failed leaves the MX entry without data, which read as a
+	// name that publishes no MX records, so every check over the list passed
+	// on nothing.
+	if err := d.lookupFailed(r, "MX"); err != nil {
+		return nil, err
+	}
 
 	var name, c, t string
 	var ttl int64
@@ -355,7 +374,7 @@ func (d *mqlDns) dkim(params any) ([]any, error) {
 	}
 
 	r := record.(map[string]any)
-	if err := d.txtLookupFailed(r); err != nil {
+	if err := d.lookupFailed(r, "TXT"); err != nil {
 		return nil, err
 	}
 
@@ -452,12 +471,14 @@ func parseSPF(txt string) (version string, mechanisms []string, allQualifier str
 	return version, mechanisms, allQualifier
 }
 
-// txtLookupFailed returns the failure of a TXT lookup, from its record in the
-// params, as an Unavailable error when structured errors are on (ADR 046 §9).
-// A lookup that failed is not a name without SPF or DKIM, but in v13 both read
-// as an empty list, so a resolver that could not deliver a large TXT set failed
-// every "SPF is set" check. Off, or for a lookup that succeeded, it returns nil.
-func (d *mqlDns) txtLookupFailed(record map[string]any) error {
+// lookupFailed returns the failure of one record type's lookup, from its record
+// in the params, as an Unavailable error when structured errors are on (ADR 046
+// §9). A lookup that failed is not a name without that record type, but in v13
+// it read as an empty list: a resolver that could not deliver a large TXT set
+// failed every "SPF is set" check, and a lost MX reply passed every check over
+// the domain's mail exchangers. Off, or for a lookup that succeeded, it returns
+// nil.
+func (d *mqlDns) lookupFailed(record map[string]any, recordType string) error {
 	if record == nil || !plugin.StructuredErrors() {
 		return nil
 	}
@@ -465,7 +486,7 @@ func (d *mqlDns) txtLookupFailed(record map[string]any) error {
 	if msg == "" {
 		return nil
 	}
-	return llx.Unavailable(errors.New("cannot read the TXT records of " + d.Fqdn.Data + ": " + msg))
+	return llx.Unavailable(errors.New("cannot read the " + recordType + " records of " + d.Fqdn.Data + ": " + msg))
 }
 
 func (d *mqlDns) spf(params any) ([]any, error) {
@@ -476,7 +497,7 @@ func (d *mqlDns) spf(params any) ([]any, error) {
 		return entries, nil
 	}
 	record, ok := paramsM["TXT"].(map[string]any)
-	if err := d.txtLookupFailed(record); err != nil {
+	if err := d.lookupFailed(record, "TXT"); err != nil {
 		return nil, err
 	}
 	if !ok || record["rCode"] != dns.RcodeToString[dns.RcodeSuccess] {

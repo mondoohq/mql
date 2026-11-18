@@ -194,7 +194,7 @@ func (d *DnsClient) Query(dnsTypes ...string) (map[string]DnsRecord, error) {
 
 		workers.Go(func() {
 
-			records, err := d.queryDnsType(d.fqdn, dnsType)
+			records, err := d.queryDnsTypeWithFailover(d.config.Servers, max(d.config.Attempts, 1), true, dnsType)
 			if err != nil {
 				d.sync.Lock()
 				errs.Add(err)
@@ -214,8 +214,54 @@ func (d *DnsClient) Query(dnsTypes ...string) (map[string]DnsRecord, error) {
 	return res, errs.Deduplicate()
 }
 
-func (d *DnsClient) queryDnsType(fqdn string, t string) (map[string]DnsRecord, error) {
-	return d.queryDnsTypeAt(d.config.Servers[0], true, fqdn, t)
+// queryDnsTypeWithFailover asks each server in turn for one record type of the
+// client's fqdn, attempts times over, and returns the first answer that
+// arrived.
+//
+// queryDnsTypeAt reports a lost or unreadable reply inside the returned record
+// rather than as an error, so that a sweep over every record type can carry the
+// failure of one type as a gap instead of failing the others. That makes it the
+// record, not the error, that says whether to try again. A sweep sends dozens of
+// datagrams at once, and without the retry a single lost reply left a gap that
+// failed any check reading the list. When every server fails, the last failure
+// is returned in the same shape, so the gap still surfaces.
+func (d *DnsClient) queryDnsTypeWithFailover(servers []string, attempts int, recursion bool, t string) (map[string]DnsRecord, error) {
+	if len(servers) == 0 {
+		return nil, errors.New("no nameserver configured to query " + t + " for " + d.fqdn)
+	}
+
+	var lastErr error
+	var lastFailure map[string]DnsRecord
+	for range attempts {
+		for _, server := range servers {
+			records, err := d.queryDnsTypeAt(server, recursion, d.fqdn, t)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			if lookupFailed(records) {
+				lastFailure = records
+				continue
+			}
+			return records, nil
+		}
+	}
+
+	if lastFailure != nil {
+		return lastFailure, nil
+	}
+	return nil, lastErr
+}
+
+// lookupFailed reports whether queryDnsTypeAt recorded a transport failure
+// rather than an answer.
+func lookupFailed(records map[string]DnsRecord) bool {
+	for _, r := range records {
+		if r.Error != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // QueryAuthoritative resolves the requested types against the nameservers that
@@ -253,26 +299,15 @@ func (d *DnsClient) QueryAuthoritative(dnsTypes ...string) (map[string]DnsRecord
 			// Try each nameserver in turn: an individual one may refuse, be
 			// unreachable, or lag behind its peers, and any authoritative server
 			// for the zone is an equally valid source for the record.
-			var lastErr error
-			for _, server := range servers {
-				records, err := d.queryDnsTypeAt(server, false, d.fqdn, dnsType)
-				if err != nil {
-					lastErr = err
-					continue
-				}
-
-				d.sync.Lock()
-				for k := range records {
-					res[k] = records[k]
-				}
-				d.sync.Unlock()
+			records, err := d.queryDnsTypeWithFailover(servers, 1, false, dnsType)
+			d.sync.Lock()
+			defer d.sync.Unlock()
+			if err != nil {
+				errs.Add(err)
 				return
 			}
-
-			if lastErr != nil {
-				d.sync.Lock()
-				errs.Add(lastErr)
-				d.sync.Unlock()
+			for k := range records {
+				res[k] = records[k]
 			}
 		})
 	}
