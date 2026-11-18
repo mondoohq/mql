@@ -1,0 +1,280 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+import core
+
+option provider = "go.mondoo.com/mql/providers/codesphere"
+option go_package = "go.mondoo.com/mql/providers/codesphere/resources"
+option root = "codesphere"
+
+// Codesphere installation
+//
+// A Codesphere installation, either the Codesphere cloud or a Private Cloud,
+// as the API token sees it. The `organizations`, `resourceGroups`, and
+// `workspaces` fields list what the token can access. The `dataCenters`,
+// `workspacePlans`, and `baseImages` fields list the installation's catalog,
+// for example base images past their `supportedUntil` date or plans marked
+// deprecated. The `sshKeys` field lists the SSH keys of the token's owner.
+codesphere @root {
+  // URL of the installation's API
+  apiUrl string
+  // Organizations the token's owner belongs to
+  organizations() []codesphere.organization
+  // Resource groups the token can access
+  //
+  // Includes resource groups outside any organization and, for organization
+  // admins, every resource group of their organizations.
+  resourceGroups() []codesphere.resourceGroup
+  // Workspaces across every resource group the token can access
+  workspaces() []codesphere.workspace
+  // Data centers that host workspaces and resource groups
+  dataCenters() []codesphere.dataCenter
+  // Workspace plans offered by the installation
+  workspacePlans() []codesphere.workspacePlan
+  // Base images workspaces can start from
+  baseImages() []codesphere.baseImage
+  // SSH keys registered by the owner of the API token
+  sshKeys() []codesphere.sshKey
+}
+
+// Codesphere organization
+//
+// The top-level administrative entity that groups resource groups and holds
+// their members. The `members` field lists every member with their `role` and
+// whether their invitation is still `pending`, for audits of administrators,
+// stale invitations, and removed users.
+private codesphere.organization @defaults("name") @root {
+  // Unique organization ID
+  id string
+  // Organization name
+  name string
+  // Time the organization was created
+  createdAt time
+  // Members of the organization
+  members() []codesphere.organization.member
+  // Resource groups in the organization
+  resourceGroups() []codesphere.resourceGroup
+}
+
+// Codesphere organization member
+private codesphere.organization.member @defaults("email role") {
+  // User ID of the member
+  userId int
+  // Display name of the member
+  name string
+  // Email address of the member
+  email string
+  // Role in the organization
+  //
+  // For example, admin or member.
+  role string
+  // Whether the invitation is still waiting to be accepted
+  pending bool
+  // Time the member was added
+  createdAt time
+  // Time the user was deleted, or null for an active user
+  deletedAt time
+}
+
+// Codesphere resource group
+//
+// A resource group (formerly called a team) holds workspaces, custom domains,
+// and members, and is the unit Codesphere grants access on. The `organization`
+// field is null for a resource group outside any organization. The `members`
+// field lists each member's `role` and invitation state, and `customDomains`
+// lists the domains that route traffic to its workspaces.
+private codesphere.resourceGroup @defaults("name") @root {
+  // Unique resource group ID
+  id int
+  // Resource group name
+  name string
+  // Description of the resource group
+  description string
+  // Organization the resource group belongs to, or null
+  organization() codesphere.organization
+  // Data center new workspaces are created in by default
+  defaultDataCenter() codesphere.dataCenter
+  // Members of the resource group
+  members() []codesphere.resourceGroup.member
+  // Workspaces in the resource group
+  workspaces() []codesphere.workspace
+  // Custom domains of the resource group
+  customDomains() []codesphere.customDomain
+}
+
+// Codesphere resource group member
+private codesphere.resourceGroup.member @defaults("email role") {
+  // User ID of the member
+  userId int
+  // Display name of the member
+  name string
+  // Email address of the member
+  email string
+  // Role in the resource group
+  //
+  // One of admin or member.
+  role string
+  // Whether the invitation is still waiting to be accepted
+  pending bool
+  // Time the member was added
+  createdAt time
+  // Time the user was deleted, or null for an active user
+  deletedAt time
+}
+
+// Codesphere workspace
+//
+// A workspace is the IDE, CI pipeline, and monitoring for one deployed
+// application, built from a git repository. The `gitUrl` and `isPrivateRepo`
+// fields describe the source, `restricted` and `devDomain` describe how it is
+// reached, `workspacePlan` and `replicas` set its size, and `baseImage` names
+// the image it runs on. Credentials embedded in `gitUrl` are redacted.
+private codesphere.workspace @defaults("name") @root {
+  // Unique workspace ID
+  id int
+  // Workspace name
+  name string
+  // Time the workspace was created
+  createdAt time
+  // Resource group that owns the workspace
+  resourceGroup() codesphere.resourceGroup
+  // Member who created the workspace, or null when they are no longer a member
+  creator() codesphere.resourceGroup.member
+  // Workspace this one was copied from, or null
+  sourceWorkspace() codesphere.workspace
+  // Plan that sets the workspace's CPU, memory, and storage
+  workspacePlan() codesphere.workspacePlan
+  // Number of replicas the workspace runs
+  replicas int
+  // Data center the workspace runs in
+  dataCenter() codesphere.dataCenter
+  // Base image the workspace starts from, or null for the default image
+  baseImage() codesphere.baseImage
+  // URL of the git repository, with any embedded password redacted
+  gitUrl string
+  // Branch checked out when the workspace was created
+  initialBranch string
+  // Whether the git repository is private
+  isPrivateRepo bool
+  // Whether access to the workspace is restricted
+  restricted bool
+  // Domain Codesphere assigns to the workspace
+  devDomain string
+  // Whether a VPN configuration is attached to the workspace
+  hasVpnConfig bool
+  // Whether the workspace collects traces
+  collectTraces bool
+  // Whether persistent logs are enabled
+  persistentLogs bool
+  // Message shown when the workspace opens
+  welcomeMessage string
+}
+
+// Codesphere custom domain
+//
+// A custom domain of a resource group, with its DNS verification and TLS
+// certificate state and the workspaces it routes to. A domain with `verified`
+// false or `certificateIssued` false does not serve traffic as intended, and
+// `connections` maps each path to its workspaces.
+private codesphere.customDomain @defaults("name verified certificateIssued") {
+  // Domain name
+  name string
+  // Resource group that owns the domain
+  resourceGroup() codesphere.resourceGroup
+  // Data center that serves the domain
+  dataCenter() codesphere.dataCenter
+  // Whether domain ownership is verified
+  verified bool
+  // Reason verification failed, or null
+  verificationReason string
+  // Whether a TLS certificate is issued for the domain
+  certificateIssued bool
+  // Reason the certificate request failed, or null
+  certificateReason string
+  // Whether access to the domain is restricted
+  restricted bool
+  // Address an A record for the domain must point to
+  aRecord string
+  // CNAME target the domain's DNS record must point to
+  cname string
+  // TXT record value that proves domain ownership
+  txt string
+  // Maximum request body size in MB, or null for the default
+  maxBodySizeMb float
+  // Maximum connection timeout in seconds, or null for the default
+  maxConnectionTimeoutSeconds float
+  // Whether connection paths are regular expressions
+  useRegex bool
+  // Paths of the domain and the workspaces they route to
+  connections() []codesphere.customDomain.connection
+}
+
+// Codesphere custom domain connection
+private codesphere.customDomain.connection @defaults("path") {
+  // Path on the domain
+  path string
+  // Workspaces the path routes to
+  workspaces() []codesphere.workspace
+}
+
+// Codesphere data center
+private codesphere.dataCenter @defaults("name countryCode") {
+  // Data center ID
+  id int
+  // Data center name
+  name string
+  // City the data center is in
+  city string
+  // ISO country code of the data center
+  countryCode string
+}
+
+// Codesphere workspace plan
+private codesphere.workspacePlan @defaults("title deprecated") {
+  // Plan ID
+  id int
+  // Plan name
+  title string
+  // Price in USD
+  priceUsd float
+  // Whether the plan is deprecated
+  deprecated bool
+  // Maximum number of replicas
+  maxReplicas int
+  // Number of CPUs
+  cpu float
+  // Number of GPUs
+  gpu float
+  // Memory in bytes
+  ramBytes int
+  // Disk in bytes
+  ssdBytes int
+  // Temporary storage in bytes
+  tempStorageBytes int
+  // Whether workspaces on this plan stop when idle and start on demand
+  onDemand bool
+}
+
+// Codesphere base image
+private codesphere.baseImage @defaults("id supportedUntil") {
+  // Base image ID
+  //
+  // For example, ubuntu-24.04.
+  id string
+  // Base image name
+  name string
+  // Date the image stops being supported
+  supportedUntil time
+}
+
+// Codesphere SSH key
+private codesphere.sshKey @defaults("title fingerprint") {
+  // Name of the key
+  title string
+  // Fingerprint of the public key
+  fingerprint string
+  // Public key in OpenSSH format
+  publicKey string
+  // Time the key was added
+  createdAt time
+}

@@ -233,6 +233,7 @@ PROVIDERS := \
 	cloudflare \
 	cloudformation \
 	cockroachdb \
+	codesphere \
 	databricks \
 	datadog \
 	depsdev \

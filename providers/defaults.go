@@ -396,6 +396,22 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"codesphere": {
+		Provider: &plugin.Provider{
+			Name:            "codesphere",
+			ID:              "go.mondoo.com/mql/providers/codesphere",
+			ConnectionTypes: []string{"codesphere"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "codesphere",
+					Use:   "codesphere",
+					Short: "a Codesphere installation",
+				},
+			},
+		},
+	},
+
 	"core": {
 		Provider: &plugin.Provider{
 			Name:            "core",
