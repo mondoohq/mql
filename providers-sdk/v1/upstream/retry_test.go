@@ -99,7 +99,14 @@ func TestWithRetry_NonRetryableFailsFast(t *testing.T) {
 	assert.Equal(t, 1, calls, "non-retryable error must not retry")
 }
 
+func setPaceBudget(t *testing.T, d time.Duration) {
+	old := paceBudget
+	paceBudget = d
+	t.Cleanup(func() { paceBudget = old })
+}
+
 func TestWithRetry_ExhaustsAttempts(t *testing.T) {
+	setPaceBudget(t, 0)
 	calls := 0
 	err := WithRetry(context.Background(), "op", func() (bool, time.Duration, error) {
 		calls++
@@ -107,6 +114,33 @@ func TestWithRetry_ExhaustsAttempts(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Equal(t, DefaultRetryAttempts, calls)
+}
+
+func TestWithRetry_PacedWaitsDoNotUseAttempts(t *testing.T) {
+	calls := 0
+	err := WithRetry(context.Background(), "op", func() (bool, time.Duration, error) {
+		calls++
+		if calls <= 2*DefaultRetryAttempts {
+			return true, time.Nanosecond, errors.New("busy")
+		}
+		return false, 0, nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 2*DefaultRetryAttempts+1, calls)
+}
+
+func TestWithRetry_PaceBudgetEnds(t *testing.T) {
+	setPaceBudget(t, 200*time.Millisecond)
+	calls := 0
+	err := WithRetry(context.Background(), "op", func() (bool, time.Duration, error) {
+		calls++
+		return true, 50 * time.Millisecond, errors.New("busy")
+	})
+	require.Error(t, err)
+	// 1 to 4 paced waits fit in the budget (each waits at least 50ms, and the
+	// first fits unless the first call takes 150ms), then attempts count again.
+	assert.Greater(t, calls, DefaultRetryAttempts)
+	assert.LessOrEqual(t, calls, DefaultRetryAttempts+4)
 }
 
 func TestWithRetry_ContextCancelled(t *testing.T) {
