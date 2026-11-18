@@ -190,6 +190,7 @@ func newMikrotikService(runtime *plugin.Runtime, row map[string]string) (plugin.
 func newMikrotikFirewallFilter(runtime *plugin.Runtime, row map[string]string) (plugin.Resource, error) {
 	args := firewallRuleArgs("mikrotik.ip.firewall.filter/", row)
 	args["connectionState"] = llx.StringData(row["connection-state"])
+	args["matchers"] = firewallMatchers(row)
 	return CreateResource(runtime, "mikrotik.ip.firewall.filter", args)
 }
 
