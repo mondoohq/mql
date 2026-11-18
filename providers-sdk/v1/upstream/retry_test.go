@@ -130,16 +130,17 @@ func TestWithRetry_PacedWaitsDoNotUseAttempts(t *testing.T) {
 }
 
 func TestWithRetry_PaceBudgetEnds(t *testing.T) {
-	setPaceBudget(t, 30*time.Millisecond)
+	setPaceBudget(t, 200*time.Millisecond)
 	calls := 0
 	err := WithRetry(context.Background(), "op", func() (bool, time.Duration, error) {
 		calls++
-		return true, 10 * time.Millisecond, errors.New("busy")
+		return true, 50 * time.Millisecond, errors.New("busy")
 	})
 	require.Error(t, err)
-	// About 2 paced waits fit in the budget, then the attempts count again.
+	// 1 to 4 paced waits fit in the budget (each waits at least 50ms, and the
+	// first fits unless the first call takes 150ms), then attempts count again.
 	assert.Greater(t, calls, DefaultRetryAttempts)
-	assert.Less(t, calls, DefaultRetryAttempts+4)
+	assert.LessOrEqual(t, calls, DefaultRetryAttempts+4)
 }
 
 func TestWithRetry_ContextCancelled(t *testing.T) {
