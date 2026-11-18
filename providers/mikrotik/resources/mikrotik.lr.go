@@ -1172,6 +1172,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mikrotik.ip.firewall.filter.dstAddressList": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikIpFirewallFilter).GetDstAddressList()).ToDataRes(types.String)
 	},
+	"mikrotik.ip.firewall.filter.matchers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikIpFirewallFilter).GetMatchers()).ToDataRes(types.Map(types.String, types.String))
+	},
 	"mikrotik.ip.firewall.nat.chain": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikIpFirewallNat).GetChain()).ToDataRes(types.String)
 	},
@@ -1684,6 +1687,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"mikrotik.ipv6.firewall.filter.comment": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikIpv6FirewallFilter).GetComment()).ToDataRes(types.String)
+	},
+	"mikrotik.ipv6.firewall.filter.matchers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMikrotikIpv6FirewallFilter).GetMatchers()).ToDataRes(types.Map(types.String, types.String))
 	},
 	"mikrotik.ipv6.firewall.nat.chain": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikIpv6FirewallNat).GetChain()).ToDataRes(types.String)
@@ -3727,6 +3733,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMikrotikIpFirewallFilter).DstAddressList, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"mikrotik.ip.firewall.filter.matchers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikIpFirewallFilter).Matchers, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
 	"mikrotik.ip.firewall.nat.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMikrotikIpFirewallNat).__id, ok = v.Value.(string)
 		return
@@ -4461,6 +4471,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mikrotik.ipv6.firewall.filter.comment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMikrotikIpv6FirewallFilter).Comment, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mikrotik.ipv6.firewall.filter.matchers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMikrotikIpv6FirewallFilter).Matchers, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
 	"mikrotik.ipv6.firewall.nat.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -8511,6 +8525,7 @@ type mqlMikrotikIpFirewallFilter struct {
 	Comment         plugin.TValue[string]
 	SrcAddressList  plugin.TValue[string]
 	DstAddressList  plugin.TValue[string]
+	Matchers        plugin.TValue[map[string]any]
 }
 
 // createMikrotikIpFirewallFilter creates a new instance of this resource
@@ -8623,6 +8638,10 @@ func (c *mqlMikrotikIpFirewallFilter) GetSrcAddressList() *plugin.TValue[string]
 
 func (c *mqlMikrotikIpFirewallFilter) GetDstAddressList() *plugin.TValue[string] {
 	return &c.DstAddressList
+}
+
+func (c *mqlMikrotikIpFirewallFilter) GetMatchers() *plugin.TValue[map[string]any] {
+	return &c.Matchers
 }
 
 // mqlMikrotikIpFirewallNat for the mikrotik.ip.firewall.nat resource
@@ -9941,6 +9960,7 @@ type mqlMikrotikIpv6FirewallFilter struct {
 	Dynamic         plugin.TValue[bool]
 	Invalid         plugin.TValue[bool]
 	Comment         plugin.TValue[string]
+	Matchers        plugin.TValue[map[string]any]
 }
 
 // createMikrotikIpv6FirewallFilter creates a new instance of this resource
@@ -10057,6 +10077,10 @@ func (c *mqlMikrotikIpv6FirewallFilter) GetInvalid() *plugin.TValue[bool] {
 
 func (c *mqlMikrotikIpv6FirewallFilter) GetComment() *plugin.TValue[string] {
 	return &c.Comment
+}
+
+func (c *mqlMikrotikIpv6FirewallFilter) GetMatchers() *plugin.TValue[map[string]any] {
+	return &c.Matchers
 }
 
 // mqlMikrotikIpv6FirewallNat for the mikrotik.ipv6.firewall.nat resource

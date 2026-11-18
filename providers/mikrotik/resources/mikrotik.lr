@@ -736,6 +736,14 @@ mikrotik.ip.firewall.filter @defaults("chain action disabled") {
   srcAddressList string
   // Name of the address list the destination address is matched against
   dstAddressList string
+  // Every match condition the rule carries, keyed by RouterOS property name
+  //
+  // Holds each property that narrows which packets the rule applies to, such
+  // as in-interface-list, dst-address-type, src-mac-address, or tcp-flags,
+  // including the many that have no field of their own. A negated condition
+  // keeps its leading `!`. Empty when the rule applies to every packet that
+  // reaches its chain.
+  matchers map[string]string
 }
 
 // MikroTik firewall NAT rule
@@ -1266,6 +1274,14 @@ mikrotik.ipv6.firewall.filter @defaults("chain action disabled") {
   invalid bool
   // Optional comment attached to the rule
   comment string
+  // Every match condition the rule carries, keyed by RouterOS property name
+  //
+  // Holds each property that narrows which packets the rule applies to, such
+  // as in-interface-list, dst-address-type, src-mac-address, or tcp-flags,
+  // including the many that have no field of their own. A negated condition
+  // keeps its leading `!`. Empty when the rule applies to every packet that
+  // reaches its chain.
+  matchers map[string]string
 }
 
 // MikroTik IPv6 firewall NAT rule

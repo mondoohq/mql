@@ -1,0 +1,10 @@
+[
+  {".id": "*3", "action": "accept", "bytes": "3220", "chain": "input", "dynamic": "false", "invalid": "false", "packets": "49", "src-address": "10.0.2.0/24"},
+  {".id": "*4", "action": "reject", "bytes": "367", "chain": "input", "disabled": "false", "dynamic": "false", "invalid": "false", "packets": "5", "reject-with": "icmp-admin-prohibited"},
+  {".id": "*5", "action": "reject", "bytes": "0", "chain": "zz", "comment": "c1", "dynamic": "false", "invalid": "false", "log": "true", "log-prefix": "x", "packets": "0", "protocol": "tcp", "reject-with": "tcp-reset"},
+  {".id": "*6", "action": "jump", "bytes": "0", "chain": "zz", "disabled": "true", "dynamic": "false", "invalid": "false", "jump-target": "zz2", "packets": "0"},
+  {".id": "*7", "action": "add-src-to-address-list", "address-list": "bad", "address-list-timeout": "1d", "bytes": "0", "chain": "zz", "dynamic": "false", "invalid": "false", "packets": "0"},
+  {".id": "*8", "action": "passthrough", "bytes": "0", "chain": "zz", "dynamic": "false", "invalid": "false", "packets": "0"},
+  {".id": "*A", "action": "drop", "bytes": "0", "chain": "zz", "comment": "allmatch", "connection-nat-state": "dstnat", "dst-address-type": "local", "dynamic": "false", "in-interface-list": "all", "invalid": "true", "limit": "10,5:packet", "packets": "0", "port": "22", "protocol": "tcp", "src-mac-address": "00:11:22:33:44:55", "tcp-flags": "syn", "time": "0s-1h,sun"},
+  {".id": "*B", "action": "drop", "bytes": "0", "chain": "zz", "comment": "allmatch2", "connection-limit": "10,32", "dynamic": "false", "icmp-options": "8:0", "invalid": "true", "packet-size": "100-200", "packets": "0", "protocol": "icmp", "src-address-type": "unicast", "ttl": "equal:64"}
+]
