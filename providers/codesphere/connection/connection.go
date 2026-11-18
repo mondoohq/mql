@@ -64,7 +64,7 @@ func NewCodesphereConnection(id uint32, asset *inventory.Asset, conf *inventory.
 	}
 
 	cfg := cs.NewConfiguration()
-	cfg.HTTPClient = newHTTPClient()
+	cfg.HTTPClient = newHTTPClient(apiURL)
 	cfg.Servers = cs.ServerConfigurations{{URL: apiURL.String()}}
 
 	return &CodesphereConnection{
@@ -103,18 +103,16 @@ func ParseAPIURL(raw string) (*url.URL, error) {
 // the installation's own data centers. The API redirects some calls to the
 // host of the data center that serves the object, and the default client drops
 // the Authorization header on any redirect to another host, which turns every
-// such call into a 401. The token is only sent on to a host on the same
-// registrable domain as the API, and never over a downgrade to plain http.
-func newHTTPClient() *http.Client {
+// such call into a 401. trustedRedirect decides which targets get it back.
+func newHTTPClient(api *url.URL) *http.Client {
 	return &http.Client{
 		Timeout: 60 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 10 {
 				return http.ErrUseLastResponse
 			}
-			first := via[0]
-			auth := first.Header.Get("Authorization")
-			if auth != "" && req.Header.Get("Authorization") == "" && trustedRedirect(first.URL, req.URL) {
+			auth := via[0].Header.Get("Authorization")
+			if auth != "" && req.Header.Get("Authorization") == "" && trustedRedirect(api, req.URL) {
 				req.Header.Set("Authorization", auth)
 			}
 			return nil
@@ -122,31 +120,57 @@ func newHTTPClient() *http.Client {
 	}
 }
 
-// trustedRedirect reports whether a redirect from the API to target may carry
-// the API token: the scheme must not downgrade from https, and the target host
-// must share the API host's registrable domain (eTLD+1), so a redirect off the
-// installation's domain cannot collect the token.
+// trustedRedirect reports whether a redirect target may receive the API
+// token. All of these must hold:
+//
+//   - the scheme does not downgrade from https;
+//   - the path stays under the API's base path (/api), so the target is an API
+//     endpoint and not some other page;
+//   - the host is the API host, or a sibling of it: the same parent domain and
+//     the same depth, as with cloud.codesphere.com and 2.codesphere.com.
+//
+// Deeper hosts are never trusted, since workspaces serve user-controlled
+// applications on subdomains of the installation's domain. Siblings are not
+// trusted when the parent domain is a public suffix, and an IP address only
+// matches itself.
 func trustedRedirect(api, target *url.URL) bool {
 	if api.Scheme == "https" && target.Scheme != "https" {
 		return false
 	}
+	if base := api.EscapedPath(); base != "" {
+		p := target.EscapedPath()
+		if p != base && !strings.HasPrefix(p, base+"/") {
+			return false
+		}
+	}
+
 	apiHost, targetHost := strings.ToLower(api.Hostname()), strings.ToLower(target.Hostname())
 	if apiHost == targetHost {
 		return true
 	}
-	// An IP address has no registrable domain; only the same address counts.
 	if net.ParseIP(apiHost) != nil || net.ParseIP(targetHost) != nil {
 		return false
 	}
-	apiDomain, err := publicsuffix.EffectiveTLDPlusOne(apiHost)
-	if err != nil {
+	apiParent, ok := parentDomain(apiHost)
+	if !ok {
 		return false
 	}
-	targetDomain, err := publicsuffix.EffectiveTLDPlusOne(targetHost)
-	if err != nil {
-		return false
+	targetParent, ok := parentDomain(targetHost)
+	return ok && apiParent == targetParent
+}
+
+// parentDomain returns a host without its first label, when that parent is a
+// registrable domain or below one, so it can be shared by siblings.
+func parentDomain(host string) (string, bool) {
+	i := strings.IndexByte(host, '.')
+	if i <= 0 {
+		return "", false
 	}
-	return apiDomain == targetDomain
+	parent := host[i+1:]
+	if _, err := publicsuffix.EffectiveTLDPlusOne(parent); err != nil {
+		return "", false
+	}
+	return parent, true
 }
 
 func (c *CodesphereConnection) Name() string {

@@ -60,7 +60,7 @@ func TestRedirectAuthorization(t *testing.T) {
 			host = host[:i]
 		}
 		if host == "api.example.com" {
-			http.Redirect(w, r, "http://"+r.URL.Query().Get("to")+"/teams", http.StatusTemporaryRedirect)
+			http.Redirect(w, r, "http://"+r.URL.Query().Get("to")+"/api/teams", http.StatusTemporaryRedirect)
 			return
 		}
 		gotAuth[host] = r.Header.Get("Authorization")
@@ -68,14 +68,14 @@ func TestRedirectAuthorization(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newHTTPClient()
+	client := newHTTPClient(&url.URL{Scheme: "http", Host: "api.example.com", Path: "/api"})
 	client.Transport = &http.Transport{
 		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
 			return (&net.Dialer{}).DialContext(ctx, network, srv.Listener.Addr().String())
 		},
 	}
-	for _, to := range []string{"dc1.example.com", "evil.example.org"} {
-		req, err := http.NewRequest(http.MethodGet, "http://api.example.com/teams?to="+to, nil)
+	for _, to := range []string{"dc1.example.com", "evil.example.org", "1-3000.dc1.example.com"} {
+		req, err := http.NewRequest(http.MethodGet, "http://api.example.com/api/teams?to="+to, nil)
 		require.NoError(t, err)
 		req.Header.Set("Authorization", "Bearer test-token")
 		res, err := client.Do(req)
@@ -85,6 +85,7 @@ func TestRedirectAuthorization(t *testing.T) {
 	// The default client would drop the token here, since the hosts differ.
 	assert.Equal(t, "Bearer test-token", gotAuth["dc1.example.com"])
 	assert.Empty(t, gotAuth["evil.example.org"])
+	assert.Empty(t, gotAuth["1-3000.dc1.example.com"], "a workspace host under the domain")
 }
 
 // Synthetic: which redirect targets may receive the API token.
@@ -96,12 +97,18 @@ func TestTrustedRedirect(t *testing.T) {
 	}
 	api := u("https://cloud.codesphere.com/api")
 	assert.True(t, trustedRedirect(api, u("https://cloud.codesphere.com/api/teams")))
-	assert.True(t, trustedRedirect(api, u("https://2.codesphere.com/api/teams")), "data center on the same domain")
+	assert.True(t, trustedRedirect(api, u("https://2.codesphere.com/api/teams")), "data center beside the API host")
 	assert.False(t, trustedRedirect(api, u("http://2.codesphere.com/api/teams")), "no downgrade to http")
+	assert.False(t, trustedRedirect(api, u("https://2.codesphere.com/login")), "outside the API base path")
+	assert.False(t, trustedRedirect(api, u("https://2.codesphere.com/apiary")), "a prefix of the base path is not under it")
+	assert.False(t, trustedRedirect(api, u("https://71-3000.2.codesphere.com/api/teams")), "workspace host below a data center")
+	assert.False(t, trustedRedirect(api, u("https://codesphere.com/api/teams")), "parent domain is not a sibling")
 	assert.False(t, trustedRedirect(api, u("https://codesphere.com.evil.example/api")), "look-alike domain")
 	assert.False(t, trustedRedirect(api, u("https://evil.example/api")))
-	assert.False(t, trustedRedirect(u("https://cs.github.io/api"), u("https://other.github.io/api")), "public suffix is not a shared domain")
-	assert.False(t, trustedRedirect(u("http://127.0.0.1:8080/api"), u("http://127.0.0.2:8080/api")), "IP addresses have no registrable domain")
+	assert.False(t, trustedRedirect(u("https://codesphere.com/api"), u("https://other.com/api")), "siblings under a public suffix")
+	assert.False(t, trustedRedirect(u("https://cs.github.io/api"), u("https://other.github.io/api")), "siblings under a public suffix")
+	assert.False(t, trustedRedirect(u("http://127.0.0.1:8080/api"), u("http://127.0.0.2:8080/api")), "IP addresses only match themselves")
+	assert.True(t, trustedRedirect(u("http://127.0.0.1:8080/api"), u("http://127.0.0.1:9090/api/teams")))
 }
 
 func TestNewConnectionRequiresToken(t *testing.T) {
