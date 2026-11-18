@@ -114,7 +114,7 @@ func (r *mqlCodesphereCustomDomain) connections() ([]any, error) {
 	res := make([]any, 0, len(r.routes))
 	for _, route := range r.routes {
 		o, err := CreateResource(r.MqlRuntime, "codesphere.customDomain.connection", map[string]*llx.RawData{
-			"__id": llx.StringData(r.__id + route.path),
+			"__id": llx.StringData(r.__id + "\x00" + route.path),
 			"path": llx.StringData(route.path),
 		})
 		if err != nil {
