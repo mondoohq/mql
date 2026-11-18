@@ -29,6 +29,23 @@ func TestToCamelCase(t *testing.T) {
 	}
 }
 
+func TestInitialVersion(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"14.0.0", "14.0.0"},
+		{"14.12.1", "14.0.0"},
+		{"15.3.0", "15.0.0"},
+	}
+	for _, tt := range tests {
+		got := initialVersion(tt.input)
+		if got != tt.want {
+			t.Errorf("initialVersion(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
 func TestGenerator(t *testing.T) {
 	dir := t.TempDir()
 
@@ -38,6 +55,7 @@ func TestGenerator(t *testing.T) {
 		ProviderName:        "Test Provider",
 		GoPackage:           "go.mondoo.com/mql/providers/test-provider",
 		CamelcaseProviderID: toCamelCase("test-provider"),
+		Version:             "15.0.0",
 	}
 
 	err := generateProvider(cfg)
@@ -85,6 +103,9 @@ func TestGenerator(t *testing.T) {
 	}
 	if !strings.Contains(string(configContent), `"go.mondoo.com/mql/providers/test-provider"`) {
 		t.Error("config.go should use provider ID scheme go.mondoo.com/mql/providers/test-provider")
+	}
+	if !strings.Contains(string(configContent), `Version:         "15.0.0",`) {
+		t.Error("config.go should carry the Version passed to the generator")
 	}
 
 	// Verify CamelCase in connection struct.
