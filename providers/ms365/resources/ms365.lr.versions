@@ -1879,7 +1879,9 @@ microsoft.user.userType 9.0.0
 microsoft.users 11.1.15
 microsoft.users.count 13.10.1
 microsoft.users.filter 11.1.15
+microsoft.users.guestCount 14.2.6
 microsoft.users.list 11.1.15
+microsoft.users.memberCount 14.2.6
 microsoft.users.search 11.1.15
 ms365.exchangeonline 9.0.0
 ms365.exchangeonline.adminAuditLogConfig 9.0.0

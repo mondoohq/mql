@@ -1833,6 +1833,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.users.count": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftUsers).GetCount()).ToDataRes(types.Int)
 	},
+	"microsoft.users.memberCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftUsers).GetMemberCount()).ToDataRes(types.Int)
+	},
+	"microsoft.users.guestCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftUsers).GetGuestCount()).ToDataRes(types.Int)
+	},
 	"microsoft.users.list": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftUsers).GetList()).ToDataRes(types.Array(types.Resource("microsoft.user")))
 	},
@@ -8611,6 +8617,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.users.count": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftUsers).Count, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"microsoft.users.memberCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftUsers).MemberCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"microsoft.users.guestCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftUsers).GuestCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"microsoft.users.list": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -19681,10 +19695,12 @@ type mqlMicrosoftUsers struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlMicrosoftUsersInternal it will be used here
-	Filter plugin.TValue[string]
-	Search plugin.TValue[string]
-	Count  plugin.TValue[int64]
-	List   plugin.TValue[[]any]
+	Filter      plugin.TValue[string]
+	Search      plugin.TValue[string]
+	Count       plugin.TValue[int64]
+	MemberCount plugin.TValue[int64]
+	GuestCount  plugin.TValue[int64]
+	List        plugin.TValue[[]any]
 }
 
 // createMicrosoftUsers creates a new instance of this resource
@@ -19730,6 +19746,18 @@ func (c *mqlMicrosoftUsers) GetSearch() *plugin.TValue[string] {
 func (c *mqlMicrosoftUsers) GetCount() *plugin.TValue[int64] {
 	return plugin.GetOrCompute[int64](&c.Count, func() (int64, error) {
 		return c.count()
+	})
+}
+
+func (c *mqlMicrosoftUsers) GetMemberCount() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MemberCount, func() (int64, error) {
+		return c.memberCount()
+	})
+}
+
+func (c *mqlMicrosoftUsers) GetGuestCount() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.GuestCount, func() (int64, error) {
+		return c.guestCount()
 	})
 }
 
