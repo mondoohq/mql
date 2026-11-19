@@ -684,8 +684,10 @@ private microsoft.serviceHealthIssue @defaults("id title status") {
 // optional `filter` (OData property filter) and `search` (keyword search)
 // parameters to narrow results. Each entry is a `microsoft.user` exposing
 // account status, contact details, job information, MFA state, assigned
-// licenses, sign-in history, and authentication method registration, and
-// `count` reports the total number of users.
+// licenses, sign-in history, and authentication method registration.
+// `count`, `memberCount`, and `guestCount` report how many users there are
+// without listing them, for example
+// `microsoft.users(filter: "accountEnabled eq true").guestCount`.
 microsoft.users {
   []microsoft.user
 
@@ -694,8 +696,24 @@ microsoft.users {
   filter string
   // Search users by search phrases
   search string
-  // Total number of Microsoft Entra ID users
+  // Number of Microsoft Entra ID users
+  //
+  // All users in the tenant. When `filter` or `search` is set, only the
+  // matching users are counted.
   count() int
+  // Number of member users
+  //
+  // Users whose `userType` is Member, the type an organization's own accounts
+  // carry. When `filter` or `search` is set, only the matching users are
+  // counted. An account with no `userType` is in neither `memberCount` nor
+  // `guestCount`.
+  memberCount() int
+  // Number of guest users
+  //
+  // Users whose `userType` is Guest, the type invited external accounts carry
+  // by default. When `filter` or `search` is set, only the matching users are
+  // counted.
+  guestCount() int
 }
 
 // Microsoft Entra identity and access management

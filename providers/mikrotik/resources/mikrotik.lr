@@ -114,7 +114,12 @@ mikrotik @root {
   // SSTP server configuration
   sstpServer() mikrotik.interface.sstpServer
   // OpenVPN server configuration
+  //
+  // The first server listed. RouterOS releases that hold several named
+  // OpenVPN servers, such as 7.25.1, report all of them through ovpnServers.
   ovpnServer() mikrotik.interface.ovpnServer
+  // OpenVPN servers configured on the device
+  ovpnServers() []mikrotik.interface.ovpnServer
   // IPsec proposals offered for phase 2 negotiation
   ipsecProposals() []mikrotik.ip.ipsec.proposal
   // IPsec profiles used for key exchange negotiation
@@ -135,8 +140,16 @@ mikrotik @root {
   macServer() mikrotik.tool.macServer
   // IP Cloud dynamic DNS configuration
   cloud() mikrotik.ip.cloud
+  // SOCKS proxy server configuration
+  socks() mikrotik.ip.socks
+  // Web proxy server configuration
+  webProxy() mikrotik.ip.proxy
+  // UPnP service configuration
+  upnp() mikrotik.ip.upnp
   // RoMON layer 2 management configuration
   romon() mikrotik.tool.romon
+  // Bandwidth test server configuration
+  bandwidthServer() mikrotik.tool.bandwidthServer
   // Containers configured on the device
   containers() []mikrotik.container
   // Container subsystem configuration
@@ -145,6 +158,8 @@ mikrotik @root {
   radiusClients() []mikrotik.radius.client
   // AAA settings that govern RADIUS use for device logins
   userAaa() mikrotik.user.aaa
+  // Password policy applied to local user accounts
+  userSettings() mikrotik.user.settings
 }
 
 // MikroTik system information
@@ -639,6 +654,9 @@ mikrotik.ip.service @defaults("name port disabled") {
   // TCP port the service listens on
   port int
   // Address range allowed to connect to the service
+  //
+  // Read from `available-from` on releases that use that name, such as
+  // RouterOS 7.25.1, and from `address` on earlier ones such as 7.23.2.
   address string
   // Name of the TLS certificate bound to the service
   //
@@ -656,6 +674,12 @@ mikrotik.ip.service @defaults("name port disabled") {
   disabled bool
   // Whether the service configuration is invalid
   invalid bool
+  // Whether RouterOS created the entry rather than an administrator
+  //
+  // Dynamic entries, such as btest, discover, or ipsec, report a listener
+  // that another feature opened. They carry no source restriction of their
+  // own, because the feature that opened them controls access.
+  dynamic bool
   // Certificate bound to the service, resolved in the device certificate store
   //
   // Null when the service has no certificate bound, which for www-ssl and
@@ -718,6 +742,14 @@ mikrotik.ip.firewall.filter @defaults("chain action disabled") {
   srcAddressList string
   // Name of the address list the destination address is matched against
   dstAddressList string
+  // Every match condition the rule carries, keyed by RouterOS property name
+  //
+  // Holds each property that narrows which packets the rule applies to, such
+  // as in-interface-list, dst-address-type, src-mac-address, or tcp-flags,
+  // including the many that have no field of their own. A negated condition
+  // keeps its leading `!`. Empty when the rule applies to every packet that
+  // reaches its chain.
+  matchers map[string]string
 }
 
 // MikroTik firewall NAT rule
@@ -879,8 +911,9 @@ mikrotik.ip.neighbor @defaults("identity address macAddress") {
 // accounts exist, which are disabled, and where each may log in from is
 // central to hardening the device. The `name` field selects the user and
 // exposes the address range the user may log in from, the last login time,
-// and whether the account is disabled. The `userGroup` field points to the
-// permission group whose policies govern what the user may do.
+// whether the account is disabled, and what happens to an idle session. The
+// `userGroup` field points to the permission group whose policies govern what
+// the user may do.
 mikrotik.user @defaults("name group disabled") {
   // User name
   name string
@@ -894,6 +927,19 @@ mikrotik.user @defaults("name group disabled") {
   disabled bool
   // Optional comment attached to the user
   comment string
+  // What happens to the user's idle management session
+  //
+  // One of none, logout, or lockscreen. With none, the default, an idle
+  // session stays open and usable indefinitely, so a terminal or Winbox
+  // window left unattended keeps full access. logout closes the session
+  // after inactivityTimeout, and lockscreen locks it until the password is
+  // entered again.
+  inactivityPolicy string
+  // Idle time after which inactivityPolicy applies
+  //
+  // Formatted as a RouterOS duration, for example 10m, the default. Applies
+  // only when inactivityPolicy is logout or lockscreen.
+  inactivityTimeout string
   // Permission group the user belongs to
   userGroup() mikrotik.userGroup
 }
@@ -1234,6 +1280,14 @@ mikrotik.ipv6.firewall.filter @defaults("chain action disabled") {
   invalid bool
   // Optional comment attached to the rule
   comment string
+  // Every match condition the rule carries, keyed by RouterOS property name
+  //
+  // Holds each property that narrows which packets the rule applies to, such
+  // as in-interface-list, dst-address-type, src-mac-address, or tcp-flags,
+  // including the many that have no field of their own. A negated condition
+  // keeps its leading `!`. Empty when the rule applies to every packet that
+  // reaches its chain.
+  matchers map[string]string
 }
 
 // MikroTik IPv6 firewall NAT rule
@@ -1301,10 +1355,11 @@ mikrotik.ipv6.firewall.nat @defaults("chain action disabled") {
 // posture lives in this separate menu. `strongCrypto` is off in the shipped
 // RouterOS default, which leaves SHA1, CBC mode ciphers, and 1024-bit
 // Diffie-Hellman acceptable; `allowNoneCrypto` permits an entirely unencrypted
-// session; `hostKeySize` and `hostKeyType` describe the key the server presents;
+// session on releases that still have that setting; `passwordAuthentication`
+// controls when password login is offered; `hostKeySize` and `hostKeyType` describe the key the server presents;
 // and `forwardingEnabled` controls whether the server will tunnel other traffic
 // for a logged-in client.
-mikrotik.ssh @defaults("strongCrypto allowNoneCrypto hostKeyType hostKeySize") {
+mikrotik.ssh @defaults("strongCrypto passwordAuthentication hostKeyType hostKeySize") {
   // Whether only strong ciphers, MACs, and key exchange groups are accepted
   //
   // RouterOS ships this disabled, which leaves SHA1, CBC mode ciphers, and
@@ -1313,7 +1368,8 @@ mikrotik.ssh @defaults("strongCrypto allowNoneCrypto hostKeyType hostKeySize") {
   // Whether a session with no encryption is accepted
   //
   // When enabled the server will negotiate the "none" cipher, carrying the
-  // login and the session in the clear.
+  // login and the session in the clear. Null on releases that no longer have
+  // the `allow-none-crypto` setting, such as RouterOS 7.23.2 and 7.25.1.
   allowNoneCrypto bool
   // Size of the server host key in bits
   hostKeySize int
@@ -1326,7 +1382,16 @@ mikrotik.ssh @defaults("strongCrypto allowNoneCrypto hostKeyType hostKeySize") {
   // Reported as an enum rather than a flag: one of no, local, remote, or both.
   forwardingEnabled string
   // Whether password login is offered even when a public key is configured
+  //
+  // Read from `always-allow-password-login` on releases that have it, and
+  // otherwise derived from `password-authentication`, where only `yes`
+  // offers a password to a user who has a key.
   alwaysAllowPasswordLogin bool
+  // When the server offers password login
+  //
+  // One of yes, yes-if-no-key, or no. Empty on releases that predate the
+  // setting and use alwaysAllowPasswordLogin instead.
+  passwordAuthentication string
   // Ciphers the server offers
   //
   // Null on RouterOS versions that do not expose cipher selection through this
@@ -1557,6 +1622,15 @@ mikrotik.system.routerboot @defaults("protectedRouterboot protected bootDevice")
 // behind" check. The channel is a finding of its own: `development` or
 // `testing` on a production router means it takes builds that have not been
 // through a stable release.
+//
+// RouterOS learns the latest version only by contacting MikroTik's update
+// server, which it does when someone runs `check-for-updates`, when the
+// channel is changed, or when a scheduled script does so. It forgets the
+// answer on reboot. Reading this menu never starts a check, so on most devices
+// `latestVersion` and `updateAvailable` are null and `checked` is false. Use
+// `checked` to tell a device that was not checked apart from one that is up
+// to date, and `buildTime` on `mikrotik.system` for an age-based check that
+// needs no answer from the update server.
 mikrotik.system.update @defaults("channel installedVersion latestVersion updateAvailable") {
   // Release channel the device takes updates from
   //
@@ -1566,17 +1640,27 @@ mikrotik.system.update @defaults("channel installedVersion latestVersion updateA
   installedVersion string
   // Latest RouterOS version offered on the channel
   //
-  // Empty until the device has checked the channel, which it does not do on
-  // its own.
+  // Null until the device has checked the channel since it last booted.
   latestVersion string
   // Whether a newer version is available on the channel
   //
   // Compares latestVersion against installedVersion. Null when the device has
-  // not checked the channel, since not having looked is not the same as being
-  // up to date.
+  // not checked the channel since it last booted, since not having looked is
+  // not the same as being up to date.
   updateAvailable bool
   // Status of the last update check
+  //
+  // For example `System is already up to date`, `New version is available`,
+  // `finding out latest version...` while a check runs, or a message starting
+  // with `ERROR:` when the update server could not be reached. Null when no
+  // check has run since the device last booted.
   status string
+  // Whether the device holds an answer from the update server
+  //
+  // True once a check has returned latestVersion since the device last
+  // booted. False when no check has run, a check is still running, or the
+  // last check failed; updateAvailable is null in all three cases.
+  checked bool
 }
 
 // MikroTik L2TP server configuration
@@ -1709,8 +1793,15 @@ mikrotik.interface.sstpServer @defaults("enabled port verifyClientCertificate") 
 // `requireClientCertificate` off leaves PPP credentials as the only client
 // authentication, and a cipher list that still carries a 64-bit block cipher
 // leaves the tunnel open to a birthday-bound collision attack.
-mikrotik.interface.ovpnServer @defaults("enabled port requireClientCertificate") {
+mikrotik.interface.ovpnServer @defaults("name enabled port requireClientCertificate") {
+  // Server name
+  //
+  // Empty on releases with a single, unnamed OpenVPN server.
+  name string
   // Whether the OpenVPN server accepts connections
+  //
+  // Read from `enabled` on releases with a single server and from the
+  // inverse of `disabled` on releases with several named servers.
   enabled bool
   // Port the server listens on
   port int
@@ -2034,7 +2125,8 @@ mikrotik.system.logging.rule @defaults("topics disabled invalid") {
 // the entries actually go: `memory` is a ring buffer a reboot erases, `disk`
 // survives a reboot but not a reformat, and `remote` sends the entries to a
 // syslog collector, which is the only target that survives the device itself.
-// For a remote action, `remote` and `remotePort` name the collector.
+// For a remote action, `remote` and `remotePort` name the collector and
+// `remoteProtocol` says whether the stream to it is encrypted.
 mikrotik.system.logging.action @defaults("name target remote") {
   // Action name
   name string
@@ -2046,6 +2138,21 @@ mikrotik.system.logging.action @defaults("name target remote") {
   remote string
   // Port of the syslog collector, for a remote target
   remotePort int
+  // Transport used to reach the syslog collector, for a remote target
+  //
+  // One of udp, the default, tcp, or tls. udp and tcp send every entry in
+  // cleartext, so anyone on the path can read or alter the log stream. Only
+  // tls encrypts it.
+  remoteProtocol string
+  // Format entries are sent in, for a remote target
+  //
+  // One of default, syslog, or cef.
+  remoteLogFormat string
+  // Whether the collector's TLS certificate is validated
+  //
+  // Reported only when remoteProtocol is tls. Without validation, a TLS
+  // stream can be intercepted by anything able to present a certificate.
+  checkCertificate bool
   // Source address used when sending to a collector
   srcAddress string
   // Whether entries are sent in BSD syslog format
@@ -2165,6 +2272,101 @@ mikrotik.ip.cloud @defaults("ddnsEnabled dnsName status") {
   backToHomeVpn string
 }
 
+// MikroTik SOCKS proxy server
+//
+// SOCKS proxy settings read from `/ip/socks`. An enabled SOCKS server relays
+// TCP connections on behalf of its clients, so they appear to come from the
+// device itself. With `authMethod` none, any client that can reach `port`
+// uses the device as an open relay into the networks behind it and out to
+// the internet. SOCKS version 4 carries no password authentication at all,
+// so only `version` 5 with `authMethod` password requires clients to log in.
+mikrotik.ip.socks @defaults("enabled version authMethod port") {
+  // Whether the SOCKS server accepts connections
+  //
+  // False by default on RouterOS.
+  enabled bool
+  // How SOCKS 5 clients authenticate
+  //
+  // One of none, the default, or password.
+  authMethod string
+  // TCP port the SOCKS server listens on
+  port int
+  // SOCKS protocol version the server speaks
+  //
+  // 4, the default, or 5.
+  version int
+  // Maximum number of concurrent client connections
+  maxConnections int
+  // Time after which an idle connection is closed
+  //
+  // Formatted as a RouterOS duration, for example 2m.
+  connectionIdleTimeout string
+}
+
+// MikroTik web proxy server
+//
+// Web proxy settings read from `/ip/proxy`. An enabled web proxy fetches HTTP
+// content on behalf of its clients, so any client that can reach one of
+// `ports` makes requests that appear to come from the device. Unless access
+// rules or firewall rules restrict who may use it, an enabled proxy reachable
+// from the internet is an open proxy that others can use to reach internal
+// hosts or to relay abuse. `parentProxy` names an upstream proxy all requests
+// are forwarded through.
+mikrotik.ip.proxy @defaults("enabled ports anonymous") {
+  // Whether the web proxy accepts connections
+  //
+  // False by default on RouterOS.
+  enabled bool
+  // TCP ports the web proxy listens on
+  //
+  // 8080 by default.
+  ports []int
+  // Whether the proxy hides the client's address from the servers it contacts
+  //
+  // When false, the default, forwarded requests carry the client's address in
+  // the X-Forwarded-For header.
+  anonymous bool
+  // Upstream proxy requests are forwarded through
+  //
+  // `::`, the default, means none.
+  parentProxy string
+  // Port of the upstream proxy
+  //
+  // 0 when no upstream proxy is set.
+  parentProxyPort int
+  // Source address the proxy uses for outgoing connections
+  //
+  // `::`, the default, lets the device choose.
+  srcAddress string
+  // Maximum number of concurrent client connections
+  maxClientConnections int
+}
+
+// MikroTik UPnP service
+//
+// Universal Plug and Play settings read from `/ip/upnp`. With UPnP enabled,
+// any host on an internal UPnP interface can ask the device to open inbound
+// port forwards to itself without authentication, so a single compromised or
+// misbehaving LAN host can expose services to the internet without an
+// administrator's involvement. `allowDisableExternalInterface` additionally
+// lets those hosts disable the external interface.
+mikrotik.ip.upnp @defaults("enabled allowDisableExternalInterface") {
+  // Whether the UPnP service answers requests
+  //
+  // False by default on RouterOS.
+  enabled bool
+  // Whether UPnP clients may disable the external interface
+  //
+  // False by default. When true, any host that can speak UPnP to the device
+  // can take its external connection down.
+  allowDisableExternalInterface bool
+  // Whether a placeholder forwarding rule is shown to clients
+  //
+  // True by default. Works around clients that refuse to use UPnP when the
+  // device reports no existing rules.
+  showDummyRule bool
+}
+
 // MikroTik RoMON configuration
 //
 // RoMON settings read from `/tool/romon`. RoMON tunnels management traffic
@@ -2184,6 +2386,36 @@ mikrotik.tool.romon @defaults("enabled id hasSecrets") {
   // Without one, any RoMON-speaking device on the wire can join the mesh. The
   // secret itself is never read or exposed.
   hasSecrets bool
+}
+
+// MikroTik bandwidth test server
+//
+// Bandwidth test server settings read from `/tool/bandwidth-server`. The
+// server answers MikroTik bandwidth test clients by generating or absorbing
+// as much TCP or UDP traffic as the link carries, so a reachable server lets
+// a remote client saturate the device's links and CPU on demand. RouterOS
+// enables it by default. `authenticate` decides whether a client must log in
+// with a device account first, and `allowedAddresses4` and
+// `allowedAddresses6` restrict which clients may connect at all.
+mikrotik.tool.bandwidthServer @defaults("enabled authenticate maxSessions") {
+  // Whether the bandwidth test server accepts connections
+  //
+  // True by default on RouterOS.
+  enabled bool
+  // Whether a client must log in with a device account before testing
+  authenticate bool
+  // IPv4 addresses and networks allowed to connect
+  //
+  // Empty, the default, allows every IPv4 client.
+  allowedAddresses4 []string
+  // IPv6 addresses and networks allowed to connect
+  //
+  // Empty, the default, allows every IPv6 client.
+  allowedAddresses6 []string
+  // Maximum number of concurrent test sessions
+  maxSessions int
+  // First UDP port the server allocates for UDP tests
+  allocateUdpPortsFrom int
 }
 
 // MikroTik container
@@ -2343,4 +2575,24 @@ mikrotik.user.aaa @defaults("useRadius defaultGroup accounting") {
   interimUpdate string
   // Permission groups excluded from RADIUS authentication
   excludeGroups []string
+}
+
+// MikroTik local password policy
+//
+// Password policy read from `/user/settings`. RouterOS enforces it whenever a
+// local account's password is set or changed, and rejects a password that is
+// shorter than `minimumPasswordLength` or draws on fewer than
+// `minimumCategories` character categories. Both default to 0, so a device
+// that was never configured accepts any password for any account, including
+// a single character.
+mikrotik.user.settings @defaults("minimumPasswordLength minimumCategories") {
+  // Minimum length of a local account password
+  //
+  // 0, the default, sets no minimum.
+  minimumPasswordLength int
+  // Minimum number of character categories a password must draw on
+  //
+  // From 0 to 4. The categories are lowercase letters, uppercase letters,
+  // digits, and symbols. 0, the default, requires none.
+  minimumCategories int
 }

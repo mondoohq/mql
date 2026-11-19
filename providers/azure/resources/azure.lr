@@ -8878,6 +8878,15 @@ private azure.subscription.sqlService.server @defaults("name location properties
   administratorLogin string
   // SQL Database server vulnerability assessment settings
   vulnerabilityAssessmentSettings() azure.subscription.sqlService.server.vulnerabilityassessmentsettings
+  // Whether vulnerability assessment express configuration is enabled
+  //
+  // Express configuration is the default vulnerability assessment mode for new
+  // servers. It runs recurring scans without a storage account and is reported
+  // separately from vulnerabilityAssessmentSettings, whose recurringScanEnabled
+  // stays false on a server that uses express configuration. True when the
+  // server's express configuration state is "Enabled", false when "Disabled",
+  // null when the server has no express configuration resource.
+  vulnerabilityAssessmentExpressEnabled() bool
   virtualNetworkRules() []azure.subscription.sqlService.virtualNetworkRule
   // Server key type for the encryption protector ("AzureKeyVault" or "ServiceManaged")
   encryptionProtectorServerKeyType() string
@@ -11840,7 +11849,7 @@ private azure.subscription.monitorService.logprofile @defaults("id name location
   properties dict
   // ID of the log profile storage account
   storageAccountId string
-  // Log profile storage account
+  // Storage account the log profile archives to; null when none is configured or the named account could not be read
   storageAccount() azure.subscription.storageService.account
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
@@ -11858,7 +11867,7 @@ private azure.subscription.monitorService.diagnosticsetting @defaults("id name")
   properties dict
   // ID of the diagnostic setting storage account
   storageAccountId string
-  // Diagnostic setting storage account
+  // Storage account the setting archives logs to; null when no storage destination is configured or the named account could not be read
   storageAccount() azure.subscription.storageService.account
   // ID of the Log Analytics workspace logs are sent to; empty when no workspace destination is configured
   workspaceId string
@@ -16467,6 +16476,8 @@ azure.subscription.serviceBusService.namespace @defaults("id name location") {
   serviceBusEndpoint string
   // Whether local (SAS key) authentication is disabled
   disableLocalAuth bool
+  // Minimum TLS version the namespace accepts from clients (1.0, 1.1, 1.2, or 1.3)
+  minimumTlsVersion string
   // Whether the namespace is zone-redundant
   zoneRedundant bool
   // Provisioning state

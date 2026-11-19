@@ -98,8 +98,103 @@ end
 	assert.Equal(t, []string{"aes256-gcm@openssh.com", "aes256-ctr"}, s.Ciphers)
 	assert.Equal(t, []string{"curve25519-sha256", "ecdh-sha2-nistp521"}, s.KeyExchange)
 	assert.Equal(t, []string{"hmac-sha2-512-etm@openssh.com"}, s.Macs)
-	assert.Contains(t, s.HostkeyAlgorithms, "rsa key-size 4096")
+	assert.Equal(t, []string{"rsa"}, s.HostkeyAlgorithms)
 	assert.True(t, s.FipsRestrictions)
+}
+
+// sshAllDefaults is `show running-config all` of `management ssh` on EOS
+// 4.33 with only the crypto lists configured: every other setting is
+// rendered at its default.
+const sshAllDefaults = `management ssh
+   idle-timeout 0
+   authentication protocol keyboard-interactive public-key
+   server-port 22
+   cipher aes256-ctr aes128-ctr
+   key-exchange diffie-hellman-group14-sha1
+   mac hmac-sha1
+   rekey frequency 3 gbytes
+   rekey interval 0 seconds
+   hostkey server ecdsa-nistp521 ed25519 rsa
+   connection limit 50
+   connection per-host 20
+   no fips restrictions
+   no hostkey client strict-checking
+   authentication empty-passwords auto
+   default client-alive interval
+   default client-alive count-max
+   no verify dns
+   no shutdown
+   login timeout 120
+   log-level info
+   no hostkey server cert
+   !
+   authentication x509
+      no server ssl profile
+      no username domain omit
+!
+`
+
+func TestParseSshSettings_Eos433Defaults(t *testing.T) {
+	s := ParseSshSettings(sshAllDefaults)
+	assert.Equal(t, "keyboard-interactive public-key", s.AuthenticationMode)
+	assert.Equal(t, []string{"ecdsa-nistp521", "ed25519", "rsa"}, s.HostkeyAlgorithms)
+	// EOS 4.33 renders no `protocol version`; its sshd speaks SSH-2 only.
+	assert.Equal(t, "2", s.ProtocolVersion)
+	// `default client-alive ...` carries no number: the value is the
+	// daemon's, which the resource reads from the sshd configuration.
+	assert.False(t, s.ClientAliveIntervalSet)
+	assert.False(t, s.ClientAliveCountMaxSet)
+	assert.Equal(t, "auto", s.EmptyPasswords)
+	assert.Equal(t, 120, s.LoginTimeout)
+}
+
+func TestParseSshSettings_Eos433Configured(t *testing.T) {
+	cfg := `management ssh
+   authentication protocol public-key
+   hostkey server ecdsa-nistp256 rsa
+   hostkey server cert ssh-host.cert
+   client-alive interval 60
+   client-alive count-max 5
+!
+`
+	s := ParseSshSettings(cfg)
+	assert.Equal(t, "public-key", s.AuthenticationMode)
+	assert.Equal(t, []string{"ecdsa-nistp256", "rsa"}, s.HostkeyAlgorithms)
+	assert.True(t, s.ClientAliveIntervalSet)
+	assert.Equal(t, 60, s.ClientAliveInterval)
+	assert.True(t, s.ClientAliveCountMaxSet)
+	assert.Equal(t, 5, s.ClientAliveCountMax)
+}
+
+func TestParseSshSettings_AbsentProtocolVersionIsTwo(t *testing.T) {
+	assert.Equal(t, "2", ParseSshSettings("hostname switch1\n").ProtocolVersion)
+}
+
+func TestParseSshdClientAlive(t *testing.T) {
+	// Excerpt of the /etc/ssh/sshd_config EOS 4.33 generates for
+	// `default client-alive interval` and `default client-alive count-max`.
+	conf := `Protocol 2
+Port 22
+LoginGraceTime 120
+ClientAliveInterval 200
+ClientAliveCountMax 3
+HostKey /persist/secure/ssh_host_rsa_key
+`
+	interval, intervalOk, countMax, countMaxOk := ParseSshdClientAlive(conf)
+	assert.True(t, intervalOk)
+	assert.Equal(t, 200, interval)
+	assert.True(t, countMaxOk)
+	assert.Equal(t, 3, countMax)
+
+	// sshd keywords are case-insensitive, and the first one wins.
+	interval, intervalOk, _, countMaxOk = ParseSshdClientAlive("clientaliveinterval 30\nClientAliveInterval 90\n")
+	assert.True(t, intervalOk)
+	assert.Equal(t, 30, interval)
+	assert.False(t, countMaxOk)
+
+	_, intervalOk, _, countMaxOk = ParseSshdClientAlive("# ClientAliveInterval 0\n")
+	assert.False(t, intervalOk)
+	assert.False(t, countMaxOk)
 }
 
 func TestParseSshSettings_Shutdown(t *testing.T) {
@@ -264,6 +359,54 @@ password policy lax
 	assert.Equal(t, 16, p.MinimumLength)
 }
 
+// TestParsePasswordPolicy_NestedUnderManagementSecurity uses the shape
+// `show running-config all` returns on EOS 4.34: the policy sits inside
+// `management security` next to the device-wide minimum length, with a `!`
+// separator and the unset rules rendered as `no ...`.
+func TestParsePasswordPolicy_NestedUnderManagementSecurity(t *testing.T) {
+	cfg := `management security
+   no entropy source
+   password minimum length 15
+   no password encryption-key common
+   !
+   password policy STRONG
+      no minimum changed
+      minimum digits 1
+      minimum length 12
+      no minimum lower
+!
+hostname sw
+`
+	p := ParsePasswordPolicy(cfg)
+	assert.Equal(t, "STRONG", p.PolicyName)
+	assert.Equal(t, 1, p.MinimumDigits)
+	assert.Equal(t, 15, p.MinimumLength)
+}
+
+// TestParsePasswordPolicy_GlobalMinimumLengthOnly covers the device-wide
+// setting with no named policy, and its unset form.
+func TestParsePasswordPolicy_GlobalMinimumLengthOnly(t *testing.T) {
+	p := ParsePasswordPolicy("management security\n   password minimum length 15\n!\n")
+	assert.Equal(t, "", p.PolicyName)
+	assert.Equal(t, 15, p.MinimumLength)
+
+	p = ParsePasswordPolicy("management security\n   no password minimum length\n!\n")
+	assert.Equal(t, 0, p.MinimumLength)
+}
+
+// TestParsePasswordPolicy_NestedPolicyLengthWithoutGlobal reports the policy's
+// own minimum length when the device-wide one is unset.
+func TestParsePasswordPolicy_NestedPolicyLengthWithoutGlobal(t *testing.T) {
+	cfg := `management security
+   no password minimum length
+   !
+   password policy STRONG
+      minimum length 12
+`
+	p := ParsePasswordPolicy(cfg)
+	assert.Equal(t, 12, p.MinimumLength)
+}
+
 func TestParseNtpAuth(t *testing.T) {
 	cfg := `ntp authenticate
 ntp authentication-key 1 sha1 7 abc123
@@ -339,6 +482,56 @@ func TestParseControlPlanePolicer_NoPolicyAfterApplied(t *testing.T) {
 	assert.True(t, c.Configured)
 	assert.False(t, c.PolicyApplied)
 	assert.Empty(t, c.PolicyName)
+}
+
+func TestParseControlPlanePolicer_SystemControlPlane(t *testing.T) {
+	// `show running-config all` of a hardened switch (EOS 4.37). EOS renders
+	// the block as `system control-plane` and refuses the bare form.
+	cfg := `system control-plane
+   no tcp mss ceiling
+   no ip access-group ingress default
+   ip access-group CIS-CP-ACL in
+   ip access-group CIS-CP-ACL vrf MGMT in
+   no ipv6 access-group ingress default
+   ipv6 access-group default-control-plane-acl in
+   ipv6 access-group default-control-plane-acl vrf MGMT in
+   service-policy input copp-system-policy
+!
+`
+	c := ParseControlPlanePolicer(cfg)
+	assert.True(t, c.Configured)
+	assert.True(t, c.PolicyApplied)
+	assert.Equal(t, "copp-system-policy", c.PolicyName)
+	assert.Equal(t, "CIS-CP-ACL", c.IPAccessGroup)
+	assert.Equal(t, "default-control-plane-acl", c.IP6AccessGroup)
+}
+
+func TestParseControlPlanePolicer_DefaultACL(t *testing.T) {
+	// A stock switch binds the default control-plane ACL (EOS 4.30).
+	cfg := `system control-plane
+   no tcp mss ceiling
+   ip access-group default-control-plane-acl in
+   ipv6 access-group default-control-plane-acl in
+!
+`
+	c := ParseControlPlanePolicer(cfg)
+	assert.True(t, c.Configured)
+	assert.Equal(t, "default-control-plane-acl", c.IPAccessGroup)
+	assert.Equal(t, "default-control-plane-acl", c.IP6AccessGroup)
+	assert.False(t, c.PolicyApplied)
+}
+
+func TestParseControlPlanePolicer_IngressDefaultIsAnotherSetting(t *testing.T) {
+	// `no ip access-group ingress default` does not unbind the ACL, and a
+	// per-VRF binding is not the default VRF's.
+	cfg := `system control-plane
+   ip access-group CP-ACL in
+   ip access-group OTHER vrf MGMT in
+   no ip access-group ingress default
+!
+`
+	c := ParseControlPlanePolicer(cfg)
+	assert.Equal(t, "CP-ACL", c.IPAccessGroup)
 }
 
 func TestParsePortSecurity(t *testing.T) {

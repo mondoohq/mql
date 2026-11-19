@@ -22,6 +22,7 @@ import (
 
 type mqlAzureSubscriptionSynapseServiceWorkspaceInternal struct {
 	cacheDefaultStorageId           string
+	cacheDefaultStorageAccountURL   string
 	cacheCmkKeyURI                  string
 	cacheUserAssignedIdentityIds    []string
 	cacheComputeSubnetId            *string
@@ -108,6 +109,7 @@ func (a *mqlAzureSubscriptionSynapseService) workspaces() ([]any, error) {
 			allowedAadTenantIds := []any{}
 			var defaultStorageFilesystem string
 			var defaultStorageId string
+			var defaultStorageAccountURL string
 			var cmkKeyURI string
 
 			if ws.Properties != nil {
@@ -132,6 +134,9 @@ func (a *mqlAzureSubscriptionSynapseService) workspaces() ([]any, error) {
 					}
 					if ws.Properties.DefaultDataLakeStorage.ResourceID != nil {
 						defaultStorageId = *ws.Properties.DefaultDataLakeStorage.ResourceID
+					}
+					if ws.Properties.DefaultDataLakeStorage.AccountURL != nil {
+						defaultStorageAccountURL = *ws.Properties.DefaultDataLakeStorage.AccountURL
 					}
 				}
 				if ws.Properties.ManagedResourceGroupName != nil {
@@ -211,6 +216,7 @@ func (a *mqlAzureSubscriptionSynapseService) workspaces() ([]any, error) {
 			workspaceRes := mqlWorkspace.(*mqlAzureSubscriptionSynapseServiceWorkspace)
 			workspaceRes.cacheComputeSubnetId = computeSubnetId
 			workspaceRes.cacheDefaultStorageId = defaultStorageId
+			workspaceRes.cacheDefaultStorageAccountURL = defaultStorageAccountURL
 			workspaceRes.cacheCmkKeyURI = cmkKeyURI
 			workspaceRes.cacheUserAssignedIdentityIds = userAssignedIdentityIds
 			if ws.Properties != nil {
@@ -248,17 +254,62 @@ func synapseKeyURI(key *armsynapse.WorkspaceKeyDetails) string {
 }
 
 // defaultStorage returns a typed reference to the workspace's default Data Lake Storage account.
+// Workspaces created through the CLI and other paths record only the account
+// URL, with a null resource ID; those are resolved by the account name in the
+// URL host against the subscription's storage accounts.
 func (a *mqlAzureSubscriptionSynapseServiceWorkspace) defaultStorage() (*mqlAzureSubscriptionStorageServiceAccount, error) {
-	if a.cacheDefaultStorageId == "" {
-		a.DefaultStorage.State = plugin.StateIsNull | plugin.StateIsSet
-		return nil, nil
+	if a.cacheDefaultStorageId != "" {
+		res, err := NewResource(a.MqlRuntime, "azure.subscription.storageService.account",
+			map[string]*llx.RawData{"id": llx.StringData(a.cacheDefaultStorageId)})
+		if err != nil {
+			return nil, err
+		}
+		return res.(*mqlAzureSubscriptionStorageServiceAccount), nil
 	}
-	res, err := NewResource(a.MqlRuntime, "azure.subscription.storageService.account",
-		map[string]*llx.RawData{"id": llx.StringData(a.cacheDefaultStorageId)})
-	if err != nil {
-		return nil, err
+
+	if name := storageAccountNameFromURL(a.cacheDefaultStorageAccountURL); name != "" {
+		account, err := storageAccountByName(a.MqlRuntime, name)
+		if err != nil || account != nil {
+			return account, err
+		}
 	}
-	return res.(*mqlAzureSubscriptionStorageServiceAccount), nil
+
+	// No account configured, or one outside this subscription.
+	a.DefaultStorage.State = plugin.StateIsNull | plugin.StateIsSet
+	return nil, nil
+}
+
+// storageAccountNameFromURL returns the storage account name from a Blob or
+// Data Lake Storage endpoint URL such as https://<name>.dfs.core.windows.net,
+// including sovereign-cloud suffixes and Azure DNS zone endpoints
+// (https://<name>.z12.blob.storage.azure.net). Returns "" for anything else.
+func storageAccountNameFromURL(accountURL string) string {
+	accountURL = strings.TrimSpace(accountURL)
+	if accountURL == "" {
+		return ""
+	}
+	if _, rest, ok := strings.Cut(accountURL, "://"); ok {
+		accountURL = rest
+	}
+	host, _, _ := strings.Cut(accountURL, "/")
+	host, _, _ = strings.Cut(host, ":")
+	labels := strings.Split(strings.ToLower(host), ".")
+	if len(labels) < 4 {
+		return ""
+	}
+	service := labels[1]
+	// DNS zone endpoints put a zone label between the name and the service.
+	if len(service) > 1 && service[0] == 'z' && strings.Trim(service[1:], "0123456789") == "" {
+		service = labels[2]
+	}
+	if service != "dfs" && service != "blob" {
+		return ""
+	}
+	name := labels[0]
+	if len(name) < 3 || len(name) > 24 || strings.Trim(name, "abcdefghijklmnopqrstuvwxyz0123456789") != "" {
+		return ""
+	}
+	return name
 }
 
 // cmkKey returns a typed reference to the Key Vault key used for customer-managed encryption.

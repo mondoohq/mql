@@ -54,9 +54,8 @@ func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) datastores() ([]an
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			if isAzureForbidden(err) {
-				log.Warn().Err(err).Msg("could not list machine learning datastores due to access denied")
-				return res, nil
+			if isAzureAccessDenied(err) {
+				return refusedCollection(&a.Datastores, err, "Microsoft.MachineLearningServices/workspaces/datastores/read")
 			}
 			return nil, err
 		}
@@ -277,9 +276,8 @@ func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) connections() ([]a
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			if isAzureForbidden(err) {
-				log.Warn().Err(err).Msg("could not list machine learning workspace connections due to access denied")
-				return res, nil
+			if isAzureAccessDenied(err) {
+				return refusedCollection(&a.Connections, err, "Microsoft.MachineLearningServices/workspaces/connections/read")
 			}
 			return nil, err
 		}
@@ -384,9 +382,8 @@ func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) batchEndpoints() (
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			if isAzureForbidden(err) {
-				log.Warn().Err(err).Msg("could not list machine learning batch endpoints due to access denied")
-				return res, nil
+			if isAzureAccessDenied(err) {
+				return refusedCollection(&a.BatchEndpoints, err, "Microsoft.MachineLearningServices/workspaces/batchEndpoints/read")
 			}
 			return nil, err
 		}
@@ -497,9 +494,8 @@ func (a *mqlAzureSubscriptionMachineLearningServiceWorkspaceBatchEndpoint) deplo
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			if isAzureForbidden(err) {
-				log.Warn().Err(err).Msg("could not list machine learning batch deployments due to access denied")
-				return res, nil
+			if isAzureAccessDenied(err) {
+				return refusedCollection(&a.Deployments, err, "Microsoft.MachineLearningServices/workspaces/batchEndpoints/deployments/read")
 			}
 			return nil, err
 		}

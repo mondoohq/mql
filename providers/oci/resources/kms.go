@@ -138,7 +138,6 @@ func (o *mqlOciKmsVault) id() (string, error) {
 
 func (o *mqlOciKmsVault) keys() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
-	ctx := context.Background()
 
 	managementEndpoint := o.ManagementEndpoint.Data
 	if managementEndpoint == "" {
@@ -150,14 +149,29 @@ func (o *mqlOciKmsVault) keys() ([]any, error) {
 		return nil, err
 	}
 
-	keys, err := o.getKeysForVault(ctx, svc, o.cacheCompartmentID)
+	// ListKeys answers for one compartment, and a key need not sit in its
+	// vault's compartment: a shared vault commonly holds keys created in the
+	// compartments of the services they encrypt. Asking only the vault's own
+	// compartment dropped those keys from the vault, and every typed reference
+	// to one (a bucket's or volume's kmsKey) then failed with "not found".
+	items, err := ociCollectGlobal(o.MqlRuntime, func(ctx context.Context, compartmentID string) ([]any, error) {
+		keys, err := ociListVaultKeys(ctx, svc, compartmentID)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]any, 0, len(keys))
+		for i := range keys {
+			out = append(out, keys[i])
+		}
+		return out, nil
+	})
 	if err != nil {
 		return nil, err
 	}
 
 	res := []any{}
-	for i := range keys {
-		key := keys[i]
+	for i := range items {
+		key := items[i].(keymanagement.KeySummary)
 
 		var created *time.Time
 		if key.TimeCreated != nil {
@@ -189,7 +203,8 @@ func (o *mqlOciKmsVault) keys() ([]any, error) {
 	return res, nil
 }
 
-func (o *mqlOciKmsVault) getKeysForVault(ctx context.Context, client *keymanagement.KmsManagementClient, compartmentID string) ([]keymanagement.KeySummary, error) {
+// ociListVaultKeys lists the keys one vault holds in one compartment.
+func ociListVaultKeys(ctx context.Context, client *keymanagement.KmsManagementClient, compartmentID string) ([]keymanagement.KeySummary, error) {
 	entries, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]keymanagement.KeySummary, *string, error) {
 		request := keymanagement.ListKeysRequest{
 			CompartmentId: new(compartmentID),

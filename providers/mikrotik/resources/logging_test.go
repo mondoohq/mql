@@ -164,3 +164,40 @@ func TestLoggingActionArgsAbsentAttributes(t *testing.T) {
 	assert.Nil(t, args["diskStopOnFull"].Value)
 	assert.Nil(t, args["bsdSyslog"].Value)
 }
+
+func TestLoggingActionArgsRemoteTransport(t *testing.T) {
+	// RouterOS 7.25.1 default remote action: cleartext UDP, no certificate
+	// setting reported at all
+	rows := liveRows(t, "system-logging-action.json")
+	var udp map[string]string
+	for _, row := range rows {
+		if row["name"] == "labremote" {
+			udp = row
+		}
+	}
+	require.NotNil(t, udp)
+	args := loggingActionArgs(udp)
+	assert.Equal(t, "udp", args["remoteProtocol"].Value)
+	assert.Equal(t, "default", args["remoteLogFormat"].Value)
+	assert.Nil(t, args["checkCertificate"].Value)
+
+	tls := loggingActionArgs(liveRows(t, "system-logging-action-tls-7.25.json")[0])
+	assert.Equal(t, "tls", tls["remoteProtocol"].Value)
+	assert.Equal(t, "syslog", tls["remoteLogFormat"].Value)
+	// TLS without certificate validation must read as such, not as null
+	assert.Equal(t, false, tls["checkCertificate"].Value)
+
+	verified := loggingActionArgs(map[string]string{
+		"target":            "remote",
+		"remote-protocol":   "tls",
+		"check-certificate": "true",
+	})
+	assert.Equal(t, true, verified["checkCertificate"].Value)
+}
+
+func TestLoggingActionArgsLocalTargetHasNoTransport(t *testing.T) {
+	args := loggingActionArgs(map[string]string{"name": "memory", "target": "memory"})
+	assert.Equal(t, "", args["remoteProtocol"].Value)
+	assert.Equal(t, "", args["remoteLogFormat"].Value)
+	assert.Nil(t, args["checkCertificate"].Value)
+}

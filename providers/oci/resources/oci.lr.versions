@@ -1560,6 +1560,7 @@ oci.dataSafe.userAssessment.type 13.5.5
 oci.dataSafe.userAssessments 13.5.5
 oci.database 13.1.1
 oci.database.autonomousDatabase 13.1.1
+oci.database.autonomousDatabase.arePrimaryWhitelistedIpsUsed 14.5.2
 oci.database.autonomousDatabase.backupRetentionPeriodInDays 13.10.1
 oci.database.autonomousDatabase.backups 13.4.1
 oci.database.autonomousDatabase.compartment 13.6.2
@@ -3815,6 +3816,7 @@ oci.oke.cluster.securityAttributes 13.8.2
 oci.oke.cluster.serviceLbSubnets 13.20.1
 oci.oke.cluster.servicesCidr 13.20.1
 oci.oke.cluster.state 13.0.6
+oci.oke.cluster.supportedKubernetesVersions 14.5.2
 oci.oke.cluster.systemTags 13.12.2
 oci.oke.cluster.timeCredentialExpiration 13.20.1
 oci.oke.cluster.timeUpdated 13.20.1

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: BUSL-1.1
 
 mikrotik 13.0.0
+mikrotik.bandwidthServer 14.1.1
 mikrotik.bridges 13.0.0
 mikrotik.certificate 13.0.11
 mikrotik.certificate.akid 13.0.11
@@ -118,6 +119,7 @@ mikrotik.interface.ovpnServer.keepaliveTimeout 13.0.11
 mikrotik.interface.ovpnServer.macAddress 13.0.11
 mikrotik.interface.ovpnServer.maxMtu 13.0.11
 mikrotik.interface.ovpnServer.mode 13.0.11
+mikrotik.interface.ovpnServer.name 14.0.13
 mikrotik.interface.ovpnServer.netmask 13.0.11
 mikrotik.interface.ovpnServer.port 13.0.11
 mikrotik.interface.ovpnServer.protocol 13.0.11
@@ -285,6 +287,7 @@ mikrotik.ip.firewall.filter.inInterface 13.0.0
 mikrotik.ip.firewall.filter.invalid 13.0.0
 mikrotik.ip.firewall.filter.log 13.0.0
 mikrotik.ip.firewall.filter.logPrefix 13.0.0
+mikrotik.ip.firewall.filter.matchers 14.2.1
 mikrotik.ip.firewall.filter.outInterface 13.0.0
 mikrotik.ip.firewall.filter.packets 13.0.0
 mikrotik.ip.firewall.filter.protocol 13.0.0
@@ -435,6 +438,14 @@ mikrotik.ip.pool 13.0.0
 mikrotik.ip.pool.name 13.0.0
 mikrotik.ip.pool.nextPool 13.0.0
 mikrotik.ip.pool.ranges 13.0.0
+mikrotik.ip.proxy 14.1.1
+mikrotik.ip.proxy.anonymous 14.1.1
+mikrotik.ip.proxy.enabled 14.1.1
+mikrotik.ip.proxy.maxClientConnections 14.1.1
+mikrotik.ip.proxy.parentProxy 14.1.1
+mikrotik.ip.proxy.parentProxyPort 14.1.1
+mikrotik.ip.proxy.ports 14.1.1
+mikrotik.ip.proxy.srcAddress 14.1.1
 mikrotik.ip.route 13.0.0
 mikrotik.ip.route.active 13.0.0
 mikrotik.ip.route.blackhole 13.0.0
@@ -458,12 +469,24 @@ mikrotik.ip.service.address 13.0.0
 mikrotik.ip.service.certificate 13.0.0
 mikrotik.ip.service.certificateRef 13.0.11
 mikrotik.ip.service.disabled 13.0.0
+mikrotik.ip.service.dynamic 14.2.1
 mikrotik.ip.service.invalid 13.0.0
 mikrotik.ip.service.maxSessions 13.0.0
 mikrotik.ip.service.name 13.0.0
 mikrotik.ip.service.port 13.0.0
 mikrotik.ip.service.tlsVersion 13.0.0
 mikrotik.ip.service.vrf 13.0.0
+mikrotik.ip.socks 14.1.1
+mikrotik.ip.socks.authMethod 14.1.1
+mikrotik.ip.socks.connectionIdleTimeout 14.1.1
+mikrotik.ip.socks.enabled 14.1.1
+mikrotik.ip.socks.maxConnections 14.1.1
+mikrotik.ip.socks.port 14.1.1
+mikrotik.ip.socks.version 14.1.1
+mikrotik.ip.upnp 14.1.1
+mikrotik.ip.upnp.allowDisableExternalInterface 14.1.1
+mikrotik.ip.upnp.enabled 14.1.1
+mikrotik.ip.upnp.showDummyRule 14.1.1
 mikrotik.ipAddresses 13.0.0
 mikrotik.ipsecIdentities 13.0.11
 mikrotik.ipsecPeers 13.0.11
@@ -506,6 +529,7 @@ mikrotik.ipv6.firewall.filter.inInterface 13.0.11
 mikrotik.ipv6.firewall.filter.invalid 13.0.11
 mikrotik.ipv6.firewall.filter.log 13.0.11
 mikrotik.ipv6.firewall.filter.logPrefix 13.0.11
+mikrotik.ipv6.firewall.filter.matchers 14.2.1
 mikrotik.ipv6.firewall.filter.outInterface 13.0.11
 mikrotik.ipv6.firewall.filter.packets 13.0.11
 mikrotik.ipv6.firewall.filter.protocol 13.0.11
@@ -547,6 +571,7 @@ mikrotik.natRules 13.0.0
 mikrotik.neighbors 13.0.0
 mikrotik.ntpClient 13.0.0
 mikrotik.ovpnServer 13.0.11
+mikrotik.ovpnServers 14.0.13
 mikrotik.packageUpdate 13.0.11
 mikrotik.packages 13.0.0
 mikrotik.pools 13.0.0
@@ -599,6 +624,7 @@ mikrotik.snmp.trapCommunity 13.0.0
 mikrotik.snmp.trapGenerators 13.0.0
 mikrotik.snmp.trapVersion 13.0.0
 mikrotik.snmpCommunities 13.0.11
+mikrotik.socks 14.1.1
 mikrotik.ssh 13.0.11
 mikrotik.ssh.allowNoneCrypto 13.0.11
 mikrotik.ssh.alwaysAllowPasswordLogin 13.0.11
@@ -606,6 +632,7 @@ mikrotik.ssh.ciphers 13.0.11
 mikrotik.ssh.forwardingEnabled 13.0.11
 mikrotik.ssh.hostKeySize 13.0.11
 mikrotik.ssh.hostKeyType 13.0.11
+mikrotik.ssh.passwordAuthentication 14.0.13
 mikrotik.ssh.strongCrypto 13.0.11
 mikrotik.sstpServer 13.0.11
 mikrotik.system 13.0.0
@@ -633,6 +660,7 @@ mikrotik.system.freeMemory 13.0.0
 mikrotik.system.identity 13.0.0
 mikrotik.system.logging.action 13.0.11
 mikrotik.system.logging.action.bsdSyslog 13.0.11
+mikrotik.system.logging.action.checkCertificate 14.1.1
 mikrotik.system.logging.action.diskFileCount 13.0.11
 mikrotik.system.logging.action.diskFileName 13.0.11
 mikrotik.system.logging.action.diskLinesPerFile 13.0.11
@@ -641,7 +669,9 @@ mikrotik.system.logging.action.memoryLines 13.0.11
 mikrotik.system.logging.action.memoryStopOnFull 13.0.11
 mikrotik.system.logging.action.name 13.0.11
 mikrotik.system.logging.action.remote 13.0.11
+mikrotik.system.logging.action.remoteLogFormat 14.1.1
 mikrotik.system.logging.action.remotePort 13.0.11
+mikrotik.system.logging.action.remoteProtocol 14.1.1
 mikrotik.system.logging.action.srcAddress 13.0.11
 mikrotik.system.logging.action.syslogFacility 13.0.11
 mikrotik.system.logging.action.syslogSeverity 13.0.11
@@ -712,6 +742,7 @@ mikrotik.system.totalHddSpace 13.0.0
 mikrotik.system.totalMemory 13.0.0
 mikrotik.system.update 13.0.11
 mikrotik.system.update.channel 13.0.11
+mikrotik.system.update.checked 14.1.1
 mikrotik.system.update.installedVersion 13.0.11
 mikrotik.system.update.latestVersion 13.0.11
 mikrotik.system.update.status 13.0.11
@@ -721,6 +752,13 @@ mikrotik.system.uptime 13.0.0
 mikrotik.system.version 13.0.0
 mikrotik.system.writeSectSinceReboot 13.0.0
 mikrotik.system.writeSectTotal 13.0.0
+mikrotik.tool.bandwidthServer 14.1.1
+mikrotik.tool.bandwidthServer.allocateUdpPortsFrom 14.1.1
+mikrotik.tool.bandwidthServer.allowedAddresses4 14.1.1
+mikrotik.tool.bandwidthServer.allowedAddresses6 14.1.1
+mikrotik.tool.bandwidthServer.authenticate 14.1.1
+mikrotik.tool.bandwidthServer.enabled 14.1.1
+mikrotik.tool.bandwidthServer.maxSessions 14.1.1
 mikrotik.tool.macServer 13.0.11
 mikrotik.tool.macServer.allowedInterfaceList 13.0.11
 mikrotik.tool.macServer.macTelnetOnAllInterfaces 13.0.11
@@ -731,6 +769,7 @@ mikrotik.tool.romon 13.0.11
 mikrotik.tool.romon.enabled 13.0.11
 mikrotik.tool.romon.hasSecrets 13.0.11
 mikrotik.tool.romon.id 13.0.11
+mikrotik.upnp 14.1.1
 mikrotik.user 13.0.0
 mikrotik.user.aaa 13.0.11
 mikrotik.user.aaa.accounting 13.0.11
@@ -742,8 +781,13 @@ mikrotik.user.address 13.0.0
 mikrotik.user.comment 13.0.0
 mikrotik.user.disabled 13.0.0
 mikrotik.user.group 13.0.0
+mikrotik.user.inactivityPolicy 14.1.1
+mikrotik.user.inactivityTimeout 14.1.1
 mikrotik.user.lastLoggedIn 13.0.0
 mikrotik.user.name 13.0.0
+mikrotik.user.settings 14.1.1
+mikrotik.user.settings.minimumCategories 14.1.1
+mikrotik.user.settings.minimumPasswordLength 14.1.1
 mikrotik.user.userGroup 13.0.0
 mikrotik.userAaa 13.0.11
 mikrotik.userGroup 14.0.0
@@ -752,6 +796,8 @@ mikrotik.userGroup.name 14.0.0
 mikrotik.userGroup.policy 14.0.0
 mikrotik.userGroup.skin 14.0.0
 mikrotik.userGroups 13.0.0
+mikrotik.userSettings 14.1.1
 mikrotik.users 13.0.0
 mikrotik.vlans 13.0.0
+mikrotik.webProxy 14.1.1
 mikrotik.wifiInterfaces 13.0.0

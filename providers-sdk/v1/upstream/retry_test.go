@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/ranger-rpc/codes"
 	"go.mondoo.com/ranger-rpc/status"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 func TestRetryableRPCError(t *testing.T) {
@@ -97,7 +99,14 @@ func TestWithRetry_NonRetryableFailsFast(t *testing.T) {
 	assert.Equal(t, 1, calls, "non-retryable error must not retry")
 }
 
+func setPaceBudget(t *testing.T, d time.Duration) {
+	old := paceBudget
+	paceBudget = d
+	t.Cleanup(func() { paceBudget = old })
+}
+
 func TestWithRetry_ExhaustsAttempts(t *testing.T) {
+	setPaceBudget(t, 0)
 	calls := 0
 	err := WithRetry(context.Background(), "op", func() (bool, time.Duration, error) {
 		calls++
@@ -105,6 +114,33 @@ func TestWithRetry_ExhaustsAttempts(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Equal(t, DefaultRetryAttempts, calls)
+}
+
+func TestWithRetry_PacedWaitsDoNotUseAttempts(t *testing.T) {
+	calls := 0
+	err := WithRetry(context.Background(), "op", func() (bool, time.Duration, error) {
+		calls++
+		if calls <= 2*DefaultRetryAttempts {
+			return true, time.Nanosecond, errors.New("busy")
+		}
+		return false, 0, nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 2*DefaultRetryAttempts+1, calls)
+}
+
+func TestWithRetry_PaceBudgetEnds(t *testing.T) {
+	setPaceBudget(t, 200*time.Millisecond)
+	calls := 0
+	err := WithRetry(context.Background(), "op", func() (bool, time.Duration, error) {
+		calls++
+		return true, 50 * time.Millisecond, errors.New("busy")
+	})
+	require.Error(t, err)
+	// 1 to 4 paced waits fit in the budget (each waits at least 50ms, and the
+	// first fits unless the first call takes 150ms), then attempts count again.
+	assert.Greater(t, calls, DefaultRetryAttempts)
+	assert.LessOrEqual(t, calls, DefaultRetryAttempts+4)
 }
 
 func TestWithRetry_ContextCancelled(t *testing.T) {
@@ -127,4 +163,44 @@ func TestRetryRPC_FailsFastOnPermanent(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Equal(t, 1, calls, "permanent RPC error must not retry")
+}
+
+func TestRetryInfoDelay(t *testing.T) {
+	st, err := status.New(codes.ResourceExhausted, "busy").
+		WithDetails(&errdetails.RetryInfo{RetryDelay: durationpb.New(7 * time.Second)})
+	require.NoError(t, err)
+	d, ok := RetryInfoDelay(st.Err())
+	assert.True(t, ok)
+	assert.Equal(t, 7*time.Second, d)
+
+	long, err := status.New(codes.ResourceExhausted, "busy").
+		WithDetails(&errdetails.RetryInfo{RetryDelay: durationpb.New(24 * time.Hour)})
+	require.NoError(t, err)
+	d, ok = RetryInfoDelay(long.Err())
+	assert.True(t, ok)
+	assert.Equal(t, 60*time.Second, d, "capped")
+
+	_, ok = RetryInfoDelay(status.Error(codes.ResourceExhausted, "busy"))
+	assert.False(t, ok)
+	_, ok = RetryInfoDelay(errors.New("plain"))
+	assert.False(t, ok)
+}
+
+func TestRetryRPC_WaitsRetryInfoDelay(t *testing.T) {
+	st, err := status.New(codes.ResourceExhausted, "busy").
+		WithDetails(&errdetails.RetryInfo{RetryDelay: durationpb.New(50 * time.Millisecond)})
+	require.NoError(t, err)
+
+	calls := 0
+	start := time.Now()
+	err = RetryRPC(context.Background(), "op", func() error {
+		calls++
+		if calls == 1 {
+			return st.Err()
+		}
+		return nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 2, calls)
+	assert.GreaterOrEqual(t, time.Since(start), 50*time.Millisecond)
 }

@@ -70,6 +70,27 @@ func configTextFromResponse(res map[string]any, config string) (string, error) {
 	return out, nil
 }
 
+// SshdConfig returns the sshd configuration EOS generates from
+// `management ssh`. No show command reports the effective client-alive
+// settings, and the running-config renders them as `default client-alive
+// interval` without the number, so this reads the file through the `bash`
+// command. It fails where command authorization denies `bash`.
+func (eos *Eos) SshdConfig() (string, error) {
+	cmd := "bash timeout 10 cat " + SshdConfigPath
+	res, err := eos.node.RunCommands([]string{cmd}, "text")
+	if err != nil {
+		return "", fmt.Errorf("could not read %s: %w", SshdConfigPath, err)
+	}
+	if len(res.Result) == 0 {
+		return "", fmt.Errorf("could not read %s: empty response", SshdConfigPath)
+	}
+	out, ok := res.Result[0]["output"].(string)
+	if !ok || strings.TrimSpace(out) == "" {
+		return "", fmt.Errorf("could not read %s: response carried no output", SshdConfigPath)
+	}
+	return out, nil
+}
+
 func (eos *Eos) SystemConfig() map[string]string {
 	// get api system module
 	sys := module.System(eos.node)
@@ -502,25 +523,17 @@ type PowerSupply struct {
 	Managed       bool    `json:"managed"`
 }
 
-// ShowEnvironmentPower returns power supply status
+// ShowEnvironmentPower returns power supply status. A device without power
+// supplies of its own (cEOS, vEOS) refuses the command with "There seem to be
+// no power supplies connected."; that is an empty list, not a failed read.
 func (eos *Eos) ShowEnvironmentPower() (*showEnvironmentPower, error) {
 	shRsp := &showEnvironmentPower{}
-
-	handle, err := eos.node.GetHandle("json")
-	if err != nil {
+	if err := eos.runJSON(shRsp.GetCmd(), shRsp); err != nil {
+		if refusedWith(err, "no power supplies connected") {
+			return &showEnvironmentPower{PowerSupplies: map[string]PowerSupply{}}, nil
+		}
 		return nil, err
 	}
-	err = handle.AddCommand(shRsp)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := handle.Call(); err != nil {
-		return nil, err
-	}
-
-	handle.Close()
-
 	return shRsp, nil
 }
 
@@ -615,6 +628,45 @@ func (eos *Eos) ShowInventory() (*showInventory, error) {
 	handle.Close()
 
 	return shRsp, nil
+}
+
+// MlagConfig is the peering of the `mlag configuration` block. Each value is
+// empty when the block does not set it.
+type MlagConfig struct {
+	DomainID       string
+	LocalInterface string
+	PeerAddress    string
+	PeerLink       string
+}
+
+// ParseMlagConfig reads the peering settings of the `mlag configuration`
+// block. It replaces goeapi's MlagConfig parse, whose patterns match the
+// keyword anywhere on a line: `show running-config all` renders `no
+// peer-address heartbeat` and (from EOS 4.33) `inactive forwarding peer-link
+// restricted` on every switch, which it read as peer address `heartbeat` and
+// peer link `restricted` on a switch without MLAG. Only a line that is
+// exactly `<keyword> <value>` sets a value here; `peer-address heartbeat
+// <address> ...` is the heartbeat destination, not the peer.
+func ParseMlagConfig(runningConfig string) MlagConfig {
+	c := MlagConfig{}
+	block := GetSection(strings.NewReader(runningConfig), "mlag configuration")
+	for _, line := range strings.Split(block, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			continue
+		}
+		switch fields[0] {
+		case "domain-id":
+			c.DomainID = fields[1]
+		case "local-interface":
+			c.LocalInterface = fields[1]
+		case "peer-address":
+			c.PeerAddress = fields[1]
+		case "peer-link":
+			c.PeerLink = fields[1]
+		}
+	}
+	return c
 }
 
 // MlagInterface represents a Port-Channel interface with an MLAG ID

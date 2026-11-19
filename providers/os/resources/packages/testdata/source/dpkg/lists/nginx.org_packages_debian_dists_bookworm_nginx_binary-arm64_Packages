@@ -1,0 +1,87 @@
+Package: nginx
+Version: 1.24.0-1~bookworm
+Architecture: arm64
+Maintainer: NGINX Packaging <nginx-packaging@f5.com>
+Installed-Size: 3016
+Depends: libc6 (>= 2.34), libcrypt1 (>= 1:4.1.0), libpcre2-8-0 (>= 10.22), libssl3 (>= 3.0.0), zlib1g (>= 1:1.1.4), lsb-base (>= 3.0-6), adduser
+Conflicts: nginx-common, nginx-core
+Replaces: nginx-common, nginx-core
+Provides: httpd, nginx, nginx-r1.24.0
+Filename: pool/nginx/n/nginx/nginx_1.24.0-1~bookworm_arm64.deb
+Size: 837686
+MD5sum: 48c836e6ffa562d9c4a900bc194be68a
+SHA1: 3fe918ce2f8a7823f45d2e43b1343cec6f2e5f4c
+SHA256: 70bc7812a05730e309f9c956ebd01f4bbbd7ae5e68aa34a342d0dcf9d5e5da25
+Section: httpd
+Priority: optional
+Homepage: https://nginx.org
+Description: high performance web server
+ nginx [engine x] is an HTTP and reverse proxy server, as well as
+ a mail proxy server.
+
+Package: nginx
+Version: 1.26.0-1~bookworm
+Architecture: arm64
+Maintainer: NGINX Packaging <nginx-packaging@f5.com>
+Installed-Size: 3411
+Depends: libc6 (>= 2.34), libcrypt1 (>= 1:4.1.0), libpcre2-8-0 (>= 10.22), libssl3 (>= 3.0.0), zlib1g (>= 1:1.1.4), lsb-base (>= 3.0-6)
+Recommends: logrotate
+Conflicts: nginx-common, nginx-core
+Replaces: nginx-common, nginx-core
+Provides: httpd, nginx, nginx-r1.26.0
+Filename: pool/nginx/n/nginx/nginx_1.26.0-1~bookworm_arm64.deb
+Size: 942106
+MD5sum: d066a0086e2d656240ba5efb275286b0
+SHA1: a2c75506af1cd0afdfab1e4d97b125a31beeb795
+SHA256: cdd2e20436da3ebe12b091b1707f016126b4b57beaa3d052ee2e62df3831f6e0
+Section: httpd
+Priority: optional
+Homepage: https://nginx.org
+Description: high performance web server
+ nginx [engine x] is an HTTP and reverse proxy server, as well as
+ a mail proxy server.
+
+Package: nginx
+Version: 1.30.4-1~bookworm
+Architecture: arm64
+Maintainer: NGINX Packaging <nginx-packaging@f5.com>
+Installed-Size: 3691
+Depends: libc6 (>= 2.34), libcrypt1 (>= 1:4.1.0), libpcre2-8-0 (>= 10.22), libssl3 (>= 3.0.0), zlib1g (>= 1:1.1.4), lsb-base (>= 3.0-6)
+Recommends: logrotate
+Conflicts: nginx-common, nginx-core
+Replaces: nginx-common, nginx-core
+Provides: httpd, nginx, nginx-r1.30.4
+Filename: pool/nginx/n/nginx/nginx_1.30.4-1~bookworm_arm64.deb
+Size: 1010268
+MD5sum: 6798a921b917de7bde2fd1b7f3352209
+SHA1: 04e4c540436f9daa7aa688f48cc36d3ae63055c2
+SHA256: 14d88625a9ce316037be1ed2f6a93cc74ce7e0e38c7e4645dd5921df1193671e
+Section: httpd
+Priority: optional
+Homepage: https://nginx.org
+Description: high performance web server
+ nginx [engine x] is an HTTP and reverse proxy server, as well as
+ a mail proxy server.
+
+Package: nginx
+Version: 1.30.5-1~bookworm
+Architecture: arm64
+Maintainer: NGINX Packaging <nginx-packaging@f5.com>
+Installed-Size: 3691
+Depends: libc6 (>= 2.34), libcrypt1 (>= 1:4.1.0), libpcre2-8-0 (>= 10.22), libssl3 (>= 3.0.0), zlib1g (>= 1:1.1.4), lsb-base (>= 3.0-6)
+Recommends: logrotate
+Conflicts: nginx-common, nginx-core
+Replaces: nginx-common, nginx-core
+Provides: httpd, nginx, nginx-r1.30.5
+Filename: pool/nginx/n/nginx/nginx_1.30.5-1~bookworm_arm64.deb
+Size: 1011924
+MD5sum: 4b1184744d0e2ea32471dfd5704a6a74
+SHA1: c93b4528760792b3e16426f62d8d46c2dafe8b28
+SHA256: 90ea820d6462b8622cd6ec51ec43c2e8fb5a3126283bdfefa4baa26eb3662262
+Section: httpd
+Priority: optional
+Homepage: https://nginx.org
+Description: high performance web server
+ nginx [engine x] is an HTTP and reverse proxy server, as well as
+ a mail proxy server.
+

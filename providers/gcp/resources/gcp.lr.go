@@ -1580,7 +1580,7 @@ func init() {
 			Create: createGcpProjectMonitoringServiceServiceSlo,
 		},
 		"gcp.project.binaryAuthorizationControl": {
-			// to override args, implement: initGcpProjectBinaryAuthorizationControl(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectBinaryAuthorizationControl,
 			Create: createGcpProjectBinaryAuthorizationControl,
 		},
 		"gcp.project.binaryAuthorizationControl.policy": {
@@ -1892,7 +1892,7 @@ func init() {
 			Create: createGcpProjectFilestoreServiceInstanceNetwork,
 		},
 		"gcp.project.cloudTasksService": {
-			// to override args, implement: initGcpProjectCloudTasksService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectCloudTasksService,
 			Create: createGcpProjectCloudTasksService,
 		},
 		"gcp.project.cloudTasksService.queue": {
@@ -1912,7 +1912,7 @@ func init() {
 			Create: createGcpProjectCloudSchedulerServiceJob,
 		},
 		"gcp.project.appEngineService": {
-			// to override args, implement: initGcpProjectAppEngineService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectAppEngineService,
 			Create: createGcpProjectAppEngineService,
 		},
 		"gcp.project.appEngineService.firewallRule": {
@@ -1936,7 +1936,7 @@ func init() {
 			Create: createGcpProjectAppEngineServiceVersionNetworkInterface,
 		},
 		"gcp.project.apiGatewayService": {
-			// to override args, implement: initGcpProjectApiGatewayService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectApiGatewayService,
 			Create: createGcpProjectApiGatewayService,
 		},
 		"gcp.project.apiGatewayService.api": {
@@ -1952,7 +1952,7 @@ func init() {
 			Create: createGcpProjectApiGatewayServiceGateway,
 		},
 		"gcp.project.workstationsService": {
-			// to override args, implement: initGcpProjectWorkstationsService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectWorkstationsService,
 			Create: createGcpProjectWorkstationsService,
 		},
 		"gcp.project.workstationsService.cluster": {
@@ -1960,7 +1960,7 @@ func init() {
 			Create: createGcpProjectWorkstationsServiceCluster,
 		},
 		"gcp.project.workbenchService": {
-			// to override args, implement: initGcpProjectWorkbenchService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectWorkbenchService,
 			Create: createGcpProjectWorkbenchService,
 		},
 		"gcp.project.workbenchService.instance": {
@@ -1968,7 +1968,7 @@ func init() {
 			Create: createGcpProjectWorkbenchServiceInstance,
 		},
 		"gcp.project.notebooksService": {
-			// to override args, implement: initGcpProjectNotebooksService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectNotebooksService,
 			Create: createGcpProjectNotebooksService,
 		},
 		"gcp.project.notebooksService.instance": {
@@ -1976,7 +1976,7 @@ func init() {
 			Create: createGcpProjectNotebooksServiceInstance,
 		},
 		"gcp.project.composerService": {
-			// to override args, implement: initGcpProjectComposerService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectComposerService,
 			Create: createGcpProjectComposerService,
 		},
 		"gcp.project.composerService.environment": {
@@ -1984,7 +1984,7 @@ func init() {
 			Create: createGcpProjectComposerServiceEnvironment,
 		},
 		"gcp.project.healthcareService": {
-			// to override args, implement: initGcpProjectHealthcareService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectHealthcareService,
 			Create: createGcpProjectHealthcareService,
 		},
 		"gcp.project.healthcareService.dataset": {
@@ -2080,7 +2080,7 @@ func init() {
 			Create: createGcpProjectComputeServiceInstanceTemplateInstanceProperties,
 		},
 		"gcp.project.cloudDeployService": {
-			// to override args, implement: initGcpProjectCloudDeployService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectCloudDeployService,
 			Create: createGcpProjectCloudDeployService,
 		},
 		"gcp.project.cloudDeployService.deliveryPipeline": {
@@ -2096,7 +2096,7 @@ func init() {
 			Create: createGcpProjectCloudDeployServiceRelease,
 		},
 		"gcp.project.dataflowService": {
-			// to override args, implement: initGcpProjectDataflowService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectDataflowService,
 			Create: createGcpProjectDataflowService,
 		},
 		"gcp.project.dataflowService.job": {
@@ -2620,7 +2620,7 @@ func init() {
 			Create: createGcpProjectContainerAnalysisServiceNote,
 		},
 		"gcp.project.cloudBuildService": {
-			// to override args, implement: initGcpProjectCloudBuildService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectCloudBuildService,
 			Create: createGcpProjectCloudBuildService,
 		},
 		"gcp.project.cloudBuildService.trigger": {
@@ -2708,7 +2708,7 @@ func init() {
 			Create: createGcpProjectPrivilegedAccessManagerServiceGrant,
 		},
 		"gcp.project.iapService": {
-			// to override args, implement: initGcpProjectIapService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectIapService,
 			Create: createGcpProjectIapService,
 		},
 		"gcp.project.iapService.brand": {
@@ -2724,7 +2724,7 @@ func init() {
 			Create: createGcpProjectIapServiceTunnelDestGroup,
 		},
 		"gcp.project.sourceRepositoriesService": {
-			// to override args, implement: initGcpProjectSourceRepositoriesService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initGcpProjectSourceRepositoriesService,
 			Create: createGcpProjectSourceRepositoriesService,
 		},
 		"gcp.project.sourceRepositoriesService.repo": {
@@ -4619,6 +4619,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.computeService.address.addressType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceAddress).GetAddressType()).ToDataRes(types.String)
+	},
+	"gcp.project.computeService.address.isExternal": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceAddress).GetIsExternal()).ToDataRes(types.Bool)
 	},
 	"gcp.project.computeService.address.created": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceAddress).GetCreated()).ToDataRes(types.Time)
@@ -14271,6 +14274,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.appEngineService.service.split": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectAppEngineServiceService).GetSplit()).ToDataRes(types.Dict)
 	},
+	"gcp.project.appEngineService.service.ingressTrafficAllowed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectAppEngineServiceService).GetIngressTrafficAllowed()).ToDataRes(types.String)
+	},
 	"gcp.project.appEngineService.service.versions": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectAppEngineServiceService).GetVersions()).ToDataRes(types.Array(types.Resource("gcp.project.appEngineService.version")))
 	},
@@ -23487,6 +23493,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.computeService.address.addressType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectComputeServiceAddress).AddressType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.address.isExternal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceAddress).IsExternal, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"gcp.project.computeService.address.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -37539,6 +37549,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.appEngineService.service.split": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectAppEngineServiceService).Split, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.appEngineService.service.ingressTrafficAllowed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectAppEngineServiceService).IngressTrafficAllowed, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"gcp.project.appEngineService.service.versions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -54632,6 +54646,7 @@ type mqlGcpProjectComputeServiceAddress struct {
 	Id               plugin.TValue[string]
 	Address          plugin.TValue[string]
 	AddressType      plugin.TValue[string]
+	IsExternal       plugin.TValue[bool]
 	Created          plugin.TValue[*time.Time]
 	Description      plugin.TValue[string]
 	IpVersion        plugin.TValue[string]
@@ -54695,6 +54710,12 @@ func (c *mqlGcpProjectComputeServiceAddress) GetAddress() *plugin.TValue[string]
 
 func (c *mqlGcpProjectComputeServiceAddress) GetAddressType() *plugin.TValue[string] {
 	return &c.AddressType
+}
+
+func (c *mqlGcpProjectComputeServiceAddress) GetIsExternal() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.IsExternal, func() (bool, error) {
+		return c.isExternal()
+	})
 }
 
 func (c *mqlGcpProjectComputeServiceAddress) GetCreated() *plugin.TValue[*time.Time] {
@@ -87507,12 +87528,13 @@ type mqlGcpProjectAppEngineServiceService struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlGcpProjectAppEngineServiceServiceInternal it will be used here
-	ProjectId plugin.TValue[string]
-	Id        plugin.TValue[string]
-	Name      plugin.TValue[string]
-	Labels    plugin.TValue[map[string]any]
-	Split     plugin.TValue[any]
-	Versions  plugin.TValue[[]any]
+	ProjectId             plugin.TValue[string]
+	Id                    plugin.TValue[string]
+	Name                  plugin.TValue[string]
+	Labels                plugin.TValue[map[string]any]
+	Split                 plugin.TValue[any]
+	IngressTrafficAllowed plugin.TValue[string]
+	Versions              plugin.TValue[[]any]
 }
 
 // createGcpProjectAppEngineServiceService creates a new instance of this resource
@@ -87570,6 +87592,10 @@ func (c *mqlGcpProjectAppEngineServiceService) GetLabels() *plugin.TValue[map[st
 
 func (c *mqlGcpProjectAppEngineServiceService) GetSplit() *plugin.TValue[any] {
 	return &c.Split
+}
+
+func (c *mqlGcpProjectAppEngineServiceService) GetIngressTrafficAllowed() *plugin.TValue[string] {
+	return &c.IngressTrafficAllowed
 }
 
 func (c *mqlGcpProjectAppEngineServiceService) GetVersions() *plugin.TValue[[]any] {
@@ -92560,11 +92586,15 @@ func (c *mqlGcpProjectDataflowServiceJob) GetLocation() *plugin.TValue[string] {
 }
 
 func (c *mqlGcpProjectDataflowServiceJob) GetLabels() *plugin.TValue[map[string]any] {
-	return &c.Labels
+	return plugin.GetOrCompute[map[string]any](&c.Labels, func() (map[string]any, error) {
+		return c.labels()
+	})
 }
 
 func (c *mqlGcpProjectDataflowServiceJob) GetEnvironment() *plugin.TValue[any] {
-	return &c.Environment
+	return plugin.GetOrCompute[any](&c.Environment, func() (any, error) {
+		return c.environment()
+	})
 }
 
 func (c *mqlGcpProjectDataflowServiceJob) GetKmsKey() *plugin.TValue[*mqlGcpProjectKmsServiceKeyringCryptokey] {
@@ -92584,11 +92614,15 @@ func (c *mqlGcpProjectDataflowServiceJob) GetKmsKey() *plugin.TValue[*mqlGcpProj
 }
 
 func (c *mqlGcpProjectDataflowServiceJob) GetWorkerIpConfiguration() *plugin.TValue[string] {
-	return &c.WorkerIpConfiguration
+	return plugin.GetOrCompute[string](&c.WorkerIpConfiguration, func() (string, error) {
+		return c.workerIpConfiguration()
+	})
 }
 
 func (c *mqlGcpProjectDataflowServiceJob) GetPipelineDescription() *plugin.TValue[any] {
-	return &c.PipelineDescription
+	return plugin.GetOrCompute[any](&c.PipelineDescription, func() (any, error) {
+		return c.pipelineDescription()
+	})
 }
 
 func (c *mqlGcpProjectDataflowServiceJob) GetCurrentStateTime() *plugin.TValue[*time.Time] {
@@ -107204,7 +107238,7 @@ func (c *mqlGcpProjectContainerAnalysisServiceNote) GetUpdated() *plugin.TValue[
 type mqlGcpProjectCloudBuildService struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlGcpProjectCloudBuildServiceInternal it will be used here
+	mqlGcpProjectCloudBuildServiceInternal
 	ProjectId   plugin.TValue[string]
 	Triggers    plugin.TValue[[]any]
 	WorkerPools plugin.TValue[[]any]

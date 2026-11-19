@@ -1893,6 +1893,8 @@ private gcp.project.computeService.address @defaults("name address addressType")
   address string
   // Address type
   addressType string
+  // Whether the address is internet-facing (addressType is EXTERNAL)
+  isExternal() bool
   // Creation timestamp
   created time
   // Address description
@@ -6690,7 +6692,7 @@ private gcp.project.pubsubService.subscription.config @defaults("topic.name ackD
   retainAckedMessages bool
   // How long to retain messages in the backlog after they're published
   retentionDuration time
-  // Conditions for a subscription's expiration
+  // Time to live of an inactive subscription; null when the subscription never expires
   expirationPolicy time
   // The labels associated with this subscription
   labels map[string]string
@@ -8932,9 +8934,9 @@ private gcp.project.dataprocService.cluster.config {
   // nodes, which is interactive access to the data plane rather than access
   // mediated by the Dataproc jobs API. The platform default depends on the
   // image: enabled for image versions before 3.1, disabled from 3.1 onward,
-  // and settable at creation time from image version 2.3.30. Hoisted from the
-  // `security` dict's identityConfig.enableSsh key, which omits the value when
-  // SSH is disabled.
+  // and settable at creation time from image version 2.3.30. Reports the
+  // explicit identityConfig.enableSsh setting when the API returns one, and
+  // the image default otherwise. Null when the image version cannot be parsed.
   sshEnabled bool
   // Shared Compute Engine configuration
   gceCluster gcp.project.dataprocService.cluster.config.gceCluster
@@ -13401,6 +13403,12 @@ private gcp.project.appEngineService.service @defaults("id") {
   // COOKIE, IP, or RANDOM) and `allocations` (map of version ID to the
   // fraction of traffic it receives).
   split dict
+  // Which traffic may reach the service
+  //
+  // One of INGRESS_TRAFFIC_ALLOWED_ALL, INGRESS_TRAFFIC_ALLOWED_INTERNAL_ONLY or
+  // INGRESS_TRAFFIC_ALLOWED_INTERNAL_AND_LB. A service that never set it allows
+  // all traffic and reports INGRESS_TRAFFIC_ALLOWED_ALL.
+  ingressTrafficAllowed string
   // Versions of this service
   versions() []gcp.project.appEngineService.version
 }
@@ -14954,29 +14962,30 @@ private gcp.project.dataflowService.job @defaults("name currentState") {
   // Region/location of the job
   location string
   // Resource labels
-  labels map[string]string
+  labels() map[string]string
   // Execution environment the job runs in
   //
-  // Raw environment configuration, with keys including
-  // `serviceAccountEmail`, `serviceKmsKeyName`, `workerPools`,
-  // `workerRegion`, `workerZone`, `tempStoragePrefix`, `experiments`,
-  // `serviceOptions`, `shuffleMode`, `streamingMode`, `usePublicIps`,
-  // `sdkPipelineOptions`, and `flexResourceSchedulingGoal`. See `kmsKey`
-  // for the resolved encryption key and `workerIpConfiguration` for the
-  // resolved worker IP setting.
-  environment dict
+  // Keys `serviceAccountEmail`, `serviceKmsKeyName`, `workerRegion`,
+  // `workerZone`, `tempStoragePrefix`, `shuffleMode`, `streamingMode`,
+  // `flexResourceSchedulingGoal`, and `workerPools` (each with `kind`,
+  // `machineType`, `numWorkers`, `ipConfiguration`, `network`, `subnetwork`,
+  // `zone`, `diskSizeGb`, `diskType`). Pipeline options, user agent,
+  // experiments and worker metadata are left out because they carry the
+  // arguments the pipeline was launched with. See `kmsKey` for the resolved
+  // encryption key and `workerIpConfiguration` for the resolved worker IP
+  // setting.
+  environment() dict
   // Customer-managed Cloud KMS key protecting pipeline state and shuffle data at rest
   kmsKey() gcp.project.kmsService.keyring.cryptokey
   // VM IP configuration of the job's worker pools (WORKER_IP_PUBLIC, WORKER_IP_PRIVATE, or WORKER_IP_UNSPECIFIED)
-  workerIpConfiguration string
+  workerIpConfiguration() string
   // SDK pipeline description
   //
-  // Description of the compiled pipeline, with keys `displayData`
-  // (pipeline-level display data), `executionPipelineStage` (per-stage
-  // execution descriptions), `originalPipelineTransform` (per-transform
-  // descriptions and the collections between them), and `stepNamesHash`
-  // (hash of the submitted pipeline step names).
-  pipelineDescription dict
+  // Keys `executionPipelineStage` and `originalPipelineTransform` (each entry
+  // with `id`, `name` and `kind`) and `stepNamesHash` (hash of the submitted
+  // pipeline step names). Display data is left out because it carries the
+  // pipeline's launch arguments.
+  pipelineDescription() dict
   // Timestamp of the current state
   currentStateTime time
 }

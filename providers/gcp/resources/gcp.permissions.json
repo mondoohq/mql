@@ -84,6 +84,7 @@
     "cloudasset.assets.searchAllIamPolicies",
     "cloudasset.assets.searchAllResources",
     "cloudbuild.builds.list",
+    "cloudbuild.locations.list",
     "cloudbuild.workerpools.list",
     "clouddeploy.deliveryPipelines.list",
     "clouddeploy.releases.list",
@@ -164,6 +165,7 @@
     "compute.zones.list",
     "container.clusters.list",
     "containeranalysis.occurrences.list",
+    "dataflow.jobs.get",
     "dataflow.jobs.list",
     "dataplex.assets.list",
     "dataplex.lakes.list",
@@ -840,6 +842,12 @@
       "source_file": "cloudbuild.go"
     },
     {
+      "permission": "cloudbuild.locations.list",
+      "service": "cloudbuild",
+      "action": "Locations.List",
+      "source_file": "cloudbuild.go"
+    },
+    {
       "permission": "cloudbuild.workerpools.list",
       "service": "cloudbuild",
       "action": "ListWorkerPools",
@@ -1390,6 +1398,12 @@
       "service": "containeranalysis",
       "action": "GetGrafeasClient",
       "source_file": "container_analysis.go"
+    },
+    {
+      "permission": "dataflow.jobs.get",
+      "service": "dataflow",
+      "action": "Jobs.Get",
+      "source_file": "dataflow.go"
     },
     {
       "permission": "dataflow.jobs.list",

@@ -394,7 +394,16 @@ func (o *mqlOciApigatewayDeployment) requestPolicies() (*apigateway.ApiSpecifica
 // to the string enum exposed on the MQL deployment resource. Exported as a
 // package-level helper so it can be unit tested without a runtime.
 func flattenAuthenticationType(rp *apigateway.ApiSpecificationRequestPolicies) string {
-	if rp == nil || rp.Authentication == nil {
+	if rp == nil {
+		return "NONE"
+	}
+	if rp.Authentication == nil {
+		// Dynamic authentication replaces the single policy with a list of
+		// servers chosen per request, so the deployment is authenticated
+		// even though it carries no top-level policy.
+		if rp.DynamicAuthentication != nil {
+			return "DYNAMIC_AUTHENTICATION"
+		}
 		return "NONE"
 	}
 	switch rp.Authentication.(type) {
@@ -412,11 +421,34 @@ func flattenAuthenticationType(rp *apigateway.ApiSpecificationRequestPolicies) s
 // reach the backend. A deployment with no authentication policy at all
 // enforces nothing, so every request is anonymous - reporting false there
 // would clear the most exposed deployment in the tenancy.
+//
+// Under dynamic authentication each server carries its own policy, and the
+// request is admitted anonymously when any of them allows it.
 func flattenIsAnonymousAccessAllowed(rp *apigateway.ApiSpecificationRequestPolicies) bool {
-	if rp == nil || rp.Authentication == nil {
+	if rp == nil {
 		return true
 	}
-	if v := rp.Authentication.GetIsAnonymousAccessAllowed(); v != nil {
+	if rp.Authentication == nil {
+		if rp.DynamicAuthentication == nil || len(rp.DynamicAuthentication.AuthenticationServers) == 0 {
+			return true
+		}
+		for _, srv := range rp.DynamicAuthentication.AuthenticationServers {
+			if authPolicyAllowsAnonymous(srv.AuthenticationServerDetail) {
+				return true
+			}
+		}
+		return false
+	}
+	return authPolicyAllowsAnonymous(rp.Authentication)
+}
+
+// authPolicyAllowsAnonymous reads the anonymous-access flag off one
+// authentication policy. A missing policy enforces nothing.
+func authPolicyAllowsAnonymous(p apigateway.AuthenticationPolicy) bool {
+	if p == nil {
+		return true
+	}
+	if v := p.GetIsAnonymousAccessAllowed(); v != nil {
 		return *v
 	}
 	return false

@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
 	"regexp"
 	"sort"
 	"strconv"
@@ -3244,6 +3245,13 @@ func (g *mqlGcpProjectComputeService) addresses() ([]any, error) {
 	return mqlAddresses, nil
 }
 
+func (g *mqlGcpProjectComputeServiceAddress) isExternal() (bool, error) {
+	if g.AddressType.Error != nil {
+		return false, g.AddressType.Error
+	}
+	return g.AddressType.Data == "EXTERNAL", nil
+}
+
 func (g *mqlGcpProjectComputeServiceAddress) network() (*mqlGcpProjectComputeServiceNetwork, error) {
 	networkUrl := g.cacheNetworkUrl
 	net, err := getNetworkByUrl(networkUrl, g.MqlRuntime)
@@ -4336,16 +4344,7 @@ func (g *mqlGcpProjectComputeServiceFirewall) openToInternet() (bool, error) {
 	if g.SourceRanges.Error != nil {
 		return false, g.SourceRanges.Error
 	}
-	for _, r := range g.SourceRanges.Data {
-		s, ok := r.(string)
-		if !ok {
-			continue
-		}
-		if s == "0.0.0.0/0" || s == "::/0" {
-			return true, nil
-		}
-	}
-	return false, nil
+	return firewallSourceRangesContainPublic(g.SourceRanges.Data), nil
 }
 
 func (g *mqlGcpProjectComputeServiceSnapshot) iamPolicy() ([]any, error) {
@@ -4607,17 +4606,44 @@ func (g *mqlGcpProjectComputeServiceNetwork) legacy() (bool, error) {
 	return g.Mode.Data == "legacy", nil
 }
 
+// firewallSourceRangesContainPublic reports whether a firewall rule's source
+// ranges admit a large part of the internet.
+//
+// 0.0.0.0/0 and ::/0 are the common case, but splitting the space into
+// 0.0.0.0/1 and 128.0.0.0/1, or writing 2000::/3, admits every internet host
+// just the same, and a comparison against the two literals read those rules
+// as closed. The threshold is the size of the blocks IANA allocates to the
+// regional registries: an IPv4 prefix shorter than /8 outside multicast and
+// reserved space, or an IPv6 prefix shorter than /12 that overlaps global
+// unicast. Private ranges never qualify: 10.0.0.0/8 is not shorter than /8,
+// and fc00::/7 does not overlap 2000::/3.
 func firewallSourceRangesContainPublic(ranges []any) bool {
 	for _, r := range ranges {
 		s, ok := r.(string)
 		if !ok {
 			continue
 		}
-		if s == "0.0.0.0/0" || s == "::/0" {
+		if p, err := netip.ParsePrefix(strings.TrimSpace(s)); err == nil && firewallPrefixAdmitsInternet(p) {
 			return true
 		}
 	}
 	return false
+}
+
+var (
+	// 224.0.0.0/3 is multicast plus the reserved 240.0.0.0/4. No internet host
+	// sends from it.
+	firewallIPv4MulticastAndReserved = netip.MustParsePrefix("224.0.0.0/3")
+	// 2000::/3 is the IPv6 space routed on the internet.
+	firewallIPv6GlobalUnicast = netip.MustParsePrefix("2000::/3")
+)
+
+func firewallPrefixAdmitsInternet(p netip.Prefix) bool {
+	p = p.Masked()
+	if p.Addr().Is4() {
+		return p.Bits() < 8 && !firewallIPv4MulticastAndReserved.Contains(p.Addr())
+	}
+	return p.Bits() < 12 && p.Overlaps(firewallIPv6GlobalUnicast)
 }
 
 func allowedRulePermitsPort(rule map[string]any, port int) bool {

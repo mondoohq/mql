@@ -154,18 +154,47 @@ func initMikrotikIpPool(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 
 // --- ip.service ---
 
+// serviceAddress returns the source restriction of an /ip/service row.
+// RouterOS 7.25.1 reports it as `available-from`; 7.23.2 and earlier call
+// it `address`. A row that carries neither, such as the dynamic `btest` and
+// `discover` entries, yields an empty string.
+func serviceAddress(row map[string]string) string {
+	if v, ok := row["available-from"]; ok {
+		return v
+	}
+	return row["address"]
+}
+
+// serviceRows drops the session rows from an /ip/service reply. RouterOS lists
+// each open management session, the scanner's own API login included, as a
+// dynamic row flagged `connection` that repeats the service name with the
+// session's local and remote address and no source restriction. It is a
+// session, not a listener, so it would list the service twice, the second
+// time without its restriction.
+func serviceRows(rows []map[string]string) []map[string]string {
+	out := make([]map[string]string, 0, len(rows))
+	for _, row := range rows {
+		if row["connection"] == "true" {
+			continue
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
 func newMikrotikService(runtime *plugin.Runtime, row map[string]string) (plugin.Resource, error) {
 	res, err := CreateResource(runtime, "mikrotik.ip.service", map[string]*llx.RawData{
-		"__id":        llx.StringData("mikrotik.ip.service/" + row["name"]),
+		"__id":        llx.StringData(rowID("mikrotik.ip.service/", row, row["name"], row["port"], row["proto"])),
 		"name":        llx.StringData(row["name"]),
 		"port":        intField(row, "port"),
-		"address":     llx.StringData(row["address"]),
+		"address":     llx.StringData(serviceAddress(row)),
 		"certificate": llx.StringData(row["certificate"]),
 		"tlsVersion":  llx.StringData(row["tls-version"]),
 		"vrf":         llx.StringData(row["vrf"]),
 		"maxSessions": intField(row, "max-sessions"),
 		"disabled":    boolField(row, "disabled"),
 		"invalid":     boolField(row, "invalid"),
+		"dynamic":     boolField(row, "dynamic"),
 	})
 	if err != nil {
 		return nil, err
@@ -179,6 +208,7 @@ func newMikrotikService(runtime *plugin.Runtime, row map[string]string) (plugin.
 func newMikrotikFirewallFilter(runtime *plugin.Runtime, row map[string]string) (plugin.Resource, error) {
 	args := firewallRuleArgs("mikrotik.ip.firewall.filter/", row)
 	args["connectionState"] = llx.StringData(row["connection-state"])
+	args["matchers"] = firewallMatchers(row)
 	return CreateResource(runtime, "mikrotik.ip.firewall.filter", args)
 }
 
@@ -383,16 +413,22 @@ type mqlMikrotikUserInternal struct {
 	cacheGroup string
 }
 
+func userArgs(row map[string]string) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":              llx.StringData("mikrotik.user/" + row["name"]),
+		"name":              llx.StringData(row["name"]),
+		"group":             llx.StringData(row["group"]),
+		"address":           llx.StringData(row["address"]),
+		"lastLoggedIn":      llx.StringData(row["last-logged-in"]),
+		"disabled":          boolField(row, "disabled"),
+		"comment":           llx.StringData(row["comment"]),
+		"inactivityPolicy":  stringField(row, "inactivity-policy"),
+		"inactivityTimeout": stringField(row, "inactivity-timeout"),
+	}
+}
+
 func newMikrotikUser(runtime *plugin.Runtime, row map[string]string) (plugin.Resource, error) {
-	res, err := CreateResource(runtime, "mikrotik.user", map[string]*llx.RawData{
-		"__id":         llx.StringData("mikrotik.user/" + row["name"]),
-		"name":         llx.StringData(row["name"]),
-		"group":        llx.StringData(row["group"]),
-		"address":      llx.StringData(row["address"]),
-		"lastLoggedIn": llx.StringData(row["last-logged-in"]),
-		"disabled":     boolField(row, "disabled"),
-		"comment":      llx.StringData(row["comment"]),
-	})
+	res, err := CreateResource(runtime, "mikrotik.user", userArgs(row))
 	if err != nil {
 		return nil, err
 	}

@@ -82,7 +82,7 @@ const (
 // degrading it would report an authoritative answer derived from no data.
 //
 // note: the provider still carries about ten hand-written variants of this
-// predicate (isAzureForbidden, isCosmosForbiddenError, isFunctionAppForbiddenError
+// predicate (isCosmosForbiddenError, isFunctionAppForbiddenError
 // and so on) plus a further ~99 inline status checks. Folding those onto this
 // function is follow-up work; this is the classifier the shared lister uses.
 func azureFault(err error) azureFaultKind {
@@ -167,6 +167,22 @@ func listPaged[P, I any](
 	}
 
 	return res, nil
+}
+
+// refusedCollection reports a list accessor whose read ARM refused (403), for
+// accessors that walk their pager by hand rather than through listPaged. It
+// gives the same answer listPaged gives for faultDenied: the field is set to
+// null, because an empty list would let `.all()` and `.none()` pass on a
+// collection nobody was allowed to read. With structured errors enabled it
+// returns a Forbidden error naming the permission instead.
+func refusedCollection(field *plugin.TValue[[]any], err error, permission string) ([]any, error) {
+	if plugin.StructuredErrors() {
+		return nil, classifyAzureRefusal(err, permission)
+	}
+	log.Warn().Err(err).Str("permission", permission).
+		Msg("azure> not permitted to list, reporting null")
+	field.State = plugin.StateIsSet | plugin.StateIsNull
+	return nil, nil
 }
 
 // azureConn returns the Azure connection behind a runtime.

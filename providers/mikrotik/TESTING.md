@@ -165,7 +165,82 @@ failed to connect ... :8729: could not connect to router os: remote error: tls: 
 ```
 
 Generate and bind a self-signed certificate on the device first if you need to
-exercise the TLS path.
+exercise the TLS path. `/certificate sign` without a CA fails with `CA not
+found`, so sign a CA first and then the service certificate with `ca=<name>`,
+as two separate commands; a batch that signs both runs the second before the
+first has finished.
+
+---
+
+## Running CHR locally under qemu
+
+The same CHR runs on a laptop with no cloud account. Verified with the
+`chr-7.25.1-arm64.img` image on an Apple silicon Mac with Homebrew qemu.
+
+```bash
+qemu-system-aarch64 -M virt -cpu cortex-a72 -accel tcg,thread=single -icount shift=auto -m 1024 -smp 1 \
+  -bios /opt/homebrew/share/qemu/edk2-aarch64-code.fd \
+  -drive file=chr.img,if=none,id=d0,format=raw -device virtio-blk-pci,drive=d0 \
+  -netdev user,id=n0,hostfwd=tcp:127.0.0.1:18728-:8728,hostfwd=tcp:127.0.0.1:18729-:8729,hostfwd=tcp:127.0.0.1:12222-:22 \
+  -device virtio-net-pci,netdev=n0 -display none -serial file:serial.log -daemonize
+```
+
+Each setting avoids a failure that was observed:
+
+| Setting | Without it |
+|---|---|
+| `-cpu cortex-a72 -accel tcg` | `-accel hvf -cpu host` boots the kernel, which then panics with `No working init found`; `pauth=off` and `highmem=off` do not change that |
+| `-icount shift=auto` | The kernel panics with `soft lockup - CPU#0 stuck for 440s` every 5 to 20 minutes and the router reboots, with one emulated CPU or two |
+
+`-icount` advances guest time with the instructions executed rather than with
+the host clock, so emulation being slow no longer looks like a stuck CPU to the
+kernel watchdog. It needs `thread=single`. With it, the device completed a full policy
+validation run of over a hundred scenarios without a reboot, where without it
+the same run was cut short by a panic. Guest uptime then counts emulated time and
+runs slow against the wall clock.
+
+A reboot clears the update check, so `mikrotik.packageUpdate.checked` is false
+again afterwards. The serial log shows any panic; check it when a scan suddenly
+returns nothing.
+
+Configuration survives a restart because it lives on the disk image. qemu's
+user-mode DNS forwarder at 10.0.2.3 can time out from inside the guest, which
+breaks `check-for-updates`; `/ip dns set servers=1.1.1.1` avoids it. The API
+and SSH reach the device from 10.0.2.2, which is the address to use in
+`available-from`, `/user address`, and firewall accept rules.
+
+### Driving it over SSH
+
+Password logins over SSH fail intermittently on the emulated CPU, and a burst
+of short sessions ends in `too many concurrent logins`. Import a key and reuse
+one connection:
+
+```bash
+/file add name=lab.pub contents="<public key>"
+/user ssh-keys import public-key-file=lab.pub user=<user>
+```
+
+```bash
+ssh -o IdentitiesOnly=yes -i lab -o ControlMaster=auto \
+    -o ControlPath=/tmp/chr-%r -o ControlPersist=30m -p 12222 <user>@127.0.0.1 '<command>'
+```
+
+`IdentitiesOnly` matters when an agent holds other keys: RouterOS rejects the
+login after the agent's keys are offered first. The control socket path must
+be under 104 bytes, so keep it short. Importing a key also disables password
+login for that user over SSH, because `password-authentication` defaults to
+`yes-if-no-key`.
+
+Two RouterOS behaviours make a scripted change look applied when it was not:
+
+- `set [find ...]` on an empty selection is silently a no-op, so a selector
+  that stops matching after the change it reverts (such as finding a rule by
+  `action=drop` after setting it to `reject`) leaves the change in place.
+- An out-of-range value can be rejected with a message while `ssh` still
+  exits 0: `/user set <name> inactivity-timeout=59s` did, where the range is
+  1m to 1d. Match the output for errors rather than trusting the exit status.
+
+Comparing `/export terse` before a change and after reverting it catches both.
 
 ---
 

@@ -7,9 +7,31 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/types"
 	"google.golang.org/api/compute/v1"
 )
+
+// TestComputeAddressIsExternal drives the derived internet-facing predicate.
+// Synthetic: no target showed this; it covers both states and the absent case.
+func TestComputeAddressIsExternal(t *testing.T) {
+	cases := []struct {
+		addressType string
+		want        bool
+	}{
+		{"EXTERNAL", true},
+		{"INTERNAL", false},
+		{"", false},
+	}
+	for _, c := range cases {
+		addr := &mqlGcpProjectComputeServiceAddress{
+			AddressType: plugin.TValue[string]{Data: c.addressType, State: plugin.StateIsSet},
+		}
+		got, err := addr.isExternal()
+		assert.NoError(t, err)
+		assert.Equal(t, c.want, got, "addressType=%q", c.addressType)
+	}
+}
 
 func TestCustomerEncryptionKeyToDict(t *testing.T) {
 	t.Run("nil input returns nil", func(t *testing.T) {
@@ -116,4 +138,44 @@ func TestVpnTunnelCipherSuiteArgs(t *testing.T) {
 			assert.Nil(t, got[f].Value, f)
 		}
 	})
+}
+
+func TestFirewallSourceRangesContainPublic(t *testing.T) {
+	cases := []struct {
+		name   string
+		ranges []any
+		want   bool
+	}{
+		{"ipv4 any", []any{"0.0.0.0/0"}, true},
+		{"ipv6 any", []any{"::/0"}, true},
+		{"ipv4 halves", []any{"0.0.0.0/1", "128.0.0.0/1"}, true},
+		{"one ipv4 half", []any{"128.0.0.0/1"}, true},
+		{"ipv4 /7", []any{"8.0.0.0/7"}, true},
+		{"ipv6 /3 global unicast", []any{"2000::/3"}, true},
+		{"surrounding whitespace", []any{" 0.0.0.0/0 "}, true},
+		{"rfc1918 /8", []any{"10.0.0.0/8"}, false},
+		{"ipv6 unique local", []any{"fc00::/7"}, false},
+		{"ipv4 multicast and reserved", []any{"224.0.0.0/3"}, false},
+		{"ipv4 reserved", []any{"240.0.0.0/4"}, false},
+		{"ipv6 /11 inside global unicast", []any{"2000::/11"}, true},
+		{"ipv6 /12 not broad enough", []any{"2000::/12"}, false},
+		{"single host", []any{"203.0.113.7/32"}, false},
+		{"bare address", []any{"203.0.113.7"}, false},
+		{"empty", []any{}, false},
+		{"non-string", []any{42}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, firewallSourceRangesContainPublic(tc.ranges))
+		})
+	}
+}
+
+func TestAllowedRulePermitsPortWithHalvesSourceRanges(t *testing.T) {
+	// allowsSshFromInternet combines the source-range test with the port test.
+	ranges := []any{"0.0.0.0/1", "128.0.0.0/1"}
+	rule := map[string]any{"IPProtocol": "tcp", "ports": []any{"22", "3389"}}
+	assert.True(t, firewallSourceRangesContainPublic(ranges))
+	assert.True(t, allowedRulePermitsPort(rule, 22))
+	assert.True(t, allowedRulePermitsPort(rule, 3389))
 }

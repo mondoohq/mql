@@ -112,6 +112,13 @@ type Package struct {
 	// windows_install_identity.go). Unexported: it only becomes purl
 	// qualifiers, and is never serialized on its own.
 	installIdentity *installIdentity
+
+	// source is where the package came from, when the backend learned it
+	// while listing at no extra cost (an AppX package's signature kind is in
+	// the same query). Everything else is resolved later, and only when a
+	// query asks, through SourceResolver. Unexported: it reaches MQL through
+	// package.osProvided and package.source.
+	source *Source
 }
 
 // MacOSApp describes a macOS application bundle.
@@ -239,6 +246,11 @@ func ResolveSystemPkgManagers(conn shared.Connection) ([]OperatingSystemPkgManag
 		pms = append(pms, &MacOSPkgManager{conn: conn, platform: asset.Platform})
 	case asset.Platform.Name == "windows":
 		pms = append(pms, &WinPkgManager{conn: conn, platform: asset.Platform})
+		// GooGet installs the Compute Engine guest environment, which has no
+		// Add/Remove Programs entry for the registry reader to find.
+		if hasGooGet(conn.FileSystem()) {
+			pms = append(pms, &GooGetPkgManager{conn: conn})
+		}
 	// Flatcar Container Linux is the continuation of CoreOS Container Linux
 	// and keeps its design: /usr is immutable and the image ships no package
 	// manager and no package database at all (verified on a live

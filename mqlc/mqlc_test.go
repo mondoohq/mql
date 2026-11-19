@@ -2829,3 +2829,31 @@ func TestCompiler_PrivateResourcePathPrefersField(t *testing.T) {
 		})
 	}
 }
+
+// `empty` is not a value that has fields or elements. Asking for one is an
+// error the compiler reports; it used to be a panic.
+func TestCompiler_NothingIsCalledOnEmpty(t *testing.T) {
+	for _, query := range []string{
+		`1 == empty.length`,
+		`empty.length`,
+		`empty[0]`,
+		`mondoo.version == empty.length == 0`,
+		// A line that starts with [ goes on with the line before it.
+		"mondoo.version == empty\n[1]",
+	} {
+		t.Run(query, func(t *testing.T) {
+			var err error
+			require.NotPanics(t, func() {
+				_, err = mqlc.Compile(query, nil, conf)
+			})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "`empty`")
+		})
+	}
+
+	// And on its own it is what it was.
+	_, err := mqlc.Compile(`mondoo.version == empty`, nil, conf)
+	require.NoError(t, err)
+	_, err = mqlc.Compile(`mondoo.version != empty`, nil, conf)
+	require.NoError(t, err)
+}

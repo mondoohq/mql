@@ -794,6 +794,7 @@ const (
 	ResourceAwsAthenaTable                                                      string = "aws.athena.table"
 	ResourceAwsDirectoryservice                                                 string = "aws.directoryservice"
 	ResourceAwsDirectoryserviceDirectory                                        string = "aws.directoryservice.directory"
+	ResourceAwsDirectoryserviceDirectorySharedDirectory                         string = "aws.directoryservice.directory.sharedDirectory"
 	ResourceAwsDirectoryserviceRadiusSettings                                   string = "aws.directoryservice.radiusSettings"
 	ResourceAwsDirectoryserviceVpcSettings                                      string = "aws.directoryservice.vpcSettings"
 	ResourceAwsDirectoryserviceConnectSettings                                  string = "aws.directoryservice.connectSettings"
@@ -4216,6 +4217,10 @@ func init() {
 		"aws.directoryservice.directory": {
 			Init:   initAwsDirectoryserviceDirectory,
 			Create: createAwsDirectoryserviceDirectory,
+		},
+		"aws.directoryservice.directory.sharedDirectory": {
+			// to override args, implement: initAwsDirectoryserviceDirectorySharedDirectory(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsDirectoryserviceDirectorySharedDirectory,
 		},
 		"aws.directoryservice.radiusSettings": {
 			// to override args, implement: initAwsDirectoryserviceRadiusSettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -8378,6 +8383,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.iam.virtualmfadevice.user": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsIamVirtualmfadevice).GetUser()).ToDataRes(types.Resource("aws.iam.user"))
+	},
+	"aws.iam.virtualmfadevice.userArn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsIamVirtualmfadevice).GetUserArn()).ToDataRes(types.String)
 	},
 	"aws.iam.samlProvider.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsIamSamlProvider).GetArn()).ToDataRes(types.String)
@@ -30714,11 +30722,35 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.directoryservice.directory.shareNotes": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsDirectoryserviceDirectory).GetShareNotes()).ToDataRes(types.String)
 	},
+	"aws.directoryservice.directory.sharedDirectories": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsDirectoryserviceDirectory).GetSharedDirectories()).ToDataRes(types.Array(types.Resource("aws.directoryservice.directory.sharedDirectory")))
+	},
 	"aws.directoryservice.directory.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsDirectoryserviceDirectory).GetTags()).ToDataRes(types.Map(types.String, types.String))
 	},
 	"aws.directoryservice.directory.region": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsDirectoryserviceDirectory).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.directoryservice.directory.sharedDirectory.sharedAccountId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsDirectoryserviceDirectorySharedDirectory).GetSharedAccountId()).ToDataRes(types.String)
+	},
+	"aws.directoryservice.directory.sharedDirectory.sharedDirectoryId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsDirectoryserviceDirectorySharedDirectory).GetSharedDirectoryId()).ToDataRes(types.String)
+	},
+	"aws.directoryservice.directory.sharedDirectory.shareMethod": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsDirectoryserviceDirectorySharedDirectory).GetShareMethod()).ToDataRes(types.String)
+	},
+	"aws.directoryservice.directory.sharedDirectory.shareStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsDirectoryserviceDirectorySharedDirectory).GetShareStatus()).ToDataRes(types.String)
+	},
+	"aws.directoryservice.directory.sharedDirectory.shareNotes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsDirectoryserviceDirectorySharedDirectory).GetShareNotes()).ToDataRes(types.String)
+	},
+	"aws.directoryservice.directory.sharedDirectory.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsDirectoryserviceDirectorySharedDirectory).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"aws.directoryservice.directory.sharedDirectory.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsDirectoryserviceDirectorySharedDirectory).GetUpdatedAt()).ToDataRes(types.Time)
 	},
 	"aws.directoryservice.radiusSettings.authenticationProtocol": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsDirectoryserviceRadiusSettings).GetAuthenticationProtocol()).ToDataRes(types.String)
@@ -45277,6 +45309,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.iam.virtualmfadevice.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsIamVirtualmfadevice).User, ok = plugin.RawToTValue[*mqlAwsIamUser](v.Value, v.Error)
+		return
+	},
+	"aws.iam.virtualmfadevice.userArn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsIamVirtualmfadevice).UserArn, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.iam.samlProvider.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -77751,12 +77787,48 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsDirectoryserviceDirectory).ShareNotes, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"aws.directoryservice.directory.sharedDirectories": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsDirectoryserviceDirectory).SharedDirectories, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"aws.directoryservice.directory.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsDirectoryserviceDirectory).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
 	"aws.directoryservice.directory.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsDirectoryserviceDirectory).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.directoryservice.directory.sharedDirectory.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsDirectoryserviceDirectorySharedDirectory).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.directoryservice.directory.sharedDirectory.sharedAccountId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsDirectoryserviceDirectorySharedDirectory).SharedAccountId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.directoryservice.directory.sharedDirectory.sharedDirectoryId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsDirectoryserviceDirectorySharedDirectory).SharedDirectoryId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.directoryservice.directory.sharedDirectory.shareMethod": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsDirectoryserviceDirectorySharedDirectory).ShareMethod, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.directoryservice.directory.sharedDirectory.shareStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsDirectoryserviceDirectorySharedDirectory).ShareStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.directoryservice.directory.sharedDirectory.shareNotes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsDirectoryserviceDirectorySharedDirectory).ShareNotes, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.directoryservice.directory.sharedDirectory.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsDirectoryserviceDirectorySharedDirectory).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.directoryservice.directory.sharedDirectory.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsDirectoryserviceDirectorySharedDirectory).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"aws.directoryservice.radiusSettings.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -104434,6 +104506,7 @@ type mqlAwsIamVirtualmfadevice struct {
 	SerialNumber plugin.TValue[string]
 	EnableDate   plugin.TValue[*time.Time]
 	User         plugin.TValue[*mqlAwsIamUser]
+	UserArn      plugin.TValue[string]
 }
 
 // createAwsIamVirtualmfadevice creates a new instance of this resource
@@ -104495,6 +104568,10 @@ func (c *mqlAwsIamVirtualmfadevice) GetUser() *plugin.TValue[*mqlAwsIamUser] {
 
 		return c.user()
 	})
+}
+
+func (c *mqlAwsIamVirtualmfadevice) GetUserArn() *plugin.TValue[string] {
+	return &c.UserArn
 }
 
 // mqlAwsIamSamlProvider for the aws.iam.samlProvider resource
@@ -187809,6 +187886,7 @@ type mqlAwsDirectoryserviceDirectory struct {
 	ShareMethod                      plugin.TValue[string]
 	ShareStatus                      plugin.TValue[string]
 	ShareNotes                       plugin.TValue[string]
+	SharedDirectories                plugin.TValue[[]any]
 	Tags                             plugin.TValue[map[string]any]
 	Region                           plugin.TValue[string]
 }
@@ -187992,6 +188070,22 @@ func (c *mqlAwsDirectoryserviceDirectory) GetShareNotes() *plugin.TValue[string]
 	return &c.ShareNotes
 }
 
+func (c *mqlAwsDirectoryserviceDirectory) GetSharedDirectories() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SharedDirectories, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.directoryservice.directory", c.__id, "sharedDirectories")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.sharedDirectories()
+	})
+}
+
 func (c *mqlAwsDirectoryserviceDirectory) GetTags() *plugin.TValue[map[string]any] {
 	return plugin.GetOrCompute[map[string]any](&c.Tags, func() (map[string]any, error) {
 		return c.tags()
@@ -188000,6 +188094,85 @@ func (c *mqlAwsDirectoryserviceDirectory) GetTags() *plugin.TValue[map[string]an
 
 func (c *mqlAwsDirectoryserviceDirectory) GetRegion() *plugin.TValue[string] {
 	return &c.Region
+}
+
+// mqlAwsDirectoryserviceDirectorySharedDirectory for the aws.directoryservice.directory.sharedDirectory resource
+type mqlAwsDirectoryserviceDirectorySharedDirectory struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAwsDirectoryserviceDirectorySharedDirectoryInternal it will be used here
+	SharedAccountId   plugin.TValue[string]
+	SharedDirectoryId plugin.TValue[string]
+	ShareMethod       plugin.TValue[string]
+	ShareStatus       plugin.TValue[string]
+	ShareNotes        plugin.TValue[string]
+	CreatedAt         plugin.TValue[*time.Time]
+	UpdatedAt         plugin.TValue[*time.Time]
+}
+
+// createAwsDirectoryserviceDirectorySharedDirectory creates a new instance of this resource
+func createAwsDirectoryserviceDirectorySharedDirectory(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsDirectoryserviceDirectorySharedDirectory{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.directoryservice.directory.sharedDirectory", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsDirectoryserviceDirectorySharedDirectory) MqlName() string {
+	return "aws.directoryservice.directory.sharedDirectory"
+}
+
+func (c *mqlAwsDirectoryserviceDirectorySharedDirectory) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsDirectoryserviceDirectorySharedDirectory) GetSharedAccountId() *plugin.TValue[string] {
+	return &c.SharedAccountId
+}
+
+func (c *mqlAwsDirectoryserviceDirectorySharedDirectory) GetSharedDirectoryId() *plugin.TValue[string] {
+	return &c.SharedDirectoryId
+}
+
+func (c *mqlAwsDirectoryserviceDirectorySharedDirectory) GetShareMethod() *plugin.TValue[string] {
+	return &c.ShareMethod
+}
+
+func (c *mqlAwsDirectoryserviceDirectorySharedDirectory) GetShareStatus() *plugin.TValue[string] {
+	return &c.ShareStatus
+}
+
+func (c *mqlAwsDirectoryserviceDirectorySharedDirectory) GetShareNotes() *plugin.TValue[string] {
+	return &c.ShareNotes
+}
+
+func (c *mqlAwsDirectoryserviceDirectorySharedDirectory) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlAwsDirectoryserviceDirectorySharedDirectory) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
 }
 
 // mqlAwsDirectoryserviceRadiusSettings for the aws.directoryservice.radiusSettings resource

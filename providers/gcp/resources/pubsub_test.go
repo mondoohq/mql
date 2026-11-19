@@ -89,6 +89,24 @@ func TestPbDurationToTime(t *testing.T) {
 	})
 }
 
+func TestSubscriptionExpirationPolicy(t *testing.T) {
+	t.Run("nil policy is null", func(t *testing.T) {
+		got := subscriptionExpirationPolicy(nil)
+		assert.Nil(t, got.Value)
+	})
+
+	t.Run("policy without ttl never expires and is null", func(t *testing.T) {
+		got := subscriptionExpirationPolicy(&pubsubpb.ExpirationPolicy{})
+		assert.Nil(t, got.Value)
+	})
+
+	t.Run("ttl is returned as a duration", func(t *testing.T) {
+		got := subscriptionExpirationPolicy(&pubsubpb.ExpirationPolicy{Ttl: durationpb.New(31 * 24 * time.Hour)})
+		want := llx.DurationToTime(int64((31 * 24 * time.Hour).Seconds()))
+		assert.Equal(t, &want, got.Value)
+	})
+}
+
 func TestTopicStateToString(t *testing.T) {
 	cases := []struct {
 		name  string

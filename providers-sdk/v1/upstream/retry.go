@@ -11,8 +11,10 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/ranger-rpc/codes"
 	"go.mondoo.com/ranger-rpc/status"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 )
 
 // Retry tuning for upstream calls. Transient failures (network blips, 5xx, 429,
@@ -24,47 +26,88 @@ const (
 
 	retryBaseBackoff = 500 * time.Millisecond
 	retryMaxBackoff  = 30 * time.Second
+
+	// maxRetryInfoDelay caps a server's RetryInfo delay, so a server can pace
+	// clients but not stall them.
+	maxRetryInfoDelay = 60 * time.Second
 )
 
-// WithRetry runs fn up to DefaultRetryAttempts times. fn reports whether its
-// error is retryable and an optional explicit wait (e.g. a parsed Retry-After
-// header). Backoff is exponential with full jitter, capped at retryMaxBackoff,
-// and aborts promptly on context cancellation. A nil error returns immediately;
-// `what` labels the operation in the returned error.
+// paceBudget is how long WithRetry keeps waiting on a server that names a
+// delay. Those waits do not use up an attempt: a busy server that paces its
+// clients is not failing, and a burst can take longer to drain than
+// DefaultRetryAttempts waits of maxRetryInfoDelay.
+var paceBudget = 10 * time.Minute
+
+// WithRetry runs fn until it succeeds, fails with a permanent error, or has
+// failed DefaultRetryAttempts times. fn reports whether its error is retryable
+// and an optional explicit wait (e.g. a parsed Retry-After header or RetryInfo).
+// A failure with an explicit wait does not count as an attempt while the waits
+// fit in paceBudget. Backoff is exponential with full jitter, capped at
+// retryMaxBackoff, and aborts promptly on context cancellation. A nil error
+// returns immediately; `what` labels the operation in the returned error.
 func WithRetry(ctx context.Context, what string, fn func() (retryable bool, retryAfter time.Duration, err error)) error {
 	var lastErr error
-	for attempt := 1; attempt <= DefaultRetryAttempts; attempt++ {
+	start := time.Now()
+	calls, failures := 0, 0
+	for {
+		calls++
 		retryable, retryAfter, err := fn()
 		if err == nil {
 			return nil
 		}
 		lastErr = err
-		if !retryable || attempt == DefaultRetryAttempts {
+		paced := retryAfter > 0 && time.Since(start)+retryAfter <= paceBudget
+		if !paced {
+			failures++
+		}
+		if !retryable || failures == DefaultRetryAttempts {
 			break
 		}
 		wait := retryAfter
 		if wait <= 0 {
-			wait = retryBackoff(attempt)
+			wait = retryBackoff(failures)
+		}
+		if paced {
+			log.Info().Str("call", what).Dur("retry_in", wait).Msg("server is busy, retrying")
 		}
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("%s: %w (after %d attempt(s), last error: %v)", what, ctx.Err(), attempt, lastErr)
+			return fmt.Errorf("%s: %w (after %d attempt(s), last error: %v)", what, ctx.Err(), calls, lastErr)
 		case <-time.After(wait):
 		}
 	}
-	return fmt.Errorf("%s (after %d attempt(s)): %w", what, DefaultRetryAttempts, lastErr)
+	return fmt.Errorf("%s (after %d attempt(s)): %w", what, calls, lastErr)
 }
 
 // RetryRPC retries a Mondoo upstream RPC on transient errors (see
-// RetryableRPCError) with bounded exponential backoff. Permanent errors
+// RetryableRPCError) with bounded exponential backoff, or with the server's
+// RetryInfo delay when the error carries one. Permanent errors
 // (Unauthenticated, PermissionDenied, InvalidArgument, NotFound, …) fail fast
 // without spending the attempt budget. The call must be idempotent — the caller
 // is responsible for only wrapping RPCs that are safe to repeat.
 func RetryRPC(ctx context.Context, what string, fn func() error) error {
 	return WithRetry(ctx, what, func() (bool, time.Duration, error) {
 		err := fn()
-		return RetryableRPCError(err), 0, err
+		wait, _ := RetryInfoDelay(err)
+		return RetryableRPCError(err), wait, err
 	})
+}
+
+// RetryInfoDelay extracts google.rpc.RetryInfo.retry_delay from a ranger status
+// error. It reports false when there is no positive delay.
+func RetryInfoDelay(err error) (time.Duration, bool) {
+	st, ok := status.FromError(err)
+	if !ok {
+		return 0, false
+	}
+	for _, d := range st.Details() {
+		if ri, ok := d.(*errdetails.RetryInfo); ok {
+			if delay := ri.GetRetryDelay().AsDuration(); delay > 0 {
+				return min(delay, maxRetryInfoDelay), true
+			}
+		}
+	}
+	return 0, false
 }
 
 // RetryableRPCError reports whether a ranger RPC error is transient and worth

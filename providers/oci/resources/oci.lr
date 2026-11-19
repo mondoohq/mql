@@ -5441,11 +5441,10 @@ private oci.loadBalancer.listener @defaults("name") {
   sslProtocols []string
   // SSL cipher suite name
   //
-  // Deprecated in favor of sslCipherSuite, which resolves the same name to
-  // the suite itself. Kept because it also carries the OCI-predefined suite
-  // names, which are not part of the load balancer's own collection and so
-  // do not resolve.
-  sslCipherSuiteName @maturity("deprecated") @replaced_by("oci.loadBalancer.listener.sslCipherSuite") string
+  // The only field that names an OCI-predefined suite such as
+  // oci-modern-ssl-cipher-suite-v1. Those suites are not part of the load
+  // balancer's own collection, so sslCipherSuite is null for them.
+  sslCipherSuiteName string
   // Cipher suite the listener negotiates with
   //
   // Resolves the load balancer's named cipher suite, whose ciphers list is
@@ -7815,7 +7814,16 @@ private oci.oke.cluster @defaults("name") {
   // but names no key, which admits every image.
   imagePolicyKmsKeys() []oci.kms.key
   // Available Kubernetes version upgrades
+  //
+  // Lists every version the control plane can move to next, patch releases
+  // included, so its length does not measure how far behind the cluster is.
   availableKubernetesUpgrades []string
+  // Kubernetes versions OKE supports in the cluster's region
+  //
+  // Read from the cluster options OKE publishes for new clusters, which name
+  // each version it currently supports and drop a version once its support
+  // ends. A kubernetesVersion absent from this list is out of support.
+  supportedKubernetesVersions() []string
   // Whether Pod Security Policy admission controller is enabled
   isPodSecurityPolicyEnabled bool
   // Whether the Kubernetes Dashboard add-on is deployed
@@ -9207,17 +9215,26 @@ private oci.database.autonomousDatabase @defaults("name") {
   whitelistedIps []string
   // Whether the database is reachable from the public internet
   //
-  // True when the database has a public endpoint (no private endpoint) and
-  // either access control is disabled or its allow-list admits any address
-  // (0.0.0.0/0 or 0.0.0.0). mTLS may still be required to connect, but the
-  // listener itself is reachable from the internet.
+  // True when the database has a public endpoint and either access control
+  // is disabled or its allow-list admits any address (0.0.0.0/0, 0.0.0.0, or
+  // an internet-wide range). A private endpoint database counts when public
+  // access is also allowed on it and that allow-list admits any address.
+  // mTLS may still be required to connect, but the listener itself is
+  // reachable from the internet.
   internetReachable() bool
   // Allowed client IP addresses for the Data Guard standby (ACL)
   //
   // The standby's own access control list. When it diverges from
   // whitelistedIps the standby may be reachable from networks the primary
   // blocks, so compare the two when auditing disaster-recovery exposure.
+  // Not enforced while arePrimaryWhitelistedIpsUsed is true.
   standbyWhitelistedIps []string
+  // Whether the Data Guard standby enforces the primary's access control list
+  //
+  // When true the standby admits the sources in whitelistedIps and ignores
+  // standbyWhitelistedIps; when false it enforces standbyWhitelistedIps.
+  // Null when OCI reports neither, as for a database without a standby.
+  arePrimaryWhitelistedIpsUsed bool
   // Whether auto-scaling is enabled
   isAutoScalingEnabled bool
   // Whether local Data Guard is enabled
@@ -9459,9 +9476,12 @@ private oci.apigateway.deployment @defaults("name pathPrefix") {
   endpoint string
   // Lifecycle state (e.g., CREATING, ACTIVE, UPDATING, DELETING, DELETED, FAILED)
   state string
-  // Authentication method configured for this deployment: NONE, TOKEN_AUTHENTICATION, JWT_AUTHENTICATION, or CUSTOM_AUTHENTICATION
+  // Authentication method configured for this deployment: NONE, TOKEN_AUTHENTICATION, JWT_AUTHENTICATION, CUSTOM_AUTHENTICATION, or DYNAMIC_AUTHENTICATION
   authenticationType() string
   // Whether anonymous (unauthenticated) access is allowed
+  //
+  // Under dynamic authentication this is true when any of the selectable
+  // authentication servers admits anonymous requests.
   isAnonymousAccessAllowed() bool
   // JWT audiences accepted when authenticationType is JWT_AUTHENTICATION
   jwtAudiences() []string

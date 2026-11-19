@@ -181,3 +181,141 @@ func TestPublicAccessIsUnknown(t *testing.T) {
 	assert.False(t, publicAccessIsUnknown(knownPublicAccess(false)))
 	assert.False(t, publicAccessIsUnknown(knownPublicAccess(true)))
 }
+
+func TestCidrsAdmitInternet(t *testing.T) {
+	// All cases are synthetic CIDR arithmetic on documentation-range addresses
+	// (RFC 5737, RFC 3849), not data from a live cluster. The empty-list case
+	// follows EKS's documented default of publicAccessCidrs = 0.0.0.0/0.
+	tests := []struct {
+		name  string
+		cidrs []any
+		want  bool
+	}{
+		{"empty list, EKS applies 0.0.0.0/0", nil, true},
+		{"IPv4 default", []any{"0.0.0.0/0"}, true},
+		{"IPv6 default alongside a narrow range", []any{"203.0.113.0/24", "::/0"}, true},
+		{"IPv6 default written as ::0/0", []any{"::0/0"}, true},
+		{"whitespace-padded default", []any{" 0.0.0.0/0 "}, true},
+		{"unparseable entry", []any{"not-a-cidr"}, true},
+		{"unparseable entry beside a narrow range", []any{"203.0.113.7/32", "0.0.0.0"}, true},
+		{"IPv4 halves", []any{"128.0.0.0/1", "0.0.0.0/1"}, true},
+		{"IPv6 halves", []any{"::/1", "8000::/1"}, true},
+		{"IPv4 quarters with an overlap", []any{"0.0.0.0/2", "64.0.0.0/2", "0.0.0.0/1", "128.0.0.0/2", "192.0.0.0/2"}, true},
+		{"unmasked host bits", []any{"10.1.2.3/0"}, true},
+		{"IPv4-mapped IPv6 default", []any{"::ffff:0.0.0.0/96"}, true},
+		{"single address", []any{"203.0.113.7/32"}, false},
+		{"lower IPv4 half only", []any{"0.0.0.0/1"}, false},
+		{"upper IPv6 half only", []any{"8000::/1"}, false},
+		{"broad but not total", []any{"0.0.0.0/8", "10.0.0.0/8"}, false},
+		{"halves missing one address", []any{"0.0.0.0/1", "128.0.0.0/2", "192.0.0.0/3", "224.0.0.0/4", "240.0.0.0/5", "248.0.0.0/6", "252.0.0.0/7", "254.0.0.0/8", "255.0.0.0/9", "255.128.0.0/10", "255.192.0.0/11", "255.224.0.0/12", "255.240.0.0/13", "255.248.0.0/14", "255.252.0.0/15", "255.254.0.0/16", "255.255.0.0/17", "255.255.128.0/18", "255.255.192.0/19", "255.255.224.0/20", "255.255.240.0/21", "255.255.248.0/22", "255.255.252.0/23", "255.255.254.0/24", "255.255.255.0/25", "255.255.255.128/26", "255.255.255.192/27", "255.255.255.224/28", "255.255.255.240/29", "255.255.255.248/30", "255.255.255.252/31", "255.255.255.254/32"}, false},
+		{"IPv4 and IPv6 halves do not combine", []any{"0.0.0.0/1", "8000::/1"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, cidrsAdmitInternet(tt.cidrs))
+		})
+	}
+}
+
+// eksClusterForExposure builds a cluster with every field exposure() reads
+// already resolved, so no AWS call is made.
+func eksClusterForExposure(runtime *plugin.Runtime, publicAccess *plugin.TValue[bool], cidrs []any, sgs *plugin.TValue[[]any]) *mqlAwsEksCluster {
+	c := &mqlAwsEksCluster{MqlRuntime: runtime}
+	c.Arn = plugin.TValue[string]{Data: "arn:aws:eks:us-east-1:000000000000:cluster/test", State: plugin.StateIsSet}
+	c.EndpointPublicAccess = *publicAccess
+	c.PublicAccessCidrs = plugin.TValue[[]any]{Data: cidrs, State: plugin.StateIsSet}
+	if sgs == nil {
+		sgs = &plugin.TValue[[]any]{Data: []any{}, State: plugin.StateIsSet}
+	}
+	c.ClusterSecurityGroups = *sgs
+	return c
+}
+
+// TestEksClusterExposure pins that the public endpoint's verdict follows
+// publicAccessCidrs and not the cluster security groups, which apply only to
+// the private endpoint.
+func TestEksClusterExposure(t *testing.T) {
+	// All cases are synthetic combinations of endpoint access, public access
+	// CIDRs and security group state, using documentation-range addresses;
+	// none is captured from a live cluster.
+	tests := []struct {
+		name                  string
+		publicAccess          bool
+		cidrs                 []any
+		sgsOpen               *bool
+		wantInternetReachable bool
+		wantSgAllows          bool
+	}{
+		{
+			name:                  "public endpoint restricted to one address is not reachable",
+			publicAccess:          true,
+			cidrs:                 []any{"203.0.113.7/32"},
+			wantInternetReachable: false,
+		},
+		{
+			name:                  "public endpoint open to the internet behind a closed security group is reachable",
+			publicAccess:          true,
+			cidrs:                 []any{"0.0.0.0/0"},
+			sgsOpen:               new(false),
+			wantInternetReachable: true,
+		},
+		{
+			name:                  "public endpoint open over IPv6 is reachable",
+			publicAccess:          true,
+			cidrs:                 []any{"::/0"},
+			wantInternetReachable: true,
+		},
+		{
+			name:                  "restricted public endpoint with a world-open security group is not reachable",
+			publicAccess:          true,
+			cidrs:                 []any{"203.0.113.0/24"},
+			sgsOpen:               new(true),
+			wantInternetReachable: false,
+			wantSgAllows:          true,
+		},
+		{
+			name:                  "public endpoint with no CIDRs listed is reachable",
+			publicAccess:          true,
+			cidrs:                 []any{},
+			wantInternetReachable: true,
+		},
+		{
+			name:                  "private-only endpoint is not reachable",
+			publicAccess:          false,
+			cidrs:                 []any{"0.0.0.0/0"},
+			sgsOpen:               new(true),
+			wantInternetReachable: false,
+			wantSgAllows:          true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runtime := testRuntime()
+			var sgs *plugin.TValue[[]any]
+			if tt.sgsOpen != nil {
+				sgs = securityGroupsTValue(runtime, *tt.sgsOpen)
+			}
+			cluster := eksClusterForExposure(runtime, knownPublicAccess(tt.publicAccess), tt.cidrs, sgs)
+
+			exposure, err := cluster.exposure()
+			require.NoError(t, err)
+			require.NotNil(t, exposure)
+
+			assert.Equal(t, tt.publicAccess, exposure.PubliclyAccessible.Data)
+			assert.False(t, exposure.InternetReachable.IsNull())
+			assert.Equal(t, tt.wantInternetReachable, exposure.InternetReachable.Data)
+			assert.Equal(t, tt.wantSgAllows, exposure.SecurityGroupAllowsIngress.Data)
+		})
+	}
+}
+
+func TestEksClusterExposureNullPublicAccess(t *testing.T) {
+	runtime := testRuntime()
+	cluster := eksClusterForExposure(runtime, nullPublicAccess(), []any{"0.0.0.0/0"}, nil)
+
+	exposure, err := cluster.exposure()
+	require.NoError(t, err)
+	assert.True(t, exposure.PubliclyAccessible.IsNull())
+	assert.True(t, exposure.InternetReachable.IsNull())
+}

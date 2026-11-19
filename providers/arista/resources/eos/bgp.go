@@ -11,13 +11,15 @@ import (
 	"github.com/aristanetworks/goeapi/module"
 )
 
-// showIPBgpSummary represents the response from "show ip bgp summary"
+// showIPBgpSummary represents the response from "show ip bgp summary vrf all".
+// Without `vrf all` EOS reports the default VRF only, and every peer in any
+// other VRF would be missing from arista.eos.bgp.vrfs.
 type showIPBgpSummary struct {
 	VRFs map[string]showBgpVrf `json:"vrfs"`
 }
 
 func (s *showIPBgpSummary) GetCmd() string {
-	return "show ip bgp summary"
+	return "show ip bgp summary vrf all"
 }
 
 type showBgpVrf struct {
@@ -96,13 +98,14 @@ func (eos *Eos) BGPConfig() *module.BgpConfig {
 	return bgpModule.Get()
 }
 
-// showIPBgpNeighbors represents the response from "show ip bgp neighbors"
+// showIPBgpNeighbors represents the response from "show ip bgp neighbors vrf all",
+// scoped to every VRF for the same reason as showIPBgpSummary.
 type showIPBgpNeighbors struct {
 	VRFs map[string]showBgpNeighborsVrf `json:"vrfs"`
 }
 
 func (s *showIPBgpNeighbors) GetCmd() string {
-	return "show ip bgp neighbors"
+	return "show ip bgp neighbors vrf all"
 }
 
 type showBgpNeighborsVrf struct {

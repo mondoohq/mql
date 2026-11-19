@@ -295,3 +295,7 @@ func TestNotebookInstanceDetailsNullSubnet(t *testing.T) {
 	details := &mqlAwsSagemakerNotebookinstancedetails{}
 	assert.Nil(t, details.cacheSubnetId)
 }
+
+func TestModelPackagesListInputIncludesVersioned(t *testing.T) {
+	assert.Equal(t, sagemakerTypes.ModelPackageTypeBoth, modelPackagesListInput().ModelPackageType)
+}

@@ -8382,6 +8382,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"oci.oke.cluster.availableKubernetesUpgrades": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciOkeCluster).GetAvailableKubernetesUpgrades()).ToDataRes(types.Array(types.String))
 	},
+	"oci.oke.cluster.supportedKubernetesVersions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciOkeCluster).GetSupportedKubernetesVersions()).ToDataRes(types.Array(types.String))
+	},
 	"oci.oke.cluster.isPodSecurityPolicyEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciOkeCluster).GetIsPodSecurityPolicyEnabled()).ToDataRes(types.Bool)
 	},
@@ -9551,6 +9554,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"oci.database.autonomousDatabase.standbyWhitelistedIps": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciDatabaseAutonomousDatabase).GetStandbyWhitelistedIps()).ToDataRes(types.Array(types.String))
+	},
+	"oci.database.autonomousDatabase.arePrimaryWhitelistedIpsUsed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciDatabaseAutonomousDatabase).GetArePrimaryWhitelistedIpsUsed()).ToDataRes(types.Bool)
 	},
 	"oci.database.autonomousDatabase.isAutoScalingEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciDatabaseAutonomousDatabase).GetIsAutoScalingEnabled()).ToDataRes(types.Bool)
@@ -23998,6 +24004,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOciOkeCluster).AvailableKubernetesUpgrades, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"oci.oke.cluster.supportedKubernetesVersions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciOkeCluster).SupportedKubernetesVersions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"oci.oke.cluster.isPodSecurityPolicyEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciOkeCluster).IsPodSecurityPolicyEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
@@ -25676,6 +25686,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"oci.database.autonomousDatabase.standbyWhitelistedIps": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciDatabaseAutonomousDatabase).StandbyWhitelistedIps, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"oci.database.autonomousDatabase.arePrimaryWhitelistedIpsUsed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciDatabaseAutonomousDatabase).ArePrimaryWhitelistedIpsUsed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"oci.database.autonomousDatabase.isAutoScalingEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -57420,6 +57434,7 @@ type mqlOciOkeCluster struct {
 	IsImagePolicyEnabled           plugin.TValue[bool]
 	ImagePolicyKmsKeys             plugin.TValue[[]any]
 	AvailableKubernetesUpgrades    plugin.TValue[[]any]
+	SupportedKubernetesVersions    plugin.TValue[[]any]
 	IsPodSecurityPolicyEnabled     plugin.TValue[bool]
 	IsKubernetesDashboardEnabled   plugin.TValue[bool]
 	IsTillerEnabled                plugin.TValue[bool]
@@ -57587,6 +57602,12 @@ func (c *mqlOciOkeCluster) GetImagePolicyKmsKeys() *plugin.TValue[[]any] {
 
 func (c *mqlOciOkeCluster) GetAvailableKubernetesUpgrades() *plugin.TValue[[]any] {
 	return &c.AvailableKubernetesUpgrades
+}
+
+func (c *mqlOciOkeCluster) GetSupportedKubernetesVersions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SupportedKubernetesVersions, func() ([]any, error) {
+		return c.supportedKubernetesVersions()
+	})
 }
 
 func (c *mqlOciOkeCluster) GetIsPodSecurityPolicyEnabled() *plugin.TValue[bool] {
@@ -61646,6 +61667,7 @@ type mqlOciDatabaseAutonomousDatabase struct {
 	WhitelistedIps                       plugin.TValue[[]any]
 	InternetReachable                    plugin.TValue[bool]
 	StandbyWhitelistedIps                plugin.TValue[[]any]
+	ArePrimaryWhitelistedIpsUsed         plugin.TValue[bool]
 	IsAutoScalingEnabled                 plugin.TValue[bool]
 	IsLocalDataGuardEnabled              plugin.TValue[bool]
 	IsRemoteDataGuardEnabled             plugin.TValue[bool]
@@ -61814,6 +61836,10 @@ func (c *mqlOciDatabaseAutonomousDatabase) GetInternetReachable() *plugin.TValue
 
 func (c *mqlOciDatabaseAutonomousDatabase) GetStandbyWhitelistedIps() *plugin.TValue[[]any] {
 	return &c.StandbyWhitelistedIps
+}
+
+func (c *mqlOciDatabaseAutonomousDatabase) GetArePrimaryWhitelistedIpsUsed() *plugin.TValue[bool] {
+	return &c.ArePrimaryWhitelistedIpsUsed
 }
 
 func (c *mqlOciDatabaseAutonomousDatabase) GetIsAutoScalingEnabled() *plugin.TValue[bool] {

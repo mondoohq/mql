@@ -27,8 +27,8 @@ different product codes:
 | CloudEOS Router (BYOL) | `3gruvlcso4s66wfg2mdzxg8z6` | needs a licence from Arista sales; the AMI *is* publicly listed |
 | CloudEOS Router (PAYG) | `8xzz74jx7agumduhohu7zful3` | hourly software charge, no licence needed |
 
-**The PAYG AMI is not discoverable from the CLI.** `describe-images` returns
-only the BYOL image, in every region, even when you are subscribed to PAYG:
+**`describe-images` does not list the PAYG AMI.** It returns only the BYOL
+image, in every region, even when you are subscribed to PAYG:
 
 ```bash
 aws ec2 describe-images --owners aws-marketplace \
@@ -38,10 +38,29 @@ aws ec2 describe-images --owners aws-marketplace \
 
 Launching the BYOL image while subscribed to PAYG fails with `OptInRequired`,
 which reads like "you are not subscribed" but actually means "not to *that*
-listing". Get the PAYG AMI id from the console instead:
+listing". Resolve the PAYG AMI through the Marketplace instead. The
+subscription's product id is the `ProductSKU` of its license; the listing's
+fulfillment options name an SSM parameter per EOS version, and that parameter
+holds the AMI id for the region you ask in:
 
-> Marketplace → Manage subscriptions → *Arista CloudEOS Router (PAYG)* →
-> **Launch new instance** → the AMI id is shown per region.
+```bash
+REGION=us-west-2
+SKU=$(aws license-manager list-received-licenses --region us-east-1 \
+  --query "Licenses[?ProductName=='Arista CloudEOS Router (PAYG)'].ProductSKU | [0]" \
+  --output text)
+aws marketplace-discovery list-fulfillment-options --region us-east-1 \
+  --product-id "$SKU" \
+  --query 'fulfillmentOptions[].amazonMachineImageFulfillmentOption.amiAlias' \
+  --output text | tr '\t' '\n'
+# /aws/service/marketplace/prod-l2oatpnmxzw2c/cloudeos-4.34.1f-payg
+# /aws/service/marketplace/prod-l2oatpnmxzw2c/cloudeos-4.34.2f-payg
+AMI=$(aws ssm get-parameter --region "$REGION" \
+  --name /aws/service/marketplace/prod-l2oatpnmxzw2c/cloudeos-4.34.2f-payg \
+  --query Parameter.Value --output text)
+```
+
+The console shows the same id under Marketplace → Manage subscriptions →
+*Arista CloudEOS Router (PAYG)* → **Launch new instance**.
 
 Confirm it is launchable before writing any Terraform:
 

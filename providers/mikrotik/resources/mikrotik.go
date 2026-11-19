@@ -73,6 +73,17 @@ func boolField(row map[string]string, key string) *llx.RawData {
 	return llx.BoolData(parseBool(v))
 }
 
+// stringField returns the RouterOS attribute at key, or null when the device
+// did not report it. Use it where an absent attribute carries meaning of its
+// own and must not read as an empty string.
+func stringField(row map[string]string, key string) *llx.RawData {
+	v, ok := row[key]
+	if !ok {
+		return llx.NilData
+	}
+	return llx.StringData(v)
+}
+
 // intField returns the RouterOS numeric attribute at key, or null when the
 // device did not report it, so an unreported counter or size does not read as
 // a genuine zero.
@@ -93,6 +104,26 @@ func listField(row map[string]string, key string) *llx.RawData {
 		return llx.NilData
 	}
 	return llx.ArrayData(splitList(v), types.String)
+}
+
+// intListField splits a RouterOS comma-separated numeric attribute, such as a
+// list of ports, into a list of integers, or returns null when the device did
+// not report the attribute. Entries that are not numbers are dropped rather
+// than read as 0, which would be a port of its own.
+func intListField(row map[string]string, key string) *llx.RawData {
+	v, ok := row[key]
+	if !ok {
+		return llx.NilData
+	}
+	out := []any{}
+	for _, p := range splitList(v) {
+		n, err := strconv.ParseInt(p.(string), 10, 64)
+		if err != nil {
+			continue
+		}
+		out = append(out, n)
+	}
+	return llx.ArrayData(out, types.Int)
 }
 
 // presenceField reports whether the device holds a value for a secret
@@ -377,7 +408,7 @@ func (r *mqlMikrotik) services() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return buildList(r.MqlRuntime, rows, newMikrotikService)
+	return buildList(r.MqlRuntime, serviceRows(rows), newMikrotikService)
 }
 
 func (r *mqlMikrotik) firewallRules() ([]any, error) {

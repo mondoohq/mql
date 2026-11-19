@@ -14,7 +14,7 @@ import (
 var Config = plugin.Provider{
 	Name:      "azure",
 	ID:        "go.mondoo.com/mql/providers/azure",
-	Version:   "14.8.0",
+	Version:   "14.9.0",
 	Platforms: resources.Platforms,
 	ConnectionTypes: []string{
 		provider.ConnectionType,
@@ -63,6 +63,7 @@ Examples run in the Azure CLI:
 				resources.DiscoveryVirtualNetworks,
 				resources.DiscoveryCognitiveServices,
 				resources.DiscoveryMachineLearningWorkspaces,
+				resources.DiscoveryHybridMachines,
 			},
 			Flags: []plugin.Flag{
 				{
@@ -177,6 +178,7 @@ Examples run in the Azure CLI:
 								"cosmosdb":          nil,
 								"cognitiveservices": nil,
 								"machinelearning":   nil,
+								"hybridcompute":     nil,
 							},
 						},
 					},

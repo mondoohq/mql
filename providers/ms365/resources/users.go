@@ -13,6 +13,7 @@ import (
 	abstractions "github.com/microsoft/kiota-abstractions-go"
 	"github.com/microsoftgraph/msgraph-beta-sdk-go/auditlogs"
 	betamodels "github.com/microsoftgraph/msgraph-beta-sdk-go/models"
+	msgraphsdkgo "github.com/microsoftgraph/msgraph-sdk-go"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/microsoftgraph/msgraph-sdk-go/users"
 	"github.com/rs/zerolog/log"
@@ -144,21 +145,96 @@ func (a *mqlMicrosoftUsers) list() ([]any, error) {
 	return res, nil
 }
 
-// count returns the total number of users in the tenant via the Graph
-// $count endpoint, avoiding a full user-list fetch (which is prohibitively
-// slow on large tenants).
+// The values of a user's userType that memberCount and guestCount count.
+const (
+	userTypeMember = "Member"
+	userTypeGuest  = "Guest"
+)
+
+// count returns the number of users via the Graph $count endpoint, avoiding
+// a full user-list fetch (which is prohibitively slow on large tenants).
 func (a *mqlMicrosoftUsers) count() (int64, error) {
+	return a.countUsers("")
+}
+
+func (a *mqlMicrosoftUsers) memberCount() (int64, error) {
+	return a.countUsers(userTypeMember)
+}
+
+func (a *mqlMicrosoftUsers) guestCount() (int64, error) {
+	return a.countUsers(userTypeGuest)
+}
+
+// countUsers counts the users this resource lists, of one userType when one
+// is given.
+func (a *mqlMicrosoftUsers) countUsers(userType string) (int64, error) {
+	filter, search, err := a.countQuery(userType)
+	if err != nil {
+		return 0, err
+	}
+
 	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
 	graphClient, err := conn.GraphClient()
 	if err != nil {
 		return 0, err
 	}
+	return fetchUserCount(context.Background(), graphClient, filter, search)
+}
 
-	opts := &users.CountRequestBuilderGetRequestConfiguration{Headers: abstractions.NewRequestHeaders()}
-	opts.Headers.Add("ConsistencyLevel", "eventual")
-	count, err := graphClient.Users().Count().Get(context.Background(), opts)
+// countQuery returns the $filter and $search of a count request. They are the
+// filter and search list applies, so a count agrees with the length of the
+// list it stands in for, with the filter narrowed to userType when one is
+// given. Either is empty when it does not apply.
+func (a *mqlMicrosoftUsers) countQuery(userType string) (filter string, search string, err error) {
+	if a.Filter.State == plugin.StateIsSet {
+		filter = a.Filter.Data
+	}
+	if a.Search.State == plugin.StateIsSet {
+		search, err = parseSearch(a.Search.Data)
+		if err != nil {
+			return "", "", err
+		}
+	}
+	return userTypeFilter(filter, userType), search, nil
+}
+
+// userTypeFilter narrows an OData filter to the users of one userType. The
+// filter is parenthesized first: `and` binds tighter than `or`, so appending
+// to `a or b` as is would only narrow b. An empty userType leaves the filter
+// as it is.
+func userTypeFilter(filter, userType string) string {
+	if userType == "" {
+		return filter
+	}
+	byType := odataEqFilter("userType", userType)
+	if filter == "" {
+		return byType
+	}
+	return "(" + filter + ") and " + byType
+}
+
+// fetchUserCount asks Graph's /users/$count how many users match filter and
+// search. Either may be empty, and with both empty it counts every user.
+//
+// Permissions: User.Read.All
+func fetchUserCount(ctx context.Context, graphClient *msgraphsdkgo.GraphServiceClient, filter, search string) (int64, error) {
+	// $count is an advanced query, which Graph only answers with this header
+	headers := abstractions.NewRequestHeaders()
+	headers.Add("ConsistencyLevel", "eventual")
+	opts := &users.CountRequestBuilderGetRequestConfiguration{
+		Headers:         headers,
+		QueryParameters: &users.CountRequestBuilderGetQueryParameters{},
+	}
+	if filter != "" {
+		opts.QueryParameters.Filter = &filter
+	}
+	if search != "" {
+		opts.QueryParameters.Search = &search
+	}
+
+	count, err := graphClient.Users().Count().Get(ctx, opts)
 	if err != nil {
-		return 0, transformError(err)
+		return 0, classifyGraphError(err, "User.Read.All")
 	}
 	if count == nil {
 		// This should never happen, but we better check

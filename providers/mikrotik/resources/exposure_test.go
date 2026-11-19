@@ -139,3 +139,128 @@ func TestRomonArgsAbsentMenu(t *testing.T) {
 	assert.Nil(t, args["enabled"].Value)
 	assert.Nil(t, args["hasSecrets"].Value)
 }
+
+func TestBandwidthServerArgs(t *testing.T) {
+	// RouterOS 7.25.1 default: enabled, open to every address
+	def := bandwidthServerArgs(liveRows(t, "tool-bandwidth-server.json")[0])
+	assert.Equal(t, "mikrotik.tool.bandwidthServer", def["__id"].Value)
+	assert.Equal(t, true, def["enabled"].Value)
+	assert.Equal(t, true, def["authenticate"].Value)
+	// an empty allow-list is an empty list, not null: the device reported it
+	assert.Equal(t, []any{}, def["allowedAddresses4"].Value)
+	assert.Equal(t, []any{}, def["allowedAddresses6"].Value)
+	assert.Equal(t, int64(100), def["maxSessions"].Value)
+	assert.Equal(t, int64(2000), def["allocateUdpPortsFrom"].Value)
+
+	restricted := bandwidthServerArgs(map[string]string{
+		"enabled":            "false",
+		"authenticate":       "false",
+		"allowed-addresses4": "192.0.2.0/24,198.51.100.7/32",
+		"allowed-addresses6": "2001:db8::/32",
+	})
+	assert.Equal(t, false, restricted["enabled"].Value)
+	assert.Equal(t, false, restricted["authenticate"].Value)
+	assert.Equal(t, []any{"192.0.2.0/24", "198.51.100.7/32"}, restricted["allowedAddresses4"].Value)
+	assert.Equal(t, []any{"2001:db8::/32"}, restricted["allowedAddresses6"].Value)
+}
+
+func TestBandwidthServerArgsAbsentMenu(t *testing.T) {
+	args := bandwidthServerArgs(map[string]string{})
+	assert.Nil(t, args["enabled"].Value)
+	assert.Nil(t, args["authenticate"].Value)
+	assert.Nil(t, args["allowedAddresses4"].Value)
+	assert.Nil(t, args["maxSessions"].Value)
+}
+
+func TestSocksArgs(t *testing.T) {
+	// RouterOS 7.25.1 default: off, but SOCKS 4 with no authentication if
+	// anyone turns it on
+	def := socksArgs(liveRows(t, "ip-socks.json")[0])
+	assert.Equal(t, "mikrotik.ip.socks", def["__id"].Value)
+	assert.Equal(t, false, def["enabled"].Value)
+	assert.Equal(t, "none", def["authMethod"].Value)
+	assert.Equal(t, int64(1080), def["port"].Value)
+	assert.Equal(t, int64(4), def["version"].Value)
+	assert.Equal(t, int64(200), def["maxConnections"].Value)
+	assert.Equal(t, "2m", def["connectionIdleTimeout"].Value)
+
+	authenticated := socksArgs(map[string]string{
+		"enabled":     "true",
+		"auth-method": "password",
+		"version":     "5",
+	})
+	assert.Equal(t, true, authenticated["enabled"].Value)
+	assert.Equal(t, "password", authenticated["authMethod"].Value)
+	assert.Equal(t, int64(5), authenticated["version"].Value)
+}
+
+func TestSocksArgsAbsentMenu(t *testing.T) {
+	args := socksArgs(map[string]string{})
+	assert.Nil(t, args["enabled"].Value)
+	assert.Nil(t, args["port"].Value)
+	assert.Nil(t, args["version"].Value)
+	assert.Nil(t, args["authMethod"].Value)
+	assert.Nil(t, args["connectionIdleTimeout"].Value)
+}
+
+func TestWebProxyArgs(t *testing.T) {
+	// RouterOS 7.25.1 default: off, listening on 8080 if turned on
+	def := webProxyArgs(liveRows(t, "ip-proxy.json")[0])
+	assert.Equal(t, "mikrotik.ip.proxy", def["__id"].Value)
+	assert.Equal(t, false, def["enabled"].Value)
+	assert.Equal(t, []any{int64(8080)}, def["ports"].Value)
+	assert.Equal(t, false, def["anonymous"].Value)
+	assert.Equal(t, "::", def["parentProxy"].Value)
+	assert.Equal(t, int64(0), def["parentProxyPort"].Value)
+	assert.Equal(t, "::", def["srcAddress"].Value)
+	assert.Equal(t, int64(600), def["maxClientConnections"].Value)
+
+	// several ports and an upstream proxy, as RouterOS 7.25.1 reports them
+	chained := webProxyArgs(map[string]string{
+		"enabled":           "true",
+		"anonymous":         "true",
+		"port":              "8080,3128",
+		"parent-proxy":      "192.0.2.10",
+		"parent-proxy-port": "3128",
+		"src-address":       "192.0.2.1",
+	})
+	assert.Equal(t, true, chained["enabled"].Value)
+	assert.Equal(t, true, chained["anonymous"].Value)
+	assert.Equal(t, []any{int64(8080), int64(3128)}, chained["ports"].Value)
+	assert.Equal(t, "192.0.2.10", chained["parentProxy"].Value)
+	assert.Equal(t, int64(3128), chained["parentProxyPort"].Value)
+}
+
+func TestWebProxyArgsAbsentMenu(t *testing.T) {
+	args := webProxyArgs(map[string]string{})
+	assert.Nil(t, args["enabled"].Value)
+	assert.Nil(t, args["ports"].Value)
+	assert.Nil(t, args["anonymous"].Value)
+	assert.Nil(t, args["parentProxy"].Value)
+	assert.Nil(t, args["srcAddress"].Value)
+}
+
+func TestUpnpArgs(t *testing.T) {
+	// RouterOS 7.25.1 default: off
+	def := upnpArgs(liveRows(t, "ip-upnp.json")[0])
+	assert.Equal(t, "mikrotik.ip.upnp", def["__id"].Value)
+	assert.Equal(t, false, def["enabled"].Value)
+	assert.Equal(t, false, def["allowDisableExternalInterface"].Value)
+	assert.Equal(t, true, def["showDummyRule"].Value)
+
+	on := upnpArgs(map[string]string{
+		"enabled":                          "true",
+		"allow-disable-external-interface": "true",
+		"show-dummy-rule":                  "false",
+	})
+	assert.Equal(t, true, on["enabled"].Value)
+	assert.Equal(t, true, on["allowDisableExternalInterface"].Value)
+	assert.Equal(t, false, on["showDummyRule"].Value)
+}
+
+func TestUpnpArgsAbsentMenu(t *testing.T) {
+	args := upnpArgs(map[string]string{})
+	assert.Nil(t, args["enabled"].Value)
+	assert.Nil(t, args["allowDisableExternalInterface"].Value)
+	assert.Nil(t, args["showDummyRule"].Value)
+}

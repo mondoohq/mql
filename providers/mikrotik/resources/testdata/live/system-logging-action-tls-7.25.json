@@ -1,0 +1,19 @@
+[
+ {
+  ".id": "*6",
+  "check-certificate": "false",
+  "default": "false",
+  "managed": "false",
+  "name": "labremote",
+  "remote": "192.0.2.50",
+  "remote-log-format": "syslog",
+  "remote-port": "514",
+  "remote-protocol": "tls",
+  "src-address": "0.0.0.0",
+  "syslog-facility": "daemon",
+  "syslog-severity": "auto",
+  "syslog-time-format": "bsd-syslog",
+  "target": "remote",
+  "vrf": "main"
+ }
+]

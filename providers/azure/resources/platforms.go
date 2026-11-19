@@ -40,6 +40,7 @@ var Platforms = []*plugin.PlatformInfo{
 	{Name: "azure-datafactory", Title: "Azure Data Factory", Kind: []string{"azure-object"}, Runtime: []string{"azure"}},
 	{Name: "azure-cognitiveservices-account", Title: "Azure AI Services Account", Kind: []string{"azure-object"}, Runtime: []string{"azure"}},
 	{Name: "azure-machinelearning-workspace", Title: "Azure Machine Learning Workspace", Kind: []string{"azure-object"}, Runtime: []string{"azure"}},
+	{Name: "azure-hybridcompute-machine", Title: "Azure Arc-enabled Server", Kind: []string{"azure-object"}, Runtime: []string{"azure"}},
 }
 
 var platformsByName = plugin.PlatformsByName(Platforms)

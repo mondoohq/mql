@@ -314,6 +314,7 @@ func (o *mqlOciDatabase) autonomousDatabases() ([]any, error) {
 					"isAccessControlEnabled":               llx.BoolDataPtr(a.IsAccessControlEnabled),
 					"whitelistedIps":                       llx.ArrayData(convert.SliceAnyToInterface(a.WhitelistedIps), types.String),
 					"standbyWhitelistedIps":                llx.ArrayData(convert.SliceAnyToInterface(a.StandbyWhitelistedIps), types.String),
+					"arePrimaryWhitelistedIpsUsed":         llx.BoolDataPtr(a.ArePrimaryWhitelistedIpsUsed),
 					"isAutoScalingEnabled":                 llx.BoolDataPtr(a.IsAutoScalingEnabled),
 					"isLocalDataGuardEnabled":              llx.BoolDataPtr(a.IsLocalDataGuardEnabled),
 					"isRemoteDataGuardEnabled":             llx.BoolDataPtr(a.IsRemoteDataGuardEnabled),
@@ -356,6 +357,7 @@ func (o *mqlOciDatabase) autonomousDatabases() ([]any, error) {
 				mqlAdb.cacheSourceID = stringValue(a.SourceId)
 				mqlAdb.cacheConnectionUrls = a.ConnectionUrls
 				mqlAdb.cachePublicConnectionUrls = a.PublicConnectionUrls
+				mqlAdb.cachePublicEndpoint = stringValue(a.PublicEndpoint)
 				res = append(res, mqlAdb)
 			}
 
@@ -372,6 +374,7 @@ type mqlOciDatabaseAutonomousDatabaseInternal struct {
 	cacheSourceID             string
 	cacheConnectionUrls       *database.AutonomousDatabaseConnectionUrls
 	cachePublicConnectionUrls *database.AutonomousDatabaseConnectionUrls
+	cachePublicEndpoint       string
 }
 
 // newOciAutonomousDatabaseConsoleUrls builds one console-URL resource. The

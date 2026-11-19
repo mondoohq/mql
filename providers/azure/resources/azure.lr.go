@@ -11789,6 +11789,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.sqlService.server.vulnerabilityAssessmentSettings": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionSqlServiceServer).GetVulnerabilityAssessmentSettings()).ToDataRes(types.Resource("azure.subscription.sqlService.server.vulnerabilityassessmentsettings"))
 	},
+	"azure.subscription.sqlService.server.vulnerabilityAssessmentExpressEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSqlServiceServer).GetVulnerabilityAssessmentExpressEnabled()).ToDataRes(types.Bool)
+	},
 	"azure.subscription.sqlService.server.virtualNetworkRules": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionSqlServiceServer).GetVirtualNetworkRules()).ToDataRes(types.Array(types.Resource("azure.subscription.sqlService.virtualNetworkRule")))
 	},
@@ -19171,6 +19174,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.serviceBusService.namespace.disableLocalAuth": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionServiceBusServiceNamespace).GetDisableLocalAuth()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.serviceBusService.namespace.minimumTlsVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionServiceBusServiceNamespace).GetMinimumTlsVersion()).ToDataRes(types.String)
 	},
 	"azure.subscription.serviceBusService.namespace.zoneRedundant": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionServiceBusServiceNamespace).GetZoneRedundant()).ToDataRes(types.Bool)
@@ -37946,6 +37952,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionSqlServiceServer).VulnerabilityAssessmentSettings, ok = plugin.RawToTValue[*mqlAzureSubscriptionSqlServiceServerVulnerabilityassessmentsettings](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.sqlService.server.vulnerabilityAssessmentExpressEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSqlServiceServer).VulnerabilityAssessmentExpressEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.sqlService.server.virtualNetworkRules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionSqlServiceServer).VirtualNetworkRules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -48716,6 +48726,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.serviceBusService.namespace.disableLocalAuth": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionServiceBusServiceNamespace).DisableLocalAuth, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.serviceBusService.namespace.minimumTlsVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionServiceBusServiceNamespace).MinimumTlsVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.serviceBusService.namespace.zoneRedundant": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -86863,46 +86877,47 @@ type mqlAzureSubscriptionSqlServiceServer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAzureSubscriptionSqlServiceServerInternal
-	Id                               plugin.TValue[string]
-	Name                             plugin.TValue[string]
-	Location                         plugin.TValue[string]
-	Tags                             plugin.TValue[map[string]any]
-	Type                             plugin.TValue[string]
-	Properties                       plugin.TValue[any]
-	MinimalTlsVersion                plugin.TValue[string]
-	PublicNetworkAccess              plugin.TValue[string]
-	RestrictOutboundNetworkAccess    plugin.TValue[string]
-	Version                          plugin.TValue[string]
-	State                            plugin.TValue[string]
-	FullyQualifiedDomainName         plugin.TValue[string]
-	Databases                        plugin.TValue[[]any]
-	FirewallRules                    plugin.TValue[[]any]
-	Ipv6FirewallRules                plugin.TValue[[]any]
-	AzureAdAdministrators            plugin.TValue[[]any]
-	AdministratorLogin               plugin.TValue[string]
-	VulnerabilityAssessmentSettings  plugin.TValue[*mqlAzureSubscriptionSqlServiceServerVulnerabilityassessmentsettings]
-	VirtualNetworkRules              plugin.TValue[[]any]
-	EncryptionProtectorServerKeyType plugin.TValue[string]
-	EncryptionProtectorKey           plugin.TValue[*mqlAzureSubscriptionKeyVaultServiceKey]
-	AzureAdOnlyAuthentication        plugin.TValue[bool]
-	ConnectionType                   plugin.TValue[string]
-	BlobAuditingPolicy               plugin.TValue[*mqlAzureSubscriptionSqlServiceServerBlobAuditingPolicy]
-	EncryptionProtectorConfig        plugin.TValue[*mqlAzureSubscriptionSqlServiceServerEncryptionProtectorConfig]
-	SecurityAlertPolicyConfig        plugin.TValue[*mqlAzureSubscriptionSqlServiceServerSecurityAlertPolicyConfig]
-	AdvancedThreatProtectionSetting  plugin.TValue[*mqlAzureSubscriptionSqlServiceServerAdvancedThreatProtectionSetting]
-	DevOpsAuditingSetting            plugin.TValue[*mqlAzureSubscriptionSqlServiceServerDevOpsAuditingSetting]
-	Keys                             plugin.TValue[[]any]
-	OutboundFirewallRules            plugin.TValue[[]any]
-	PrivateEndpointConnections       plugin.TValue[[]any]
-	FailoverGroups                   plugin.TValue[[]any]
-	ReplicationLinks                 plugin.TValue[[]any]
-	InternetReachable                plugin.TValue[bool]
-	IdentityType                     plugin.TValue[string]
-	PrincipalId                      plugin.TValue[string]
-	TenantId                         plugin.TValue[string]
-	PrimaryUserAssignedIdentity      plugin.TValue[*mqlAzureSubscriptionManagedIdentity]
-	DiagnosticSettings               plugin.TValue[[]any]
-	DiagnosticSettingsCategories     plugin.TValue[[]any]
+	Id                                    plugin.TValue[string]
+	Name                                  plugin.TValue[string]
+	Location                              plugin.TValue[string]
+	Tags                                  plugin.TValue[map[string]any]
+	Type                                  plugin.TValue[string]
+	Properties                            plugin.TValue[any]
+	MinimalTlsVersion                     plugin.TValue[string]
+	PublicNetworkAccess                   plugin.TValue[string]
+	RestrictOutboundNetworkAccess         plugin.TValue[string]
+	Version                               plugin.TValue[string]
+	State                                 plugin.TValue[string]
+	FullyQualifiedDomainName              plugin.TValue[string]
+	Databases                             plugin.TValue[[]any]
+	FirewallRules                         plugin.TValue[[]any]
+	Ipv6FirewallRules                     plugin.TValue[[]any]
+	AzureAdAdministrators                 plugin.TValue[[]any]
+	AdministratorLogin                    plugin.TValue[string]
+	VulnerabilityAssessmentSettings       plugin.TValue[*mqlAzureSubscriptionSqlServiceServerVulnerabilityassessmentsettings]
+	VulnerabilityAssessmentExpressEnabled plugin.TValue[bool]
+	VirtualNetworkRules                   plugin.TValue[[]any]
+	EncryptionProtectorServerKeyType      plugin.TValue[string]
+	EncryptionProtectorKey                plugin.TValue[*mqlAzureSubscriptionKeyVaultServiceKey]
+	AzureAdOnlyAuthentication             plugin.TValue[bool]
+	ConnectionType                        plugin.TValue[string]
+	BlobAuditingPolicy                    plugin.TValue[*mqlAzureSubscriptionSqlServiceServerBlobAuditingPolicy]
+	EncryptionProtectorConfig             plugin.TValue[*mqlAzureSubscriptionSqlServiceServerEncryptionProtectorConfig]
+	SecurityAlertPolicyConfig             plugin.TValue[*mqlAzureSubscriptionSqlServiceServerSecurityAlertPolicyConfig]
+	AdvancedThreatProtectionSetting       plugin.TValue[*mqlAzureSubscriptionSqlServiceServerAdvancedThreatProtectionSetting]
+	DevOpsAuditingSetting                 plugin.TValue[*mqlAzureSubscriptionSqlServiceServerDevOpsAuditingSetting]
+	Keys                                  plugin.TValue[[]any]
+	OutboundFirewallRules                 plugin.TValue[[]any]
+	PrivateEndpointConnections            plugin.TValue[[]any]
+	FailoverGroups                        plugin.TValue[[]any]
+	ReplicationLinks                      plugin.TValue[[]any]
+	InternetReachable                     plugin.TValue[bool]
+	IdentityType                          plugin.TValue[string]
+	PrincipalId                           plugin.TValue[string]
+	TenantId                              plugin.TValue[string]
+	PrimaryUserAssignedIdentity           plugin.TValue[*mqlAzureSubscriptionManagedIdentity]
+	DiagnosticSettings                    plugin.TValue[[]any]
+	DiagnosticSettingsCategories          plugin.TValue[[]any]
 }
 
 // createAzureSubscriptionSqlServiceServer creates a new instance of this resource
@@ -87071,6 +87086,12 @@ func (c *mqlAzureSubscriptionSqlServiceServer) GetVulnerabilityAssessmentSetting
 		}
 
 		return c.vulnerabilityAssessmentSettings()
+	})
+}
+
+func (c *mqlAzureSubscriptionSqlServiceServer) GetVulnerabilityAssessmentExpressEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.VulnerabilityAssessmentExpressEnabled, func() (bool, error) {
+		return c.vulnerabilityAssessmentExpressEnabled()
 	})
 }
 
@@ -113825,6 +113846,7 @@ type mqlAzureSubscriptionServiceBusServiceNamespace struct {
 	Status                          plugin.TValue[string]
 	ServiceBusEndpoint              plugin.TValue[string]
 	DisableLocalAuth                plugin.TValue[bool]
+	MinimumTlsVersion               plugin.TValue[string]
 	ZoneRedundant                   plugin.TValue[bool]
 	ProvisioningState               plugin.TValue[string]
 	CmkKeySource                    plugin.TValue[string]
@@ -113913,6 +113935,10 @@ func (c *mqlAzureSubscriptionServiceBusServiceNamespace) GetServiceBusEndpoint()
 
 func (c *mqlAzureSubscriptionServiceBusServiceNamespace) GetDisableLocalAuth() *plugin.TValue[bool] {
 	return &c.DisableLocalAuth
+}
+
+func (c *mqlAzureSubscriptionServiceBusServiceNamespace) GetMinimumTlsVersion() *plugin.TValue[string] {
+	return &c.MinimumTlsVersion
 }
 
 func (c *mqlAzureSubscriptionServiceBusServiceNamespace) GetZoneRedundant() *plugin.TValue[bool] {

@@ -610,8 +610,20 @@ type FindingsUploadRequest struct {
 	// other's findings. Fields 7 and 8 are used by the platform's copy of this
 	// message.
 	CompleteKinds []FindingKind `protobuf:"varint,9,rep,packed,name=complete_kinds,json=completeKinds,proto3,enum=mql.fex.v1.FindingKind" json:"complete_kinds,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// The components a full pull scanned, named as its findings name their
+	// component, including ones where it found nothing. With import_started_at
+	// set, the platform treats the assets they resolve to as covered by the pull
+	// and closes their stale findings of this source by absence, the same as for
+	// an asset one of the findings names. Without it, a scan that finds nothing
+	// has no finding to name its asset, so the findings it no longer reports
+	// stay open. The platform resolves each component the way it resolves a
+	// finding's component, never creates an asset for it, and only within the
+	// upload's space. A producer sends it only when the request carries no
+	// findings, since findings already name their assets. Fields 10 to 12 are
+	// used by the platform's copy of this message.
+	ScannedComponents []*Component `protobuf:"bytes,13,rep,name=scanned_components,json=scannedComponents,proto3" json:"scanned_components,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *FindingsUploadRequest) Reset() {
@@ -689,6 +701,13 @@ func (x *FindingsUploadRequest) GetImportStartedAt() *timestamppb.Timestamp {
 func (x *FindingsUploadRequest) GetCompleteKinds() []FindingKind {
 	if x != nil {
 		return x.CompleteKinds
+	}
+	return nil
+}
+
+func (x *FindingsUploadRequest) GetScannedComponents() []*Component {
+	if x != nil {
+		return x.ScannedComponents
 	}
 	return nil
 }
@@ -4121,7 +4140,7 @@ const file_fex_proto_rawDesc = "" +
 	"\x0fFindingDocument\x125\n" +
 	"\x03vex\x18\x01 \x01(\v2!.mql.fex.v1.VulnerabilityExchangeH\x00R\x03vex\x12/\n" +
 	"\x03fex\x18\x02 \x01(\v2\x1b.mql.fex.v1.FindingExchangeH\x00R\x03fexB\t\n" +
-	"\afinding\"\xdf\x02\n" +
+	"\afinding\"\xa5\x03\n" +
 	"\x15FindingsUploadRequest\x127\n" +
 	"\bfindings\x18\x01 \x03(\v2\x1b.mql.fex.v1.FindingDocumentR\bfindings\x12\x16\n" +
 	"\x06source\x18\x02 \x01(\tR\x06source\x12+\n" +
@@ -4129,7 +4148,8 @@ const file_fex_proto_rawDesc = "" +
 	"\tspace_mrn\x18\x04 \x01(\tR\bspaceMrn\x12#\n" +
 	"\rcreate_assets\x18\x05 \x01(\bR\fcreateAssets\x12F\n" +
 	"\x11import_started_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\x0fimportStartedAt\x12>\n" +
-	"\x0ecomplete_kinds\x18\t \x03(\x0e2\x17.mql.fex.v1.FindingKindR\rcompleteKinds\"\x91\x06\n" +
+	"\x0ecomplete_kinds\x18\t \x03(\x0e2\x17.mql.fex.v1.FindingKindR\rcompleteKinds\x12D\n" +
+	"\x12scanned_components\x18\r \x03(\v2\x15.mql.fex.v1.ComponentR\x11scannedComponents\"\x91\x06\n" +
 	"\x15VulnerabilityExchange\x12\x10\n" +
 	"\x03ref\x18\x01 \x01(\tR\x03ref\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\x12\x10\n" +
@@ -4576,91 +4596,92 @@ var file_fex_proto_depIdxs = []int32{
 	8,  // 2: mql.fex.v1.FindingsUploadRequest.findings:type_name -> mql.fex.v1.FindingDocument
 	52, // 3: mql.fex.v1.FindingsUploadRequest.import_started_at:type_name -> google.protobuf.Timestamp
 	0,  // 4: mql.fex.v1.FindingsUploadRequest.complete_kinds:type_name -> mql.fex.v1.FindingKind
-	13, // 5: mql.fex.v1.VulnerabilityExchange.details:type_name -> mql.fex.v1.VulnerabilityDetails
-	12, // 6: mql.fex.v1.VulnerabilityExchange.source:type_name -> mql.fex.v1.Source
-	18, // 7: mql.fex.v1.VulnerabilityExchange.ratings:type_name -> mql.fex.v1.Rating
-	52, // 8: mql.fex.v1.VulnerabilityExchange.first_seen:type_name -> google.protobuf.Timestamp
-	52, // 9: mql.fex.v1.VulnerabilityExchange.remediated:type_name -> google.protobuf.Timestamp
-	14, // 10: mql.fex.v1.VulnerabilityExchange.affects:type_name -> mql.fex.v1.Affects
-	1,  // 11: mql.fex.v1.VulnerabilityExchange.status:type_name -> mql.fex.v1.Status
-	11, // 12: mql.fex.v1.VulnerabilityExchange.references:type_name -> mql.fex.v1.Reference
-	20, // 13: mql.fex.v1.VulnerabilityExchange.remediations:type_name -> mql.fex.v1.Remediation
-	53, // 14: mql.fex.v1.VulnerabilityExchange.database_specific:type_name -> google.protobuf.Struct
-	23, // 15: mql.fex.v1.VulnerabilityExchange.evidences:type_name -> mql.fex.v1.Evidence
-	43, // 16: mql.fex.v1.Reference.metadata:type_name -> mql.fex.v1.Reference.MetadataEntry
-	52, // 17: mql.fex.v1.VulnerabilityDetails.created:type_name -> google.protobuf.Timestamp
-	52, // 18: mql.fex.v1.VulnerabilityDetails.published:type_name -> google.protobuf.Timestamp
-	52, // 19: mql.fex.v1.VulnerabilityDetails.updated:type_name -> google.protobuf.Timestamp
-	15, // 20: mql.fex.v1.Affects.component:type_name -> mql.fex.v1.Component
-	15, // 21: mql.fex.v1.Affects.sub_components:type_name -> mql.fex.v1.Component
-	44, // 22: mql.fex.v1.Component.identifiers:type_name -> mql.fex.v1.Component.IdentifiersEntry
-	45, // 23: mql.fex.v1.Component.properties:type_name -> mql.fex.v1.Component.PropertiesEntry
-	17, // 24: mql.fex.v1.Component.file:type_name -> mql.fex.v1.FileComponent
-	16, // 25: mql.fex.v1.Component.cloud_resource:type_name -> mql.fex.v1.CloudResource
-	46, // 26: mql.fex.v1.CloudResource.tags:type_name -> mql.fex.v1.CloudResource.TagsEntry
-	12, // 27: mql.fex.v1.Rating.source:type_name -> mql.fex.v1.Source
-	2,  // 28: mql.fex.v1.Rating.method:type_name -> mql.fex.v1.ScoringMethod
-	12, // 29: mql.fex.v1.Severity.source:type_name -> mql.fex.v1.Source
-	2,  // 30: mql.fex.v1.Severity.method:type_name -> mql.fex.v1.ScoringMethod
-	4,  // 31: mql.fex.v1.Severity.rating:type_name -> mql.fex.v1.SeverityRating
-	5,  // 32: mql.fex.v1.Remediation.category:type_name -> mql.fex.v1.Remediation.Category
-	22, // 33: mql.fex.v1.FindingExchange.details:type_name -> mql.fex.v1.FindingDetail
-	52, // 34: mql.fex.v1.FindingExchange.first_seen_at:type_name -> google.protobuf.Timestamp
-	52, // 35: mql.fex.v1.FindingExchange.last_seen_at:type_name -> google.protobuf.Timestamp
-	52, // 36: mql.fex.v1.FindingExchange.remediated_at:type_name -> google.protobuf.Timestamp
-	1,  // 37: mql.fex.v1.FindingExchange.status:type_name -> mql.fex.v1.Status
-	12, // 38: mql.fex.v1.FindingExchange.source:type_name -> mql.fex.v1.Source
-	14, // 39: mql.fex.v1.FindingExchange.affects:type_name -> mql.fex.v1.Affects
-	23, // 40: mql.fex.v1.FindingExchange.evidences:type_name -> mql.fex.v1.Evidence
-	20, // 41: mql.fex.v1.FindingExchange.remediations:type_name -> mql.fex.v1.Remediation
-	21, // 42: mql.fex.v1.FindingExchange.sub_findings:type_name -> mql.fex.v1.FindingExchange
-	6,  // 43: mql.fex.v1.FindingDetail.category:type_name -> mql.fex.v1.FindingDetail.Category
-	19, // 44: mql.fex.v1.FindingDetail.severity:type_name -> mql.fex.v1.Severity
-	3,  // 45: mql.fex.v1.FindingDetail.confidence:type_name -> mql.fex.v1.Confidence
-	11, // 46: mql.fex.v1.FindingDetail.references:type_name -> mql.fex.v1.Reference
-	47, // 47: mql.fex.v1.FindingDetail.properties:type_name -> mql.fex.v1.FindingDetail.PropertiesEntry
-	41, // 48: mql.fex.v1.Evidence.tactic:type_name -> mql.fex.v1.AttackTactic
-	42, // 49: mql.fex.v1.Evidence.technique:type_name -> mql.fex.v1.AttackTechnique
-	3,  // 50: mql.fex.v1.Evidence.confidence:type_name -> mql.fex.v1.Confidence
-	26, // 51: mql.fex.v1.Evidence.user:type_name -> mql.fex.v1.User
-	25, // 52: mql.fex.v1.Evidence.file:type_name -> mql.fex.v1.File
-	27, // 53: mql.fex.v1.Evidence.process:type_name -> mql.fex.v1.Process
-	28, // 54: mql.fex.v1.Evidence.container:type_name -> mql.fex.v1.Container
-	29, // 55: mql.fex.v1.Evidence.kubernetes:type_name -> mql.fex.v1.Kubernetes
-	30, // 56: mql.fex.v1.Evidence.registry_key:type_name -> mql.fex.v1.RegistryKey
-	31, // 57: mql.fex.v1.Evidence.connection:type_name -> mql.fex.v1.Connection
-	32, // 58: mql.fex.v1.Evidence.http_request:type_name -> mql.fex.v1.HttpRequest
-	33, // 59: mql.fex.v1.Evidence.dns_record:type_name -> mql.fex.v1.DnsRecord
-	34, // 60: mql.fex.v1.Evidence.certificate:type_name -> mql.fex.v1.Certificate
-	35, // 61: mql.fex.v1.Evidence.domain_registration:type_name -> mql.fex.v1.DomainRegistration
-	36, // 62: mql.fex.v1.Evidence.network_range:type_name -> mql.fex.v1.NetworkRange
-	37, // 63: mql.fex.v1.Evidence.threat_intel_indicator:type_name -> mql.fex.v1.ThreatIntelIndicator
-	38, // 64: mql.fex.v1.Evidence.malware:type_name -> mql.fex.v1.Malware
-	39, // 65: mql.fex.v1.Evidence.ai_model:type_name -> mql.fex.v1.AiModel
-	40, // 66: mql.fex.v1.Evidence.ai_agent:type_name -> mql.fex.v1.AiAgent
-	48, // 67: mql.fex.v1.Evidence.properties:type_name -> mql.fex.v1.Evidence.PropertiesEntry
-	24, // 68: mql.fex.v1.Evidence.source_version:type_name -> mql.fex.v1.SourceVersion
-	52, // 69: mql.fex.v1.SourceVersion.date:type_name -> google.protobuf.Timestamp
-	49, // 70: mql.fex.v1.User.properties:type_name -> mql.fex.v1.User.PropertiesEntry
-	25, // 71: mql.fex.v1.Process.binary:type_name -> mql.fex.v1.File
-	25, // 72: mql.fex.v1.Process.script:type_name -> mql.fex.v1.File
-	26, // 73: mql.fex.v1.Process.user:type_name -> mql.fex.v1.User
-	27, // 74: mql.fex.v1.Process.parent:type_name -> mql.fex.v1.Process
-	50, // 75: mql.fex.v1.Kubernetes.pods:type_name -> mql.fex.v1.Kubernetes.Pod
-	51, // 76: mql.fex.v1.Kubernetes.nodes:type_name -> mql.fex.v1.Kubernetes.Node
-	7,  // 77: mql.fex.v1.Connection.protocol:type_name -> mql.fex.v1.Connection.ConnectionProtocol
-	52, // 78: mql.fex.v1.Certificate.not_before:type_name -> google.protobuf.Timestamp
-	52, // 79: mql.fex.v1.Certificate.not_after:type_name -> google.protobuf.Timestamp
-	52, // 80: mql.fex.v1.DomainRegistration.created_at:type_name -> google.protobuf.Timestamp
-	52, // 81: mql.fex.v1.DomainRegistration.updated_at:type_name -> google.protobuf.Timestamp
-	52, // 82: mql.fex.v1.DomainRegistration.expires_at:type_name -> google.protobuf.Timestamp
-	52, // 83: mql.fex.v1.ThreatIntelIndicator.last_observed_at:type_name -> google.protobuf.Timestamp
-	28, // 84: mql.fex.v1.Kubernetes.Pod.containers:type_name -> mql.fex.v1.Container
-	85, // [85:85] is the sub-list for method output_type
-	85, // [85:85] is the sub-list for method input_type
-	85, // [85:85] is the sub-list for extension type_name
-	85, // [85:85] is the sub-list for extension extendee
-	0,  // [0:85] is the sub-list for field type_name
+	15, // 5: mql.fex.v1.FindingsUploadRequest.scanned_components:type_name -> mql.fex.v1.Component
+	13, // 6: mql.fex.v1.VulnerabilityExchange.details:type_name -> mql.fex.v1.VulnerabilityDetails
+	12, // 7: mql.fex.v1.VulnerabilityExchange.source:type_name -> mql.fex.v1.Source
+	18, // 8: mql.fex.v1.VulnerabilityExchange.ratings:type_name -> mql.fex.v1.Rating
+	52, // 9: mql.fex.v1.VulnerabilityExchange.first_seen:type_name -> google.protobuf.Timestamp
+	52, // 10: mql.fex.v1.VulnerabilityExchange.remediated:type_name -> google.protobuf.Timestamp
+	14, // 11: mql.fex.v1.VulnerabilityExchange.affects:type_name -> mql.fex.v1.Affects
+	1,  // 12: mql.fex.v1.VulnerabilityExchange.status:type_name -> mql.fex.v1.Status
+	11, // 13: mql.fex.v1.VulnerabilityExchange.references:type_name -> mql.fex.v1.Reference
+	20, // 14: mql.fex.v1.VulnerabilityExchange.remediations:type_name -> mql.fex.v1.Remediation
+	53, // 15: mql.fex.v1.VulnerabilityExchange.database_specific:type_name -> google.protobuf.Struct
+	23, // 16: mql.fex.v1.VulnerabilityExchange.evidences:type_name -> mql.fex.v1.Evidence
+	43, // 17: mql.fex.v1.Reference.metadata:type_name -> mql.fex.v1.Reference.MetadataEntry
+	52, // 18: mql.fex.v1.VulnerabilityDetails.created:type_name -> google.protobuf.Timestamp
+	52, // 19: mql.fex.v1.VulnerabilityDetails.published:type_name -> google.protobuf.Timestamp
+	52, // 20: mql.fex.v1.VulnerabilityDetails.updated:type_name -> google.protobuf.Timestamp
+	15, // 21: mql.fex.v1.Affects.component:type_name -> mql.fex.v1.Component
+	15, // 22: mql.fex.v1.Affects.sub_components:type_name -> mql.fex.v1.Component
+	44, // 23: mql.fex.v1.Component.identifiers:type_name -> mql.fex.v1.Component.IdentifiersEntry
+	45, // 24: mql.fex.v1.Component.properties:type_name -> mql.fex.v1.Component.PropertiesEntry
+	17, // 25: mql.fex.v1.Component.file:type_name -> mql.fex.v1.FileComponent
+	16, // 26: mql.fex.v1.Component.cloud_resource:type_name -> mql.fex.v1.CloudResource
+	46, // 27: mql.fex.v1.CloudResource.tags:type_name -> mql.fex.v1.CloudResource.TagsEntry
+	12, // 28: mql.fex.v1.Rating.source:type_name -> mql.fex.v1.Source
+	2,  // 29: mql.fex.v1.Rating.method:type_name -> mql.fex.v1.ScoringMethod
+	12, // 30: mql.fex.v1.Severity.source:type_name -> mql.fex.v1.Source
+	2,  // 31: mql.fex.v1.Severity.method:type_name -> mql.fex.v1.ScoringMethod
+	4,  // 32: mql.fex.v1.Severity.rating:type_name -> mql.fex.v1.SeverityRating
+	5,  // 33: mql.fex.v1.Remediation.category:type_name -> mql.fex.v1.Remediation.Category
+	22, // 34: mql.fex.v1.FindingExchange.details:type_name -> mql.fex.v1.FindingDetail
+	52, // 35: mql.fex.v1.FindingExchange.first_seen_at:type_name -> google.protobuf.Timestamp
+	52, // 36: mql.fex.v1.FindingExchange.last_seen_at:type_name -> google.protobuf.Timestamp
+	52, // 37: mql.fex.v1.FindingExchange.remediated_at:type_name -> google.protobuf.Timestamp
+	1,  // 38: mql.fex.v1.FindingExchange.status:type_name -> mql.fex.v1.Status
+	12, // 39: mql.fex.v1.FindingExchange.source:type_name -> mql.fex.v1.Source
+	14, // 40: mql.fex.v1.FindingExchange.affects:type_name -> mql.fex.v1.Affects
+	23, // 41: mql.fex.v1.FindingExchange.evidences:type_name -> mql.fex.v1.Evidence
+	20, // 42: mql.fex.v1.FindingExchange.remediations:type_name -> mql.fex.v1.Remediation
+	21, // 43: mql.fex.v1.FindingExchange.sub_findings:type_name -> mql.fex.v1.FindingExchange
+	6,  // 44: mql.fex.v1.FindingDetail.category:type_name -> mql.fex.v1.FindingDetail.Category
+	19, // 45: mql.fex.v1.FindingDetail.severity:type_name -> mql.fex.v1.Severity
+	3,  // 46: mql.fex.v1.FindingDetail.confidence:type_name -> mql.fex.v1.Confidence
+	11, // 47: mql.fex.v1.FindingDetail.references:type_name -> mql.fex.v1.Reference
+	47, // 48: mql.fex.v1.FindingDetail.properties:type_name -> mql.fex.v1.FindingDetail.PropertiesEntry
+	41, // 49: mql.fex.v1.Evidence.tactic:type_name -> mql.fex.v1.AttackTactic
+	42, // 50: mql.fex.v1.Evidence.technique:type_name -> mql.fex.v1.AttackTechnique
+	3,  // 51: mql.fex.v1.Evidence.confidence:type_name -> mql.fex.v1.Confidence
+	26, // 52: mql.fex.v1.Evidence.user:type_name -> mql.fex.v1.User
+	25, // 53: mql.fex.v1.Evidence.file:type_name -> mql.fex.v1.File
+	27, // 54: mql.fex.v1.Evidence.process:type_name -> mql.fex.v1.Process
+	28, // 55: mql.fex.v1.Evidence.container:type_name -> mql.fex.v1.Container
+	29, // 56: mql.fex.v1.Evidence.kubernetes:type_name -> mql.fex.v1.Kubernetes
+	30, // 57: mql.fex.v1.Evidence.registry_key:type_name -> mql.fex.v1.RegistryKey
+	31, // 58: mql.fex.v1.Evidence.connection:type_name -> mql.fex.v1.Connection
+	32, // 59: mql.fex.v1.Evidence.http_request:type_name -> mql.fex.v1.HttpRequest
+	33, // 60: mql.fex.v1.Evidence.dns_record:type_name -> mql.fex.v1.DnsRecord
+	34, // 61: mql.fex.v1.Evidence.certificate:type_name -> mql.fex.v1.Certificate
+	35, // 62: mql.fex.v1.Evidence.domain_registration:type_name -> mql.fex.v1.DomainRegistration
+	36, // 63: mql.fex.v1.Evidence.network_range:type_name -> mql.fex.v1.NetworkRange
+	37, // 64: mql.fex.v1.Evidence.threat_intel_indicator:type_name -> mql.fex.v1.ThreatIntelIndicator
+	38, // 65: mql.fex.v1.Evidence.malware:type_name -> mql.fex.v1.Malware
+	39, // 66: mql.fex.v1.Evidence.ai_model:type_name -> mql.fex.v1.AiModel
+	40, // 67: mql.fex.v1.Evidence.ai_agent:type_name -> mql.fex.v1.AiAgent
+	48, // 68: mql.fex.v1.Evidence.properties:type_name -> mql.fex.v1.Evidence.PropertiesEntry
+	24, // 69: mql.fex.v1.Evidence.source_version:type_name -> mql.fex.v1.SourceVersion
+	52, // 70: mql.fex.v1.SourceVersion.date:type_name -> google.protobuf.Timestamp
+	49, // 71: mql.fex.v1.User.properties:type_name -> mql.fex.v1.User.PropertiesEntry
+	25, // 72: mql.fex.v1.Process.binary:type_name -> mql.fex.v1.File
+	25, // 73: mql.fex.v1.Process.script:type_name -> mql.fex.v1.File
+	26, // 74: mql.fex.v1.Process.user:type_name -> mql.fex.v1.User
+	27, // 75: mql.fex.v1.Process.parent:type_name -> mql.fex.v1.Process
+	50, // 76: mql.fex.v1.Kubernetes.pods:type_name -> mql.fex.v1.Kubernetes.Pod
+	51, // 77: mql.fex.v1.Kubernetes.nodes:type_name -> mql.fex.v1.Kubernetes.Node
+	7,  // 78: mql.fex.v1.Connection.protocol:type_name -> mql.fex.v1.Connection.ConnectionProtocol
+	52, // 79: mql.fex.v1.Certificate.not_before:type_name -> google.protobuf.Timestamp
+	52, // 80: mql.fex.v1.Certificate.not_after:type_name -> google.protobuf.Timestamp
+	52, // 81: mql.fex.v1.DomainRegistration.created_at:type_name -> google.protobuf.Timestamp
+	52, // 82: mql.fex.v1.DomainRegistration.updated_at:type_name -> google.protobuf.Timestamp
+	52, // 83: mql.fex.v1.DomainRegistration.expires_at:type_name -> google.protobuf.Timestamp
+	52, // 84: mql.fex.v1.ThreatIntelIndicator.last_observed_at:type_name -> google.protobuf.Timestamp
+	28, // 85: mql.fex.v1.Kubernetes.Pod.containers:type_name -> mql.fex.v1.Container
+	86, // [86:86] is the sub-list for method output_type
+	86, // [86:86] is the sub-list for method input_type
+	86, // [86:86] is the sub-list for extension type_name
+	86, // [86:86] is the sub-list for extension extendee
+	0,  // [0:86] is the sub-list for field type_name
 }
 
 func init() { file_fex_proto_init() }

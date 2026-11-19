@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/servicebus/armservicebus"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/servicebus/armservicebus/v2"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -167,74 +167,8 @@ func (a *mqlAzureSubscriptionServiceBusService) namespaces() ([]any, error) {
 				continue
 			}
 
-			sku, err := convert.JsonToDict(ns.SKU)
+			args, err := createServiceBusNamespaceRawData(a.MqlRuntime, ns)
 			if err != nil {
-				return nil, err
-			}
-
-			var status, serviceBusEndpoint, provisioningState, cmkKeySource string
-			var disableLocalAuth, zoneRedundant bool
-			var requireInfraEnc *bool
-			var cmkKeys []any
-			var creationTime, updatedAt *time.Time
-			var alternateName, metricId *string
-			if ns.Properties != nil {
-				creationTime = ns.Properties.CreatedAt
-				updatedAt = ns.Properties.UpdatedAt
-				alternateName = ns.Properties.AlternateName
-				metricId = ns.Properties.MetricID
-				if ns.Properties.Status != nil {
-					status = *ns.Properties.Status
-				}
-				if ns.Properties.ServiceBusEndpoint != nil {
-					serviceBusEndpoint = *ns.Properties.ServiceBusEndpoint
-				}
-				if ns.Properties.DisableLocalAuth != nil {
-					disableLocalAuth = *ns.Properties.DisableLocalAuth
-				}
-				if ns.Properties.ZoneRedundant != nil {
-					zoneRedundant = *ns.Properties.ZoneRedundant
-				}
-				if ns.Properties.ProvisioningState != nil {
-					provisioningState = *ns.Properties.ProvisioningState
-				}
-				if enc := ns.Properties.Encryption; enc != nil {
-					if enc.KeySource != nil {
-						cmkKeySource = *enc.KeySource
-					}
-					requireInfraEnc = enc.RequireInfrastructureEncryption
-					for _, kvp := range enc.KeyVaultProperties {
-						if kvp == nil {
-							continue
-						}
-						if d, err := convert.JsonToDict(kvp); err == nil {
-							cmkKeys = append(cmkKeys, d)
-						}
-					}
-				}
-			}
-
-			args := map[string]*llx.RawData{
-				"id":                              llx.StringDataPtr(ns.ID),
-				"name":                            llx.StringDataPtr(ns.Name),
-				"location":                        llx.StringDataPtr(ns.Location),
-				"tags":                            llx.MapData(convert.PtrMapStrToInterface(ns.Tags), types.String),
-				"sku":                             llx.DictData(sku),
-				"status":                          llx.StringData(status),
-				"serviceBusEndpoint":              llx.StringData(serviceBusEndpoint),
-				"disableLocalAuth":                llx.BoolData(disableLocalAuth),
-				"zoneRedundant":                   llx.BoolData(zoneRedundant),
-				"provisioningState":               llx.StringData(provisioningState),
-				"cmkKeySource":                    llx.StringData(cmkKeySource),
-				"requireInfrastructureEncryption": llx.BoolDataPtr(requireInfraEnc),
-				"cmkKeys":                         llx.ArrayData(cmkKeys, types.Dict),
-				"creationTime":                    llx.TimeDataPtr(creationTime),
-				"alternateName":                   llx.StringDataPtr(alternateName),
-				"metricId":                        llx.StringDataPtr(metricId),
-				"updatedAt":                       llx.TimeDataPtr(updatedAt),
-			}
-			nsSku := orZero(ns.SKU)
-			if err := setSkuData(a.MqlRuntime, args, skuName(nsSku.Name), skuTier(nsSku.Tier), skuCapacity(nsSku.Capacity)); err != nil {
 				return nil, err
 			}
 
@@ -778,4 +712,86 @@ func (a *mqlAzureSubscriptionServiceBusServiceNamespaceNetworkRulesVirtualNetwor
 		return nil, err
 	}
 	return res.(*mqlAzureSubscriptionNetworkServiceSubnet), nil
+}
+
+// createServiceBusNamespaceRawData maps one ARM namespace onto the resource's
+// arguments. It is split out of the pager walk so the mapping can be tested
+// without an ARM client.
+func createServiceBusNamespaceRawData(runtime *plugin.Runtime, ns *armservicebus.SBNamespace) (map[string]*llx.RawData, error) {
+	sku, err := convert.JsonToDict(ns.SKU)
+	if err != nil {
+		return nil, err
+	}
+
+	var status, serviceBusEndpoint, provisioningState, cmkKeySource, minimumTlsVersion string
+	var disableLocalAuth, zoneRedundant bool
+	var requireInfraEnc *bool
+	var cmkKeys []any
+	var creationTime, updatedAt *time.Time
+	var alternateName, metricId *string
+	if ns.Properties != nil {
+		creationTime = ns.Properties.CreatedAt
+		updatedAt = ns.Properties.UpdatedAt
+		alternateName = ns.Properties.AlternateName
+		metricId = ns.Properties.MetricID
+		if ns.Properties.Status != nil {
+			status = *ns.Properties.Status
+		}
+		if ns.Properties.ServiceBusEndpoint != nil {
+			serviceBusEndpoint = *ns.Properties.ServiceBusEndpoint
+		}
+		if ns.Properties.DisableLocalAuth != nil {
+			disableLocalAuth = *ns.Properties.DisableLocalAuth
+		}
+		if ns.Properties.MinimumTLSVersion != nil {
+			minimumTlsVersion = string(*ns.Properties.MinimumTLSVersion)
+		}
+		if ns.Properties.ZoneRedundant != nil {
+			zoneRedundant = *ns.Properties.ZoneRedundant
+		}
+		if ns.Properties.ProvisioningState != nil {
+			provisioningState = *ns.Properties.ProvisioningState
+		}
+		if enc := ns.Properties.Encryption; enc != nil {
+			if enc.KeySource != nil {
+				cmkKeySource = *enc.KeySource
+			}
+			requireInfraEnc = enc.RequireInfrastructureEncryption
+			for _, kvp := range enc.KeyVaultProperties {
+				if kvp == nil {
+					continue
+				}
+				if d, err := convert.JsonToDict(kvp); err == nil {
+					cmkKeys = append(cmkKeys, d)
+				}
+			}
+		}
+	}
+
+	args := map[string]*llx.RawData{
+		"id":                              llx.StringDataPtr(ns.ID),
+		"name":                            llx.StringDataPtr(ns.Name),
+		"location":                        llx.StringDataPtr(ns.Location),
+		"tags":                            llx.MapData(convert.PtrMapStrToInterface(ns.Tags), types.String),
+		"sku":                             llx.DictData(sku),
+		"status":                          llx.StringData(status),
+		"serviceBusEndpoint":              llx.StringData(serviceBusEndpoint),
+		"disableLocalAuth":                llx.BoolData(disableLocalAuth),
+		"zoneRedundant":                   llx.BoolData(zoneRedundant),
+		"minimumTlsVersion":               llx.StringData(minimumTlsVersion),
+		"provisioningState":               llx.StringData(provisioningState),
+		"cmkKeySource":                    llx.StringData(cmkKeySource),
+		"requireInfrastructureEncryption": llx.BoolDataPtr(requireInfraEnc),
+		"cmkKeys":                         llx.ArrayData(cmkKeys, types.Dict),
+		"creationTime":                    llx.TimeDataPtr(creationTime),
+		"alternateName":                   llx.StringDataPtr(alternateName),
+		"metricId":                        llx.StringDataPtr(metricId),
+		"updatedAt":                       llx.TimeDataPtr(updatedAt),
+	}
+	nsSku := orZero(ns.SKU)
+	if err := setSkuData(runtime, args, skuName(nsSku.Name), skuTier(nsSku.Tier), skuCapacity(nsSku.Capacity)); err != nil {
+		return nil, err
+	}
+
+	return args, nil
 }

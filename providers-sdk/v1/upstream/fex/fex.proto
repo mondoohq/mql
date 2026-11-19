@@ -52,6 +52,18 @@ message FindingsUploadRequest {
   // other's findings. Fields 7 and 8 are used by the platform's copy of this
   // message.
   repeated FindingKind complete_kinds = 9;
+  // The components a full pull scanned, named as its findings name their
+  // component, including ones where it found nothing. With import_started_at
+  // set, the platform treats the assets they resolve to as covered by the pull
+  // and closes their stale findings of this source by absence, the same as for
+  // an asset one of the findings names. Without it, a scan that finds nothing
+  // has no finding to name its asset, so the findings it no longer reports
+  // stay open. The platform resolves each component the way it resolves a
+  // finding's component, never creates an asset for it, and only within the
+  // upload's space. A producer sends it only when the request carries no
+  // findings, since findings already name their assets. Fields 10 to 12 are
+  // used by the platform's copy of this message.
+  repeated Component scanned_components = 13;
 }
 
 // FindingKind is a kind of document a FindingsUploadRequest carries.

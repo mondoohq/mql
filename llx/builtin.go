@@ -254,7 +254,7 @@ func init() {
 			string("&&" + types.ArrayLike):           {f: floatAndArrayV2, Label: "&&"},
 			string("||" + types.ArrayLike):           {f: floatOrArrayV2, Label: "||"},
 			string("&&" + types.MapLike):             {f: floatAndMapV2, Label: "&&"},
-			string("||" + types.MapLike):             {f: floatOrMapV2, Label: "&&"},
+			string("||" + types.MapLike):             {f: floatOrMapV2, Label: "||"},
 			string("inRange"):                        {f: floatInRange, Label: "inRange"},
 		},
 		types.String: {
@@ -326,7 +326,7 @@ func init() {
 			string("&&" + types.ArrayLike):           {f: stringAndArrayV2, Label: "&&"},
 			string("||" + types.ArrayLike):           {f: stringOrArrayV2, Label: "||"},
 			string("&&" + types.MapLike):             {f: stringAndMapV2, Label: "&&"},
-			string("||" + types.MapLike):             {f: stringOrMapV2, Label: "&&"},
+			string("||" + types.MapLike):             {f: stringOrMapV2, Label: "||"},
 			string("+" + types.String):               {f: stringPlusStringV2, Label: "+"},
 			// fields
 			string("contains" + types.String):              {f: stringContainsString, Label: "contains"},
@@ -413,7 +413,7 @@ func init() {
 			string("&&" + types.ArrayLike):           {f: regexAndArrayV2, Label: "&&"},
 			string("||" + types.ArrayLike):           {f: regexOrArrayV2, Label: "||"},
 			string("&&" + types.MapLike):             {f: regexAndMapV2, Label: "&&"},
-			string("||" + types.MapLike):             {f: regexOrMapV2, Label: "&&"},
+			string("||" + types.MapLike):             {f: regexOrMapV2, Label: "||"},
 		},
 		types.Time: {
 			string("==" + types.Nil):       {f: timeCmpNilV2, Label: "=="},
@@ -748,8 +748,8 @@ func init() {
 			"==" + string(types.Empty): {f: mapCmpEmpty},
 			"!=" + string(types.Empty): {f: mapNotEmpty},
 			// {}T -- T
-			string("&&" + types.Bool):      {f: chunkEqFalseV2, Label: "&&"},
-			string("||" + types.Bool):      {f: chunkNeqTrueV2, Label: "||"},
+			string("&&" + types.Bool):      {f: mapAndBoolV2, Label: "&&"},
+			string("||" + types.Bool):      {f: mapOrBoolV2, Label: "||"},
 			string("&&" + types.Int):       {f: mapAndIntV2, Label: "&&"},
 			string("||" + types.Int):       {f: mapOrIntV2, Label: "||"},
 			string("&&" + types.Float):     {f: mapAndFloatV2, Label: "&&"},

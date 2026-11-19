@@ -72,3 +72,14 @@ func TestAppEngineLocationRegion(t *testing.T) {
 	assert.Equal(t, "asia-northeast1", appEngineLocationRegion("asia-northeast1"))
 	assert.Equal(t, "", appEngineLocationRegion(""))
 }
+
+func TestAppEngineIngressTrafficAllowed(t *testing.T) {
+	// Measured: the default service of an App Engine app that never set ingress
+	// (2026-11-15) returned "networkSettings": null.
+	assert.Equal(t, "INGRESS_TRAFFIC_ALLOWED_ALL", appEngineIngressTrafficAllowed(nil))
+	// Synthetic: the documented values; no target showed these.
+	assert.Equal(t, "INGRESS_TRAFFIC_ALLOWED_ALL", appEngineIngressTrafficAllowed(&appengine.NetworkSettings{}))
+	assert.Equal(t, "INGRESS_TRAFFIC_ALLOWED_ALL", appEngineIngressTrafficAllowed(&appengine.NetworkSettings{IngressTrafficAllowed: "INGRESS_TRAFFIC_ALLOWED_UNSPECIFIED"}))
+	assert.Equal(t, "INGRESS_TRAFFIC_ALLOWED_INTERNAL_ONLY", appEngineIngressTrafficAllowed(&appengine.NetworkSettings{IngressTrafficAllowed: "INGRESS_TRAFFIC_ALLOWED_INTERNAL_ONLY"}))
+	assert.Equal(t, "INGRESS_TRAFFIC_ALLOWED_INTERNAL_AND_LB", appEngineIngressTrafficAllowed(&appengine.NetworkSettings{IngressTrafficAllowed: "INGRESS_TRAFFIC_ALLOWED_INTERNAL_AND_LB"}))
+}

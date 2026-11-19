@@ -129,3 +129,19 @@ func TestMasterInterfaceName(t *testing.T) {
 	assert.Equal(t, "", masterInterfaceName(""))
 	assert.Equal(t, "wifi1", masterInterfaceName("wifi1"))
 }
+
+func TestIntListField(t *testing.T) {
+	assert.Equal(t, []any{int64(8080)}, intListField(map[string]string{"port": "8080"}, "port").Value)
+	assert.Equal(t, []any{int64(8080), int64(3128)}, intListField(map[string]string{"port": "8080, 3128"}, "port").Value)
+	// a non-numeric entry is dropped, never read as port 0
+	assert.Equal(t, []any{int64(3128)}, intListField(map[string]string{"port": "x,3128"}, "port").Value)
+	assert.Equal(t, []any{}, intListField(map[string]string{"port": ""}, "port").Value)
+	assert.Nil(t, intListField(map[string]string{}, "port").Value)
+}
+
+func TestStringField(t *testing.T) {
+	assert.Equal(t, "7.25.1", stringField(map[string]string{"v": "7.25.1"}, "v").Value)
+	// reported but empty stays an empty string
+	assert.Equal(t, "", stringField(map[string]string{"v": ""}, "v").Value)
+	assert.Nil(t, stringField(map[string]string{}, "v").Value)
+}

@@ -1,0 +1,28 @@
+[
+ {
+  "channel": "stable",
+  "check-certificate": "yes",
+  "installed-version": "7.25.1",
+  "ip-version": "auto",
+  "latest-version": "7.25.1",
+  "mode": "https",
+  "status": "System is already up to date"
+ },
+ {
+  "channel": "development",
+  "check-certificate": "yes",
+  "installed-version": "7.25.1",
+  "ip-version": "auto",
+  "latest-version": "7.26beta5",
+  "mode": "https",
+  "status": "New version is available"
+ },
+ {
+  "channel": "stable",
+  "check-certificate": "yes",
+  "installed-version": "7.25.1",
+  "ip-version": "auto",
+  "mode": "https",
+  "status": "ERROR: IPv4: could not resolve dns name (timeout)\n       IPv6: could not resolve dns name (timeout)"
+ }
+]

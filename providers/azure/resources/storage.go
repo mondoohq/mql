@@ -1241,15 +1241,21 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) encryptionKey() (*mqlAzureSu
 }
 
 func getStorageAccount(id string, runtime *plugin.Runtime, azureConnection *connection.AzureConnection) (*mqlAzureSubscriptionStorageServiceAccount, error) {
-	client, err := storage.NewAccountsClient(azureConnection.SubId(), azureConnection.Token(), &arm.ClientOptions{
-		ClientOptions: azureConnection.ClientOptions(),
-	})
+	resourceID, err := ParseResourceID(id)
 	if err != nil {
 		return nil, err
 	}
 
-	// parse the id
-	resourceID, err := ParseResourceID(id)
+	// The account can live in another subscription: diagnostic settings
+	// commonly archive to a central logging subscription. Query the
+	// subscription the ID names rather than the one being scanned.
+	subscriptionID := resourceID.SubscriptionID
+	if subscriptionID == "" {
+		subscriptionID = azureConnection.SubId()
+	}
+	client, err := storage.NewAccountsClient(subscriptionID, azureConnection.Token(), &arm.ClientOptions{
+		ClientOptions: azureConnection.ClientOptions(),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -1266,6 +1272,49 @@ func getStorageAccount(id string, runtime *plugin.Runtime, azureConnection *conn
 	}
 
 	return storageAccountToMql(runtime, &account.Account)
+}
+
+// storageAccountByName finds a storage account in the connection's
+// subscription by name, walking the already fetched account list so callers
+// across the subscription share one list call. Storage account names are
+// globally unique and case-insensitive. Returns nil, nil when no account in
+// this subscription has that name.
+func storageAccountByName(runtime *plugin.Runtime, name string) (*mqlAzureSubscriptionStorageServiceAccount, error) {
+	conn, ok := runtime.Connection.(*connection.AzureConnection)
+	if !ok {
+		return nil, errors.New("invalid connection provided, it is not an Azure connection")
+	}
+
+	res, err := NewResource(runtime, ResourceAzureSubscriptionStorageService, map[string]*llx.RawData{
+		"subscriptionId": llx.StringData(conn.SubId()),
+	})
+	if err != nil {
+		return nil, err
+	}
+	storage, ok := res.(*mqlAzureSubscriptionStorageService)
+	if !ok {
+		return nil, errors.New("could not resolve the azure storage service")
+	}
+
+	accounts := storage.GetAccounts()
+	if accounts.Error != nil {
+		return nil, accounts.Error
+	}
+
+	for _, entry := range accounts.Data {
+		account, ok := entry.(*mqlAzureSubscriptionStorageServiceAccount)
+		if ok && strings.EqualFold(account.Name.Data, name) {
+			return account, nil
+		}
+	}
+	// A tag filter may have left the account out of the list.
+	for _, entry := range tagFilteredOutOfType(runtime, ResourceAzureSubscriptionStorageServiceAccount) {
+		account, ok := entry.(*mqlAzureSubscriptionStorageServiceAccount)
+		if ok && strings.EqualFold(account.Name.Data, name) {
+			return account, nil
+		}
+	}
+	return nil, nil
 }
 
 func initAzureSubscriptionStorageServiceAccount(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {

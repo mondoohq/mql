@@ -320,3 +320,20 @@ func TestOciRuleValuesOpenIngressProtocolAndPorts(t *testing.T) {
 		assert.True(t, ociRuleValuesOpenIngress(ingress("tcp", "0.0.0.0/0", nil)))
 	})
 }
+
+func TestAdbInternetReachable(t *testing.T) {
+	open := []any{"0.0.0.0/0"}
+	narrow := []any{"203.0.113.0/24"}
+
+	// Public endpoint only.
+	assert.True(t, adbInternetReachable("", false, nil, false), "no ACL on a public endpoint")
+	assert.True(t, adbInternetReachable("", false, open, false), "ACL admitting any address")
+	assert.False(t, adbInternetReachable("", false, narrow, false), "narrow ACL")
+	assert.False(t, adbInternetReachable("", false, nil, true), "C@C access control with empty ACL denies all")
+
+	// Private endpoint.
+	assert.False(t, adbInternetReachable("10.0.2.19", false, nil, false), "private endpoint only")
+	assert.False(t, adbInternetReachable("10.0.2.19", false, open, false), "ACL without public access has no public listener")
+	assert.True(t, adbInternetReachable("10.0.2.19", true, open, false), "public access allowed to any address")
+	assert.False(t, adbInternetReachable("10.0.2.19", true, narrow, false), "public access allowed to a narrow range")
+}

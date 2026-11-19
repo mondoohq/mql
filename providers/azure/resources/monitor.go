@@ -953,9 +953,23 @@ func (a *mqlAzureSubscriptionMonitorServiceLogprofile) storageAccount() (*mqlAzu
 		a.StorageAccount.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	return getStorageAccount(a.StorageAccountId.Data, a.MqlRuntime, a.MqlRuntime.Connection.(*connection.AzureConnection))
+	account, err := getStorageAccount(a.StorageAccountId.Data, a.MqlRuntime, a.MqlRuntime.Connection.(*connection.AzureConnection))
+	if err != nil {
+		if diagnosticDestinationUnreadable(err) {
+			log.Warn().Err(err).Str("storageAccount", a.StorageAccountId.Data).Str("logProfile", a.Id.Data).
+				Msg("log profile names a storage account that could not be read")
+			a.StorageAccount.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		return nil, err
+	}
+	return account, nil
 }
 
+// storageAccount resolves the storage account the setting archives to. It
+// follows the same rules as workspace: null with an empty storageAccountId
+// means there is no storage destination, and null with a non-empty
+// storageAccountId means the named account was deleted or cannot be seen.
 func (a *mqlAzureSubscriptionMonitorServiceDiagnosticsetting) storageAccount() (*mqlAzureSubscriptionStorageServiceAccount, error) {
 	if a.StorageAccountId.Error != nil {
 		return nil, a.StorageAccountId.Error
@@ -966,17 +980,28 @@ func (a *mqlAzureSubscriptionMonitorServiceDiagnosticsetting) storageAccount() (
 		a.StorageAccount.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	return getStorageAccount(a.StorageAccountId.Data, a.MqlRuntime, a.MqlRuntime.Connection.(*connection.AzureConnection))
+	account, err := getStorageAccount(a.StorageAccountId.Data, a.MqlRuntime, a.MqlRuntime.Connection.(*connection.AzureConnection))
+	if err != nil {
+		if diagnosticDestinationUnreadable(err) {
+			log.Warn().Err(err).Str("storageAccount", a.StorageAccountId.Data).Str("setting", a.Id.Data).
+				Msg("diagnostic setting names a storage account that could not be read")
+			a.StorageAccount.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		return nil, err
+	}
+	return account, nil
 }
 
-// diagnosticWorkspaceUnreadable reports whether a failed workspace resolution
-// means the named destination could not be read, rather than that the read
-// itself broke. A deleted workspace answers 404 and one the caller cannot see
+// diagnosticDestinationUnreadable reports whether a failed resolution of a
+// diagnostic setting's workspace or storage account means the named
+// destination could not be read, rather than that the read
+// itself broke. A deleted destination answers 404 and one the caller cannot see
 // answers 403; both leave the destination unreadable, which the field reports
-// as null alongside the raw workspaceId. Anything else -- a server error, a
+// as null alongside the raw workspaceId or storageAccountId. Anything else -- a server error, a
 // throttle, a transport failure -- is a broken read and must surface as an
 // error rather than be dressed up as a dangling reference.
-func diagnosticWorkspaceUnreadable(err error) bool {
+func diagnosticDestinationUnreadable(err error) bool {
 	return isAzureFeatureUnavailable(err) || isAzureAccessDenied(err)
 }
 
@@ -1005,7 +1030,7 @@ func (a *mqlAzureSubscriptionMonitorServiceDiagnosticsetting) workspace() (*mqlA
 		"id": llx.StringData(a.WorkspaceId.Data),
 	})
 	if err != nil {
-		if diagnosticWorkspaceUnreadable(err) {
+		if diagnosticDestinationUnreadable(err) {
 			log.Warn().Err(err).Str("workspace", a.WorkspaceId.Data).Str("setting", a.Id.Data).
 				Msg("diagnostic setting names a log analytics workspace that could not be read")
 			a.Workspace.State = plugin.StateIsSet | plugin.StateIsNull

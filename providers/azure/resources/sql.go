@@ -5,8 +5,11 @@ package resources
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -14,6 +17,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -706,6 +710,104 @@ func (a *mqlAzureSubscriptionSqlServiceServer) vulnerabilityAssessmentSettings()
 		return nil, err
 	}
 	return res.(*mqlAzureSubscriptionSqlServiceServerVulnerabilityassessmentsettings), err
+}
+
+// sqlVulnerabilityAssessmentAPIVersion is the newest GA api-version of
+// Microsoft.Sql/servers/sqlVulnerabilityAssessments. armsql v1 ships no client
+// for this resource type, so it is read with a request built on the azcore
+// pipeline.
+const sqlVulnerabilityAssessmentAPIVersion = "2025-01-01"
+
+// vulnerabilityAssessmentExpressEnabled reads the express configuration of
+// SQL vulnerability assessment. It is a different resource from the classic
+// settings behind vulnerabilityAssessmentSettings: a server on express
+// configuration is scanned on a schedule while the classic endpoint still
+// reports recurring scans as disabled.
+func (a *mqlAzureSubscriptionSqlServiceServer) vulnerabilityAssessmentExpressEnabled() (bool, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	ctx := context.Background()
+	resourceID, err := ParseResourceID(a.Id.Data)
+	if err != nil {
+		return false, err
+	}
+	server, err := resourceID.Component("servers")
+	if err != nil {
+		return false, err
+	}
+
+	client, err := arm.NewClient("mql-azure-sql", "v1.0.0", conn.Token(), &arm.ClientOptions{
+		ClientOptions: conn.ClientOptions(),
+	})
+	if err != nil {
+		return false, err
+	}
+	urlPath := "/subscriptions/" + url.PathEscape(resourceID.SubscriptionID) +
+		"/resourceGroups/" + url.PathEscape(resourceID.ResourceGroup) +
+		"/providers/Microsoft.Sql/servers/" + url.PathEscape(server) +
+		"/sqlVulnerabilityAssessments/default"
+	req, err := runtime.NewRequest(ctx, http.MethodGet, runtime.JoinPaths(client.Endpoint(), urlPath))
+	if err != nil {
+		return false, err
+	}
+	q := req.Raw().URL.Query()
+	q.Set("api-version", sqlVulnerabilityAssessmentAPIVersion)
+	req.Raw().URL.RawQuery = q.Encode()
+	req.Raw().Header["Accept"] = []string{"application/json"}
+
+	resp, err := client.Pipeline().Do(req)
+	if err != nil {
+		return false, err
+	}
+	if !runtime.HasStatusCode(resp, http.StatusOK) {
+		err := runtime.NewResponseError(resp)
+		if isAzureNotConfigured(err) {
+			a.VulnerabilityAssessmentExpressEnabled.State = plugin.StateIsSet | plugin.StateIsNull
+			return false, nil
+		}
+		return false, err
+	}
+	body, err := runtime.Payload(resp)
+	if err != nil {
+		return false, err
+	}
+	enabled, err := parseSqlVulnerabilityAssessmentState(body)
+	if err != nil {
+		return false, llx.MalformedData(err)
+	}
+	if enabled == nil {
+		a.VulnerabilityAssessmentExpressEnabled.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return *enabled, nil
+}
+
+// parseSqlVulnerabilityAssessmentState decodes a
+// Microsoft.Sql/servers/sqlVulnerabilityAssessments response. It returns true
+// for state "Enabled", false for "Disabled", and nil when the response carries
+// no state. Any other state is an error rather than a guess, since the API
+// defines only those two values.
+func parseSqlVulnerabilityAssessmentState(body []byte) (*bool, error) {
+	var payload struct {
+		Properties *struct {
+			State *string `json:"state"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("decoding SQL vulnerability assessment express configuration: %w", err)
+	}
+	if payload.Properties == nil || payload.Properties.State == nil {
+		return nil, nil
+	}
+	var enabled bool
+	switch state := *payload.Properties.State; {
+	case strings.EqualFold(state, "Enabled"):
+		enabled = true
+	case strings.EqualFold(state, "Disabled"):
+		enabled = false
+	default:
+		return nil, fmt.Errorf("unknown SQL vulnerability assessment express configuration state %q", state)
+	}
+	return &enabled, nil
 }
 
 func (a *mqlAzureSubscriptionSqlServiceDatabase) advisor() ([]any, error) {

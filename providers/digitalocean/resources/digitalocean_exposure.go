@@ -4,7 +4,10 @@
 package resources
 
 import (
+	"cmp"
 	"fmt"
+	"net/netip"
+	"slices"
 	"strings"
 
 	"go.mondoo.com/mql/llx"
@@ -30,6 +33,158 @@ func isAnyAddress(cidr string) bool {
 	return c == "0.0.0.0" || c == "::"
 }
 
+// addressesCoverInternet reports whether a list of source addresses, taken
+// together, admits a large part of the internet in either address family.
+//
+// 0.0.0.0/0 and ::/0 are the common case, but 0.0.0.0/1 plus 128.0.0.0/1,
+// 2000::/3, or 256 adjacent /8s admit every internet host just the same, and so
+// does a list of many narrow ranges whose union covers most of the address
+// space. Split ranges matter because DigitalOcean rejects a /0 mask on some
+// resources (database trusted sources) but accepts the halves. The verdict
+// therefore depends on the union of the addresses, not on how they are
+// written. A family is open when that union, restricted to the space internet
+// hosts send from (IPv4 outside 224.0.0.0/3, IPv6 inside 2000::/3), either:
+//
+//   - contains an aligned IPv4 /7 or IPv6 /11, the next size up from the blocks
+//     IANA allocates to the regional registries, or
+//   - covers at least half of that space, however it is scattered.
+//
+// Private ranges never qualify on the first test: 10.0.0.0/8 is not a /7, and
+// fc00::/7 lies outside 2000::/3. IPv6 ranges longer than /64 are ignored,
+// since no realistic number of them adds up to either threshold.
+//
+// Entries may carry the "cidr:" or "ip:" prefix that load balancer firewall
+// rules use. A bare address is a single host, except the unspecified
+// addresses "0.0.0.0" and "::", which isAnyAddress treats as wildcards. An
+// entry that does not parse counts as open, so a value this function cannot
+// read never reads as restricted. An empty list admits nothing; callers
+// decide what an empty list means for their resource.
+func addressesCoverInternet(addresses []string) bool {
+	var v4, v6 []addrSpan
+	for _, a := range addresses {
+		s := strings.TrimSpace(a)
+		if i := strings.IndexByte(s, ':'); i > 0 {
+			switch strings.ToLower(s[:i]) {
+			case "cidr", "ip":
+				s = strings.TrimSpace(s[i+1:])
+			}
+		}
+		if isAnyAddress(s) {
+			return true
+		}
+		p, err := netip.ParsePrefix(s)
+		if err != nil {
+			addr, aerr := netip.ParseAddr(s)
+			if aerr != nil {
+				return true
+			}
+			p = netip.PrefixFrom(addr, addr.BitLen())
+		}
+		p = p.Masked()
+		if p.Addr().Is4In6() && p.Bits() >= 96 {
+			p = netip.PrefixFrom(p.Addr().Unmap(), p.Bits()-96)
+		}
+		span, ok := prefixSpan(p)
+		switch {
+		case !ok:
+		case p.Addr().Is4():
+			v4 = append(v4, span)
+		default:
+			v6 = append(v6, span)
+		}
+	}
+	return ipv4InternetSpace.admittedBy(v4) || ipv6InternetSpace.admittedBy(v6)
+}
+
+// addrSpan is an inclusive range of addresses. IPv4 spans hold the 32-bit
+// address; IPv6 spans hold the top 64 bits, so one unit is a /64.
+type addrSpan struct{ lo, hi uint64 }
+
+// prefixSpan converts a masked prefix to the span it covers. An IPv6 prefix
+// longer than /64 reports false.
+func prefixSpan(p netip.Prefix) (addrSpan, bool) {
+	if p.Addr().Is4() {
+		b := p.Addr().As4()
+		lo := uint64(b[0])<<24 | uint64(b[1])<<16 | uint64(b[2])<<8 | uint64(b[3])
+		return addrSpan{lo, lo + (uint64(1) << (32 - p.Bits())) - 1}, true
+	}
+	if p.Bits() > 64 {
+		return addrSpan{}, false
+	}
+	if p.Bits() == 0 {
+		return addrSpan{0, ^uint64(0)}, true
+	}
+	b := p.Addr().As16()
+	var lo uint64
+	for _, x := range b[:8] {
+		lo = lo<<8 | uint64(x)
+	}
+	return addrSpan{lo, lo + (uint64(1) << (64 - p.Bits())) - 1}, true
+}
+
+// mergeSpans returns the union of spans as sorted, disjoint, non-adjacent spans.
+func mergeSpans(spans []addrSpan) []addrSpan {
+	sorted := slices.Clone(spans)
+	slices.SortFunc(sorted, func(a, b addrSpan) int { return cmp.Compare(a.lo, b.lo) })
+	out := []addrSpan{}
+	for _, sp := range sorted {
+		if n := len(out); n > 0 && (sp.lo <= out[n-1].hi || sp.lo-out[n-1].hi == 1) {
+			out[n-1].hi = max(out[n-1].hi, sp.hi)
+			continue
+		}
+		out = append(out, sp)
+	}
+	return out
+}
+
+// internetSpace is the part of an address family internet hosts send from, in
+// addrSpan units, with the block size whose presence alone counts as open.
+type internetSpace struct {
+	lo, hi uint64
+	block  uint64
+}
+
+var (
+	// IPv4 outside 224.0.0.0/3 (multicast plus the reserved 240.0.0.0/4); the
+	// block is a /7.
+	ipv4InternetSpace = internetSpace{lo: 0, hi: 224<<24 - 1, block: 1 << 25}
+	// IPv6 2000::/3, the space routed on the internet, in /64 units; the block
+	// is a /11.
+	ipv6InternetSpace = internetSpace{lo: 0x2000 << 48, hi: 0x3fff_ffff_ffff_ffff, block: 1 << 53}
+)
+
+// admittedBy reports whether the union of spans opens this space to the
+// internet: it contains an aligned block, or covers at least half the space.
+func (s internetSpace) admittedBy(spans []addrSpan) bool {
+	var total uint64
+	for _, sp := range mergeSpans(spans) {
+		lo, hi := max(sp.lo, s.lo), min(sp.hi, s.hi)
+		if lo > hi {
+			continue
+		}
+		total += hi - lo + 1
+		// s.lo is block-aligned, so the first aligned block at or after lo
+		// starts here.
+		start := (lo + s.block - 1) / s.block * s.block
+		if start <= hi && hi-start >= s.block-1 {
+			return true
+		}
+	}
+	return total >= (s.hi-s.lo+1)/2
+}
+
+// stringEntries returns the string elements of a list, skipping any other
+// type.
+func stringEntries(list []any) []string {
+	out := make([]string, 0, len(list))
+	for _, v := range list {
+		if s, ok := v.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // databaseRuleOpensToInternet reports whether a single managed-database
 // trusted-source rule admits traffic from any address. Only ip_addr rules can
 // reference a CIDR; droplet/k8s/tag/app rules scope to specific resources and
@@ -38,18 +193,20 @@ func databaseRuleOpensToInternet(ruleType, value string) bool {
 	if ruleType != "ip_addr" {
 		return false
 	}
-	return isAnyAddress(value)
+	return addressesCoverInternet([]string{value})
 }
 
 // databaseTrustedSourcesAllowAny inspects a managed database's trusted-source
 // (firewall) rules and reports whether the public endpoint is open to any
 // address. When no rules are configured at all DigitalOcean leaves the public
 // connection endpoint reachable from every address, so an empty rule set also
-// counts as open.
+// counts as open. The ip_addr rules are evaluated together, since the API
+// rejects a /0 mask but accepts ranges that add up to the whole internet.
 func databaseTrustedSourcesAllowAny(rules []any) bool {
 	if len(rules) == 0 {
 		return true
 	}
+	var addresses []string
 	for _, r := range rules {
 		rule, ok := r.(map[string]any)
 		if !ok {
@@ -57,33 +214,25 @@ func databaseTrustedSourcesAllowAny(rules []any) bool {
 		}
 		ruleType, _ := rule["type"].(string)
 		value, _ := rule["value"].(string)
-		if databaseRuleOpensToInternet(ruleType, value) {
-			return true
+		if ruleType == "ip_addr" {
+			addresses = append(addresses, value)
 		}
 	}
-	return false
+	return len(addresses) > 0 && addressesCoverInternet(addresses)
 }
 
 // loadBalancerFirewallAllowsAny reports whether a load balancer's source
 // firewall admits traffic from any address. The load balancer firewall is an
-// allow/deny list of source CIDRs: when the allow list is empty every source
-// is permitted (subject to the deny list); when it is non-empty only those
-// sources are permitted, so it is open to the internet only if one of the
-// allow entries is itself an any-address CIDR.
+// allow/deny list of sources written as "cidr:<range>" or "ip:<address>":
+// when the allow list is empty every source is permitted (subject to the deny
+// list); when it is non-empty only those sources are permitted, so it is open
+// to the internet only if its entries together cover most of it (see
+// addressesCoverInternet).
 func loadBalancerFirewallAllowsAny(allow []any) bool {
 	if len(allow) == 0 {
 		return true
 	}
-	for _, a := range allow {
-		cidr, ok := a.(string)
-		if !ok {
-			continue
-		}
-		if isAnyAddress(cidr) {
-			return true
-		}
-	}
-	return false
+	return addressesCoverInternet(stringEntries(allow))
 }
 
 // exposure breaks down whether the droplet is reachable from the internet: a
@@ -283,16 +432,7 @@ func (c *mqlDigitaloceanKubernetesCluster) exposure() (*mqlDigitaloceanNetworkEx
 
 // anyAddressInList reports whether a list of source CIDRs admits every address.
 func anyAddressInList(addresses []any) bool {
-	for _, a := range addresses {
-		cidr, ok := a.(string)
-		if !ok {
-			continue
-		}
-		if isAnyAddress(cidr) {
-			return true
-		}
-	}
-	return false
+	return addressesCoverInternet(stringEntries(addresses))
 }
 
 // spacesPolicyGrantsWildcard reports whether a parsed bucket policy has an Allow
