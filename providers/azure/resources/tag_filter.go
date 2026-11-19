@@ -25,6 +25,7 @@ var _ = []taggedListedResource{
 	(*mqlAzureSubscriptionBatchServiceAccount)(nil),
 	(*mqlAzureSubscriptionCacheServiceRedisInstance)(nil),
 	(*mqlAzureSubscriptionCognitiveServicesServiceAccount)(nil),
+	(*mqlAzureSubscriptionComputeServiceHybridMachine)(nil),
 	(*mqlAzureSubscriptionComputeServiceVm)(nil),
 	(*mqlAzureSubscriptionContainerAppServiceContainerApp)(nil),
 	(*mqlAzureSubscriptionContainerRegistryServiceRegistry)(nil),

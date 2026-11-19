@@ -62,6 +62,7 @@ const (
 	DiscoveryContainerApps             = "container-apps"
 	DiscoveryCognitiveServices         = "cognitiveservices-accounts"
 	DiscoveryMachineLearningWorkspaces = "machinelearning-workspaces"
+	DiscoveryHybridMachines            = "hybrid-machines"
 
 	// optionBuiltByTenantStage marks a connection config that stage 1 of staged
 	// discovery built for a subscription, meaning stage 1 has already read that
@@ -125,6 +126,7 @@ var AllAPIResources = []string{
 	DiscoveryContainerApps,
 	DiscoveryCognitiveServices,
 	DiscoveryMachineLearningWorkspaces,
+	DiscoveryHybridMachines,
 }
 
 // genericDiscoverySpec maps an ARM resource type to the discovery metadata
@@ -195,6 +197,7 @@ var genericDiscoverySpecs = []genericDiscoverySpec{
 	{armType: "Microsoft.App/containerApps", discoveryTarget: DiscoveryContainerApps, service: "containerapps", objectType: "app"},
 	{armType: "Microsoft.CognitiveServices/accounts", discoveryTarget: DiscoveryCognitiveServices, service: "cognitiveservices", objectType: "account"},
 	{armType: "Microsoft.MachineLearningServices/workspaces", discoveryTarget: DiscoveryMachineLearningWorkspaces, service: "machinelearning", objectType: "workspace"},
+	{armType: "Microsoft.HybridCompute/machines", discoveryTarget: DiscoveryHybridMachines, service: "hybridcompute", objectType: "machine"},
 }
 
 type azureObject struct {
@@ -1215,6 +1218,10 @@ func getTitleFamily(azureObject azureObject) (azureObjectPlatformInfo, error) {
 	case "machinelearning":
 		if azureObject.objectType == "workspace" {
 			return azureObjectPlatformInfo{title: "Azure Machine Learning Workspace", platform: "azure-machinelearning-workspace"}, nil
+		}
+	case "hybridcompute":
+		if azureObject.objectType == "machine" {
+			return azureObjectPlatformInfo{title: "Azure Arc-enabled Server", platform: "azure-hybridcompute-machine"}, nil
 		}
 	}
 	return azureObjectPlatformInfo{}, fmt.Errorf("missing runtime info for azure object service %s type %s", azureObject.service, azureObject.objectType)

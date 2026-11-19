@@ -46,6 +46,7 @@ func TestAllResolvedResources(t *testing.T) {
 		DiscoveryContainerApps,
 		DiscoveryCognitiveServices,
 		DiscoveryMachineLearningWorkspaces,
+		DiscoveryHybridMachines,
 		DiscoveryStorageContainers,
 	}
 	require.ElementsMatch(t, expected, All)
@@ -78,6 +79,7 @@ func TestAutoResolvedResources(t *testing.T) {
 		DiscoveryContainerApps,
 		DiscoveryCognitiveServices,
 		DiscoveryMachineLearningWorkspaces,
+		DiscoveryHybridMachines,
 	}
 	require.ElementsMatch(t, expected, Auto)
 	require.NotContains(t, Auto, DiscoveryInstancesApi, "virtual machines are opt-in, not part of auto")
