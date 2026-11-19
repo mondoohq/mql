@@ -120,3 +120,43 @@ func TestParseMacosHardwareInvalid(t *testing.T) {
 	_, err = parseMacosHardware([]byte(`{"SPHardwareDataType": []}`))
 	assert.Error(t, err)
 }
+
+func TestParseMacosProcessorCounts(t *testing.T) {
+	tests := []struct {
+		in               string
+		total, perf, eff int64
+	}{
+		{"proc 16:12:4", 16, 12, 4},   // Apple Silicon, total:performance:efficiency
+		{"proc 14:0:10:4", 14, 10, 4}, // newer macOS adds a field after the total
+		{"2", 2, 0, 0},                // Intel Macs and virtual machines report only a total
+		{"", 0, 0, 0},                 // missing
+		{"proc garbage", 0, 0, 0},     // unparseable
+	}
+	for _, tc := range tests {
+		t.Run(tc.in, func(t *testing.T) {
+			total, perf, eff := parseMacosProcessorCounts(tc.in)
+			assert.Equal(t, tc.total, total)
+			assert.Equal(t, tc.perf, perf)
+			assert.Equal(t, tc.eff, eff)
+		})
+	}
+}
+
+func TestParseMacosMemoryBytes(t *testing.T) {
+	tests := []struct {
+		in   string
+		want int64
+	}{
+		{"24 GB", 24 << 30},
+		{"512 MB", 512 << 20},
+		{"1.5 TB", 3 << 39},
+		{"", 0},
+		{"lots", 0},
+		{"8 XB", 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.in, func(t *testing.T) {
+			assert.Equal(t, tc.want, parseMacosMemoryBytes(tc.in))
+		})
+	}
+}

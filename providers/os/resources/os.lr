@@ -16039,12 +16039,25 @@ macos.hardware @defaults("machineName chipType physicalMemory serialNumber") {
   //
   // Apple's part number, ending in a region suffix such as "LL/A". Build-to-order configurations start with "Z". This is not the regulatory model number printed on the case (e.g., "A2442").
   modelNumber string
-  // Total number of processor cores
+  // Processor core counts as reported by system_profiler
+  //
+  // On Apple Silicon this is a string such as "proc 16:12:4" (total,
+  // performance, and efficiency cores); Intel Macs and virtual machines
+  // report only the total. Use `cores`, `performanceCores`, and
+  // `efficiencyCores` for numeric comparisons.
   numberProcessors string
+  // Total number of processor cores
+  cores int
+  // Number of performance cores (0 on Intel Macs and virtual machines)
+  performanceCores int
+  // Number of efficiency cores (0 on Intel Macs and virtual machines)
+  efficiencyCores int
   // Version of the OS bootloader
   osLoaderVersion string
   // Total RAM installed (e.g., "16 GB")
   physicalMemory string
+  // Total RAM installed, in bytes (0 if system_profiler reports an unknown format)
+  physicalMemoryBytes int
   // Universally unique identifier for the hardware platform
   platformUUID string
   // Unique Device Identifier for MDM provisioning

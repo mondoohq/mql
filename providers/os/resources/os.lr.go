@@ -15784,11 +15784,23 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"macos.hardware.numberProcessors": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMacosHardware).GetNumberProcessors()).ToDataRes(types.String)
 	},
+	"macos.hardware.cores": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosHardware).GetCores()).ToDataRes(types.Int)
+	},
+	"macos.hardware.performanceCores": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosHardware).GetPerformanceCores()).ToDataRes(types.Int)
+	},
+	"macos.hardware.efficiencyCores": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosHardware).GetEfficiencyCores()).ToDataRes(types.Int)
+	},
 	"macos.hardware.osLoaderVersion": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMacosHardware).GetOsLoaderVersion()).ToDataRes(types.String)
 	},
 	"macos.hardware.physicalMemory": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMacosHardware).GetPhysicalMemory()).ToDataRes(types.String)
+	},
+	"macos.hardware.physicalMemoryBytes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosHardware).GetPhysicalMemoryBytes()).ToDataRes(types.Int)
 	},
 	"macos.hardware.platformUUID": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMacosHardware).GetPlatformUUID()).ToDataRes(types.String)
@@ -42003,12 +42015,28 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMacosHardware).NumberProcessors, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"macos.hardware.cores": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosHardware).Cores, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"macos.hardware.performanceCores": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosHardware).PerformanceCores, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"macos.hardware.efficiencyCores": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosHardware).EfficiencyCores, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
 	"macos.hardware.osLoaderVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMacosHardware).OsLoaderVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"macos.hardware.physicalMemory": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMacosHardware).PhysicalMemory, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"macos.hardware.physicalMemoryBytes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosHardware).PhysicalMemoryBytes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"macos.hardware.platformUUID": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -105453,8 +105481,12 @@ type mqlMacosHardware struct {
 	MachineName          plugin.TValue[string]
 	ModelNumber          plugin.TValue[string]
 	NumberProcessors     plugin.TValue[string]
+	Cores                plugin.TValue[int64]
+	PerformanceCores     plugin.TValue[int64]
+	EfficiencyCores      plugin.TValue[int64]
 	OsLoaderVersion      plugin.TValue[string]
 	PhysicalMemory       plugin.TValue[string]
+	PhysicalMemoryBytes  plugin.TValue[int64]
 	PlatformUUID         plugin.TValue[string]
 	ProvisioningUDID     plugin.TValue[string]
 	SerialNumber         plugin.TValue[string]
@@ -105526,12 +105558,28 @@ func (c *mqlMacosHardware) GetNumberProcessors() *plugin.TValue[string] {
 	return &c.NumberProcessors
 }
 
+func (c *mqlMacosHardware) GetCores() *plugin.TValue[int64] {
+	return &c.Cores
+}
+
+func (c *mqlMacosHardware) GetPerformanceCores() *plugin.TValue[int64] {
+	return &c.PerformanceCores
+}
+
+func (c *mqlMacosHardware) GetEfficiencyCores() *plugin.TValue[int64] {
+	return &c.EfficiencyCores
+}
+
 func (c *mqlMacosHardware) GetOsLoaderVersion() *plugin.TValue[string] {
 	return &c.OsLoaderVersion
 }
 
 func (c *mqlMacosHardware) GetPhysicalMemory() *plugin.TValue[string] {
 	return &c.PhysicalMemory
+}
+
+func (c *mqlMacosHardware) GetPhysicalMemoryBytes() *plugin.TValue[int64] {
+	return &c.PhysicalMemoryBytes
 }
 
 func (c *mqlMacosHardware) GetPlatformUUID() *plugin.TValue[string] {
