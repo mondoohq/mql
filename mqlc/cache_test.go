@@ -171,3 +171,16 @@ func TestCompileCache(t *testing.T) {
 		assert.Len(t, compileCache.entries, before)
 	})
 }
+
+func TestCompileCacheModes(t *testing.T) {
+	for value, want := range map[string][3]bool{
+		"":       {false, false, false},
+		"0":      {false, false, false},
+		"1":      {true, false, false},
+		"share":  {true, true, false},
+		"verify": {true, true, true},
+	} {
+		enabled, shared, verify := compileCacheModes(value)
+		assert.Equal(t, want, [3]bool{enabled, shared, verify}, "MQL_COMPILE_CACHE=%q", value)
+	}
+}

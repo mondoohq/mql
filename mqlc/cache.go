@@ -28,22 +28,36 @@ import (
 // version of itself it is (SchemaVersion); a schema that cannot is compiled
 // against every time, as before.
 
-var (
-	compileCacheEnabled = os.Getenv("MQL_COMPILE_CACHE") == "1" || compileCacheShared
-	// With MQL_COMPILE_CACHE=share every compile of a query gets the same
-	// bundle, not a copy of it. That is only right for callers that treat a
-	// compiled bundle as read-only, which is how the executors treat it; it
-	// is what keeps a scan from holding one copy of a policy's code per asset.
-	compileCacheShared = os.Getenv("MQL_COMPILE_CACHE") == "share" || compileCacheVerify
-	// MQL_COMPILE_CACHE=verify is the shared mode with a check: every time a
-	// bundle is handed out again it is compared with a copy kept aside. A
-	// caller that changed a bundle it was given is logged, and the bundle is
-	// replaced. It is how to find out whether a program can use the shared
-	// mode.
-	compileCacheVerify = os.Getenv("MQL_COMPILE_CACHE") == "verify"
-	// compileCacheChanged counts the changed bundles the check found.
-	compileCacheChanged atomic.Uint64
-)
+// The modes of MQL_COMPILE_CACHE:
+//
+//   - 1: the second and every later compile of a query is a copy of the first.
+//   - share: every compile of a query gets the same bundle, not a copy of it.
+//     That is only right for callers that treat a compiled bundle as
+//     read-only, which is how the executors treat it; it is what keeps a scan
+//     from holding one copy of a policy's code per asset.
+//   - verify: the shared mode with a check. Every time a bundle is handed out
+//     again it is compared with a copy kept aside; a caller that changed a
+//     bundle it was given is logged, and the bundle is replaced. It is how to
+//     find out whether a program can use the shared mode.
+var compileCacheEnabled, compileCacheShared, compileCacheVerify = compileCacheModes(os.Getenv("MQL_COMPILE_CACHE"))
+
+// compileCacheChanged counts the changed bundles the check found.
+var compileCacheChanged atomic.Uint64
+
+// compileCacheModes says what a value of MQL_COMPILE_CACHE turns on. Each
+// mode includes the ones before it: verify shares, and sharing caches.
+func compileCacheModes(value string) (enabled, shared, verify bool) {
+	switch value {
+	case "verify":
+		return true, true, true
+	case "share":
+		return true, true, false
+	case "1":
+		return true, false, false
+	default:
+		return false, false, false
+	}
+}
 
 // versionedSchema is a schema that can tell one state of itself from another.
 type versionedSchema interface {
@@ -161,7 +175,12 @@ func storeCompile(key compileKey, bundle *llx.CodeBundle) {
 		entry.aside = proto.Clone(bundle).(*llx.CodeBundle)
 	}
 	compileCache.Lock()
-	if compileCache.entries == nil || len(compileCache.entries) >= compileCacheLimit {
+	if len(compileCache.entries) >= compileCacheLimit {
+		// Seen in a log, this tells a run of recompiles from a slow compiler.
+		log.Debug().Int("limit", compileCacheLimit).Msg("compile cache is full and starts over")
+		compileCache.entries = nil
+	}
+	if compileCache.entries == nil {
 		compileCache.entries = map[compileKey]compiled{}
 	}
 	compileCache.entries[key] = entry
