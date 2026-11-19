@@ -1,0 +1,27 @@
+<?xml version="1.0" standalone="yes" ?>
+<PRD_LIST>
+<TL_LIST>
+<COMP NAME="oracle.server" VER="19.0.0.0.0" INSTALL_TIME="2020.Mar.17 07:16:26 UTC">
+   <EXT_NAME>Oracle Database 19c</EXT_NAME>
+   <DEP_LIST>
+      <DEP NAME="oracle.example.dependency" VER="19.0.0.0.0"/>
+   </DEP_LIST>
+</COMP>
+</TL_LIST>
+<COMP_LIST>
+<COMP NAME="oracle.javavm.server" VER="19.0.0.0.0" INSTALL_TIME="2020.Mar.17 07:16:26 UTC">
+   <EXT_NAME>Oracle JVM</EXT_NAME>
+   <DEP_LIST>
+      <DEP NAME="oracle.example.dependency" VER="19.0.0.0.0"/>
+   </DEP_LIST>
+</COMP>
+<COMP NAME="oracle.options" VER="19.0.0.0.0" INSTALL_TIME="2020.Mar.17 07:16:26 UTC">
+   <EXT_NAME>Enterprise Edition Options</EXT_NAME>
+   <DEP_LIST>
+      <DEP NAME="oracle.example.dependency" VER="19.0.0.0.0"/>
+   </DEP_LIST>
+</COMP>
+</COMP_LIST>
+<PATCHSET_UPDATE_LIST>
+</PATCHSET_UPDATE_LIST>
+</PRD_LIST>

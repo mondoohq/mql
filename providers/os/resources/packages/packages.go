@@ -343,6 +343,15 @@ func ResolveSystemPkgManagers(conn shared.Connection) ([]OperatingSystemPkgManag
 		}
 	}
 
+	// Oracle Database homes (unzip + runInstaller, RAC, Grid Infrastructure)
+	// are in no package database and no Add/Remove Programs list. Every
+	// non-container platform that can host one is probed; the probe is a Stat
+	// of oraInst.loc/oratab on Unix and a registry read on Windows (see
+	// oracle_packages.go).
+	if pm := resolveOraclePkgManager(conn, asset.Platform); pm != nil {
+		pms = append(pms, pm)
+	}
+
 	// Nix can be installed on any Linux or macOS system.
 	if asset.Platform.IsFamily("linux") || asset.Platform.Name == "macos" {
 		if _, err := conn.FileSystem().Stat("/nix/store"); err == nil {
