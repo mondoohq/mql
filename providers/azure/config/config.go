@@ -63,6 +63,7 @@ Examples run in the Azure CLI:
 				resources.DiscoveryVirtualNetworks,
 				resources.DiscoveryCognitiveServices,
 				resources.DiscoveryMachineLearningWorkspaces,
+				resources.DiscoveryHybridMachines,
 			},
 			Flags: []plugin.Flag{
 				{
@@ -177,6 +178,7 @@ Examples run in the Azure CLI:
 								"cosmosdb":          nil,
 								"cognitiveservices": nil,
 								"machinelearning":   nil,
+								"hybridcompute":     nil,
 							},
 						},
 					},
