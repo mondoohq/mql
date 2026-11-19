@@ -79,10 +79,10 @@ func TestAutoResolvedResources(t *testing.T) {
 		DiscoveryContainerApps,
 		DiscoveryCognitiveServices,
 		DiscoveryMachineLearningWorkspaces,
-		DiscoveryHybridMachines,
 	}
 	require.ElementsMatch(t, expected, Auto)
 	require.NotContains(t, Auto, DiscoveryInstancesApi, "virtual machines are opt-in, not part of auto")
+	require.NotContains(t, Auto, DiscoveryHybridMachines, "Arc-enabled servers are opt-in, not part of auto")
 }
 
 func TestGetDiscoveryTargets(t *testing.T) {
@@ -501,8 +501,9 @@ func TestRetiredTargetsAreNotDiscovered(t *testing.T) {
 }
 
 // Every generic discovery spec must map to a platform the catalog knows, and
-// every discovery target it serves must be scanned by auto. A spec whose
+// every discovery target it serves must be scanned by all. A spec whose
 // service/objectType has no getTitleFamily case drops each of its assets.
+// Whether a target is also in auto is pinned by TestAutoResolvedResources.
 func TestGenericDiscoverySpecsResolveToCatalogPlatforms(t *testing.T) {
 	for _, spec := range genericDiscoverySpecs {
 		t.Run(spec.armType+"/"+spec.discoveryTarget, func(t *testing.T) {
@@ -511,7 +512,7 @@ func TestGenericDiscoverySpecsResolveToCatalogPlatforms(t *testing.T) {
 			pi := PlatformByName(info.platform)
 			require.NotNil(t, pi, "platform %q is not in the catalog", info.platform)
 			require.Equal(t, pi.Title, info.title)
-			require.Contains(t, Auto, spec.discoveryTarget)
+			require.Contains(t, All, spec.discoveryTarget)
 		})
 	}
 }
