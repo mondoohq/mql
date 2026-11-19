@@ -104,3 +104,7 @@ func initMacosHardware(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 
 	return args, nil, nil
 }
+
+func (m *mqlMacosHardware) fullDisplayName() (string, error) {
+	return macosFullDisplayName(m.MachineModel.Data), nil
+}

@@ -15769,6 +15769,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"macos.hardware.chipType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMacosHardware).GetChipType()).ToDataRes(types.String)
 	},
+	"macos.hardware.fullDisplayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosHardware).GetFullDisplayName()).ToDataRes(types.String)
+	},
 	"macos.hardware.machineModel": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMacosHardware).GetMachineModel()).ToDataRes(types.String)
 	},
@@ -41978,6 +41981,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"macos.hardware.chipType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMacosHardware).ChipType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"macos.hardware.fullDisplayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosHardware).FullDisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"macos.hardware.machineModel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -105441,6 +105448,7 @@ type mqlMacosHardware struct {
 	ActivationLockStatus plugin.TValue[string]
 	BootRomVersion       plugin.TValue[string]
 	ChipType             plugin.TValue[string]
+	FullDisplayName      plugin.TValue[string]
 	MachineModel         plugin.TValue[string]
 	MachineName          plugin.TValue[string]
 	ModelNumber          plugin.TValue[string]
@@ -105494,6 +105502,12 @@ func (c *mqlMacosHardware) GetBootRomVersion() *plugin.TValue[string] {
 
 func (c *mqlMacosHardware) GetChipType() *plugin.TValue[string] {
 	return &c.ChipType
+}
+
+func (c *mqlMacosHardware) GetFullDisplayName() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.FullDisplayName, func() (string, error) {
+		return c.fullDisplayName()
+	})
 }
 
 func (c *mqlMacosHardware) GetMachineModel() *plugin.TValue[string] {

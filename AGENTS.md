@@ -25,6 +25,7 @@ Skills carry the procedures and the traps. This file carries the rules. Invoke t
 | `update-provider-deps` | upgrading vendored SDKs, finding what the new version unlocks |
 | `staged-discovery` | adding staged/phased discovery |
 | `check-querypack-deprecations` | checking `content/` query packs for deprecated resources or fields |
+| `update-mac-model-names` | Apple shipped new Macs, or `macos.hardware.fullDisplayName` returns a bare identifier |
 
 ## 2. Resource development
 
