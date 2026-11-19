@@ -4,10 +4,14 @@
 package resources
 
 import (
+	"bufio"
+	"bytes"
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -122,9 +126,21 @@ func (f *fakeGraph) serve(w http.ResponseWriter, r *http.Request) {
 				URL string `json:"url"`
 			} `json:"requests"`
 		}
-		var reqBody io.Reader = r.Body
+		// A call can end before its body has arrived: batchEach cancels the
+		// calls still in flight once a fetch has failed, and the server
+		// closing as the test ends cuts off a call that had just connected.
+		// Reading the body then fails. Such a call never arrived, so it is
+		// refused here and not held against the test. Only a body that
+		// arrived in full has to be a $batch request.
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"code":"BadRequest","message":"request body ended early"}}`))
+			return
+		}
+		var reqBody io.Reader = bytes.NewReader(raw)
 		if r.Header.Get("Content-Encoding") == "gzip" {
-			gz, err := gzip.NewReader(r.Body)
+			gz, err := gzip.NewReader(reqBody)
 			require.NoError(f.t, err)
 			reqBody = gz
 		}
@@ -171,12 +187,74 @@ func (f *fakeGraph) serve(w http.ResponseWriter, r *http.Request) {
 				Body:    body,
 			})
 		}
-		require.NoError(f.t, json.NewEncoder(w).Encode(out))
+		// A canned body that is not JSON fails here. The write may fail too,
+		// when the client has gone away in the meantime, and that is not an
+		// error of the test.
+		payload, err := json.Marshal(out)
+		require.NoError(f.t, err)
+		_, _ = w.Write(payload)
 		return
 	}
 	status, body := f.render(f.lookup(r.URL.String()))
 	w.WriteHeader(status)
 	_, _ = w.Write(body)
+}
+
+// batchEach cancels the calls still in flight once a fetch has failed, so a
+// $batch call can end before its body has arrived. The fake refuses such a
+// call without running a step of it, and without failing the test that made
+// the call.
+func TestFakeGraphRefusesAnAbortedBatchCall(t *testing.T) {
+	var whole bytes.Buffer
+	gz := gzip.NewWriter(&whole)
+	_, err := gz.Write([]byte(`{"requests":[{"id":"1","method":"GET","url":"/users/u001"}]}`))
+	require.NoError(t, err)
+	require.NoError(t, gz.Close())
+
+	cases := []struct {
+		name string
+		// sent is how many bytes of the body arrive before the client stops
+		sent       int
+		wantStatus int
+		wantSteps  []string
+	}{
+		// Measured: CI on main, Go 1.27.3 on linux/amd64, 2026-11-19. A call
+		// that TestBatchEachStopsOnBuildError had cancelled reached the fake
+		// with its body cut before the gzip header, gzip.NewReader returned
+		// "unexpected EOF", and the fake failed the test with it. The request
+		// below is synthesized to end at that point.
+		{name: "body ends before the gzip header", sent: 0, wantStatus: http.StatusBadRequest},
+		// Synthetic: the body ends inside the gzip stream, which the JSON
+		// decoder reports; no run showed this.
+		{name: "body ends inside the gzip stream", sent: 12, wantStatus: http.StatusBadRequest},
+		// Synthetic: the same call arriving in full, to show that the two
+		// refusals above come from the cut and not from the request.
+		{name: "whole body", sent: whole.Len(), wantStatus: http.StatusOK, wantSteps: []string{"/users/u001"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFakeGraph(t, map[string]fakeRoute{
+				"/users/u001": {status: http.StatusOK, body: `{"id":"u001"}`},
+			})
+			conn, err := net.Dial("tcp", f.srv.Listener.Addr().String())
+			require.NoError(t, err)
+			defer conn.Close()
+			_, err = fmt.Fprintf(conn, "POST /v1.0/$batch HTTP/1.1\r\nHost: graph\r\nContent-Encoding: gzip\r\nContent-Length: %d\r\n\r\n%s",
+				whole.Len(), whole.Bytes()[:tc.sent])
+			require.NoError(t, err)
+			// the client stops sending, and still reads the answer
+			require.NoError(t, conn.(*net.TCPConn).CloseWrite())
+
+			resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, tc.wantStatus, resp.StatusCode)
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			assert.Equal(t, 1, f.batchCalls)
+			assert.Equal(t, tc.wantSteps, f.steps)
+		})
+	}
 }
 
 // The assignments of a service principal come from its own
