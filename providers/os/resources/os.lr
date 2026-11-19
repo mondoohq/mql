@@ -16013,7 +16013,7 @@ macos {
 // macOS hardware overview
 //
 // Hardware and firmware details reported by `system_profiler`: chip
-// type, model identifiers, installed memory, serial number, and
+// type, model identifier, product name, part number, installed memory, serial number, and
 // Activation Lock status. Useful for asset inventory and for
 // distinguishing Apple Silicon from Intel Macs in conditional audits.
 macos.hardware @defaults("machineName chipType physicalMemory serialNumber") {
@@ -16023,11 +16023,21 @@ macos.hardware @defaults("machineName chipType physicalMemory serialNumber") {
   bootRomVersion string
   // Processor chip type (e.g., "Apple M1", "Apple M2", "Intel")
   chipType string
-  // Specific model identifier (e.g., "MacBookPro18,3")
+  // Full product name of the model
+  //
+  // The name Apple sells the model under, with size, chip, and release year where
+  // they tell models apart, for example "MacBook Pro (14-inch, M4 Pro, Nov 2024)" for
+  // `Mac16,8`. A model identifier missing from the name table is returned unchanged.
+  fullDisplayName() string
+  // Model identifier (e.g., "MacBookPro18,3")
   machineModel string
-  // User-friendly hardware name (e.g., "MacBook Pro")
+  // Product line (e.g., "MacBook Pro")
+  //
+  // The product family only, without size, chip, or year. See fullDisplayName for the full product name.
   machineName string
-  // Apple's model number for the device (e.g., "A2442")
+  // Order part number for the configuration sold (e.g., "MX2J3LL/A")
+  //
+  // Apple's part number, ending in a region suffix such as "LL/A". Build-to-order configurations start with "Z". This is not the regulatory model number printed on the case (e.g., "A2442").
   modelNumber string
   // Total number of processor cores
   numberProcessors string
