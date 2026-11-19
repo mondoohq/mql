@@ -94,7 +94,7 @@ var macosFullDisplayNames = map[string]string{
 	"MacBookPro1,1":  "MacBook Pro (15-inch, Early 2006)",
 	"MacBookPro1,2":  "MacBook Pro (17-inch, Early 2006)",
 	"MacBookPro10,1": "MacBook Pro (Retina, 15-inch, 2012/2013)",
-	"MacBookPro10,2": "MacBook Pro (Retina, 13-inch, 2012)",
+	"MacBookPro10,2": "MacBook Pro (Retina, 13-inch, 2012/2013)",
 	"MacBookPro11,1": "MacBook Pro (Retina, 13-inch, 2013/2014)",
 	"MacBookPro11,2": "MacBook Pro (Retina, 15-inch, 2013/2014, Integrated graphics)",
 	"MacBookPro11,3": "MacBook Pro (Retina, 15-inch, 2013/2014, Dedicated graphics)",
