@@ -2946,6 +2946,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.user.signInActivity": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftUser).GetSignInActivity()).ToDataRes(types.Dict)
 	},
+	"microsoft.user.memberOf": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftUser).GetMemberOf()).ToDataRes(types.Array(types.Resource("microsoft.group")))
+	},
+	"microsoft.user.transitiveMemberOf": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftUser).GetTransitiveMemberOf()).ToDataRes(types.Array(types.Resource("microsoft.group")))
+	},
 	"microsoft.user.authenticationRequirements.perUserMfaState": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftUserAuthenticationRequirements).GetPerUserMfaState()).ToDataRes(types.String)
 	},
@@ -10317,6 +10323,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.user.signInActivity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftUser).SignInActivity, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"microsoft.user.memberOf": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftUser).MemberOf, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.user.transitiveMemberOf": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftUser).TransitiveMemberOf, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"microsoft.user.authenticationRequirements.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -24355,6 +24369,8 @@ type mqlMicrosoftUser struct {
 	ExternalUserState          plugin.TValue[string]
 	PasswordPolicies           plugin.TValue[string]
 	SignInActivity             plugin.TValue[any]
+	MemberOf                   plugin.TValue[[]any]
+	TransitiveMemberOf         plugin.TValue[[]any]
 }
 
 // createMicrosoftUser creates a new instance of this resource
@@ -24578,6 +24594,38 @@ func (c *mqlMicrosoftUser) GetPasswordPolicies() *plugin.TValue[string] {
 func (c *mqlMicrosoftUser) GetSignInActivity() *plugin.TValue[any] {
 	return plugin.GetOrCompute[any](&c.SignInActivity, func() (any, error) {
 		return c.signInActivity()
+	})
+}
+
+func (c *mqlMicrosoftUser) GetMemberOf() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MemberOf, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.user", c.__id, "memberOf")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.memberOf()
+	})
+}
+
+func (c *mqlMicrosoftUser) GetTransitiveMemberOf() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TransitiveMemberOf, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.user", c.__id, "transitiveMemberOf")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.transitiveMemberOf()
 	})
 }
 

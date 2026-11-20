@@ -62,6 +62,8 @@ type userBatchCaches struct {
 	signInActivity batchFieldCache
 	authMethods    batchFieldCache
 	authRequires   batchFieldCache
+	memberOf       batchFieldCache
+	transitiveOf   batchFieldCache
 }
 
 // spBatchCaches holds one cache per per-service-principal field resolved
