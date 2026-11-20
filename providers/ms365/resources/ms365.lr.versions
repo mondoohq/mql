@@ -69,9 +69,12 @@ microsoft.application.parentalControlSettings 9.0.0
 microsoft.application.permission 11.0.30
 microsoft.application.permission.appId 11.0.30
 microsoft.application.permission.appName 11.0.30
+microsoft.application.permission.consentType 14.3.1
 microsoft.application.permission.description 11.0.30
+microsoft.application.permission.grantedDateTime 14.3.1
 microsoft.application.permission.id 11.0.30
 microsoft.application.permission.name 11.0.30
+microsoft.application.permission.resource 14.3.1
 microsoft.application.permission.status 11.0.30
 microsoft.application.permission.type 11.0.30
 microsoft.application.publicClient 9.0.0

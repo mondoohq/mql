@@ -3496,7 +3496,11 @@ private microsoft.serviceprincipal.assignment @defaults("id") {
 
 // Microsoft Service Principal Permission
 private microsoft.application.permission @defaults("appName name type status") {
-  // ID of the API
+  // Object ID of the API's service principal
+  //
+  // Despite the name, this is the directory object ID of the service
+  // principal that publishes the permission (the API), not its application
+  // (client) ID. The resource field resolves it.
   appId string
   // Name of the API
   appName string
@@ -3510,6 +3514,23 @@ private microsoft.application.permission @defaults("appName name type status") {
   type string
   // Permission grant status (e.g., `granted` for consented permissions, `available` for app roles the application could request but has not been granted)
   status string
+  // Service principal of the API that publishes the permission
+  //
+  // For example the Microsoft Graph service principal for
+  // `RoleManagement.ReadWrite.Directory`.
+  resource() microsoft.serviceprincipal
+  // When the application permission was granted
+  //
+  // Set for granted application permissions. Null for delegated
+  // permissions, whose grants carry no creation time, and for available
+  // ones.
+  grantedDateTime time
+  // Who consented to a delegated permission
+  //
+  // AllPrincipals when an administrator consented for every user in the
+  // tenant, Principal when one user consented for themselves. Empty for
+  // application permissions.
+  consentType string
 }
 
 // Microsoft Entra ID OAuth2 Permission Grant

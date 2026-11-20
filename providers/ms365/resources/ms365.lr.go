@@ -4002,6 +4002,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.application.permission.status": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftApplicationPermission).GetStatus()).ToDataRes(types.String)
 	},
+	"microsoft.application.permission.resource": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftApplicationPermission).GetResource()).ToDataRes(types.Resource("microsoft.serviceprincipal"))
+	},
+	"microsoft.application.permission.grantedDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftApplicationPermission).GetGrantedDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.application.permission.consentType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftApplicationPermission).GetConsentType()).ToDataRes(types.String)
+	},
 	"microsoft.oauth2PermissionGrant.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftOauth2PermissionGrant).GetId()).ToDataRes(types.String)
 	},
@@ -11915,6 +11924,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.application.permission.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftApplicationPermission).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.application.permission.resource": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftApplicationPermission).Resource, ok = plugin.RawToTValue[*mqlMicrosoftServiceprincipal](v.Value, v.Error)
+		return
+	},
+	"microsoft.application.permission.grantedDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftApplicationPermission).GrantedDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.application.permission.consentType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftApplicationPermission).ConsentType, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"microsoft.oauth2PermissionGrant.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -28194,14 +28215,17 @@ func (c *mqlMicrosoftServiceprincipalAssignment) GetType() *plugin.TValue[string
 type mqlMicrosoftApplicationPermission struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlMicrosoftApplicationPermissionInternal it will be used here
-	AppId       plugin.TValue[string]
-	AppName     plugin.TValue[string]
-	Id          plugin.TValue[string]
-	Name        plugin.TValue[string]
-	Description plugin.TValue[string]
-	Type        plugin.TValue[string]
-	Status      plugin.TValue[string]
+	mqlMicrosoftApplicationPermissionInternal
+	AppId           plugin.TValue[string]
+	AppName         plugin.TValue[string]
+	Id              plugin.TValue[string]
+	Name            plugin.TValue[string]
+	Description     plugin.TValue[string]
+	Type            plugin.TValue[string]
+	Status          plugin.TValue[string]
+	Resource        plugin.TValue[*mqlMicrosoftServiceprincipal]
+	GrantedDateTime plugin.TValue[*time.Time]
+	ConsentType     plugin.TValue[string]
 }
 
 // createMicrosoftApplicationPermission creates a new instance of this resource
@@ -28262,6 +28286,30 @@ func (c *mqlMicrosoftApplicationPermission) GetType() *plugin.TValue[string] {
 
 func (c *mqlMicrosoftApplicationPermission) GetStatus() *plugin.TValue[string] {
 	return &c.Status
+}
+
+func (c *mqlMicrosoftApplicationPermission) GetResource() *plugin.TValue[*mqlMicrosoftServiceprincipal] {
+	return plugin.GetOrCompute[*mqlMicrosoftServiceprincipal](&c.Resource, func() (*mqlMicrosoftServiceprincipal, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.application.permission", c.__id, "resource")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftServiceprincipal), nil
+			}
+		}
+
+		return c.resource()
+	})
+}
+
+func (c *mqlMicrosoftApplicationPermission) GetGrantedDateTime() *plugin.TValue[*time.Time] {
+	return &c.GrantedDateTime
+}
+
+func (c *mqlMicrosoftApplicationPermission) GetConsentType() *plugin.TValue[string] {
+	return &c.ConsentType
 }
 
 // mqlMicrosoftOauth2PermissionGrant for the microsoft.oauth2PermissionGrant resource
