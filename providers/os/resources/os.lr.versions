@@ -3637,13 +3637,6 @@ macos.alf.loggingEnabled 9.0.1
 macos.alf.loggingOption 9.0.1
 macos.alf.stealthEnabled 9.0.1
 macos.alf.version 9.0.1
-macos.appleCare 14.44.1
-macos.appleCare.appleCare 14.44.1
-macos.appleCare.expirationLabel 14.44.1
-macos.appleCare.expires 14.44.1
-macos.appleCare.label 14.44.1
-macos.appleCare.theftAndLoss 14.44.1
-macos.appleCare.updated 14.44.1
 macos.appleIntelligence 14.32.3
 macos.appleIntelligence.externalIntelligenceIntegrationsAllowed 14.32.3
 macos.appleIntelligence.externalIntelligenceSignInAllowed 14.32.3
@@ -3658,6 +3651,13 @@ macos.appleIntelligence.reportAllowed 14.32.3
 macos.appleIntelligence.safariSummaryAllowed 14.32.3
 macos.appleIntelligence.writingToolsAllowed 14.32.3
 macos.computerName 11.4.68
+macos.coverage 14.44.1
+macos.coverage.appleCare 14.44.1
+macos.coverage.expirationLabel 14.44.1
+macos.coverage.expires 14.44.1
+macos.coverage.label 14.44.1
+macos.coverage.theftAndLoss 14.44.1
+macos.coverage.updated 14.44.1
 macos.filevault 13.5.1
 macos.filevault.enabled 13.5.1
 macos.filevault.hasInstitutionalRecoveryKey 13.5.1

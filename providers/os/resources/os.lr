@@ -16076,7 +16076,7 @@ macos.hardware @defaults("machineName chipType physicalMemoryBytes serialNumber"
 // loads. The cache is matched to this Mac by serial number (it also holds the
 // account's other Apple devices); with several users, the most recently
 // refreshed copy wins. Every field is null when no user has opened the pane.
-macos.appleCare @defaults("label expires") {
+macos.coverage @defaults("appleCare label expires") {
   // Whether the coverage is an AppleCare plan
   //
   // True for AppleCare and AppleCare+, false for the limited warranty or no coverage.

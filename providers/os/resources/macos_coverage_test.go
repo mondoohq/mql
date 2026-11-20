@@ -16,19 +16,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The cache macOS writes when the AppleCare & Warranty pane loads.
+// Measured: MacBook Pro Mac16,8, macOS 27.2 (26B123), 2026-11-19. The keys
+// and values of the cache the AppleCare & Warranty pane wrote, read with
+// python's json module; the serial number and hash are replaced.
 const appleCarePlusCoverage = `{
   "serialNumber": "C02ABC123",
   "coverageLabel": "AppleCare+",
   "hasTheftAndLossBenefit": false,
   "settingsCoverageSection": {
     "coverageExpirationLabel": "Expires October 26, 2028",
-    "offer": {"link": {}, "singularFooter": "", "pluralFooter": "", "expiration": "0"}
+    "offer": {"link": {}, "singularFooter": "", "pluralFooter": "", "expiration": 0}
   },
-  "foregroundCacheTtl": "0",
+  "foregroundCacheTtl": 0,
   "coverageHash": "abc"
 }`
 
+// Synthetic: the limited warranty, in the measured file's shape; no target
+// showed this.
 const limitedWarrantyCoverage = `{
   "serialNumber": "C02ABC123",
   "coverageLabel": "Limited Warranty",
@@ -43,6 +47,8 @@ func writeAppleCareCache(t *testing.T, fs afero.Fs, user, serial, content string
 	require.NoError(t, fs.Chtimes(p, mod, mod))
 }
 
+// Synthetic: two users and another device's file; the measured Mac had one
+// user, with the cache also holding a second device's file.
 func TestFindAppleCareCoverage(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	older := time.Date(2026, 6, 4, 8, 0, 0, 0, time.UTC)
@@ -64,6 +70,7 @@ func TestFindAppleCareCoverage(t *testing.T) {
 	assert.True(t, newer.Equal(*updated))
 }
 
+// Synthetic: no user opened the pane, and no serial number; no target showed this.
 func TestFindAppleCareCoverageWithoutCache(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	require.NoError(t, fs.MkdirAll("/Users/alice", 0o755))
@@ -73,12 +80,12 @@ func TestFindAppleCareCoverageWithoutCache(t *testing.T) {
 	assert.Nil(t, c)
 	assert.Nil(t, updated)
 
-	// No serial number: nothing to match.
 	c, _, err = findAppleCareCoverage(fs, "")
 	require.NoError(t, err)
 	assert.Nil(t, c)
 }
 
+// Synthetic: a newer copy that is not JSON; no target showed this.
 func TestFindAppleCareCoverageSkipsAnUnreadableCopy(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	writeAppleCareCache(t, fs, "alice", "C02ABC123", appleCarePlusCoverage, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
@@ -90,8 +97,8 @@ func TestFindAppleCareCoverageSkipsAnUnreadableCopy(t *testing.T) {
 	assert.Equal(t, "AppleCare+", c.CoverageLabel)
 }
 
-// The file sits in a user's home and the scan usually runs as root: a symlink
-// a user put there is not followed.
+// Synthetic: a symlink a user put in their home, where a root scan reads;
+// no target showed this.
 func TestFindAppleCareCoverageSkipsASymlink(t *testing.T) {
 	root := t.TempDir()
 	secret := filepath.Join(root, "secret.json")
@@ -105,6 +112,25 @@ func TestFindAppleCareCoverageSkipsASymlink(t *testing.T) {
 	assert.Nil(t, c)
 }
 
+// Synthetic: the file swapped for another between lstat and open; no target
+// showed this. readAtMost is handed the stat of one file and opens another.
+func TestReadAtMostRejectsADifferentFile(t *testing.T) {
+	root := t.TempDir()
+	fs := afero.NewBasePathFs(afero.NewOsFs(), root)
+	require.NoError(t, afero.WriteFile(fs, "/cache.json", []byte(appleCarePlusCoverage), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/other.json", []byte(appleCarePlusCoverage), 0o644))
+	cache, err := lstat(fs, "/cache.json")
+	require.NoError(t, err)
+
+	_, err = readAtMost(fs, "/other.json", cache, appleCareMaxFileSize)
+	assert.Error(t, err)
+
+	data, err := readAtMost(fs, "/cache.json", cache, appleCareMaxFileSize)
+	require.NoError(t, err)
+	assert.Equal(t, appleCarePlusCoverage, string(data))
+}
+
+// Synthetic: a file far larger than a coverage cache; no target showed this.
 func TestFindAppleCareCoverageSkipsAnOversizedFile(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	big := `{"coverageLabel":"AppleCare+","padding":"` + strings.Repeat("x", appleCareMaxFileSize) + `"}`
@@ -116,15 +142,18 @@ func TestFindAppleCareCoverageSkipsAnOversizedFile(t *testing.T) {
 }
 
 func TestParseAppleCareExpiration(t *testing.T) {
+	// Measured: MacBook Pro Mac16,8, macOS 27.2, 2026-11-19.
 	got := parseAppleCareExpiration("Expires October 26, 2028")
 	require.NotNil(t, got)
 	assert.Equal(t, time.Date(2028, 10, 26, 0, 0, 0, 0, time.UTC), *got)
 
+	// Synthetic: other English wording around the date; no target showed this.
 	got = parseAppleCareExpiration("Coverage ends May 3, 2027")
 	require.NotNil(t, got)
 	assert.Equal(t, time.Date(2027, 5, 3, 0, 0, 0, 0, time.UTC), *got)
 
-	// The label follows the user's language; other languages are not parsed.
-	assert.Nil(t, parseAppleCareExpiration("Läuft am 26. Oktober 2028 ab"))
+	// Synthetic: the label in another language, which is not parsed; no
+	// target showed this.
+	assert.Nil(t, parseAppleCareExpiration("2028年10月26日に期限切れ"))
 	assert.Nil(t, parseAppleCareExpiration(""))
 }

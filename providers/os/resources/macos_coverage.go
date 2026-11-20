@@ -36,13 +36,23 @@ func lstat(fs afero.Fs, p string) (os.FileInfo, error) {
 	return fs.Stat(p)
 }
 
-// readAtMost reads p, failing when it holds more than limit bytes.
-func readAtMost(fs afero.Fs, p string, limit int64) ([]byte, error) {
+// readAtMost reads p, failing when it holds more than limit bytes or when the
+// file opened is not want, the regular file lstat saw: a user who swaps the
+// file for a symlink between the two calls cannot redirect the read. afero
+// has no O_NOFOLLOW, so the open follows links; this rejects what it lands on.
+func readAtMost(fs afero.Fs, p string, want os.FileInfo, limit int64) ([]byte, error) {
 	f, err := fs.Open(p)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
+	got, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !got.Mode().IsRegular() || !sameFile(want, got) {
+		return nil, errors.New("file changed while it was read")
+	}
 	data, err := io.ReadAll(io.LimitReader(f, limit+1))
 	if err != nil {
 		return nil, err
@@ -51,6 +61,16 @@ func readAtMost(fs afero.Fs, p string, limit int64) ([]byte, error) {
 		return nil, errors.New("file too large")
 	}
 	return data, nil
+}
+
+// sameFile reports whether two stats are of one file: by device and inode on
+// a real filesystem, else (an in-memory one, which has neither) by size and
+// modification time.
+func sameFile(a, b os.FileInfo) bool {
+	if a.Sys() != nil && b.Sys() != nil {
+		return os.SameFile(a, b)
+	}
+	return a.Size() == b.Size() && a.ModTime().Equal(b.ModTime())
 }
 
 // appleCareCoverage is the part of a cached coverage file this resource reads.
@@ -118,7 +138,7 @@ func findAppleCareCoverage(fs afero.Fs, serial string) (*appleCareCoverage, *tim
 		if best != nil && !info.ModTime().After(bestTime) {
 			continue
 		}
-		data, err := readAtMost(fs, p, appleCareMaxFileSize)
+		data, err := readAtMost(fs, p, info, appleCareMaxFileSize)
 		if err != nil {
 			continue
 		}
@@ -134,10 +154,10 @@ func findAppleCareCoverage(fs afero.Fs, serial string) (*appleCareCoverage, *tim
 	return best, &bestTime, nil
 }
 
-func initMacosAppleCare(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+func initMacosCoverage(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	conn := runtime.Connection.(shared.Connection)
 	if !conn.Asset().Platform.IsFamily("darwin") {
-		return nil, nil, errors.New("macos.appleCare is only available on macOS")
+		return nil, nil, errors.New("macos.coverage is only available on macOS")
 	}
 	if args == nil {
 		args = map[string]*llx.RawData{}
@@ -162,7 +182,7 @@ func initMacosAppleCare(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 
 	label := strings.TrimSpace(coverage.CoverageLabel)
 	expiration := strings.TrimSpace(coverage.SettingsCoverageSection.CoverageExpirationLabel)
-	args["appleCare"] = llx.BoolData(strings.Contains(label, "AppleCare"))
+	args["appleCare"] = llx.BoolData(strings.Contains(strings.ToLower(label), "applecare"))
 	args["label"] = llx.StringData(label)
 	args["expires"] = llx.TimeDataPtr(parseAppleCareExpiration(expiration))
 	args["expirationLabel"] = llx.StringData(expiration)
@@ -171,6 +191,6 @@ func initMacosAppleCare(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 	return args, nil, nil
 }
 
-func (m *mqlMacosAppleCare) id() (string, error) {
-	return "macos.appleCare", nil
+func (m *mqlMacosCoverage) id() (string, error) {
+	return "macos.coverage", nil
 }
