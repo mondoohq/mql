@@ -3146,6 +3146,15 @@ private microsoft.keyCredential @defaults("thumbprint description expires keyId"
   expired bool
   // Certificate validity start date
   startDateTime time
+  // Most recent sign-in made with this credential
+  //
+  // From the tenant's application credential sign-in activity report, which
+  // Microsoft refreshes periodically, so it can trail the latest sign-ins.
+  // Null when the report holds no sign-in for the credential, which marks a
+  // secret or certificate that can be revoked without breaking anything.
+  // Requires the AuditLog.Read.All permission and a Microsoft Entra ID P1
+  // or P2 license.
+  lastSignInDateTime() time
 }
 
 // Microsoft Entra AD Application secrets
@@ -3174,6 +3183,15 @@ private microsoft.passwordCredential @defaults("description expires keyId") {
   expired bool
   // Secret validity start date
   startDateTime time
+  // Most recent sign-in made with this credential
+  //
+  // From the tenant's application credential sign-in activity report, which
+  // Microsoft refreshes periodically, so it can trail the latest sign-ins.
+  // Null when the report holds no sign-in for the credential, which marks a
+  // secret or certificate that can be revoked without breaking anything.
+  // Requires the AuditLog.Read.All permission and a Microsoft Entra ID P1
+  // or P2 license.
+  lastSignInDateTime() time
 }
 
 // Microsoft Entra federated identity credential

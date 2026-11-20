@@ -1206,6 +1206,7 @@ microsoft.keyCredential.description 11.0.28
 microsoft.keyCredential.expired 11.0.28
 microsoft.keyCredential.expires 11.0.28
 microsoft.keyCredential.keyId 11.0.28
+microsoft.keyCredential.lastSignInDateTime 14.3.1
 microsoft.keyCredential.startDateTime 11.1.102
 microsoft.keyCredential.thumbprint 11.0.28
 microsoft.keyCredential.type 11.0.28
@@ -1269,6 +1270,7 @@ microsoft.passwordCredential.expired 11.0.28
 microsoft.passwordCredential.expires 11.0.28
 microsoft.passwordCredential.hint 11.0.28
 microsoft.passwordCredential.keyId 11.0.28
+microsoft.passwordCredential.lastSignInDateTime 14.3.1
 microsoft.passwordCredential.startDateTime 11.1.102
 microsoft.policies 9.0.0
 microsoft.policies.activityBasedTimeoutPolicies 9.0.0
