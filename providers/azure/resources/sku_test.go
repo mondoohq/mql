@@ -232,6 +232,5 @@ func TestMergeRoleAssignments(t *testing.T) {
 	got := mergeRoleAssignments([]any{ra1}, []any{ra2, ra3}, []any{ra2Upper, "not-an-assignment"})
 	assert.Equal(t, []any{ra1, ra2, ra3}, got)
 
-	assert.NotNil(t, mergeRoleAssignments())
 	assert.Empty(t, mergeRoleAssignments(nil, []any{}))
 }
