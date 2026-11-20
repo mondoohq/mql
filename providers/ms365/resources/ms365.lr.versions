@@ -63,6 +63,7 @@ microsoft.application.name 9.0.0
 microsoft.application.nativeAuthenticationApisEnabled 9.0.0
 microsoft.application.notes 9.0.0
 microsoft.application.optionalClaims 9.0.0
+microsoft.application.ownerServicePrincipals 14.3.1
 microsoft.application.owners 9.0.0
 microsoft.application.parentalControlSettings 9.0.0
 microsoft.application.permission 11.0.30
@@ -895,6 +896,8 @@ microsoft.group.isAssignableToRole 11.1.102
 microsoft.group.mail 9.0.0
 microsoft.group.mailEnabled 9.0.0
 microsoft.group.mailNickname 9.0.0
+microsoft.group.memberGroups 14.3.1
+microsoft.group.memberServicePrincipals 14.3.1
 microsoft.group.members 9.0.0
 microsoft.group.membershipRule 9.0.0
 microsoft.group.membershipRuleProcessingState 9.0.0
@@ -913,6 +916,8 @@ microsoft.group.proxyAddresses 11.1.102
 microsoft.group.renewedDateTime 11.1.102
 microsoft.group.securityEnabled 9.0.0
 microsoft.group.theme 11.2.1
+microsoft.group.transitiveMemberServicePrincipals 14.3.1
+microsoft.group.transitiveMemberUsers 14.3.1
 microsoft.group.visibility 9.0.0
 microsoft.groupLifecyclePolicies 9.0.0
 microsoft.groupLifecyclePolicy 11.1.42
@@ -1676,6 +1681,7 @@ microsoft.serviceprincipal.name 9.0.0
 microsoft.serviceprincipal.notes 9.0.0
 microsoft.serviceprincipal.notificationEmailAddresses 9.0.0
 microsoft.serviceprincipal.oauth2PermissionScopes 13.0.12
+microsoft.serviceprincipal.ownerServicePrincipals 14.3.1
 microsoft.serviceprincipal.owners 14.0.2
 microsoft.serviceprincipal.passwordCredentials 13.0.12
 microsoft.serviceprincipal.permissions 9.0.0

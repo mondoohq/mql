@@ -599,3 +599,20 @@ func newMqlMicrosoftApplicationRoles(runtime *plugin.Runtime, parentID string, a
 	}
 	return list, nil
 }
+
+func (a *mqlMicrosoftApplication) ownerServicePrincipals() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
+	graphClient, err := conn.GraphClient()
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	resp, err := graphClient.Applications().ByApplicationId(a.GetId().Data).Owners().GraphServicePrincipal().Get(ctx,
+		&applications.ItemOwnersGraphServicePrincipalRequestBuilderGetRequestConfiguration{
+			QueryParameters: &applications.ItemOwnersGraphServicePrincipalRequestBuilderGetQueryParameters{Select: []string{"id"}},
+		})
+	if err != nil {
+		return nil, classifyGraphError(err, "Application.Read.All")
+	}
+	return servicePrincipalsFromCollection(ctx, a.MqlRuntime, graphClient, resp)
+}
