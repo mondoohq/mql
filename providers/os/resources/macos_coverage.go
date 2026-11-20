@@ -63,11 +63,12 @@ func readAtMost(fs afero.Fs, p string, want os.FileInfo, limit int64) ([]byte, e
 	return data, nil
 }
 
-// sameFile reports whether two stats are of one file: by device and inode on
-// a real filesystem, else (an in-memory one, which has neither) by size and
-// modification time.
+// sameFile reports whether two stats are of one file: by device and inode
+// when both come from the os package, else by size and modification time.
+// os.SameFile answers false for any other stat type, which is what the sudo,
+// SSH, container and mock filesystems return.
 func sameFile(a, b os.FileInfo) bool {
-	if a.Sys() != nil && b.Sys() != nil {
+	if isOSFileStat(a) && isOSFileStat(b) {
 		return os.SameFile(a, b)
 	}
 	return a.Size() == b.Size() && a.ModTime().Equal(b.ModTime())
@@ -163,7 +164,7 @@ func initMacosCoverage(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 		args = map[string]*llx.RawData{}
 	}
 
-	hw, err := CreateResource(runtime, "macos.hardware", nil)
+	hw, err := NewResource(runtime, "macos.hardware", nil)
 	if err != nil {
 		return nil, nil, err
 	}
