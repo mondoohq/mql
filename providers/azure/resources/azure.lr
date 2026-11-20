@@ -109,6 +109,12 @@ private azure.entraPrincipal @defaults("displayName principalType") {
   principalType string
   // User principal name, for users
   userPrincipalName string
+  // Whether a user is a member of the tenant or a guest
+  //
+  // "Member" or "Guest" for users, empty for other object types. A guest
+  // holding an Azure role is an outside account with standing access to
+  // the subscription.
+  userType string
   // Application (client) ID, for service principals and applications
   appId string
   // Tenant that owns the application behind a service principal

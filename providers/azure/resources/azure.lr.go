@@ -3281,6 +3281,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.entraPrincipal.userPrincipalName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureEntraPrincipal).GetUserPrincipalName()).ToDataRes(types.String)
 	},
+	"azure.entraPrincipal.userType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureEntraPrincipal).GetUserType()).ToDataRes(types.String)
+	},
 	"azure.entraPrincipal.appId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureEntraPrincipal).GetAppId()).ToDataRes(types.String)
 	},
@@ -25780,6 +25783,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.entraPrincipal.userPrincipalName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureEntraPrincipal).UserPrincipalName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.entraPrincipal.userType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureEntraPrincipal).UserType, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"azure.entraPrincipal.appId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -58397,6 +58404,7 @@ type mqlAzureEntraPrincipal struct {
 	DisplayName          plugin.TValue[string]
 	PrincipalType        plugin.TValue[string]
 	UserPrincipalName    plugin.TValue[string]
+	UserType             plugin.TValue[string]
 	AppId                plugin.TValue[string]
 	AppOwnerTenantId     plugin.TValue[string]
 	ServicePrincipalType plugin.TValue[string]
@@ -58452,6 +58460,10 @@ func (c *mqlAzureEntraPrincipal) GetPrincipalType() *plugin.TValue[string] {
 
 func (c *mqlAzureEntraPrincipal) GetUserPrincipalName() *plugin.TValue[string] {
 	return &c.UserPrincipalName
+}
+
+func (c *mqlAzureEntraPrincipal) GetUserType() *plugin.TValue[string] {
+	return &c.UserType
 }
 
 func (c *mqlAzureEntraPrincipal) GetAppId() *plugin.TValue[string] {
