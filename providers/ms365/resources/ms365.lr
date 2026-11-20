@@ -1694,14 +1694,67 @@ private microsoft.identityAndAccess.privilegedIdentityManagement.policy @default
   lastModifiedBy dict
   // The collection of rules that are part of the policy
   rules() []microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule
+  // Directory role the policy governs
+  //
+  // Null when the policy is not assigned to a directory role at the tenant
+  // scope.
+  roleDefinition() microsoft.rolemanagement.roledefinition
 }
 
 // A rule defined for a PIM role management policy
-private microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule @defaults("id") {
+private microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule @defaults("id type") {
   // The unique identifier for the rule
   id string
   // Defines details of scope that's targeted by role management policy rule
   target microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.target
+  // Kind of rule
+  //
+  // One of `enablement`, `approval`, `expiration`, `authenticationContext`, or
+  // `notification`. Decides which of the other fields the rule sets; the rest
+  // are null.
+  type string
+  // Requirements a user must meet to activate or be assigned the role
+  //
+  // Set on `enablement` rules. Contains any of `MultiFactorAuthentication`,
+  // `Justification`, and `Ticketing`. The `Enablement_EndUser_Assignment` rule
+  // governs activation.
+  enabledRules []string
+  // Whether an assignment or activation must expire
+  //
+  // Set on `expiration` rules.
+  isExpirationRequired bool
+  // Longest an assignment or activation may last
+  //
+  // Set on `expiration` rules, as an ISO 8601 duration such as `PT8H` or
+  // `P365D`.
+  maximumDuration string
+  // Whether a request needs approval
+  //
+  // Set on `approval` rules. The `Approval_EndUser_Assignment` rule governs
+  // activation.
+  isApprovalRequired bool
+  // Whether extending an assignment needs approval
+  //
+  // Set on `approval` rules.
+  isApprovalRequiredForExtension bool
+  // Whether the requestor must give a justification for approval
+  //
+  // Set on `approval` rules.
+  isRequestorJustificationRequired bool
+  // How approval stages run
+  //
+  // Set on `approval` rules: `SingleStage`, `Serial`, `Parallel`, or
+  // `NoApproval`.
+  approvalMode string
+  // Whether activation requires a Conditional Access authentication context
+  //
+  // Set on `authenticationContext` rules.
+  authenticationContextEnabled bool
+  // Authentication context the activation requires
+  //
+  // Set on `authenticationContext` rules, for example `c1`. Null when none is
+  // required.
+  authenticationContextClaimValue string
 }
 
 // Defines details of the scope that's targeted by role management policy rule
@@ -5439,6 +5492,12 @@ private microsoft.rolemanagement.roledefinition @defaults("id displayName") {
   // control of the tenant. Null when Microsoft Graph does not classify the
   // role.
   isPrivileged() bool
+  // PIM policy that governs the role at the tenant scope
+  //
+  // Its rules set what activating or being assigned the role requires, for
+  // example multifactor authentication or approval. Null when no policy is
+  // assigned to the role.
+  pimPolicy() microsoft.identityAndAccess.privilegedIdentityManagement.policy
 }
 
 // Microsoft role assignment

@@ -55,6 +55,9 @@ type mqlMicrosoftInternal struct {
 	// the tenant's directory role assignments and eligibilities, indexed by
 	// the principals they apply to
 	directoryRoles directoryRoleIndex
+	// the PIM policies assigned to directory roles at the tenant scope, read
+	// once and indexed both ways
+	pimPolicies pimPolicyIndex
 	// the tenant's service principal sign-in activity report, fetched once
 	spSignInActivity spSignInActivityCache
 	// per-user licenseDetails, fetched for users whose servicePlans are queried
