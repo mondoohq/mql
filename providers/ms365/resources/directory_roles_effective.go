@@ -32,7 +32,7 @@ type directoryRoleIndex struct {
 	eligErr       error
 
 	membersMu    sync.Mutex
-	groupMembers map[string]map[string]struct{}
+	groupMembers map[string]*groupMemberSet
 
 	privOnce   sync.Once
 	privileged map[string]*bool
@@ -106,6 +106,9 @@ func (m *mqlMicrosoft) directoryRoleAssignmentList() ([]*mqlMicrosoftRolemanagem
 		}
 		ids := make([]string, 0, len(assignments))
 		for _, a := range assignments {
+			if a == nil {
+				continue
+			}
 			ids = append(ids, strVal(a.GetPrincipalId()))
 		}
 		principals, err := fetchDirectoryObjectsByIds(ctx, graphClient, uniqueNonEmpty(ids))
@@ -150,45 +153,67 @@ func (m *mqlMicrosoft) directoryRoleEligibilityList() ([]*mqlMicrosoftIdentityAn
 	return idx.eligibilities, idx.eligErr
 }
 
+// groupMemberSet is one group's direct member ids, read once. Each group has
+// its own, so lookups for different groups run concurrently and concurrent
+// lookups for the same group share one request.
+type groupMemberSet struct {
+	once    sync.Once
+	members map[string]struct{}
+	err     error
+}
+
 // isGroupMember reports whether memberID is a direct member of groupID,
 // reading each group's member list once.
 func (m *mqlMicrosoft) isGroupMember(groupID, memberID string) (bool, error) {
 	idx := &m.directoryRoles
-	idx.membersMu.Lock()
-	defer idx.membersMu.Unlock()
 	key := strings.ToLower(groupID)
-	members, ok := idx.groupMembers[key]
-	if !ok {
-		conn := m.MqlRuntime.Connection.(*connection.Ms365Connection)
-		graphClient, err := conn.GraphClient()
-		if err != nil {
-			return false, err
-		}
-		ctx := context.Background()
-		top := directoryRoleMemberPageSize
-		resp, err := graphClient.Groups().ByGroupId(groupID).Members().Get(ctx, &groups.ItemMembersRequestBuilderGetRequestConfiguration{
-			QueryParameters: &groups.ItemMembersRequestBuilderGetQueryParameters{Top: &top, Select: []string{"id"}},
-		})
-		if err != nil {
-			return false, classifyGraphError(err, "GroupMember.Read.All")
-		}
-		objs, err := iterate[models.DirectoryObjectable](ctx, resp, graphClient.GetAdapter(), models.CreateDirectoryObjectCollectionResponseFromDiscriminatorValue)
-		if err != nil {
-			return false, transformError(err)
-		}
-		members = map[string]struct{}{}
-		for _, o := range objs {
-			if o != nil && o.GetId() != nil {
-				members[strings.ToLower(*o.GetId())] = struct{}{}
-			}
-		}
-		if idx.groupMembers == nil {
-			idx.groupMembers = map[string]map[string]struct{}{}
-		}
-		idx.groupMembers[key] = members
+	idx.membersMu.Lock()
+	if idx.groupMembers == nil {
+		idx.groupMembers = map[string]*groupMemberSet{}
 	}
-	_, member := members[strings.ToLower(memberID)]
+	set, ok := idx.groupMembers[key]
+	if !ok {
+		set = &groupMemberSet{}
+		idx.groupMembers[key] = set
+	}
+	idx.membersMu.Unlock()
+
+	set.once.Do(func() {
+		set.members, set.err = m.fetchGroupMemberIDs(groupID)
+	})
+	if set.err != nil {
+		return false, set.err
+	}
+	_, member := set.members[strings.ToLower(memberID)]
 	return member, nil
+}
+
+// fetchGroupMemberIDs reads the lower-cased ids of a group's direct members.
+func (m *mqlMicrosoft) fetchGroupMemberIDs(groupID string) (map[string]struct{}, error) {
+	conn := m.MqlRuntime.Connection.(*connection.Ms365Connection)
+	graphClient, err := conn.GraphClient()
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	top := directoryRoleMemberPageSize
+	resp, err := graphClient.Groups().ByGroupId(groupID).Members().Get(ctx, &groups.ItemMembersRequestBuilderGetRequestConfiguration{
+		QueryParameters: &groups.ItemMembersRequestBuilderGetQueryParameters{Top: &top, Select: []string{"id"}},
+	})
+	if err != nil {
+		return nil, classifyGraphError(err, "GroupMember.Read.All")
+	}
+	objs, err := iterate[models.DirectoryObjectable](ctx, resp, graphClient.GetAdapter(), models.CreateDirectoryObjectCollectionResponseFromDiscriminatorValue)
+	if err != nil {
+		return nil, transformError(err)
+	}
+	members := map[string]struct{}{}
+	for _, o := range objs {
+		if o != nil && o.GetId() != nil {
+			members[strings.ToLower(*o.GetId())] = struct{}{}
+		}
+	}
+	return members, nil
 }
 
 func assignmentGrant(a *mqlMicrosoftRolemanagementRoleassignment) directoryRoleGrant {

@@ -299,6 +299,9 @@ func (a *mqlMicrosoftIdentityAndAccess) roleEligibilityScheduleInstances() ([]an
 
 	principalIDs := make([]string, 0, len(roleEligibilityScheduleInstances))
 	for _, inst := range roleEligibilityScheduleInstances {
+		if inst == nil {
+			continue
+		}
 		principalIDs = append(principalIDs, strVal(inst.GetPrincipalId()))
 	}
 	principalTypes, err := principalTypesByID(ctx, graphClient, principalIDs)
@@ -308,7 +311,7 @@ func (a *mqlMicrosoftIdentityAndAccess) roleEligibilityScheduleInstances() ([]an
 
 	var instances []any
 	for _, inst := range roleEligibilityScheduleInstances {
-		if inst.GetId() == nil {
+		if inst == nil || inst.GetId() == nil {
 			continue
 		}
 		instanceResource, err := newMqlRoleEligibilityScheduleInstance(a.MqlRuntime, inst, principalTypes)
