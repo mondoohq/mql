@@ -6,7 +6,6 @@ package resources
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path"
@@ -73,10 +72,6 @@ func sameFile(a, b os.FileInfo) bool {
 		return os.SameFile(a, b)
 	}
 	return a.Size() == b.Size() && a.ModTime().Equal(b.ModTime())
-}
-
-func isOSFileStat(fi os.FileInfo) bool {
-	return fmt.Sprintf("%T", fi) == "*os.fileStat"
 }
 
 // appleCareCoverage is the part of a cached coverage file this resource reads.
