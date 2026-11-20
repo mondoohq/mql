@@ -137,6 +137,7 @@ const (
 	ResourceMicrosoftSecurityInformationProtectionLabelPolicy                                            string = "microsoft.security.informationProtection.labelPolicy"
 	ResourceMicrosoftSecurityInformationProtectionSensitivityLabel                                       string = "microsoft.security.informationProtection.sensitivityLabel"
 	ResourceMicrosoftPolicies                                                                            string = "microsoft.policies"
+	ResourceMicrosoftPoliciesTenantAuthorizationPolicy                                                   string = "microsoft.policies.tenantAuthorizationPolicy"
 	ResourceMicrosoftDeviceRegistrationPolicy                                                            string = "microsoft.deviceRegistrationPolicy"
 	ResourceMicrosoftDeviceRegistrationPolicyJoinPolicy                                                  string = "microsoft.deviceRegistrationPolicy.joinPolicy"
 	ResourceMicrosoftDeviceRegistrationPolicyRegistrationPolicy                                          string = "microsoft.deviceRegistrationPolicy.registrationPolicy"
@@ -751,6 +752,10 @@ func init() {
 		"microsoft.policies": {
 			// to override args, implement: initMicrosoftPolicies(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMicrosoftPolicies,
+		},
+		"microsoft.policies.tenantAuthorizationPolicy": {
+			Init:   initMicrosoftPoliciesTenantAuthorizationPolicy,
+			Create: createMicrosoftPoliciesTenantAuthorizationPolicy,
 		},
 		"microsoft.deviceRegistrationPolicy": {
 			// to override args, implement: initMicrosoftDeviceRegistrationPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -4545,6 +4550,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.policies.authorizationPolicy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftPolicies).GetAuthorizationPolicy()).ToDataRes(types.Dict)
 	},
+	"microsoft.policies.tenantAuthorizationPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPolicies).GetTenantAuthorizationPolicy()).ToDataRes(types.Resource("microsoft.policies.tenantAuthorizationPolicy"))
+	},
 	"microsoft.policies.identitySecurityDefaultsEnforcementPolicy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftPolicies).GetIdentitySecurityDefaultsEnforcementPolicy()).ToDataRes(types.Dict)
 	},
@@ -4604,6 +4612,54 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.policies.featureRolloutPolicies": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftPolicies).GetFeatureRolloutPolicies()).ToDataRes(types.Array(types.Resource("microsoft.policies.featureRolloutPolicy")))
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetDisplayName()).ToDataRes(types.String)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetDescription()).ToDataRes(types.String)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.allowInvitesFrom": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetAllowInvitesFrom()).ToDataRes(types.String)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.allowedToSignUpEmailBasedSubscriptions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetAllowedToSignUpEmailBasedSubscriptions()).ToDataRes(types.Bool)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.allowedToUseSSPR": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetAllowedToUseSSPR()).ToDataRes(types.Bool)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.allowEmailVerifiedUsersToJoinOrganization": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetAllowEmailVerifiedUsersToJoinOrganization()).ToDataRes(types.Bool)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.allowUserConsentForRiskyApps": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetAllowUserConsentForRiskyApps()).ToDataRes(types.Bool)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.blockMsolPowerShell": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetBlockMsolPowerShell()).ToDataRes(types.Bool)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.guestUserRoleId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetGuestUserRoleId()).ToDataRes(types.String)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.defaultUserAllowedToCreateApps": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetDefaultUserAllowedToCreateApps()).ToDataRes(types.Bool)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.defaultUserAllowedToCreateSecurityGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetDefaultUserAllowedToCreateSecurityGroups()).ToDataRes(types.Bool)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.defaultUserAllowedToCreateTenants": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetDefaultUserAllowedToCreateTenants()).ToDataRes(types.Bool)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.defaultUserAllowedToReadBitlockerKeysForOwnedDevice": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetDefaultUserAllowedToReadBitlockerKeysForOwnedDevice()).ToDataRes(types.Bool)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.defaultUserAllowedToReadOtherUsers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetDefaultUserAllowedToReadOtherUsers()).ToDataRes(types.Bool)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.defaultUserPermissionGrantPoliciesAssigned": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetDefaultUserPermissionGrantPoliciesAssigned()).ToDataRes(types.Array(types.String))
 	},
 	"microsoft.deviceRegistrationPolicy.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftDeviceRegistrationPolicy).GetId()).ToDataRes(types.String)
@@ -12724,6 +12780,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftPolicies).AuthorizationPolicy, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
+	"microsoft.policies.tenantAuthorizationPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPolicies).TenantAuthorizationPolicy, ok = plugin.RawToTValue[*mqlMicrosoftPoliciesTenantAuthorizationPolicy](v.Value, v.Error)
+		return
+	},
 	"microsoft.policies.identitySecurityDefaultsEnforcementPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftPolicies).IdentitySecurityDefaultsEnforcementPolicy, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
@@ -12802,6 +12862,74 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.policies.featureRolloutPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftPolicies).FeatureRolloutPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.allowInvitesFrom": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).AllowInvitesFrom, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.allowedToSignUpEmailBasedSubscriptions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).AllowedToSignUpEmailBasedSubscriptions, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.allowedToUseSSPR": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).AllowedToUseSSPR, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.allowEmailVerifiedUsersToJoinOrganization": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).AllowEmailVerifiedUsersToJoinOrganization, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.allowUserConsentForRiskyApps": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).AllowUserConsentForRiskyApps, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.blockMsolPowerShell": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).BlockMsolPowerShell, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.guestUserRoleId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GuestUserRoleId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.defaultUserAllowedToCreateApps": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).DefaultUserAllowedToCreateApps, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.defaultUserAllowedToCreateSecurityGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).DefaultUserAllowedToCreateSecurityGroups, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.defaultUserAllowedToCreateTenants": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).DefaultUserAllowedToCreateTenants, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.defaultUserAllowedToReadBitlockerKeysForOwnedDevice": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).DefaultUserAllowedToReadBitlockerKeysForOwnedDevice, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.defaultUserAllowedToReadOtherUsers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).DefaultUserAllowedToReadOtherUsers, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.defaultUserPermissionGrantPoliciesAssigned": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).DefaultUserPermissionGrantPoliciesAssigned, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"microsoft.deviceRegistrationPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -30151,6 +30279,7 @@ type mqlMicrosoftPolicies struct {
 	__id       string
 	// optional: if you define mqlMicrosoftPoliciesInternal it will be used here
 	AuthorizationPolicy                       plugin.TValue[any]
+	TenantAuthorizationPolicy                 plugin.TValue[*mqlMicrosoftPoliciesTenantAuthorizationPolicy]
 	IdentitySecurityDefaultsEnforcementPolicy plugin.TValue[any]
 	AdminConsentRequestPolicy                 plugin.TValue[*mqlMicrosoftAdminConsentRequestPolicy]
 	PermissionGrantPolicies                   plugin.TValue[[]any]
@@ -30208,6 +30337,22 @@ func (c *mqlMicrosoftPolicies) MqlID() string {
 func (c *mqlMicrosoftPolicies) GetAuthorizationPolicy() *plugin.TValue[any] {
 	return plugin.GetOrCompute[any](&c.AuthorizationPolicy, func() (any, error) {
 		return c.authorizationPolicy()
+	})
+}
+
+func (c *mqlMicrosoftPolicies) GetTenantAuthorizationPolicy() *plugin.TValue[*mqlMicrosoftPoliciesTenantAuthorizationPolicy] {
+	return plugin.GetOrCompute[*mqlMicrosoftPoliciesTenantAuthorizationPolicy](&c.TenantAuthorizationPolicy, func() (*mqlMicrosoftPoliciesTenantAuthorizationPolicy, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.policies", c.__id, "tenantAuthorizationPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy), nil
+			}
+		}
+
+		return c.tenantAuthorizationPolicy()
 	})
 }
 
@@ -30489,6 +30634,125 @@ func (c *mqlMicrosoftPolicies) GetFeatureRolloutPolicies() *plugin.TValue[[]any]
 
 		return c.featureRolloutPolicies()
 	})
+}
+
+// mqlMicrosoftPoliciesTenantAuthorizationPolicy for the microsoft.policies.tenantAuthorizationPolicy resource
+type mqlMicrosoftPoliciesTenantAuthorizationPolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMicrosoftPoliciesTenantAuthorizationPolicyInternal it will be used here
+	Id                                                  plugin.TValue[string]
+	DisplayName                                         plugin.TValue[string]
+	Description                                         plugin.TValue[string]
+	AllowInvitesFrom                                    plugin.TValue[string]
+	AllowedToSignUpEmailBasedSubscriptions              plugin.TValue[bool]
+	AllowedToUseSSPR                                    plugin.TValue[bool]
+	AllowEmailVerifiedUsersToJoinOrganization           plugin.TValue[bool]
+	AllowUserConsentForRiskyApps                        plugin.TValue[bool]
+	BlockMsolPowerShell                                 plugin.TValue[bool]
+	GuestUserRoleId                                     plugin.TValue[string]
+	DefaultUserAllowedToCreateApps                      plugin.TValue[bool]
+	DefaultUserAllowedToCreateSecurityGroups            plugin.TValue[bool]
+	DefaultUserAllowedToCreateTenants                   plugin.TValue[bool]
+	DefaultUserAllowedToReadBitlockerKeysForOwnedDevice plugin.TValue[bool]
+	DefaultUserAllowedToReadOtherUsers                  plugin.TValue[bool]
+	DefaultUserPermissionGrantPoliciesAssigned          plugin.TValue[[]any]
+}
+
+// createMicrosoftPoliciesTenantAuthorizationPolicy creates a new instance of this resource
+func createMicrosoftPoliciesTenantAuthorizationPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftPoliciesTenantAuthorizationPolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.policies.tenantAuthorizationPolicy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) MqlName() string {
+	return "microsoft.policies.tenantAuthorizationPolicy"
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetAllowInvitesFrom() *plugin.TValue[string] {
+	return &c.AllowInvitesFrom
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetAllowedToSignUpEmailBasedSubscriptions() *plugin.TValue[bool] {
+	return &c.AllowedToSignUpEmailBasedSubscriptions
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetAllowedToUseSSPR() *plugin.TValue[bool] {
+	return &c.AllowedToUseSSPR
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetAllowEmailVerifiedUsersToJoinOrganization() *plugin.TValue[bool] {
+	return &c.AllowEmailVerifiedUsersToJoinOrganization
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetAllowUserConsentForRiskyApps() *plugin.TValue[bool] {
+	return &c.AllowUserConsentForRiskyApps
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetBlockMsolPowerShell() *plugin.TValue[bool] {
+	return &c.BlockMsolPowerShell
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetGuestUserRoleId() *plugin.TValue[string] {
+	return &c.GuestUserRoleId
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetDefaultUserAllowedToCreateApps() *plugin.TValue[bool] {
+	return &c.DefaultUserAllowedToCreateApps
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetDefaultUserAllowedToCreateSecurityGroups() *plugin.TValue[bool] {
+	return &c.DefaultUserAllowedToCreateSecurityGroups
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetDefaultUserAllowedToCreateTenants() *plugin.TValue[bool] {
+	return &c.DefaultUserAllowedToCreateTenants
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetDefaultUserAllowedToReadBitlockerKeysForOwnedDevice() *plugin.TValue[bool] {
+	return &c.DefaultUserAllowedToReadBitlockerKeysForOwnedDevice
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetDefaultUserAllowedToReadOtherUsers() *plugin.TValue[bool] {
+	return &c.DefaultUserAllowedToReadOtherUsers
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetDefaultUserPermissionGrantPoliciesAssigned() *plugin.TValue[[]any] {
+	return &c.DefaultUserPermissionGrantPoliciesAssigned
 }
 
 // mqlMicrosoftDeviceRegistrationPolicy for the microsoft.deviceRegistrationPolicy resource

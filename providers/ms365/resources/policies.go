@@ -1117,3 +1117,77 @@ func (a *mqlMicrosoftDeviceRegistrationPolicyMembership) allowedGroupRefs() ([]a
 	}
 	return res, nil
 }
+
+func (a *mqlMicrosoftPolicies) tenantAuthorizationPolicy() (*mqlMicrosoftPoliciesTenantAuthorizationPolicy, error) {
+	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
+	graphClient, err := conn.GraphClient()
+	if err != nil {
+		return nil, err
+	}
+	resp, err := graphClient.Policies().AuthorizationPolicy().Get(context.Background(), &policies.AuthorizationPolicyRequestBuilderGetRequestConfiguration{})
+	if err != nil {
+		return nil, classifyGraphError(err, "Policy.Read.All")
+	}
+	r, err := CreateResource(a.MqlRuntime, ResourceMicrosoftPoliciesTenantAuthorizationPolicy, authorizationPolicyArgs(resp))
+	if err != nil {
+		return nil, err
+	}
+	return r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy), nil
+}
+
+// authorizationPolicyArgs maps the tenant authorization policy onto its
+// resource. A setting Graph leaves out reads null.
+func authorizationPolicyArgs(p models.AuthorizationPolicyable) map[string]*llx.RawData {
+	args := map[string]*llx.RawData{
+		"__id":                                   llx.StringData("microsoft.policies.tenantAuthorizationPolicy"),
+		"id":                                     llx.StringDataPtr(p.GetId()),
+		"displayName":                            llx.StringDataPtr(p.GetDisplayName()),
+		"description":                            llx.StringDataPtr(p.GetDescription()),
+		"allowInvitesFrom":                       llx.NilData,
+		"allowedToSignUpEmailBasedSubscriptions": llx.BoolDataPtr(p.GetAllowedToSignUpEmailBasedSubscriptions()),
+		"allowedToUseSSPR":                       llx.BoolDataPtr(p.GetAllowedToUseSSPR()),
+		"allowEmailVerifiedUsersToJoinOrganization":           llx.BoolDataPtr(p.GetAllowEmailVerifiedUsersToJoinOrganization()),
+		"allowUserConsentForRiskyApps":                        llx.BoolDataPtr(p.GetAllowUserConsentForRiskyApps()),
+		"blockMsolPowerShell":                                 llx.BoolDataPtr(p.GetBlockMsolPowerShell()),
+		"guestUserRoleId":                                     llx.NilData,
+		"defaultUserAllowedToCreateApps":                      llx.NilData,
+		"defaultUserAllowedToCreateSecurityGroups":            llx.NilData,
+		"defaultUserAllowedToCreateTenants":                   llx.NilData,
+		"defaultUserAllowedToReadBitlockerKeysForOwnedDevice": llx.NilData,
+		"defaultUserAllowedToReadOtherUsers":                  llx.NilData,
+		"defaultUserPermissionGrantPoliciesAssigned":          llx.NilData,
+	}
+	if v := p.GetAllowInvitesFrom(); v != nil {
+		args["allowInvitesFrom"] = llx.StringData(v.String())
+	}
+	if v := p.GetGuestUserRoleId(); v != nil {
+		args["guestUserRoleId"] = llx.StringData(v.String())
+	}
+	if d := p.GetDefaultUserRolePermissions(); d != nil {
+		args["defaultUserAllowedToCreateApps"] = llx.BoolDataPtr(d.GetAllowedToCreateApps())
+		args["defaultUserAllowedToCreateSecurityGroups"] = llx.BoolDataPtr(d.GetAllowedToCreateSecurityGroups())
+		args["defaultUserAllowedToCreateTenants"] = llx.BoolDataPtr(d.GetAllowedToCreateTenants())
+		args["defaultUserAllowedToReadBitlockerKeysForOwnedDevice"] = llx.BoolDataPtr(d.GetAllowedToReadBitlockerKeysForOwnedDevice())
+		args["defaultUserAllowedToReadOtherUsers"] = llx.BoolDataPtr(d.GetAllowedToReadOtherUsers())
+		args["defaultUserPermissionGrantPoliciesAssigned"] = llx.ArrayData(llx.TArr2Raw(d.GetPermissionGrantPoliciesAssigned()), types.String)
+	}
+	return args
+}
+
+// initMicrosoftPoliciesTenantAuthorizationPolicy loads the policy when the
+// resource is reached by its own path (microsoft.policies.tenantAuthorizationPolicy),
+// which creates it without arguments; without this it would be an empty shell.
+func initMicrosoftPoliciesTenantAuthorizationPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 0 {
+		return args, nil, nil
+	}
+	parent, err := CreateResource(runtime, ResourceMicrosoftPolicies, map[string]*llx.RawData{})
+	if err != nil {
+		return nil, nil, err
+	}
+	policy := parent.(*mqlMicrosoftPolicies).GetTenantAuthorizationPolicy()
+	if policy.Error != nil {
+		return nil, nil, policy.Error
+	}
+	return nil, policy.Data, nil
+}

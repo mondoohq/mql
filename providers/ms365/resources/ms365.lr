@@ -4136,7 +4136,16 @@ microsoft.policies {
   // NONE, ADMINSANDGUESTINVITERS, ADMINSGUESTINVITERSANDALLMEMBERS, EVERYONE,
   // UNKNOWNFUTUREVALUE), `blockMsolPowerShell`, `defaultUserRolePermissions`,
   // `guestUserRoleId`, `displayName`, `description`, and `id`.
-  authorizationPolicy() dict
+  // Deprecated in favor of tenantAuthorizationPolicy, which carries the same
+  // settings as typed fields.
+  authorizationPolicy() @maturity("deprecated") @replaced_by("microsoft.policies.tenantAuthorizationPolicy") dict
+  // Tenant authorization policy
+  //
+  // What every user and guest may do by default: create applications,
+  // security groups, or tenants, consent to applications, invite guests,
+  // and read other users. Each setting left open lets a normal user create
+  // an identity or grant data access without review.
+  tenantAuthorizationPolicy() microsoft.policies.tenantAuthorizationPolicy
   // Identity security default enforcement policy
   //
   // Security defaults enforcement state for the tenant. Keys: `isEnabled`
@@ -4235,6 +4244,57 @@ microsoft.policies {
   // features, such as password hash sync or pass-through authentication,
   // ahead of the whole organization.
   featureRolloutPolicies() []microsoft.policies.featureRolloutPolicy
+}
+
+// Tenant authorization policy
+//
+// The tenant's default permissions for users and guests. The defaultUser
+// fields apply to every member user that holds no administrator role, for
+// example `microsoft.policies.tenantAuthorizationPolicy.defaultUserAllowedToCreateApps == false`.
+private microsoft.policies.tenantAuthorizationPolicy @defaults("allowInvitesFrom defaultUserAllowedToCreateApps") {
+  // Policy ID
+  id string
+  // Display name
+  displayName string
+  // Description
+  description string
+  // Who can invite guests
+  //
+  // One of none, adminsAndGuestInviters, adminsGuestInvitersAndAllMembers,
+  // or everyone.
+  allowInvitesFrom string
+  // Whether users can sign up for email-based self-service subscriptions
+  allowedToSignUpEmailBasedSubscriptions bool
+  // Whether users can use self-service password reset
+  allowedToUseSSPR bool
+  // Whether users with a verified email address can join the tenant
+  allowEmailVerifiedUsersToJoinOrganization bool
+  // Whether users can consent to applications Microsoft flags as risky
+  allowUserConsentForRiskyApps bool
+  // Whether the legacy MSOnline PowerShell module is blocked
+  blockMsolPowerShell bool
+  // Role that guests get
+  //
+  // a0b1b346-4d3e-4e8b-98f8-753987be4970 for the same access as members,
+  // 10dae51f-b6af-4016-8d66-8c2a99b929b3 for limited guest access, or
+  // 2af84b1e-32c8-42b7-82bc-daa82404023b for restricted guest access, the
+  // most restrictive.
+  guestUserRoleId string
+  // Whether default users can register applications
+  defaultUserAllowedToCreateApps bool
+  // Whether default users can create security groups
+  defaultUserAllowedToCreateSecurityGroups bool
+  // Whether default users can create tenants
+  defaultUserAllowedToCreateTenants bool
+  // Whether default users can read the BitLocker keys of devices they own
+  defaultUserAllowedToReadBitlockerKeysForOwnedDevice bool
+  // Whether default users can read other users
+  defaultUserAllowedToReadOtherUsers bool
+  // Permission grant policies that set which applications default users can consent to
+  //
+  // IDs such as `ManagePermissionGrantsForSelf.microsoft-user-default-low`.
+  // Empty when users cannot consent to applications at all.
+  defaultUserPermissionGrantPoliciesAssigned []string
 }
 
 // Entra device registration policy
