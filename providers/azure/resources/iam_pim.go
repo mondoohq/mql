@@ -50,6 +50,45 @@ func pimUnavailable(err error) bool {
 	return false
 }
 
+// pimListFailure decides what a PIM list reports when a page fails. Without
+// structured errors it keeps the v13 answer: the schedules read so far, with a
+// warning, for every outcome pimUnavailable accepts. With structured errors a
+// tenant without the license is NotApplicable, and a refused or
+// unauthenticated read is an error, so `roleEligibilitySchedules.none(...)`
+// cannot pass on a list nobody was allowed to read. Anything else is returned
+// unchanged.
+func pimListFailure(subscriptionID string, partial []any, err error, permission string) ([]any, error) {
+	if !pimUnavailable(err) {
+		return nil, err
+	}
+	if !plugin.StructuredErrors() {
+		log.Warn().Err(err).Str("subscription", subscriptionID).
+			Msg("PIM data unavailable (requires Entra ID P2 / Governance and read access)")
+		return partial, nil
+	}
+	return nil, classifyPimFailure(err, permission)
+}
+
+// classifyPimFailure maps a PIM list error to its ADR 046 kind: the missing
+// Entra ID P2 / Governance license is NotApplicable, 401 Unauthenticated, and
+// 403 Forbidden naming the permission. A 400 for another reason and a 404 are
+// left unclassified.
+func classifyPimFailure(err error, permission string) error {
+	var respErr *azcore.ResponseError
+	if !errors.As(err, &respErr) {
+		return err
+	}
+	switch {
+	case strings.EqualFold(azureErrorCode(respErr), "AadPremiumLicenseRequired"):
+		return llx.NotApplicable(err)
+	case respErr.StatusCode == http.StatusUnauthorized:
+		return llx.Unauthenticated(err)
+	case respErr.StatusCode == http.StatusForbidden:
+		return llx.Forbidden(err, llx.WithPermissions(permission))
+	}
+	return err
+}
+
 type mqlAzureSubscriptionAuthorizationServiceRoleEligibilityScheduleInternal struct {
 	roleDefinitionId string
 }
@@ -68,11 +107,7 @@ func (a *mqlAzureSubscriptionAuthorizationService) roleEligibilitySchedules() ([
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			if pimUnavailable(err) {
-				log.Warn().Str("subscription", a.SubscriptionId.Data).Msg("PIM role schedules unavailable (requires Entra ID P2 / Governance)")
-				return res, nil
-			}
-			return nil, err
+			return pimListFailure(a.SubscriptionId.Data, res, err, "Microsoft.Authorization/roleEligibilitySchedules/read")
 		}
 		for _, sched := range page.Value {
 			if sched == nil {
@@ -150,11 +185,7 @@ func (a *mqlAzureSubscriptionAuthorizationService) roleAssignmentSchedules() ([]
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			if pimUnavailable(err) {
-				log.Warn().Str("subscription", a.SubscriptionId.Data).Msg("PIM role schedules unavailable (requires Entra ID P2 / Governance)")
-				return res, nil
-			}
-			return nil, err
+			return pimListFailure(a.SubscriptionId.Data, res, err, "Microsoft.Authorization/roleAssignmentSchedules/read")
 		}
 		for _, sched := range page.Value {
 			if sched == nil {
@@ -236,11 +267,7 @@ func (a *mqlAzureSubscriptionAuthorizationService) roleManagementPolicies() ([]a
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			if pimUnavailable(err) {
-				log.Warn().Str("subscription", a.SubscriptionId.Data).Msg("PIM role management policies unavailable (requires Entra ID P2 / Governance)")
-				return res, nil
-			}
-			return nil, err
+			return pimListFailure(a.SubscriptionId.Data, res, err, "Microsoft.Authorization/roleManagementPolicies/read")
 		}
 		for _, policy := range page.Value {
 			if policy == nil {
