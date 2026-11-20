@@ -16016,7 +16016,7 @@ macos {
 // type, model identifier, product name, part number, installed memory, serial number, and
 // Activation Lock status. Useful for asset inventory and for
 // distinguishing Apple Silicon from Intel Macs in conditional audits.
-macos.hardware @defaults("machineName chipType physicalMemory serialNumber") {
+macos.hardware @defaults("machineName chipType physicalMemoryBytes serialNumber") {
   // Activation Lock security feature status
   activationLockStatus string
   // Boot ROM (firmware) version identifier
@@ -16039,12 +16039,27 @@ macos.hardware @defaults("machineName chipType physicalMemory serialNumber") {
   //
   // Apple's part number, ending in a region suffix such as "LL/A". Build-to-order configurations start with "Z". This is not the regulatory model number printed on the case (e.g., "A2442").
   modelNumber string
+  // Processor core counts as reported by system_profiler
+  //
+  // Deprecated in favor of cores, performanceCores, and efficiencyCores, which can be
+  // compared as numbers. On Apple Silicon this is a string such as "proc 16:12:4"
+  // (total, performance, and efficiency cores); Intel Macs and virtual machines
+  // report only the total.
+  numberProcessors @maturity("deprecated") string
   // Total number of processor cores
-  numberProcessors string
+  cores int
+  // Number of performance cores (0 on Intel Macs and virtual machines)
+  performanceCores int
+  // Number of efficiency cores (0 on Intel Macs and virtual machines)
+  efficiencyCores int
   // Version of the OS bootloader
   osLoaderVersion string
   // Total RAM installed (e.g., "16 GB")
-  physicalMemory string
+  //
+  // Deprecated in favor of physicalMemoryBytes, which can be compared as a number.
+  physicalMemory @maturity("deprecated") string
+  // Total RAM installed, in bytes (0 if system_profiler reports an unknown format)
+  physicalMemoryBytes int
   // Universally unique identifier for the hardware platform
   platformUUID string
   // Unique Device Identifier for MDM provisioning

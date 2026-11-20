@@ -3682,13 +3682,17 @@ macos.hardware 11.4.68
 macos.hardware.activationLockStatus 11.4.68
 macos.hardware.bootRomVersion 11.4.68
 macos.hardware.chipType 11.4.68
+macos.hardware.cores 14.42.1
+macos.hardware.efficiencyCores 14.42.1
 macos.hardware.fullDisplayName 14.41.1
 macos.hardware.machineModel 11.4.68
 macos.hardware.machineName 11.4.68
 macos.hardware.modelNumber 11.4.68
 macos.hardware.numberProcessors 11.4.68
 macos.hardware.osLoaderVersion 11.4.68
+macos.hardware.performanceCores 14.42.1
 macos.hardware.physicalMemory 11.4.68
+macos.hardware.physicalMemoryBytes 14.42.1
 macos.hardware.platformUUID 11.4.68
 macos.hardware.provisioningUDID 11.4.68
 macos.hardware.serialNumber 11.4.68
