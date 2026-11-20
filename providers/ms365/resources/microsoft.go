@@ -76,8 +76,10 @@ type userBatchCaches struct {
 // spBatchCaches holds one cache per per-service-principal field resolved
 // through the Graph $batch endpoint, working the same way as userBatchCaches.
 type spBatchCaches struct {
-	permissions batchFieldCache
-	assignments batchFieldCache
+	permissions  batchFieldCache
+	assignments  batchFieldCache
+	memberOf     batchFieldCache
+	transitiveOf batchFieldCache
 }
 
 // auditlogBatchCaches holds one cache per per-user audit-log field resolved

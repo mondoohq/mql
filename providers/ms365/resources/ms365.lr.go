@@ -3951,6 +3951,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.serviceprincipal.homeRealmDiscoveryPolicies": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftServiceprincipal).GetHomeRealmDiscoveryPolicies()).ToDataRes(types.Array(types.Resource("microsoft.policies.homeRealmDiscoveryPolicy")))
 	},
+	"microsoft.serviceprincipal.memberOf": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceprincipal).GetMemberOf()).ToDataRes(types.Array(types.Resource("microsoft.group")))
+	},
+	"microsoft.serviceprincipal.transitiveMemberOf": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceprincipal).GetTransitiveMemberOf()).ToDataRes(types.Array(types.Resource("microsoft.group")))
+	},
 	"microsoft.serviceprincipal.lastSignInDateTime": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftServiceprincipal).GetLastSignInDateTime()).ToDataRes(types.Time)
 	},
@@ -11848,6 +11854,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.serviceprincipal.homeRealmDiscoveryPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftServiceprincipal).HomeRealmDiscoveryPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceprincipal.memberOf": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceprincipal).MemberOf, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceprincipal.transitiveMemberOf": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceprincipal).TransitiveMemberOf, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"microsoft.serviceprincipal.lastSignInDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -27774,6 +27788,8 @@ type mqlMicrosoftServiceprincipal struct {
 	TokenLifetimePolicies               plugin.TValue[[]any]
 	ClaimsMappingPolicies               plugin.TValue[[]any]
 	HomeRealmDiscoveryPolicies          plugin.TValue[[]any]
+	MemberOf                            plugin.TValue[[]any]
+	TransitiveMemberOf                  plugin.TValue[[]any]
 	LastSignInDateTime                  plugin.TValue[*time.Time]
 	LastAppOnlyClientSignInDateTime     plugin.TValue[*time.Time]
 	LastDelegatedClientSignInDateTime   plugin.TValue[*time.Time]
@@ -28087,6 +28103,38 @@ func (c *mqlMicrosoftServiceprincipal) GetHomeRealmDiscoveryPolicies() *plugin.T
 		}
 
 		return c.homeRealmDiscoveryPolicies()
+	})
+}
+
+func (c *mqlMicrosoftServiceprincipal) GetMemberOf() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MemberOf, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.serviceprincipal", c.__id, "memberOf")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.memberOf()
+	})
+}
+
+func (c *mqlMicrosoftServiceprincipal) GetTransitiveMemberOf() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TransitiveMemberOf, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.serviceprincipal", c.__id, "transitiveMemberOf")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.transitiveMemberOf()
 	})
 }
 

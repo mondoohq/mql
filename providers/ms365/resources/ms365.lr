@@ -3433,6 +3433,19 @@ microsoft.serviceprincipal @defaults("name") {
   claimsMappingPolicies() []microsoft.policies.claimsMappingPolicy
   // Home realm discovery policies assigned to this service principal
   homeRealmDiscoveryPolicies() []microsoft.policies.homeRealmDiscoveryPolicy
+  // Groups the service principal is a direct member of
+  //
+  // Only groups; directory roles and administrative units are not
+  // included. Requires the GroupMember.Read.All or Directory.Read.All
+  // permission.
+  memberOf() []microsoft.group
+  // Groups the service principal is a member of, directly or through nested groups
+  //
+  // Access granted to any of these groups (an Entra role, an Azure role
+  // assignment, an app assignment) is access this workload identity holds,
+  // for example `transitiveMemberOf.where(isAssignableToRole)`. Requires the
+  // GroupMember.Read.All or Directory.Read.All permission.
+  transitiveMemberOf() []microsoft.group
   // Most recent sign-in of any kind involving this service principal
   //
   // From the tenant's service principal sign-in activity report, which
