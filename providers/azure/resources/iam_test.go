@@ -37,6 +37,11 @@ func TestFilterRoleAssignmentsByPrincipal(t *testing.T) {
 	t.Run("single match", func(t *testing.T) {
 		assert.Len(t, filterRoleAssignmentsByPrincipal(assignments, "bbb"), 1)
 	})
+	// Synthetic: Graph and ARM spellings of one object ID differ in case; no target showed this.
+	t.Run("matches object IDs case-insensitively", func(t *testing.T) {
+		upper := []any{roleAssignmentFor("8F3C9A2E-1B4D-4E5F-9A6B-7C8D9E0F1A2B")}
+		assert.Len(t, filterRoleAssignmentsByPrincipal(upper, "8f3c9a2e-1b4d-4e5f-9a6b-7c8d9e0f1a2b"), 1)
+	})
 	t.Run("no match yields empty, non-nil slice", func(t *testing.T) {
 		got := filterRoleAssignmentsByPrincipal(assignments, "zzz")
 		assert.NotNil(t, got)
