@@ -5,6 +5,7 @@ package resources
 
 import (
 	"errors"
+	"strings"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -184,7 +185,9 @@ func resourceIdentityData(runtime *plugin.Runtime, parentID string, userAssigned
 	if err != nil {
 		return nil, err
 	}
-	res.(*mqlAzureSubscriptionResourceIdentity).cacheUserAssignedIdentityIds = userAssignedIDs
+	mqlIdentity := res.(*mqlAzureSubscriptionResourceIdentity)
+	mqlIdentity.cacheUserAssignedIdentityIds = userAssignedIDs
+	mqlIdentity.cacheOwnerId = parentID
 	return llx.ResourceData(res, resourceIdentityResource), nil
 }
 
@@ -222,8 +225,71 @@ func identityTenantId(v *string) identityOption {
 
 type mqlAzureSubscriptionResourceIdentityInternal struct {
 	cacheUserAssignedIdentityIds []string
+	// cacheOwnerId is the ARM ID of the resource this identity block belongs
+	// to, which keys its system-assigned identity.
+	cacheOwnerId string
 }
 
 func (a *mqlAzureSubscriptionResourceIdentity) userAssignedIdentities() ([]any, error) {
 	return resolveUserAssignedIdentities(a.MqlRuntime, a.cacheUserAssignedIdentityIds)
+}
+
+func (a *mqlAzureSubscriptionResourceIdentity) systemAssignedIdentity() (*mqlAzureSubscriptionManagedIdentity, error) {
+	return newSystemAssignedManagedIdentity(a.MqlRuntime, a.cacheOwnerId, a.PrincipalId.Data, a.TenantId.Data, &a.SystemAssignedIdentity)
+}
+
+// roleAssignments collects the grants of the system-assigned identity and of
+// every attached user-assigned identity. Each identity's list is a filter over
+// the subscription's cached role assignments, so this issues no request of its
+// own once that list is loaded.
+func (a *mqlAzureSubscriptionResourceIdentity) roleAssignments() ([]any, error) {
+	lists := [][]any{}
+	if a.PrincipalId.Data != "" {
+		system, err := roleAssignmentsForPrincipal(a.MqlRuntime, a.PrincipalId.Data)
+		if err != nil {
+			return nil, err
+		}
+		lists = append(lists, system)
+	}
+
+	userAssigned := a.GetUserAssignedIdentities()
+	if userAssigned.Error != nil {
+		return nil, userAssigned.Error
+	}
+	for _, item := range userAssigned.Data {
+		identity, ok := item.(*mqlAzureSubscriptionManagedIdentity)
+		if !ok {
+			continue
+		}
+		grants := identity.GetRoleAssignments()
+		if grants.Error != nil {
+			return nil, grants.Error
+		}
+		lists = append(lists, grants.Data)
+	}
+	return mergeRoleAssignments(lists...), nil
+}
+
+// mergeRoleAssignments concatenates role assignment lists, keeping the first
+// occurrence of each assignment. Two identities of one resource cannot share an
+// assignment, but the same user-assigned identity can be listed twice by ID
+// spellings that differ only in case, and must not double its grants.
+func mergeRoleAssignments(lists ...[]any) []any {
+	seen := map[string]struct{}{}
+	res := []any{}
+	for _, list := range lists {
+		for _, item := range list {
+			assignment, ok := item.(*mqlAzureSubscriptionAuthorizationServiceRoleAssignment)
+			if !ok {
+				continue
+			}
+			key := strings.ToLower(assignment.Id.Data)
+			if _, dup := seen[key]; dup {
+				continue
+			}
+			seen[key] = struct{}{}
+			res = append(res, assignment)
+		}
+	}
+	return res
 }

@@ -214,3 +214,24 @@ func TestSetIdentityRef(t *testing.T) {
 		assert.Equal(t, []string{"/subscriptions/s/a"}, res.cacheUserAssignedIdentityIds)
 	})
 }
+
+func roleAssignmentWithID(id string) *mqlAzureSubscriptionAuthorizationServiceRoleAssignment {
+	return &mqlAzureSubscriptionAuthorizationServiceRoleAssignment{
+		Id: plugin.TValue[string]{Data: id, State: plugin.StateIsSet},
+	}
+}
+
+func TestMergeRoleAssignments(t *testing.T) {
+	// Synthetic: one resource whose system-assigned identity and two
+	// user-assigned identities each hold grants; no target showed a duplicate.
+	ra1 := roleAssignmentWithID("/subscriptions/s/providers/Microsoft.Authorization/roleAssignments/1")
+	ra2 := roleAssignmentWithID("/subscriptions/s/providers/Microsoft.Authorization/roleAssignments/2")
+	ra2Upper := roleAssignmentWithID("/SUBSCRIPTIONS/s/providers/Microsoft.Authorization/roleAssignments/2")
+	ra3 := roleAssignmentWithID("/subscriptions/s/providers/Microsoft.Authorization/roleAssignments/3")
+
+	got := mergeRoleAssignments([]any{ra1}, []any{ra2, ra3}, []any{ra2Upper, "not-an-assignment"})
+	assert.Equal(t, []any{ra1, ra2, ra3}, got)
+
+	assert.NotNil(t, mergeRoleAssignments())
+	assert.Empty(t, mergeRoleAssignments(nil, []any{}))
+}

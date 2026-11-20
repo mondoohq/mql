@@ -4023,6 +4023,7 @@ azure.subscription.maintenanceWindow.startHour 13.36.1
 azure.subscription.maintenanceWindow.startMinute 13.36.1
 azure.subscription.managedByTenants 11.4.28
 azure.subscription.managedIdentity 11.2.1
+azure.subscription.managedIdentity.attachedResources 14.9.1
 azure.subscription.managedIdentity.clientId 11.2.1
 azure.subscription.managedIdentity.federatedCredential 14.5.3
 azure.subscription.managedIdentity.federatedCredential.audiences 14.5.3
@@ -6513,6 +6514,8 @@ azure.subscription.resource.type 9.0.0
 azure.subscription.resourceGroups 11.4.28
 azure.subscription.resourceIdentity 13.36.1
 azure.subscription.resourceIdentity.principalId 13.36.1
+azure.subscription.resourceIdentity.roleAssignments 14.9.1
+azure.subscription.resourceIdentity.systemAssignedIdentity 14.9.1
 azure.subscription.resourceIdentity.tenantId 13.36.1
 azure.subscription.resourceIdentity.type 13.36.1
 azure.subscription.resourceIdentity.userAssignedIdentities 13.36.1

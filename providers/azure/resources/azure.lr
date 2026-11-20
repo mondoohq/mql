@@ -13518,6 +13518,19 @@ private azure.subscription.resourceIdentity @defaults("type principalId") {
   tenantId string
   // User-assigned managed identities attached to the resource
   userAssignedIdentities() []azure.subscription.managedIdentity
+  // System-assigned managed identity of the resource
+  //
+  // Null when the resource has no system-assigned identity.
+  systemAssignedIdentity() azure.subscription.managedIdentity
+  // Azure role assignments the resource can exercise through its identities
+  //
+  // The assignments granted to the system-assigned identity and to every
+  // attached user-assigned identity, at any scope the subscription's
+  // role-assignment list covers. This is what code running on the
+  // resource is authorized to do, so
+  // `azure.subscription.resources.where(resourceIdentity.roleAssignments.any(role.isPrivilegeEscalating))`
+  // finds every resource whose identity can grant itself more access.
+  roleAssignments() []azure.subscription.authorizationService.roleAssignment
 }
 
 // Azure managed database maintenance window
@@ -13739,6 +13752,14 @@ private azure.subscription.managedIdentity @defaults("name") {
   federatedCredentials() []azure.subscription.managedIdentity.federatedCredential
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
+  // Resources in the subscription that use this identity
+  //
+  // For a user-assigned identity, every resource it is attached to; for a
+  // system-assigned identity, the resource that owns it. Drawn from the
+  // subscription's resources list, so a resource in another subscription
+  // that uses this identity is not included. Pair with roleAssignments
+  // to see which workloads hold the identity's privileges.
+  attachedResources() []azure.subscription.resource
 }
 
 // Federated identity credential on a user-assigned managed identity
