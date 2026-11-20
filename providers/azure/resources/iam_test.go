@@ -105,3 +105,21 @@ func TestFederatedCredentialArgs(t *testing.T) {
 		assert.Empty(t, args["audiences"].Value)
 	})
 }
+
+func TestIdentityUses(t *testing.T) {
+	const (
+		systemPrincipal = "11111111-1111-1111-1111-111111111111"
+		uamiPrincipal   = "22222222-2222-2222-2222-222222222222"
+		uamiID          = "/subscriptions/s/resourceGroups/rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/app"
+	)
+	// Synthetic: ARM reports resource group names in mixed case across APIs.
+	attached := []string{"/subscriptions/s/resourceGroups/RG/providers/Microsoft.ManagedIdentity/userAssignedIdentities/app"}
+
+	assert.True(t, identityUses(systemPrincipal, nil, systemPrincipal, ""), "system-assigned identity matches its owner by principal")
+	assert.True(t, identityUses("", attached, uamiPrincipal, uamiID), "user-assigned identity matches by resource ID, ignoring case")
+	assert.True(t, identityUses(systemPrincipal, attached, uamiPrincipal, uamiID), "a resource with both identity kinds still matches the user-assigned one")
+
+	assert.False(t, identityUses(systemPrincipal, nil, uamiPrincipal, uamiID), "another identity's principal does not match")
+	assert.False(t, identityUses("", nil, "", ""), "empty values never match")
+	assert.False(t, identityUses("", []string{""}, uamiPrincipal, ""), "an identity without a resource ID does not match an empty attachment")
+}
