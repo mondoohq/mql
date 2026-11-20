@@ -3765,6 +3765,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.keyCredential.startDateTime": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftKeyCredential).GetStartDateTime()).ToDataRes(types.Time)
 	},
+	"microsoft.keyCredential.lastSignInDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftKeyCredential).GetLastSignInDateTime()).ToDataRes(types.Time)
+	},
 	"microsoft.passwordCredential.keyId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftPasswordCredential).GetKeyId()).ToDataRes(types.String)
 	},
@@ -3782,6 +3785,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.passwordCredential.startDateTime": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftPasswordCredential).GetStartDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.passwordCredential.lastSignInDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPasswordCredential).GetLastSignInDateTime()).ToDataRes(types.Time)
 	},
 	"microsoft.application.federatedIdentityCredential.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftApplicationFederatedIdentityCredential).GetId()).ToDataRes(types.String)
@@ -11542,6 +11548,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftKeyCredential).StartDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
+	"microsoft.keyCredential.lastSignInDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftKeyCredential).LastSignInDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
 	"microsoft.passwordCredential.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftPasswordCredential).__id, ok = v.Value.(string)
 		return
@@ -11568,6 +11578,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.passwordCredential.startDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftPasswordCredential).StartDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.passwordCredential.lastSignInDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPasswordCredential).LastSignInDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"microsoft.application.federatedIdentityCredential.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -27267,14 +27281,15 @@ type mqlMicrosoftKeyCredential struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlMicrosoftKeyCredentialInternal it will be used here
-	KeyId         plugin.TValue[string]
-	Description   plugin.TValue[string]
-	Thumbprint    plugin.TValue[string]
-	Type          plugin.TValue[string]
-	Usage         plugin.TValue[string]
-	Expires       plugin.TValue[*time.Time]
-	Expired       plugin.TValue[bool]
-	StartDateTime plugin.TValue[*time.Time]
+	KeyId              plugin.TValue[string]
+	Description        plugin.TValue[string]
+	Thumbprint         plugin.TValue[string]
+	Type               plugin.TValue[string]
+	Usage              plugin.TValue[string]
+	Expires            plugin.TValue[*time.Time]
+	Expired            plugin.TValue[bool]
+	StartDateTime      plugin.TValue[*time.Time]
+	LastSignInDateTime plugin.TValue[*time.Time]
 }
 
 // createMicrosoftKeyCredential creates a new instance of this resource
@@ -27341,17 +27356,24 @@ func (c *mqlMicrosoftKeyCredential) GetStartDateTime() *plugin.TValue[*time.Time
 	return &c.StartDateTime
 }
 
+func (c *mqlMicrosoftKeyCredential) GetLastSignInDateTime() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.LastSignInDateTime, func() (*time.Time, error) {
+		return c.lastSignInDateTime()
+	})
+}
+
 // mqlMicrosoftPasswordCredential for the microsoft.passwordCredential resource
 type mqlMicrosoftPasswordCredential struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlMicrosoftPasswordCredentialInternal it will be used here
-	KeyId         plugin.TValue[string]
-	Description   plugin.TValue[string]
-	Hint          plugin.TValue[string]
-	Expires       plugin.TValue[*time.Time]
-	Expired       plugin.TValue[bool]
-	StartDateTime plugin.TValue[*time.Time]
+	KeyId              plugin.TValue[string]
+	Description        plugin.TValue[string]
+	Hint               plugin.TValue[string]
+	Expires            plugin.TValue[*time.Time]
+	Expired            plugin.TValue[bool]
+	StartDateTime      plugin.TValue[*time.Time]
+	LastSignInDateTime plugin.TValue[*time.Time]
 }
 
 // createMicrosoftPasswordCredential creates a new instance of this resource
@@ -27408,6 +27430,12 @@ func (c *mqlMicrosoftPasswordCredential) GetExpired() *plugin.TValue[bool] {
 
 func (c *mqlMicrosoftPasswordCredential) GetStartDateTime() *plugin.TValue[*time.Time] {
 	return &c.StartDateTime
+}
+
+func (c *mqlMicrosoftPasswordCredential) GetLastSignInDateTime() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.LastSignInDateTime, func() (*time.Time, error) {
+		return c.lastSignInDateTime()
+	})
 }
 
 // mqlMicrosoftApplicationFederatedIdentityCredential for the microsoft.application.federatedIdentityCredential resource
