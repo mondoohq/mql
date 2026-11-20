@@ -4,9 +4,13 @@
 package resources
 
 import (
+	"encoding/json"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
@@ -62,4 +66,49 @@ func TestSystemIdentityOwner(t *testing.T) {
 	}
 	assert.Nil(t, systemIdentityOwner(resources, "55555555-eeee-4eee-eeee-eeeeeeeeeeee"))
 	assert.Nil(t, systemIdentityOwner(resources, ""), "an empty principal never matches a resource without a system identity")
+}
+
+// getByIds returns only a type's default properties unless $select names
+// them, and a user's defaults omit accountEnabled and userType. Every
+// property graphPrincipal decodes must therefore be selected.
+func TestGraphPrincipalSelectCoversDecodedFields(t *testing.T) {
+	selected := map[string]bool{}
+	for _, f := range graphPrincipalSelect {
+		selected[f] = true
+	}
+	typ := reflect.TypeOf(graphPrincipal{})
+	for i := 0; i < typ.NumField(); i++ {
+		tag := strings.Split(typ.Field(i).Tag.Get("json"), ",")[0]
+		if tag == "" || strings.HasPrefix(tag, "@odata") {
+			continue
+		}
+		assert.Truef(t, selected[tag], "graphPrincipal decodes %q but getByIds does not select it", tag)
+	}
+}
+
+func TestGraphPrincipalDecode(t *testing.T) {
+	// Measured: Microsoft Graph v1.0 POST directoryObjects/getByIds with the
+	// $select above, 2026-11-19; a member user and an application service
+	// principal. Names and ids replaced.
+	body := `{"value":[
+		{"@odata.type":"#microsoft.graph.user","id":"u-1","displayName":"Alex","userPrincipalName":"alex@example.com","userType":"Member","accountEnabled":true},
+		{"@odata.type":"#microsoft.graph.servicePrincipal","id":"sp-1","displayName":"deploy","appId":"47a4e062-908c-4149-a605-fff15972a164","servicePrincipalType":"Application","accountEnabled":true}
+	]}`
+	var page graphGetByIdsResponse
+	require.NoError(t, json.Unmarshal([]byte(body), &page))
+	require.Len(t, page.Value, 2)
+	user := page.Value[0]
+	assert.Equal(t, "Member", user.UserType)
+	require.NotNil(t, user.AccountEnabled)
+	assert.True(t, *user.AccountEnabled)
+	sp := page.Value[1]
+	assert.Equal(t, "", sp.UserType)
+	assert.Equal(t, "Application", sp.ServicePrincipalType)
+
+	// Synthetic: a disabled guest; no target showed one.
+	var guest graphGetByIdsResponse
+	require.NoError(t, json.Unmarshal([]byte(`{"value":[{"@odata.type":"#microsoft.graph.user","id":"g-1","userType":"Guest","accountEnabled":false}]}`), &guest))
+	assert.Equal(t, "Guest", guest.Value[0].UserType)
+	require.NotNil(t, guest.Value[0].AccountEnabled)
+	assert.False(t, *guest.Value[0].AccountEnabled)
 }

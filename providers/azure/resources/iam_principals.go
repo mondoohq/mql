@@ -60,11 +60,21 @@ type graphPrincipal struct {
 	ID                     string `json:"id"`
 	DisplayName            string `json:"displayName"`
 	UserPrincipalName      string `json:"userPrincipalName"`
+	UserType               string `json:"userType"`
 	AppID                  string `json:"appId"`
 	AppOwnerOrganizationID string `json:"appOwnerOrganizationId"`
 	ServicePrincipalType   string `json:"servicePrincipalType"`
 	AccountEnabled         *bool  `json:"accountEnabled"`
 	IsAssignableToRole     *bool  `json:"isAssignableToRole"`
+}
+
+// graphPrincipalSelect is every property graphPrincipal decodes. getByIds
+// returns only a type's default properties unless asked, and a user's
+// defaults leave out accountEnabled and userType, so without this list both
+// read empty for every user.
+var graphPrincipalSelect = []string{
+	"id", "displayName", "userPrincipalName", "userType", "appId",
+	"appOwnerOrganizationId", "servicePrincipalType", "accountEnabled", "isAssignableToRole",
 }
 
 type graphGetByIdsRequest struct {
@@ -110,7 +120,7 @@ func fetchGraphPrincipals(ctx context.Context, conn *connection.AzureConnection,
 	}
 
 	client := http.Client{Timeout: graphRequestTimeout}
-	url := graphEndpoint + "/directoryObjects/getByIds"
+	url := graphEndpoint + "/directoryObjects/getByIds?$select=" + strings.Join(graphPrincipalSelect, ",")
 
 	for start := 0; start < len(ids); start += graphGetByIdsBatchSize {
 		end := min(start+graphGetByIdsBatchSize, len(ids))
@@ -347,6 +357,7 @@ func newMqlEntraPrincipal(runtime *plugin.Runtime, subscriptionID string, p *gra
 			"displayName":          llx.StringData(p.DisplayName),
 			"principalType":        llx.StringData(principalTypeFromODataType(p.ODataType)),
 			"userPrincipalName":    llx.StringData(p.UserPrincipalName),
+			"userType":             llx.StringData(p.UserType),
 			"appId":                llx.StringData(p.AppID),
 			"appOwnerTenantId":     llx.StringData(p.AppOwnerOrganizationID),
 			"servicePrincipalType": llx.StringData(p.ServicePrincipalType),

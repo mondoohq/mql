@@ -14,6 +14,7 @@ azure.entraPrincipal.principalType 13.33.8
 azure.entraPrincipal.roleAssignments 14.9.1
 azure.entraPrincipal.servicePrincipalType 13.33.8
 azure.entraPrincipal.userPrincipalName 13.33.8
+azure.entraPrincipal.userType 14.11.1
 azure.managementGroup 13.33.8
 azure.managementGroup.children 13.33.8
 azure.managementGroup.displayName 13.33.8
