@@ -1,0 +1,12 @@
+<?xml version="1.0" standalone="yes" ?>
+<INVENTORY>
+<VERSION_INFO>
+   <SAVED_WITH>12.2.0.9.0</SAVED_WITH>
+   <MINIMUM_VER>2.1.0.6.0</MINIMUM_VER>
+</VERSION_INFO>
+<HOME_LIST>
+<HOME NAME="OraDBHome26aiFree" LOC="/opt/oracle/product/26ai/dbhomeFree" TYPE="O" IDX="1"/>
+</HOME_LIST>
+<COMPOSITEHOME_LIST>
+</COMPOSITEHOME_LIST>
+</INVENTORY>
