@@ -419,3 +419,85 @@ func distinctPrincipalIDs(ids []string) []string {
 	}
 	return res
 }
+
+// managedIdentity resolves a managed-identity principal to the identity in the
+// subscription: a user-assigned identity by its principal ID, or else the
+// system-assigned identity of the resource that carries this principal. Both
+// lookups read lists the runtime already caches, and run only for principals
+// Graph reports as managed identities.
+func (a *mqlAzureEntraPrincipal) managedIdentity() (*mqlAzureSubscriptionManagedIdentity, error) {
+	if a.Id.Data == "" || !strings.EqualFold(a.ServicePrincipalType.Data, "ManagedIdentity") {
+		a.ManagedIdentity.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	conn, ok := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	if !ok {
+		return nil, errors.New("invalid connection provided, it is not an Azure connection")
+	}
+	r, err := CreateResource(a.MqlRuntime, ResourceAzureSubscription, map[string]*llx.RawData{
+		"__id":           llx.StringData("/subscriptions/" + conn.SubId()),
+		"subscriptionId": llx.StringData(conn.SubId()),
+	})
+	if err != nil {
+		return nil, err
+	}
+	sub := r.(*mqlAzureSubscription)
+
+	iamVal := sub.GetIam()
+	if iamVal.Error != nil {
+		return nil, iamVal.Error
+	}
+	if iamVal.Data == nil {
+		return nil, errors.New("cannot resolve the authorization service for the subscription")
+	}
+	userAssigned := iamVal.Data.GetManagedIdentities()
+	if userAssigned.Error != nil {
+		return nil, userAssigned.Error
+	}
+	if mi := userAssignedIdentityByPrincipal(userAssigned.Data, a.Id.Data); mi != nil {
+		return mi, nil
+	}
+
+	resources := sub.GetResources()
+	if resources.Error != nil {
+		return nil, resources.Error
+	}
+	owner := systemIdentityOwner(resources.Data, a.Id.Data)
+	if owner == nil {
+		a.ManagedIdentity.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return newSystemAssignedManagedIdentity(a.MqlRuntime, owner.cacheOwnerId, owner.PrincipalId.Data, owner.TenantId.Data, &a.ManagedIdentity)
+}
+
+// userAssignedIdentityByPrincipal finds the user-assigned identity whose
+// service principal has the given object ID.
+func userAssignedIdentityByPrincipal(identities []any, principalID string) *mqlAzureSubscriptionManagedIdentity {
+	for _, item := range identities {
+		mi, ok := item.(*mqlAzureSubscriptionManagedIdentity)
+		if ok && mi.PrincipalId.Data != "" && strings.EqualFold(mi.PrincipalId.Data, principalID) {
+			return mi
+		}
+	}
+	return nil
+}
+
+// systemIdentityOwner finds the identity block of the resource whose
+// system-assigned identity has the given principal ID.
+func systemIdentityOwner(resources []any, principalID string) *mqlAzureSubscriptionResourceIdentity {
+	for _, item := range resources {
+		resource, ok := item.(*mqlAzureSubscriptionResource)
+		if !ok {
+			continue
+		}
+		identity := resource.GetResourceIdentity()
+		if identity.Error != nil || identity.Data == nil {
+			continue
+		}
+		if identity.Data.PrincipalId.Data != "" && strings.EqualFold(identity.Data.PrincipalId.Data, principalID) {
+			return identity.Data
+		}
+	}
+	return nil
+}

@@ -145,6 +145,19 @@ private azure.entraPrincipal @defaults("displayName principalType") {
   // management groups above it. Assignments made to a group this
   // principal belongs to are not included; they appear on the group.
   roleAssignments() []azure.subscription.authorizationService.roleAssignment
+  // Managed identity behind this principal
+  //
+  // Set when servicePrincipalType is "ManagedIdentity" and the identity
+  // lives in the subscription: a user-assigned identity, or the
+  // system-assigned identity of one of the subscription's resources. Its
+  // attachedResources are the workloads that hold this principal's
+  // grants, for example
+  // `azure.subscription.iam.principals.where(roleAssignments.any(role.isPrivilegeEscalating)) { managedIdentity.attachedResources }`.
+  // Null for other principals, for managed identities of another
+  // subscription, and for identities whose owning resource the
+  // subscription's resources list does not report (such as those Microsoft
+  // Defender creates for its own extensions).
+  managedIdentity() azure.subscription.managedIdentity
 }
 
 
