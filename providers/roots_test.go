@@ -228,3 +228,44 @@ func TestRootedProvidersHaveNoOrphans(t *testing.T) {
 
 	require.Greater(t, checked, 50, "the provider scan found almost nothing, so it is measuring the wrong directory")
 }
+
+// Every provider you can connect to declares core in Requires (ADR 042).
+//
+// `asset` belongs to core, and every connected asset answers it: policy filters
+// such as `asset.platform == "azure"` run on the provider's connection. A
+// provider that does not declare core reaches it only through the runtime's
+// legacy whitelist, which logs "undeclared cross-provider call" for every asset
+// and goes away in v15. This holds whether or not the provider is rooted yet,
+// so rootBacklog does not exempt anyone here.
+func TestEveryConnectableProviderRequiresCore(t *testing.T) {
+	dirs, err := filepath.Glob(filepath.Join("..", "providers", "*"))
+	require.NoError(t, err)
+
+	var missing []string
+	checked := 0
+	for _, dir := range dirs {
+		cfgPath := filepath.Join(dir, "config", "config.go")
+		cfg, err := os.ReadFile(cfgPath)
+		if err != nil || !reHasConnector.Match(cfg) {
+			continue
+		}
+		deps, err := lrcore.ParseDeclaredRequires(cfgPath, cfg)
+		require.NoErrorf(t, err, "parsing %s", cfgPath)
+		checked++
+
+		found := false
+		for _, d := range deps {
+			if d.ID == "go.mondoo.com/mql/providers/core" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			missing = append(missing, filepath.Base(dir))
+		}
+	}
+
+	require.Greater(t, checked, 50, "the provider scan found almost nothing, so it is measuring the wrong directory")
+	assert.Emptyf(t, missing, "these providers accept connections but do not declare core in Requires (ADR 042). "+
+		`Add {ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"} to Requires in config.go: %v`, missing)
+}
