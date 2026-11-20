@@ -16068,6 +16068,34 @@ macos.hardware @defaults("machineName chipType physicalMemoryBytes serialNumber"
   serialNumber string
 }
 
+// AppleCare and warranty coverage of this Mac
+//
+// The coverage macOS shows under System Settings > General > AppleCare &
+// Warranty, read from the copy macOS caches in each user's
+// `~/Library/Application Support/com.apple.NewDeviceOutreach` when that pane
+// loads. The cache is matched to this Mac by serial number (it also holds the
+// account's other Apple devices); with several users, the most recently
+// refreshed copy wins. Every field is null when no user has opened the pane.
+macos.coverage @defaults("appleCare label expires") {
+  // Whether the coverage is an AppleCare plan
+  //
+  // True for AppleCare and AppleCare+, false for the limited warranty or no coverage.
+  appleCare bool
+  // Coverage name as macOS shows it, for example "AppleCare+" or "Limited Warranty"
+  label string
+  // When the coverage ends
+  //
+  // Null when macOS shows no end date or one this resource cannot read: the
+  // cached text follows the user's language, and only English dates are read.
+  expires time
+  // The end of coverage as macOS words it, for example "Expires October 26, 2028"
+  expirationLabel string
+  // Whether the coverage includes theft and loss
+  theftAndLoss bool
+  // When macOS last refreshed this cached coverage
+  updated time
+}
+
 // macOS system profiler report for one data type
 //
 // The records `system_profiler` reports for a single data type, as

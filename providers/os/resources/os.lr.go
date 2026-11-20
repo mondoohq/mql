@@ -489,6 +489,7 @@ const (
 	ResourceLuaPackage                                     string = "lua.package"
 	ResourceMacos                                          string = "macos"
 	ResourceMacosHardware                                  string = "macos.hardware"
+	ResourceMacosCoverage                                  string = "macos.coverage"
 	ResourceMacosSystemProfiler                            string = "macos.systemProfiler"
 	ResourceMacosAlf                                       string = "macos.alf"
 	ResourceMacosFirewall                                  string = "macos.firewall"
@@ -2740,6 +2741,10 @@ func init() {
 		"macos.hardware": {
 			Init:   initMacosHardware,
 			Create: createMacosHardware,
+		},
+		"macos.coverage": {
+			Init:   initMacosCoverage,
+			Create: createMacosCoverage,
 		},
 		"macos.systemProfiler": {
 			Init:   initMacosSystemProfiler,
@@ -15810,6 +15815,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"macos.hardware.serialNumber": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMacosHardware).GetSerialNumber()).ToDataRes(types.String)
+	},
+	"macos.coverage.appleCare": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosCoverage).GetAppleCare()).ToDataRes(types.Bool)
+	},
+	"macos.coverage.label": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosCoverage).GetLabel()).ToDataRes(types.String)
+	},
+	"macos.coverage.expires": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosCoverage).GetExpires()).ToDataRes(types.Time)
+	},
+	"macos.coverage.expirationLabel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosCoverage).GetExpirationLabel()).ToDataRes(types.String)
+	},
+	"macos.coverage.theftAndLoss": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosCoverage).GetTheftAndLoss()).ToDataRes(types.Bool)
+	},
+	"macos.coverage.updated": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosCoverage).GetUpdated()).ToDataRes(types.Time)
 	},
 	"macos.systemProfiler.dataType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMacosSystemProfiler).GetDataType()).ToDataRes(types.String)
@@ -42049,6 +42072,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"macos.hardware.serialNumber": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMacosHardware).SerialNumber, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"macos.coverage.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosCoverage).__id, ok = v.Value.(string)
+		return
+	},
+	"macos.coverage.appleCare": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosCoverage).AppleCare, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"macos.coverage.label": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosCoverage).Label, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"macos.coverage.expires": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosCoverage).Expires, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"macos.coverage.expirationLabel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosCoverage).ExpirationLabel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"macos.coverage.theftAndLoss": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosCoverage).TheftAndLoss, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"macos.coverage.updated": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosCoverage).Updated, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"macos.systemProfiler.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -105592,6 +105643,80 @@ func (c *mqlMacosHardware) GetProvisioningUDID() *plugin.TValue[string] {
 
 func (c *mqlMacosHardware) GetSerialNumber() *plugin.TValue[string] {
 	return &c.SerialNumber
+}
+
+// mqlMacosCoverage for the macos.coverage resource
+type mqlMacosCoverage struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMacosCoverageInternal it will be used here
+	AppleCare       plugin.TValue[bool]
+	Label           plugin.TValue[string]
+	Expires         plugin.TValue[*time.Time]
+	ExpirationLabel plugin.TValue[string]
+	TheftAndLoss    plugin.TValue[bool]
+	Updated         plugin.TValue[*time.Time]
+}
+
+// createMacosCoverage creates a new instance of this resource
+func createMacosCoverage(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMacosCoverage{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("macos.coverage", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMacosCoverage) MqlName() string {
+	return "macos.coverage"
+}
+
+func (c *mqlMacosCoverage) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMacosCoverage) GetAppleCare() *plugin.TValue[bool] {
+	return &c.AppleCare
+}
+
+func (c *mqlMacosCoverage) GetLabel() *plugin.TValue[string] {
+	return &c.Label
+}
+
+func (c *mqlMacosCoverage) GetExpires() *plugin.TValue[*time.Time] {
+	return &c.Expires
+}
+
+func (c *mqlMacosCoverage) GetExpirationLabel() *plugin.TValue[string] {
+	return &c.ExpirationLabel
+}
+
+func (c *mqlMacosCoverage) GetTheftAndLoss() *plugin.TValue[bool] {
+	return &c.TheftAndLoss
+}
+
+func (c *mqlMacosCoverage) GetUpdated() *plugin.TValue[*time.Time] {
+	return &c.Updated
 }
 
 // mqlMacosSystemProfiler for the macos.systemProfiler resource
