@@ -191,6 +191,14 @@ type OperatingSystemPkgManager interface {
 	Files(name string, version string, arch string) ([]FileRecord, error)
 }
 
+// UpdatesUnknown is implemented by a package manager whose packages no update
+// check can answer for: nothing on the host offers their newer versions, so
+// available and outdated are null rather than "no newer version". Managers
+// that have always reported no newer version without a check keep doing so.
+type UpdatesUnknown interface {
+	UpdatesUnknown() bool
+}
+
 // this will find the right package manager for the operating system
 func ResolveSystemPkgManagers(conn shared.Connection) ([]OperatingSystemPkgManager, error) {
 	var pms []OperatingSystemPkgManager

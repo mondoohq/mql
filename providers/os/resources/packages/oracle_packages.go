@@ -153,6 +153,11 @@ func (o *OraclePkgManager) Available() (map[string]PackageUpdate, error) {
 	return map[string]PackageUpdate{}, nil
 }
 
+// UpdatesUnknown: Release Updates come from My Oracle Support, not from a
+// repository the host can ask, so whether a home is behind is not known here.
+// The server decides it from the Oracle advisories.
+func (o *OraclePkgManager) UpdatesUnknown() bool { return true }
+
 func (o *OraclePkgManager) Files(name string, version string, arch string) ([]FileRecord, error) {
 	return nil, nil
 }
