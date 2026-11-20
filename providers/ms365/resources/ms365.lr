@@ -3328,6 +3328,40 @@ microsoft.serviceprincipal @defaults("name") {
   claimsMappingPolicies() []microsoft.policies.claimsMappingPolicy
   // Home realm discovery policies assigned to this service principal
   homeRealmDiscoveryPolicies() []microsoft.policies.homeRealmDiscoveryPolicy
+  // Most recent sign-in of any kind involving this service principal
+  //
+  // From the tenant's service principal sign-in activity report, which
+  // Microsoft refreshes periodically, so it can trail the latest sign-ins
+  // by days. Null when the report holds no sign-in for the application,
+  // which marks a workload identity nobody uses, for example
+  // `microsoft.serviceprincipals.where(lastSignInDateTime == null || lastSignInDateTime < time.today - 90*time.day)`.
+  // Requires the AuditLog.Read.All permission and a Microsoft Entra ID P1
+  // or P2 license.
+  lastSignInDateTime() time
+  // Most recent sign-in where the application authenticated as itself to get a token
+  //
+  // Application-only (client credentials) sign-ins, made with the
+  // application's own secret, certificate, or federated credential. Null
+  // when the report holds none. Same permission and license as
+  // lastSignInDateTime.
+  lastAppOnlyClientSignInDateTime() time
+  // Most recent sign-in where the application signed in on behalf of a user to get a token
+  //
+  // Delegated sign-ins with the application as the client. Null when the
+  // report holds none. Same permission and license as lastSignInDateTime.
+  lastDelegatedClientSignInDateTime() time
+  // Most recent sign-in where another application, as itself, got a token for this one
+  //
+  // Application-only sign-ins with this service principal as the resource
+  // (the API being called). Null when the report holds none. Same
+  // permission and license as lastSignInDateTime.
+  lastAppOnlyResourceSignInDateTime() time
+  // Most recent sign-in where another application, on behalf of a user, got a token for this one
+  //
+  // Delegated sign-ins with this service principal as the resource. Null
+  // when the report holds none. Same permission and license as
+  // lastSignInDateTime.
+  lastDelegatedResourceSignInDateTime() time
 }
 
 // Microsoft Service Principal Assignment

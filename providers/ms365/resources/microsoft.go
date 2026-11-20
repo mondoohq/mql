@@ -50,6 +50,8 @@ type mqlMicrosoftInternal struct {
 	keyEscrow keyEscrowCache
 	// the tenant's subscribed SKUs, fetched once
 	subscribedSkus subscribedSkuCache
+	// the tenant's service principal sign-in activity report, fetched once
+	spSignInActivity spSignInActivityCache
 	// per-user licenseDetails, fetched for users whose servicePlans are queried
 	userLicenseDetails userLicenseDetailsCache
 }
