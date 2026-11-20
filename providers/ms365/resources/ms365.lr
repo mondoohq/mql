@@ -2502,8 +2502,28 @@ private microsoft.group @defaults("id displayName") {
   // membership list from users who are not members and is supported only on
   // Microsoft 365 groups.
   visibility string
-  // List of group members
+  // Users that are direct members of the group
+  //
+  // Only users. Nested groups are in memberGroups, service principals in
+  // memberServicePrincipals, and every user reached through nesting in
+  // transitiveMemberUsers.
   members() []microsoft.user
+  // Groups that are direct members of the group
+  //
+  // Every member of a nested group also holds what this group grants.
+  memberGroups() []microsoft.group
+  // Service principals that are direct members of the group
+  //
+  // A service principal in a role-assignable group holds the group's
+  // directory roles without a role assignment of its own.
+  memberServicePrincipals() []microsoft.serviceprincipal
+  // Users that are members of the group, directly or through nested groups
+  //
+  // Everyone who holds what this group grants, for example
+  // `microsoft.groups.list.where(isAssignableToRole) { transitiveMemberUsers }`.
+  transitiveMemberUsers() []microsoft.user
+  // Service principals that are members of the group, directly or through nested groups
+  transitiveMemberServicePrincipals() []microsoft.serviceprincipal
   // List of group owners
   owners() []microsoft.group.owner
   // Group types indicating membership and classification
@@ -3016,8 +3036,17 @@ microsoft.application @defaults("id name hasExpiredCredentials") {
   certificates []microsoft.keyCredential
   // Whether the credentials have expired
   hasExpiredCredentials() bool
-  // Application owner
+  // Users who own the application
+  //
+  // Owners that are service principals are in ownerServicePrincipals.
   owners() []microsoft.user
+  // Service principals that own the application
+  //
+  // An owner can add a secret or certificate to the application and then
+  // sign in as it, so a service principal owner can act with every
+  // permission the application holds. Common for applications created by
+  // automation.
+  ownerServicePrincipals() []microsoft.serviceprincipal
   // Managed application in local directory
   servicePrincipal() microsoft.serviceprincipal
   // Federated identity credentials trusted by the application
@@ -3320,8 +3349,13 @@ microsoft.serviceprincipal @defaults("name") {
   //
   // Owners can manage the service principal, including adding credentials to
   // it, without holding an administrator role. Owners that are themselves
-  // service principals are not included.
+  // service principals are in ownerServicePrincipals.
   owners() []microsoft.user
+  // Service principals that own the service principal
+  //
+  // An owner can add credentials to this service principal and sign in as
+  // it, so a service principal owner can act with every permission it holds.
+  ownerServicePrincipals() []microsoft.serviceprincipal
   // Federated identity credentials trusted by the service principal
   //
   // External identities that can sign in as this service principal with a

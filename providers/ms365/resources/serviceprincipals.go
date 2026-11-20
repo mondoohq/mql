@@ -876,3 +876,44 @@ func (a *mqlMicrosoftServiceprincipal) appManagementPolicies() ([]any, error) {
 	}
 	return newMqlAppManagementPolicies(a.MqlRuntime, policies)
 }
+
+// servicePrincipalIDs returns the ids of the service principals Graph returned,
+// skipping entries without one.
+func servicePrincipalIDs(sps []models.ServicePrincipalable) []string {
+	res := make([]string, 0, len(sps))
+	for _, sp := range sps {
+		if sp == nil || sp.GetId() == nil || *sp.GetId() == "" {
+			continue
+		}
+		res = append(res, *sp.GetId())
+	}
+	return res
+}
+
+// servicePrincipalsFromCollection pages a service principal collection and
+// resolves each entry through the tenant's service principal list, so the
+// returned resources carry every field the list selects.
+func servicePrincipalsFromCollection(ctx context.Context, runtime *plugin.Runtime, graphClient *msgraphsdkgo.GraphServiceClient, resp models.ServicePrincipalCollectionResponseable) ([]any, error) {
+	sps, err := iterate[models.ServicePrincipalable](ctx, resp, graphClient.GetAdapter(), models.CreateServicePrincipalCollectionResponseFromDiscriminatorValue)
+	if err != nil {
+		return nil, transformError(err)
+	}
+	return newResourcesByID(runtime, ResourceMicrosoftServiceprincipal, servicePrincipalIDs(sps))
+}
+
+func (a *mqlMicrosoftServiceprincipal) ownerServicePrincipals() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
+	graphClient, err := conn.GraphClient()
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	resp, err := graphClient.ServicePrincipals().ByServicePrincipalId(a.Id.Data).Owners().GraphServicePrincipal().Get(ctx,
+		&serviceprincipals.ItemOwnersGraphServicePrincipalRequestBuilderGetRequestConfiguration{
+			QueryParameters: &serviceprincipals.ItemOwnersGraphServicePrincipalRequestBuilderGetQueryParameters{Select: []string{"id"}},
+		})
+	if err != nil {
+		return nil, classifyGraphError(err, "Application.Read.All")
+	}
+	return servicePrincipalsFromCollection(ctx, a.MqlRuntime, graphClient, resp)
+}

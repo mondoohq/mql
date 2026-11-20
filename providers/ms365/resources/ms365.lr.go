@@ -3252,6 +3252,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.group.members": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftGroup).GetMembers()).ToDataRes(types.Array(types.Resource("microsoft.user")))
 	},
+	"microsoft.group.memberGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftGroup).GetMemberGroups()).ToDataRes(types.Array(types.Resource("microsoft.group")))
+	},
+	"microsoft.group.memberServicePrincipals": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftGroup).GetMemberServicePrincipals()).ToDataRes(types.Array(types.Resource("microsoft.serviceprincipal")))
+	},
+	"microsoft.group.transitiveMemberUsers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftGroup).GetTransitiveMemberUsers()).ToDataRes(types.Array(types.Resource("microsoft.user")))
+	},
+	"microsoft.group.transitiveMemberServicePrincipals": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftGroup).GetTransitiveMemberServicePrincipals()).ToDataRes(types.Array(types.Resource("microsoft.serviceprincipal")))
+	},
 	"microsoft.group.owners": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftGroup).GetOwners()).ToDataRes(types.Array(types.Resource("microsoft.group.owner")))
 	},
@@ -3654,6 +3666,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.application.owners": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftApplication).GetOwners()).ToDataRes(types.Array(types.Resource("microsoft.user")))
 	},
+	"microsoft.application.ownerServicePrincipals": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftApplication).GetOwnerServicePrincipals()).ToDataRes(types.Array(types.Resource("microsoft.serviceprincipal")))
+	},
 	"microsoft.application.servicePrincipal": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftApplication).GetServicePrincipal()).ToDataRes(types.Resource("microsoft.serviceprincipal"))
 	},
@@ -3887,6 +3902,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.serviceprincipal.owners": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftServiceprincipal).GetOwners()).ToDataRes(types.Array(types.Resource("microsoft.user")))
+	},
+	"microsoft.serviceprincipal.ownerServicePrincipals": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceprincipal).GetOwnerServicePrincipals()).ToDataRes(types.Array(types.Resource("microsoft.serviceprincipal")))
 	},
 	"microsoft.serviceprincipal.federatedIdentityCredentials": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftServiceprincipal).GetFederatedIdentityCredentials()).ToDataRes(types.Array(types.Resource("microsoft.application.federatedIdentityCredential")))
@@ -10792,6 +10810,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftGroup).Members, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"microsoft.group.memberGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftGroup).MemberGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.group.memberServicePrincipals": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftGroup).MemberServicePrincipals, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.group.transitiveMemberUsers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftGroup).TransitiveMemberUsers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.group.transitiveMemberServicePrincipals": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftGroup).TransitiveMemberServicePrincipals, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"microsoft.group.owners": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftGroup).Owners, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -11368,6 +11402,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftApplication).Owners, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"microsoft.application.ownerServicePrincipals": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftApplication).OwnerServicePrincipals, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"microsoft.application.servicePrincipal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftApplication).ServicePrincipal, ok = plugin.RawToTValue[*mqlMicrosoftServiceprincipal](v.Value, v.Error)
 		return
@@ -11698,6 +11736,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.serviceprincipal.owners": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftServiceprincipal).Owners, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceprincipal.ownerServicePrincipals": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceprincipal).OwnerServicePrincipals, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"microsoft.serviceprincipal.federatedIdentityCredentials": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -25645,31 +25687,35 @@ type mqlMicrosoftGroup struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlMicrosoftGroupInternal it will be used here
-	Id                            plugin.TValue[string]
-	DisplayName                   plugin.TValue[string]
-	SecurityEnabled               plugin.TValue[bool]
-	MailEnabled                   plugin.TValue[bool]
-	MailNickname                  plugin.TValue[string]
-	Mail                          plugin.TValue[string]
-	Visibility                    plugin.TValue[string]
-	Members                       plugin.TValue[[]any]
-	Owners                        plugin.TValue[[]any]
-	GroupTypes                    plugin.TValue[[]any]
-	MembershipRule                plugin.TValue[string]
-	MembershipRuleProcessingState plugin.TValue[string]
-	CreatedDateTime               plugin.TValue[*time.Time]
-	Description                   plugin.TValue[string]
-	ExpirationDateTime            plugin.TValue[*time.Time]
-	IsAssignableToRole            plugin.TValue[bool]
-	RenewedDateTime               plugin.TValue[*time.Time]
-	OnPremisesSyncEnabled         plugin.TValue[bool]
-	OnPremisesLastSyncDateTime    plugin.TValue[*time.Time]
-	Classification                plugin.TValue[string]
-	DeletedDateTime               plugin.TValue[*time.Time]
-	ProxyAddresses                plugin.TValue[[]any]
-	Theme                         plugin.TValue[string]
-	PreferredLanguage             plugin.TValue[string]
-	PreferredDataLocation         plugin.TValue[string]
+	Id                                plugin.TValue[string]
+	DisplayName                       plugin.TValue[string]
+	SecurityEnabled                   plugin.TValue[bool]
+	MailEnabled                       plugin.TValue[bool]
+	MailNickname                      plugin.TValue[string]
+	Mail                              plugin.TValue[string]
+	Visibility                        plugin.TValue[string]
+	Members                           plugin.TValue[[]any]
+	MemberGroups                      plugin.TValue[[]any]
+	MemberServicePrincipals           plugin.TValue[[]any]
+	TransitiveMemberUsers             plugin.TValue[[]any]
+	TransitiveMemberServicePrincipals plugin.TValue[[]any]
+	Owners                            plugin.TValue[[]any]
+	GroupTypes                        plugin.TValue[[]any]
+	MembershipRule                    plugin.TValue[string]
+	MembershipRuleProcessingState     plugin.TValue[string]
+	CreatedDateTime                   plugin.TValue[*time.Time]
+	Description                       plugin.TValue[string]
+	ExpirationDateTime                plugin.TValue[*time.Time]
+	IsAssignableToRole                plugin.TValue[bool]
+	RenewedDateTime                   plugin.TValue[*time.Time]
+	OnPremisesSyncEnabled             plugin.TValue[bool]
+	OnPremisesLastSyncDateTime        plugin.TValue[*time.Time]
+	Classification                    plugin.TValue[string]
+	DeletedDateTime                   plugin.TValue[*time.Time]
+	ProxyAddresses                    plugin.TValue[[]any]
+	Theme                             plugin.TValue[string]
+	PreferredLanguage                 plugin.TValue[string]
+	PreferredDataLocation             plugin.TValue[string]
 }
 
 // createMicrosoftGroup creates a new instance of this resource
@@ -25750,6 +25796,70 @@ func (c *mqlMicrosoftGroup) GetMembers() *plugin.TValue[[]any] {
 		}
 
 		return c.members()
+	})
+}
+
+func (c *mqlMicrosoftGroup) GetMemberGroups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MemberGroups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.group", c.__id, "memberGroups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.memberGroups()
+	})
+}
+
+func (c *mqlMicrosoftGroup) GetMemberServicePrincipals() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MemberServicePrincipals, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.group", c.__id, "memberServicePrincipals")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.memberServicePrincipals()
+	})
+}
+
+func (c *mqlMicrosoftGroup) GetTransitiveMemberUsers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TransitiveMemberUsers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.group", c.__id, "transitiveMemberUsers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.transitiveMemberUsers()
+	})
+}
+
+func (c *mqlMicrosoftGroup) GetTransitiveMemberServicePrincipals() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TransitiveMemberServicePrincipals, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.group", c.__id, "transitiveMemberServicePrincipals")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.transitiveMemberServicePrincipals()
 	})
 }
 
@@ -26808,6 +26918,7 @@ type mqlMicrosoftApplication struct {
 	Certificates                      plugin.TValue[[]any]
 	HasExpiredCredentials             plugin.TValue[bool]
 	Owners                            plugin.TValue[[]any]
+	OwnerServicePrincipals            plugin.TValue[[]any]
 	ServicePrincipal                  plugin.TValue[*mqlMicrosoftServiceprincipal]
 	FederatedIdentityCredentials      plugin.TValue[[]any]
 	AppManagementPolicies             plugin.TValue[[]any]
@@ -26955,6 +27066,22 @@ func (c *mqlMicrosoftApplication) GetOwners() *plugin.TValue[[]any] {
 		}
 
 		return c.owners()
+	})
+}
+
+func (c *mqlMicrosoftApplication) GetOwnerServicePrincipals() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.OwnerServicePrincipals, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.application", c.__id, "ownerServicePrincipals")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.ownerServicePrincipals()
 	})
 }
 
@@ -27391,6 +27518,7 @@ type mqlMicrosoftServiceprincipal struct {
 	PasswordCredentials                 plugin.TValue[[]any]
 	Oauth2PermissionScopes              plugin.TValue[[]any]
 	Owners                              plugin.TValue[[]any]
+	OwnerServicePrincipals              plugin.TValue[[]any]
 	FederatedIdentityCredentials        plugin.TValue[[]any]
 	AppManagementPolicies               plugin.TValue[[]any]
 	TokenLifetimePolicies               plugin.TValue[[]any]
@@ -27611,6 +27739,22 @@ func (c *mqlMicrosoftServiceprincipal) GetOwners() *plugin.TValue[[]any] {
 		}
 
 		return c.owners()
+	})
+}
+
+func (c *mqlMicrosoftServiceprincipal) GetOwnerServicePrincipals() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.OwnerServicePrincipals, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.serviceprincipal", c.__id, "ownerServicePrincipals")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.ownerServicePrincipals()
 	})
 }
 

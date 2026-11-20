@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -49,4 +50,17 @@ func TestServicePrincipalFieldsHasNoDuplicates(t *testing.T) {
 	for f, n := range seen {
 		assert.Equalf(t, 1, n, "servicePrincipalFields lists %q %d times", f, n)
 	}
+}
+
+func TestServicePrincipalIDs(t *testing.T) {
+	// Synthetic: Graph can return null entries in a collection page; no target showed one.
+	a := models.NewServicePrincipal()
+	idA := "sp-a"
+	a.SetId(&idA)
+	blank := models.NewServicePrincipal()
+	empty := ""
+	blank.SetId(&empty)
+
+	assert.Equal(t, []string{"sp-a"}, servicePrincipalIDs([]models.ServicePrincipalable{nil, a, blank, models.NewServicePrincipal()}))
+	assert.Empty(t, servicePrincipalIDs(nil))
 }

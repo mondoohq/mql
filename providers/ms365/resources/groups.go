@@ -350,3 +350,111 @@ func (a *mqlMicrosoftGroups) count() (int64, error) {
 
 	return int64(*count), nil
 }
+
+// groupMemberPageSize is the largest page Graph serves for group membership.
+const groupMemberPageSize = int32(999)
+
+func (a *mqlMicrosoftGroup) memberGroups() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
+	graphClient, err := conn.GraphClient()
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	top := groupMemberPageSize
+	resp, err := graphClient.Groups().ByGroupId(a.Id.Data).Members().GraphGroup().Get(ctx,
+		&groups.ItemMembersGraphGroupRequestBuilderGetRequestConfiguration{
+			QueryParameters: &groups.ItemMembersGraphGroupRequestBuilderGetQueryParameters{Top: &top},
+		})
+	if err != nil {
+		return nil, classifyGraphError(err, "GroupMember.Read.All")
+	}
+	nested, err := iterate[models.Groupable](ctx, resp, graphClient.GetAdapter(), models.CreateGroupCollectionResponseFromDiscriminatorValue)
+	if err != nil {
+		return nil, transformError(err)
+	}
+	res := []any{}
+	for _, g := range groupsWithID(nested) {
+		r, err := newMqlMicrosoftGroup(a.MqlRuntime, g)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, r)
+	}
+	return res, nil
+}
+
+func (a *mqlMicrosoftGroup) memberServicePrincipals() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
+	graphClient, err := conn.GraphClient()
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	top := groupMemberPageSize
+	resp, err := graphClient.Groups().ByGroupId(a.Id.Data).Members().GraphServicePrincipal().Get(ctx,
+		&groups.ItemMembersGraphServicePrincipalRequestBuilderGetRequestConfiguration{
+			QueryParameters: &groups.ItemMembersGraphServicePrincipalRequestBuilderGetQueryParameters{Top: &top, Select: []string{"id"}},
+		})
+	if err != nil {
+		return nil, classifyGraphError(err, "GroupMember.Read.All")
+	}
+	return servicePrincipalsFromCollection(ctx, a.MqlRuntime, graphClient, resp)
+}
+
+func (a *mqlMicrosoftGroup) transitiveMemberUsers() ([]any, error) {
+	msResource, err := a.MqlRuntime.CreateResource(a.MqlRuntime, "microsoft", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
+	graphClient, err := conn.GraphClient()
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	top := groupMemberPageSize
+	resp, err := graphClient.Groups().ByGroupId(a.Id.Data).TransitiveMembers().GraphUser().Get(ctx,
+		&groups.ItemTransitiveMembersGraphUserRequestBuilderGetRequestConfiguration{
+			QueryParameters: &groups.ItemTransitiveMembersGraphUserRequestBuilderGetQueryParameters{Top: &top, Select: userSelectFields},
+		})
+	if err != nil {
+		return nil, classifyGraphError(err, "GroupMember.Read.All")
+	}
+	users, err := iterate[models.Userable](ctx, resp, graphClient.GetAdapter(), models.CreateUserCollectionResponseFromDiscriminatorValue)
+	if err != nil {
+		return nil, transformError(err)
+	}
+	return newMqlOwnerUsers(msResource.(*mqlMicrosoft), usersWithID(users))
+}
+
+func (a *mqlMicrosoftGroup) transitiveMemberServicePrincipals() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
+	graphClient, err := conn.GraphClient()
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	top := groupMemberPageSize
+	resp, err := graphClient.Groups().ByGroupId(a.Id.Data).TransitiveMembers().GraphServicePrincipal().Get(ctx,
+		&groups.ItemTransitiveMembersGraphServicePrincipalRequestBuilderGetRequestConfiguration{
+			QueryParameters: &groups.ItemTransitiveMembersGraphServicePrincipalRequestBuilderGetQueryParameters{Top: &top, Select: []string{"id"}},
+		})
+	if err != nil {
+		return nil, classifyGraphError(err, "GroupMember.Read.All")
+	}
+	return servicePrincipalsFromCollection(ctx, a.MqlRuntime, graphClient, resp)
+}
+
+// usersWithID drops the entries Graph returned without a user id, which
+// newMqlOwnerUsers cannot key.
+func usersWithID(users []models.Userable) []models.Userable {
+	res := make([]models.Userable, 0, len(users))
+	for _, u := range users {
+		if u == nil || u.GetId() == nil || *u.GetId() == "" {
+			continue
+		}
+		res = append(res, u)
+	}
+	return res
+}

@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -64,4 +65,20 @@ func TestGroupOwnerAccessorsReturnNullForWrongType(t *testing.T) {
 		assert.Nil(t, sp)
 		assert.NotZero(t, owner.ServicePrincipal.State&plugin.StateIsNull, "servicePrincipal field should be marked null")
 	})
+}
+
+func TestUsersWithID(t *testing.T) {
+	// Synthetic: Graph can return null entries in a collection page; no target showed one.
+	u := models.NewUser()
+	id := "user-a"
+	u.SetId(&id)
+	blank := models.NewUser()
+	empty := ""
+	blank.SetId(&empty)
+
+	got := usersWithID([]models.Userable{u, nil, blank, models.NewUser()})
+	if assert.Len(t, got, 1) {
+		assert.Equal(t, "user-a", *got[0].GetId())
+	}
+	assert.Empty(t, usersWithID(nil))
 }
