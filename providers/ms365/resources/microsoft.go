@@ -52,6 +52,9 @@ type mqlMicrosoftInternal struct {
 	subscribedSkus subscribedSkuCache
 	// the tenant's application credential sign-in activity report, fetched once
 	credentialSignIns credentialSignInCache
+	// the tenant's directory role assignments and eligibilities, indexed by
+	// the principals they apply to
+	directoryRoles directoryRoleIndex
 	// the tenant's service principal sign-in activity report, fetched once
 	spSignInActivity spSignInActivityCache
 	// per-user licenseDetails, fetched for users whose servicePlans are queried

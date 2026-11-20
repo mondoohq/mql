@@ -888,6 +888,8 @@ microsoft.group.classification 11.1.102
 microsoft.group.createdDateTime 11.1.102
 microsoft.group.deletedDateTime 11.1.102
 microsoft.group.description 11.1.102
+microsoft.group.directoryRoleAssignments 14.3.1
+microsoft.group.directoryRoleEligibilities 14.3.1
 microsoft.group.displayName 9.0.0
 microsoft.group.expirationDateTime 11.1.102
 microsoft.group.groupTypes 9.0.0
@@ -1190,7 +1192,11 @@ microsoft.identityAndAccess.roleEligibilityScheduleInstance.directoryScopeId 11.
 microsoft.identityAndAccess.roleEligibilityScheduleInstance.endDateTime 11.1.41
 microsoft.identityAndAccess.roleEligibilityScheduleInstance.id 11.1.41
 microsoft.identityAndAccess.roleEligibilityScheduleInstance.memberType 11.1.41
+microsoft.identityAndAccess.roleEligibilityScheduleInstance.principalGroup 14.3.1
 microsoft.identityAndAccess.roleEligibilityScheduleInstance.principalId 11.1.41
+microsoft.identityAndAccess.roleEligibilityScheduleInstance.principalServicePrincipal 14.3.1
+microsoft.identityAndAccess.roleEligibilityScheduleInstance.principalType 14.3.1
+microsoft.identityAndAccess.roleEligibilityScheduleInstance.principalUser 14.3.1
 microsoft.identityAndAccess.roleEligibilityScheduleInstance.roleDefinition 13.3.1
 microsoft.identityAndAccess.roleEligibilityScheduleInstance.roleEligibilityScheduleId 11.1.41
 microsoft.identityAndAccess.roleEligibilityScheduleInstance.startDateTime 11.1.41
@@ -1446,6 +1452,7 @@ microsoft.rolemanagement.roledefinition.displayName 9.0.0
 microsoft.rolemanagement.roledefinition.id 9.0.0
 microsoft.rolemanagement.roledefinition.isBuiltIn 9.0.0
 microsoft.rolemanagement.roledefinition.isEnabled 9.0.0
+microsoft.rolemanagement.roledefinition.isPrivileged 14.3.1
 microsoft.rolemanagement.roledefinition.rolePermissions 9.0.0
 microsoft.rolemanagement.roledefinition.templateId 9.0.0
 microsoft.rolemanagement.roledefinition.version 9.0.0
@@ -1664,6 +1671,8 @@ microsoft.serviceprincipal.assignmentRequired 9.0.0
 microsoft.serviceprincipal.assignments 9.0.0
 microsoft.serviceprincipal.claimsMappingPolicies 14.0.2
 microsoft.serviceprincipal.description 9.0.0
+microsoft.serviceprincipal.directoryRoleAssignments 14.3.1
+microsoft.serviceprincipal.directoryRoleEligibilities 14.3.1
 microsoft.serviceprincipal.disabledByMicrosoftStatus 11.2.1
 microsoft.serviceprincipal.enabled 9.0.0
 microsoft.serviceprincipal.federatedIdentityCredentials 14.0.2
@@ -1826,6 +1835,8 @@ microsoft.user.city 9.0.0
 microsoft.user.contact 9.0.0
 microsoft.user.createdDateTime 9.0.0
 microsoft.user.creationType 9.0.0
+microsoft.user.directoryRoleAssignments 14.3.1
+microsoft.user.directoryRoleEligibilities 14.3.1
 microsoft.user.displayName 9.0.0
 microsoft.user.employeeHireDate 11.1.102
 microsoft.user.employeeType 11.1.102
