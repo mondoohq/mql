@@ -21,6 +21,7 @@ import (
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/cpe"
 	"go.mondoo.com/mql/providers/os/resources/purl"
 )
 
@@ -67,6 +68,34 @@ import (
 
 // OraclePkgFormat is the format of the packages reported for Oracle homes.
 const OraclePkgFormat = "oracle"
+
+// oracleVendor is the publisher Oracle's own installers and Windows Add/Remove
+// Programs name.
+const oracleVendor = "Oracle Corporation"
+
+// oracleSource is where every Oracle home comes from: the Oracle Universal
+// Installer (runInstaller, setup.exe, gridSetup), whichever way the software
+// reached the host (zip, RPM or a cloud image). The installer is not part of the
+// operating system.
+var oracleSource = Source{OSProvided: osProvided(false), Channel: ChannelInstaller, Name: "oracle-universal-installer"}
+
+// oracleCPEs returns the NVD CPE of a component. NVD files every Oracle
+// Database CVE, Grid Infrastructure (Clusterware, ASM) included, under the one
+// product database_server, with Release Update ranges such as 19.3 to 19.23. It
+// has no product for OJVM, and the database_server CPE at the OJVM version would
+// claim every database CVE for a home whose database RU is newer, so OJVM gets
+// none.
+func oracleCPEs(name, version string) []string {
+	if name == oracleNameOJVM {
+		return nil
+	}
+	cpes, err := cpe.NewPackage2Cpe("oracle", "database_server", version, "", "")
+	if err != nil {
+		log.Debug().Err(err).Str("version", version).Msg("mql[packages]> oracle: could not build a CPE")
+		return nil
+	}
+	return cpes
+}
 
 const (
 	oracleNamespace = "oracle"
@@ -740,6 +769,7 @@ func oracleHomePackages(h *oracleHost, home oracleHome, platform *inventory.Plat
 		}
 		// A nil platform on purpose: the namespace is the fixed vendor, and the
 		// platform would add a distro qualifier that means nothing here.
+		src := oracleSource
 		opts := []purl.Modifier{purl.WithNamespace(oracleNamespace), purl.WithQualifiers(q)}
 		if arch != "" {
 			opts = append(opts, purl.WithArch(arch))
@@ -755,6 +785,8 @@ func oracleHomePackages(h *oracleHost, home oracleHome, platform *inventory.Plat
 			Version:     ver,
 			Arch:        arch,
 			Format:      OraclePkgFormat,
+			Vendor:      oracleVendor,
+			CPEs:        oracleCPEs(name, ver),
 			Description: title + " home " + home.Path,
 			InstallDate: comps.InstallTime,
 			PUrl:        purl.NewPackageURL(nil, purl.TypeGeneric, name, ver, opts...).String(),
@@ -762,6 +794,7 @@ func oracleHomePackages(h *oracleHost, home oracleHome, platform *inventory.Plat
 			// the home is the only "file" listed; without this the files field stays
 			// empty, because it is only read when the manager says it has them
 			FilesAvailable: PkgFilesIncluded,
+			source:         &src,
 		}
 	}
 

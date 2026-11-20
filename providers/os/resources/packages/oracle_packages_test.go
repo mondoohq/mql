@@ -102,10 +102,23 @@ func TestOracle26aiFreeHome(t *testing.T) {
 	assert.Equal(t, "pkg:generic/oracle/database-server@23.26.4?arch=aarch64&edition=ee", pkgs[0].PUrl)
 	assert.Equal(t, []FileRecord{{Path: "/opt/oracle/product/26ai/dbhomeFree"}}, pkgs[0].Files)
 	assert.False(t, pkgs[0].InstallDate.IsZero())
+	assert.Equal(t, "Oracle Corporation", pkgs[0].Vendor)
+	assert.Equal(t, []string{"cpe:2.3:a:oracle:database_server:23.26.4:*:*:*:*:*:*:*"}, pkgs[0].CPEs)
 
 	// from feature release 23 the DB RU updates the OJVM itself
 	assert.Equal(t, "database-ojvm", pkgs[1].Name)
 	assert.Equal(t, "pkg:generic/oracle/database-ojvm@23.26.4?arch=aarch64&edition=ee", pkgs[1].PUrl)
+	assert.Equal(t, "Oracle Corporation", pkgs[1].Vendor)
+	// NVD has no OJVM product, and database_server at the OJVM version would be wrong
+	assert.Empty(t, pkgs[1].CPEs)
+
+	for _, p := range pkgs {
+		src := DefaultSource(p)
+		require.NotNil(t, src.OSProvided)
+		assert.False(t, *src.OSProvided)
+		assert.Equal(t, ChannelInstaller, src.Channel)
+		assert.Equal(t, "oracle-universal-installer", src.Name)
+	}
 }
 
 const oracleCompsHeader = `<?xml version="1.0" standalone="yes" ?>
@@ -203,6 +216,8 @@ func TestOracleGridInfrastructure(t *testing.T) {
 	require.Len(t, pkgs, 1)
 	assert.Equal(t, "grid-infrastructure", pkgs[0].Name)
 	assert.Equal(t, "pkg:generic/oracle/grid-infrastructure@19.27.0?arch=aarch64", pkgs[0].PUrl)
+	// NVD files Clusterware and ASM CVEs under database_server
+	assert.Equal(t, []string{"cpe:2.3:a:oracle:database_server:19.27.0:*:*:*:*:*:*:*"}, pkgs[0].CPEs)
 }
 
 func TestOracleRemovedClientAndMultipleHomes(t *testing.T) {
