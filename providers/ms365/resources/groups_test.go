@@ -4,9 +4,9 @@
 package resources
 
 import (
-	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"testing"
 
+	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
