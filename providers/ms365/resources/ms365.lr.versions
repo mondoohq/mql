@@ -1838,6 +1838,7 @@ microsoft.user.licenseDetail.servicePlans 11.1.41
 microsoft.user.licenseDetail.skuId 11.1.41
 microsoft.user.licenseDetail.skuPartNumber 11.1.41
 microsoft.user.licenseDetails 9.0.0
+microsoft.user.memberOf 14.2.6
 microsoft.user.mfaEnabled 9.0.0
 microsoft.user.onPremisesDomainName 11.2.1
 microsoft.user.onPremisesLastSyncDateTime 11.2.1
@@ -1873,6 +1874,7 @@ microsoft.user.signin.userAgent 11.1.102
 microsoft.user.signin.userDisplayName 11.1.0
 microsoft.user.signin.userId 11.1.0
 microsoft.user.surname 9.0.0
+microsoft.user.transitiveMemberOf 14.2.6
 microsoft.user.usageLocation 11.2.1
 microsoft.user.userPrincipalName 9.0.0
 microsoft.user.userType 9.0.0

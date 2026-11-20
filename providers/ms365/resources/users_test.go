@@ -286,3 +286,65 @@ func TestFetchUserCountRefused(t *testing.T) {
 		assert.Contains(t, err.Error(), "An unsupported property was specified.")
 	})
 }
+
+func TestGroupsWithID(t *testing.T) {
+	// Synthetic: Graph can return null entries in a collection page; no target showed one.
+	withID := models.NewGroup()
+	idA := "group-a"
+	withID.SetId(&idA)
+	emptyID := models.NewGroup()
+	blank := ""
+	emptyID.SetId(&blank)
+	noID := models.NewGroup()
+
+	got := groupsWithID([]models.Groupable{withID, nil, emptyID, noID})
+	require.Len(t, got, 1)
+	assert.Equal(t, "group-a", *got[0].GetId())
+
+	assert.Empty(t, groupsWithID(nil))
+}
+
+func TestFetchUserGroupMemberships(t *testing.T) {
+	// Synthetic: three users covering one page, a second page, and a refusal;
+	// the bodies follow the Graph v1.0 group collection shape.
+	f := newFakeGraph(t, map[string]fakeRoute{
+		"/users/u-1/transitiveMemberOf/graph.group": {status: 200, body: `{
+			"@odata.nextLink": "{{base}}/users/u-1/transitiveMemberOf/graph.group/page2",
+			"value": [
+				{"id": "g-1", "displayName": "Engineering"},
+				{"id": "g-2", "displayName": "All staff"}
+			]}`},
+		"/users/u-1/transitiveMemberOf/graph.group/page2": {status: 200, body: `{
+			"value": [{"id": "g-3", "displayName": "Azure owners", "isAssignableToRole": true}]}`},
+		"/users/u-2/transitiveMemberOf/graph.group": {status: 200, body: `{"value": []}`},
+		"/users/u-3/transitiveMemberOf/graph.group": {status: 403, body: `{"error":{"code":"Authorization_RequestDenied","message":"denied"}}`},
+		"/users/u-1/memberOf/graph.group":           {status: 200, body: `{"value": [{"id": "g-1", "displayName": "Engineering"}]}`},
+	})
+
+	got, errs, err := fetchUserGroupMemberships(context.Background(), f.client(), []string{"u-1", "u-2", "u-3"}, true)
+	require.NoError(t, err)
+
+	names := []string{}
+	for _, g := range got["u-1"] {
+		names = append(names, *g.GetDisplayName())
+	}
+	assert.Equal(t, []string{"Engineering", "All staff", "Azure owners"}, names, "the second page is followed")
+
+	assert.NoError(t, errs["u-2"])
+	assert.Contains(t, got, "u-2")
+	assert.Empty(t, got["u-2"])
+
+	assert.Error(t, errs["u-3"])
+	assert.NotContains(t, got, "u-3", "a refused lookup is an error, not an empty membership")
+
+	for _, step := range f.steps {
+		assert.Contains(t, step, "/transitiveMemberOf/graph.group")
+		assert.Contains(t, step, "top=999")
+	}
+
+	direct, errs, err := fetchUserGroupMemberships(context.Background(), f.client(), []string{"u-1"}, false)
+	require.NoError(t, err)
+	assert.NoError(t, errs["u-1"])
+	require.Len(t, direct["u-1"], 1)
+	assert.Equal(t, "g-1", *direct["u-1"][0].GetId())
+}

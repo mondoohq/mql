@@ -1338,3 +1338,123 @@ func newMqlUserRegistrationDetails(runtime *plugin.Runtime, details userRegistra
 
 	return resource.(*mqlMicrosoftUserAuthenticationMethodsUserRegistrationDetails), nil
 }
+
+func (a *mqlMicrosoftUser) memberOf() ([]any, error) {
+	return a.groupMemberships(false)
+}
+
+func (a *mqlMicrosoftUser) transitiveMemberOf() ([]any, error) {
+	return a.groupMemberships(true)
+}
+
+// groupMemberships resolves the user's direct or transitive groups through a
+// cache shared by every indexed user, so a query over all users batches the
+// membership lookups instead of issuing one request per user.
+func (a *mqlMicrosoftUser) groupMemberships(transitive bool) ([]any, error) {
+	ms, err := a.microsoftParent()
+	if err != nil {
+		return nil, err
+	}
+	cache := &ms.userBatches.memberOf
+	if transitive {
+		cache = &ms.userBatches.transitiveOf
+	}
+	v, err := cache.resolve(a.Id.Data, ms.indexedUserIDs(), func(ids []string) (map[string]any, map[string]error, error) {
+		return ms.loadUserGroupMemberships(ids, transitive)
+	})
+	if err != nil {
+		return nil, err
+	}
+	groups, _ := v.([]models.Groupable)
+	res := make([]any, 0, len(groups))
+	for _, g := range groups {
+		r, err := newMqlMicrosoftGroup(a.MqlRuntime, g)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, r)
+	}
+	return res, nil
+}
+
+// userGroupPageSize is the most groups Graph returns on one page of a
+// membership listing. Almost every user fits on the first page, which the
+// batched request returns; the rest are paged one user at a time.
+const userGroupPageSize = int32(999)
+
+// loadUserGroupMemberships fetches the groups of the given users for the
+// membership batch cache.
+func (m *mqlMicrosoft) loadUserGroupMemberships(ids []string, transitive bool) (map[string]any, map[string]error, error) {
+	conn := m.MqlRuntime.Connection.(*connection.Ms365Connection)
+	graphClient, err := conn.GraphClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	groups, errs, err := fetchUserGroupMemberships(context.Background(), graphClient, ids, transitive)
+	if err != nil {
+		return nil, nil, err
+	}
+	data := make(map[string]any, len(groups))
+	for id, g := range groups {
+		data[id] = g
+	}
+	return data, errs, nil
+}
+
+// fetchUserGroupMemberships reads the direct or transitive groups of the given
+// users in one batched Graph request, following the next page only for the
+// users whose memberships do not fit on the first one. A user whose lookup
+// fails is reported in the error map and left out of the result.
+func fetchUserGroupMemberships(ctx context.Context, graphClient *msgraphsdkgo.GraphServiceClient, ids []string, transitive bool) (map[string][]models.Groupable, map[string]error, error) {
+	top := userGroupPageSize
+	build := func(id string) (*abstractions.RequestInformation, error) {
+		if transitive {
+			return graphClient.Users().ByUserId(id).TransitiveMemberOf().GraphGroup().ToGetRequestInformation(ctx,
+				&users.ItemTransitiveMemberOfGraphGroupRequestBuilderGetRequestConfiguration{
+					QueryParameters: &users.ItemTransitiveMemberOfGraphGroupRequestBuilderGetQueryParameters{Top: &top},
+				})
+		}
+		return graphClient.Users().ByUserId(id).MemberOf().GraphGroup().ToGetRequestInformation(ctx,
+			&users.ItemMemberOfGraphGroupRequestBuilderGetRequestConfiguration{
+				QueryParameters: &users.ItemMemberOfGraphGroupRequestBuilderGetQueryParameters{Top: &top},
+			})
+	}
+
+	data := make(map[string][]models.Groupable, len(ids))
+	paged := map[string]*models.GroupCollectionResponse{}
+	errs, _, err := batchEach(ctx, graphClient.GetAdapter(), ids, build, models.CreateGroupCollectionResponseFromDiscriminatorValue,
+		func(id string, coll *models.GroupCollectionResponse) error {
+			if next := coll.GetOdataNextLink(); next != nil && *next != "" {
+				paged[id] = coll
+				return nil
+			}
+			data[id] = groupsWithID(coll.GetValue())
+			return nil
+		})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	for id, coll := range paged {
+		all, err := iterate[models.Groupable](ctx, coll, graphClient.GetAdapter(), models.CreateGroupCollectionResponseFromDiscriminatorValue)
+		if err != nil {
+			errs[id] = transformError(err)
+			continue
+		}
+		data[id] = groupsWithID(all)
+	}
+	return data, errs, nil
+}
+
+// groupsWithID drops the entries Graph returned without a group id, which
+// cannot be keyed as resources.
+func groupsWithID(groups []models.Groupable) []models.Groupable {
+	res := make([]models.Groupable, 0, len(groups))
+	for _, g := range groups {
+		if g == nil || g.GetId() == nil || *g.GetId() == "" {
+			continue
+		}
+		res = append(res, g)
+	}
+	return res
+}

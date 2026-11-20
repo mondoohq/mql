@@ -2157,6 +2157,21 @@ private microsoft.user @defaults("id displayName userPrincipalName") {
   // successful sign-in). Useful for finding stale or dormant accounts.
   // Requires the AuditLog.Read.All permission.
   signInActivity() dict
+  // Groups the user is a direct member of
+  //
+  // Only groups; directory roles and administrative units the user belongs
+  // to are not included. Requires the GroupMember.Read.All or
+  // Directory.Read.All permission.
+  memberOf() []microsoft.group
+  // Groups the user is a member of, directly or through nested groups
+  //
+  // Every group whose membership reaches the user, so access granted to
+  // a group (an Entra role, an Azure role assignment, an app assignment)
+  // can be traced to the people who hold it, for example
+  // `transitiveMemberOf.where(isAssignableToRole)`. Only groups; directory
+  // roles and administrative units are not included. Requires the
+  // GroupMember.Read.All or Directory.Read.All permission.
+  transitiveMemberOf() []microsoft.group
 }
 
 // Microsoft user authentication method states
