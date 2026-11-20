@@ -21,12 +21,14 @@ import (
 // What Compile gives is decided by the query's text, the types of the
 // properties it uses, the schema and the configuration. A scan of many assets
 // compiles the same policy for each of them, against the same schema: a
-// thousand assets, a thousand times the same code. With MQL_COMPILE_CACHE=1
-// the second and every later compile of a query is a copy of the first.
+// thousand assets, a thousand times the same code. With the cache the second
+// and every later compile of a query is a copy of the first.
 //
-// It is off unless asked for, and only used where the schema can say which
-// version of itself it is (SchemaVersion); a schema that cannot is compiled
-// against every time, as before.
+// It is off unless asked for: by the caller for one compile
+// (CompilerConfig.Cache), or for every compile of the process
+// (MQL_COMPILE_CACHE). It is only used where the schema can say which version
+// of itself it is (SchemaVersion); a schema that cannot is compiled against
+// every time, as before.
 
 // The modes of MQL_COMPILE_CACHE:
 //
@@ -98,7 +100,7 @@ const compileCacheLimit = 8192
 // answers is only known by asking it, per provider, while compiling, and it
 // belongs to one runtime: there is nothing of it to put in a key.
 func compileCacheKey(input string, conf CompilerConfig) (compileKey, bool) {
-	if !compileCacheEnabled {
+	if !compileCacheEnabled && !conf.Cache {
 		return compileKey{}, false
 	}
 	if _, quiet := conf.Stats.(compilerStatsNull); !quiet {

@@ -184,3 +184,35 @@ func TestCompileCacheModes(t *testing.T) {
 		assert.Equal(t, want, [3]bool{enabled, shared, verify}, "MQL_COMPILE_CACHE=%q", value)
 	}
 }
+
+// A caller can ask for the cache for its own compiles, with the cache off for
+// the rest of the process.
+func TestCompileCacheAskedForByTheCaller(t *testing.T) {
+	enabled, shared, verify := compileCacheEnabled, compileCacheShared, compileCacheVerify
+	compileCacheEnabled, compileCacheShared, compileCacheVerify, compileCache.entries = false, false, false, nil
+	t.Cleanup(func() {
+		compileCacheEnabled, compileCacheShared, compileCacheVerify, compileCache.entries = enabled, shared, verify, nil
+	})
+
+	schema := &versioned{ResourcesSchema: &resources.Schema{Resources: map[string]*resources.ResourceInfo{
+		"mondoo": {Id: "mondoo", Name: "mondoo", Global: true, Fields: map[string]*resources.Field{
+			"version": {Name: "version", Type: string(types.String)},
+		}},
+	}}}
+	const query = `mondoo.version != ""`
+
+	conf := NewConfig(schema, mql.DefaultFeatures)
+	_, err := Compile(query, nil, conf)
+	require.NoError(t, err)
+	assert.Empty(t, compileCache.entries, "not asked for, nothing kept")
+
+	conf.Cache = true
+	first, err := Compile(query, nil, conf)
+	require.NoError(t, err)
+	assert.Len(t, compileCache.entries, 1)
+	second, err := Compile(query, nil, conf)
+	require.NoError(t, err)
+	assert.True(t, proto.Equal(first, second))
+	assert.NotSame(t, first, second)
+	assert.Len(t, compileCache.entries, 1)
+}

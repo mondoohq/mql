@@ -332,6 +332,13 @@ type CompilerConfig struct {
 	// reachable only through resources marked `@global`, and a compile without a
 	// root is an error rather than a silent fall back to global resolution.
 	RootedNamespace bool
+
+	// Cache lets this compile use the compile cache (see cache.go). It is for
+	// a caller that knows it compiles the same queries many times against one
+	// schema, such as a scan of many assets; a caller that compiles a query
+	// once leaves it off and keeps nothing it will not use again.
+	// MQL_COMPILE_CACHE turns the cache on for every compile of the process.
+	Cache bool
 }
 
 func (c *CompilerConfig) EnableStats() {
