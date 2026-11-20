@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/mock"
 	"go.mondoo.com/mql/utils/syncx"
 )
 
@@ -309,4 +310,28 @@ func TestCgroupsV1UnreadableProcCgroups(t *testing.T) {
 
 	assert.Equal(t, int64(1), cg.GetVersion().Data)
 	assert.Error(t, cg.GetControllers().Error)
+}
+
+// runShellCmd backs ovs and sriov. A command that never ran used to come back
+// as a successful empty run: ovs reported itself installed and sriov reported
+// no physical functions.
+func TestRunShellCmd_CommandCannotRun(t *testing.T) {
+	_, ok, err := runShellCmd(noCommandRuntime(t), "true")
+	require.Error(t, err)
+	assert.False(t, ok)
+
+	sriov := mustResource(t, noCommandRuntime(t), "sriov").(*mqlSriov)
+	require.Error(t, sriov.GetPhysicalFunctions().Error)
+
+	ovs := mustResource(t, noCommandRuntime(t), "ovs").(*mqlOvs)
+	require.Error(t, ovs.GetVersion().Error)
+
+	// a command that ran and failed is still "not available", not an error
+	rt := commandRuntime(t, map[string]*mock.Command{
+		"false": {ExitStatus: 1},
+	})
+	out, ok, err := runShellCmd(rt, "false")
+	require.NoError(t, err)
+	assert.False(t, ok)
+	assert.Equal(t, "", out)
 }
