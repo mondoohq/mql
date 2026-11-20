@@ -332,6 +332,10 @@ type CompilerConfig struct {
 	// reachable only through resources marked `@global`, and a compile without a
 	// root is an error rather than a silent fall back to global resolution.
 	RootedNamespace bool
+
+	// EditorMode suppresses non-fatal interactive advisories, like standalone
+	// where warnings, that would otherwise spam terminals during live shell recompiles.
+	EditorMode bool
 }
 
 func (c *CompilerConfig) EnableStats() {
