@@ -16,6 +16,10 @@ var Config = plugin.Provider{
 	Name:    "gcp",
 	ID:      "go.mondoo.com/mql/providers/gcp",
 	Version: "14.10.2",
+	// Queries read `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	ConnectionTypes: []string{
 		provider.ConnectionType,
 		string(gcpinstancesnapshot.SnapshotConnectionType),

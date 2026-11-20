@@ -17,6 +17,7 @@ var Config = plugin.Provider{
 	ID:      "go.mondoo.com/mql/providers/aws",
 	Version: "14.10.0",
 	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
 		{ID: "go.mondoo.com/mql/providers/network", Name: "network", MinVersion: "13.0.0"},
 	},
 	ConnectionTypes: []string{provider.DefaultConnectionType, string(awsec2ebsconn.EBSConnectionType)},
