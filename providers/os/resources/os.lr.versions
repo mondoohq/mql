@@ -3637,6 +3637,13 @@ macos.alf.loggingEnabled 9.0.1
 macos.alf.loggingOption 9.0.1
 macos.alf.stealthEnabled 9.0.1
 macos.alf.version 9.0.1
+macos.appleCare 14.44.1
+macos.appleCare.appleCare 14.44.1
+macos.appleCare.expirationLabel 14.44.1
+macos.appleCare.expires 14.44.1
+macos.appleCare.label 14.44.1
+macos.appleCare.theftAndLoss 14.44.1
+macos.appleCare.updated 14.44.1
 macos.appleIntelligence 14.32.3
 macos.appleIntelligence.externalIntelligenceIntegrationsAllowed 14.32.3
 macos.appleIntelligence.externalIntelligenceSignInAllowed 14.32.3
