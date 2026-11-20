@@ -140,8 +140,10 @@ func (x *extensibleSchema) AllProviderRoots() map[string]string {
 }
 
 func (x *extensibleSchema) Close() {
-	x.version.Add(1)
 	x.sync.Lock()
+	// Under the lock: a compile that sees the new version has to wait for
+	// the lock to read the schema, so it reads what is left after Close.
+	x.version.Add(1)
 	x.loaded = map[string]resources.ResourcesSchema{}
 	x.roAggregate = resources.Schema{
 		Resources:        map[string]*resources.ResourceInfo{},
