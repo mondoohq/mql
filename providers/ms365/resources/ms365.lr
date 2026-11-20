@@ -140,6 +140,86 @@ private microsoft.identityAndAccess.accessReviewDefinition @defaults("id display
   reviewerScopes []microsoft.identityAndAccess.accessReviewDefinition.reviewerScope
   // The settings for an access review series, see type definition below
   settings microsoft.identityAndAccess.accessReviewDefinition.accessReviewScheduleSettings
+  // Runs of the access review
+  //
+  // One entry per period the review has run for, each with the decisions
+  // its reviewers made. A recurring review has one per recurrence.
+  // Requires the AccessReview.Read.All permission.
+  instances() []microsoft.identityAndAccess.accessReviewInstance
+}
+
+// Access review instance
+//
+// One run of an access review: the period it covers, its status, and the
+// decisions reviewers made in it, for example
+// `instances.where(status == "Completed") { decisions.where(decision == "NotReviewed") }`.
+private microsoft.identityAndAccess.accessReviewInstance @defaults("startDateTime endDateTime status") {
+  // Instance ID
+  id string
+  // Status of the instance
+  //
+  // One of NotStarted, InProgress, Completed, AutoReviewing, or AutoReviewed.
+  status string
+  // Start of the period the instance reviews
+  startDateTime time
+  // End of the period the instance reviews
+  endDateTime time
+  // Decisions made on each principal under review in this instance
+  decisions() []microsoft.identityAndAccess.accessReviewDecision
+}
+
+// Access review decision
+//
+// The outcome of reviewing one principal's access in an access review
+// instance: the decision, who made it and why, the system recommendation,
+// and whether the result was applied. Kept as evidence that a review
+// happened and what it decided.
+private microsoft.identityAndAccess.accessReviewDecision @defaults("principalDisplayName decision") {
+  // Decision ID
+  id string
+  // Decision taken
+  //
+  // One of Approve, Deny, NotReviewed, or DontKnow.
+  decision string
+  // System recommendation based on the principal's activity
+  //
+  // One of Approve, Deny, or NoInfoAvailable.
+  recommendation string
+  // Reviewer's justification
+  justification string
+  // When the decision was recorded; null when nobody has reviewed yet
+  reviewedDateTime time
+  // User who made the decision
+  //
+  // Null when nobody has reviewed yet or when the system decided.
+  reviewedBy() microsoft.user
+  // When the decision was applied to the resource; null until applied
+  appliedDateTime time
+  // Result of applying the decision
+  //
+  // One of New, AppliedSuccessfully, AppliedWithUnknownFailure,
+  // AppliedSuccessfullyButObjectNotFound, or ApplyNotSupported.
+  applyResult string
+  // ID of the principal whose access is reviewed
+  principalId string
+  // Type of the principal whose access is reviewed
+  //
+  // One of user or servicePrincipal; empty for other identity types.
+  principalType string
+  // Display name of the principal whose access is reviewed
+  principalDisplayName string
+  // Principal whose access is reviewed, when it is a user
+  principalUser() microsoft.user
+  // Principal whose access is reviewed, when it is a service principal
+  principalServicePrincipal() microsoft.serviceprincipal
+  // ID of the resource the access is to
+  resourceId string
+  // Type of the resource the access is to, for example group or application
+  resourceType string
+  // Display name of the resource the access is to
+  resourceDisplayName string
+  // Resource the access is to, when it is a group
+  resourceGroup() microsoft.group
 }
 
 // Reviewer scope of an access review

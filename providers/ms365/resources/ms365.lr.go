@@ -19,6 +19,8 @@ const (
 	ResourceMicrosoft                                                                                    string = "microsoft"
 	ResourceMicrosoftIdentityAndAccessAccessReviews                                                      string = "microsoft.identityAndAccess.accessReviews"
 	ResourceMicrosoftIdentityAndAccessAccessReviewDefinition                                             string = "microsoft.identityAndAccess.accessReviewDefinition"
+	ResourceMicrosoftIdentityAndAccessAccessReviewInstance                                               string = "microsoft.identityAndAccess.accessReviewInstance"
+	ResourceMicrosoftIdentityAndAccessAccessReviewDecision                                               string = "microsoft.identityAndAccess.accessReviewDecision"
 	ResourceMicrosoftIdentityAndAccessAccessReviewDefinitionReviewerScope                                string = "microsoft.identityAndAccess.accessReviewDefinition.reviewerScope"
 	ResourceMicrosoftIdentityAndAccessAccessReviewDefinitionScope                                        string = "microsoft.identityAndAccess.accessReviewDefinition.scope"
 	ResourceMicrosoftIdentityAndAccessAccessReviewDefinitionAccessReviewScheduleSettings                 string = "microsoft.identityAndAccess.accessReviewDefinition.accessReviewScheduleSettings"
@@ -279,6 +281,14 @@ func init() {
 		"microsoft.identityAndAccess.accessReviewDefinition": {
 			// to override args, implement: initMicrosoftIdentityAndAccessAccessReviewDefinition(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMicrosoftIdentityAndAccessAccessReviewDefinition,
+		},
+		"microsoft.identityAndAccess.accessReviewInstance": {
+			// to override args, implement: initMicrosoftIdentityAndAccessAccessReviewInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftIdentityAndAccessAccessReviewInstance,
+		},
+		"microsoft.identityAndAccess.accessReviewDecision": {
+			// to override args, implement: initMicrosoftIdentityAndAccessAccessReviewDecision(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftIdentityAndAccessAccessReviewDecision,
 		},
 		"microsoft.identityAndAccess.accessReviewDefinition.reviewerScope": {
 			// to override args, implement: initMicrosoftIdentityAndAccessAccessReviewDefinitionReviewerScope(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -1415,6 +1425,75 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.identityAndAccess.accessReviewDefinition.settings": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDefinition).GetSettings()).ToDataRes(types.Resource("microsoft.identityAndAccess.accessReviewDefinition.accessReviewScheduleSettings"))
+	},
+	"microsoft.identityAndAccess.accessReviewDefinition.instances": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDefinition).GetInstances()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.accessReviewInstance")))
+	},
+	"microsoft.identityAndAccess.accessReviewInstance.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewInstance).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessReviewInstance.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewInstance).GetStatus()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessReviewInstance.startDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewInstance).GetStartDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.identityAndAccess.accessReviewInstance.endDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewInstance).GetEndDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.identityAndAccess.accessReviewInstance.decisions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewInstance).GetDecisions()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.accessReviewDecision")))
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.decision": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetDecision()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.recommendation": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetRecommendation()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.justification": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetJustification()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.reviewedDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetReviewedDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.reviewedBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetReviewedBy()).ToDataRes(types.Resource("microsoft.user"))
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.appliedDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetAppliedDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.applyResult": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetApplyResult()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.principalId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetPrincipalId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.principalType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetPrincipalType()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.principalDisplayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetPrincipalDisplayName()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.principalUser": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetPrincipalUser()).ToDataRes(types.Resource("microsoft.user"))
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.principalServicePrincipal": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetPrincipalServicePrincipal()).ToDataRes(types.Resource("microsoft.serviceprincipal"))
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.resourceId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetResourceId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.resourceType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetResourceType()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.resourceDisplayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetResourceDisplayName()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.resourceGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetResourceGroup()).ToDataRes(types.Resource("microsoft.group"))
 	},
 	"microsoft.identityAndAccess.accessReviewDefinition.reviewerScope.query": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDefinitionReviewerScope).GetQuery()).ToDataRes(types.String)
@@ -8078,6 +8157,106 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.identityAndAccess.accessReviewDefinition.settings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDefinition).Settings, ok = plugin.RawToTValue[*mqlMicrosoftIdentityAndAccessAccessReviewDefinitionAccessReviewScheduleSettings](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDefinition.instances": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDefinition).Instances, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewInstance.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewInstance).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewInstance.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewInstance).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewInstance.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewInstance).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewInstance.startDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewInstance).StartDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewInstance.endDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewInstance).EndDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewInstance.decisions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewInstance).Decisions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.decision": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).Decision, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.recommendation": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).Recommendation, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.justification": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).Justification, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.reviewedDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).ReviewedDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.reviewedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).ReviewedBy, ok = plugin.RawToTValue[*mqlMicrosoftUser](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.appliedDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).AppliedDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.applyResult": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).ApplyResult, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.principalId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).PrincipalId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.principalType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).PrincipalType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.principalDisplayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).PrincipalDisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.principalUser": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).PrincipalUser, ok = plugin.RawToTValue[*mqlMicrosoftUser](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.principalServicePrincipal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).PrincipalServicePrincipal, ok = plugin.RawToTValue[*mqlMicrosoftServiceprincipal](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.resourceId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).ResourceId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.resourceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).ResourceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.resourceDisplayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).ResourceDisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.resourceGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).ResourceGroup, ok = plugin.RawToTValue[*mqlMicrosoftGroup](v.Value, v.Error)
 		return
 	},
 	"microsoft.identityAndAccess.accessReviewDefinition.reviewerScope.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -18235,6 +18414,7 @@ type mqlMicrosoftIdentityAndAccessAccessReviewDefinition struct {
 	Reviewers      plugin.TValue[any]
 	ReviewerScopes plugin.TValue[[]any]
 	Settings       plugin.TValue[*mqlMicrosoftIdentityAndAccessAccessReviewDefinitionAccessReviewScheduleSettings]
+	Instances      plugin.TValue[[]any]
 }
 
 // createMicrosoftIdentityAndAccessAccessReviewDefinition creates a new instance of this resource
@@ -18295,6 +18475,270 @@ func (c *mqlMicrosoftIdentityAndAccessAccessReviewDefinition) GetReviewerScopes(
 
 func (c *mqlMicrosoftIdentityAndAccessAccessReviewDefinition) GetSettings() *plugin.TValue[*mqlMicrosoftIdentityAndAccessAccessReviewDefinitionAccessReviewScheduleSettings] {
 	return &c.Settings
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDefinition) GetInstances() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Instances, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.accessReviewDefinition", c.__id, "instances")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.instances()
+	})
+}
+
+// mqlMicrosoftIdentityAndAccessAccessReviewInstance for the microsoft.identityAndAccess.accessReviewInstance resource
+type mqlMicrosoftIdentityAndAccessAccessReviewInstance struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMicrosoftIdentityAndAccessAccessReviewInstanceInternal
+	Id            plugin.TValue[string]
+	Status        plugin.TValue[string]
+	StartDateTime plugin.TValue[*time.Time]
+	EndDateTime   plugin.TValue[*time.Time]
+	Decisions     plugin.TValue[[]any]
+}
+
+// createMicrosoftIdentityAndAccessAccessReviewInstance creates a new instance of this resource
+func createMicrosoftIdentityAndAccessAccessReviewInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftIdentityAndAccessAccessReviewInstance{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.identityAndAccess.accessReviewInstance", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewInstance) MqlName() string {
+	return "microsoft.identityAndAccess.accessReviewInstance"
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewInstance) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewInstance) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewInstance) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewInstance) GetStartDateTime() *plugin.TValue[*time.Time] {
+	return &c.StartDateTime
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewInstance) GetEndDateTime() *plugin.TValue[*time.Time] {
+	return &c.EndDateTime
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewInstance) GetDecisions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Decisions, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.accessReviewInstance", c.__id, "decisions")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.decisions()
+	})
+}
+
+// mqlMicrosoftIdentityAndAccessAccessReviewDecision for the microsoft.identityAndAccess.accessReviewDecision resource
+type mqlMicrosoftIdentityAndAccessAccessReviewDecision struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMicrosoftIdentityAndAccessAccessReviewDecisionInternal
+	Id                        plugin.TValue[string]
+	Decision                  plugin.TValue[string]
+	Recommendation            plugin.TValue[string]
+	Justification             plugin.TValue[string]
+	ReviewedDateTime          plugin.TValue[*time.Time]
+	ReviewedBy                plugin.TValue[*mqlMicrosoftUser]
+	AppliedDateTime           plugin.TValue[*time.Time]
+	ApplyResult               plugin.TValue[string]
+	PrincipalId               plugin.TValue[string]
+	PrincipalType             plugin.TValue[string]
+	PrincipalDisplayName      plugin.TValue[string]
+	PrincipalUser             plugin.TValue[*mqlMicrosoftUser]
+	PrincipalServicePrincipal plugin.TValue[*mqlMicrosoftServiceprincipal]
+	ResourceId                plugin.TValue[string]
+	ResourceType              plugin.TValue[string]
+	ResourceDisplayName       plugin.TValue[string]
+	ResourceGroup             plugin.TValue[*mqlMicrosoftGroup]
+}
+
+// createMicrosoftIdentityAndAccessAccessReviewDecision creates a new instance of this resource
+func createMicrosoftIdentityAndAccessAccessReviewDecision(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftIdentityAndAccessAccessReviewDecision{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.identityAndAccess.accessReviewDecision", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) MqlName() string {
+	return "microsoft.identityAndAccess.accessReviewDecision"
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetDecision() *plugin.TValue[string] {
+	return &c.Decision
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetRecommendation() *plugin.TValue[string] {
+	return &c.Recommendation
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetJustification() *plugin.TValue[string] {
+	return &c.Justification
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetReviewedDateTime() *plugin.TValue[*time.Time] {
+	return &c.ReviewedDateTime
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetReviewedBy() *plugin.TValue[*mqlMicrosoftUser] {
+	return plugin.GetOrCompute[*mqlMicrosoftUser](&c.ReviewedBy, func() (*mqlMicrosoftUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.accessReviewDecision", c.__id, "reviewedBy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftUser), nil
+			}
+		}
+
+		return c.reviewedBy()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetAppliedDateTime() *plugin.TValue[*time.Time] {
+	return &c.AppliedDateTime
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetApplyResult() *plugin.TValue[string] {
+	return &c.ApplyResult
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetPrincipalId() *plugin.TValue[string] {
+	return &c.PrincipalId
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetPrincipalType() *plugin.TValue[string] {
+	return &c.PrincipalType
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetPrincipalDisplayName() *plugin.TValue[string] {
+	return &c.PrincipalDisplayName
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetPrincipalUser() *plugin.TValue[*mqlMicrosoftUser] {
+	return plugin.GetOrCompute[*mqlMicrosoftUser](&c.PrincipalUser, func() (*mqlMicrosoftUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.accessReviewDecision", c.__id, "principalUser")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftUser), nil
+			}
+		}
+
+		return c.principalUser()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetPrincipalServicePrincipal() *plugin.TValue[*mqlMicrosoftServiceprincipal] {
+	return plugin.GetOrCompute[*mqlMicrosoftServiceprincipal](&c.PrincipalServicePrincipal, func() (*mqlMicrosoftServiceprincipal, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.accessReviewDecision", c.__id, "principalServicePrincipal")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftServiceprincipal), nil
+			}
+		}
+
+		return c.principalServicePrincipal()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetResourceId() *plugin.TValue[string] {
+	return &c.ResourceId
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetResourceType() *plugin.TValue[string] {
+	return &c.ResourceType
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetResourceDisplayName() *plugin.TValue[string] {
+	return &c.ResourceDisplayName
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetResourceGroup() *plugin.TValue[*mqlMicrosoftGroup] {
+	return plugin.GetOrCompute[*mqlMicrosoftGroup](&c.ResourceGroup, func() (*mqlMicrosoftGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.accessReviewDecision", c.__id, "resourceGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftGroup), nil
+			}
+		}
+
+		return c.resourceGroup()
+	})
 }
 
 // mqlMicrosoftIdentityAndAccessAccessReviewDefinitionReviewerScope for the microsoft.identityAndAccess.accessReviewDefinition.reviewerScope resource
