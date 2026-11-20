@@ -3299,6 +3299,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.entraPrincipal.roleAssignments": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureEntraPrincipal).GetRoleAssignments()).ToDataRes(types.Array(types.Resource("azure.subscription.authorizationService.roleAssignment")))
 	},
+	"azure.entraPrincipal.managedIdentity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureEntraPrincipal).GetManagedIdentity()).ToDataRes(types.Resource("azure.subscription.managedIdentity"))
+	},
 	"azure.subscription.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscription).GetId()).ToDataRes(types.String)
 	},
@@ -25801,6 +25804,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.entraPrincipal.roleAssignments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureEntraPrincipal).RoleAssignments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.entraPrincipal.managedIdentity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureEntraPrincipal).ManagedIdentity, ok = plugin.RawToTValue[*mqlAzureSubscriptionManagedIdentity](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -58396,6 +58403,7 @@ type mqlAzureEntraPrincipal struct {
 	AccountEnabled       plugin.TValue[bool]
 	IsAssignableToRole   plugin.TValue[bool]
 	RoleAssignments      plugin.TValue[[]any]
+	ManagedIdentity      plugin.TValue[*mqlAzureSubscriptionManagedIdentity]
 }
 
 // createAzureEntraPrincipal creates a new instance of this resource
@@ -58479,6 +58487,22 @@ func (c *mqlAzureEntraPrincipal) GetRoleAssignments() *plugin.TValue[[]any] {
 		}
 
 		return c.roleAssignments()
+	})
+}
+
+func (c *mqlAzureEntraPrincipal) GetManagedIdentity() *plugin.TValue[*mqlAzureSubscriptionManagedIdentity] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionManagedIdentity](&c.ManagedIdentity, func() (*mqlAzureSubscriptionManagedIdentity, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.entraPrincipal", c.__id, "managedIdentity")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionManagedIdentity), nil
+			}
+		}
+
+		return c.managedIdentity()
 	})
 }
 
