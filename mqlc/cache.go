@@ -176,8 +176,10 @@ func storeCompile(key compileKey, bundle *llx.CodeBundle) {
 	}
 	compileCache.Lock()
 	if len(compileCache.entries) >= compileCacheLimit {
-		// Seen in a log, this tells a run of recompiles from a slow compiler.
-		log.Debug().Int("limit", compileCacheLimit).Msg("compile cache is full and starts over")
+		// The policies in use stay well under the limit. Reaching it means
+		// this program compiles more distinct queries than the cache is for,
+		// and every query kept so far has to be compiled again.
+		log.Warn().Int("limit", compileCacheLimit).Msg("compile cache is full and starts over")
 		compileCache.entries = nil
 	}
 	if compileCache.entries == nil {
