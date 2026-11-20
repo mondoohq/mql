@@ -6,6 +6,8 @@ package resources
 import (
 	"encoding/json"
 	"errors"
+	"io"
+	"os"
 	"path"
 	"regexp"
 	"strings"
@@ -21,6 +23,35 @@ import (
 // Warranty pane shows, one JSON file per device serial number, relative to a
 // user's home.
 const appleCareCacheDir = "Library/Application Support/com.apple.NewDeviceOutreach/caches/coverageDetails"
+
+// appleCareMaxFileSize caps a coverage file read; real ones are under 1 KB.
+const appleCareMaxFileSize = 1 << 20
+
+// lstat stats p without following a symlink, where the filesystem can.
+func lstat(fs afero.Fs, p string) (os.FileInfo, error) {
+	if l, ok := fs.(afero.Lstater); ok {
+		info, _, err := l.LstatIfPossible(p)
+		return info, err
+	}
+	return fs.Stat(p)
+}
+
+// readAtMost reads p, failing when it holds more than limit bytes.
+func readAtMost(fs afero.Fs, p string, limit int64) ([]byte, error) {
+	f, err := fs.Open(p)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, errors.New("file too large")
+	}
+	return data, nil
+}
 
 // appleCareCoverage is the part of a cached coverage file this resource reads.
 type appleCareCoverage struct {
@@ -77,14 +108,17 @@ func findAppleCareCoverage(fs afero.Fs, serial string) (*appleCareCoverage, *tim
 			continue
 		}
 		p := path.Join("/Users", home.Name(), appleCareCacheDir, serial+".json")
-		info, err := fs.Stat(p)
-		if err != nil || info.IsDir() {
+		// The scan usually runs as root and the file sits in a user's home:
+		// read only a regular file, never a symlink, FIFO or device a user
+		// put there, and never more than a coverage file can hold.
+		info, err := lstat(fs, p)
+		if err != nil || !info.Mode().IsRegular() || info.Size() > appleCareMaxFileSize {
 			continue
 		}
 		if best != nil && !info.ModTime().After(bestTime) {
 			continue
 		}
-		data, err := afero.ReadFile(fs, p)
+		data, err := readAtMost(fs, p, appleCareMaxFileSize)
 		if err != nil {
 			continue
 		}

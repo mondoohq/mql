@@ -4,7 +4,10 @@
 package resources
 
 import (
+	"os"
 	"path"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -85,6 +88,31 @@ func TestFindAppleCareCoverageSkipsAnUnreadableCopy(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, c)
 	assert.Equal(t, "AppleCare+", c.CoverageLabel)
+}
+
+// The file sits in a user's home and the scan usually runs as root: a symlink
+// a user put there is not followed.
+func TestFindAppleCareCoverageSkipsASymlink(t *testing.T) {
+	root := t.TempDir()
+	secret := filepath.Join(root, "secret.json")
+	require.NoError(t, os.WriteFile(secret, []byte(appleCarePlusCoverage), 0o600))
+	dir := filepath.Join(root, "Users", "mallory", filepath.FromSlash(appleCareCacheDir))
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.Symlink(secret, filepath.Join(dir, "C02ABC123.json")))
+
+	c, _, err := findAppleCareCoverage(afero.NewBasePathFs(afero.NewOsFs(), root), "C02ABC123")
+	require.NoError(t, err)
+	assert.Nil(t, c)
+}
+
+func TestFindAppleCareCoverageSkipsAnOversizedFile(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	big := `{"coverageLabel":"AppleCare+","padding":"` + strings.Repeat("x", appleCareMaxFileSize) + `"}`
+	writeAppleCareCache(t, fs, "mallory", "C02ABC123", big, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+
+	c, _, err := findAppleCareCoverage(fs, "C02ABC123")
+	require.NoError(t, err)
+	assert.Nil(t, c)
 }
 
 func TestParseAppleCareExpiration(t *testing.T) {
