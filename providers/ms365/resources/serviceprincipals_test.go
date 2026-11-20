@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -136,4 +137,34 @@ func TestBuildServicePrincipalPermissions(t *testing.T) {
 		assert.Equal(t, "AllPrincipals", delegated.ConsentType.Data)
 		assert.Nil(t, delegated.GrantedDateTime.Data, "delegated grants carry no creation time")
 	}
+}
+
+func TestFetchServicePrincipalGroupMemberships(t *testing.T) {
+	// Synthetic: a service principal whose groups span two pages and one the
+	// directory refuses; bodies follow the Graph v1.0 group collection shape.
+	f := newFakeGraph(t, map[string]fakeRoute{
+		"/servicePrincipals/sp-1/transitiveMemberOf/graph.group": {status: 200, body: `{
+			"@odata.nextLink": "{{base}}/servicePrincipals/sp-1/transitiveMemberOf/graph.group/page2",
+			"value": [{"id": "g-1", "displayName": "Automation"}]}`},
+		"/servicePrincipals/sp-1/transitiveMemberOf/graph.group/page2": {status: 200, body: `{
+			"value": [{"id": "g-2", "displayName": "Tier0 admins", "isAssignableToRole": true}]}`},
+		"/servicePrincipals/sp-2/transitiveMemberOf/graph.group": {status: 403, body: `{"error":{"code":"Authorization_RequestDenied","message":"denied"}}`},
+		"/servicePrincipals/sp-1/memberOf/graph.group":           {status: 200, body: `{"value": [{"id": "g-1", "displayName": "Automation"}]}`},
+	})
+
+	got, errs, err := fetchServicePrincipalGroupMemberships(context.Background(), f.client(), []string{"sp-1", "sp-2"}, true)
+	require.NoError(t, err)
+	ids := []string{}
+	for _, g := range got["sp-1"] {
+		ids = append(ids, *g.GetId())
+	}
+	assert.Equal(t, []string{"g-1", "g-2"}, ids, "the second page is followed")
+	assert.Error(t, errs["sp-2"])
+	assert.NotContains(t, got, "sp-2", "a refused lookup is an error, not an empty membership")
+
+	direct, errs, err := fetchServicePrincipalGroupMemberships(context.Background(), f.client(), []string{"sp-1"}, false)
+	require.NoError(t, err)
+	assert.NoError(t, errs["sp-1"])
+	require.Len(t, direct["sp-1"], 1)
+	assert.Equal(t, "g-1", *direct["sp-1"][0].GetId())
 }

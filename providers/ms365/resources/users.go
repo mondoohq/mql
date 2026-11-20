@@ -1419,7 +1419,14 @@ func fetchUserGroupMemberships(ctx context.Context, graphClient *msgraphsdkgo.Gr
 				QueryParameters: &users.ItemMemberOfGraphGroupRequestBuilderGetQueryParameters{Top: &top},
 			})
 	}
+	return fetchGroupMemberships(ctx, graphClient, ids, build)
+}
 
+// fetchGroupMemberships runs one group-membership request per directory object
+// through $batch, following the next page only for the objects whose
+// memberships do not fit on the first one. An object whose lookup fails is
+// reported in the error map and left out of the result.
+func fetchGroupMemberships(ctx context.Context, graphClient *msgraphsdkgo.GraphServiceClient, ids []string, build func(id string) (*abstractions.RequestInformation, error)) (map[string][]models.Groupable, map[string]error, error) {
 	data := make(map[string][]models.Groupable, len(ids))
 	paged := map[string]*models.GroupCollectionResponse{}
 	errs, _, err := batchEach(ctx, graphClient.GetAdapter(), ids, build, models.CreateGroupCollectionResponseFromDiscriminatorValue,

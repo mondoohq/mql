@@ -1691,6 +1691,7 @@ microsoft.serviceprincipal.lastDelegatedResourceSignInDateTime 14.2.6
 microsoft.serviceprincipal.lastSignInDateTime 14.2.6
 microsoft.serviceprincipal.loginUrl 9.0.0
 microsoft.serviceprincipal.logoutUrl 9.0.0
+microsoft.serviceprincipal.memberOf 14.3.1
 microsoft.serviceprincipal.name 9.0.0
 microsoft.serviceprincipal.notes 9.0.0
 microsoft.serviceprincipal.notificationEmailAddresses 9.0.0
@@ -1706,6 +1707,7 @@ microsoft.serviceprincipal.signInAudience 9.0.0
 microsoft.serviceprincipal.tags 9.0.0
 microsoft.serviceprincipal.termsOfServiceUrl 9.0.0
 microsoft.serviceprincipal.tokenLifetimePolicies 14.0.2
+microsoft.serviceprincipal.transitiveMemberOf 14.3.1
 microsoft.serviceprincipal.type 9.0.0
 microsoft.serviceprincipal.verifiedPublisher 9.0.0
 microsoft.serviceprincipal.visibleToUsers 9.0.0
