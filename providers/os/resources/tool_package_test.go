@@ -424,3 +424,21 @@ func TestNpmGlobalVersion(t *testing.T) {
 	assert.Equal(t, "", npmGlobalVersion(afs, "@openai/codex"))
 	assert.Equal(t, "", npmGlobalVersion(afs, "@mariozechner/pi-coding-agent"))
 }
+
+// The abstract package's installed and version come from the instance's
+// configPath, so two users' instances in one runtime must not share one.
+func TestSyntheticToolPackagePerConfigPath(t *testing.T) {
+	rt := memFSRuntime(t, afero.NewMemMapFs())
+	spec := toolPackageSpecs["aider"]
+
+	aliceID := syntheticToolPackageID(spec, "/home/alice/.aider.conf.yml")
+	bobID := syntheticToolPackageID(spec, "/home/bob/.aider.conf.yml")
+	require.NotEqual(t, aliceID, bobID)
+
+	alice, err := newSyntheticPackage(rt, aliceID, spec.packageName, "", "", "", true)
+	require.NoError(t, err)
+	bob, err := newSyntheticPackage(rt, bobID, spec.packageName, "", "", "", false)
+	require.NoError(t, err)
+	assert.True(t, alice.Installed.Data)
+	assert.False(t, bob.Installed.Data, "bob's package must not be alice's cached one")
+}

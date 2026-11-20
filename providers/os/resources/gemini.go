@@ -81,7 +81,7 @@ func (r *mqlGemini) mcpServers() ([]any, error) {
 
 	var result []any
 	for _, name := range names {
-		res, err := NewResource(r.MqlRuntime, "gemini.mcpServer", geminiMcpServerArgs(servers[name]))
+		res, err := NewResource(r.MqlRuntime, "gemini.mcpServer", geminiMcpServerArgs(r.ConfigPath.Data, servers[name]))
 		if err != nil {
 			return nil, err
 		}
@@ -131,7 +131,7 @@ func (r *mqlGeminiMcpServer) MqlAsset() (*inventory.Asset, error) {
 }
 
 func (r *mqlGeminiMcpServer) id() (string, error) {
-	return geminiMcpServerID(r.Source.Data, r.Name.Data), nil
+	return geminiMcpServerID("", r.Source.Data, r.Name.Data), nil
 }
 
 func (r *mqlGeminiSkill) id() (string, error) {

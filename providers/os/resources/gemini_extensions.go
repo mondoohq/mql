@@ -303,7 +303,7 @@ func (r *mqlGeminiExtension) id() (string, error) {
 func (r *mqlGeminiExtension) mcpServers() ([]any, error) {
 	result := make([]any, 0, len(r.ext.mcpServers))
 	for _, s := range r.ext.mcpServers {
-		res, err := NewResource(r.MqlRuntime, "gemini.mcpServer", geminiMcpServerArgs(s))
+		res, err := NewResource(r.MqlRuntime, "gemini.mcpServer", geminiMcpServerArgs("", s))
 		if err != nil {
 			return nil, err
 		}
@@ -323,19 +323,20 @@ func (r *mqlGeminiMcpServer) extension() (*mqlGeminiExtension, error) {
 	return nil, nil
 }
 
-// geminiMcpServerID keeps the historical name-only id for servers from
-// settings.json and antigravity/mcp_config.json, and keys an extension's
-// servers by its manifest, so two extensions may declare the same name.
-func geminiMcpServerID(source, name string) string {
+// geminiMcpServerID keys servers from settings.json and
+// antigravity/mcp_config.json by the gemini instance's configPath and name, and
+// an extension's servers by its manifest, so two extensions may declare the
+// same name.
+func geminiMcpServerID(configPath, source, name string) string {
 	if strings.HasSuffix(source, "-extension.json") {
 		return mcpServerResourceID("gemini.mcpServer", source, name)
 	}
-	return "gemini.mcpServer/" + name
+	return aiChildID("gemini.mcpServer", configPath, name)
 }
 
-func geminiMcpServerArgs(s mcpServerSpec) map[string]*llx.RawData {
+func geminiMcpServerArgs(configPath string, s mcpServerSpec) map[string]*llx.RawData {
 	fields := map[string]*llx.RawData{
-		"__id":       llx.StringData(geminiMcpServerID(s.source, s.name)),
+		"__id":       llx.StringData(geminiMcpServerID(configPath, s.source, s.name)),
 		"name":       llx.StringData(s.name),
 		"type":       llx.StringData(s.transport),
 		"command":    llx.StringData(s.command),

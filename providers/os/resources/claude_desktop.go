@@ -86,7 +86,7 @@ func (r *mqlClaudeDesktop) mcpServers() ([]any, error) {
 	for _, name := range names {
 		srv := servers[name]
 		fields := map[string]*llx.RawData{
-			"__id":    llx.StringData("claude.desktop.mcpServer/" + name),
+			"__id":    llx.StringData(aiChildID("claude.desktop.mcpServer", r.ConfigPath.Data, name)),
 			"name":    llx.StringData(name),
 			"type":    llx.StringData(deriveMcpTransport(srv.Type, srv.Command, srv.URL)),
 			"command": llx.StringData(srv.Command),
@@ -270,7 +270,7 @@ func (r *mqlClaudeDesktopExtension) mcpServer() (*mqlClaudeDesktopMcpServer, err
 		return nil, nil
 	}
 	fields := map[string]*llx.RawData{
-		"__id":    llx.StringData("claude.desktop.mcpServer/" + s.name),
+		"__id":    llx.StringData(aiChildID("claude.desktop.mcpServer", r.Path.Data, s.name)),
 		"name":    llx.StringData(s.name),
 		"type":    llx.StringData(s.transport),
 		"command": llx.StringData(s.command),
