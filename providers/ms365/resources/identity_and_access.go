@@ -297,12 +297,21 @@ func (a *mqlMicrosoftIdentityAndAccess) roleEligibilityScheduleInstances() ([]an
 		return nil, err
 	}
 
+	principalIDs := make([]string, 0, len(roleEligibilityScheduleInstances))
+	for _, inst := range roleEligibilityScheduleInstances {
+		principalIDs = append(principalIDs, strVal(inst.GetPrincipalId()))
+	}
+	principalTypes, err := principalTypesByID(ctx, graphClient, principalIDs)
+	if err != nil {
+		return nil, err
+	}
+
 	var instances []any
 	for _, inst := range roleEligibilityScheduleInstances {
 		if inst.GetId() == nil {
 			continue
 		}
-		instanceResource, err := newMqlRoleEligibilityScheduleInstance(a.MqlRuntime, inst)
+		instanceResource, err := newMqlRoleEligibilityScheduleInstance(a.MqlRuntime, inst, principalTypes)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create MQL resource for rule ID %s: %w", *inst.GetId(), err)
 		}
@@ -316,11 +325,12 @@ type mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstanceInternal struct
 	cacheRoleDefinitionID string
 }
 
-func newMqlRoleEligibilityScheduleInstance(runtime *plugin.Runtime, inst models.UnifiedRoleEligibilityScheduleInstanceable) (*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance, error) {
+func newMqlRoleEligibilityScheduleInstance(runtime *plugin.Runtime, inst models.UnifiedRoleEligibilityScheduleInstanceable, principalTypes map[string]string) (*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance, error) {
 	resource, err := CreateResource(runtime, "microsoft.identityAndAccess.roleEligibilityScheduleInstance", map[string]*llx.RawData{
 		"id":                        llx.StringDataPtr(inst.GetId()),
 		"__id":                      llx.StringDataPtr(inst.GetId()),
 		"principalId":               llx.StringDataPtr(inst.GetPrincipalId()),
+		"principalType":             llx.StringData(principalTypes[strVal(inst.GetPrincipalId())]),
 		"directoryScopeId":          llx.StringDataPtr(inst.GetDirectoryScopeId()),
 		"appScopeId":                llx.StringDataPtr(inst.GetAppScopeId()),
 		"startDateTime":             graphTimeData(inst.GetStartDateTime()),
@@ -645,4 +655,16 @@ func newMqlAccessReviewDefinition(runtime *plugin.Runtime, d models.AccessReview
 	}
 
 	return resource.(*mqlMicrosoftIdentityAndAccessAccessReviewDefinition), nil
+}
+
+func (a *mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance) principalUser() (*mqlMicrosoftUser, error) {
+	return principalOfType(a.MqlRuntime, &a.PrincipalUser, a.PrincipalType.Data, "user", a.PrincipalId.Data, ResourceMicrosoftUser)
+}
+
+func (a *mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance) principalGroup() (*mqlMicrosoftGroup, error) {
+	return principalOfType(a.MqlRuntime, &a.PrincipalGroup, a.PrincipalType.Data, "group", a.PrincipalId.Data, ResourceMicrosoftGroup)
+}
+
+func (a *mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance) principalServicePrincipal() (*mqlMicrosoftServiceprincipal, error) {
+	return principalOfType(a.MqlRuntime, &a.PrincipalServicePrincipal, a.PrincipalType.Data, "servicePrincipal", a.PrincipalId.Data, ResourceMicrosoftServiceprincipal)
 }

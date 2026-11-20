@@ -2307,6 +2307,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.identityAndAccess.roleEligibilityScheduleInstance.principalId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance).GetPrincipalId()).ToDataRes(types.String)
 	},
+	"microsoft.identityAndAccess.roleEligibilityScheduleInstance.principalType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance).GetPrincipalType()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.roleEligibilityScheduleInstance.principalUser": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance).GetPrincipalUser()).ToDataRes(types.Resource("microsoft.user"))
+	},
+	"microsoft.identityAndAccess.roleEligibilityScheduleInstance.principalGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance).GetPrincipalGroup()).ToDataRes(types.Resource("microsoft.group"))
+	},
+	"microsoft.identityAndAccess.roleEligibilityScheduleInstance.principalServicePrincipal": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance).GetPrincipalServicePrincipal()).ToDataRes(types.Resource("microsoft.serviceprincipal"))
+	},
 	"microsoft.identityAndAccess.roleEligibilityScheduleInstance.roleDefinition": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance).GetRoleDefinition()).ToDataRes(types.Resource("microsoft.rolemanagement.roledefinition"))
 	},
@@ -2952,6 +2964,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.user.transitiveMemberOf": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftUser).GetTransitiveMemberOf()).ToDataRes(types.Array(types.Resource("microsoft.group")))
 	},
+	"microsoft.user.directoryRoleAssignments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftUser).GetDirectoryRoleAssignments()).ToDataRes(types.Array(types.Resource("microsoft.rolemanagement.roleassignment")))
+	},
+	"microsoft.user.directoryRoleEligibilities": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftUser).GetDirectoryRoleEligibilities()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.roleEligibilityScheduleInstance")))
+	},
 	"microsoft.user.authenticationRequirements.perUserMfaState": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftUserAuthenticationRequirements).GetPerUserMfaState()).ToDataRes(types.String)
 	},
@@ -3314,6 +3332,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.group.preferredDataLocation": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftGroup).GetPreferredDataLocation()).ToDataRes(types.String)
+	},
+	"microsoft.group.directoryRoleAssignments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftGroup).GetDirectoryRoleAssignments()).ToDataRes(types.Array(types.Resource("microsoft.rolemanagement.roleassignment")))
+	},
+	"microsoft.group.directoryRoleEligibilities": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftGroup).GetDirectoryRoleEligibilities()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.roleEligibilityScheduleInstance")))
 	},
 	"microsoft.group.owner.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftGroupOwner).GetId()).ToDataRes(types.String)
@@ -3941,6 +3965,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.serviceprincipal.lastDelegatedResourceSignInDateTime": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftServiceprincipal).GetLastDelegatedResourceSignInDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.serviceprincipal.directoryRoleAssignments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceprincipal).GetDirectoryRoleAssignments()).ToDataRes(types.Array(types.Resource("microsoft.rolemanagement.roleassignment")))
+	},
+	"microsoft.serviceprincipal.directoryRoleEligibilities": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceprincipal).GetDirectoryRoleEligibilities()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.roleEligibilityScheduleInstance")))
 	},
 	"microsoft.serviceprincipal.assignment.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftServiceprincipalAssignment).GetId()).ToDataRes(types.String)
@@ -5240,6 +5270,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.rolemanagement.roledefinition.assignments": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftRolemanagementRoledefinition).GetAssignments()).ToDataRes(types.Array(types.Resource("microsoft.rolemanagement.roleassignment")))
+	},
+	"microsoft.rolemanagement.roledefinition.isPrivileged": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftRolemanagementRoledefinition).GetIsPrivileged()).ToDataRes(types.Bool)
 	},
 	"microsoft.rolemanagement.roleassignment.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftRolemanagementRoleassignment).GetId()).ToDataRes(types.String)
@@ -9372,6 +9405,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance).PrincipalId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"microsoft.identityAndAccess.roleEligibilityScheduleInstance.principalType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance).PrincipalType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.roleEligibilityScheduleInstance.principalUser": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance).PrincipalUser, ok = plugin.RawToTValue[*mqlMicrosoftUser](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.roleEligibilityScheduleInstance.principalGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance).PrincipalGroup, ok = plugin.RawToTValue[*mqlMicrosoftGroup](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.roleEligibilityScheduleInstance.principalServicePrincipal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance).PrincipalServicePrincipal, ok = plugin.RawToTValue[*mqlMicrosoftServiceprincipal](v.Value, v.Error)
+		return
+	},
 	"microsoft.identityAndAccess.roleEligibilityScheduleInstance.roleDefinition": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance).RoleDefinition, ok = plugin.RawToTValue[*mqlMicrosoftRolemanagementRoledefinition](v.Value, v.Error)
 		return
@@ -10372,6 +10421,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftUser).TransitiveMemberOf, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"microsoft.user.directoryRoleAssignments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftUser).DirectoryRoleAssignments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.user.directoryRoleEligibilities": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftUser).DirectoryRoleEligibilities, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"microsoft.user.authenticationRequirements.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftUserAuthenticationRequirements).__id, ok = v.Value.(string)
 		return
@@ -10898,6 +10955,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.group.preferredDataLocation": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftGroup).PreferredDataLocation, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.group.directoryRoleAssignments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftGroup).DirectoryRoleAssignments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.group.directoryRoleEligibilities": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftGroup).DirectoryRoleEligibilities, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"microsoft.group.owner.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -11794,6 +11859,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.serviceprincipal.lastDelegatedResourceSignInDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftServiceprincipal).LastDelegatedResourceSignInDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceprincipal.directoryRoleAssignments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceprincipal).DirectoryRoleAssignments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceprincipal.directoryRoleEligibilities": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceprincipal).DirectoryRoleEligibilities, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"microsoft.serviceprincipal.assignment.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -13778,6 +13851,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.rolemanagement.roledefinition.assignments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftRolemanagementRoledefinition).Assignments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.rolemanagement.roledefinition.isPrivileged": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftRolemanagementRoledefinition).IsPrivileged, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"microsoft.rolemanagement.roleassignment.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -21774,6 +21851,10 @@ type mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance struct {
 	mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstanceInternal
 	Id                        plugin.TValue[string]
 	PrincipalId               plugin.TValue[string]
+	PrincipalType             plugin.TValue[string]
+	PrincipalUser             plugin.TValue[*mqlMicrosoftUser]
+	PrincipalGroup            plugin.TValue[*mqlMicrosoftGroup]
+	PrincipalServicePrincipal plugin.TValue[*mqlMicrosoftServiceprincipal]
 	RoleDefinition            plugin.TValue[*mqlMicrosoftRolemanagementRoledefinition]
 	DirectoryScopeId          plugin.TValue[string]
 	AppScopeId                plugin.TValue[string]
@@ -21821,6 +21902,58 @@ func (c *mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance) GetId() *
 
 func (c *mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance) GetPrincipalId() *plugin.TValue[string] {
 	return &c.PrincipalId
+}
+
+func (c *mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance) GetPrincipalType() *plugin.TValue[string] {
+	return &c.PrincipalType
+}
+
+func (c *mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance) GetPrincipalUser() *plugin.TValue[*mqlMicrosoftUser] {
+	return plugin.GetOrCompute[*mqlMicrosoftUser](&c.PrincipalUser, func() (*mqlMicrosoftUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.roleEligibilityScheduleInstance", c.__id, "principalUser")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftUser), nil
+			}
+		}
+
+		return c.principalUser()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance) GetPrincipalGroup() *plugin.TValue[*mqlMicrosoftGroup] {
+	return plugin.GetOrCompute[*mqlMicrosoftGroup](&c.PrincipalGroup, func() (*mqlMicrosoftGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.roleEligibilityScheduleInstance", c.__id, "principalGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftGroup), nil
+			}
+		}
+
+		return c.principalGroup()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance) GetPrincipalServicePrincipal() *plugin.TValue[*mqlMicrosoftServiceprincipal] {
+	return plugin.GetOrCompute[*mqlMicrosoftServiceprincipal](&c.PrincipalServicePrincipal, func() (*mqlMicrosoftServiceprincipal, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.roleEligibilityScheduleInstance", c.__id, "principalServicePrincipal")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftServiceprincipal), nil
+			}
+		}
+
+		return c.principalServicePrincipal()
+	})
 }
 
 func (c *mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance) GetRoleDefinition() *plugin.TValue[*mqlMicrosoftRolemanagementRoledefinition] {
@@ -24462,6 +24595,8 @@ type mqlMicrosoftUser struct {
 	SignInActivity             plugin.TValue[any]
 	MemberOf                   plugin.TValue[[]any]
 	TransitiveMemberOf         plugin.TValue[[]any]
+	DirectoryRoleAssignments   plugin.TValue[[]any]
+	DirectoryRoleEligibilities plugin.TValue[[]any]
 }
 
 // createMicrosoftUser creates a new instance of this resource
@@ -24717,6 +24852,38 @@ func (c *mqlMicrosoftUser) GetTransitiveMemberOf() *plugin.TValue[[]any] {
 		}
 
 		return c.transitiveMemberOf()
+	})
+}
+
+func (c *mqlMicrosoftUser) GetDirectoryRoleAssignments() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DirectoryRoleAssignments, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.user", c.__id, "directoryRoleAssignments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.directoryRoleAssignments()
+	})
+}
+
+func (c *mqlMicrosoftUser) GetDirectoryRoleEligibilities() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DirectoryRoleEligibilities, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.user", c.__id, "directoryRoleEligibilities")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.directoryRoleEligibilities()
 	})
 }
 
@@ -25730,6 +25897,8 @@ type mqlMicrosoftGroup struct {
 	Theme                             plugin.TValue[string]
 	PreferredLanguage                 plugin.TValue[string]
 	PreferredDataLocation             plugin.TValue[string]
+	DirectoryRoleAssignments          plugin.TValue[[]any]
+	DirectoryRoleEligibilities        plugin.TValue[[]any]
 }
 
 // createMicrosoftGroup creates a new instance of this resource
@@ -25955,6 +26124,38 @@ func (c *mqlMicrosoftGroup) GetPreferredLanguage() *plugin.TValue[string] {
 
 func (c *mqlMicrosoftGroup) GetPreferredDataLocation() *plugin.TValue[string] {
 	return &c.PreferredDataLocation
+}
+
+func (c *mqlMicrosoftGroup) GetDirectoryRoleAssignments() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DirectoryRoleAssignments, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.group", c.__id, "directoryRoleAssignments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.directoryRoleAssignments()
+	})
+}
+
+func (c *mqlMicrosoftGroup) GetDirectoryRoleEligibilities() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DirectoryRoleEligibilities, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.group", c.__id, "directoryRoleEligibilities")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.directoryRoleEligibilities()
+	})
 }
 
 // mqlMicrosoftGroupOwner for the microsoft.group.owner resource
@@ -27557,6 +27758,8 @@ type mqlMicrosoftServiceprincipal struct {
 	LastDelegatedClientSignInDateTime   plugin.TValue[*time.Time]
 	LastAppOnlyResourceSignInDateTime   plugin.TValue[*time.Time]
 	LastDelegatedResourceSignInDateTime plugin.TValue[*time.Time]
+	DirectoryRoleAssignments            plugin.TValue[[]any]
+	DirectoryRoleEligibilities          plugin.TValue[[]any]
 }
 
 // createMicrosoftServiceprincipal creates a new instance of this resource
@@ -27893,6 +28096,38 @@ func (c *mqlMicrosoftServiceprincipal) GetLastAppOnlyResourceSignInDateTime() *p
 func (c *mqlMicrosoftServiceprincipal) GetLastDelegatedResourceSignInDateTime() *plugin.TValue[*time.Time] {
 	return plugin.GetOrCompute[*time.Time](&c.LastDelegatedResourceSignInDateTime, func() (*time.Time, error) {
 		return c.lastDelegatedResourceSignInDateTime()
+	})
+}
+
+func (c *mqlMicrosoftServiceprincipal) GetDirectoryRoleAssignments() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DirectoryRoleAssignments, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.serviceprincipal", c.__id, "directoryRoleAssignments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.directoryRoleAssignments()
+	})
+}
+
+func (c *mqlMicrosoftServiceprincipal) GetDirectoryRoleEligibilities() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DirectoryRoleEligibilities, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.serviceprincipal", c.__id, "directoryRoleEligibilities")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.directoryRoleEligibilities()
 	})
 }
 
@@ -33409,6 +33644,7 @@ type mqlMicrosoftRolemanagementRoledefinition struct {
 	TemplateId      plugin.TValue[string]
 	Version         plugin.TValue[string]
 	Assignments     plugin.TValue[[]any]
+	IsPrivileged    plugin.TValue[bool]
 }
 
 // createMicrosoftRolemanagementRoledefinition creates a new instance of this resource
@@ -33493,6 +33729,12 @@ func (c *mqlMicrosoftRolemanagementRoledefinition) GetAssignments() *plugin.TVal
 		}
 
 		return c.assignments()
+	})
+}
+
+func (c *mqlMicrosoftRolemanagementRoledefinition) GetIsPrivileged() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.IsPrivileged, func() (bool, error) {
+		return c.isPrivileged()
 	})
 }
 

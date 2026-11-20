@@ -1428,6 +1428,17 @@ private microsoft.identityAndAccess.roleEligibilityScheduleInstance @defaults("m
   id string
   // The identifier of the principal (user, group, or service principal) that has the role eligibility
   principalId string
+  // Type of the eligible principal
+  //
+  // One of user, group, or servicePrincipal. Empty when the principal no
+  // longer exists in the directory.
+  principalType string
+  // Eligible principal when it is a user
+  principalUser() microsoft.user
+  // Eligible principal when it is a group
+  principalGroup() microsoft.group
+  // Eligible principal when it is a service principal
+  principalServicePrincipal() microsoft.serviceprincipal
   // Role definition the eligibility grants
   roleDefinition() microsoft.rolemanagement.roledefinition
   // The identifier of the directory object representing the scope of the role eligibility
@@ -2076,7 +2087,8 @@ private microsoft.user @defaults("id displayName userPrincipalName") {
   //
   // True when the user is directly assigned at least one active Microsoft
   // Entra directory role. Roles held only through group membership or as
-  // not-yet-activated PIM-eligible assignments are not reflected.
+  // not-yet-activated PIM-eligible assignments are not reflected; see
+  // directoryRoleAssignments and directoryRoleEligibilities for those.
   isAdministrator() bool
   // User city
   city string
@@ -2172,6 +2184,21 @@ private microsoft.user @defaults("id displayName userPrincipalName") {
   // roles and administrative units are not included. Requires the
   // GroupMember.Read.All or Directory.Read.All permission.
   transitiveMemberOf() []microsoft.group
+  // Active Microsoft Entra directory role assignments that apply to this user
+  //
+  // Assignments made to the user itself and to every role-assignable group
+  // it is a direct member of. Role-assignable groups cannot contain other
+  // groups, so this is every active directory role the user holds, for
+  // example `directoryRoleAssignments.any(roleDefinition.isPrivileged)`.
+  // Requires the RoleManagement.Read.Directory permission.
+  directoryRoleAssignments() []microsoft.rolemanagement.roleassignment
+  // PIM eligibilities for Microsoft Entra directory roles that apply to this user
+  //
+  // Eligibilities made to the user itself and to every role-assignable
+  // group it is a direct member of: roles it can activate without holding
+  // them now. Requires the RoleEligibilitySchedule.Read.Directory
+  // permission and Microsoft Entra ID P2.
+  directoryRoleEligibilities() []microsoft.identityAndAccess.roleEligibilityScheduleInstance
 }
 
 // Microsoft user authentication method states
@@ -2565,6 +2592,17 @@ private microsoft.group @defaults("id displayName") {
   preferredLanguage string
   // The preferred data location for the group (e.g., a geo region)
   preferredDataLocation string
+  // Active Microsoft Entra directory role assignments made to this group
+  //
+  // Only role-assignable groups (isAssignableToRole) can hold directory
+  // roles; every member holds them too. Requires the
+  // RoleManagement.Read.Directory permission.
+  directoryRoleAssignments() []microsoft.rolemanagement.roleassignment
+  // PIM eligibilities for Microsoft Entra directory roles made to this group
+  //
+  // Requires the RoleEligibilitySchedule.Read.Directory permission and
+  // Microsoft Entra ID P2.
+  directoryRoleEligibilities() []microsoft.identityAndAccess.roleEligibilityScheduleInstance
 }
 
 // Group owner (can be a user or service principal)
@@ -3429,6 +3467,21 @@ microsoft.serviceprincipal @defaults("name") {
   // when the report holds none. Same permission and license as
   // lastSignInDateTime.
   lastDelegatedResourceSignInDateTime() time
+  // Active Microsoft Entra directory role assignments that apply to this service principal
+  //
+  // Assignments made to the service principal itself and to every role-assignable group
+  // it is a direct member of. Role-assignable groups cannot contain other
+  // groups, so this is every active directory role the service principal holds, for
+  // example `directoryRoleAssignments.any(roleDefinition.isPrivileged)`.
+  // Requires the RoleManagement.Read.Directory permission.
+  directoryRoleAssignments() []microsoft.rolemanagement.roleassignment
+  // PIM eligibilities for Microsoft Entra directory roles that apply to this service principal
+  //
+  // Eligibilities made to the service principal itself and to every role-assignable
+  // group it is a direct member of: roles it can activate without holding
+  // them now. Requires the RoleEligibilitySchedule.Read.Directory
+  // permission and Microsoft Entra ID P2.
+  directoryRoleEligibilities() []microsoft.identityAndAccess.roleEligibilityScheduleInstance
 }
 
 // Microsoft Service Principal Assignment
@@ -5205,6 +5258,13 @@ private microsoft.rolemanagement.roledefinition @defaults("id displayName") {
   version string
   // List of role definition assignments
   assignments() []microsoft.rolemanagement.roleassignment
+  // Whether Microsoft classifies the role as privileged
+  //
+  // Microsoft's own classification: a privileged role can manage identities,
+  // credentials, authentication, or other roles, so holding it can lead to
+  // control of the tenant. Null when Microsoft Graph does not classify the
+  // role.
+  isPrivileged() bool
 }
 
 // Microsoft role assignment
