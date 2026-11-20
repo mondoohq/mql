@@ -10,6 +10,7 @@ azure.entraPrincipal.displayName 13.33.8
 azure.entraPrincipal.id 13.33.8
 azure.entraPrincipal.isAssignableToRole 13.33.8
 azure.entraPrincipal.principalType 13.33.8
+azure.entraPrincipal.roleAssignments 14.9.1
 azure.entraPrincipal.servicePrincipalType 13.33.8
 azure.entraPrincipal.userPrincipalName 13.33.8
 azure.managementGroup 13.33.8
@@ -387,6 +388,7 @@ azure.subscription.authorizationService.denyAssignment.scope 13.5.1
 azure.subscription.authorizationService.denyAssignment.type 13.5.1
 azure.subscription.authorizationService.denyAssignments 13.5.1
 azure.subscription.authorizationService.managedIdentities 11.2.1
+azure.subscription.authorizationService.principals 14.9.1
 azure.subscription.authorizationService.roleAssignment 11.2.1
 azure.subscription.authorizationService.roleAssignment.condition 11.2.1
 azure.subscription.authorizationService.roleAssignment.createdAt 11.2.1

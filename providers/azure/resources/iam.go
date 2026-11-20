@@ -661,7 +661,8 @@ func filterRoleAssignmentsByPrincipal(assignments []any, principalId string) []a
 		if !ok {
 			continue
 		}
-		if assignment.PrincipalId.Data == principalId {
+		// Object IDs are GUIDs, and Graph and ARM need not agree on their case.
+		if strings.EqualFold(assignment.PrincipalId.Data, principalId) {
 			res = append(res, assignment)
 		}
 	}

@@ -185,10 +185,10 @@ type mqlAzureSubscriptionAuthorizationServiceInternal struct {
 	// round trips in place of one, which invites the 429 throttling that
 	// batching exists to avoid. The stall this risks instead is bounded by
 	// graphRequestTimeout.
-	principalsMu   sync.Mutex
-	principals     map[string]*graphPrincipal
-	principalsMiss map[string]struct{}
-	principalsSeed bool
+	principalsMu      sync.Mutex
+	principalMemo     map[string]*graphPrincipal
+	principalMemoMiss map[string]struct{}
+	principalMemoSeed bool
 }
 
 // assignmentPrincipalIDs returns the principal IDs named by the subscription's
@@ -233,21 +233,21 @@ func (a *mqlAzureSubscriptionAuthorizationService) resolvePrincipal(principalID 
 	a.principalsMu.Lock()
 	defer a.principalsMu.Unlock()
 
-	if a.principals == nil {
-		a.principals = map[string]*graphPrincipal{}
-		a.principalsMiss = map[string]struct{}{}
+	if a.principalMemo == nil {
+		a.principalMemo = map[string]*graphPrincipal{}
+		a.principalMemoMiss = map[string]struct{}{}
 	}
-	if p, ok := a.principals[key]; ok {
+	if p, ok := a.principalMemo[key]; ok {
 		return p, nil
 	}
-	if _, ok := a.principalsMiss[key]; ok {
+	if _, ok := a.principalMemoMiss[key]; ok {
 		return nil, nil
 	}
 
 	wanted := []string{principalID}
-	if !a.principalsSeed {
+	if !a.principalMemoSeed {
 		wanted = append(wanted, a.assignmentPrincipalIDs()...)
-		a.principalsSeed = true
+		a.principalMemoSeed = true
 	}
 
 	// Deduplicate while preserving the requested ID first, and skip anything
@@ -260,10 +260,10 @@ func (a *mqlAzureSubscriptionAuthorizationService) resolvePrincipal(principalID 
 			continue
 		}
 		seen[k] = struct{}{}
-		if _, done := a.principals[k]; done {
+		if _, done := a.principalMemo[k]; done {
 			continue
 		}
-		if _, done := a.principalsMiss[k]; done {
+		if _, done := a.principalMemoMiss[k]; done {
 			continue
 		}
 		ids = append(ids, id)
@@ -273,17 +273,17 @@ func (a *mqlAzureSubscriptionAuthorizationService) resolvePrincipal(principalID 
 	if err != nil {
 		return nil, err
 	}
-	maps.Copy(a.principals, found)
+	maps.Copy(a.principalMemo, found)
 	// Every ID we asked about and did not get back is a principal Graph cannot
 	// resolve; record it so a repeat query doesn't re-request it.
 	for _, id := range ids {
 		k := strings.ToLower(id)
-		if _, ok := a.principals[k]; !ok {
-			a.principalsMiss[k] = struct{}{}
+		if _, ok := a.principalMemo[k]; !ok {
+			a.principalMemoMiss[k] = struct{}{}
 		}
 	}
 
-	if p, ok := a.principals[key]; ok {
+	if p, ok := a.principalMemo[key]; ok {
 		return p, nil
 	}
 	return nil, nil
@@ -327,10 +327,22 @@ func (a *mqlAzureSubscriptionAuthorizationServiceRoleAssignment) principal() (*m
 		a.Principal.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
+	return newMqlEntraPrincipal(a.MqlRuntime, conn.SubId(), p)
+}
 
-	res, err := CreateResource(a.MqlRuntime, ResourceAzureEntraPrincipal,
+// entraPrincipalID keys a principal by the subscription it was resolved for.
+// Discovered subscriptions share one resource cache, and roleAssignments on the
+// principal answers for its own subscription, so keying on the object ID alone
+// would hand one subscription's grants to every other subscription the same
+// principal appears in.
+func entraPrincipalID(subscriptionID, objectID string) string {
+	return "/subscriptions/" + subscriptionID + "/principals/" + strings.ToLower(objectID)
+}
+
+func newMqlEntraPrincipal(runtime *plugin.Runtime, subscriptionID string, p *graphPrincipal) (*mqlAzureEntraPrincipal, error) {
+	res, err := CreateResource(runtime, ResourceAzureEntraPrincipal,
 		map[string]*llx.RawData{
-			"__id":                 llx.StringData(p.ID),
+			"__id":                 llx.StringData(entraPrincipalID(subscriptionID, p.ID)),
 			"id":                   llx.StringData(p.ID),
 			"displayName":          llx.StringData(p.DisplayName),
 			"principalType":        llx.StringData(principalTypeFromODataType(p.ODataType)),
@@ -345,4 +357,65 @@ func (a *mqlAzureSubscriptionAuthorizationServiceRoleAssignment) principal() (*m
 		return nil, err
 	}
 	return res.(*mqlAzureEntraPrincipal), nil
+}
+
+func (a *mqlAzureEntraPrincipal) roleAssignments() ([]any, error) {
+	return roleAssignmentsForPrincipal(a.MqlRuntime, a.Id.Data)
+}
+
+// principals resolves every distinct principal the subscription's role
+// assignments name, in the order the assignments list them. The first
+// resolution seeds the memo with all of them in one batched Graph request, so
+// the rest are served without further calls. Principals Graph does not know
+// (deleted objects) are left out.
+func (a *mqlAzureSubscriptionAuthorizationService) principals() ([]any, error) {
+	// Read the list here rather than through assignmentPrincipalIDs, which
+	// swallows a listing failure: an empty principal list would claim nobody
+	// holds access.
+	assignments := a.GetRoleAssignments()
+	if assignments.Error != nil {
+		return nil, assignments.Error
+	}
+	ids := make([]string, 0, len(assignments.Data))
+	for _, item := range assignments.Data {
+		if assignment, ok := item.(*mqlAzureSubscriptionAuthorizationServiceRoleAssignment); ok {
+			ids = append(ids, assignment.PrincipalId.Data)
+		}
+	}
+
+	res := []any{}
+	for _, id := range distinctPrincipalIDs(ids) {
+		p, err := a.resolvePrincipal(id)
+		if err != nil {
+			return nil, err
+		}
+		if p == nil {
+			continue
+		}
+		mqlPrincipal, err := newMqlEntraPrincipal(a.MqlRuntime, a.SubscriptionId.Data, p)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlPrincipal)
+	}
+	return res, nil
+}
+
+// distinctPrincipalIDs drops empty and repeated principal IDs, comparing case
+// insensitively, and keeps the first spelling of each in its original order.
+func distinctPrincipalIDs(ids []string) []string {
+	seen := map[string]struct{}{}
+	res := []string{}
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		k := strings.ToLower(id)
+		if _, dup := seen[k]; dup {
+			continue
+		}
+		seen[k] = struct{}{}
+		res = append(res, id)
+	}
+	return res
 }

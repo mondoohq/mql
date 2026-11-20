@@ -137,6 +137,14 @@ private azure.entraPrincipal @defaults("displayName principalType") {
   // escalation path, because whoever can add members to it can grant
   // themselves the group's roles.
   isAssignableToRole bool
+  // Azure role assignments granted directly to this principal in the subscription
+  //
+  // Every assignment in the subscription's role-assignment list that
+  // names this principal, at any scope that list covers: the
+  // subscription itself, its resource groups and resources, and the
+  // management groups above it. Assignments made to a group this
+  // principal belongs to are not included; they appear on the group.
+  roleAssignments() []azure.subscription.authorizationService.roleAssignment
 }
 
 
@@ -13139,6 +13147,17 @@ private azure.subscription.authorizationService {
   roleAssignmentSchedules() []azure.subscription.authorizationService.roleAssignmentSchedule
   // PIM role management policies: the rules governing how privileged roles are activated and assigned
   roleManagementPolicies() []azure.subscription.authorizationService.roleManagementPolicy
+  // Microsoft Entra principals holding a role assignment in the subscription
+  //
+  // One entry per distinct user, group, service principal, or device
+  // named by roleAssignments, resolved against the directory, so each
+  // grantee can be audited once with all of its grants in its own
+  // roleAssignments, for example
+  // `principals.where(roleAssignments.any(role.isPrivilegeEscalating))`.
+  // A grant to a deleted principal has no entry here; find those with
+  // `roleAssignments.where(principal == null)`. Requires Microsoft Graph
+  // directory read access, like the principal field of a role assignment.
+  principals() []azure.entraPrincipal
 }
 
 // Azure PIM role management policy
