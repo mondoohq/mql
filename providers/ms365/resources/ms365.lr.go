@@ -3903,6 +3903,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.serviceprincipal.homeRealmDiscoveryPolicies": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftServiceprincipal).GetHomeRealmDiscoveryPolicies()).ToDataRes(types.Array(types.Resource("microsoft.policies.homeRealmDiscoveryPolicy")))
 	},
+	"microsoft.serviceprincipal.lastSignInDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceprincipal).GetLastSignInDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.serviceprincipal.lastAppOnlyClientSignInDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceprincipal).GetLastAppOnlyClientSignInDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.serviceprincipal.lastDelegatedClientSignInDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceprincipal).GetLastDelegatedClientSignInDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.serviceprincipal.lastAppOnlyResourceSignInDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceprincipal).GetLastAppOnlyResourceSignInDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.serviceprincipal.lastDelegatedResourceSignInDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceprincipal).GetLastDelegatedResourceSignInDateTime()).ToDataRes(types.Time)
+	},
 	"microsoft.serviceprincipal.assignment.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftServiceprincipalAssignment).GetId()).ToDataRes(types.String)
 	},
@@ -11703,6 +11718,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.serviceprincipal.homeRealmDiscoveryPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftServiceprincipal).HomeRealmDiscoveryPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceprincipal.lastSignInDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceprincipal).LastSignInDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceprincipal.lastAppOnlyClientSignInDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceprincipal).LastAppOnlyClientSignInDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceprincipal.lastDelegatedClientSignInDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceprincipal).LastDelegatedClientSignInDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceprincipal.lastAppOnlyResourceSignInDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceprincipal).LastAppOnlyResourceSignInDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceprincipal.lastDelegatedResourceSignInDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceprincipal).LastDelegatedResourceSignInDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"microsoft.serviceprincipal.assignment.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -27322,45 +27357,50 @@ type mqlMicrosoftServiceprincipal struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlMicrosoftServiceprincipalInternal
-	Id                           plugin.TValue[string]
-	Type                         plugin.TValue[string]
-	Name                         plugin.TValue[string]
-	AppId                        plugin.TValue[string]
-	AppOwnerOrganizationId       plugin.TValue[string]
-	Description                  plugin.TValue[string]
-	Tags                         plugin.TValue[[]any]
-	Enabled                      plugin.TValue[bool]
-	HomepageUrl                  plugin.TValue[string]
-	TermsOfServiceUrl            plugin.TValue[string]
-	ReplyUrls                    plugin.TValue[[]any]
-	AssignmentRequired           plugin.TValue[bool]
-	VisibleToUsers               plugin.TValue[bool]
-	Notes                        plugin.TValue[string]
-	Assignments                  plugin.TValue[[]any]
-	ApplicationTemplateId        plugin.TValue[string]
-	VerifiedPublisher            plugin.TValue[any]
-	LoginUrl                     plugin.TValue[string]
-	LogoutUrl                    plugin.TValue[string]
-	ServicePrincipalNames        plugin.TValue[[]any]
-	SignInAudience               plugin.TValue[string]
-	PreferredSingleSignOnMode    plugin.TValue[string]
-	NotificationEmailAddresses   plugin.TValue[[]any]
-	AppRoleAssignmentRequired    plugin.TValue[bool]
-	IsFirstParty                 plugin.TValue[bool]
-	AppRoles                     plugin.TValue[[]any]
-	Permissions                  plugin.TValue[[]any]
-	AlternativeNames             plugin.TValue[[]any]
-	AppDescription               plugin.TValue[string]
-	DisabledByMicrosoftStatus    plugin.TValue[string]
-	KeyCredentials               plugin.TValue[[]any]
-	PasswordCredentials          plugin.TValue[[]any]
-	Oauth2PermissionScopes       plugin.TValue[[]any]
-	Owners                       plugin.TValue[[]any]
-	FederatedIdentityCredentials plugin.TValue[[]any]
-	AppManagementPolicies        plugin.TValue[[]any]
-	TokenLifetimePolicies        plugin.TValue[[]any]
-	ClaimsMappingPolicies        plugin.TValue[[]any]
-	HomeRealmDiscoveryPolicies   plugin.TValue[[]any]
+	Id                                  plugin.TValue[string]
+	Type                                plugin.TValue[string]
+	Name                                plugin.TValue[string]
+	AppId                               plugin.TValue[string]
+	AppOwnerOrganizationId              plugin.TValue[string]
+	Description                         plugin.TValue[string]
+	Tags                                plugin.TValue[[]any]
+	Enabled                             plugin.TValue[bool]
+	HomepageUrl                         plugin.TValue[string]
+	TermsOfServiceUrl                   plugin.TValue[string]
+	ReplyUrls                           plugin.TValue[[]any]
+	AssignmentRequired                  plugin.TValue[bool]
+	VisibleToUsers                      plugin.TValue[bool]
+	Notes                               plugin.TValue[string]
+	Assignments                         plugin.TValue[[]any]
+	ApplicationTemplateId               plugin.TValue[string]
+	VerifiedPublisher                   plugin.TValue[any]
+	LoginUrl                            plugin.TValue[string]
+	LogoutUrl                           plugin.TValue[string]
+	ServicePrincipalNames               plugin.TValue[[]any]
+	SignInAudience                      plugin.TValue[string]
+	PreferredSingleSignOnMode           plugin.TValue[string]
+	NotificationEmailAddresses          plugin.TValue[[]any]
+	AppRoleAssignmentRequired           plugin.TValue[bool]
+	IsFirstParty                        plugin.TValue[bool]
+	AppRoles                            plugin.TValue[[]any]
+	Permissions                         plugin.TValue[[]any]
+	AlternativeNames                    plugin.TValue[[]any]
+	AppDescription                      plugin.TValue[string]
+	DisabledByMicrosoftStatus           plugin.TValue[string]
+	KeyCredentials                      plugin.TValue[[]any]
+	PasswordCredentials                 plugin.TValue[[]any]
+	Oauth2PermissionScopes              plugin.TValue[[]any]
+	Owners                              plugin.TValue[[]any]
+	FederatedIdentityCredentials        plugin.TValue[[]any]
+	AppManagementPolicies               plugin.TValue[[]any]
+	TokenLifetimePolicies               plugin.TValue[[]any]
+	ClaimsMappingPolicies               plugin.TValue[[]any]
+	HomeRealmDiscoveryPolicies          plugin.TValue[[]any]
+	LastSignInDateTime                  plugin.TValue[*time.Time]
+	LastAppOnlyClientSignInDateTime     plugin.TValue[*time.Time]
+	LastDelegatedClientSignInDateTime   plugin.TValue[*time.Time]
+	LastAppOnlyResourceSignInDateTime   plugin.TValue[*time.Time]
+	LastDelegatedResourceSignInDateTime plugin.TValue[*time.Time]
 }
 
 // createMicrosoftServiceprincipal creates a new instance of this resource
@@ -27651,6 +27691,36 @@ func (c *mqlMicrosoftServiceprincipal) GetHomeRealmDiscoveryPolicies() *plugin.T
 		}
 
 		return c.homeRealmDiscoveryPolicies()
+	})
+}
+
+func (c *mqlMicrosoftServiceprincipal) GetLastSignInDateTime() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.LastSignInDateTime, func() (*time.Time, error) {
+		return c.lastSignInDateTime()
+	})
+}
+
+func (c *mqlMicrosoftServiceprincipal) GetLastAppOnlyClientSignInDateTime() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.LastAppOnlyClientSignInDateTime, func() (*time.Time, error) {
+		return c.lastAppOnlyClientSignInDateTime()
+	})
+}
+
+func (c *mqlMicrosoftServiceprincipal) GetLastDelegatedClientSignInDateTime() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.LastDelegatedClientSignInDateTime, func() (*time.Time, error) {
+		return c.lastDelegatedClientSignInDateTime()
+	})
+}
+
+func (c *mqlMicrosoftServiceprincipal) GetLastAppOnlyResourceSignInDateTime() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.LastAppOnlyResourceSignInDateTime, func() (*time.Time, error) {
+		return c.lastAppOnlyResourceSignInDateTime()
+	})
+}
+
+func (c *mqlMicrosoftServiceprincipal) GetLastDelegatedResourceSignInDateTime() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.LastDelegatedResourceSignInDateTime, func() (*time.Time, error) {
+		return c.lastDelegatedResourceSignInDateTime()
 	})
 }
 

@@ -1665,6 +1665,11 @@ microsoft.serviceprincipal.homepageUrl 9.0.0
 microsoft.serviceprincipal.id 9.0.0
 microsoft.serviceprincipal.isFirstParty 9.0.0
 microsoft.serviceprincipal.keyCredentials 13.0.12
+microsoft.serviceprincipal.lastAppOnlyClientSignInDateTime 14.2.6
+microsoft.serviceprincipal.lastAppOnlyResourceSignInDateTime 14.2.6
+microsoft.serviceprincipal.lastDelegatedClientSignInDateTime 14.2.6
+microsoft.serviceprincipal.lastDelegatedResourceSignInDateTime 14.2.6
+microsoft.serviceprincipal.lastSignInDateTime 14.2.6
 microsoft.serviceprincipal.loginUrl 9.0.0
 microsoft.serviceprincipal.logoutUrl 9.0.0
 microsoft.serviceprincipal.name 9.0.0
