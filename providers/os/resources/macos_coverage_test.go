@@ -14,6 +14,11 @@ import (
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 // Measured: MacBook Pro Mac16,8, macOS 27.2 (26B123), 2026-11-19. The keys
@@ -156,4 +161,64 @@ func TestParseAppleCareExpiration(t *testing.T) {
 	// target showed this.
 	assert.Nil(t, parseAppleCareExpiration("2028年10月26日に期限切れ"))
 	assert.Nil(t, parseAppleCareExpiration(""))
+}
+
+// Measured: MacBook Pro Mac16,8, macOS 27.2, 2026-11-20. The serial comes
+// from system_profiler and the coverage file is read through a connection's
+// filesystem, whose stats are not the os package's.
+func TestInitMacosCoverage(t *testing.T) {
+	coveragePath := path.Join("/Users/alice", appleCareCacheDir, "C02ABC123.json")
+	mod := time.Date(2026, 11, 2, 21, 0, 57, 0, time.UTC)
+	data := &mock.TomlData{
+		Commands: map[string]*mock.Command{
+			"system_profiler SPHardwareDataType -json": {
+				Stdout: `{"SPHardwareDataType":[{"machine_model":"Mac16,8","serial_number":"C02ABC123"}]}`,
+			},
+		},
+		Files: map[string]*mock.MockFileData{
+			"/Users":       {Path: "/Users", StatData: mock.FileInfo{IsDir: true, Mode: os.ModeDir | 0o755}},
+			"/Users/alice": {Path: "/Users/alice", StatData: mock.FileInfo{IsDir: true, Mode: os.ModeDir | 0o750}},
+			coveragePath:   {Path: coveragePath, Content: appleCarePlusCoverage, StatData: mock.FileInfo{Mode: 0o644, ModTime: mod}},
+		},
+	}
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "macos", Family: []string{"darwin", "bsd", "unix", "os"}},
+	}, mock.WithData(data))
+	require.NoError(t, err)
+	runtime := &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+
+	args, _, err := initMacosCoverage(runtime, nil)
+	require.NoError(t, err)
+	assert.Equal(t, true, args["appleCare"].Value)
+	assert.Equal(t, "AppleCare+", args["label"].Value)
+	assert.Equal(t, "Expires October 26, 2028", args["expirationLabel"].Value)
+	assert.Equal(t, false, args["theftAndLoss"].Value)
+	assert.Equal(t, &mod, args["updated"].Value)
+}
+
+func TestSameFile(t *testing.T) {
+	dir := t.TempDir()
+	a := filepath.Join(dir, "a")
+	b := filepath.Join(dir, "b")
+	require.NoError(t, os.WriteFile(a, []byte("x"), 0o644))
+	require.NoError(t, os.WriteFile(b, []byte("x"), 0o644))
+	mod := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	require.NoError(t, os.Chtimes(a, mod, mod))
+	require.NoError(t, os.Chtimes(b, mod, mod))
+	aInfo, err := os.Lstat(a)
+	require.NoError(t, err)
+	aAgain, err := os.Stat(a)
+	require.NoError(t, err)
+	bInfo, err := os.Lstat(b)
+	require.NoError(t, err)
+
+	// os stats compare by inode, so two files of equal size and time differ.
+	assert.True(t, sameFile(aInfo, aAgain))
+	assert.False(t, sameFile(aInfo, bInfo))
+
+	// Other stat types compare by size and modification time.
+	one := &shared.FileInfo{FName: "a", FSize: 1, FModTime: mod}
+	assert.True(t, sameFile(one, &shared.FileInfo{FName: "a", FSize: 1, FModTime: mod}))
+	assert.False(t, sameFile(one, &shared.FileInfo{FName: "a", FSize: 2, FModTime: mod}))
+	assert.False(t, sameFile(one, &shared.FileInfo{FName: "a", FSize: 1, FModTime: mod.Add(time.Second)}))
 }
