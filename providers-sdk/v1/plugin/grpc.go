@@ -91,8 +91,17 @@ func (m *GRPCClient) MockConnect(req *ConnectReq, callback ProviderCallback) (*C
 	return res, connectErrorFromStatus(err)
 }
 
+// shutdownTimeout bounds the Shutdown call. The provider answers it only after
+// closing every connection, which on Windows includes unloading registry
+// hives, so a provider stuck in teardown would otherwise block its parent
+// forever. The parent kills the subprocess once the call returns, so a
+// provider that misses the deadline loses the rest of its cleanup.
+var shutdownTimeout = 30 * time.Second
+
 func (m *GRPCClient) Shutdown(req *ShutdownReq) (*ShutdownRes, error) {
-	return m.client.Shutdown(context.Background(), req)
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+	return m.client.Shutdown(ctx, req)
 }
 
 func (m *GRPCClient) GetData(req *DataReq) (*DataRes, error) {
