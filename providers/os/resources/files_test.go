@@ -121,7 +121,7 @@ func TestFilesFindForwardsMountScope(t *testing.T) {
 		rt := memFSRuntime(t, f)
 		res, err := CreateResource(rt, "files.find", map[string]*llx.RawData{"from": llx.StringData("/etc"), "xdev": llx.BoolData(cross)})
 		require.NoError(t, err)
-		found, err := res.(*mqlFilesFind).fsFilesFind(rt.Connection.(shared.Connection))
+		found, err := res.(*mqlFilesFind).fsFilesFind(rt.Connection.(shared.Connection), "")
 		require.NoError(t, err)
 		require.Equal(t, []string{"/etc/example.conf"}, found)
 		require.Equal(t, []bool{cross}, f.cross)
