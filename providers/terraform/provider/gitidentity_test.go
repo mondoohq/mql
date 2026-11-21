@@ -10,6 +10,8 @@ import (
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
@@ -70,10 +72,12 @@ func TestParseGitRemote(t *testing.T) {
 }
 
 // initCheckout creates a git repository at dir with the given origin URL and
-// the sub-folders a scan would target.
-func initCheckout(t *testing.T, dir, origin string, subdirs ...string) {
+// the sub-folders a scan would target. The checkout is on the branch main.
+func initCheckout(t *testing.T, dir, origin string, subdirs ...string) *git.Repository {
 	t.Helper()
-	repo, err := git.PlainInit(dir, false)
+	repo, err := git.PlainInitWithOptions(dir, &git.PlainInitOptions{
+		InitOptions: git.InitOptions{DefaultBranch: plumbing.NewBranchReferenceName("main")},
+	})
 	require.NoError(t, err)
 	if origin != "" {
 		_, err = repo.CreateRemote(&config.RemoteConfig{Name: git.DefaultRemoteName, URLs: []string{origin}})
@@ -82,6 +86,16 @@ func initCheckout(t *testing.T, dir, origin string, subdirs ...string) {
 	for _, sub := range subdirs {
 		require.NoError(t, os.MkdirAll(filepath.Join(dir, sub), 0o755))
 	}
+	return repo
+}
+
+// checkOutBranch points HEAD at the branch, the way `git switch` does. The
+// branch needs no commit: the identity reads which branch is checked out, not
+// what is on it.
+func checkOutBranch(t *testing.T, repo *git.Repository, branch string) {
+	t.Helper()
+	head := plumbing.NewSymbolicReference(plumbing.HEAD, plumbing.NewBranchReferenceName(branch))
+	require.NoError(t, repo.Storer.SetReference(head))
 }
 
 func TestDetectGitIdentity(t *testing.T) {
@@ -91,24 +105,61 @@ func TestDetectGitIdentity(t *testing.T) {
 
 		gi, ok := detectGitIdentity(filepath.Join(dir, "prod"))
 		require.True(t, ok)
-		assert.Equal(t, gitIdentity{Domain: "github.com", Org: "exampleorg", Repo: "example-repo", RelPath: "prod"}, gi)
-		assert.Equal(t, "//platformid.api.mondoo.app/runtime/terraform/domain/github.com/org/exampleorg/repo/example-repo/path/prod", gi.platformID())
-		assert.Equal(t, "exampleorg/example-repo/prod", gi.name())
+		assert.Equal(t, gitIdentity{Domain: "github.com", Org: "exampleorg", Repo: "example-repo", Branch: "main", RelPath: "prod"}, gi)
+		assert.Equal(t, "//platformid.api.mondoo.app/runtime/terraform/domain/github.com/org/exampleorg/repo/example-repo/branch/main/path/prod", gi.platformID())
+		assert.Equal(t, "exampleorg/example-repo/prod@main", gi.name())
 
 		dev, ok := detectGitIdentity(filepath.Join(dir, "dev"))
 		require.True(t, ok)
 		assert.NotEqual(t, gi.platformID(), dev.platformID(), "two folders of one repository are two assets")
 	})
 
-	t.Run("the repository root is the git-integration identity", func(t *testing.T) {
+	t.Run("the repository root carries the repository and its branch", func(t *testing.T) {
 		dir := t.TempDir()
 		initCheckout(t, dir, "git@github.com:exampleorg/example-repo.git")
 
 		gi, ok := detectGitIdentity(dir)
 		require.True(t, ok)
 		assert.Equal(t, "", gi.RelPath)
-		assert.Equal(t, "//platformid.api.mondoo.app/runtime/terraform/domain/github.com/org/exampleorg/repo/example-repo", gi.platformID())
-		assert.Equal(t, "exampleorg/example-repo", gi.name())
+		assert.Equal(t, "//platformid.api.mondoo.app/runtime/terraform/domain/github.com/org/exampleorg/repo/example-repo/branch/main", gi.platformID())
+		assert.Equal(t, "exampleorg/example-repo@main", gi.name())
+	})
+
+	// WHY: a slash in a branch name must not read as the start of the path
+	// segment. Unescaped, the branch feature/path scanned at the root and the
+	// branch feature scanned at the folder path would spell their ids alike.
+	t.Run("a branch name with a slash is escaped in the id", func(t *testing.T) {
+		dir := t.TempDir()
+		repo := initCheckout(t, dir, "https://github.com/exampleorg/example-repo.git", "prod")
+		checkOutBranch(t, repo, "feature/new-bucket")
+
+		gi, ok := detectGitIdentity(filepath.Join(dir, "prod"))
+		require.True(t, ok)
+		assert.Equal(t, "feature/new-bucket", gi.Branch)
+		assert.Equal(t, "//platformid.api.mondoo.app/runtime/terraform/domain/github.com/org/exampleorg/repo/example-repo/branch/feature%2Fnew-bucket/path/prod", gi.platformID())
+		assert.Equal(t, "exampleorg/example-repo/prod@feature/new-bucket", gi.name())
+	})
+
+	// WHY: a commit checked out by its hash is on no branch, and the identity
+	// must not invent one. Such a checkout keeps the repository identity it
+	// had before branches were part of it.
+	t.Run("a detached HEAD carries no branch", func(t *testing.T) {
+		dir := t.TempDir()
+		repo := initCheckout(t, dir, "https://github.com/exampleorg/example-repo.git", "prod")
+		wt, err := repo.Worktree()
+		require.NoError(t, err)
+		commit, err := wt.Commit("first", &git.CommitOptions{
+			AllowEmptyCommits: true,
+			Author:            &object.Signature{Name: "example", Email: "example@example.com"},
+		})
+		require.NoError(t, err)
+		require.NoError(t, wt.Checkout(&git.CheckoutOptions{Hash: commit}))
+
+		gi, ok := detectGitIdentity(filepath.Join(dir, "prod"))
+		require.True(t, ok)
+		assert.Equal(t, "", gi.Branch)
+		assert.Equal(t, "//platformid.api.mondoo.app/runtime/terraform/domain/github.com/org/exampleorg/repo/example-repo/path/prod", gi.platformID())
+		assert.Equal(t, "exampleorg/example-repo/prod", gi.name())
 	})
 
 	t.Run("a file inside the checkout is identified by its path in the repository", func(t *testing.T) {
@@ -120,6 +171,20 @@ func TestDetectGitIdentity(t *testing.T) {
 		gi, ok := detectGitIdentity(plan)
 		require.True(t, ok)
 		assert.Equal(t, "plans/prod.json", gi.RelPath)
+	})
+
+	// WHY: a workspace reached through a symlink (a mounted volume, macOS's
+	// /var) lost its repository identity and fell back to the path hash,
+	// which is the collision the repository identity exists to prevent.
+	t.Run("a checkout reached through a symlink is still identified", func(t *testing.T) {
+		dir := t.TempDir()
+		initCheckout(t, dir, "https://github.com/exampleorg/example-repo.git", "prod")
+		link := filepath.Join(t.TempDir(), "workspace")
+		require.NoError(t, os.Symlink(dir, link))
+
+		gi, ok := detectGitIdentity(filepath.Join(link, "prod"))
+		require.True(t, ok)
+		assert.Equal(t, "prod", gi.RelPath)
 	})
 
 	t.Run("a checkout without a remote keeps the path hash", func(t *testing.T) {
@@ -160,9 +225,35 @@ func TestDetect_TwoRepositoriesInOneWorkspace(t *testing.T) {
 		assert.Equal(t, asset.PlatformIds[0], asset.Connections[0].PlatformId)
 	}
 	assert.NotEqual(t, ids[0], ids[1], "the same workspace path holding two repositories is two assets")
-	assert.Equal(t, "//platformid.api.mondoo.app/runtime/terraform/domain/github.com/org/exampleorg/repo/repo-a/path/prod", ids[0])
-	assert.Equal(t, "//platformid.api.mondoo.app/runtime/terraform/domain/github.com/org/exampleorg/repo/repo-b/path/prod", ids[1])
-	assert.Equal(t, []string{"Terraform HCL exampleorg/repo-a/prod", "Terraform HCL exampleorg/repo-b/prod"}, names)
+	assert.Equal(t, "//platformid.api.mondoo.app/runtime/terraform/domain/github.com/org/exampleorg/repo/repo-a/branch/main/path/prod", ids[0])
+	assert.Equal(t, "//platformid.api.mondoo.app/runtime/terraform/domain/github.com/org/exampleorg/repo/repo-b/branch/main/path/prod", ids[1])
+	assert.Equal(t, []string{"Terraform HCL exampleorg/repo-a/prod@main", "Terraform HCL exampleorg/repo-b/prod@main"}, names)
+}
+
+// WHY: two branches of one repository scanned at the same folder were one
+// asset, so each scan replaced the other branch's results. With pull-request
+// scans that meant findings opening and closing on every run.
+func TestDetect_TwoBranchesOfOneRepository(t *testing.T) {
+	dir := t.TempDir()
+	repo := initCheckout(t, dir, "https://github.com/exampleorg/example-repo.git", "prod")
+
+	var ids, names []string
+	for _, branch := range []string{"main", "add-bucket"} {
+		checkOutBranch(t, repo, branch)
+		asset := &inventory.Asset{Connections: []*inventory.Config{{
+			Type:    HclConnectionType,
+			Options: map[string]string{"path": filepath.Join(dir, "prod")},
+		}}}
+		require.NoError(t, (&Service{}).detect(asset, nil))
+		require.Len(t, asset.PlatformIds, 1)
+		ids = append(ids, asset.PlatformIds[0])
+		names = append(names, asset.Name)
+	}
+	assert.Equal(t, []string{
+		"//platformid.api.mondoo.app/runtime/terraform/domain/github.com/org/exampleorg/repo/example-repo/branch/main/path/prod",
+		"//platformid.api.mondoo.app/runtime/terraform/domain/github.com/org/exampleorg/repo/example-repo/branch/add-bucket/path/prod",
+	}, ids)
+	assert.Equal(t, []string{"Terraform HCL exampleorg/example-repo/prod@main", "Terraform HCL exampleorg/example-repo/prod@add-bucket"}, names)
 }
 
 // Every connection that scans by path, an HCL directory, a plan file or a
@@ -177,9 +268,9 @@ func TestDetect_GitIdentityForEveryPathConnection(t *testing.T) {
 	tests := []struct {
 		connType, path, id, name string
 	}{
-		{HclConnectionType, "prod", "/path/prod", "Terraform HCL exampleorg/example-repo/prod"},
-		{PlanConnectionType, "plans/prod.json", "/path/plans/prod.json", "Terraform Plan exampleorg/example-repo/plans/prod.json"},
-		{StateConnectionType, "state/prod.tfstate", "/path/state/prod.tfstate", "Terraform State exampleorg/example-repo/state/prod.tfstate"},
+		{HclConnectionType, "prod", "/branch/main/path/prod", "Terraform HCL exampleorg/example-repo/prod@main"},
+		{PlanConnectionType, "plans/prod.json", "/branch/main/path/plans/prod.json", "Terraform Plan exampleorg/example-repo/plans/prod.json@main"},
+		{StateConnectionType, "state/prod.tfstate", "/branch/main/path/state/prod.tfstate", "Terraform State exampleorg/example-repo/state/prod.tfstate@main"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.connType, func(t *testing.T) {
