@@ -58,3 +58,23 @@ func TestSummarizeBranchRulesWithoutRules(t *testing.T) {
 	assert.Empty(t, s.rulesetIDs)
 	assert.Equal(t, branchRulesSummary{}, summarizeBranchRules(nil))
 }
+
+// The SDK's rule slices hold pointers; a nil entry is skipped, not a panic.
+func TestSummarizeBranchRulesSkipsNilEntries(t *testing.T) {
+	r := &github.BranchRules{
+		PullRequest:           []*github.PullRequestBranchRule{nil},
+		RequiredStatusChecks:  []*github.RequiredStatusChecksBranchRule{nil},
+		Update:                []*github.UpdateBranchRule{nil},
+		RequiredDeployments:   []*github.RequiredDeploymentsBranchRule{nil},
+		CodeScanning:          []*github.CodeScanningBranchRule{nil},
+		MergeQueue:            []*github.MergeQueueBranchRule{nil},
+		RequiredSignatures:    []*github.BranchRuleMetadata{nil},
+		RequiredLinearHistory: []*github.BranchRuleMetadata{nil},
+		NonFastForward:        []*github.BranchRuleMetadata{nil, {RulesetID: 7}},
+		Deletion:              []*github.BranchRuleMetadata{nil},
+	}
+	s := summarizeBranchRules(r)
+	assert.False(t, s.requiresPullRequest)
+	assert.True(t, s.blocksForcePushes)
+	assert.Equal(t, []int64{7}, s.rulesetIDs)
+}

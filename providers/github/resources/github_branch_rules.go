@@ -51,6 +51,9 @@ func summarizeBranchRules(r *github.BranchRules) branchRulesSummary {
 		}
 	}
 	for _, x := range r.PullRequest {
+		if x == nil {
+			continue
+		}
 		note(x.BranchRuleMetadata)
 		s.requiresPullRequest = true
 		p := x.Parameters
@@ -64,6 +67,9 @@ func summarizeBranchRules(r *github.BranchRules) branchRulesSummary {
 	}
 	checks := map[string]bool{}
 	for _, x := range r.RequiredStatusChecks {
+		if x == nil {
+			continue
+		}
 		note(x.BranchRuleMetadata)
 		s.requiresStatusChecks = true
 		for _, c := range x.Parameters.RequiredStatusChecks {
@@ -77,34 +83,58 @@ func summarizeBranchRules(r *github.BranchRules) branchRulesSummary {
 	}
 	sort.Strings(s.requiredStatusChecks)
 	for _, x := range r.RequiredSignatures {
+		if x == nil {
+			continue
+		}
 		note(*x)
 		s.requiresSignatures = true
 	}
 	for _, x := range r.RequiredLinearHistory {
+		if x == nil {
+			continue
+		}
 		note(*x)
 		s.requiresLinearHistory = true
 	}
 	for _, x := range r.NonFastForward {
+		if x == nil {
+			continue
+		}
 		note(*x)
 		s.blocksForcePushes = true
 	}
 	for _, x := range r.Deletion {
+		if x == nil {
+			continue
+		}
 		note(*x)
 		s.blocksDeletions = true
 	}
 	for _, x := range r.Update {
+		if x == nil {
+			continue
+		}
 		note(x.BranchRuleMetadata)
 		s.restrictsUpdates = true
 	}
 	for _, x := range r.RequiredDeployments {
+		if x == nil {
+			continue
+		}
 		note(x.BranchRuleMetadata)
 		s.requiresDeployments = true
 	}
 	for _, x := range r.CodeScanning {
+		if x == nil {
+			continue
+		}
 		note(x.BranchRuleMetadata)
 		s.requiresCodeScanning = true
 	}
 	for _, x := range r.MergeQueue {
+		if x == nil {
+			continue
+		}
 		note(x.BranchRuleMetadata)
 		s.requiresMergeQueue = true
 	}
