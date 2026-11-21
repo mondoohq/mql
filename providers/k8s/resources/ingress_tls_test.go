@@ -86,3 +86,15 @@ func TestGetTLSNoEntries(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, out)
 }
+
+// tlsHosts reads the spec alone, so an entry whose Secret is absent, as in a
+// manifest scan or without permission to read Secrets, still lists its hosts.
+func TestIngressTLSHosts(t *testing.T) {
+	ing := &networkingv1.Ingress{Spec: networkingv1.IngressSpec{TLS: []networkingv1.IngressTLS{
+		{Hosts: []string{"shop.example.com", "www.shop.example.com"}, SecretName: "missing"},
+		{Hosts: []string{"shop.example.com", ""}, SecretName: "other"},
+		{SecretName: "no-hosts"},
+	}}}
+	assert.Equal(t, []any{"shop.example.com", "www.shop.example.com"}, ingressTLSHosts(ing))
+	assert.Equal(t, []any{}, ingressTLSHosts(&networkingv1.Ingress{}))
+}

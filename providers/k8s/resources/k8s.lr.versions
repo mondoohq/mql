@@ -697,6 +697,7 @@ k8s.ingress.pods 13.3.3
 k8s.ingress.resourceVersion 9.0.0
 k8s.ingress.rules 9.0.0
 k8s.ingress.tls 9.0.0
+k8s.ingress.tlsHosts 14.2.10
 k8s.ingress.uid 9.0.0
 k8s.ingressClasses 13.0.16
 k8s.ingressbackend 9.0.0
