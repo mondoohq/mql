@@ -2403,7 +2403,7 @@ func init() {
 			Create: createAwsEcsTask,
 		},
 		"aws.ecs.container": {
-			// to override args, implement: initAwsEcsContainer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initAwsEcsContainer,
 			Create: createAwsEcsContainer,
 		},
 		"aws.ecs.taskDefinition": {
@@ -7994,6 +7994,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.iam.user.groups": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsIamUser).GetGroups()).ToDataRes(types.Array(types.String))
 	},
+	"aws.iam.user.groupDetails": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsIamUser).GetGroupDetails()).ToDataRes(types.Array(types.Resource("aws.iam.group")))
+	},
 	"aws.iam.user.accessKeyDetails": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsIamUser).GetAccessKeyDetails()).ToDataRes(types.Array(types.Resource("aws.iam.user.accessKey")))
 	},
@@ -8329,6 +8332,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.iam.group.usernames": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsIamGroup).GetUsernames()).ToDataRes(types.Array(types.String))
+	},
+	"aws.iam.group.users": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsIamGroup).GetUsers()).ToDataRes(types.Array(types.Resource("aws.iam.user")))
 	},
 	"aws.iam.group.inlinePolicies": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsIamGroup).GetInlinePolicies()).ToDataRes(types.Array(types.String))
@@ -20003,6 +20009,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.dynamodb.globaltable.replicaSettings": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsDynamodbGlobaltable).GetReplicaSettings()).ToDataRes(types.Array(types.Dict))
 	},
+	"aws.dynamodb.globaltable.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsDynamodbGlobaltable).GetStatus()).ToDataRes(types.String)
+	},
+	"aws.dynamodb.globaltable.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsDynamodbGlobaltable).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"aws.dynamodb.globaltable.replicaTables": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsDynamodbGlobaltable).GetReplicaTables()).ToDataRes(types.Array(types.Resource("aws.dynamodb.table")))
+	},
 	"aws.dynamodb.table.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsDynamodbTable).GetArn()).ToDataRes(types.String)
 	},
@@ -26593,6 +26608,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.ec2.instance.ssm": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEc2Instance).GetSsm()).ToDataRes(types.Dict)
+	},
+	"aws.ec2.instance.ssmInstance": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2Instance).GetSsmInstance()).ToDataRes(types.Resource("aws.ssm.instance"))
 	},
 	"aws.ec2.instance.vpc": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEc2Instance).GetVpc()).ToDataRes(types.Resource("aws.vpc"))
@@ -44731,6 +44749,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsIamUser).Groups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"aws.iam.user.groupDetails": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsIamUser).GroupDetails, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"aws.iam.user.accessKeyDetails": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsIamUser).AccessKeyDetails, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -45225,6 +45247,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.iam.group.usernames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsIamGroup).Usernames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.iam.group.users": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsIamGroup).Users, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"aws.iam.group.inlinePolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -62359,6 +62385,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsDynamodbGlobaltable).ReplicaSettings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"aws.dynamodb.globaltable.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsDynamodbGlobaltable).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.dynamodb.globaltable.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsDynamodbGlobaltable).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.dynamodb.globaltable.replicaTables": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsDynamodbGlobaltable).ReplicaTables, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"aws.dynamodb.table.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsDynamodbTable).__id, ok = v.Value.(string)
 		return
@@ -71845,6 +71883,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.ec2.instance.ssm": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsEc2Instance).Ssm, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.instance.ssmInstance": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2Instance).SsmInstance, ok = plugin.RawToTValue[*mqlAwsSsmInstance](v.Value, v.Error)
 		return
 	},
 	"aws.ec2.instance.vpc": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -102784,6 +102826,7 @@ type mqlAwsIamUser struct {
 	InlinePolicyDetails        plugin.TValue[[]any]
 	AttachedPolicies           plugin.TValue[[]any]
 	Groups                     plugin.TValue[[]any]
+	GroupDetails               plugin.TValue[[]any]
 	AccessKeyDetails           plugin.TValue[[]any]
 	ServiceSpecificCredentials plugin.TValue[[]any]
 	SshPublicKeys              plugin.TValue[[]any]
@@ -102905,6 +102948,22 @@ func (c *mqlAwsIamUser) GetAttachedPolicies() *plugin.TValue[[]any] {
 func (c *mqlAwsIamUser) GetGroups() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.Groups, func() ([]any, error) {
 		return c.groups()
+	})
+}
+
+func (c *mqlAwsIamUser) GetGroupDetails() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.GroupDetails, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.iam.user", c.__id, "groupDetails")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.groupDetails()
 	})
 }
 
@@ -104244,6 +104303,7 @@ type mqlAwsIamGroup struct {
 	Name                 plugin.TValue[string]
 	CreatedAt            plugin.TValue[*time.Time]
 	Usernames            plugin.TValue[[]any]
+	Users                plugin.TValue[[]any]
 	InlinePolicies       plugin.TValue[[]any]
 	InlinePolicyDetails  plugin.TValue[[]any]
 	AttachedPolicies     plugin.TValue[[]any]
@@ -104307,6 +104367,22 @@ func (c *mqlAwsIamGroup) GetCreatedAt() *plugin.TValue[*time.Time] {
 func (c *mqlAwsIamGroup) GetUsernames() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.Usernames, func() ([]any, error) {
 		return c.usernames()
+	})
+}
+
+func (c *mqlAwsIamGroup) GetUsers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Users, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.iam.group", c.__id, "users")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.users()
 	})
 }
 
@@ -150248,10 +150324,13 @@ func (c *mqlAwsDynamodbLimit) GetTableMaxWrite() *plugin.TValue[int64] {
 type mqlAwsDynamodbGlobaltable struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlAwsDynamodbGlobaltableInternal it will be used here
+	mqlAwsDynamodbGlobaltableInternal
 	Arn             plugin.TValue[string]
 	Name            plugin.TValue[string]
 	ReplicaSettings plugin.TValue[[]any]
+	Status          plugin.TValue[string]
+	CreatedAt       plugin.TValue[*time.Time]
+	ReplicaTables   plugin.TValue[[]any]
 }
 
 // createAwsDynamodbGlobaltable creates a new instance of this resource
@@ -150302,6 +150381,34 @@ func (c *mqlAwsDynamodbGlobaltable) GetName() *plugin.TValue[string] {
 func (c *mqlAwsDynamodbGlobaltable) GetReplicaSettings() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.ReplicaSettings, func() ([]any, error) {
 		return c.replicaSettings()
+	})
+}
+
+func (c *mqlAwsDynamodbGlobaltable) GetStatus() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Status, func() (string, error) {
+		return c.status()
+	})
+}
+
+func (c *mqlAwsDynamodbGlobaltable) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.CreatedAt, func() (*time.Time, error) {
+		return c.createdAt()
+	})
+}
+
+func (c *mqlAwsDynamodbGlobaltable) GetReplicaTables() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ReplicaTables, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.dynamodb.globaltable", c.__id, "replicaTables")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.replicaTables()
 	})
 }
 
@@ -173262,6 +173369,7 @@ type mqlAwsEc2Instance struct {
 	Region                  plugin.TValue[string]
 	PublicIp                plugin.TValue[string]
 	Ssm                     plugin.TValue[any]
+	SsmInstance             plugin.TValue[*mqlAwsSsmInstance]
 	Vpc                     plugin.TValue[*mqlAwsVpc]
 	HttpTokens              plugin.TValue[string]
 	HttpEndpoint            plugin.TValue[string]
@@ -173382,6 +173490,22 @@ func (c *mqlAwsEc2Instance) GetPublicIp() *plugin.TValue[string] {
 func (c *mqlAwsEc2Instance) GetSsm() *plugin.TValue[any] {
 	return plugin.GetOrCompute[any](&c.Ssm, func() (any, error) {
 		return c.ssm()
+	})
+}
+
+func (c *mqlAwsEc2Instance) GetSsmInstance() *plugin.TValue[*mqlAwsSsmInstance] {
+	return plugin.GetOrCompute[*mqlAwsSsmInstance](&c.SsmInstance, func() (*mqlAwsSsmInstance, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.ec2.instance", c.__id, "ssmInstance")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsSsmInstance), nil
+			}
+		}
+
+		return c.ssmInstance()
 	})
 }
 

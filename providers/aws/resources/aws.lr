@@ -2843,8 +2843,10 @@ private aws.iam.user @defaults("arn name createdAt") {
   inlinePolicyDetails() []aws.iam.inlinePolicy
   // List of managed policies attached to the user
   attachedPolicies() []aws.iam.policy
-  // List of group ARNs that the user belongs to
+  // Names of the groups the user belongs to
   groups() []string
+  // Groups the user belongs to
+  groupDetails() []aws.iam.group
   // Access keys associated with the user, including last-used data
   accessKeyDetails() []aws.iam.user.accessKey
   // Service-specific credentials issued to the user
@@ -3272,6 +3274,8 @@ private aws.iam.group @defaults("arn name") {
   createdAt time
   // List of usernames that belong to the group
   usernames() []string
+  // Users that belong to the group
+  users() []aws.iam.user
   // Inline policy names embedded in the group
   //
   // Deprecated in favor of inlinePolicyDetails, which resolves each inline
@@ -15108,6 +15112,15 @@ private aws.dynamodb.globaltable @defaults("name") {
   // ReplicaProvisionedWriteCapacityUnits, ReplicaTableClassSummary, and
   // ReplicaGlobalSecondaryIndexSettings.
   replicaSettings() []dict
+  // Global table status: CREATING, ACTIVE, DELETING or UPDATING
+  status() string
+  // Time when the global table was created
+  createdAt() time
+  // Regional tables that replicate the global table
+  //
+  // One aws.dynamodb.table per replica region, which carries the table's
+  // encryption, point-in-time recovery and deletion protection.
+  replicaTables() []aws.dynamodb.table
 }
 
 // Amazon DynamoDB table
@@ -21839,6 +21852,10 @@ private aws.ec2.instance @defaults("instanceId region state instanceType archite
   publicIp string
   // Amazon Systems Manager information for the instance
   ssm() dict
+  // Systems Manager managed node for the instance
+  //
+  // Null when the instance is not registered with Systems Manager.
+  ssmInstance() aws.ssm.instance
   // VPC associated with the instance
   vpc() aws.vpc
   // A value of "optional" denotes IMDSv1 server compatibility; "required" denotes IMDSv2
