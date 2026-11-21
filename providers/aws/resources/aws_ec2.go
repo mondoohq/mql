@@ -2695,9 +2695,12 @@ func (a *mqlAwsEc2Instance) ssmInstance() (*mqlAwsSsmInstance, error) {
 	arnVal := ssmInstanceArn(conn.AccountId(), a.Region.Data, a.InstanceId.Data)
 	res, err := NewResource(a.MqlRuntime, "aws.ssm.instance",
 		map[string]*llx.RawData{"arn": llx.StringData(arnVal)})
-	if err != nil {
+	if errors.Is(err, errSsmInstanceNotFound) {
 		a.SsmInstance.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
+	}
+	if err != nil {
+		return nil, err
 	}
 	return res.(*mqlAwsSsmInstance), nil
 }

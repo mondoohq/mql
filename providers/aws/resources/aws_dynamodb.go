@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -1008,7 +1009,7 @@ func dynamoDBTagsToMap(tags []ddtypes.Tag) map[string]any {
 }
 
 type mqlAwsDynamodbGlobaltableInternal struct {
-	descFetched bool
+	descFetched atomic.Bool
 	descCache   *ddtypes.GlobalTableDescription
 	descLock    sync.Mutex
 }
@@ -1016,9 +1017,12 @@ type mqlAwsDynamodbGlobaltableInternal struct {
 // description calls DescribeGlobalTable once for status, createdAt and
 // replicaTables.
 func (a *mqlAwsDynamodbGlobaltable) description() (*ddtypes.GlobalTableDescription, error) {
+	if a.descFetched.Load() {
+		return a.descCache, nil
+	}
 	a.descLock.Lock()
 	defer a.descLock.Unlock()
-	if a.descFetched {
+	if a.descFetched.Load() {
 		return a.descCache, nil
 	}
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
@@ -1028,7 +1032,7 @@ func (a *mqlAwsDynamodbGlobaltable) description() (*ddtypes.GlobalTableDescripti
 		return nil, errors.Wrap(err, "could not describe aws dynamodb global table")
 	}
 	a.descCache = resp.GlobalTableDescription
-	a.descFetched = true
+	a.descFetched.Store(true)
 	return a.descCache, nil
 }
 
