@@ -81825,7 +81825,12 @@ func createDockerEngine(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 		return res, err
 	}
 
-	// to override __id implement: id() (string, error)
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	if runtime.HasRecording {
 		args, err = runtime.ResourceFromRecording("docker.engine", res.__id)

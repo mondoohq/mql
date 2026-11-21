@@ -182,7 +182,7 @@ func initDockerContainer(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 	} else {
 		want = scannedDockerContainerID(runtime)
 		if want == "" {
-			return nil, nil, errors.New("docker.container needs a container ID or name unless the asset is a Docker container")
+			return nil, nil, llx.NotApplicable(errors.New("docker.container needs a container ID or name unless the asset is a Docker container"))
 		}
 	}
 
@@ -348,6 +348,11 @@ func (e *mqlDockerEngine) info() (system.Info, error) {
 	}
 	e.infoVal = res.Info
 	return e.infoVal, nil
+}
+
+// id is fixed: a docker resource reaches one engine.
+func (e *mqlDockerEngine) id() (string, error) {
+	return "docker.engine", nil
 }
 
 // dockerEngineName names the engine from the components its version lists:
