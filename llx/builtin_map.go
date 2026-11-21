@@ -3293,7 +3293,7 @@ func mapOrDictV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*Ra
 // dict + - * /
 
 func dictPlusStringV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return dataOpV2(e, bind, chunk, ref, types.Time, func(left any, right any) *RawData {
+	return dataOpV2(e, bind, chunk, ref, types.String, func(left any, right any) *RawData {
 		r := right.(string)
 
 		switch l := left.(type) {
@@ -3310,7 +3310,7 @@ func dictPlusStringV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64)
 }
 
 func stringPlusDictV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) { //nolint:unused
-	return dataOpV2(e, bind, chunk, ref, types.Time, func(left any, right any) *RawData {
+	return dataOpV2(e, bind, chunk, ref, types.String, func(left any, right any) *RawData {
 		l := left.(string)
 
 		switch r := right.(type) {
@@ -3327,7 +3327,7 @@ func stringPlusDictV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64)
 }
 
 func intPlusDictV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return dataOpV2(e, bind, chunk, ref, types.Time, func(left any, right any) *RawData {
+	return dataOpV2(e, bind, chunk, ref, types.Int, func(left any, right any) *RawData {
 		l := left.(int64)
 
 		switch r := right.(type) {
@@ -3346,7 +3346,7 @@ func intPlusDictV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*
 }
 
 func dictPlusIntV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return dataOpV2(e, bind, chunk, ref, types.Time, func(left any, right any) *RawData {
+	return dataOpV2(e, bind, chunk, ref, types.Int, func(left any, right any) *RawData {
 		r := right.(int64)
 
 		switch l := left.(type) {
@@ -3365,7 +3365,7 @@ func dictPlusIntV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*
 }
 
 func floatPlusDictV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return dataOpV2(e, bind, chunk, ref, types.Time, func(left any, right any) *RawData {
+	return dataOpV2(e, bind, chunk, ref, types.Float, func(left any, right any) *RawData {
 		l := left.(float64)
 
 		switch r := right.(type) {
@@ -3384,7 +3384,7 @@ func floatPlusDictV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) 
 }
 
 func dictPlusFloatV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return dataOpV2(e, bind, chunk, ref, types.Time, func(left any, right any) *RawData {
+	return dataOpV2(e, bind, chunk, ref, types.Float, func(left any, right any) *RawData {
 		r := right.(float64)
 
 		switch l := left.(type) {
@@ -3403,7 +3403,7 @@ func dictPlusFloatV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) 
 }
 
 func intMinusDictV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return dataOpV2(e, bind, chunk, ref, types.Time, func(left any, right any) *RawData {
+	return dataOpV2(e, bind, chunk, ref, types.Int, func(left any, right any) *RawData {
 		l := left.(int64)
 
 		switch r := right.(type) {
@@ -3422,7 +3422,7 @@ func intMinusDictV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (
 }
 
 func dictMinusIntV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return dataOpV2(e, bind, chunk, ref, types.Time, func(left any, right any) *RawData {
+	return dataOpV2(e, bind, chunk, ref, types.Int, func(left any, right any) *RawData {
 		r := right.(int64)
 
 		switch l := left.(type) {
@@ -3441,7 +3441,7 @@ func dictMinusIntV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (
 }
 
 func floatMinusDictV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return dataOpV2(e, bind, chunk, ref, types.Time, func(left any, right any) *RawData {
+	return dataOpV2(e, bind, chunk, ref, types.Float, func(left any, right any) *RawData {
 		l := left.(float64)
 
 		switch r := right.(type) {
@@ -3460,7 +3460,7 @@ func floatMinusDictV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64)
 }
 
 func dictMinusFloatV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return dataOpV2(e, bind, chunk, ref, types.Time, func(left any, right any) *RawData {
+	return dataOpV2(e, bind, chunk, ref, types.Float, func(left any, right any) *RawData {
 		r := right.(float64)
 
 		switch l := left.(type) {
@@ -3479,7 +3479,7 @@ func dictMinusFloatV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64)
 }
 
 func intTimesDictV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return dataOpV2(e, bind, chunk, ref, types.Time, func(left any, right any) *RawData {
+	return dataOpV2(e, bind, chunk, ref, types.Int, func(left any, right any) *RawData {
 		l := left.(int64)
 
 		switch r := right.(type) {
@@ -3498,7 +3498,7 @@ func intTimesDictV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (
 }
 
 func dictTimesIntV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return dataOpV2(e, bind, chunk, ref, types.Time, func(left any, right any) *RawData {
+	return dataOpV2(e, bind, chunk, ref, types.Int, func(left any, right any) *RawData {
 		r := right.(int64)
 
 		switch l := left.(type) {
@@ -3517,7 +3517,7 @@ func dictTimesIntV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (
 }
 
 func floatTimesDictV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return dataOpV2(e, bind, chunk, ref, types.Time, func(left any, right any) *RawData {
+	return dataOpV2(e, bind, chunk, ref, types.Float, func(left any, right any) *RawData {
 		l := left.(float64)
 
 		switch r := right.(type) {
@@ -3536,7 +3536,7 @@ func floatTimesDictV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64)
 }
 
 func dictTimesFloatV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return dataOpV2(e, bind, chunk, ref, types.Time, func(left any, right any) *RawData {
+	return dataOpV2(e, bind, chunk, ref, types.Float, func(left any, right any) *RawData {
 		r := right.(float64)
 
 		switch l := left.(type) {
@@ -3555,7 +3555,7 @@ func dictTimesFloatV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64)
 }
 
 func intDividedDictV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return dataOpV2(e, bind, chunk, ref, types.Time, func(left any, right any) *RawData {
+	return dataOpV2(e, bind, chunk, ref, types.Int, func(left any, right any) *RawData {
 		l := left.(int64)
 
 		switch r := right.(type) {
@@ -3574,7 +3574,7 @@ func intDividedDictV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64)
 }
 
 func dictDividedIntV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return dataOpV2(e, bind, chunk, ref, types.Time, func(left any, right any) *RawData {
+	return dataOpV2(e, bind, chunk, ref, types.Int, func(left any, right any) *RawData {
 		r := right.(int64)
 
 		switch l := left.(type) {
@@ -3593,7 +3593,7 @@ func dictDividedIntV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64)
 }
 
 func floatDividedDictV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return dataOpV2(e, bind, chunk, ref, types.Time, func(left any, right any) *RawData {
+	return dataOpV2(e, bind, chunk, ref, types.Float, func(left any, right any) *RawData {
 		l := left.(float64)
 
 		switch r := right.(type) {
@@ -3612,7 +3612,7 @@ func floatDividedDictV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint6
 }
 
 func dictDividedFloatV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return dataOpV2(e, bind, chunk, ref, types.Time, func(left any, right any) *RawData {
+	return dataOpV2(e, bind, chunk, ref, types.Float, func(left any, right any) *RawData {
 		r := right.(float64)
 
 		switch l := left.(type) {

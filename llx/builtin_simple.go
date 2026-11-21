@@ -2059,7 +2059,7 @@ func mapOrStringV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*
 // string + T
 
 func stringPlusStringV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return dataOpV2(e, bind, chunk, ref, types.Time, func(left any, right any) *RawData {
+	return dataOpV2(e, bind, chunk, ref, types.String, func(left any, right any) *RawData {
 		l := left.(string)
 		r := right.(string)
 
@@ -2807,7 +2807,7 @@ func timeInRange(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*Ra
 // stringslice methods
 
 func stringsliceEqString(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return dataOpV2(e, bind, chunk, ref, types.Int, func(left any, right any) *RawData {
+	return dataOpV2(e, bind, chunk, ref, types.String, func(left any, right any) *RawData {
 		l := left.(string)
 		r := right.(string)
 		found := strings.Contains(l, r)
@@ -2819,7 +2819,7 @@ func stringsliceEqString(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint
 }
 
 func stringsliceEqDict(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return dataOpV2(e, bind, chunk, ref, types.Int, func(left any, right any) *RawData {
+	return dataOpV2(e, bind, chunk, ref, types.String, func(left any, right any) *RawData {
 		l := left.(string)
 		ok, err := opStringContainsDict(l, right)
 		if err != nil {
@@ -2833,7 +2833,7 @@ func stringsliceEqDict(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64
 }
 
 func stringsliceEqArrayString(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return dataOpV2(e, bind, chunk, ref, types.Int, func(left any, right any) *RawData {
+	return dataOpV2(e, bind, chunk, ref, types.String, func(left any, right any) *RawData {
 		l := left.(string)
 		arr := right.([]any)
 		for i := range arr {
