@@ -254,6 +254,7 @@ const (
 	ResourceCgroups                                        string = "cgroups"
 	ResourceCgroup                                         string = "cgroup"
 	ResourceDocker                                         string = "docker"
+	ResourceDockerEngine                                   string = "docker.engine"
 	ResourceDockerFile                                     string = "docker.file"
 	ResourceDockerFileStage                                string = "docker.file.stage"
 	ResourceDockerFileOci                                  string = "docker.file.oci"
@@ -1802,6 +1803,10 @@ func init() {
 			// to override args, implement: initDocker(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createDocker,
 		},
+		"docker.engine": {
+			Init:   initDockerEngine,
+			Create: createDockerEngine,
+		},
 		"docker.file": {
 			Init:   initDockerFile,
 			Create: createDockerFile,
@@ -1883,7 +1888,7 @@ func init() {
 			Create: createDockerImage,
 		},
 		"docker.container": {
-			// to override args, implement: initDockerContainer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initDockerContainer,
 			Create: createDockerContainer,
 		},
 		"docker.container.ulimit": {
@@ -10455,6 +10460,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"docker.volumes": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDocker).GetVolumes()).ToDataRes(types.Array(types.Resource("docker.volume")))
 	},
+	"docker.engine": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDocker).GetEngine()).ToDataRes(types.Resource("docker.engine"))
+	},
+	"docker.engine.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerEngine).GetName()).ToDataRes(types.String)
+	},
+	"docker.engine.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerEngine).GetVersion()).ToDataRes(types.String)
+	},
+	"docker.engine.apiVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerEngine).GetApiVersion()).ToDataRes(types.String)
+	},
+	"docker.engine.os": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerEngine).GetOs()).ToDataRes(types.String)
+	},
+	"docker.engine.arch": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerEngine).GetArch()).ToDataRes(types.String)
+	},
 	"docker.file.file": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDockerFile).GetFile()).ToDataRes(types.Resource("file"))
 	},
@@ -10919,6 +10942,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"docker.container.labels": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDockerContainer).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"docker.container.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetCreatedAt()).ToDataRes(types.Time)
 	},
 	"docker.container.hostConfig": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDockerContainer).GetHostConfig()).ToDataRes(types.Dict)
@@ -33986,6 +34012,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDocker).Volumes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"docker.engine": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDocker).Engine, ok = plugin.RawToTValue[*mqlDockerEngine](v.Value, v.Error)
+		return
+	},
+	"docker.engine.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerEngine).__id, ok = v.Value.(string)
+		return
+	},
+	"docker.engine.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerEngine).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.engine.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerEngine).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.engine.apiVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerEngine).ApiVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.engine.os": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerEngine).Os, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.engine.arch": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerEngine).Arch, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"docker.file.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDockerFile).__id, ok = v.Value.(string)
 		return
@@ -34688,6 +34742,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"docker.container.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDockerContainer).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"docker.container.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"docker.container.hostConfig": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -81597,6 +81655,7 @@ type mqlDocker struct {
 	Daemon     plugin.TValue[*mqlDockerDaemon]
 	Networks   plugin.TValue[[]any]
 	Volumes    plugin.TValue[[]any]
+	Engine     plugin.TValue[*mqlDockerEngine]
 }
 
 // createDocker creates a new instance of this resource
@@ -81709,6 +81768,86 @@ func (c *mqlDocker) GetVolumes() *plugin.TValue[[]any] {
 
 		return c.volumes()
 	})
+}
+
+func (c *mqlDocker) GetEngine() *plugin.TValue[*mqlDockerEngine] {
+	return plugin.GetOrCompute[*mqlDockerEngine](&c.Engine, func() (*mqlDockerEngine, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker", c.__id, "engine")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDockerEngine), nil
+			}
+		}
+
+		return c.engine()
+	})
+}
+
+// mqlDockerEngine for the docker.engine resource
+type mqlDockerEngine struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDockerEngineInternal it will be used here
+	Name       plugin.TValue[string]
+	Version    plugin.TValue[string]
+	ApiVersion plugin.TValue[string]
+	Os         plugin.TValue[string]
+	Arch       plugin.TValue[string]
+}
+
+// createDockerEngine creates a new instance of this resource
+func createDockerEngine(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDockerEngine{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("docker.engine", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDockerEngine) MqlName() string {
+	return "docker.engine"
+}
+
+func (c *mqlDockerEngine) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDockerEngine) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDockerEngine) GetVersion() *plugin.TValue[string] {
+	return &c.Version
+}
+
+func (c *mqlDockerEngine) GetApiVersion() *plugin.TValue[string] {
+	return &c.ApiVersion
+}
+
+func (c *mqlDockerEngine) GetOs() *plugin.TValue[string] {
+	return &c.Os
+}
+
+func (c *mqlDockerEngine) GetArch() *plugin.TValue[string] {
+	return &c.Arch
 }
 
 // mqlDockerFile for the docker.file resource
@@ -83529,6 +83668,7 @@ type mqlDockerContainer struct {
 	State               plugin.TValue[string]
 	Status              plugin.TValue[string]
 	Labels              plugin.TValue[map[string]any]
+	CreatedAt           plugin.TValue[*time.Time]
 	HostConfig          plugin.TValue[any]
 	SourceImage         plugin.TValue[*mqlDockerImage]
 	Privileged          plugin.TValue[bool]
@@ -83636,6 +83776,12 @@ func (c *mqlDockerContainer) GetStatus() *plugin.TValue[string] {
 
 func (c *mqlDockerContainer) GetLabels() *plugin.TValue[map[string]any] {
 	return &c.Labels
+}
+
+func (c *mqlDockerContainer) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.CreatedAt, func() (*time.Time, error) {
+		return c.createdAt()
+	})
 }
 
 func (c *mqlDockerContainer) GetHostConfig() *plugin.TValue[any] {

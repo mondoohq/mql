@@ -78,12 +78,26 @@ func (e *dockerEngineDiscovery) ContainerInfo(name string) (ContainerInfo, error
 	// fetch docker specific metadata
 	labels := map[string]string{}
 	labels["docker.io/container-id"] = cdata.ID
-	labels["docker.io/image-name"] = cdata.Image
+	labels["docker.io/image-name"] = dockerContainerImageName(cdata)
 	labels["docker.io/names"] = cName
+	// Inspect's Image is the ID of the image the container runs.
+	if strings.HasPrefix(cdata.Image, "sha256:") {
+		labels["mondoo.com/image-id"] = cdata.Image
+	}
 
 	ci.Labels = labels
 
 	return ci, nil
+}
+
+// dockerContainerImageName is the image reference the container was created
+// from (nginx:1.27), which inspect keeps in Config.Image; its Image field is
+// the image ID.
+func dockerContainerImageName(c container.InspectResponse) string {
+	if c.Config != nil && c.Config.Image != "" {
+		return c.Config.Image
+	}
+	return c.Image
 }
 
 type ImageInfo struct {

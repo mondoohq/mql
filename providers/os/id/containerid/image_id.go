@@ -25,6 +25,15 @@ func ShortContainerImageID(id string) string {
 	return id
 }
 
+const mondooContainerIDPrefix = "//platformid.api.mondoo.app/runtime/docker/containers/"
+
 func MondooContainerID(id string) string {
-	return "//platformid.api.mondoo.app/runtime/docker/containers/" + id
+	return mondooContainerIDPrefix + id
+}
+
+// ContainerIDFromPlatformID returns the container ID in a platform ID made by
+// MondooContainerID.
+func ContainerIDFromPlatformID(platformID string) (string, bool) {
+	id, ok := strings.CutPrefix(platformID, mondooContainerIDPrefix)
+	return id, ok && id != ""
 }
