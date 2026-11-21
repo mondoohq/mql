@@ -11618,6 +11618,63 @@ ipfilter @defaults("enabled") {
   //
   // The active rules can differ from this file until it is reloaded.
   file() file
+// IPFW packet filter
+//
+// The ipfw firewall built into FreeBSD. Check `enabled` to confirm ipfw is
+// filtering, then audit the loaded `rules` in evaluation order and
+// `defaultAccept`, which decides what the final rule 65535 does with a packet
+// no other rule matched. Reading the rules needs root.
+ipfw @defaults("enabled") {
+  // Whether ipfw is enabled
+  //
+  // The net.inet.ip.fw.enable sysctl. False while the ipfw kernel module is
+  // not loaded.
+  enabled() bool
+  // Rules of the loaded ruleset, in evaluation order
+  //
+  // One rule per entry as `ipfw list` prints it, starting with the rule
+  // number, for example "00100 allow ip from any to any via lo0". Empty
+  // while the ipfw kernel module is not loaded.
+  rules() []string
+  // Whether the default rule accepts packets
+  //
+  // The net.inet.ip.fw.default_to_accept sysctl: true when rule 65535 is
+  // `allow ip from any to any`, false when it is `deny ip from any to any`,
+  // the default. False while the ipfw kernel module is not loaded.
+  defaultAccept() bool
+}
+
+// GELI disk encryption
+//
+// The GELI-encrypted providers attached on a FreeBSD host, as `geli list`
+// reports them. For example `geli.providers.all(keyLength >= 256)` asserts
+// that every attached provider uses a 256-bit key, and
+// `geli.providers.none(state == "SUSPENDED")` that none is suspended.
+// Providers that exist on disk but are not attached are not listed. On some
+// systems `geli list` needs root.
+geli {
+  // Attached GELI providers
+  //
+  // Empty when the GELI kernel class (geom_eli) is not loaded.
+  providers() []geli.provider
+}
+
+// Attached GELI provider
+private geli.provider @defaults("name encryptionAlgorithm keyLength") {
+  // Name of the decrypted provider, for example ada0p3.eli
+  name string
+  // Underlying encrypted provider, for example ada0p3
+  device string
+  // Encryption algorithm, for example AES-XTS
+  encryptionAlgorithm string
+  // Encryption key length in bits
+  keyLength int
+  // Data authentication algorithm, for example HMAC/SHA256
+  //
+  // Empty when the provider was initialized without data authentication.
+  authenticationAlgorithm string
+  // State: ACTIVE, or SUSPENDED when the keys have been removed from memory
+  state string
 }
 
 // fstab persistent mount table
