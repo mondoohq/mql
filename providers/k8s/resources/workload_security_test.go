@@ -88,6 +88,7 @@ func TestWorkloadSecurityRollups(t *testing.T) {
 		assert.False(t, d.GetUsesHostNamespaces().Data, "usesHostNamespaces")
 		assert.False(t, d.GetUsesHostPath().Data, "usesHostPath")
 		assert.False(t, d.GetAutomountServiceAccountToken().Data, "automountServiceAccountToken")
+		assert.Equal(t, "web-runner", d.GetServiceAccountName().Data, "serviceAccountName")
 		assert.False(t, d.GetHostNetwork().Data, "hostNetwork")
 		// Pod-level RuntimeDefault profile applies to the container.
 		assert.False(t, d.GetUsesUnconfinedSeccomp().Data, "usesUnconfinedSeccomp")
@@ -208,6 +209,7 @@ type rollupReader interface {
 	GetUsesHostNamespaces() *plugin.TValue[bool]
 	GetUsesHostPath() *plugin.TValue[bool]
 	GetAutomountServiceAccountToken() *plugin.TValue[bool]
+	GetServiceAccountName() *plugin.TValue[string]
 	GetHostNetwork() *plugin.TValue[bool]
 	GetHostPID() *plugin.TValue[bool]
 	GetHostIPC() *plugin.TValue[bool]
@@ -261,6 +263,9 @@ func TestWorkloadSecurityRollups_AllKinds(t *testing.T) {
 			assert.False(t, r.GetUsesHostPath().Data, "usesHostPath")
 			// automountServiceAccountToken is unset, which defaults to true.
 			assert.True(t, r.GetAutomountServiceAccountToken().Data, "automountServiceAccountToken")
+			// No ServiceAccount is named.
+			assert.Empty(t, r.GetServiceAccountName().Data, "serviceAccountName")
+			assert.NoError(t, r.GetServiceAccountName().Error, "serviceAccountName")
 			assert.False(t, r.GetHostNetwork().Data, "hostNetwork")
 			assert.False(t, r.GetHostPID().Data, "hostPID")
 			assert.False(t, r.GetHostIPC().Data, "hostIPC")

@@ -797,6 +797,8 @@ private k8s.pod @defaults("namespace name created") @context("k8s.context") @roo
 // availableReplicas, updatedReplicas, unavailableReplicas, and conditions. The
 // pods field returns the pods currently backing the deployment.
 private k8s.deployment @defaults("namespace name desiredReplicas readyReplicas created") @context("k8s.context") @root {
+  // Name of the ServiceAccount the pods run as, empty when the template names none (they then run as the namespace's `default`)
+  serviceAccountName() string
   // Whether an API token is automatically mounted for the ServiceAccount
   automountServiceAccountToken() bool
   // Whether the pod shares the host network namespace
@@ -987,6 +989,8 @@ private k8s.deployment @defaults("namespace name desiredReplicas readyReplicas c
 // numberMisscheduled, and updatedNumberScheduled. The pods field returns the
 // daemon pods currently running.
 private k8s.daemonset @defaults("namespace name desiredNumberScheduled numberReady created") @context("k8s.context") @root {
+  // Name of the ServiceAccount the pods run as, empty when the template names none (they then run as the namespace's `default`)
+  serviceAccountName() string
   // Whether an API token is automatically mounted for the ServiceAccount
   automountServiceAccountToken() bool
   // Whether the pod shares the host network namespace
@@ -1167,6 +1171,8 @@ private k8s.daemonset @defaults("namespace name desiredNumberScheduled numberRea
 // currentReplicas, updatedReplicas, currentRevision, updateRevision, and
 // conditions, and the pods field returns the backing pods.
 private k8s.statefulset @defaults("namespace name desiredReplicas readyReplicas created") @context("k8s.context") @root {
+  // Name of the ServiceAccount the pods run as, empty when the template names none (they then run as the namespace's `default`)
+  serviceAccountName() string
   // Whether an API token is automatically mounted for the ServiceAccount
   automountServiceAccountToken() bool
   // Whether the pod shares the host network namespace
@@ -1364,6 +1370,8 @@ private k8s.statefulset @defaults("namespace name desiredReplicas readyReplicas 
 // readyReplicas, availableReplicas, fullyLabeledReplicas, and conditions. The
 // pods field returns the pods the ReplicaSet owns.
 private k8s.replicaset @defaults("namespace name desiredReplicas readyReplicas created") @context("k8s.context") @root {
+  // Name of the ServiceAccount the pods run as, empty when the template names none (they then run as the namespace's `default`)
+  serviceAccountName() string
   // Whether an API token is automatically mounted for the ServiceAccount
   automountServiceAccountToken() bool
   // Whether the pod shares the host network namespace
@@ -1543,6 +1551,8 @@ private k8s.replicaset @defaults("namespace name desiredReplicas readyReplicas c
 // active, succeeded, failed, ready, startTime, completionTime, and conditions.
 // The pods field returns the pods the job has created.
 private k8s.job @defaults("namespace name succeeded failed created") @context("k8s.context") @root {
+  // Name of the ServiceAccount the pods run as, empty when the template names none (they then run as the namespace's `default`)
+  serviceAccountName() string
   // Whether an API token is automatically mounted for the ServiceAccount
   automountServiceAccountToken() bool
   // Whether the pod shares the host network namespace
@@ -1738,6 +1748,8 @@ private k8s.job @defaults("namespace name succeeded failed created") @context("k
 // running, jobs returns every job the CronJob still owns, and the shared pod
 // template is available through podSpec, containers, and initContainers.
 private k8s.cronjob @defaults("namespace name schedule suspend created") @context("k8s.context") @root {
+  // Name of the ServiceAccount the pods run as, empty when the template names none (they then run as the namespace's `default`)
+  serviceAccountName() string
   // Whether an API token is automatically mounted for the ServiceAccount
   automountServiceAccountToken() bool
   // Whether the pod shares the host network namespace

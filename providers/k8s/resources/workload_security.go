@@ -337,6 +337,14 @@ func (k *mqlK8sDeployment) securitySpec() (*corev1.PodSpec, error) {
 	return resources.GetPodSpec(d)
 }
 
+func (k *mqlK8sDeployment) serviceAccountName() (string, error) {
+	spec, err := k.securitySpec()
+	if err != nil || spec == nil {
+		return "", err
+	}
+	return spec.ServiceAccountName, nil
+}
+
 func (k *mqlK8sDeployment) automountServiceAccountToken() (bool, error) {
 	spec, err := k.securitySpec()
 	if err != nil {
@@ -432,6 +440,14 @@ func (k *mqlK8sDaemonset) securitySpec() (*corev1.PodSpec, error) {
 		return nil, err
 	}
 	return resources.GetPodSpec(d)
+}
+
+func (k *mqlK8sDaemonset) serviceAccountName() (string, error) {
+	spec, err := k.securitySpec()
+	if err != nil || spec == nil {
+		return "", err
+	}
+	return spec.ServiceAccountName, nil
 }
 
 func (k *mqlK8sDaemonset) automountServiceAccountToken() (bool, error) {
@@ -531,6 +547,14 @@ func (k *mqlK8sStatefulset) securitySpec() (*corev1.PodSpec, error) {
 	return resources.GetPodSpec(s)
 }
 
+func (k *mqlK8sStatefulset) serviceAccountName() (string, error) {
+	spec, err := k.securitySpec()
+	if err != nil || spec == nil {
+		return "", err
+	}
+	return spec.ServiceAccountName, nil
+}
+
 func (k *mqlK8sStatefulset) automountServiceAccountToken() (bool, error) {
 	spec, err := k.securitySpec()
 	if err != nil {
@@ -626,6 +650,14 @@ func (k *mqlK8sReplicaset) securitySpec() (*corev1.PodSpec, error) {
 		return nil, err
 	}
 	return resources.GetPodSpec(r)
+}
+
+func (k *mqlK8sReplicaset) serviceAccountName() (string, error) {
+	spec, err := k.securitySpec()
+	if err != nil || spec == nil {
+		return "", err
+	}
+	return spec.ServiceAccountName, nil
 }
 
 func (k *mqlK8sReplicaset) automountServiceAccountToken() (bool, error) {
@@ -725,6 +757,14 @@ func (k *mqlK8sJob) securitySpec() (*corev1.PodSpec, error) {
 	return resources.GetPodSpec(j)
 }
 
+func (k *mqlK8sJob) serviceAccountName() (string, error) {
+	spec, err := k.securitySpec()
+	if err != nil || spec == nil {
+		return "", err
+	}
+	return spec.ServiceAccountName, nil
+}
+
 func (k *mqlK8sJob) automountServiceAccountToken() (bool, error) {
 	spec, err := k.securitySpec()
 	if err != nil {
@@ -820,6 +860,14 @@ func (k *mqlK8sCronjob) securitySpec() (*corev1.PodSpec, error) {
 		return nil, err
 	}
 	return resources.GetPodSpec(c)
+}
+
+func (k *mqlK8sCronjob) serviceAccountName() (string, error) {
+	spec, err := k.securitySpec()
+	if err != nil || spec == nil {
+		return "", err
+	}
+	return spec.ServiceAccountName, nil
 }
 
 func (k *mqlK8sCronjob) automountServiceAccountToken() (bool, error) {

@@ -279,6 +279,7 @@ k8s.cronjob.runsAsRoot 13.2.2
 k8s.cronjob.runsPrivileged 13.2.2
 k8s.cronjob.schedule 13.0.16
 k8s.cronjob.securityContext 13.2.2
+k8s.cronjob.serviceAccountName 14.2.10
 k8s.cronjob.startingDeadlineSeconds 13.0.16
 k8s.cronjob.successfulJobsHistoryLimit 13.0.16
 k8s.cronjob.suspend 13.0.16
@@ -367,6 +368,7 @@ k8s.daemonset.runsAsRoot 13.2.2
 k8s.daemonset.runsPrivileged 13.2.2
 k8s.daemonset.securityContext 13.2.2
 k8s.daemonset.selector 13.0.16
+k8s.daemonset.serviceAccountName 14.2.10
 k8s.daemonset.uid 9.0.0
 k8s.daemonset.unpinnedImages 13.3.1
 k8s.daemonset.updateStrategy 13.0.16
@@ -438,6 +440,7 @@ k8s.deployment.runsAsRoot 13.2.2
 k8s.deployment.runsPrivileged 13.2.2
 k8s.deployment.securityContext 13.2.2
 k8s.deployment.selector 13.0.16
+k8s.deployment.serviceAccountName 14.2.10
 k8s.deployment.strategy 13.0.16
 k8s.deployment.uid 9.0.0
 k8s.deployment.unavailableReplicas 13.0.16
@@ -838,6 +841,7 @@ k8s.job.runsAsRoot 13.2.2
 k8s.job.runsPrivileged 13.2.2
 k8s.job.securityContext 13.2.2
 k8s.job.selector 13.0.16
+k8s.job.serviceAccountName 14.2.10
 k8s.job.startTime 13.0.16
 k8s.job.succeeded 13.0.16
 k8s.job.suspend 13.0.16
@@ -1455,6 +1459,7 @@ k8s.replicaset.runsAsRoot 13.2.2
 k8s.replicaset.runsPrivileged 13.2.2
 k8s.replicaset.securityContext 13.2.2
 k8s.replicaset.selector 13.0.16
+k8s.replicaset.serviceAccountName 14.2.10
 k8s.replicaset.uid 9.0.0
 k8s.replicaset.unpinnedImages 13.3.1
 k8s.replicaset.usesAlwaysImagePullPolicy 13.3.1
@@ -1730,6 +1735,7 @@ k8s.statefulset.runsAsRoot 13.2.2
 k8s.statefulset.runsPrivileged 13.2.2
 k8s.statefulset.securityContext 13.2.2
 k8s.statefulset.selector 13.0.16
+k8s.statefulset.serviceAccountName 14.2.10
 k8s.statefulset.serviceName 13.0.16
 k8s.statefulset.uid 9.0.0
 k8s.statefulset.unpinnedImages 13.3.1
