@@ -85,3 +85,12 @@ func TestEmrClusterIsDiscoverable(t *testing.T) {
 		})
 	}
 }
+
+func TestRegionalAssetName(t *testing.T) {
+	// Synthetic: AWS creates a "primary" Athena workgroup in every region, so the
+	// region is what tells two of them apart.
+	assert.Equal(t, "primary (us-east-1)", regionalAssetName("primary", "us-east-1"))
+	assert.Equal(t, "primary (eu-west-1)", regionalAssetName("primary", "eu-west-1"))
+	// Synthetic: no region known, the name is left as is rather than "name ()".
+	assert.Equal(t, "primary", regionalAssetName("primary", ""))
+}
