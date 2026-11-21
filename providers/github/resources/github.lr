@@ -1858,12 +1858,61 @@ private github.branch @defaults("name") {
   headCommitSha string
   // Repository branch protection rules
   protectionRules() github.branchprotection
+  // Rules that apply to the branch from every active ruleset (repository and organization)
+  //
+  // Unlike `protectionRules`, which is classic branch protection only, these
+  // are the repository rules GitHub enforces on the branch, merged across the
+  // rulesets that target it. A branch protected only by rulesets reports
+  // `isProtected` false but has its requirements here.
+  rules() github.branchRules
   // Repository branch repository name
   repoName string
   // Repository branch owner
   owner github.user
   // Whether the branch is the default branch
   isDefault bool
+}
+
+// Repository rules in effect on a GitHub branch
+//
+// The rules of every active ruleset that targets the branch, merged: a rule is
+// required when any ruleset requires it, and the approval count is the highest
+// any ruleset asks for. `rulesetIds` lists the rulesets they come from.
+private github.branchRules @defaults("requiresPullRequest requiredApprovingReviewCount blocksForcePushes") {
+  // Whether changes must be made through a pull request
+  requiresPullRequest bool
+  // Approving reviews a pull request needs, the highest any ruleset requires
+  requiredApprovingReviewCount int
+  // Whether a code owner must approve changes to files they own
+  requireCodeOwnerReview bool
+  // Whether a new push dismisses earlier approvals
+  dismissStaleReviewsOnPush bool
+  // Whether the most recent push must be approved by someone other than its author
+  requireLastPushApproval bool
+  // Whether every review thread must be resolved before merging
+  requiredReviewThreadResolution bool
+  // Whether status checks must pass before merging
+  requiresStatusChecks bool
+  // Status checks that must pass, by context name
+  requiredStatusChecks []string
+  // Whether commits must be signed
+  requiresSignatures bool
+  // Whether merge commits are blocked (linear history)
+  requiresLinearHistory bool
+  // Whether force pushes are blocked
+  blocksForcePushes bool
+  // Whether deleting the branch is blocked
+  blocksDeletions bool
+  // Whether only users who can bypass the rules may push to the branch
+  restrictsUpdates bool
+  // Whether changes must deploy to environments before merging
+  requiresDeployments bool
+  // Whether code scanning results must pass before merging
+  requiresCodeScanning bool
+  // Whether pull requests merge through a merge queue
+  requiresMergeQueue bool
+  // IDs of the rulesets the rules come from
+  rulesetIds []int
 }
 
 // GitHub branch protection rule
