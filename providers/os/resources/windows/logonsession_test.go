@@ -97,13 +97,15 @@ func TestLogonTypeName(t *testing.T) {
 	assert.Equal(t, "NewCredentials", LogonTypeName(9))
 	assert.Equal(t, "RemoteInteractive", LogonTypeName(10))
 	assert.Equal(t, "CachedInteractive", LogonTypeName(11))
+	assert.Equal(t, "Proxy", LogonTypeName(6))
+	assert.Equal(t, "CachedRemoteInteractive", LogonTypeName(12))
+	assert.Equal(t, "CachedUnlock", LogonTypeName(13))
 
 	// Outside the documented set the name is empty rather than guessed, so a
-	// caller can tell an unknown type from a known one. 0 and 1 are reported
-	// by the system for sessions that predate a real logon.
+	// caller can tell an unknown type from a known one. 0 is the SYSTEM
+	// session's type, which the documentation describes but does not name.
 	assert.Empty(t, LogonTypeName(0))
 	assert.Empty(t, LogonTypeName(1))
-	assert.Empty(t, LogonTypeName(6))
-	assert.Empty(t, LogonTypeName(12))
+	assert.Empty(t, LogonTypeName(14))
 	assert.Empty(t, LogonTypeName(-1))
 }

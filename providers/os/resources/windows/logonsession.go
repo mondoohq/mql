@@ -29,6 +29,18 @@ import (
 // when it is unreachable, so it is guarded and the SID is simply absent in
 // that case rather than failing the whole collection.
 //
+// Win32_LoggedOnUser names the machine as the domain of every account the
+// system creates (SYSTEM, LOCAL SERVICE, NETWORK SERVICE, IUSR, DWM-1,
+// UMFD-0, an IIS application pool), and machine\SYSTEM does not translate.
+// For an account under the machine's name that did not translate, the SID is
+// read from the Win32_SystemAccount instance the association points at, which
+// carries it and does not depend on the display language. The virtual
+// accounts are not system accounts in WMI, so they are translated under the
+// authorities that own them. The domain is then read back from the SID, so
+// SYSTEM reports NT AUTHORITY rather than the machine name. The fallback only
+// runs for the machine's own name: a domain account that did not translate
+// keeps an absent SID rather than being matched by name to another account.
+//
 // ConvertTo-Json is forced to a list with @(): PowerShell serializes a single
 // object as an object rather than a one-element array, which would otherwise
 // need two parse paths.
@@ -41,14 +53,32 @@ Get-CimInstance -ClassName Win32_LoggedOnUser | ForEach-Object {
     $accounts[$id] = $_.Antecedent
   }
 }
+function Get-AccountSid($domain, $name) {
+  try {
+    (New-Object System.Security.Principal.NTAccount($domain, $name)).Translate([System.Security.Principal.SecurityIdentifier])
+  } catch { $null }
+}
+$authorities = @('Window Manager', 'Font Driver Host', 'IIS APPPOOL', 'NT SERVICE')
 @(Get-CimInstance -ClassName Win32_LogonSession | ForEach-Object {
   $a = $accounts[$_.LogonId]
   $sid = $null
+  $domain = $a.Domain
   if ($a -and $a.Name) {
-    try {
-      $nt = New-Object System.Security.Principal.NTAccount($a.Domain, $a.Name)
-      $sid = $nt.Translate([System.Security.Principal.SecurityIdentifier]).Value
-    } catch {}
+    $s = Get-AccountSid $a.Domain $a.Name
+    if (-not $s -and $a.Domain -eq $env:COMPUTERNAME) {
+      $c = Get-CimInstance -InputObject $a
+      if ($c.SID) {
+        try { $s = New-Object System.Security.Principal.SecurityIdentifier($c.SID) } catch {}
+      }
+      foreach ($d in $authorities) {
+        if ($s) { break }
+        $s = Get-AccountSid $d $a.Name
+      }
+      if ($s) {
+        try { $domain = $s.Translate([System.Security.Principal.NTAccount]).Value.Split('\')[0] } catch {}
+      }
+    }
+    if ($s) { $sid = $s.Value }
   }
   $start = $null
   if ($_.StartTime) { $start = $_.StartTime.ToUniversalTime().ToString('o') }
@@ -58,7 +88,7 @@ Get-CimInstance -ClassName Win32_LoggedOnUser | ForEach-Object {
     AuthenticationPackage = $_.AuthenticationPackage
     StartTime = $start
     AccountName = $a.Name
-    AccountDomain = $a.Domain
+    AccountDomain = $domain
     Sid = $sid
   }
 }) | ConvertTo-Json -Compress -Depth 3
@@ -88,22 +118,26 @@ type LogonSession struct {
 
 // logonTypeNames maps the documented Win32 logon types to their names.
 //
-// The set is closed: these are the values SECURITY_LOGON_TYPE defines, and a
-// type outside it is reported as an empty name rather than guessed at, so a
+// The set is closed: these are the names the Win32_LogonSession documentation
+// gives, and a type outside it has no name rather than a guessed one, so a
 // caller can tell an unknown type from a known one.
 //
-// 1 is absent deliberately. It exists in the enumeration as an internal value
-// the LSA never reports on a session.
+// 0 is absent deliberately: the documentation describes it as used only by
+// the System account and gives it no name. 1 is an internal value the LSA
+// never reports on a session.
 var logonTypeNames = map[int64]string{
 	2:  "Interactive",
 	3:  "Network",
 	4:  "Batch",
 	5:  "Service",
+	6:  "Proxy",
 	7:  "Unlock",
 	8:  "NetworkCleartext",
 	9:  "NewCredentials",
 	10: "RemoteInteractive",
 	11: "CachedInteractive",
+	12: "CachedRemoteInteractive",
+	13: "CachedUnlock",
 }
 
 // LogonTypeName renders a logon type as its documented name, empty for a type
