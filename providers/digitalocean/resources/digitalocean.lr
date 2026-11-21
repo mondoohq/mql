@@ -136,12 +136,16 @@ digitalocean @root {
 digitalocean.account @defaults("email status") {
   // Account email
   email string
+  // Display name of the account owner
+  name string
   // Account UUID
   uuid string
   // Droplet limit
   dropletLimit int
   // Floating IP limit
   floatingIpLimit int
+  // Reserved IP limit
+  reservedIpLimit int
   // Volume limit
   volumeLimit int
   // Email verified
@@ -708,6 +712,19 @@ digitalocean.database @defaults("id name engine") {
   engine string
   // Database engine version
   version string
+  // Date DigitalOcean stops supporting the cluster's engine version
+  //
+  // The end-of-life date DigitalOcean publishes for this engine and
+  // version. After it, the version no longer receives updates and
+  // clusters still on it are upgraded or retired. Null when no date is
+  // published for the version.
+  versionEndOfLife() time
+  // Date DigitalOcean stops offering the cluster's engine version for new clusters
+  //
+  // The end-of-availability date DigitalOcean publishes for this engine
+  // and version. After it, new clusters can no longer be created on the
+  // version. Null when no date is published for the version.
+  versionEndOfAvailability() time
   // Number of nodes
   numNodes int
   // Size slug
@@ -1279,6 +1296,12 @@ digitalocean.loadBalancer @defaults("id name status") {
   droplets() []digitalocean.droplet
   // Tags
   tags []string
+  // Droplet tag that selects the load balancer's backends
+  //
+  // Every droplet carrying this tag receives the load balancer's traffic.
+  // This is distinct from `tags`, which label the load balancer itself.
+  // Empty when the backends are listed by droplet ID instead.
+  backendTag string
   // Listeners the load balancer accepts connections on
   //
   // One entry per forwarding rule, carrying the protocol and port traffic

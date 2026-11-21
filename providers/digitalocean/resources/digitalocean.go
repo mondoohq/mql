@@ -55,9 +55,11 @@ func initDigitaloceanAccount(runtime *plugin.Runtime, args map[string]*llx.RawDa
 		return nil, nil, errors.New("the DigitalOcean API returned no account")
 	}
 	args["email"] = llx.StringData(acct.Email)
+	args["name"] = llx.StringData(acct.Name)
 	args["uuid"] = llx.StringData(acct.UUID)
 	args["dropletLimit"] = llx.IntData(int64(acct.DropletLimit))
 	args["floatingIpLimit"] = llx.IntData(int64(acct.FloatingIPLimit))
+	args["reservedIpLimit"] = llx.IntData(int64(acct.ReservedIPLimit))
 	args["volumeLimit"] = llx.IntData(int64(acct.VolumeLimit))
 	args["emailVerified"] = llx.BoolData(acct.EmailVerified)
 	args["status"] = llx.StringData(acct.Status)
