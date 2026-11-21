@@ -29896,3 +29896,45 @@ aix.audit @defaults("running binMode streamMode") {
   // Audit classes recorded per user (users stanza)
   users() map[string][]string
 }
+
+// AIX logical partition
+//
+// The logical partition (LPAR) this AIX system runs in, as `lparstat -i`
+// reports it: its name and number, whether its processors are shared or
+// dedicated and capped or uncapped, its entitled capacity, virtual
+// processors, simultaneous multithreading and online memory. Fields
+// lparstat does not report, such as the shared pool of a dedicated
+// partition, are null. Needs no root. AIX only.
+aix.lpar @defaults("partitionName type mode entitledCapacity") {
+  // Name of the partition as defined on the HMC (Partition Name)
+  partitionName() string
+  // Number of the partition (Partition Number)
+  partitionNumber() int
+  // Processor type of the partition (Type)
+  //
+  // Shared or Dedicated, followed by -SMT when simultaneous multithreading
+  // is on and the thread count when it is above 2, for example
+  // Shared-SMT-4 or Dedicated-SMT.
+  type() string
+  // Processor mode of the partition (Mode)
+  //
+  // Capped or Uncapped for shared partitions, Capped or Donating for
+  // dedicated ones.
+  mode() string
+  // Processing units the partition is entitled to (Entitled Capacity)
+  entitledCapacity() float
+  // Virtual processors online (Online Virtual CPUs)
+  onlineVirtualCpus() int
+  // Maximum virtual processors the partition can have (Maximum Virtual CPUs)
+  maxVirtualCpus() int
+  // Hardware threads per processor, from the partition type
+  //
+  // 1 when simultaneous multithreading is off.
+  smtThreads() int
+  // Shared processor pool the partition draws from (Shared Pool ID)
+  //
+  // Null for a dedicated partition.
+  sharedPoolId() int
+  // Memory online in the partition, in bytes (Online Memory)
+  onlineMemoryBytes() int
+}

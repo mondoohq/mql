@@ -130,6 +130,17 @@ aix.ipsec.filter.version 14.19.1
 aix.ipsec.filters 14.19.1
 aix.ipsec.ipv4Active 14.19.1
 aix.ipsec.ipv6Active 14.19.1
+aix.lpar 14.46.1
+aix.lpar.entitledCapacity 14.46.1
+aix.lpar.maxVirtualCpus 14.46.1
+aix.lpar.mode 14.46.1
+aix.lpar.onlineMemoryBytes 14.46.1
+aix.lpar.onlineVirtualCpus 14.46.1
+aix.lpar.partitionName 14.46.1
+aix.lpar.partitionNumber 14.46.1
+aix.lpar.sharedPoolId 14.46.1
+aix.lpar.smtThreads 14.46.1
+aix.lpar.type 14.46.1
 aix.security.limit 14.19.1
 aix.security.limit.attributes 14.19.1
 aix.security.limit.core 14.19.1
