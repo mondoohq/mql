@@ -134,9 +134,10 @@ func binaryCandidatePaths(conn shared.Connection, binaryName string) []string {
 // scan's PATH is not the users' PATH: sudo replaces it with secure_path, which
 // on RHEL, Fedora and their rebuilds is /sbin:/bin:/usr/sbin:/usr/bin and so
 // leaves out /usr/local/bin, where `npm install -g` and the Ollama install
-// script put their binaries. Only root-owned system directories are listed;
-// a user's own bin directory is never searched, so a root scan does not run a
-// binary the user can replace.
+// script put their binaries. A user's own bin directory is never searched.
+// These directories can still belong to a user (Homebrew's /opt/homebrew/bin)
+// or link into a tree a user owns, so finding a binary here does not make it
+// safe to run: see ResolveTrustedExecutable.
 var systemBinaryDirs = []string{
 	"/usr/local/bin",
 	"/usr/bin",

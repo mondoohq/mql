@@ -40,6 +40,7 @@ import (
 	"go.mondoo.com/mql/providers/os/resources"
 	"go.mondoo.com/mql/providers/os/resources/discovery/docker_engine"
 	"go.mondoo.com/mql/providers/os/resources/discovery/mcp_servers"
+	"go.mondoo.com/mql/providers/os/resources/packages"
 	"go.mondoo.com/mql/utils/stringx"
 )
 
@@ -118,6 +119,7 @@ func (s *Service) StoreData(req *plugin.StoreReq) (*plugin.StoreRes, error) {
 // Disconnect drops the connection's detection state along with the connection.
 func (s *Service) Disconnect(req *plugin.DisconnectReq) (*plugin.DisconnectRes, error) {
 	s.deferredDetects.Delete(req.Connection)
+	packages.ForgetConnection(req.Connection)
 	return s.Service.Disconnect(req)
 }
 
