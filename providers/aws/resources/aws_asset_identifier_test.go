@@ -57,6 +57,12 @@ func TestGetAssetIdentifier(t *testing.T) {
 		assert.Empty(t, getAssetIdentifier(testAwsIdentifierRuntime(connection.PlatformS3Bucket, "AWS Account 010438491650", []string{"arn:aws:sts::010438491650"}), connection.PlatformS3Bucket))
 	})
 
+	t.Run("returns the arn in the GovCloud and China partitions", func(t *testing.T) {
+		for _, partitionArn := range []string{"arn:aws-us-gov:s3:::gov-bucket", "arn:aws-cn:s3:::cn-bucket"} {
+			assert.Equal(t, partitionArn, getAssetIdentifier(testAwsIdentifierRuntime(connection.PlatformS3Bucket, "bucket", []string{partitionArn}), connection.PlatformS3Bucket))
+		}
+	})
+
 	t.Run("returns empty when no platform ID has the arn:aws: prefix", func(t *testing.T) {
 		assert.Empty(t, getAssetIdentifier(testAwsIdentifierRuntime(connection.PlatformS3Bucket, "some-asset", []string{
 			"//platformid.api.mondoo.app/runtime/aws/accounts/010438491650",

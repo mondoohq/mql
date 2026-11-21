@@ -2688,6 +2688,23 @@ func (a *mqlAwsEc2Instance) ssm() (any, error) {
 	return res, nil
 }
 
+// ssmInstance is the Systems Manager managed node for the instance, null when
+// the instance is not registered with Systems Manager.
+func (a *mqlAwsEc2Instance) ssmInstance() (*mqlAwsSsmInstance, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	arnVal := ssmInstanceArn(conn.AccountId(), a.Region.Data, a.InstanceId.Data)
+	res, err := NewResource(a.MqlRuntime, "aws.ssm.instance",
+		map[string]*llx.RawData{"arn": llx.StringData(arnVal)})
+	if errors.Is(err, errSsmInstanceNotFound) {
+		a.SsmInstance.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsSsmInstance), nil
+}
+
 func (a *mqlAwsEc2Instance) patchState() (any, error) {
 	var res any
 	instanceId := a.InstanceId.Data

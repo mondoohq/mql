@@ -540,9 +540,10 @@ func getAssetIdentifier(runtime *plugin.Runtime, platform string) string {
 		return ""
 	}
 
+	// Any partition: arn:aws: (commercial), arn:aws-us-gov: and arn:aws-cn:.
 	arnStr := ""
 	for _, id := range a.PlatformIds {
-		if strings.HasPrefix(id, "arn:aws:") {
+		if strings.HasPrefix(id, "arn:aws") {
 			if _, err := arn.Parse(id); err == nil {
 				arnStr = id
 			} else {

@@ -250,8 +250,9 @@ func (a *mqlAwsSsm) getInstances(conn *connection.AwsConnection) []*jobpool.Job 
 	return tasks
 }
 
+// ssmInstanceArn is a managed node's ARN, in the partition of its region.
 func ssmInstanceArn(account string, region string, id string) string {
-	return fmt.Sprintf(ssmInstanceArnPattern, region, account, id)
+	return fmt.Sprintf(ssmInstanceArnPattern, kmsPartitionForRegion(region), region, account, id)
 }
 
 func (a *mqlAwsSsmParameter) id() (string, error) {
@@ -301,7 +302,11 @@ func (a *mqlAwsSsmInstance) iamRole() (*mqlAwsIamRole, error) {
 	return res.(*mqlAwsIamRole), nil
 }
 
-const ssmInstanceArnPattern = "arn:aws:ssm:%s:%s:instance/%s"
+const ssmInstanceArnPattern = "arn:%s:ssm:%s:%s:instance/%s"
+
+// errSsmInstanceNotFound is returned when no managed node has the ARN, so
+// callers can tell an unregistered instance from a failed lookup.
+var errSsmInstanceNotFound = errors.New("ssm instance does not exist")
 
 func initAwsSsmInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if len(args) > 2 {
@@ -336,7 +341,7 @@ func initAwsSsmInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 			return args, instance, nil
 		}
 	}
-	return nil, nil, errors.New("ssm instance does not exist")
+	return nil, nil, errSsmInstanceNotFound
 }
 
 func (a *mqlAwsSsmInstance) tags() (map[string]any, error) {
