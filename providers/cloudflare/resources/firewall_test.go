@@ -4,10 +4,12 @@
 package resources
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
 
+	"github.com/cloudflare/cloudflare-go/v7/page_rules"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -55,4 +57,37 @@ func TestPageRules(t *testing.T) {
 	assert.Equal(t, "active", pr.Status.Data)
 	assert.Equal(t, int64(1), pr.Priority.Data)
 	assert.False(t, pr.CreatedAt.Data.IsZero())
+	assert.Equal(t, []any{"*example.com/images/*"}, pr.Targets.Data)
+	assert.Equal(t, []any{
+		map[string]any{"id": "always_use_https", "value": nil},
+		map[string]any{"id": "ssl", "value": "flexible"},
+		map[string]any{"id": "forwarding_url", "value": map[string]any{
+			"url":         "https://www.example.com/$1",
+			"status_code": float64(301),
+		}},
+	}, pr.Actions.Data)
+}
+
+func TestPageRuleMapping(t *testing.T) {
+	var rule page_rules.PageRule
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"id": "pr-002",
+		"targets": [
+			{"target": "url", "constraint": {"operator": "matches", "value": "example.com/a/*"}},
+			{"target": "url", "constraint": {"operator": "matches", "value": "example.com/b/*"}}
+		],
+		"actions": [
+			{"id": "cache_level", "value": "bypass"},
+			{"id": "edge_cache_ttl", "value": 7200}
+		]
+	}`), &rule))
+
+	assert.Equal(t, []any{"example.com/a/*", "example.com/b/*"}, pageRuleTargets(rule.Targets))
+	assert.Equal(t, []any{
+		map[string]any{"id": "cache_level", "value": "bypass"},
+		map[string]any{"id": "edge_cache_ttl", "value": float64(7200)},
+	}, pageRuleActions(rule.Actions))
+
+	assert.Equal(t, []any{}, pageRuleTargets(nil))
+	assert.Equal(t, []any{}, pageRuleActions(nil))
 }
