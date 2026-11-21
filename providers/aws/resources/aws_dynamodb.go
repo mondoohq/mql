@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -1005,6 +1006,85 @@ func replicaRegionsFromDescriptions(replicas []ddtypes.ReplicaDescription) []any
 
 func dynamoDBTagsToMap(tags []ddtypes.Tag) map[string]any {
 	return tagsToMap(tags, func(t ddtypes.Tag) *string { return t.Key }, func(t ddtypes.Tag) *string { return t.Value })
+}
+
+type mqlAwsDynamodbGlobaltableInternal struct {
+	descFetched atomic.Bool
+	descCache   *ddtypes.GlobalTableDescription
+	descLock    sync.Mutex
+}
+
+// description calls DescribeGlobalTable once for status, createdAt and
+// replicaTables.
+func (a *mqlAwsDynamodbGlobaltable) description() (*ddtypes.GlobalTableDescription, error) {
+	if a.descFetched.Load() {
+		return a.descCache, nil
+	}
+	a.descLock.Lock()
+	defer a.descLock.Unlock()
+	if a.descFetched.Load() {
+		return a.descCache, nil
+	}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	tableName := a.Name.Data
+	resp, err := conn.Dynamodb("").DescribeGlobalTable(context.Background(), &dynamodb.DescribeGlobalTableInput{GlobalTableName: &tableName})
+	if err != nil {
+		return nil, errors.Wrap(err, "could not describe aws dynamodb global table")
+	}
+	a.descCache = resp.GlobalTableDescription
+	a.descFetched.Store(true)
+	return a.descCache, nil
+}
+
+func (a *mqlAwsDynamodbGlobaltable) status() (string, error) {
+	desc, err := a.description()
+	if err != nil || desc == nil {
+		return "", err
+	}
+	return string(desc.GlobalTableStatus), nil
+}
+
+func (a *mqlAwsDynamodbGlobaltable) createdAt() (*time.Time, error) {
+	desc, err := a.description()
+	if err != nil || desc == nil {
+		return nil, err
+	}
+	return desc.CreationDateTime, nil
+}
+
+// replicaTables resolves the regional table of each replica. A replica table
+// has the global table's name in its own region; its ARN is built from the
+// global table's partition and account, so no API call is made per table.
+func (a *mqlAwsDynamodbGlobaltable) replicaTables() ([]any, error) {
+	desc, err := a.description()
+	if err != nil || desc == nil {
+		return nil, err
+	}
+	parsed, err := arn.Parse(a.Arn.Data)
+	if err != nil {
+		return nil, err
+	}
+	res := []any{}
+	for _, replica := range desc.ReplicationGroup {
+		region := convert.ToValue(replica.RegionName)
+		if region == "" {
+			continue
+		}
+		tableArn := arn.ARN{
+			Partition: parsed.Partition,
+			Service:   "dynamodb",
+			Region:    region,
+			AccountID: parsed.AccountID,
+			Resource:  "table/" + a.Name.Data,
+		}
+		table, err := NewResource(a.MqlRuntime, "aws.dynamodb.table",
+			map[string]*llx.RawData{"arn": llx.StringData(tableArn.String())})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, table)
+	}
+	return res, nil
 }
 
 func (a *mqlAwsDynamodbGlobaltable) replicaSettings() ([]any, error) {

@@ -3795,8 +3795,11 @@ aws.dynamodb.exports 11.15.2
 aws.dynamodb.globalTables 11.15.2
 aws.dynamodb.globaltable 11.15.2
 aws.dynamodb.globaltable.arn 11.15.2
+aws.dynamodb.globaltable.createdAt 14.10.1
 aws.dynamodb.globaltable.name 11.15.2
 aws.dynamodb.globaltable.replicaSettings 11.15.2
+aws.dynamodb.globaltable.replicaTables 14.10.1
+aws.dynamodb.globaltable.status 14.10.1
 aws.dynamodb.limit 11.15.2
 aws.dynamodb.limit.accountMaxRead 11.15.2
 aws.dynamodb.limit.accountMaxWrite 11.15.2
@@ -4147,6 +4150,7 @@ aws.ec2.instance.securityGroups 11.15.2
 aws.ec2.instance.sourceDestCheck 11.15.2
 aws.ec2.instance.spotInstanceRequestId 11.15.3
 aws.ec2.instance.ssm 11.15.2
+aws.ec2.instance.ssmInstance 14.10.1
 aws.ec2.instance.state 11.15.2
 aws.ec2.instance.stateChangeReason 13.53.4
 aws.ec2.instance.stateReason 11.15.2
@@ -6850,6 +6854,7 @@ aws.iam.group.lastAccessedServices 13.52.2
 aws.iam.group.name 11.15.2
 aws.iam.group.path 11.15.2
 aws.iam.group.usernames 11.15.2
+aws.iam.group.users 14.10.1
 aws.iam.groups 11.15.2
 aws.iam.inlinePolicy 13.52.2
 aws.iam.inlinePolicy.document 13.52.2
@@ -6993,6 +6998,7 @@ aws.iam.user.arn 11.15.2
 aws.iam.user.assignedMfaDevices 13.53.4
 aws.iam.user.attachedPolicies 11.15.2
 aws.iam.user.createdAt 11.15.2
+aws.iam.user.groupDetails 14.10.1
 aws.iam.user.groups 11.15.2
 aws.iam.user.id 11.15.2
 aws.iam.user.inlinePolicyDetails 13.52.2
