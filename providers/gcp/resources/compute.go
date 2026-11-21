@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/netip"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -4607,43 +4608,134 @@ func (g *mqlGcpProjectComputeServiceNetwork) legacy() (bool, error) {
 }
 
 // firewallSourceRangesContainPublic reports whether a firewall rule's source
-// ranges admit a large part of the internet.
-//
-// 0.0.0.0/0 and ::/0 are the common case, but splitting the space into
-// 0.0.0.0/1 and 128.0.0.0/1, or writing 2000::/3, admits every internet host
-// just the same, and a comparison against the two literals read those rules
-// as closed. The threshold is the size of the blocks IANA allocates to the
-// regional registries: an IPv4 prefix shorter than /8 outside multicast and
-// reserved space, or an IPv6 prefix shorter than /12 that overlaps global
-// unicast. Private ranges never qualify: 10.0.0.0/8 is not shorter than /8,
-// and fc00::/7 does not overlap 2000::/3.
+// ranges admit a large part of the internet, in either address family. See
+// internetSourceFamilies for the rule.
 func firewallSourceRangesContainPublic(ranges []any) bool {
+	v4, v6 := internetSourceFamilies(ranges)
+	return v4 || v6
+}
+
+// internetSourceFamilies reports which address families a rule's source ranges
+// open to the internet.
+//
+// 0.0.0.0/0 and ::/0 are the common case, but 0.0.0.0/1 plus 128.0.0.0/1,
+// 2000::/3, or 256 adjacent /8s admit every internet host just the same, and so
+// does a list of many narrow ranges whose union covers most of the address
+// space. The verdict therefore depends on the union of the source ranges, not on
+// how they are written. A family is open when that union, restricted to the
+// space internet hosts send from (IPv4 outside 224.0.0.0/3, IPv6 inside
+// 2000::/3), either:
+//
+//   - contains an aligned IPv4 /7 or IPv6 /11, the next size up from the blocks
+//     IANA allocates to the regional registries, or
+//   - covers at least half of that space, however it is scattered.
+//
+// Private ranges never qualify on the first test: 10.0.0.0/8 is not a /7, and
+// fc00::/7 lies outside 2000::/3. IPv6 ranges longer than /64 are ignored, since
+// no realistic number of them adds up to either threshold. An entry that does
+// not parse is skipped.
+func internetSourceFamilies(ranges []any) (v4 bool, v6 bool) {
+	var spans4, spans6 []addrSpan
 	for _, r := range ranges {
 		s, ok := r.(string)
 		if !ok {
 			continue
 		}
-		if p, err := netip.ParsePrefix(strings.TrimSpace(s)); err == nil && firewallPrefixAdmitsInternet(p) {
-			return true
+		p, err := netip.ParsePrefix(strings.TrimSpace(s))
+		if err != nil {
+			continue
+		}
+		span, ok := prefixSpan(p)
+		if !ok {
+			continue
+		}
+		if p.Addr().Is4() {
+			spans4 = append(spans4, span)
+		} else {
+			spans6 = append(spans6, span)
 		}
 	}
-	return false
+	return ipv4InternetSpace.admittedBy(spans4), ipv6InternetSpace.admittedBy(spans6)
+}
+
+// addrSpan is an inclusive range of addresses. IPv4 spans hold the 32-bit
+// address; IPv6 spans hold the top 64 bits, so one unit is a /64.
+type addrSpan struct{ lo, hi uint64 }
+
+// prefixSpan converts a prefix to the span it covers. An IPv6 prefix longer than
+// /64 reports false.
+func prefixSpan(p netip.Prefix) (addrSpan, bool) {
+	p = p.Masked()
+	if p.Addr().Is4() {
+		b := p.Addr().As4()
+		lo := uint64(b[0])<<24 | uint64(b[1])<<16 | uint64(b[2])<<8 | uint64(b[3])
+		return addrSpan{lo, lo + (uint64(1) << (32 - p.Bits())) - 1}, true
+	}
+	if p.Bits() > 64 {
+		return addrSpan{}, false
+	}
+	b := p.Addr().As16()
+	var lo uint64
+	for _, x := range b[:8] {
+		lo = lo<<8 | uint64(x)
+	}
+	if p.Bits() == 0 {
+		return addrSpan{0, ^uint64(0)}, true
+	}
+	return addrSpan{lo, lo + (uint64(1) << (64 - p.Bits())) - 1}, true
+}
+
+// mergeSpans returns the union of spans as sorted, disjoint, non-adjacent spans.
+func mergeSpans(spans []addrSpan) []addrSpan {
+	sorted := slices.Clone(spans)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].lo < sorted[j].lo })
+	out := []addrSpan{}
+	for _, sp := range sorted {
+		if n := len(out); n > 0 && (sp.lo <= out[n-1].hi || sp.lo-out[n-1].hi == 1) {
+			if sp.hi > out[n-1].hi {
+				out[n-1].hi = sp.hi
+			}
+			continue
+		}
+		out = append(out, sp)
+	}
+	return out
+}
+
+// internetSpace is the part of an address family internet hosts send from, in
+// addrSpan units, with the block size whose presence alone counts as open.
+type internetSpace struct {
+	lo, hi uint64
+	block  uint64
 }
 
 var (
-	// 224.0.0.0/3 is multicast plus the reserved 240.0.0.0/4. No internet host
-	// sends from it.
-	firewallIPv4MulticastAndReserved = netip.MustParsePrefix("224.0.0.0/3")
-	// 2000::/3 is the IPv6 space routed on the internet.
-	firewallIPv6GlobalUnicast = netip.MustParsePrefix("2000::/3")
+	// IPv4 outside 224.0.0.0/3 (multicast plus the reserved 240.0.0.0/4); the
+	// block is a /7.
+	ipv4InternetSpace = internetSpace{lo: 0, hi: 224<<24 - 1, block: 1 << 25}
+	// IPv6 2000::/3, the space routed on the internet, in /64 units; the block
+	// is a /11.
+	ipv6InternetSpace = internetSpace{lo: 0x2000 << 48, hi: 0x3fff_ffff_ffff_ffff, block: 1 << 53}
 )
 
-func firewallPrefixAdmitsInternet(p netip.Prefix) bool {
-	p = p.Masked()
-	if p.Addr().Is4() {
-		return p.Bits() < 8 && !firewallIPv4MulticastAndReserved.Contains(p.Addr())
+// admittedBy reports whether the union of spans opens this space to the
+// internet: it contains an aligned block, or covers at least half the space.
+func (s internetSpace) admittedBy(spans []addrSpan) bool {
+	var total uint64
+	for _, sp := range mergeSpans(spans) {
+		lo, hi := max(sp.lo, s.lo), min(sp.hi, s.hi)
+		if lo > hi {
+			continue
+		}
+		total += hi - lo + 1
+		// s.lo is block-aligned, so the first aligned block at or after lo
+		// starts here.
+		start := (lo + s.block - 1) / s.block * s.block
+		if start <= hi && hi-start >= s.block-1 {
+			return true
+		}
 	}
-	return p.Bits() < 12 && p.Overlaps(firewallIPv6GlobalUnicast)
+	return total >= (s.hi-s.lo+1)/2
 }
 
 func allowedRulePermitsPort(rule map[string]any, port int) bool {

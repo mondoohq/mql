@@ -2314,7 +2314,9 @@ private gcp.project.computeService.instance.exposure @defaults("internetReachabl
   internetReachable bool
   // Whether the instance has an external IP
   hasPublicIp bool
-  // Whether a firewall rule or network firewall policy rule that applies to the instance admits inbound traffic from any address (0.0.0.0/0 or ::/0)
+  // Whether a firewall rule or network firewall policy rule that applies to the instance admits inbound traffic from the internet
+  //
+  // A rule counts when its source ranges are 0.0.0.0/0 or ::/0, or together cover most of the internet.
   firewallAllowsIngress bool
   // Legacy VPC firewall rules that apply to the instance and admit ingress from any address
   openIngressFirewalls []gcp.project.computeService.firewall
@@ -3013,7 +3015,9 @@ private gcp.project.computeService.firewall @defaults("name") {
   disabled bool
   // Source ranges
   sourceRanges []string
-  // Whether this rule allows ingress traffic from the public internet (INGRESS, enabled, has allow rules, sourceRanges contains 0.0.0.0/0 or ::/0)
+  // Whether this rule allows ingress traffic from the public internet
+  //
+  // True for an enabled INGRESS rule with allow entries whose sourceRanges are 0.0.0.0/0 or ::/0, or together cover most of the internet.
   openToInternet() bool
   // Whether this rule permits SSH (tcp/22) from the public internet (narrower form of openToInternet for the SSH-specific port check)
   allowsSshFromInternet() bool
@@ -3962,7 +3966,7 @@ private gcp.project.sqlService.instance @defaults("name") {
   settings gcp.project.sqlService.instance.settings
   // Whether the instance is reachable on a public IP (flat hoist of settings.ipConfiguration.ipv4Enabled)
   publicIpEnabled() bool
-  // Whether the instance is reachable from the internet (a public IP and an authorized network open to 0.0.0.0/0)
+  // Whether the instance is reachable from the internet (a public IP and authorized networks that admit the internet)
   internetReachable() bool
   // Whether IAM database authentication is enabled
   //
@@ -4478,10 +4482,16 @@ private gcp.project.sqlService.instance.settings.ipConfiguration {
   //
   // Each entry is a CIDR allow-list rule: value is the authorized CIDR range,
   // name is an optional label, and expirationTime, when set, is when the rule
-  // stops applying. An entry with value 0.0.0.0/0 exposes the instance to the
-  // entire internet. See hasOpenAuthorizedNetworks for that check.
+  // stops applying. An entry with value 0.0.0.0/0, or entries that together
+  // cover most of the internet, expose the instance to it. See
+  // hasOpenAuthorizedNetworks for that check.
   authorizedNetworks []dict
-  // Whether any authorized network entry uses 0.0.0.0/0 or ::/0 (public internet)
+  // Whether the authorized networks admit the public internet
+  //
+  // True when the entries are 0.0.0.0/0 or ::/0, or together cover most of the
+  // internet: their union, limited to IPv4 outside 224.0.0.0/3 and IPv6 inside
+  // 2000::/3, contains an aligned IPv4 /7 or IPv6 /11 or covers at least half
+  // of that space.
   hasOpenAuthorizedNetworks() bool
   // Whether the instance is assigned a public IP address
   ipv4Enabled bool
@@ -5484,8 +5494,8 @@ private gcp.project.gkeService.cluster @defaults("name description location stat
   //
   // True when the control plane has a public IP endpoint enabled AND either
   // master authorized networks is not enforced (any source may reach it) or
-  // the authorized-networks allowlist contains an open CIDR (0.0.0.0/0 or
-  // ::/0). False means the API server is private or restricted to specific
+  // the authorized-networks allowlist admits the internet: 0.0.0.0/0, ::/0, or
+  // ranges that together cover most of it. False means the API server is private or restricted to specific
   // source ranges. Derived from cached cluster fields; no extra API calls.
   controlPlaneInternetReachable() bool
   // Logging components enabled on the control plane
