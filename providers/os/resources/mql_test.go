@@ -4689,3 +4689,17 @@ func TestUserSystem(t *testing.T) {
 		},
 	})
 }
+
+// Where two types can never be equal, or always are, `!=` says the opposite
+// of `==`.
+func TestInequalityIsTheOppositeOfEquality(t *testing.T) {
+	x := testutils.InitTester(testutils.LinuxMock())
+	x.TestSimple(t, []testutils.SimpleTest{
+		{Code: "/a/ == true", ResultIndex: 0, Expectation: false},
+		{Code: "/a/ != true", ResultIndex: 0, Expectation: true},
+		{Code: "/a/ != false", ResultIndex: 0, Expectation: true},
+		{Code: "true != /a/", ResultIndex: 0, Expectation: true},
+		{Code: "null == empty", ResultIndex: 0, Expectation: true},
+		{Code: "null != empty", ResultIndex: 0, Expectation: false},
+	})
+}
