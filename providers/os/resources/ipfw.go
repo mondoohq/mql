@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers/os/connection/shared"
@@ -22,8 +23,33 @@ func (p *mqlIpfw) id() (string, error) {
 	return "ipfw", nil
 }
 
+type ipfwSysctl struct {
+	value  string
+	absent bool
+	err    error
+}
+
+// mqlIpfwInternal caches the platform check and each sysctl read, so
+// evaluating enabled, rules and defaultAccept together runs every command
+// once.
+type mqlIpfwInternal struct {
+	lock         sync.Mutex
+	checked      bool
+	supportedErr error
+	sysctls      map[string]ipfwSysctl
+}
+
 func (p *mqlIpfw) checkSupported() error {
-	conn := p.MqlRuntime.Connection.(shared.Connection)
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	if !p.checked {
+		p.supportedErr = ipfwSupported(p.MqlRuntime.Connection.(shared.Connection))
+		p.checked = true
+	}
+	return p.supportedErr
+}
+
+func ipfwSupported(conn shared.Connection) error {
 	if pf := conn.Asset().GetPlatform(); pf == nil || pf.Name != "freebsd" {
 		return llx.NotApplicable(errors.New("ipfw is only available on FreeBSD"))
 	}
@@ -39,6 +65,20 @@ func (p *mqlIpfw) sysctl(name string) (value string, absent bool, err error) {
 	if err := p.checkSupported(); err != nil {
 		return "", false, err
 	}
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	if r, ok := p.sysctls[name]; ok {
+		return r.value, r.absent, r.err
+	}
+	value, absent, err = p.readSysctl(name)
+	if p.sysctls == nil {
+		p.sysctls = map[string]ipfwSysctl{}
+	}
+	p.sysctls[name] = ipfwSysctl{value: value, absent: absent, err: err}
+	return value, absent, err
+}
+
+func (p *mqlIpfw) readSysctl(name string) (value string, absent bool, err error) {
 	cmd, err := runSbinCommand(p.MqlRuntime, "sysctl -n "+name)
 	if err != nil {
 		return "", false, err
@@ -112,7 +152,9 @@ func (p *mqlIpfw) rules() ([]any, error) {
 	}
 	if exit.Data != 0 {
 		stderr := strings.TrimSpace(cmd.GetStderr().Data)
-		// reading the ruleset opens a raw socket, which needs root
+		// Reading the ruleset opens a raw socket, which needs root. ipfw
+		// exits non-zero for any failure to open or use that socket, so the
+		// errno text in its message is what tells a refusal apart.
 		if strings.Contains(stderr, "Operation not permitted") || strings.Contains(stderr, "Permission denied") {
 			return nil, llx.Forbidden(fmt.Errorf("cannot read the ipfw rules, ipfw needs root: %s", stderr))
 		}
