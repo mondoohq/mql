@@ -1,0 +1,17 @@
+{
+  "name": "nested-app",
+  "version": "1.2.3",
+  "description": "nested dependency fixture",
+  "author": "Example Dev <dev@example.com>",
+  "license": "MIT",
+  "scripts": { "start": "node index.js", "test": "echo test && exit 0" },
+  "dependencies": {
+    "lodash": "4.17.20",
+    "minimist": "0.0.10",
+    "mkdirp": "0.5.1",
+    "@types/node": "20.11.5",
+    "express": "4.17.1"
+  },
+  "devDependencies": { "left-pad": "1.3.0" },
+  "optionalDependencies": { "is-number": "7.0.0" }
+}
