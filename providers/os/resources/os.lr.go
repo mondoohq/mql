@@ -334,6 +334,9 @@ const (
 	ResourcePfRule                                         string = "pf.rule"
 	ResourcePfTable                                        string = "pf.table"
 	ResourceIpfilter                                       string = "ipfilter"
+	ResourceIpfw                                           string = "ipfw"
+	ResourceGeli                                           string = "geli"
+	ResourceGeliProvider                                   string = "geli.provider"
 	ResourceFstab                                          string = "fstab"
 	ResourceFstabEntry                                     string = "fstab.entry"
 	ResourceGrubConfig                                     string = "grub.config"
@@ -2124,6 +2127,18 @@ func init() {
 		"ipfilter": {
 			// to override args, implement: initIpfilter(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createIpfilter,
+		},
+		"ipfw": {
+			// to override args, implement: initIpfw(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIpfw,
+		},
+		"geli": {
+			// to override args, implement: initGeli(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGeli,
+		},
+		"geli.provider": {
+			// to override args, implement: initGeliProvider(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGeliProvider,
 		},
 		"fstab": {
 			Init:   initFstab,
@@ -12938,6 +12953,36 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"ipfilter.file": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIpfilter).GetFile()).ToDataRes(types.Resource("file"))
+	},
+	"ipfw.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpfw).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"ipfw.rules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpfw).GetRules()).ToDataRes(types.Array(types.String))
+	},
+	"ipfw.defaultAccept": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpfw).GetDefaultAccept()).ToDataRes(types.Bool)
+	},
+	"geli.providers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGeli).GetProviders()).ToDataRes(types.Array(types.Resource("geli.provider")))
+	},
+	"geli.provider.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGeliProvider).GetName()).ToDataRes(types.String)
+	},
+	"geli.provider.device": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGeliProvider).GetDevice()).ToDataRes(types.String)
+	},
+	"geli.provider.encryptionAlgorithm": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGeliProvider).GetEncryptionAlgorithm()).ToDataRes(types.String)
+	},
+	"geli.provider.keyLength": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGeliProvider).GetKeyLength()).ToDataRes(types.Int)
+	},
+	"geli.provider.authenticationAlgorithm": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGeliProvider).GetAuthenticationAlgorithm()).ToDataRes(types.String)
+	},
+	"geli.provider.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGeliProvider).GetState()).ToDataRes(types.String)
 	},
 	"fstab.path": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlFstab).GetPath()).ToDataRes(types.String)
@@ -37677,6 +37722,58 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"ipfilter.file": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIpfilter).File, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"ipfw.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpfw).__id, ok = v.Value.(string)
+		return
+	},
+	"ipfw.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpfw).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipfw.rules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpfw).Rules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ipfw.defaultAccept": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpfw).DefaultAccept, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"geli.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGeli).__id, ok = v.Value.(string)
+		return
+	},
+	"geli.providers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGeli).Providers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"geli.provider.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGeliProvider).__id, ok = v.Value.(string)
+		return
+	},
+	"geli.provider.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGeliProvider).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"geli.provider.device": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGeliProvider).Device, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"geli.provider.encryptionAlgorithm": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGeliProvider).EncryptionAlgorithm, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"geli.provider.keyLength": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGeliProvider).KeyLength, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"geli.provider.authenticationAlgorithm": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGeliProvider).AuthenticationAlgorithm, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"geli.provider.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGeliProvider).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"fstab.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -91020,6 +91117,201 @@ func (c *mqlIpfilter) GetFile() *plugin.TValue[*mqlFile] {
 
 		return c.file()
 	})
+}
+
+// mqlIpfw for the ipfw resource
+type mqlIpfw struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlIpfwInternal
+	Enabled       plugin.TValue[bool]
+	Rules         plugin.TValue[[]any]
+	DefaultAccept plugin.TValue[bool]
+}
+
+// createIpfw creates a new instance of this resource
+func createIpfw(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIpfw{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ipfw", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIpfw) MqlName() string {
+	return "ipfw"
+}
+
+func (c *mqlIpfw) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIpfw) GetEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Enabled, func() (bool, error) {
+		return c.enabled()
+	})
+}
+
+func (c *mqlIpfw) GetRules() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Rules, func() ([]any, error) {
+		return c.rules()
+	})
+}
+
+func (c *mqlIpfw) GetDefaultAccept() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.DefaultAccept, func() (bool, error) {
+		return c.defaultAccept()
+	})
+}
+
+// mqlGeli for the geli resource
+type mqlGeli struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGeliInternal it will be used here
+	Providers plugin.TValue[[]any]
+}
+
+// createGeli creates a new instance of this resource
+func createGeli(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGeli{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("geli", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGeli) MqlName() string {
+	return "geli"
+}
+
+func (c *mqlGeli) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGeli) GetProviders() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Providers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("geli", c.__id, "providers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.providers()
+	})
+}
+
+// mqlGeliProvider for the geli.provider resource
+type mqlGeliProvider struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGeliProviderInternal it will be used here
+	Name                    plugin.TValue[string]
+	Device                  plugin.TValue[string]
+	EncryptionAlgorithm     plugin.TValue[string]
+	KeyLength               plugin.TValue[int64]
+	AuthenticationAlgorithm plugin.TValue[string]
+	State                   plugin.TValue[string]
+}
+
+// createGeliProvider creates a new instance of this resource
+func createGeliProvider(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGeliProvider{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("geli.provider", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGeliProvider) MqlName() string {
+	return "geli.provider"
+}
+
+func (c *mqlGeliProvider) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGeliProvider) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGeliProvider) GetDevice() *plugin.TValue[string] {
+	return &c.Device
+}
+
+func (c *mqlGeliProvider) GetEncryptionAlgorithm() *plugin.TValue[string] {
+	return &c.EncryptionAlgorithm
+}
+
+func (c *mqlGeliProvider) GetKeyLength() *plugin.TValue[int64] {
+	return &c.KeyLength
+}
+
+func (c *mqlGeliProvider) GetAuthenticationAlgorithm() *plugin.TValue[string] {
+	return &c.AuthenticationAlgorithm
+}
+
+func (c *mqlGeliProvider) GetState() *plugin.TValue[string] {
+	return &c.State
 }
 
 // mqlFstab for the fstab resource

@@ -1,0 +1,9 @@
+00005 allow ip from any to any via xl0
+00010 allow ip from any to any via lo0
+00101 check-state :default
+00110 allow tcp from any to 192.0.2.53 53 out via dc0 setup keep-state :default
+00111 allow udp from any to 192.0.2.53 53 out via dc0 keep-state :default
+00120 allow log udp from any to any 67 out via dc0 keep-state :default
+00200 allow tcp from any to any 80 out via dc0 setup keep-state :default
+00220 allow tcp from any to any 443 out via dc0 setup keep-state :default
+65535 deny ip from any to any

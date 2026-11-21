@@ -2308,6 +2308,15 @@ fstab.entry.fstype 11.3.5
 fstab.entry.mountpoint 11.3.5
 fstab.entry.options 11.3.5
 fstab.path 11.3.5
+geli 14.46.1
+geli.provider 14.46.1
+geli.provider.authenticationAlgorithm 14.46.1
+geli.provider.device 14.46.1
+geli.provider.encryptionAlgorithm 14.46.1
+geli.provider.keyLength 14.46.1
+geli.provider.name 14.46.1
+geli.provider.state 14.46.1
+geli.providers 14.46.1
 gemini 13.13.1
 gemini.authType 13.13.1
 gemini.configPath 13.13.1
@@ -2939,6 +2948,10 @@ ipfilter 14.46.1
 ipfilter.enabled 14.46.1
 ipfilter.file 14.46.1
 ipfilter.rules 14.46.1
+ipfw 14.46.1
+ipfw.defaultAccept 14.46.1
+ipfw.enabled 14.46.1
+ipfw.rules 14.46.1
 iptables 9.0.0
 iptables.chain 13.15.2
 iptables.chain.name 13.15.2
