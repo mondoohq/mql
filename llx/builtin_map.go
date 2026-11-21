@@ -2494,7 +2494,7 @@ func opIntLTEDict(left any, right any) *RawData {
 	}
 }
 
-func opIntGTDict(left any, right any) *RawData { //nolint:unused
+func opIntGTDict(left any, right any) *RawData {
 	switch x := right.(type) {
 	case int64:
 		return BoolData(left.(int64) > x)
@@ -2511,7 +2511,7 @@ func opIntGTDict(left any, right any) *RawData { //nolint:unused
 	}
 }
 
-func opIntGTEDict(left any, right any) *RawData { //nolint:unused
+func opIntGTEDict(left any, right any) *RawData {
 	switch x := right.(type) {
 	case int64:
 		return BoolData(left.(int64) >= x)
@@ -2537,11 +2537,11 @@ func intLTEDictV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*R
 }
 
 func intGTDictV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return nonNilDataOpV2(e, bind, chunk, ref, types.Bool, opIntLTEDict)
+	return nonNilDataOpV2(e, bind, chunk, ref, types.Bool, opIntGTDict)
 }
 
 func intGTEDictV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return nonNilDataOpV2(e, bind, chunk, ref, types.Bool, opIntLTDict)
+	return nonNilDataOpV2(e, bind, chunk, ref, types.Bool, opIntGTEDict)
 }
 
 // dict </>/<=/>= float
@@ -2952,11 +2952,11 @@ func dictGTDictV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*R
 	return nonNilDataOpV2(e, bind, chunk, ref, types.Bool, func(left any, right any) *RawData {
 		switch x := right.(type) {
 		case int64:
-			return opDictLTEInt(left, x)
+			return opDictGTInt(left, x)
 		case float64:
-			return opDictLTEFloat(left, x)
+			return opDictGTFloat(left, x)
 		case string:
-			return opDictLTString(left, x)
+			return opDictGTString(left, x)
 		default:
 			return &RawData{Error: errors.New("type conflict for '>'"), Type: types.Bool}
 		}
@@ -2967,11 +2967,11 @@ func dictGTEDictV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*
 	return nonNilDataOpV2(e, bind, chunk, ref, types.Bool, func(left any, right any) *RawData {
 		switch x := right.(type) {
 		case int64:
-			return opDictLTInt(left, x)
+			return opDictGTEInt(left, x)
 		case float64:
-			return opDictLTFloat(left, x)
+			return opDictGTEFloat(left, x)
 		case string:
-			return opDictLTString(left, x)
+			return opDictGTEString(left, x)
 		default:
 			return &RawData{Error: errors.New("type conflict for '>='"), Type: types.Bool}
 		}
