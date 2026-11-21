@@ -845,6 +845,7 @@ const (
 	ResourceAixIpsec                                       string = "aix.ipsec"
 	ResourceAixIpsecFilter                                 string = "aix.ipsec.filter"
 	ResourceAixAudit                                       string = "aix.audit"
+	ResourceAixLpar                                        string = "aix.lpar"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -4166,6 +4167,10 @@ func init() {
 		"aix.audit": {
 			// to override args, implement: initAixAudit(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAixAudit,
+		},
+		"aix.lpar": {
+			// to override args, implement: initAixLpar(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAixLpar,
 		},
 	}
 }
@@ -24757,6 +24762,36 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aix.audit.users": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAixAudit).GetUsers()).ToDataRes(types.Map(types.String, types.Array(types.String)))
+	},
+	"aix.lpar.partitionName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixLpar).GetPartitionName()).ToDataRes(types.String)
+	},
+	"aix.lpar.partitionNumber": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixLpar).GetPartitionNumber()).ToDataRes(types.Int)
+	},
+	"aix.lpar.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixLpar).GetType()).ToDataRes(types.String)
+	},
+	"aix.lpar.mode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixLpar).GetMode()).ToDataRes(types.String)
+	},
+	"aix.lpar.entitledCapacity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixLpar).GetEntitledCapacity()).ToDataRes(types.Float)
+	},
+	"aix.lpar.onlineVirtualCpus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixLpar).GetOnlineVirtualCpus()).ToDataRes(types.Int)
+	},
+	"aix.lpar.maxVirtualCpus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixLpar).GetMaxVirtualCpus()).ToDataRes(types.Int)
+	},
+	"aix.lpar.smtThreads": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixLpar).GetSmtThreads()).ToDataRes(types.Int)
+	},
+	"aix.lpar.sharedPoolId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixLpar).GetSharedPoolId()).ToDataRes(types.Int)
+	},
+	"aix.lpar.onlineMemoryBytes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixLpar).GetOnlineMemoryBytes()).ToDataRes(types.Int)
 	},
 }
 
@@ -55444,6 +55479,50 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aix.audit.users": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAixAudit).Users, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aix.lpar.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixLpar).__id, ok = v.Value.(string)
+		return
+	},
+	"aix.lpar.partitionName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixLpar).PartitionName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aix.lpar.partitionNumber": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixLpar).PartitionNumber, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.lpar.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixLpar).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aix.lpar.mode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixLpar).Mode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aix.lpar.entitledCapacity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixLpar).EntitledCapacity, ok = plugin.RawToTValue[float64](v.Value, v.Error)
+		return
+	},
+	"aix.lpar.onlineVirtualCpus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixLpar).OnlineVirtualCpus, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.lpar.maxVirtualCpus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixLpar).MaxVirtualCpus, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.lpar.smtThreads": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixLpar).SmtThreads, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.lpar.sharedPoolId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixLpar).SharedPoolId, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.lpar.onlineMemoryBytes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixLpar).OnlineMemoryBytes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 }
@@ -141412,5 +141491,119 @@ func (c *mqlAixAudit) GetClasses() *plugin.TValue[map[string]any] {
 func (c *mqlAixAudit) GetUsers() *plugin.TValue[map[string]any] {
 	return plugin.GetOrCompute[map[string]any](&c.Users, func() (map[string]any, error) {
 		return c.users()
+	})
+}
+
+// mqlAixLpar for the aix.lpar resource
+type mqlAixLpar struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAixLparInternal
+	PartitionName     plugin.TValue[string]
+	PartitionNumber   plugin.TValue[int64]
+	Type              plugin.TValue[string]
+	Mode              plugin.TValue[string]
+	EntitledCapacity  plugin.TValue[float64]
+	OnlineVirtualCpus plugin.TValue[int64]
+	MaxVirtualCpus    plugin.TValue[int64]
+	SmtThreads        plugin.TValue[int64]
+	SharedPoolId      plugin.TValue[int64]
+	OnlineMemoryBytes plugin.TValue[int64]
+}
+
+// createAixLpar creates a new instance of this resource
+func createAixLpar(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAixLpar{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aix.lpar", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAixLpar) MqlName() string {
+	return "aix.lpar"
+}
+
+func (c *mqlAixLpar) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAixLpar) GetPartitionName() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.PartitionName, func() (string, error) {
+		return c.partitionName()
+	})
+}
+
+func (c *mqlAixLpar) GetPartitionNumber() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.PartitionNumber, func() (int64, error) {
+		return c.partitionNumber()
+	})
+}
+
+func (c *mqlAixLpar) GetType() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Type, func() (string, error) {
+		return c.compute_type()
+	})
+}
+
+func (c *mqlAixLpar) GetMode() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Mode, func() (string, error) {
+		return c.mode()
+	})
+}
+
+func (c *mqlAixLpar) GetEntitledCapacity() *plugin.TValue[float64] {
+	return plugin.GetOrCompute[float64](&c.EntitledCapacity, func() (float64, error) {
+		return c.entitledCapacity()
+	})
+}
+
+func (c *mqlAixLpar) GetOnlineVirtualCpus() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.OnlineVirtualCpus, func() (int64, error) {
+		return c.onlineVirtualCpus()
+	})
+}
+
+func (c *mqlAixLpar) GetMaxVirtualCpus() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MaxVirtualCpus, func() (int64, error) {
+		return c.maxVirtualCpus()
+	})
+}
+
+func (c *mqlAixLpar) GetSmtThreads() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.SmtThreads, func() (int64, error) {
+		return c.smtThreads()
+	})
+}
+
+func (c *mqlAixLpar) GetSharedPoolId() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.SharedPoolId, func() (int64, error) {
+		return c.sharedPoolId()
+	})
+}
+
+func (c *mqlAixLpar) GetOnlineMemoryBytes() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.OnlineMemoryBytes, func() (int64, error) {
+		return c.onlineMemoryBytes()
 	})
 }
