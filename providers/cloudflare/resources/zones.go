@@ -3,9 +3,13 @@
 package resources
 
 import (
+	"context"
 	"errors"
 	"strings"
 
+	cloudflare "github.com/cloudflare/cloudflare-go/v7"
+	"github.com/cloudflare/cloudflare-go/v7/ssl"
+	"github.com/cloudflare/cloudflare-go/v7/zones"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/cloudflare/connection"
@@ -58,4 +62,29 @@ func (c *mqlCloudflareZoneOwner) id() (string, error) {
 		return "", c.Id.Error
 	}
 	return c.Id.Data, nil
+}
+
+// zoneActivatedOn returns the zone's activation time, or null for a zone that
+// has not been activated yet (the API reports activated_on as null).
+func zoneActivatedOn(zone zones.Zone) *llx.RawData {
+	return timeOrNil(zone.ActivatedOn)
+}
+
+// sslReadPermission is the API token permission the Universal SSL settings
+// endpoint requires.
+const sslReadPermission = "SSL and Certificates Read"
+
+// universalSslEnabled reports whether Universal SSL is enabled for the zone.
+// Every plan has this setting, so a refusal is returned as an error rather
+// than read as "disabled".
+func (c *mqlCloudflareZone) universalSslEnabled() (bool, error) {
+	conn := c.MqlRuntime.Connection.(*connection.CloudflareConnection)
+
+	settings, err := conn.Cf.SSL.Universal.Settings.Get(context.TODO(), ssl.UniversalSettingGetParams{
+		ZoneID: cloudflare.F(c.Id.Data),
+	})
+	if err != nil {
+		return false, refusedErr(err, sslReadPermission)
+	}
+	return settings.Enabled, nil
 }

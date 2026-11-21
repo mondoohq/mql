@@ -4,12 +4,14 @@ package resources
 
 import (
 	"context"
+	"encoding/json"
 
 	cloudflare "github.com/cloudflare/cloudflare-go/v7"
 	"github.com/cloudflare/cloudflare-go/v7/page_rules"
 	"github.com/cloudflare/cloudflare-go/v7/rulesets"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers/cloudflare/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (c *mqlCloudflareZoneRuleset) id() (string, error) {
@@ -76,6 +78,8 @@ func (c *mqlCloudflareZone) pageRules() ([]any, error) {
 			"id":        llx.StringData(rec.ID),
 			"status":    llx.StringData(string(rec.Status)),
 			"priority":  llx.IntData(rec.Priority),
+			"targets":   llx.ArrayData(pageRuleTargets(rec.Targets), types.String),
+			"actions":   llx.ArrayData(pageRuleActions(rec.Actions), types.Dict),
 			"createdAt": llx.TimeData(rec.CreatedOn),
 			"updatedAt": llx.TimeData(rec.ModifiedOn),
 		})
@@ -87,4 +91,44 @@ func (c *mqlCloudflareZone) pageRules() ([]any, error) {
 	}
 
 	return result, nil
+}
+
+// pageRuleTargets returns the URL patterns a page rule matches.
+func pageRuleTargets(targets []page_rules.Target) []any {
+	res := make([]any, 0, len(targets))
+	for _, t := range targets {
+		res = append(res, t.Constraint.Value)
+	}
+	return res
+}
+
+// pageRuleActions returns each page rule action as a dict with its id and
+// value. The value's shape depends on the action (a string, a number, or an
+// object such as a forwarding URL), so it is decoded from the raw JSON rather
+// than from the SDK's per-action union types.
+func pageRuleActions(actions []page_rules.PageRuleAction) []any {
+	res := make([]any, 0, len(actions))
+	for _, a := range actions {
+		res = append(res, map[string]any{
+			"id":    string(a.ID),
+			"value": pageRuleActionValue(a),
+		})
+	}
+	return res
+}
+
+func pageRuleActionValue(a page_rules.PageRuleAction) any {
+	raw := a.JSON.Value.Raw()
+	if raw == "" {
+		b, err := json.Marshal(a.Value)
+		if err != nil {
+			return nil
+		}
+		raw = string(b)
+	}
+	var v any
+	if err := json.Unmarshal([]byte(raw), &v); err != nil {
+		return nil
+	}
+	return v
 }

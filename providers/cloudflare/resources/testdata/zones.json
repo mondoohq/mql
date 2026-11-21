@@ -19,6 +19,10 @@
       "modified_on": "2026-04-01T10:00:00.000000Z",
       "created_on": "2024-09-15T08:00:00.000000Z",
       "activated_on": "2024-09-15T08:30:00.000000Z",
+      "vanity_name_servers": [
+        "ns1.dns.example.com",
+        "ns2.dns.example.com"
+      ],
       "meta": {
         "step": 4,
         "custom_certificate_quota": 0,
@@ -88,7 +92,7 @@
       "permissions": ["#zone:read"],
       "plan": {
         "id": "plan-free",
-        "name": "Free Website",
+        "name": "Enterprise Website",
         "price": 0,
         "currency": "USD",
         "frequency": "",

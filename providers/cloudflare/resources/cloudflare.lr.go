@@ -644,6 +644,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"cloudflare.zone.modifiedOn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareZone).GetModifiedOn()).ToDataRes(types.Time)
 	},
+	"cloudflare.zone.activatedOn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareZone).GetActivatedOn()).ToDataRes(types.Time)
+	},
+	"cloudflare.zone.plan": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareZone).GetPlan()).ToDataRes(types.String)
+	},
+	"cloudflare.zone.vanityNameServers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareZone).GetVanityNameServers()).ToDataRes(types.Array(types.String))
+	},
+	"cloudflare.zone.universalSslEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareZone).GetUniversalSslEnabled()).ToDataRes(types.Bool)
+	},
 	"cloudflare.zone.account": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareZone).GetAccount()).ToDataRes(types.Resource("cloudflare.zone.account"))
 	},
@@ -2336,6 +2348,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"cloudflare.zone.pageRule.priority": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareZonePageRule).GetPriority()).ToDataRes(types.Int)
 	},
+	"cloudflare.zone.pageRule.targets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareZonePageRule).GetTargets()).ToDataRes(types.Array(types.String))
+	},
+	"cloudflare.zone.pageRule.actions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareZonePageRule).GetActions()).ToDataRes(types.Array(types.Dict))
+	},
 	"cloudflare.zone.pageRule.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareZonePageRule).GetCreatedAt()).ToDataRes(types.Time)
 	},
@@ -3371,6 +3389,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"cloudflare.zone.modifiedOn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCloudflareZone).ModifiedOn, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"cloudflare.zone.activatedOn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareZone).ActivatedOn, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"cloudflare.zone.plan": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareZone).Plan, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.zone.vanityNameServers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareZone).VanityNameServers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.zone.universalSslEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareZone).UniversalSslEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"cloudflare.zone.account": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -5869,6 +5903,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlCloudflareZonePageRule).Priority, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
+	"cloudflare.zone.pageRule.targets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareZonePageRule).Targets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.zone.pageRule.actions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareZonePageRule).Actions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"cloudflare.zone.pageRule.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCloudflareZonePageRule).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
@@ -7458,6 +7500,10 @@ type mqlCloudflareZone struct {
 	Type                     plugin.TValue[string]
 	CreatedOn                plugin.TValue[*time.Time]
 	ModifiedOn               plugin.TValue[*time.Time]
+	ActivatedOn              plugin.TValue[*time.Time]
+	Plan                     plugin.TValue[string]
+	VanityNameServers        plugin.TValue[[]any]
+	UniversalSslEnabled      plugin.TValue[bool]
 	Account                  plugin.TValue[*mqlCloudflareZoneAccount]
 	Owner                    plugin.TValue[*mqlCloudflareZoneOwner]
 	Settings                 plugin.TValue[*mqlCloudflareZoneSettings]
@@ -7561,6 +7607,24 @@ func (c *mqlCloudflareZone) GetCreatedOn() *plugin.TValue[*time.Time] {
 
 func (c *mqlCloudflareZone) GetModifiedOn() *plugin.TValue[*time.Time] {
 	return &c.ModifiedOn
+}
+
+func (c *mqlCloudflareZone) GetActivatedOn() *plugin.TValue[*time.Time] {
+	return &c.ActivatedOn
+}
+
+func (c *mqlCloudflareZone) GetPlan() *plugin.TValue[string] {
+	return &c.Plan
+}
+
+func (c *mqlCloudflareZone) GetVanityNameServers() *plugin.TValue[[]any] {
+	return &c.VanityNameServers
+}
+
+func (c *mqlCloudflareZone) GetUniversalSslEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.UniversalSslEnabled, func() (bool, error) {
+		return c.universalSslEnabled()
+	})
 }
 
 func (c *mqlCloudflareZone) GetAccount() *plugin.TValue[*mqlCloudflareZoneAccount] {
@@ -13971,6 +14035,8 @@ type mqlCloudflareZonePageRule struct {
 	Id        plugin.TValue[string]
 	Status    plugin.TValue[string]
 	Priority  plugin.TValue[int64]
+	Targets   plugin.TValue[[]any]
+	Actions   plugin.TValue[[]any]
 	CreatedAt plugin.TValue[*time.Time]
 	UpdatedAt plugin.TValue[*time.Time]
 }
@@ -14022,6 +14088,14 @@ func (c *mqlCloudflareZonePageRule) GetStatus() *plugin.TValue[string] {
 
 func (c *mqlCloudflareZonePageRule) GetPriority() *plugin.TValue[int64] {
 	return &c.Priority
+}
+
+func (c *mqlCloudflareZonePageRule) GetTargets() *plugin.TValue[[]any] {
+	return &c.Targets
+}
+
+func (c *mqlCloudflareZonePageRule) GetActions() *plugin.TValue[[]any] {
+	return &c.Actions
 }
 
 func (c *mqlCloudflareZonePageRule) GetCreatedAt() *plugin.TValue[*time.Time] {

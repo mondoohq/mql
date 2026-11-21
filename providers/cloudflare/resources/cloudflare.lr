@@ -61,6 +61,18 @@ private cloudflare.zone @defaults("name account.name") @root {
 	createdOn time
 	// Time the zone was last modified
 	modifiedOn time
+	// Time the zone was activated, or null when it has not been activated
+	activatedOn time
+	// Name of the zone's plan (for example, "Free Website" or "Enterprise Website")
+	plan string
+	// Custom nameservers assigned to the zone in place of Cloudflare's defaults
+	vanityNameServers []string
+	// Whether Universal SSL is enabled for the zone
+	//
+	// When Universal SSL is disabled, Cloudflare stops issuing its free edge
+	// certificate for the zone, and visitors cannot reach the zone over HTTPS
+	// unless a custom or advanced certificate covers it.
+	universalSslEnabled() bool
 
 	// Zone owner account
   account cloudflare.zone.account
@@ -2180,6 +2192,10 @@ private cloudflare.zone.pageRule @defaults("id status") {
 	status string
 	// Page rule priority
 	priority int
+	// URL patterns the page rule matches
+	targets []string
+	// Actions the page rule applies to matching requests, each with its `id` and `value`
+	actions []dict
 	// Time the page rule was created
 	createdAt time
 	// Time the page rule was last modified
