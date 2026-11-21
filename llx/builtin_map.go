@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"regexp"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -532,6 +533,19 @@ func mapBlockCallV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (
 	return e.runBlock(bind, chunk.Function.Args[0], nil, ref)
 }
 
+// sortedKeys are the keys of a map in their order. A map has none of its
+// own, and Go hands the keys out in another order every time: what `keys`
+// and `values` give is in the order of the keys, so that it is the same from
+// one run to the next and the two go together.
+func sortedKeys(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 func mapKeysV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
 	if bind.Value == nil {
 		return &RawData{
@@ -545,11 +559,10 @@ func mapKeysV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawD
 		return nil, 0, errors.New("failed to typecast " + bind.Type.Label() + " into map")
 	}
 
-	res := make([]any, len(m))
-	var i int
-	for key := range m {
+	keys := sortedKeys(m)
+	res := make([]any, len(keys))
+	for i, key := range keys {
 		res[i] = key
-		i++
 	}
 
 	return ArrayData(res, types.String), 0, nil
@@ -570,11 +583,10 @@ func mapValuesV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*Ra
 		return nil, 0, errors.New("failed to typecast " + bind.Type.Label() + " into map")
 	}
 
-	res := make([]any, len(m))
-	var i int
-	for _, value := range m {
-		res[i] = value
-		i++
+	keys := sortedKeys(m)
+	res := make([]any, len(keys))
+	for i, key := range keys {
+		res[i] = m[key]
 	}
 
 	return ArrayData(res, typ), 0, nil
@@ -900,11 +912,10 @@ func dictKeysV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*Raw
 		return nil, 0, errors.New("dict value does not support field `keys`")
 	}
 
-	res := make([]any, len(m))
-	var i int
-	for key := range m {
+	keys := sortedKeys(m)
+	res := make([]any, len(keys))
+	for i, key := range keys {
 		res[i] = key
-		i++
 	}
 
 	return ArrayData(res, types.String), 0, nil
@@ -923,11 +934,10 @@ func dictValuesV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*R
 		return nil, 0, errors.New("dict value does not support field `values`")
 	}
 
-	res := make([]any, len(m))
-	var i int
-	for _, value := range m {
-		res[i] = value
-		i++
+	keys := sortedKeys(m)
+	res := make([]any, len(keys))
+	for i, key := range keys {
+		res[i] = m[key]
 	}
 
 	return ArrayData(res, types.Dict), 0, nil
