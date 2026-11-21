@@ -20636,6 +20636,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.rds.snapshot.sourceDbCluster": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsRdsSnapshot).GetSourceDbCluster()).ToDataRes(types.Resource("aws.rds.dbcluster"))
 	},
+	"aws.rds.snapshot.sourceDbInstanceIdentifier": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRdsSnapshot).GetSourceDbInstanceIdentifier()).ToDataRes(types.String)
+	},
+	"aws.rds.snapshot.sourceDbClusterIdentifier": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRdsSnapshot).GetSourceDbClusterIdentifier()).ToDataRes(types.String)
+	},
 	"aws.rds.snapshot.sourceRegion": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsRdsSnapshot).GetSourceRegion()).ToDataRes(types.String)
 	},
@@ -63255,6 +63261,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.rds.snapshot.sourceDbCluster": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsRdsSnapshot).SourceDbCluster, ok = plugin.RawToTValue[*mqlAwsRdsDbcluster](v.Value, v.Error)
+		return
+	},
+	"aws.rds.snapshot.sourceDbInstanceIdentifier": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRdsSnapshot).SourceDbInstanceIdentifier, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.rds.snapshot.sourceDbClusterIdentifier": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRdsSnapshot).SourceDbClusterIdentifier, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.rds.snapshot.sourceRegion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -152168,33 +152182,35 @@ type mqlAwsRdsSnapshot struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAwsRdsSnapshotInternal
-	Arn                   plugin.TValue[string]
-	Id                    plugin.TValue[string]
-	Attributes            plugin.TValue[[]any]
-	RestoreAttributes     plugin.TValue[map[string]any]
-	Type                  plugin.TValue[string]
-	Encrypted             plugin.TValue[bool]
-	StorageEncryptionType plugin.TValue[string]
-	Region                plugin.TValue[string]
-	IsClusterSnapshot     plugin.TValue[bool]
-	Tags                  plugin.TValue[map[string]any]
-	Engine                plugin.TValue[string]
-	EngineVersion         plugin.TValue[string]
-	Status                plugin.TValue[string]
-	Port                  plugin.TValue[int64]
-	AllocatedStorage      plugin.TValue[int64]
-	CreatedAt             plugin.TValue[*time.Time]
-	BackupRetentionPeriod plugin.TValue[int64]
-	PreferredBackupWindow plugin.TValue[string]
-	AvailabilityZone      plugin.TValue[string]
-	Timezone              plugin.TValue[string]
-	SourceSnapshot        plugin.TValue[string]
-	SourceDbInstance      plugin.TValue[*mqlAwsRdsDbinstance]
-	SourceDbCluster       plugin.TValue[*mqlAwsRdsDbcluster]
-	SourceRegion          plugin.TValue[string]
-	OriginalCreatedAt     plugin.TValue[*time.Time]
-	KmsKey                plugin.TValue[*mqlAwsKmsKey]
-	IsPublic              plugin.TValue[bool]
+	Arn                        plugin.TValue[string]
+	Id                         plugin.TValue[string]
+	Attributes                 plugin.TValue[[]any]
+	RestoreAttributes          plugin.TValue[map[string]any]
+	Type                       plugin.TValue[string]
+	Encrypted                  plugin.TValue[bool]
+	StorageEncryptionType      plugin.TValue[string]
+	Region                     plugin.TValue[string]
+	IsClusterSnapshot          plugin.TValue[bool]
+	Tags                       plugin.TValue[map[string]any]
+	Engine                     plugin.TValue[string]
+	EngineVersion              plugin.TValue[string]
+	Status                     plugin.TValue[string]
+	Port                       plugin.TValue[int64]
+	AllocatedStorage           plugin.TValue[int64]
+	CreatedAt                  plugin.TValue[*time.Time]
+	BackupRetentionPeriod      plugin.TValue[int64]
+	PreferredBackupWindow      plugin.TValue[string]
+	AvailabilityZone           plugin.TValue[string]
+	Timezone                   plugin.TValue[string]
+	SourceSnapshot             plugin.TValue[string]
+	SourceDbInstance           plugin.TValue[*mqlAwsRdsDbinstance]
+	SourceDbCluster            plugin.TValue[*mqlAwsRdsDbcluster]
+	SourceDbInstanceIdentifier plugin.TValue[string]
+	SourceDbClusterIdentifier  plugin.TValue[string]
+	SourceRegion               plugin.TValue[string]
+	OriginalCreatedAt          plugin.TValue[*time.Time]
+	KmsKey                     plugin.TValue[*mqlAwsKmsKey]
+	IsPublic                   plugin.TValue[bool]
 }
 
 // createAwsRdsSnapshot creates a new instance of this resource
@@ -152352,6 +152368,14 @@ func (c *mqlAwsRdsSnapshot) GetSourceDbCluster() *plugin.TValue[*mqlAwsRdsDbclus
 
 		return c.sourceDbCluster()
 	})
+}
+
+func (c *mqlAwsRdsSnapshot) GetSourceDbInstanceIdentifier() *plugin.TValue[string] {
+	return &c.SourceDbInstanceIdentifier
+}
+
+func (c *mqlAwsRdsSnapshot) GetSourceDbClusterIdentifier() *plugin.TValue[string] {
+	return &c.SourceDbClusterIdentifier
 }
 
 func (c *mqlAwsRdsSnapshot) GetSourceRegion() *plugin.TValue[string] {

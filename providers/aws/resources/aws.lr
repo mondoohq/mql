@@ -15719,6 +15719,16 @@ private aws.rds.snapshot @defaults("id region type encrypted createdAt") {
   sourceDbInstance() aws.rds.dbinstance
   // Source DB cluster the snapshot was taken from, when present in this account
   sourceDbCluster() aws.rds.dbcluster
+  // Identifier of the DB instance this snapshot was taken from
+  //
+  // Kept after that instance is deleted, when `sourceDbInstance` is null.
+  // Empty for cluster snapshots.
+  sourceDbInstanceIdentifier string
+  // Identifier of the DB cluster this snapshot was taken from
+  //
+  // Kept after that cluster is deleted, when `sourceDbCluster` is null.
+  // Empty for instance snapshots.
+  sourceDbClusterIdentifier string
   // Region the source snapshot was copied from (empty unless this is a cross-region copy)
   sourceRegion string
   // Original creation time of the snapshot before any copy (empty unless this snapshot is a copy)
