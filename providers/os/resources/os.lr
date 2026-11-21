@@ -11622,6 +11622,8 @@ ipfilter @defaults("enabled") {
   //
   // The active rules can differ from this file until it is reloaded.
   file() file
+}
+
 // IPFW packet filter
 //
 // The ipfw firewall built into FreeBSD. Check `enabled` to confirm ipfw is
