@@ -657,6 +657,16 @@ func getInstanceName(id string, labels map[string]string) string {
 	return name
 }
 
+// regionalAssetName appends the region to a name that is only unique within
+// one account and region, such as the "primary" Athena workgroup AWS creates
+// in every region.
+func regionalAssetName(name, region string) string {
+	if region == "" {
+		return name
+	}
+	return name + " (" + region + ")"
+}
+
 func addConnectionInfoToSSMAsset(instance *mqlAwsSsmInstance, accountId string, conn *connection.AwsConnection) *inventory.Asset {
 	asset := &inventory.Asset{}
 	asset.Labels = mapStringInterfaceToStringString(instance.GetTags().Data)
