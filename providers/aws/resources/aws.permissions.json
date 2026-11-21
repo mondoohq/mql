@@ -1,7 +1,7 @@
 {
   "provider": "aws",
-  "version": "14.8.0",
-  "generated_at": "2026-11-12T21:09:48-08:00",
+  "version": "14.10.0",
+  "generated_at": "2026-11-20T22:33:35-08:00",
   "permissions": [
     "access-analyzer:GetFinding",
     "access-analyzer:ListAnalyzers",
@@ -332,6 +332,7 @@
     "dsql:ListStreams",
     "dynamodb:DescribeContinuousBackups",
     "dynamodb:DescribeExport",
+    "dynamodb:DescribeGlobalTable",
     "dynamodb:DescribeGlobalTableSettings",
     "dynamodb:DescribeLimits",
     "dynamodb:DescribeTable",
@@ -3189,6 +3190,12 @@
       "permission": "dynamodb:DescribeExport",
       "service": "dynamodb",
       "action": "DescribeExport",
+      "source_file": "aws_dynamodb.go"
+    },
+    {
+      "permission": "dynamodb:DescribeGlobalTable",
+      "service": "dynamodb",
+      "action": "DescribeGlobalTable",
       "source_file": "aws_dynamodb.go"
     },
     {
