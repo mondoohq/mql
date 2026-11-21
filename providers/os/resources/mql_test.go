@@ -4689,3 +4689,20 @@ func TestUserSystem(t *testing.T) {
 		},
 	})
 }
+
+// What `flat` gives for a list out of a dict is a list like any other: it can
+// be filtered, mapped, counted and put next to other values.
+func TestDict_FlatGivesAList(t *testing.T) {
+	doc := `parse.json(content: '{"l": [1, 2, 3], "n": [[1, 2], [3], []], "s": ["a", "b"]}').params`
+	x := testutils.InitTester(testutils.LinuxMock())
+	x.TestSimple(t, []testutils.SimpleTest{
+		{Code: doc + `["n"].flat`, ResultIndex: 0, Expectation: []any{float64(1), float64(2), float64(3)}},
+		{Code: doc + `["n"].flat.length`, ResultIndex: 0, Expectation: int64(3)},
+		{Code: doc + `["l"].flat.any(_ == 1.0)`, ResultIndex: 1, Expectation: true},
+		{Code: doc + `["l"].flat.all(_ > 0)`, ResultIndex: 1, Expectation: true},
+		{Code: doc + `["n"].flat.where(_ > 1)`, ResultIndex: 0, Expectation: []any{float64(2), float64(3)}},
+		{Code: doc + `["n"].flat.map(_ == 3)`, ResultIndex: 0, Expectation: []any{false, false, true}},
+		{Code: doc + `["s"].flat.contains("b")`, ResultIndex: 1, Expectation: true},
+		{Code: doc + `["s"].flat.first`, ResultIndex: 0, Expectation: "a"},
+	})
+}
