@@ -8510,6 +8510,30 @@ docker {
   networks() []docker.network
   // All volumes stored on the Docker host, named and anonymous
   volumes() []docker.volume
+  // Engine serving the Docker API: Docker, or Podman through its Docker-compatible API
+  engine() docker.engine
+}
+
+// Engine serving the Docker API
+//
+// The daemon that answers the Docker API on this host. Podman serves the same
+// API, so `name` tells the two apart, for example
+// `docker.engine.name == "Podman"`.
+private docker.engine @defaults("name version") {
+  // Engine name: Docker or Podman
+  name string
+  // Engine version (e.g., 27.3.1)
+  version string
+  // Highest Docker API version the engine supports (e.g., 1.47)
+  apiVersion string
+  // Operating system the engine runs on (e.g., linux)
+  os string
+  // Processor architecture the engine runs on (e.g., amd64)
+  arch string
+  // Host name of the machine the engine runs on
+  hostname() string
+  // Operating system of the machine the engine runs on (e.g., Ubuntu 24.04.1 LTS, Docker Desktop)
+  operatingSystem() string
 }
 
 // Dockerfile parser
@@ -9113,7 +9137,12 @@ docker.image {
 // `docker.containers.none(mounts.any(hostPath == "/var/run/docker.sock"))`
 // finds containers that control the Docker daemon. Filter by state, for
 // example `docker.containers.where(state == "running")`.
+//
+// On a scan of a container, `docker.container` with no argument is the
+// container being scanned, as its engine reports it; `docker.container("web")`
+// looks one up by ID, ID prefix, or name.
 docker.container @defaults("names.first status"){
+  init(id string)
   // The running container as its own asset
   //
   // A container is a separate asset, not a part of this host, so its operating
@@ -9143,6 +9172,8 @@ docker.container @defaults("names.first status"){
   status string
   // Container labels, as key/value pairs
   labels map[string]string
+  // Time the container was created
+  createdAt() time
   // Host-dependent runtime configuration
   //
   // The daemon-side `HostConfig` from container inspection, covering privilege

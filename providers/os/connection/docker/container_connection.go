@@ -275,6 +275,17 @@ func NewDockerEngineContainer(id uint32, conf *inventory.Config, asset *inventor
 
 	asset.Name = ci.Name
 	asset.PlatformIds = []string{platformID}
+	// A container found by discovery arrives with only its connection, so
+	// the container ID, name and image are added here, as for one named
+	// directly.
+	if asset.Labels == nil {
+		asset.Labels = map[string]string{}
+	}
+	for k, v := range ci.Labels {
+		if _, ok := asset.Labels[k]; !ok {
+			asset.Labels[k] = v
+		}
+	}
 
 	if ci.Running {
 		log.Debug().Msg("found running container " + ci.ID)
