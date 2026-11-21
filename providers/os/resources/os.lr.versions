@@ -1667,7 +1667,9 @@ docker.daemon.usernsRemap 14.17.1
 docker.engine 14.45.2
 docker.engine.apiVersion 14.45.2
 docker.engine.arch 14.45.2
+docker.engine.hostname 14.45.2
 docker.engine.name 14.45.2
+docker.engine.operatingSystem 14.45.2
 docker.engine.os 14.45.2
 docker.engine.version 14.45.2
 docker.file 11.0.2

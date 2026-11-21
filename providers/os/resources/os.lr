@@ -8530,6 +8530,10 @@ private docker.engine @defaults("name version") {
   os string
   // Processor architecture the engine runs on (e.g., amd64)
   arch string
+  // Host name of the machine the engine runs on
+  hostname() string
+  // Operating system of the machine the engine runs on (e.g., Ubuntu 24.04.1 LTS, Docker Desktop)
+  operatingSystem() string
 }
 
 // Dockerfile parser

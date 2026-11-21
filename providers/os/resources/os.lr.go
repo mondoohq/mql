@@ -10478,6 +10478,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"docker.engine.arch": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDockerEngine).GetArch()).ToDataRes(types.String)
 	},
+	"docker.engine.hostname": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerEngine).GetHostname()).ToDataRes(types.String)
+	},
+	"docker.engine.operatingSystem": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerEngine).GetOperatingSystem()).ToDataRes(types.String)
+	},
 	"docker.file.file": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDockerFile).GetFile()).ToDataRes(types.Resource("file"))
 	},
@@ -34038,6 +34044,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"docker.engine.arch": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDockerEngine).Arch, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.engine.hostname": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerEngine).Hostname, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.engine.operatingSystem": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerEngine).OperatingSystem, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"docker.file.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -81790,12 +81804,14 @@ func (c *mqlDocker) GetEngine() *plugin.TValue[*mqlDockerEngine] {
 type mqlDockerEngine struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlDockerEngineInternal it will be used here
-	Name       plugin.TValue[string]
-	Version    plugin.TValue[string]
-	ApiVersion plugin.TValue[string]
-	Os         plugin.TValue[string]
-	Arch       plugin.TValue[string]
+	mqlDockerEngineInternal
+	Name            plugin.TValue[string]
+	Version         plugin.TValue[string]
+	ApiVersion      plugin.TValue[string]
+	Os              plugin.TValue[string]
+	Arch            plugin.TValue[string]
+	Hostname        plugin.TValue[string]
+	OperatingSystem plugin.TValue[string]
 }
 
 // createDockerEngine creates a new instance of this resource
@@ -81848,6 +81864,18 @@ func (c *mqlDockerEngine) GetOs() *plugin.TValue[string] {
 
 func (c *mqlDockerEngine) GetArch() *plugin.TValue[string] {
 	return &c.Arch
+}
+
+func (c *mqlDockerEngine) GetHostname() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Hostname, func() (string, error) {
+		return c.hostname()
+	})
+}
+
+func (c *mqlDockerEngine) GetOperatingSystem() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.OperatingSystem, func() (string, error) {
+		return c.operatingSystem()
+	})
 }
 
 // mqlDockerFile for the docker.file resource

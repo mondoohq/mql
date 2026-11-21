@@ -8,8 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/system"
 	"github.com/moby/moby/client"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
@@ -256,6 +258,13 @@ func scannedDockerContainerID(runtime *plugin.Runtime) string {
 	return ""
 }
 
+type mqlDockerEngineInternal struct {
+	lock        sync.Mutex
+	infoFetched bool
+	infoVal     system.Info
+	infoErr     error
+}
+
 // initDockerEngine resolves a bare `docker.engine` through docker's accessor,
 // which fills it.
 func initDockerEngine(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -300,6 +309,45 @@ func (p *mqlDocker) engine() (*mqlDockerEngine, error) {
 		return nil, err
 	}
 	return o.(*mqlDockerEngine), nil
+}
+
+func (e *mqlDockerEngine) hostname() (string, error) {
+	info, err := e.info()
+	if err != nil {
+		return "", err
+	}
+	return info.Name, nil
+}
+
+func (e *mqlDockerEngine) operatingSystem() (string, error) {
+	info, err := e.info()
+	if err != nil {
+		return "", err
+	}
+	return info.OperatingSystem, nil
+}
+
+// info reads the engine's system information, once.
+func (e *mqlDockerEngine) info() (system.Info, error) {
+	e.lock.Lock()
+	defer e.lock.Unlock()
+	if e.infoFetched {
+		return e.infoVal, e.infoErr
+	}
+	e.infoFetched = true
+	cl, err := dockerClient(e.MqlRuntime)
+	if err != nil {
+		e.infoErr = err
+		return e.infoVal, e.infoErr
+	}
+	defer cl.Close()
+	res, err := cl.Info(context.Background(), client.InfoOptions{})
+	if err != nil {
+		e.infoErr = classifyDockerError(err)
+		return e.infoVal, e.infoErr
+	}
+	e.infoVal = res.Info
+	return e.infoVal, nil
 }
 
 // dockerEngineName names the engine from the components its version lists:
