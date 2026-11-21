@@ -569,3 +569,41 @@ func TestEnrichStartFailure(t *testing.T) {
 		assert.Same(t, wrapped, got)
 	})
 }
+
+// Two runtimes can be connected to one asset. Removing one of them leaves
+// the other registered, and the provider they share running.
+func TestRemoveRuntime_AnotherRuntimeOfTheSameAsset(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	shared := &RunningProvider{ID: "provider1", Plugin: NewMockProviderPlugin(ctrl)} // no Shutdown expected
+	otherPlugin := NewMockProviderPlugin(ctrl)
+	other := &RunningProvider{ID: "provider2", Plugin: otherPlugin}
+
+	runtimeOf := func(p *RunningProvider, id string) *Runtime {
+		return &Runtime{
+			providers: map[string]*ConnectedProvider{p.ID: {Instance: p}},
+			Provider: &ConnectedProvider{
+				Instance:   p,
+				Connection: &pp.ConnectRes{Asset: &inventory.Asset{PlatformIds: []string{id}}},
+			},
+		}
+	}
+	first, second, elsewhere := runtimeOf(shared, "asset"), runtimeOf(shared, "asset"), runtimeOf(other, "elsewhere")
+	c := &coordinator{
+		runningByID:         map[string]*RunningProvider{"provider1": shared, "provider2": other},
+		runtimes:            map[string]*Runtime{},
+		unprocessedRuntimes: []*Runtime{first, second, elsewhere},
+	}
+
+	second.isClosed = true
+	c.RemoveRuntime(second)
+	assert.Same(t, first, c.runtimes["asset"], "the first is still the asset's runtime")
+	assert.Contains(t, c.runningByID, "provider1", "and its provider is still in use")
+
+	// The other way round: the one that is registered goes, the second stays.
+	first, second = runtimeOf(shared, "asset"), runtimeOf(shared, "asset")
+	c.runtimes, c.unprocessedRuntimes = map[string]*Runtime{}, []*Runtime{first, second, elsewhere}
+	first.isClosed = true
+	c.RemoveRuntime(first)
+	assert.Same(t, second, c.runtimes["asset"])
+	assert.Contains(t, c.runningByID, "provider1")
+}
