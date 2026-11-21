@@ -11594,6 +11594,30 @@ private pf.table @defaults("name") {
   addresses() []string
 }
 
+// IP Filter packet filter
+//
+// The IP Filter firewall of Oracle Solaris 10 and 11 and illumos, run as the
+// svc:/network/ipfilter:default service and controlled with ipf and
+// ipfstat. Check `enabled` to confirm the service is online, then audit the
+// active `rules`, for example that inbound traffic is blocked by default.
+// `file` is the configuration the service loads at boot. Oracle Solaris
+// 11.4 deprecates IP Filter in favor of PF (see the `pf` resource). Reading
+// the active rules needs root; without it, `rules` fails with a permission
+// error. Not applicable on other platforms.
+ipfilter @defaults("enabled") {
+  // Whether the svc:/network/ipfilter:default service is online
+  enabled() bool
+  // Active rules, inbound and outbound, as `ipfstat -io` prints them
+  //
+  // One rule per entry, outbound rules first. Empty when no rules are
+  // loaded, and on a host without ipfstat.
+  rules() []string
+  // Configuration file IP Filter loads at boot, /etc/ipf/ipf.conf
+  //
+  // The active rules can differ from this file until it is reloaded.
+  file() file
+}
+
 // fstab persistent mount table
 //
 // Filesystem mount table (/etc/fstab) that defines which devices are

@@ -1,0 +1,2 @@
+block out log on dmf0 all
+block in log quick from 10.0.0.0/8 to any
