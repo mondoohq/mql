@@ -7,6 +7,8 @@ digitalocean.account.dropletLimit 13.0.1
 digitalocean.account.email 13.0.1
 digitalocean.account.emailVerified 13.0.1
 digitalocean.account.floatingIpLimit 13.0.1
+digitalocean.account.name 14.4.2
+digitalocean.account.reservedIpLimit 14.4.2
 digitalocean.account.status 13.0.1
 digitalocean.account.statusMessage 13.0.1
 digitalocean.account.teamName 13.3.1
@@ -309,6 +311,8 @@ digitalocean.database.user.opensearchAcls 13.14.5
 digitalocean.database.user.role 13.0.1
 digitalocean.database.users 13.0.1
 digitalocean.database.version 13.0.1
+digitalocean.database.versionEndOfAvailability 14.4.2
+digitalocean.database.versionEndOfLife 14.4.2
 digitalocean.database.vpc 13.0.2
 digitalocean.databases 13.0.1
 digitalocean.domain 13.0.1
@@ -856,6 +860,7 @@ digitalocean.kubernetesClusters 13.0.1
 digitalocean.latestSecurityScan 13.4.2
 digitalocean.loadBalancer 13.0.1
 digitalocean.loadBalancer.algorithm 13.0.1
+digitalocean.loadBalancer.backendTag 14.4.2
 digitalocean.loadBalancer.createdAt 13.0.1
 digitalocean.loadBalancer.disableLetsEncryptDnsRecords 13.0.1
 digitalocean.loadBalancer.domains 13.6.2

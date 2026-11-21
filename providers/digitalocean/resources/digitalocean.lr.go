@@ -721,6 +721,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"digitalocean.account.email": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitaloceanAccount).GetEmail()).ToDataRes(types.String)
 	},
+	"digitalocean.account.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanAccount).GetName()).ToDataRes(types.String)
+	},
 	"digitalocean.account.uuid": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitaloceanAccount).GetUuid()).ToDataRes(types.String)
 	},
@@ -729,6 +732,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"digitalocean.account.floatingIpLimit": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitaloceanAccount).GetFloatingIpLimit()).ToDataRes(types.Int)
+	},
+	"digitalocean.account.reservedIpLimit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanAccount).GetReservedIpLimit()).ToDataRes(types.Int)
 	},
 	"digitalocean.account.volumeLimit": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitaloceanAccount).GetVolumeLimit()).ToDataRes(types.Int)
@@ -1179,6 +1185,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"digitalocean.database.version": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitaloceanDatabase).GetVersion()).ToDataRes(types.String)
+	},
+	"digitalocean.database.versionEndOfLife": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanDatabase).GetVersionEndOfLife()).ToDataRes(types.Time)
+	},
+	"digitalocean.database.versionEndOfAvailability": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanDatabase).GetVersionEndOfAvailability()).ToDataRes(types.Time)
 	},
 	"digitalocean.database.numNodes": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitaloceanDatabase).GetNumNodes()).ToDataRes(types.Int)
@@ -1689,6 +1701,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"digitalocean.loadBalancer.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitaloceanLoadBalancer).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"digitalocean.loadBalancer.backendTag": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanLoadBalancer).GetBackendTag()).ToDataRes(types.String)
 	},
 	"digitalocean.loadBalancer.listeners": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitaloceanLoadBalancer).GetListeners()).ToDataRes(types.Array(types.Resource("digitalocean.loadBalancer.listener")))
@@ -4342,6 +4357,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDigitaloceanAccount).Email, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"digitalocean.account.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanAccount).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"digitalocean.account.uuid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDigitaloceanAccount).Uuid, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -4352,6 +4371,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"digitalocean.account.floatingIpLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDigitaloceanAccount).FloatingIpLimit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"digitalocean.account.reservedIpLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanAccount).ReservedIpLimit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"digitalocean.account.volumeLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -5000,6 +5023,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"digitalocean.database.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDigitaloceanDatabase).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"digitalocean.database.versionEndOfLife": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanDatabase).VersionEndOfLife, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"digitalocean.database.versionEndOfAvailability": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanDatabase).VersionEndOfAvailability, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"digitalocean.database.numNodes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -5728,6 +5759,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"digitalocean.loadBalancer.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDigitaloceanLoadBalancer).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"digitalocean.loadBalancer.backendTag": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanLoadBalancer).BackendTag, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"digitalocean.loadBalancer.listeners": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -10121,9 +10156,11 @@ type mqlDigitaloceanAccount struct {
 	__id       string
 	// optional: if you define mqlDigitaloceanAccountInternal it will be used here
 	Email           plugin.TValue[string]
+	Name            plugin.TValue[string]
 	Uuid            plugin.TValue[string]
 	DropletLimit    plugin.TValue[int64]
 	FloatingIpLimit plugin.TValue[int64]
+	ReservedIpLimit plugin.TValue[int64]
 	VolumeLimit     plugin.TValue[int64]
 	EmailVerified   plugin.TValue[bool]
 	Status          plugin.TValue[string]
@@ -10173,6 +10210,10 @@ func (c *mqlDigitaloceanAccount) GetEmail() *plugin.TValue[string] {
 	return &c.Email
 }
 
+func (c *mqlDigitaloceanAccount) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
 func (c *mqlDigitaloceanAccount) GetUuid() *plugin.TValue[string] {
 	return &c.Uuid
 }
@@ -10183,6 +10224,10 @@ func (c *mqlDigitaloceanAccount) GetDropletLimit() *plugin.TValue[int64] {
 
 func (c *mqlDigitaloceanAccount) GetFloatingIpLimit() *plugin.TValue[int64] {
 	return &c.FloatingIpLimit
+}
+
+func (c *mqlDigitaloceanAccount) GetReservedIpLimit() *plugin.TValue[int64] {
+	return &c.ReservedIpLimit
 }
 
 func (c *mqlDigitaloceanAccount) GetVolumeLimit() *plugin.TValue[int64] {
@@ -11633,6 +11678,8 @@ type mqlDigitaloceanDatabase struct {
 	Name                             plugin.TValue[string]
 	Engine                           plugin.TValue[string]
 	Version                          plugin.TValue[string]
+	VersionEndOfLife                 plugin.TValue[*time.Time]
+	VersionEndOfAvailability         plugin.TValue[*time.Time]
 	NumNodes                         plugin.TValue[int64]
 	Size                             plugin.TValue[string]
 	Region                           plugin.TValue[string]
@@ -11739,6 +11786,18 @@ func (c *mqlDigitaloceanDatabase) GetEngine() *plugin.TValue[string] {
 
 func (c *mqlDigitaloceanDatabase) GetVersion() *plugin.TValue[string] {
 	return &c.Version
+}
+
+func (c *mqlDigitaloceanDatabase) GetVersionEndOfLife() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.VersionEndOfLife, func() (*time.Time, error) {
+		return c.versionEndOfLife()
+	})
+}
+
+func (c *mqlDigitaloceanDatabase) GetVersionEndOfAvailability() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.VersionEndOfAvailability, func() (*time.Time, error) {
+		return c.versionEndOfAvailability()
+	})
 }
 
 func (c *mqlDigitaloceanDatabase) GetNumNodes() *plugin.TValue[int64] {
@@ -13242,6 +13301,7 @@ type mqlDigitaloceanLoadBalancer struct {
 	Vpc                          plugin.TValue[*mqlDigitaloceanVpc]
 	Droplets                     plugin.TValue[[]any]
 	Tags                         plugin.TValue[[]any]
+	BackendTag                   plugin.TValue[string]
 	Listeners                    plugin.TValue[[]any]
 	HealthCheck                  plugin.TValue[any]
 	StickySessions               plugin.TValue[any]
@@ -13375,6 +13435,10 @@ func (c *mqlDigitaloceanLoadBalancer) GetDroplets() *plugin.TValue[[]any] {
 
 func (c *mqlDigitaloceanLoadBalancer) GetTags() *plugin.TValue[[]any] {
 	return &c.Tags
+}
+
+func (c *mqlDigitaloceanLoadBalancer) GetBackendTag() *plugin.TValue[string] {
+	return &c.BackendTag
 }
 
 func (c *mqlDigitaloceanLoadBalancer) GetListeners() *plugin.TValue[[]any] {
