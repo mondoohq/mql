@@ -3254,6 +3254,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"k8s.ingress.tls": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sIngress).GetTls()).ToDataRes(types.Array(types.Resource("k8s.ingresstls")))
 	},
+	"k8s.ingress.tlsHosts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sIngress).GetTlsHosts()).ToDataRes(types.Array(types.String))
+	},
 	"k8s.ingress.ingressClassName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sIngress).GetIngressClassName()).ToDataRes(types.String)
 	},
@@ -9589,6 +9592,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"k8s.ingress.tls": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlK8sIngress).Tls, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.ingress.tlsHosts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sIngress).TlsHosts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"k8s.ingress.ingressClassName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -21996,6 +22003,7 @@ type mqlK8sIngress struct {
 	Manifest            plugin.TValue[any]
 	Rules               plugin.TValue[[]any]
 	Tls                 plugin.TValue[[]any]
+	TlsHosts            plugin.TValue[[]any]
 	IngressClassName    plugin.TValue[string]
 	IngressClass        plugin.TValue[*mqlK8sIngressclass]
 	LoadBalancerIngress plugin.TValue[[]any]
@@ -22136,6 +22144,12 @@ func (c *mqlK8sIngress) GetTls() *plugin.TValue[[]any] {
 		}
 
 		return c.tls()
+	})
+}
+
+func (c *mqlK8sIngress) GetTlsHosts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TlsHosts, func() ([]any, error) {
+		return c.tlsHosts()
 	})
 }
 

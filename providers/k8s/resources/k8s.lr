@@ -2756,6 +2756,12 @@ private k8s.ingress @defaults("namespace name created") @context("k8s.context") 
   rules []k8s.ingressrule
   // Ingress TLS data
   tls() []k8s.ingresstls
+  // Hosts the Ingress declares TLS for, from its spec
+  //
+  // Read from `spec.tls` without the Secrets, so it reports the hosts when the
+  // scan may not read Secrets or a referenced Secret is missing, cases in
+  // which `tls` leaves the entry out.
+  tlsHosts() []string
   // Name of the IngressClass that handles this ingress
   ingressClassName() string
   // The IngressClass that handles this ingress
