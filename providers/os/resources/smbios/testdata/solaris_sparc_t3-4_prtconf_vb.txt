@@ -1,0 +1,6 @@
+name:  ORCL,SPARC-T3-4
+banner-name:  SPARC T3-4
+compatible: 'sun4v'
+idprom: 01840014.4fa02d28.00000000.a02d28de.00000000.00000000.00000000.00000000
+openprom model:  SUNW,4.33.0.b
+openprom version: 'OBP 4.33.0.b 2011/05/16 16:26'

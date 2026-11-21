@@ -333,6 +333,7 @@ const (
 	ResourcePf                                             string = "pf"
 	ResourcePfRule                                         string = "pf.rule"
 	ResourcePfTable                                        string = "pf.table"
+	ResourceIpfilter                                       string = "ipfilter"
 	ResourceFstab                                          string = "fstab"
 	ResourceFstabEntry                                     string = "fstab.entry"
 	ResourceGrubConfig                                     string = "grub.config"
@@ -2119,6 +2120,10 @@ func init() {
 		"pf.table": {
 			// to override args, implement: initPfTable(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createPfTable,
+		},
+		"ipfilter": {
+			// to override args, implement: initIpfilter(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIpfilter,
 		},
 		"fstab": {
 			Init:   initFstab,
@@ -12924,6 +12929,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"pf.table.addresses": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPfTable).GetAddresses()).ToDataRes(types.Array(types.String))
+	},
+	"ipfilter.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpfilter).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"ipfilter.rules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpfilter).GetRules()).ToDataRes(types.Array(types.String))
+	},
+	"ipfilter.file": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpfilter).GetFile()).ToDataRes(types.Resource("file"))
 	},
 	"fstab.path": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlFstab).GetPath()).ToDataRes(types.String)
@@ -37647,6 +37661,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"pf.table.addresses": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlPfTable).Addresses, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ipfilter.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpfilter).__id, ok = v.Value.(string)
+		return
+	},
+	"ipfilter.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpfilter).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipfilter.rules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpfilter).Rules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ipfilter.file": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpfilter).File, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
 		return
 	},
 	"fstab.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -90914,6 +90944,81 @@ func (c *mqlPfTable) GetName() *plugin.TValue[string] {
 func (c *mqlPfTable) GetAddresses() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.Addresses, func() ([]any, error) {
 		return c.addresses()
+	})
+}
+
+// mqlIpfilter for the ipfilter resource
+type mqlIpfilter struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlIpfilterInternal it will be used here
+	Enabled plugin.TValue[bool]
+	Rules   plugin.TValue[[]any]
+	File    plugin.TValue[*mqlFile]
+}
+
+// createIpfilter creates a new instance of this resource
+func createIpfilter(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIpfilter{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ipfilter", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIpfilter) MqlName() string {
+	return "ipfilter"
+}
+
+func (c *mqlIpfilter) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIpfilter) GetEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Enabled, func() (bool, error) {
+		return c.enabled()
+	})
+}
+
+func (c *mqlIpfilter) GetRules() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Rules, func() ([]any, error) {
+		return c.rules()
+	})
+}
+
+func (c *mqlIpfilter) GetFile() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.File, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ipfilter", c.__id, "file")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.file()
 	})
 }
 

@@ -1,0 +1,3 @@
+name:  ORCL,SPARC-T4-2
+banner-name:  SPARC T4-2
+compatible: 'sun4v'

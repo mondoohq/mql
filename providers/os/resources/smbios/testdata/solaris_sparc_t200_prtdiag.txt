@@ -1,0 +1,31 @@
+System Configuration:  Oracle Corporation  sun4v Sun Fire T200
+Memory size: 16256 Megabytes
+
+================================ Virtual CPUs ================================
+
+
+CPU ID Frequency Implementation         Status
+------ --------- ---------------------- -------
+0      1200 MHz  SUNW,UltraSPARC-T1     on-line
+1      1200 MHz  SUNW,UltraSPARC-T1     on-line
+2      1200 MHz  SUNW,UltraSPARC-T1     on-line
+3      1200 MHz  SUNW,UltraSPARC-T1     on-line
+4      1200 MHz  SUNW,UltraSPARC-T1     on-line
+5      1200 MHz  SUNW,UltraSPARC-T1     on-line
+6      1200 MHz  SUNW,UltraSPARC-T1     on-line
+======================= Physical Memory Configuration ========================
+Segment Table:
+--------------------------------------------------------------
+Base           Segment  Interleave  Bank     Contains
+Address        Size     Factor      Size     Modules
+--------------------------------------------------------------
+0x0            16 GB    4           2 GB     MB/CMP0/CH0/R0/D0
+                                             MB/CMP0/CH0/R0/D1
+                                    2 GB     MB/CMP0/CH0/R1/D0
+                                             MB/CMP0/CH0/R1/D1
+                                    2 GB     MB/CMP0/CH1/R0/D0
+                                             MB/CMP0/CH1/R0/D1
+                                    2 GB     MB/CMP0/CH1/R1/D0
+System PROM revisions:
+----------------------
+OBP 4.30.4.d 2011/07/06 14:29

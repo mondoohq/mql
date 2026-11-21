@@ -2935,6 +2935,10 @@ ipAddress.cidr 11.3.42
 ipAddress.gateway 11.3.42
 ipAddress.ip 11.3.42
 ipAddress.subnet 11.3.42
+ipfilter 14.46.1
+ipfilter.enabled 14.46.1
+ipfilter.file 14.46.1
+ipfilter.rules 14.46.1
 iptables 9.0.0
 iptables.chain 13.15.2
 iptables.chain.name 13.15.2
