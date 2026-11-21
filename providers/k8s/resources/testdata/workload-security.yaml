@@ -18,6 +18,7 @@ spec:
       labels:
         app: hardened
     spec:
+      serviceAccountName: web-runner
       automountServiceAccountToken: false
       securityContext:
         seccompProfile:
