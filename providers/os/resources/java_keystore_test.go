@@ -13,12 +13,15 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/mock"
 )
 
 func selfSignedDER(t *testing.T, serial *big.Int) []byte {
@@ -279,4 +282,92 @@ func TestJavaTruststoreCandidatesFindTarballJVMs(t *testing.T) {
 		"/opt/zulu8-jre/jre/lib/security/cacerts",
 		"/usr/local/jdk-25/lib/security/cacerts",
 	}, got)
+}
+
+// windowsFs serves Windows paths from an in-memory filesystem: it maps `\`
+// to `/` on the way in, so a directory listing returns bare names the way the
+// filesystem of a Windows connection (local or SFTP) does.
+type windowsFs struct{ afero.Fs }
+
+func (w windowsFs) conv(name string) string { return strings.ReplaceAll(name, `\`, "/") }
+
+func (w windowsFs) Open(name string) (afero.File, error) { return w.Fs.Open(w.conv(name)) }
+
+func (w windowsFs) Stat(name string) (os.FileInfo, error) { return w.Fs.Stat(w.conv(name)) }
+
+func newWindowsFs(t *testing.T, files ...string) *afero.Afero {
+	t.Helper()
+	fs := afero.NewMemMapFs()
+	for _, p := range files {
+		require.NoError(t, afero.WriteFile(fs, strings.ReplaceAll(p, `\`, "/"), []byte("x"), 0o644))
+	}
+	return &afero.Afero{Fs: windowsFs{fs}}
+}
+
+func windowsConn(t *testing.T) *mock.Connection {
+	t.Helper()
+	conn, err := mock.New(0, &inventory.Asset{Platform: &inventory.Platform{
+		Name:    "windows",
+		Version: "20348",
+		Family:  []string{"windows", "os"},
+	}})
+	require.NoError(t, err)
+	return conn
+}
+
+// java.truststores.paths was empty on Windows: discovery knew only Linux and
+// macOS locations, so a check over every JVM's trust store read none.
+//
+// Measured: Windows Server 2022 Datacenter (build 20348), 2026-11-22, Eclipse
+// Temurin JRE 21 MSI install; the one cacerts on the host.
+func TestJavaTruststoresWindowsTemurin(t *testing.T) {
+	afs := newWindowsFs(t,
+		`C:\Program Files\Eclipse Adoptium\jre-21.0.13.10002-hotspot\lib\security\cacerts`,
+	)
+	assert.Equal(t, []string{
+		`C:\Program Files\Eclipse Adoptium\jre-21.0.13.10002-hotspot\lib\security\cacerts`,
+	}, findJavaTruststores(windowsConn(t), afs))
+}
+
+// Synthetic: several vendors side by side, a JDK 8 with its store under jre,
+// a 32-bit install, SapMachine's deeper layout, and things that are not JVM
+// homes; no target showed this. The directory names follow the vendors' MSIs.
+// Every JVM is reported once, sorted. Not reported: a cacerts outside a vendor
+// directory, a file directly in a vendor directory, and Oracle's Java\latest
+// junction, which only repeats a home already listed.
+func TestJavaTruststoresWindowsLayouts(t *testing.T) {
+	afs := newWindowsFs(t,
+		`C:\Program Files\Java\jdk1.8.0_202\jre\lib\security\cacerts`,
+		`C:\Program Files\Java\jdk-21\lib\security\cacerts`,
+		`C:\Program Files (x86)\Java\jre1.8.0_202\lib\security\cacerts`,
+		`C:\Program Files\Microsoft\jdk-17.0.12.7-hotspot\lib\security\cacerts`,
+		`C:\Program Files\Amazon Corretto\jdk21.0.4_7\lib\security\cacerts`,
+		`C:\Program Files\Zulu\zulu-21\lib\security\cacerts`,
+		`C:\Program Files\BellSoft\LibericaJDK-21\lib\security\cacerts`,
+		`C:\Program Files\Semeru\jdk-21.0.4.7-openj9\lib\security\cacerts`,
+		`C:\Program Files\AdoptOpenJDK\jdk-11.0.11.9-hotspot\lib\security\cacerts`,
+		`C:\Program Files\SapMachine\JDK\21\lib\security\cacerts`,
+		`C:\Program Files\Java\latest\jdk-21\lib\security\cacerts`,
+		`C:\Program Files\SomeApp\lib\security\cacerts`,
+		`C:\Program Files\Microsoft\Edge\Application\msedge.exe`,
+		`C:\Program Files\Java\readme.txt`,
+	)
+	assert.Equal(t, []string{
+		`C:\Program Files (x86)\Java\jre1.8.0_202\lib\security\cacerts`,
+		`C:\Program Files\AdoptOpenJDK\jdk-11.0.11.9-hotspot\lib\security\cacerts`,
+		`C:\Program Files\Amazon Corretto\jdk21.0.4_7\lib\security\cacerts`,
+		`C:\Program Files\BellSoft\LibericaJDK-21\lib\security\cacerts`,
+		`C:\Program Files\Java\jdk-21\lib\security\cacerts`,
+		`C:\Program Files\Java\jdk1.8.0_202\jre\lib\security\cacerts`,
+		`C:\Program Files\Microsoft\jdk-17.0.12.7-hotspot\lib\security\cacerts`,
+		`C:\Program Files\SapMachine\JDK\21\lib\security\cacerts`,
+		`C:\Program Files\Semeru\jdk-21.0.4.7-openj9\lib\security\cacerts`,
+		`C:\Program Files\Zulu\zulu-21\lib\security\cacerts`,
+	}, findJavaTruststores(windowsConn(t), afs))
+}
+
+// Synthetic: no JVM installed; no target showed this. An empty list, not an
+// error.
+func TestJavaTruststoresWindowsNone(t *testing.T) {
+	assert.Empty(t, findJavaTruststores(windowsConn(t), newWindowsFs(t)))
 }

@@ -301,13 +301,102 @@ var javaTruststoreFiles = []string{
 	"/opt/java/openjdk/lib/security/cacerts",
 }
 
+// javaWindowsVendorDirs are the directories under Program Files that the
+// Windows installers of each Java distribution put their runtimes in, one
+// directory per installed version (for example
+// `C:\Program Files\Eclipse Adoptium\jre-21.0.13.10002-hotspot`). The
+// version directory's name cannot be derived from the Java version (Temurin's
+// 10002, Corretto's jdk21.0.13_1, Zulu's major-only zulu-21), so each is
+// listed rather than built.
+//
+// Read from the vendors' MSI Directory tables (November 2026 builds) unless
+// noted otherwise.
+var javaWindowsVendorDirs = []string{
+	// Oracle, jdk-21 and jre1.8.0_421. Its Java\latest junctions sit one level
+	// deeper and are not read, so they do not report a home twice.
+	"Java",
+	"Eclipse Adoptium", // Temurin, jdk-21.0.13.10002-hotspot
+	"AdoptOpenJDK",     // Temurin's name before the move to Eclipse
+	"Microsoft",        // Microsoft Build of OpenJDK, jdk-21.0.13.102-hotspot
+	"Amazon Corretto",  // jdk21.0.13_1, and jre8 next to a Corretto 8 JDK
+	"Zulu",             // zulu-21, zulu-21-jre
+	"BellSoft",         // Liberica, LibericaJDK-21
+	"Semeru",           // IBM Semeru Open Edition, jdk-21.0.13.0-openj9
+	// IBM Semeru Certified Edition, ibm-semeru-certified-<release>-jdk;
+	// from IBM's documentation.
+	"IBM",
+	// SapMachine nests one level further, JDK\21.
+	`SapMachine\JDK`,
+	`SapMachine\JRE`,
+	// Red Hat build of OpenJDK, java-21-openjdk-<version>; from the JAVA_HOME
+	// example in Red Hat's documentation, not checked against an MSI.
+	"RedHat",
+}
+
+// javaWindowsProgramFiles are the install roots scanned on Windows, the 64-bit
+// and the 32-bit one.
+var javaWindowsProgramFiles = []string{
+	`C:\Program Files`,
+	`C:\Program Files (x86)`,
+}
+
+// windowsPathJoin joins path elements with the Windows separator. Windows
+// targets are not the machine the provider runs on, so filepath.Join is no
+// help, and path.Join would produce paths that no Windows tool prints.
+func windowsPathJoin(elem ...string) string {
+	return strings.Join(elem, `\`)
+}
+
+// javaWindowsTruststoreCandidates returns every trust store found in the JVM
+// homes under the Windows install roots, in no particular order.
+func javaWindowsTruststoreCandidates(afs *afero.Afero) []string {
+	found := []string{}
+	for _, pf := range javaWindowsProgramFiles {
+		for _, vendor := range javaWindowsVendorDirs {
+			root := windowsPathJoin(pf, vendor)
+			entries, err := afs.ReadDir(root)
+			if err != nil {
+				continue
+			}
+			for _, entry := range entries {
+				if !entry.IsDir() {
+					continue
+				}
+				for _, dir := range javaTruststoreDirs {
+					p := windowsPathJoin(root, entry.Name(), strings.ReplaceAll(dir, "/", `\`), "cacerts")
+					if ok, _ := afs.Exists(p); ok {
+						found = append(found, p)
+					}
+				}
+			}
+		}
+	}
+	return found
+}
+
 func (s *mqlJavaTruststores) id() (string, error) {
 	return "java.truststores", nil
 }
 
 func (s *mqlJavaTruststores) paths() ([]any, error) {
 	conn := s.MqlRuntime.Connection.(shared.Connection)
-	afs := &afero.Afero{Fs: conn.FileSystem()}
+	out := findJavaTruststores(conn, &afero.Afero{Fs: conn.FileSystem()})
+
+	res := make([]any, 0, len(out))
+	for _, p := range out {
+		res = append(res, p)
+	}
+	return res, nil
+}
+
+// findJavaTruststores returns the trust stores on the asset, one name per
+// file, sorted.
+func findJavaTruststores(conn shared.Connection, afs *afero.Afero) []string {
+	// Windows has no distribution store and no symlinked JVM aliases to fold
+	// together, and resolving links goes through readlink, which it lacks.
+	if conn.Asset().Platform.IsFamily("windows") {
+		return dedupeByRealPath(javaWindowsTruststoreCandidates(afs), nil)
+	}
 
 	candidates := javaTruststoreCandidates(afs)
 
@@ -316,13 +405,7 @@ func (s *mqlJavaTruststores) paths() ([]any, error) {
 	// /etc/ssl/certs/java/cacerts), and version aliases such as
 	// /usr/lib/jvm/java-21 link to a JDK directory that is listed as well.
 	// Reporting each name would audit one file many times over.
-	out := dedupeByRealPath(candidates, resolveTruststorePaths(conn, candidates))
-
-	res := make([]any, 0, len(out))
-	for _, p := range out {
-		res = append(res, p)
-	}
-	return res, nil
+	return dedupeByRealPath(candidates, resolveTruststorePaths(conn, candidates))
 }
 
 // javaTruststoreCandidates returns every trust store found in the known

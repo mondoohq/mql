@@ -29567,6 +29567,12 @@ private java.keystore.entry @defaults("alias isTrustedCertificate") {
 // Finds the `cacerts` file of each JDK or JRE on the asset and reads it,
 // so a check can ask what the machine's Java runtimes trust without
 // knowing where any of them is installed.
+//
+// On Windows the runtimes are found in the vendor directories under
+// `C:\Program Files` and `C:\Program Files (x86)` that the Java installers
+// use, such as `Java`, `Eclipse Adoptium`, `Microsoft`, `Amazon Corretto`,
+// `Zulu` and `BellSoft`. A runtime installed elsewhere, or per user under
+// `AppData`, is not found.
 java.truststores {
   []java.keystore(paths)
   // Paths of the trust stores that were found
