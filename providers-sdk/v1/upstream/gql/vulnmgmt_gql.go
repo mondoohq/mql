@@ -5,6 +5,7 @@ package gql
 
 import (
 	"context"
+	"errors"
 
 	mondoogql "go.mondoo.com/mondoo-go"
 )
@@ -148,10 +149,14 @@ type Package struct {
 	}
 }
 
-// GetVulnCompactReport fetches the compact vuln report for a given asset
+// GetVulnCompactReport fetches the compact vuln report for a given asset. The
+// response is a union: when the server has no report (NotFoundError,
+// NotSupported) it returns a nil report, never one with zero findings, and an
+// unknown member is an error.
 func (c *MondooClient) GetVulnCompactReport(mrn string) (*VulnReport, error) {
 	var m struct {
 		AssetVulnerabilityReportResponse struct {
+			Typename                        string `graphql:"__typename"`
 			AssetVulnerabilityCompactReport struct {
 				AssetMrn   string
 				Advisories []struct {
@@ -170,6 +175,14 @@ func (c *MondooClient) GetVulnCompactReport(mrn string) (*VulnReport, error) {
 	err := c.Query(context.Background(), &m, map[string]any{"input": mondoogql.AssetVulnerabilityReportInput{AssetMrn: mondoogql.String(mrn)}})
 	if err != nil {
 		return nil, err
+	}
+	switch resp := m.AssetVulnerabilityReportResponse; resp.Typename {
+	case "AssetVulnerabilityCompactReport":
+	case "NotFoundError", "NotSupported":
+		// No report, which callers already handle as a nil report.
+		return nil, nil
+	default:
+		return nil, errors.New("unexpected vulnerability report response: " + resp.Typename)
 	}
 
 	gqlVulnReport := &VulnReport{
