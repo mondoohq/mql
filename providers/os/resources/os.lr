@@ -909,15 +909,25 @@ os.any @root {
 // Operating system root certificate trust store
 //
 // X.509 root certificates that the asset's operating system trusts for TLS
-// validation, derived from the platform-appropriate trust-store files (e.g.
-// `/etc/ssl/certs/ca-certificates.crt` on Debian,
-// `/etc/pki/tls/certs/ca-bundle.crt` on RHEL, the macOS SecTrust store, the
-// Windows Root certificate store). Reads each trust-store file and exposes
-// the parsed `network.certificate` list so audits can pin specific issuers,
-// detect untrusted local additions, or count the trust-store size.
+// validation, read from the platform's trust store: the bundle file on Linux,
+// BSD, macOS, Solaris and AIX (for example `/etc/ssl/certs/ca-certificates.crt`
+// on Debian, `/etc/pki/tls/certs/ca-bundle.crt` on RHEL, `/etc/ssl/cert.pem`
+// on macOS) and the `LocalMachine\Root` certificate store on Windows. Exposes
+// the parsed certificate list so audits can pin specific issuers, detect
+// untrusted local additions, or count the trust-store size.
+//
+// On Windows the list is the local Root store, which includes the roots added
+// by Group Policy and those already downloaded through the Automatic Root
+// Certificates Update. Windows fetches further trusted roots on demand when a
+// chain needs one, so a CA missing from this list may still be trusted. On
+// macOS `/etc/ssl/cert.pem` is the bundle OpenSSL-based tools read; the
+// keychain roots macOS applications validate against are not included.
 os.rootCertificates {
   []certificate(content)
   // List of files that define these certificates
+  //
+  // Empty on Windows, where the roots are read from the certificate store
+  // rather than a file.
   files []file
   content(files) []string
   // Number of certificates in the trust-store files that could not be parsed
