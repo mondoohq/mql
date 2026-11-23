@@ -12,9 +12,13 @@ import (
 )
 
 var Config = plugin.Provider{
-	Name:      "azure",
-	ID:        "go.mondoo.com/mql/providers/azure",
-	Version:   "14.12.0",
+	Name:    "azure",
+	ID:      "go.mondoo.com/mql/providers/azure",
+	Version: "14.12.0",
+	// Queries read `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	Platforms: resources.Platforms,
 	ConnectionTypes: []string{
 		provider.ConnectionType,
