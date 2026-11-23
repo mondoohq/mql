@@ -9483,7 +9483,9 @@ aws.rds.snapshot.preferredBackupWindow 13.14.2
 aws.rds.snapshot.region 11.15.2
 aws.rds.snapshot.restoreAttributes 13.53.4
 aws.rds.snapshot.sourceDbCluster 13.38.2
+aws.rds.snapshot.sourceDbClusterIdentifier 14.11.2
 aws.rds.snapshot.sourceDbInstance 13.38.2
+aws.rds.snapshot.sourceDbInstanceIdentifier 14.11.2
 aws.rds.snapshot.sourceRegion 13.35.2
 aws.rds.snapshot.sourceSnapshot 13.35.2
 aws.rds.snapshot.status 11.15.2
