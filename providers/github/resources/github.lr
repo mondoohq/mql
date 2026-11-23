@@ -209,6 +209,22 @@ github.organization @defaults("login name") @root {
   membersCanViewDependencyInsights bool
   // Default branch name for new repositories
   defaultRepositoryBranch string
+  // Whether deploy keys can be added to and used by repositories in the organization
+  //
+  // Null when the token lacks organization owner access.
+  deployKeysEnabledForRepositories bool
+  // Whether contributors blocked by secret scanning push protection are shown a custom link
+  //
+  // Null when the token lacks organization owner access.
+  secretScanningPushProtectionCustomLinkEnabled bool
+  // Link shown to contributors blocked by secret scanning push protection
+  //
+  // Null when no custom link is set or the token lacks organization owner access.
+  secretScanningPushProtectionCustomLink string
+  // Time the organization was archived
+  //
+  // Null when the organization is not archived.
+  archivedAt time
   // GitHub Actions settings for this organization
   actionsSettings() github.organizationActionsSettings
   // SAML SSO configuration for the organization (requires GitHub Enterprise Cloud)
@@ -872,6 +888,22 @@ private github.team @defaults("id name") {
   repositories() []github.repository
   // Team organization
   organization github.organization
+  // Notification setting for team mentions
+  //
+  // One of notifications_enabled or notifications_disabled.
+  notificationSetting string
+  // Parent team
+  //
+  // Members of a child team inherit the repository access of its parent, so
+  // access granted to the parent reaches every team below it. Null for a
+  // top-level team.
+  parent() github.team
+  // Teams nested directly under this team
+  childTeams() []github.team
+  // Number of members on the team
+  membersCount() int
+  // Number of repositories the team can access
+  reposCount() int
 }
 
 // Team access grant on a repository
@@ -1246,6 +1278,29 @@ github.repository @defaults("fullName") @root {
   // repository. Names and timestamps only, never the values. Organization
   // agent secrets shared with the repository are reported on the organization.
   agentSecrets() []github.agentSecret
+  // Repository this fork was created from
+  //
+  // Null when the repository is not a fork.
+  parent() github.repository
+  // Repository at the root of the fork network
+  //
+  // Differs from parent when this repository is a fork of a fork. Null when
+  // the repository is not a fork.
+  source() github.repository
+  // Template the repository was generated from
+  //
+  // Null when the repository was not generated from a template.
+  templateRepository() github.repository
+  // Whether head branches are deleted automatically after a pull request merges
+  //
+  // Null when the token lacks the access GitHub requires to report the
+  // repository's merge settings.
+  deleteBranchOnMerge() bool
+  // Whether pull request authors are offered to update a head branch that is behind its base
+  //
+  // Null when the token lacks the access GitHub requires to report the
+  // repository's merge settings.
+  allowUpdateBranch() bool
 }
 
 // Copilot coding agent configuration for a repository
@@ -1368,6 +1423,11 @@ private github.deployKey @defaults("id title readOnly") {
   ageInDays int
   // The repository this key is configured on
   repository() github.repository
+  // Whether the key is enabled
+  //
+  // A key stays disabled while the organization does not allow deploy keys.
+  // Null when GitHub does not report it.
+  enabled bool
 }
 
 // GitHub user public SSH key
@@ -1627,6 +1687,40 @@ private github.repositoryActionsSettings @defaults("allowedActions") {
   //
   // Null when allowedActions is not selected.
   verifiedAllowed() bool
+  // Which outside contributors need approval before their fork pull request workflows run
+  //
+  // One of first_time_contributors_new_to_github, first_time_contributors, or
+  // all_external_contributors. The broader the policy, the fewer workflow runs
+  // from untrusted forks start without a maintainer looking first. Null when
+  // the policy cannot be read or does not apply.
+  forkPrApprovalPolicy() string
+  // Whether workflows run on pull requests from forks of private repositories
+  //
+  // Null when the setting cannot be read or does not apply.
+  // A public repository has no such setting and reports null.
+  forkPrWorkflowsEnabled() bool
+  // Whether workflows on fork pull requests of private repositories receive a write token
+  //
+  // A fork pull request author controls the code those workflows run, so a
+  // write-scoped `GITHUB_TOKEN` hands them write access. Null when the setting
+  // cannot be read or does not apply.
+  forkPrWriteTokens() bool
+  // Whether workflows on fork pull requests of private repositories can read secrets and variables
+  //
+  // Null when the setting cannot be read or does not apply.
+  forkPrSecretsAndVariables() bool
+  // Whether workflows on fork pull requests of private repositories need approval to run
+  //
+  // Null when the setting cannot be read or does not apply.
+  forkPrRequireApproval() bool
+  // Days workflow artifacts and logs are kept
+  //
+  // Null when the setting cannot be read.
+  artifactRetentionDays() int
+  // Longest retention, in days, that can be set for workflow artifacts and logs
+  //
+  // Null when the setting cannot be read.
+  artifactRetentionMaxDays() int
 }
 
 // GitHub Actions settings for an organization
@@ -1664,6 +1758,49 @@ private github.organizationActionsSettings @defaults("allowedActions") {
   //
   // Null when allowedActions is not selected.
   verifiedAllowed() bool
+  // Which outside contributors need approval before their fork pull request workflows run
+  //
+  // One of first_time_contributors_new_to_github, first_time_contributors, or
+  // all_external_contributors. The broader the policy, the fewer workflow runs
+  // from untrusted forks start without a maintainer looking first. Null when
+  // the policy cannot be read or does not apply.
+  forkPrApprovalPolicy() string
+  // Whether workflows run on pull requests from forks of private repositories
+  //
+  // Null when the setting cannot be read or does not apply.
+  forkPrWorkflowsEnabled() bool
+  // Whether workflows on fork pull requests of private repositories receive a write token
+  //
+  // A fork pull request author controls the code those workflows run, so a
+  // write-scoped `GITHUB_TOKEN` hands them write access. Null when the setting
+  // cannot be read or does not apply.
+  forkPrWriteTokens() bool
+  // Whether workflows on fork pull requests of private repositories can read secrets and variables
+  //
+  // Null when the setting cannot be read or does not apply.
+  forkPrSecretsAndVariables() bool
+  // Whether workflows on fork pull requests of private repositories need approval to run
+  //
+  // Null when the setting cannot be read or does not apply.
+  forkPrRequireApproval() bool
+  // Days workflow artifacts and logs are kept
+  //
+  // Null when the setting cannot be read.
+  artifactRetentionDays() int
+  // Longest retention, in days, that can be set for workflow artifacts and logs
+  //
+  // Null when the setting cannot be read.
+  artifactRetentionMaxDays() int
+  // Which repositories may use self-hosted runners
+  //
+  // One of all, selected, or none. Null when the setting cannot be read.
+  selfHostedRunnersEnabledRepositories() string
+  // Repositories allowed to use self-hosted runners
+  //
+  // The list in force when selfHostedRunnersEnabledRepositories is selected.
+  // Null for any other setting, where no list applies, or when the list
+  // cannot be read.
+  selfHostedRunnersSelectedRepositories() []github.repository
 }
 
 // GitHub repository file
@@ -1727,6 +1864,56 @@ private github.release @defaults("name tagName") {
   publishedAt time
   // Release author
   author github.user
+  // Whether the release is a draft
+  //
+  // Drafts are visible only to users with push access.
+  draft bool
+  // Whether the release is immutable
+  //
+  // An immutable release's tag and assets cannot change after publication.
+  // Null when GitHub does not report it.
+  immutable bool
+  // Branch or commit the release tag is created from when the tag does not exist yet
+  targetCommitish string
+  // Release update time
+  updatedAt time
+  // Files attached to the release
+  assets []github.releaseAsset
+}
+
+// GitHub release asset
+//
+// File attached to a release, such as a binary or a checksum file. The
+// `digest` field carries the SHA-256 of the uploaded content, `uploader` the
+// account that uploaded it, and `downloadCount` how often it was fetched.
+private github.releaseAsset @defaults("name size") {
+  // Asset ID
+  id int
+  // File name
+  name string
+  // Label shown in place of the file name
+  label string
+  // MIME type of the asset
+  contentType string
+  // Upload state
+  //
+  // One of uploaded or open.
+  state string
+  // Size in bytes
+  size int
+  // Number of downloads
+  downloadCount int
+  // Digest of the uploaded content
+  //
+  // Prefixed with the algorithm, for example `sha256:`. Null for assets
+  // uploaded before GitHub started recording digests.
+  digest string
+  // Upload time
+  createdAt time
+  // Update time
+  updatedAt time
+  // User who uploaded the asset
+  uploader github.user
 }
 
 // GitHub webhook
@@ -2134,6 +2321,25 @@ private github.mergeRequest @defaults("id state") {
   stackBaseBranch string
   // Commit SHA the whole stack targets
   stackBaseSha string
+  // How the author relates to the repository
+  //
+  // One of OWNER, MEMBER, COLLABORATOR, CONTRIBUTOR, FIRST_TIME_CONTRIBUTOR,
+  // FIRST_TIMER, MANNEQUIN, or NONE.
+  authorAssociation string
+  // Whether the pull request is a draft
+  draft bool
+  // Repository the pull request's changes come from
+  //
+  // The fork for a pull request opened from a fork. Null when that repository
+  // was deleted.
+  headRepository github.repository
+  // Teams requested to review this pull request
+  requestedTeams []github.team
+  // SHA of the merge commit
+  //
+  // For an open pull request, the test merge commit GitHub created. Null when
+  // GitHub has not created one.
+  mergeCommitSha string
 }
 
 // GitHub pull request review
@@ -2461,6 +2667,22 @@ private github.secretScanningAlert @defaults("number state") {
   providerSlug string
   // Metadata GitHub attaches to the alert, keyed by name
   metadata() map[string]string
+  // Comment the requester gave when asking to bypass push protection
+  pushProtectionBypassRequestComment string
+  // User who reviewed the request to bypass push protection
+  pushProtectionBypassRequestReviewer github.user
+  // Comment the reviewer gave on the request to bypass push protection
+  pushProtectionBypassRequestReviewerComment string
+  // Where the secret was first detected
+  //
+  // Keys `path`, `startLine`, `endLine`, `startColumn`, `endColumn`,
+  // `blobSha` and `commitSha` describe a secret found in a commit. A secret
+  // found elsewhere, such as in an issue or a pull request comment, carries
+  // none of those, and `pullRequestCommentUrl` is set for a pull request
+  // comment. Null when GitHub reports no location.
+  firstLocationDetected dict
+  // Whether the secret was detected in more than one location
+  hasMoreLocations bool
 }
 
 // GitHub code scanning alert
@@ -2612,6 +2834,17 @@ private github.runner @defaults("id name os status") {
   architecture string
   // Labels assigned to the runner
   labels []github.runnerLabel
+  // Version of the runner application
+  //
+  // Runners update themselves unless that was turned off, so an old version
+  // points at a runner that no longer updates. Null when GitHub does not
+  // report it.
+  version string
+  // Runner group the runner belongs to
+  //
+  // Null when the runner is in no organization runner group, or when the
+  // organization's runner groups cannot be read.
+  runnerGroup() github.organization.runnerGroup
 }
 
 // GitHub Actions runner label
@@ -2667,6 +2900,50 @@ private github.environment @defaults("name id") {
   secrets() []github.actionsSecret
   // GitHub Actions variables configured at the environment level
   variables() []github.actionsVariable
+  // Branch and tag name patterns allowed to deploy to the environment
+  //
+  // The patterns in force when customBranchPolicies is true. Empty when no
+  // custom policy applies. Null when the policies cannot be read.
+  deploymentBranchPolicies() []github.environmentBranchPolicy
+  // GitHub App deployment protection rules on the environment
+  //
+  // Rules that hand the decision whether a deployment proceeds to a GitHub
+  // App, such as an external change-management or monitoring check. Null when
+  // the rules cannot be read.
+  customProtectionRules() []github.environmentCustomProtectionRule
+}
+
+// GitHub environment deployment branch policy
+//
+// Name pattern deciding which branches or tags can deploy to an environment.
+// The `type` field says whether `name` matches branches or tags, and `name`
+// is a pattern in the syntax of Ruby's `File.fnmatch`, so `release/*` admits
+// every branch under release.
+private github.environmentBranchPolicy @defaults("name type") {
+  // Policy ID
+  id int
+  // Branch or tag name pattern
+  name string
+  // What the pattern matches
+  //
+  // One of branch or tag.
+  type string
+}
+
+// GitHub environment custom deployment protection rule
+//
+// GitHub App enabled as a deployment protection rule on an environment. A
+// deployment waits until the app approves or rejects it. The `enabled` field
+// reports whether the rule is in force.
+private github.environmentCustomProtectionRule @defaults("appSlug enabled") {
+  // Rule ID
+  id int
+  // Whether the rule is enabled
+  enabled bool
+  // ID of the GitHub App that decides the rule
+  appId int
+  // Slug of the GitHub App that decides the rule
+  appSlug string
 }
 
 // GitHub environment protection rule

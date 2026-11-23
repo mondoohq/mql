@@ -344,16 +344,7 @@ func (g *mqlGithubRepository) teams() ([]any, error) {
 
 	res := []any{}
 	for _, team := range allTeams {
-		mqlTeam, err := CreateResource(g.MqlRuntime, "github.team", map[string]*llx.RawData{
-			"id":                llx.IntDataPtr(team.ID),
-			"name":              llx.StringDataPtr(team.Name),
-			"description":       llx.StringDataPtr(team.Description),
-			"slug":              llx.StringDataPtr(team.Slug),
-			"privacy":           llx.StringDataPtr(team.Privacy),
-			"defaultPermission": llx.StringDataPtr(team.Permission),
-			"type":              llx.StringDataPtr(team.Type),
-			"organization":      organization,
-		})
+		mqlTeam, err := newMqlGithubTeam(g.MqlRuntime, team, organization, true)
 		if err != nil {
 			return nil, err
 		}
@@ -443,16 +434,7 @@ func (g *mqlGithubOrganizationCustomRole) teams() ([]any, error) {
 			return nil, err
 		}
 		for _, team := range teams {
-			r, err := CreateResource(g.MqlRuntime, "github.team", map[string]*llx.RawData{
-				"id":                llx.IntDataPtr(team.ID),
-				"name":              llx.StringDataPtr(team.Name),
-				"description":       llx.StringDataPtr(team.Description),
-				"slug":              llx.StringDataPtr(team.Slug),
-				"privacy":           llx.StringDataPtr(team.Privacy),
-				"defaultPermission": llx.StringDataPtr(team.Permission),
-				"type":              llx.StringDataPtr(team.Type),
-				"organization":      organization,
-			})
+			r, err := newMqlGithubTeam(g.MqlRuntime, team, organization, true)
 			if err != nil {
 				return nil, err
 			}
