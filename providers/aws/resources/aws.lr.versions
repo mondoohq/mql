@@ -8655,11 +8655,17 @@ aws.networkfirewall 11.16.1
 aws.networkfirewall.firewall 11.16.1
 aws.networkfirewall.firewall.arn 11.16.1
 aws.networkfirewall.firewall.configurationSyncStateSummary 13.21.4
+aws.networkfirewall.firewall.contextStoreId 14.12.1
+aws.networkfirewall.firewall.contextStoreOwnerAccountId 14.12.1
+aws.networkfirewall.firewall.contextStoreSyncStatus 14.12.1
+aws.networkfirewall.firewall.contextStoreSyncStatusMessage 14.12.1
 aws.networkfirewall.firewall.deleteProtection 11.16.1
 aws.networkfirewall.firewall.description 11.16.1
 aws.networkfirewall.firewall.encryptionType 13.21.4
 aws.networkfirewall.firewall.firewallPolicyArn 11.16.1
 aws.networkfirewall.firewall.firewallPolicyChangeProtection 11.16.1
+aws.networkfirewall.firewall.firewallType 14.12.1
+aws.networkfirewall.firewall.igwFirewallEnforcementMode 14.12.1
 aws.networkfirewall.firewall.kmsKey 13.21.4
 aws.networkfirewall.firewall.loggingConfiguration 13.26.3
 aws.networkfirewall.firewall.loggingDestinations 13.21.4
@@ -8667,6 +8673,8 @@ aws.networkfirewall.firewall.name 11.16.1
 aws.networkfirewall.firewall.natGateways 13.52.2
 aws.networkfirewall.firewall.noSourcePreservation 13.52.2
 aws.networkfirewall.firewall.policy 11.16.1
+aws.networkfirewall.firewall.proxyCertificate 14.12.1
+aws.networkfirewall.firewall.proxyDomainName 14.12.1
 aws.networkfirewall.firewall.proxyListeners 13.52.2
 aws.networkfirewall.firewall.region 11.16.1
 aws.networkfirewall.firewall.status 13.21.4
@@ -8675,6 +8683,7 @@ aws.networkfirewall.firewall.subnetMappings 11.16.1
 aws.networkfirewall.firewall.subnets 13.21.4
 aws.networkfirewall.firewall.syncStates 13.21.4
 aws.networkfirewall.firewall.tags 11.16.1
+aws.networkfirewall.firewall.transparentFilteringNatScope 14.12.1
 aws.networkfirewall.firewall.vpc 11.16.1
 aws.networkfirewall.firewalls 11.16.1
 aws.networkfirewall.policies 11.16.1
@@ -8718,6 +8727,7 @@ aws.networkfirewall.rulegroup 11.16.1
 aws.networkfirewall.rulegroup.arn 11.16.1
 aws.networkfirewall.rulegroup.capacity 11.16.1
 aws.networkfirewall.rulegroup.consumedCapacity 13.21.4
+aws.networkfirewall.rulegroup.contextSets 14.12.1
 aws.networkfirewall.rulegroup.description 11.16.1
 aws.networkfirewall.rulegroup.encryptionType 13.21.4
 aws.networkfirewall.rulegroup.kmsKey 13.21.4
@@ -12262,6 +12272,11 @@ aws.vpc.natgateway.subnet 11.15.2
 aws.vpc.natgateway.tags 11.15.2
 aws.vpc.natgateway.vpc 11.15.2
 aws.vpc.networkAcls 11.15.2
+aws.vpc.networkFirewallAssociation 14.12.1
+aws.vpc.networkFirewallAssociation.firewall 14.12.1
+aws.vpc.networkFirewallAssociation.mode 14.12.1
+aws.vpc.networkFirewallAssociation.onboardingStatus 14.12.1
+aws.vpc.networkFirewallAssociations 14.12.1
 aws.vpc.ownerId 13.38.2
 aws.vpc.peeringConnection 11.15.2
 aws.vpc.peeringConnection.accepterAccountId 13.6.3
@@ -12303,6 +12318,8 @@ aws.vpc.routetable.route.destinationIpv6CidrBlock 11.15.2
 aws.vpc.routetable.route.egressOnlyInternetGateway 13.43.1
 aws.vpc.routetable.route.gatewayId 11.15.2
 aws.vpc.routetable.route.id 11.15.2
+aws.vpc.routetable.route.igwFirewall 14.12.1
+aws.vpc.routetable.route.igwFirewallStatus 14.12.1
 aws.vpc.routetable.route.instance 13.41.1
 aws.vpc.routetable.route.instanceOwnerId 11.15.2
 aws.vpc.routetable.route.internetGateway 13.43.1
@@ -12351,6 +12368,7 @@ aws.vpc.subnet.mapPublicIpOnLaunch 11.15.2
 aws.vpc.subnet.name 11.15.2
 aws.vpc.subnet.natGateway 13.6.3
 aws.vpc.subnet.networkAcl 13.6.3
+aws.vpc.subnet.networkFirewallConnectivityType 14.12.1
 aws.vpc.subnet.networkInterfaces 13.37.1
 aws.vpc.subnet.ownerId 13.38.2
 aws.vpc.subnet.region 11.15.2

@@ -589,6 +589,32 @@ aws.vpc @defaults("id isDefault cidrBlock region") {
   managedBy() string
   // Encryption-in-transit control configuration for the VPC, or null when none is configured
   encryptionControl() aws.vpc.encryptionControl
+  // Network Firewall internet gateway firewalls that inspect the VPC's internet traffic
+  //
+  // One entry per firewall associated with the VPC, with the firewall, its
+  // `mode` (enforce or monitor), and its `onboardingStatus`. Empty when the
+  // VPC has no internet gateway firewall.
+  networkFirewallAssociations() []aws.vpc.networkFirewallAssociation
+}
+
+// Network Firewall association of a VPC
+//
+// An internet gateway firewall that inspects traffic between the VPC and its
+// internet gateway or egress-only internet gateway. `mode` reports whether the
+// firewall blocks traffic or only logs it.
+private aws.vpc.networkFirewallAssociation @defaults("mode onboardingStatus") {
+  // Firewall that inspects the VPC's internet traffic
+  firewall() aws.networkfirewall.firewall
+  // Whether the firewall applies its policy to traffic
+  //
+  // `enforce` applies the policy; `monitor` logs traffic the policy would act
+  // on without blocking it.
+  mode string
+  // Status of the firewall for the VPC
+  //
+  // `active` when the firewall inspects the VPC's traffic, `pending` while AWS
+  // sets it up, `disabling` while AWS removes it.
+  onboardingStatus string
 }
 
 // VPC encryption-in-transit control configuration
@@ -702,6 +728,17 @@ private aws.vpc.routetable.route @defaults("destinationCidrBlock state") {
   origin string
   // State of the route (active, blackhole, filtered)
   state string
+  // Network Firewall internet gateway firewall that inspects traffic on this route
+  //
+  // Set for routes that target an internet gateway or egress-only internet
+  // gateway in a VPC that has an internet gateway firewall. The route target
+  // stays the gateway. Null otherwise.
+  igwFirewall() aws.networkfirewall.firewall
+  // Status of the internet gateway firewall for this route
+  //
+  // `active`, `pending`, or `disabling`. Null when no internet gateway
+  // firewall inspects the route.
+  igwFirewallStatus string
 }
 
 // Amazon Virtual Private Cloud (VPC) route table association
@@ -787,6 +824,14 @@ private aws.vpc.subnet @defaults("id cidrs region availabilityZone defaultForAva
   // find the one its subnets belong to. Null when the subnet was created
   // without a known VPC id.
   vpc() aws.vpc
+  // Internet connectivity the VPC's internet gateway firewall gives the subnet
+  //
+  // For example `flexible` (bidirectional for network interfaces with a public
+  // IP address, outbound-only otherwise), `outbound-only`, `bidirectional`,
+  // `exclude` (the subnet bypasses the firewall), or `az-unsupported` (the
+  // firewall does not support the subnet's Availability Zone).
+  // Null when the VPC has no internet gateway firewall.
+  networkFirewallConnectivityType string
 }
 
 // Amazon Virtual Private Cloud (VPC) endpoint
@@ -1710,6 +1755,54 @@ private aws.networkfirewall.firewall @defaults("arn name region") {
   loggingConfiguration() dict
   // Tags on the firewall
   tags map[string]string
+  // Type of the firewall
+  //
+  // FIREWALL for a standard Network Firewall firewall, or IGW_FIREWALL for an
+  // internet gateway firewall that AWS Network Security Manager creates and
+  // manages for a VPC.
+  firewallType string
+  // How the internet gateway firewall enforces its rules
+  //
+  // POLICY_CONTROLLED means the firewall policy that AWS Network Security
+  // Manager associates with the firewall sets the enforcement mode. Null when
+  // the firewall is not an internet gateway firewall.
+  igwFirewallEnforcementMode string
+  // How a proxy mode firewall handles traffic that is not sent to its proxy listener
+  //
+  // NAT_ALL sends this traffic out through the firewall's NAT gateway after
+  // inspection. NAT_NONE returns it to the firewall endpoint without address
+  // translation. Null when the firewall does not set it.
+  transparentFilteringNatScope string
+  // ACM certificate that the firewall's HTTPS proxy listener presents to clients
+  //
+  // Null when the firewall uses the certificate Network Firewall manages for
+  // a domain name it generates.
+  proxyCertificate() aws.acm.certificate
+  // Domain name that clients use to reach the firewall's proxy
+  //
+  // Null when Network Firewall generates the domain name.
+  proxyDomainName string
+  // ID of the Network Manager context store the firewall resolves context sets from
+  //
+  // Present for transit gateway attached firewalls whose transit gateway is
+  // associated with a context store. Null otherwise.
+  contextStoreId string
+  // AWS account ID that owns the context store
+  //
+  // May differ from the firewall owner's account. Null when the firewall has
+  // no context store.
+  contextStoreOwnerAccountId string
+  // Synchronization status of the context sets in the firewall's rule groups with the context store
+  //
+  // One of SYNCING, FULLY_RESOLVED, PARTIALLY_RESOLVED, UNRESOLVED, or
+  // SYNC_FAILED. PARTIALLY_RESOLVED means some resource IDs in the context sets
+  // do not resolve to resources in the context store. Null when the firewall
+  // has no context store or its rule groups reference no context sets.
+  contextStoreSyncStatus string
+  // Detail about the context store synchronization status
+  //
+  // Explains a status other than FULLY_RESOLVED. Null when AWS returns no message.
+  contextStoreSyncStatusMessage string
 }
 
 // AWS Network Firewall policy
@@ -1879,6 +1972,13 @@ private aws.networkfirewall.rulegroup @defaults("arn name region") {
   // One entry per variable, each with `name`, `kind` (ipSet or portSet), and
   // `definition`, the list of CIDR ranges or ports bound to the variable.
   ruleVariables []dict
+  // Context sets usable in the rule group's rules
+  //
+  // Keys are the context set names; values list the IDs of the resources the
+  // set covers, as recorded in the firewall's Network Manager context store
+  // (for example VPC, subnet, security group, or transit gateway attachment
+  // IDs). Empty when the rule group defines no context sets.
+  contextSets map[string][]string
   // Order in which the rule group's stateful rules are evaluated (DEFAULT_ACTION_ORDER or STRICT_ORDER)
   statefulRuleOrder string
   // Metadata about the managed rule group this rule group was copied from

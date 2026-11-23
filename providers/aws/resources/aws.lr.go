@@ -30,6 +30,7 @@ const (
 	ResourceAwsOrganizationDelegatedService                                     string = "aws.organization.delegatedService"
 	ResourceAwsOrganizationOrganizationalUnit                                   string = "aws.organization.organizationalUnit"
 	ResourceAwsVpc                                                              string = "aws.vpc"
+	ResourceAwsVpcNetworkFirewallAssociation                                    string = "aws.vpc.networkFirewallAssociation"
 	ResourceAwsVpcEncryptionControl                                             string = "aws.vpc.encryptionControl"
 	ResourceAwsVpcRoutetable                                                    string = "aws.vpc.routetable"
 	ResourceAwsVpcRoutetableRoute                                               string = "aws.vpc.routetable.route"
@@ -1161,6 +1162,10 @@ func init() {
 		"aws.vpc": {
 			Init:   initAwsVpc,
 			Create: createAwsVpc,
+		},
+		"aws.vpc.networkFirewallAssociation": {
+			// to override args, implement: initAwsVpcNetworkFirewallAssociation(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsVpcNetworkFirewallAssociation,
 		},
 		"aws.vpc.encryptionControl": {
 			Init:   initAwsVpcEncryptionControl,
@@ -5939,6 +5944,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.vpc.encryptionControl": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsVpc).GetEncryptionControl()).ToDataRes(types.Resource("aws.vpc.encryptionControl"))
 	},
+	"aws.vpc.networkFirewallAssociations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsVpc).GetNetworkFirewallAssociations()).ToDataRes(types.Array(types.Resource("aws.vpc.networkFirewallAssociation")))
+	},
+	"aws.vpc.networkFirewallAssociation.firewall": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsVpcNetworkFirewallAssociation).GetFirewall()).ToDataRes(types.Resource("aws.networkfirewall.firewall"))
+	},
+	"aws.vpc.networkFirewallAssociation.mode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsVpcNetworkFirewallAssociation).GetMode()).ToDataRes(types.String)
+	},
+	"aws.vpc.networkFirewallAssociation.onboardingStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsVpcNetworkFirewallAssociation).GetOnboardingStatus()).ToDataRes(types.String)
+	},
 	"aws.vpc.encryptionControl.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsVpcEncryptionControl).GetId()).ToDataRes(types.String)
 	},
@@ -6032,6 +6049,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.vpc.routetable.route.state": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsVpcRoutetableRoute).GetState()).ToDataRes(types.String)
 	},
+	"aws.vpc.routetable.route.igwFirewall": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsVpcRoutetableRoute).GetIgwFirewall()).ToDataRes(types.Resource("aws.networkfirewall.firewall"))
+	},
+	"aws.vpc.routetable.route.igwFirewallStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsVpcRoutetableRoute).GetIgwFirewallStatus()).ToDataRes(types.String)
+	},
 	"aws.vpc.routetable.association.routeTableAssociationId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsVpcRoutetableAssociation).GetRouteTableAssociationId()).ToDataRes(types.String)
 	},
@@ -6118,6 +6141,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.vpc.subnet.vpc": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsVpcSubnet).GetVpc()).ToDataRes(types.Resource("aws.vpc"))
+	},
+	"aws.vpc.subnet.networkFirewallConnectivityType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsVpcSubnet).GetNetworkFirewallConnectivityType()).ToDataRes(types.String)
 	},
 	"aws.vpc.endpoint.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsVpcEndpoint).GetId()).ToDataRes(types.String)
@@ -6971,6 +6997,33 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.networkfirewall.firewall.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsNetworkfirewallFirewall).GetTags()).ToDataRes(types.Map(types.String, types.String))
 	},
+	"aws.networkfirewall.firewall.firewallType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsNetworkfirewallFirewall).GetFirewallType()).ToDataRes(types.String)
+	},
+	"aws.networkfirewall.firewall.igwFirewallEnforcementMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsNetworkfirewallFirewall).GetIgwFirewallEnforcementMode()).ToDataRes(types.String)
+	},
+	"aws.networkfirewall.firewall.transparentFilteringNatScope": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsNetworkfirewallFirewall).GetTransparentFilteringNatScope()).ToDataRes(types.String)
+	},
+	"aws.networkfirewall.firewall.proxyCertificate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsNetworkfirewallFirewall).GetProxyCertificate()).ToDataRes(types.Resource("aws.acm.certificate"))
+	},
+	"aws.networkfirewall.firewall.proxyDomainName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsNetworkfirewallFirewall).GetProxyDomainName()).ToDataRes(types.String)
+	},
+	"aws.networkfirewall.firewall.contextStoreId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsNetworkfirewallFirewall).GetContextStoreId()).ToDataRes(types.String)
+	},
+	"aws.networkfirewall.firewall.contextStoreOwnerAccountId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsNetworkfirewallFirewall).GetContextStoreOwnerAccountId()).ToDataRes(types.String)
+	},
+	"aws.networkfirewall.firewall.contextStoreSyncStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsNetworkfirewallFirewall).GetContextStoreSyncStatus()).ToDataRes(types.String)
+	},
+	"aws.networkfirewall.firewall.contextStoreSyncStatusMessage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsNetworkfirewallFirewall).GetContextStoreSyncStatusMessage()).ToDataRes(types.String)
+	},
 	"aws.networkfirewall.policy.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsNetworkfirewallPolicy).GetArn()).ToDataRes(types.String)
 	},
@@ -7120,6 +7173,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.networkfirewall.rulegroup.ruleVariables": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsNetworkfirewallRulegroup).GetRuleVariables()).ToDataRes(types.Array(types.Dict))
+	},
+	"aws.networkfirewall.rulegroup.contextSets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsNetworkfirewallRulegroup).GetContextSets()).ToDataRes(types.Map(types.String, types.Array(types.String)))
 	},
 	"aws.networkfirewall.rulegroup.statefulRuleOrder": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsNetworkfirewallRulegroup).GetStatefulRuleOrder()).ToDataRes(types.String)
@@ -41888,6 +41944,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsVpc).EncryptionControl, ok = plugin.RawToTValue[*mqlAwsVpcEncryptionControl](v.Value, v.Error)
 		return
 	},
+	"aws.vpc.networkFirewallAssociations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsVpc).NetworkFirewallAssociations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.vpc.networkFirewallAssociation.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsVpcNetworkFirewallAssociation).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.vpc.networkFirewallAssociation.firewall": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsVpcNetworkFirewallAssociation).Firewall, ok = plugin.RawToTValue[*mqlAwsNetworkfirewallFirewall](v.Value, v.Error)
+		return
+	},
+	"aws.vpc.networkFirewallAssociation.mode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsVpcNetworkFirewallAssociation).Mode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.vpc.networkFirewallAssociation.onboardingStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsVpcNetworkFirewallAssociation).OnboardingStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"aws.vpc.encryptionControl.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsVpcEncryptionControl).__id, ok = v.Value.(string)
 		return
@@ -42024,6 +42100,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsVpcRoutetableRoute).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"aws.vpc.routetable.route.igwFirewall": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsVpcRoutetableRoute).IgwFirewall, ok = plugin.RawToTValue[*mqlAwsNetworkfirewallFirewall](v.Value, v.Error)
+		return
+	},
+	"aws.vpc.routetable.route.igwFirewallStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsVpcRoutetableRoute).IgwFirewallStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"aws.vpc.routetable.association.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsVpcRoutetableAssociation).__id, ok = v.Value.(string)
 		return
@@ -42146,6 +42230,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.vpc.subnet.vpc": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsVpcSubnet).Vpc, ok = plugin.RawToTValue[*mqlAwsVpc](v.Value, v.Error)
+		return
+	},
+	"aws.vpc.subnet.networkFirewallConnectivityType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsVpcSubnet).NetworkFirewallConnectivityType, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.vpc.endpoint.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -43452,6 +43540,42 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsNetworkfirewallFirewall).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
+	"aws.networkfirewall.firewall.firewallType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsNetworkfirewallFirewall).FirewallType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.networkfirewall.firewall.igwFirewallEnforcementMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsNetworkfirewallFirewall).IgwFirewallEnforcementMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.networkfirewall.firewall.transparentFilteringNatScope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsNetworkfirewallFirewall).TransparentFilteringNatScope, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.networkfirewall.firewall.proxyCertificate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsNetworkfirewallFirewall).ProxyCertificate, ok = plugin.RawToTValue[*mqlAwsAcmCertificate](v.Value, v.Error)
+		return
+	},
+	"aws.networkfirewall.firewall.proxyDomainName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsNetworkfirewallFirewall).ProxyDomainName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.networkfirewall.firewall.contextStoreId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsNetworkfirewallFirewall).ContextStoreId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.networkfirewall.firewall.contextStoreOwnerAccountId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsNetworkfirewallFirewall).ContextStoreOwnerAccountId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.networkfirewall.firewall.contextStoreSyncStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsNetworkfirewallFirewall).ContextStoreSyncStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.networkfirewall.firewall.contextStoreSyncStatusMessage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsNetworkfirewallFirewall).ContextStoreSyncStatusMessage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"aws.networkfirewall.policy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsNetworkfirewallPolicy).__id, ok = v.Value.(string)
 		return
@@ -43662,6 +43786,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.networkfirewall.rulegroup.ruleVariables": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsNetworkfirewallRulegroup).RuleVariables, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.networkfirewall.rulegroup.contextSets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsNetworkfirewallRulegroup).ContextSets, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
 	"aws.networkfirewall.rulegroup.statefulRuleOrder": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -94678,41 +94806,42 @@ type mqlAwsVpc struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAwsVpcInternal
-	Arn                       plugin.TValue[string]
-	Id                        plugin.TValue[string]
-	Name                      plugin.TValue[string]
-	CidrBlock                 plugin.TValue[string]
-	State                     plugin.TValue[string]
-	IsDefault                 plugin.TValue[bool]
-	InstanceTenancy           plugin.TValue[string]
-	OwnerId                   plugin.TValue[string]
-	Region                    plugin.TValue[string]
-	Endpoints                 plugin.TValue[[]any]
-	FlowLogs                  plugin.TValue[[]any]
-	RouteTables               plugin.TValue[[]any]
-	Subnets                   plugin.TValue[[]any]
-	Tags                      plugin.TValue[map[string]any]
-	NatGateways               plugin.TValue[[]any]
-	ServiceEndpoints          plugin.TValue[[]any]
-	PeeringConnections        plugin.TValue[[]any]
-	InternetGatewayBlockMode  plugin.TValue[string]
-	DhcpOptionsId             plugin.TValue[string]
-	InternetGateways          plugin.TValue[[]any]
-	SecurityGroups            plugin.TValue[[]any]
-	DefaultSecurityGroup      plugin.TValue[*mqlAwsEc2Securitygroup]
-	NetworkAcls               plugin.TValue[[]any]
-	DefaultNetworkAcl         plugin.TValue[*mqlAwsEc2Networkacl]
-	BlockPublicAccessOptions  plugin.TValue[any]
-	BlockPublicAccess         plugin.TValue[*mqlAwsEc2VpcBlockPublicAccessOptions]
-	VpnGateways               plugin.TValue[[]any]
-	DhcpOptions               plugin.TValue[*mqlAwsEc2DhcpOptions]
-	EnableDnsSupport          plugin.TValue[bool]
-	EnableDnsHostnames        plugin.TValue[bool]
-	CidrBlockAssociations     plugin.TValue[[]any]
-	Ipv6CidrBlockAssociations plugin.TValue[[]any]
-	CloudformationStack       plugin.TValue[*mqlAwsCloudformationStack]
-	ManagedBy                 plugin.TValue[string]
-	EncryptionControl         plugin.TValue[*mqlAwsVpcEncryptionControl]
+	Arn                         plugin.TValue[string]
+	Id                          plugin.TValue[string]
+	Name                        plugin.TValue[string]
+	CidrBlock                   plugin.TValue[string]
+	State                       plugin.TValue[string]
+	IsDefault                   plugin.TValue[bool]
+	InstanceTenancy             plugin.TValue[string]
+	OwnerId                     plugin.TValue[string]
+	Region                      plugin.TValue[string]
+	Endpoints                   plugin.TValue[[]any]
+	FlowLogs                    plugin.TValue[[]any]
+	RouteTables                 plugin.TValue[[]any]
+	Subnets                     plugin.TValue[[]any]
+	Tags                        plugin.TValue[map[string]any]
+	NatGateways                 plugin.TValue[[]any]
+	ServiceEndpoints            plugin.TValue[[]any]
+	PeeringConnections          plugin.TValue[[]any]
+	InternetGatewayBlockMode    plugin.TValue[string]
+	DhcpOptionsId               plugin.TValue[string]
+	InternetGateways            plugin.TValue[[]any]
+	SecurityGroups              plugin.TValue[[]any]
+	DefaultSecurityGroup        plugin.TValue[*mqlAwsEc2Securitygroup]
+	NetworkAcls                 plugin.TValue[[]any]
+	DefaultNetworkAcl           plugin.TValue[*mqlAwsEc2Networkacl]
+	BlockPublicAccessOptions    plugin.TValue[any]
+	BlockPublicAccess           plugin.TValue[*mqlAwsEc2VpcBlockPublicAccessOptions]
+	VpnGateways                 plugin.TValue[[]any]
+	DhcpOptions                 plugin.TValue[*mqlAwsEc2DhcpOptions]
+	EnableDnsSupport            plugin.TValue[bool]
+	EnableDnsHostnames          plugin.TValue[bool]
+	CidrBlockAssociations       plugin.TValue[[]any]
+	Ipv6CidrBlockAssociations   plugin.TValue[[]any]
+	CloudformationStack         plugin.TValue[*mqlAwsCloudformationStack]
+	ManagedBy                   plugin.TValue[string]
+	EncryptionControl           plugin.TValue[*mqlAwsVpcEncryptionControl]
+	NetworkFirewallAssociations plugin.TValue[[]any]
 }
 
 // createAwsVpc creates a new instance of this resource
@@ -95108,6 +95237,88 @@ func (c *mqlAwsVpc) GetEncryptionControl() *plugin.TValue[*mqlAwsVpcEncryptionCo
 	})
 }
 
+func (c *mqlAwsVpc) GetNetworkFirewallAssociations() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.NetworkFirewallAssociations, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.vpc", c.__id, "networkFirewallAssociations")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.networkFirewallAssociations()
+	})
+}
+
+// mqlAwsVpcNetworkFirewallAssociation for the aws.vpc.networkFirewallAssociation resource
+type mqlAwsVpcNetworkFirewallAssociation struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsVpcNetworkFirewallAssociationInternal
+	Firewall         plugin.TValue[*mqlAwsNetworkfirewallFirewall]
+	Mode             plugin.TValue[string]
+	OnboardingStatus plugin.TValue[string]
+}
+
+// createAwsVpcNetworkFirewallAssociation creates a new instance of this resource
+func createAwsVpcNetworkFirewallAssociation(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsVpcNetworkFirewallAssociation{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.vpc.networkFirewallAssociation", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsVpcNetworkFirewallAssociation) MqlName() string {
+	return "aws.vpc.networkFirewallAssociation"
+}
+
+func (c *mqlAwsVpcNetworkFirewallAssociation) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsVpcNetworkFirewallAssociation) GetFirewall() *plugin.TValue[*mqlAwsNetworkfirewallFirewall] {
+	return plugin.GetOrCompute[*mqlAwsNetworkfirewallFirewall](&c.Firewall, func() (*mqlAwsNetworkfirewallFirewall, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.vpc.networkFirewallAssociation", c.__id, "firewall")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsNetworkfirewallFirewall), nil
+			}
+		}
+
+		return c.firewall()
+	})
+}
+
+func (c *mqlAwsVpcNetworkFirewallAssociation) GetMode() *plugin.TValue[string] {
+	return &c.Mode
+}
+
+func (c *mqlAwsVpcNetworkFirewallAssociation) GetOnboardingStatus() *plugin.TValue[string] {
+	return &c.OnboardingStatus
+}
+
 // mqlAwsVpcEncryptionControl for the aws.vpc.encryptionControl resource
 type mqlAwsVpcEncryptionControl struct {
 	MqlRuntime *plugin.Runtime
@@ -95299,6 +95510,8 @@ type mqlAwsVpcRoutetableRoute struct {
 	CoreNetworkArn            plugin.TValue[string]
 	Origin                    plugin.TValue[string]
 	State                     plugin.TValue[string]
+	IgwFirewall               plugin.TValue[*mqlAwsNetworkfirewallFirewall]
+	IgwFirewallStatus         plugin.TValue[string]
 }
 
 // createAwsVpcRoutetableRoute creates a new instance of this resource
@@ -95522,6 +95735,26 @@ func (c *mqlAwsVpcRoutetableRoute) GetState() *plugin.TValue[string] {
 	return &c.State
 }
 
+func (c *mqlAwsVpcRoutetableRoute) GetIgwFirewall() *plugin.TValue[*mqlAwsNetworkfirewallFirewall] {
+	return plugin.GetOrCompute[*mqlAwsNetworkfirewallFirewall](&c.IgwFirewall, func() (*mqlAwsNetworkfirewallFirewall, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.vpc.routetable.route", c.__id, "igwFirewall")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsNetworkfirewallFirewall), nil
+			}
+		}
+
+		return c.igwFirewall()
+	})
+}
+
+func (c *mqlAwsVpcRoutetableRoute) GetIgwFirewallStatus() *plugin.TValue[string] {
+	return &c.IgwFirewallStatus
+}
+
 // mqlAwsVpcRoutetableAssociation for the aws.vpc.routetable.association resource
 type mqlAwsVpcRoutetableAssociation struct {
 	MqlRuntime *plugin.Runtime
@@ -95608,29 +95841,30 @@ type mqlAwsVpcSubnet struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAwsVpcSubnetInternal
-	Arn                         plugin.TValue[string]
-	Id                          plugin.TValue[string]
-	Name                        plugin.TValue[string]
-	Cidrs                       plugin.TValue[string]
-	MapPublicIpOnLaunch         plugin.TValue[bool]
-	AvailabilityZone            plugin.TValue[string]
-	DefaultForAvailabilityZone  plugin.TValue[bool]
-	AssignIpv6AddressOnCreation plugin.TValue[bool]
-	State                       plugin.TValue[string]
-	OwnerId                     plugin.TValue[string]
-	Region                      plugin.TValue[string]
-	AvailableIpAddressCount     plugin.TValue[int64]
-	InternetGatewayBlockMode    plugin.TValue[string]
-	IsPublic                    plugin.TValue[bool]
-	Tags                        plugin.TValue[map[string]any]
-	RouteTable                  plugin.TValue[*mqlAwsVpcRoutetable]
-	NetworkAcl                  plugin.TValue[*mqlAwsEc2Networkacl]
-	NatGateway                  plugin.TValue[*mqlAwsVpcNatgateway]
-	FlowLogs                    plugin.TValue[[]any]
-	Ipv6CidrBlock               plugin.TValue[string]
-	NetworkInterfaces           plugin.TValue[[]any]
-	Instances                   plugin.TValue[[]any]
-	Vpc                         plugin.TValue[*mqlAwsVpc]
+	Arn                             plugin.TValue[string]
+	Id                              plugin.TValue[string]
+	Name                            plugin.TValue[string]
+	Cidrs                           plugin.TValue[string]
+	MapPublicIpOnLaunch             plugin.TValue[bool]
+	AvailabilityZone                plugin.TValue[string]
+	DefaultForAvailabilityZone      plugin.TValue[bool]
+	AssignIpv6AddressOnCreation     plugin.TValue[bool]
+	State                           plugin.TValue[string]
+	OwnerId                         plugin.TValue[string]
+	Region                          plugin.TValue[string]
+	AvailableIpAddressCount         plugin.TValue[int64]
+	InternetGatewayBlockMode        plugin.TValue[string]
+	IsPublic                        plugin.TValue[bool]
+	Tags                            plugin.TValue[map[string]any]
+	RouteTable                      plugin.TValue[*mqlAwsVpcRoutetable]
+	NetworkAcl                      plugin.TValue[*mqlAwsEc2Networkacl]
+	NatGateway                      plugin.TValue[*mqlAwsVpcNatgateway]
+	FlowLogs                        plugin.TValue[[]any]
+	Ipv6CidrBlock                   plugin.TValue[string]
+	NetworkInterfaces               plugin.TValue[[]any]
+	Instances                       plugin.TValue[[]any]
+	Vpc                             plugin.TValue[*mqlAwsVpc]
+	NetworkFirewallConnectivityType plugin.TValue[string]
 }
 
 // createAwsVpcSubnet creates a new instance of this resource
@@ -95846,6 +96080,10 @@ func (c *mqlAwsVpcSubnet) GetVpc() *plugin.TValue[*mqlAwsVpc] {
 
 		return c.vpc()
 	})
+}
+
+func (c *mqlAwsVpcSubnet) GetNetworkFirewallConnectivityType() *plugin.TValue[string] {
+	return &c.NetworkFirewallConnectivityType
 }
 
 // mqlAwsVpcEndpoint for the aws.vpc.endpoint resource
@@ -99261,6 +99499,15 @@ type mqlAwsNetworkfirewallFirewall struct {
 	LoggingDestinations            plugin.TValue[[]any]
 	LoggingConfiguration           plugin.TValue[any]
 	Tags                           plugin.TValue[map[string]any]
+	FirewallType                   plugin.TValue[string]
+	IgwFirewallEnforcementMode     plugin.TValue[string]
+	TransparentFilteringNatScope   plugin.TValue[string]
+	ProxyCertificate               plugin.TValue[*mqlAwsAcmCertificate]
+	ProxyDomainName                plugin.TValue[string]
+	ContextStoreId                 plugin.TValue[string]
+	ContextStoreOwnerAccountId     plugin.TValue[string]
+	ContextStoreSyncStatus         plugin.TValue[string]
+	ContextStoreSyncStatusMessage  plugin.TValue[string]
 }
 
 // createAwsNetworkfirewallFirewall creates a new instance of this resource
@@ -99460,6 +99707,54 @@ func (c *mqlAwsNetworkfirewallFirewall) GetLoggingConfiguration() *plugin.TValue
 
 func (c *mqlAwsNetworkfirewallFirewall) GetTags() *plugin.TValue[map[string]any] {
 	return &c.Tags
+}
+
+func (c *mqlAwsNetworkfirewallFirewall) GetFirewallType() *plugin.TValue[string] {
+	return &c.FirewallType
+}
+
+func (c *mqlAwsNetworkfirewallFirewall) GetIgwFirewallEnforcementMode() *plugin.TValue[string] {
+	return &c.IgwFirewallEnforcementMode
+}
+
+func (c *mqlAwsNetworkfirewallFirewall) GetTransparentFilteringNatScope() *plugin.TValue[string] {
+	return &c.TransparentFilteringNatScope
+}
+
+func (c *mqlAwsNetworkfirewallFirewall) GetProxyCertificate() *plugin.TValue[*mqlAwsAcmCertificate] {
+	return plugin.GetOrCompute[*mqlAwsAcmCertificate](&c.ProxyCertificate, func() (*mqlAwsAcmCertificate, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.networkfirewall.firewall", c.__id, "proxyCertificate")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsAcmCertificate), nil
+			}
+		}
+
+		return c.proxyCertificate()
+	})
+}
+
+func (c *mqlAwsNetworkfirewallFirewall) GetProxyDomainName() *plugin.TValue[string] {
+	return &c.ProxyDomainName
+}
+
+func (c *mqlAwsNetworkfirewallFirewall) GetContextStoreId() *plugin.TValue[string] {
+	return &c.ContextStoreId
+}
+
+func (c *mqlAwsNetworkfirewallFirewall) GetContextStoreOwnerAccountId() *plugin.TValue[string] {
+	return &c.ContextStoreOwnerAccountId
+}
+
+func (c *mqlAwsNetworkfirewallFirewall) GetContextStoreSyncStatus() *plugin.TValue[string] {
+	return &c.ContextStoreSyncStatus
+}
+
+func (c *mqlAwsNetworkfirewallFirewall) GetContextStoreSyncStatusMessage() *plugin.TValue[string] {
+	return &c.ContextStoreSyncStatusMessage
 }
 
 // mqlAwsNetworkfirewallPolicy for the aws.networkfirewall.policy resource
@@ -99808,6 +100103,7 @@ type mqlAwsNetworkfirewallRulegroup struct {
 	RulesString          plugin.TValue[string]
 	ReferenceSets        plugin.TValue[[]any]
 	RuleVariables        plugin.TValue[[]any]
+	ContextSets          plugin.TValue[map[string]any]
 	StatefulRuleOrder    plugin.TValue[string]
 	SourceMetadata       plugin.TValue[[]any]
 	EncryptionType       plugin.TValue[string]
@@ -99926,6 +100222,10 @@ func (c *mqlAwsNetworkfirewallRulegroup) GetReferenceSets() *plugin.TValue[[]any
 
 func (c *mqlAwsNetworkfirewallRulegroup) GetRuleVariables() *plugin.TValue[[]any] {
 	return &c.RuleVariables
+}
+
+func (c *mqlAwsNetworkfirewallRulegroup) GetContextSets() *plugin.TValue[map[string]any] {
+	return &c.ContextSets
 }
 
 func (c *mqlAwsNetworkfirewallRulegroup) GetStatefulRuleOrder() *plugin.TValue[string] {
