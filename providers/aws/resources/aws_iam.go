@@ -3010,7 +3010,9 @@ func contextProviderKeyMappings(defs []iamtypes.ContextProviderKeyDefinition) ma
 
 // identityCenterInstanceByArn resolves an Identity Center instance from the
 // cached instance list, which has no init to look one up by ARN. It returns
-// nil for an empty ARN and an error when the instance is not in the list.
+// nil for an empty ARN and for an instance this account cannot list, which is
+// usual: the instance lives in the organization's management account while
+// the identity provider sits in a member account.
 func identityCenterInstanceByArn(runtime *plugin.Runtime, instanceArn string) (*mqlAwsIdentitycenterInstance, error) {
 	if instanceArn == "" {
 		return nil, nil
@@ -3029,7 +3031,7 @@ func identityCenterInstanceByArn(runtime *plugin.Runtime, instanceArn string) (*
 			return inst, nil
 		}
 	}
-	return nil, fmt.Errorf("aws.identitycenter.instance with arn %q not found", instanceArn)
+	return nil, nil
 }
 
 func (a *mqlAwsIamSamlProvider) tags() (map[string]any, error) {

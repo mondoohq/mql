@@ -3497,7 +3497,8 @@ private aws.iam.samlProvider @defaults("arn name") {
   contextProvider() aws.iam.contextProvider
   // IAM Identity Center instance associated with the identity provider
   //
-  // Null when no Identity Center instance is associated.
+  // Null when no Identity Center instance is associated, or when the instance
+  // is in another account, typically the organization's management account.
   identityCenterInstance() aws.identitycenter.instance
   // ARN of the identity store resolved from the associated Identity Center instance
   //
@@ -3527,7 +3528,8 @@ private aws.iam.oidcProvider @defaults("arn url") {
   contextProvider() aws.iam.contextProvider
   // IAM Identity Center instance associated with the identity provider
   //
-  // Null when no Identity Center instance is associated.
+  // Null when no Identity Center instance is associated, or when the instance
+  // is in another account, typically the organization's management account.
   identityCenterInstance() aws.identitycenter.instance
   // ARN of the identity store resolved from the associated Identity Center instance
   //
