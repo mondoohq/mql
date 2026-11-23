@@ -27179,7 +27179,9 @@ private aws.memorydb.cluster @defaults("name status nodeType region") {
   networkType string
   // IP version the cluster's discovery API returns node addresses in: ipv4 or ipv6
   ipDiscovery string
-  // Whether the cluster spans one or multiple Availability Zones: singleaz or multiaz (null when the service does not report it, as for a single-node cluster)
+  // Whether the cluster spans one or multiple Availability Zones: singleaz or multiaz
+  //
+  // Null when the service does not report it, as for a single-node cluster.
   availabilityMode string
   // Status of the parameter group: active, applying, or another transitional state
   parameterGroupStatus string

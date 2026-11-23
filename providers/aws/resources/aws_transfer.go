@@ -897,7 +897,10 @@ func (a *mqlAwsTransferServer) securityGroups() ([]any, error) {
 			return []any{}, nil
 		}
 		sgs := ep.Data.GetSecurityGroups()
-		return sgs.Data, sgs.Error
+		if sgs.Error != nil {
+			return nil, sgs.Error
+		}
+		return sgs.Data, nil
 	}
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	arns := make([]string, 0, len(ed.SecurityGroupIds))
