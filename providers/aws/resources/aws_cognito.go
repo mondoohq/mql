@@ -1042,3 +1042,46 @@ func (a *mqlAwsCognitoUserPoolIdentityProvider) id() (string, error) {
 func (a *mqlAwsCognitoUserPoolIdentityProvider) userPool() (*mqlAwsCognitoUserPool, error) {
 	return resolveCognitoUserPool(a.MqlRuntime, a.Region.Data, a.UserPoolId.Data)
 }
+
+// cognitoUserPoolRegion returns the region a user pool id names. A user pool
+// id is "<region>_<suffix>"; anything else yields "".
+func cognitoUserPoolRegion(poolId string) string {
+	region, suffix, ok := strings.Cut(poolId, "_")
+	if !ok || region == "" || suffix == "" {
+		return ""
+	}
+	return region
+}
+
+// resolveCognitoUserPoolById returns the user pool with this id, or nil when
+// the id is empty or carries no region.
+func resolveCognitoUserPoolById(runtime *plugin.Runtime, poolId string) (*mqlAwsCognitoUserPool, error) {
+	region := cognitoUserPoolRegion(poolId)
+	if region == "" {
+		return nil, nil
+	}
+	return resolveCognitoUserPool(runtime, region, poolId)
+}
+
+// resolveCognitoIdentityPool returns the identity pool with this id from the
+// cached identity pool list, or nil when the id is empty or not listed.
+func resolveCognitoIdentityPool(runtime *plugin.Runtime, poolId string) (*mqlAwsCognitoIdentityPool, error) {
+	if poolId == "" {
+		return nil, nil
+	}
+	obj, err := CreateResource(runtime, ResourceAwsCognito, map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	pools := obj.(*mqlAwsCognito).GetIdentityPools()
+	if pools.Error != nil {
+		return nil, pools.Error
+	}
+	for _, raw := range pools.Data {
+		p, ok := raw.(*mqlAwsCognitoIdentityPool)
+		if ok && p.Id.Data == poolId {
+			return p, nil
+		}
+	}
+	return nil, nil
+}

@@ -60,3 +60,13 @@ func TestCognitoAcrMappingData(t *testing.T) {
 		assert.Equal(t, map[string]any{}, got.Value)
 	})
 }
+
+func TestCognitoUserPoolRegion(t *testing.T) {
+	// Synthetic: user pool ids carry their region before the underscore.
+	assert.Equal(t, "us-east-1", cognitoUserPoolRegion("us-east-1_AbCdEfGhI"))
+	assert.Equal(t, "eu-central-1", cognitoUserPoolRegion("eu-central-1_x"))
+	assert.Equal(t, "", cognitoUserPoolRegion("no-underscore"))
+	assert.Equal(t, "", cognitoUserPoolRegion("_suffix"))
+	assert.Equal(t, "", cognitoUserPoolRegion("us-east-1_"))
+	assert.Equal(t, "", cognitoUserPoolRegion(""))
+}

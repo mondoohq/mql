@@ -288,6 +288,8 @@ type mqlAwsRdsDbinstanceInternal struct {
 	cacheAssociatedRoles             []rds_types.DBInstanceRole
 	cacheOptionGroupNames            []string
 	cacheParameterGroupNames         []string
+	cacheMonitoringRoleArn           string
+	cacheCustomInstanceProfile       string
 	region                           string
 }
 
@@ -614,6 +616,8 @@ func newMqlAwsRdsInstance(runtime *plugin.Runtime, region string, accountID stri
 		}
 	}
 	mqlDBInstance.cacheParameterGroupNames = parameterGroupNames
+	mqlDBInstance.cacheMonitoringRoleArn = convert.ToValue(dbInstance.MonitoringRoleArn)
+	mqlDBInstance.cacheCustomInstanceProfile = convert.ToValue(dbInstance.CustomIamInstanceProfile)
 	mqlDBInstance.setSecurityGroupArns(sgsArn)
 	return mqlDBInstance, nil
 }
@@ -2404,4 +2408,40 @@ func (a *mqlAwsRdsDbinstance) parameterGroups() ([]any, error) {
 		}
 	}
 	return res, nil
+}
+
+func (a *mqlAwsRdsDbinstance) monitoringRole() (*mqlAwsIamRole, error) {
+	if a.cacheMonitoringRoleArn == "" {
+		a.MonitoringRole.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	mqlRole, err := NewResource(a.MqlRuntime, ResourceAwsIamRole,
+		map[string]*llx.RawData{"arn": llx.StringData(a.cacheMonitoringRoleArn)})
+	if err != nil {
+		return nil, err
+	}
+	return mqlRole.(*mqlAwsIamRole), nil
+}
+
+// instanceProfileArn returns an instance profile ARN for a value that is
+// either already an ARN or a bare profile name.
+func instanceProfileArn(accountID, profile string) string {
+	if profile == "" || strings.HasPrefix(profile, "arn:") {
+		return profile
+	}
+	return fmt.Sprintf("arn:aws:iam::%s:instance-profile/%s", accountID, profile)
+}
+
+func (a *mqlAwsRdsDbinstance) customInstanceProfile() (*mqlAwsIamInstanceProfile, error) {
+	if a.cacheCustomInstanceProfile == "" {
+		a.CustomInstanceProfile.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	res, err := NewResource(a.MqlRuntime, ResourceAwsIamInstanceProfile,
+		map[string]*llx.RawData{"arn": llx.StringData(instanceProfileArn(conn.AccountId(), a.cacheCustomInstanceProfile))})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsIamInstanceProfile), nil
 }

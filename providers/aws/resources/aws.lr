@@ -4413,7 +4413,11 @@ private aws.sagemaker.domain @defaults("arn name status") {
   // KMS key used to encrypt the EFS volume
   kmsKey() aws.kms.key
   // Home EFS file system ID
-  homeEfsFileSystemId() string
+  //
+  // Deprecated in favor of homeEfsFileSystem.
+  homeEfsFileSystemId() @maturity("deprecated") @replaced_by("aws.sagemaker.domain.homeEfsFileSystem") string
+  // EFS file system that holds the home directories of the domain's users
+  homeEfsFileSystem() aws.efs.filesystem
   // Default user settings
   defaultUserSettings() dict
   // Security group for domain boundary
@@ -6635,11 +6639,19 @@ private aws.es.domain @defaults("arn name") {
   // Whether Amazon Cognito authentication for Kibana is enabled
   cognitoEnabled bool
   // Cognito user pool ID for Kibana authentication
-  cognitoUserPoolId string
+  //
+  // Deprecated in favor of cognitoUserPool.
+  cognitoUserPoolId @maturity("deprecated") @replaced_by("aws.es.domain.cognitoUserPool") string
   // Cognito identity pool ID for Kibana authentication
-  cognitoIdentityPoolId string
+  //
+  // Deprecated in favor of cognitoIdentityPool.
+  cognitoIdentityPoolId @maturity("deprecated") @replaced_by("aws.es.domain.cognitoIdentityPool") string
   // IAM role granting Elasticsearch access to Cognito resources
   cognitoRole() aws.iam.role
+  // Cognito user pool that authenticates Kibana users (null when Cognito authentication is off)
+  cognitoUserPool() aws.cognito.userPool
+  // Cognito identity pool that authorizes Kibana users (null when Cognito authentication is off)
+  cognitoIdentityPool() aws.cognito.identityPool
   // State of Auto-Tune for the domain
   autoTuneState string
   // Current service software version present on the domain
@@ -6812,6 +6824,14 @@ private aws.opensearch.domain @defaults("name engineVersion") {
   internalUserDatabaseEnabled bool
   // Whether fine-grained access control is enabled
   advancedSecurityEnabled bool
+  // Whether Amazon Cognito authentication for OpenSearch Dashboards is enabled
+  cognitoEnabled bool
+  // Cognito user pool that authenticates OpenSearch Dashboards users (null when Cognito authentication is off)
+  cognitoUserPool() aws.cognito.userPool
+  // Cognito identity pool that authorizes OpenSearch Dashboards users (null when Cognito authentication is off)
+  cognitoIdentityPool() aws.cognito.identityPool
+  // IAM role that grants OpenSearch Service access to the Cognito pools (null when Cognito authentication is off)
+  cognitoRole() aws.iam.role
   // Domain processing status
   processing bool
   // Domain upgrade processing status
@@ -10140,6 +10160,8 @@ private aws.ecs.cluster @defaults("name region status runningTasksCount pendingT
   fargateEphemeralStorageKmsKey() aws.kms.key
   // Capacity providers associated with the cluster
   capacityProviders []string
+  // Capacity providers associated with the cluster, including FARGATE and FARGATE_SPOT
+  associatedCapacityProviders() []aws.ecs.capacityProvider
   // Default capacity provider strategy for the cluster
   defaultCapacityProviderStrategy() []aws.ecs.cluster.capacityProviderStrategyItem
   // Default Service Connect namespace name or ARN for the cluster
@@ -11083,7 +11105,11 @@ private aws.emr.cluster @defaults("arn") {
   // Security groups attached to the cluster EC2 instances (EMR-managed and additional)
   securityGroups() []aws.ec2.securitygroup
   // Name of the EC2 key pair used for SSH access to the cluster instances
-  ec2KeyName() string
+  //
+  // Deprecated in favor of keypair.
+  ec2KeyName() @maturity("deprecated") @replaced_by("aws.emr.cluster.keypair") string
+  // EC2 key pair used for SSH access to the cluster instances (null when none is set)
+  keypair() aws.ec2.keypair
   // EC2 instance profile the cluster nodes run as
   ec2InstanceProfile() aws.iam.instanceProfile
   // Whether Spark Connect sessions are enabled on the cluster
@@ -15867,6 +15893,10 @@ aws.rds.dbinstance @defaults("id region engine engineVersion") {
   // cluster parameter group (`aws.rds.dbcluster.transitEncryptionEnabled`),
   // Oracle, Db2, and RDS Custom.
   transitEncryptionEnabled() bool
+  // IAM instance profile of the EC2 instance underlying an RDS Custom DB instance (null for other instances)
+  customInstanceProfile() aws.iam.instanceProfile
+  // IAM role used by Enhanced Monitoring to send metrics to CloudWatch Logs (null when Enhanced Monitoring is off)
+  monitoringRole() aws.iam.role
   // Mode of the database activity stream
   activityStreamMode string
   // Status of the database activity stream
@@ -19418,6 +19448,14 @@ private aws.lambda.function @defaults("arn") {
   //
   // Null when the function has no dead-letter queue configured.
   dlqTargetArn string
+  // SQS queue that receives events from failed asynchronous invocations
+  //
+  // Null when the dead-letter target is an SNS topic or none is configured.
+  deadLetterQueue() aws.sqs.queue
+  // SNS topic that receives events from failed asynchronous invocations
+  //
+  // Null when the dead-letter target is an SQS queue or none is configured.
+  deadLetterTopic() aws.sns.topic
   // Recursive loop detection mode, either "Allow" or "Terminate"
   recursiveLoop() string
   // Resource-based policy attached to the function
@@ -19534,6 +19572,10 @@ private aws.lambda.function @defaults("arn") {
   fileSystemConfigs []dict
   // Code signing profile version ARN
   signingProfileVersionArn string
+  // Signer profile that signed the deployed code
+  //
+  // Null when the code is unsigned or the profile is not in this account.
+  signingProfile() aws.signer.signingProfile
   // Code signing job ARN
   signingJobArn string
   // Event source mappings for this function
