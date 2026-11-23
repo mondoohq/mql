@@ -349,12 +349,8 @@ func (s *mqlParseYaml) documents(content string) ([]any, error) {
 
 	var documents []any
 
-	// Split content by YAML document separator
-	yamlDocs := strings.SplitSeq(content, "---")
-
-	for doc := range yamlDocs {
-		doc = strings.TrimSpace(doc)
-		if doc == "" {
+	for _, doc := range splitYamlDocuments(content) {
+		if strings.TrimSpace(doc) == "" {
 			continue
 		}
 
@@ -370,6 +366,46 @@ func (s *mqlParseYaml) documents(content string) ([]any, error) {
 	}
 
 	return documents, nil
+}
+
+// splitYamlDocuments cuts a YAML stream into its documents. A document marker
+// is a `---` or `...` at the start of a line, followed by a space, a tab or the
+// end of the line. The same three characters inside a value ("x---y", a PEM
+// armor line, a markdown rule that is indented or quoted) are not a marker.
+// Whatever follows `---` on its line stays with the new document (`--- !tag`,
+// `--- |`), because it is part of that document.
+func splitYamlDocuments(content string) []string {
+	var docs []string
+	var current []string
+
+	flush := func() {
+		docs = append(docs, strings.Join(current, ""))
+		current = nil
+	}
+
+	// Lines keep their "\n" so a block scalar keeps its final line break.
+	for line := range strings.SplitAfterSeq(content, "\n") {
+		switch {
+		case isYamlMarker(line, "---"):
+			flush()
+			current = append(current, strings.TrimPrefix(line, "---"))
+		case isYamlMarker(line, "..."):
+			flush()
+		default:
+			current = append(current, line)
+		}
+	}
+	flush()
+
+	return docs
+}
+
+func isYamlMarker(line, marker string) bool {
+	if !strings.HasPrefix(line, marker) {
+		return false
+	}
+	rest := line[len(marker):]
+	return rest == "" || rest[0] == ' ' || rest[0] == '\t' || rest[0] == '\r' || rest[0] == '\n'
 }
 
 func initParsePlist(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
