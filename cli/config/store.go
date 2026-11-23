@@ -227,7 +227,9 @@ func WriteOwnerOnlyFile(path string, data []byte) error {
 		}
 		existing = fi
 	case errors.Is(err, fs.ErrNotExist):
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		// The config's own directory is private; missing parents keep the
+		// conventional mode (ensureConfigDir).
+		if err := ensureConfigDir(filepath.Dir(path)); err != nil {
 			return errors.Wrap(err, "failed to create the mondoo config directory")
 		}
 	default:

@@ -3,8 +3,6 @@ module go.mondoo.com/mql
 go 1.27.3
 
 require (
-	// pin v0.3.0
-	// encoding guard: providers/os/resources/purl TestPackageURLEncoding
 	cloud.google.com/go/logging v1.13.2
 	cloud.google.com/go/secretmanager v1.16.0
 	dario.cat/mergo v1.0.2
@@ -16,6 +14,7 @@ require (
 	github.com/GoogleCloudPlatform/berglas/v2 v2.0.2
 	github.com/Masterminds/semver v1.5.0
 	github.com/ProtonMail/go-crypto v1.5.2
+	// pin v0.3.0
 	github.com/alecthomas/participle v0.3.0
 	github.com/alecthomas/participle/v2 v2.1.4
 	github.com/aws/aws-sdk-go-v2 v1.47.8
@@ -77,6 +76,7 @@ require (
 	github.com/muesli/termenv v0.16.0
 	github.com/olekukonko/tablewriter v1.1.5
 	github.com/opencontainers/image-spec v1.1.1
+	// encoding guard: providers/os/resources/purl TestPackageURLEncoding
 	github.com/package-url/packageurl-go v0.1.7
 	github.com/pandatix/go-cvss v0.6.4
 	github.com/patrickmn/go-cache v2.1.0+incompatible
