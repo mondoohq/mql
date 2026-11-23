@@ -650,6 +650,7 @@ oci.apigateway.deployment.isAnonymousAccessAllowed 13.4.1
 oci.apigateway.deployment.jwtAudiences 13.4.1
 oci.apigateway.deployment.jwtIssuers 13.4.1
 oci.apigateway.deployment.lifecycleDetails 14.7.2
+oci.apigateway.deployment.logs 14.7.2
 oci.apigateway.deployment.mtlsAllowedSans 13.4.1
 oci.apigateway.deployment.mtlsIsVerifiedCertificateRequired 13.4.1
 oci.apigateway.deployment.name 13.4.1
@@ -1124,6 +1125,8 @@ oci.cloudGuard.target.targetResourceId 13.0.6
 oci.cloudGuard.target.targetResourceType 13.0.6
 oci.cloudGuard.targets 13.0.6
 oci.compartment 9.0.0
+oci.compartment.children 14.7.2
+oci.compartment.cloudGuardTarget 14.7.2
 oci.compartment.created 9.0.0
 oci.compartment.definedTags 13.18.1
 oci.compartment.description 9.0.0
@@ -1133,6 +1136,8 @@ oci.compartment.inactiveStatus 14.7.2
 oci.compartment.isAccessible 13.21.1
 oci.compartment.name 9.0.0
 oci.compartment.parent 13.21.1
+oci.compartment.policies 14.7.2
+oci.compartment.securityZone 14.7.2
 oci.compartment.state 9.0.0
 oci.compartments 9.0.0
 oci.compute 9.0.0
@@ -2488,6 +2493,7 @@ oci.identity.group.freeformTags 11.1.0
 oci.identity.group.id 9.0.0
 oci.identity.group.members 13.1.1
 oci.identity.group.name 9.0.0
+oci.identity.group.policies 14.7.2
 oci.identity.group.state 9.0.0
 oci.identity.groups 9.0.0
 oci.identity.identityProvider 13.5.6
@@ -2603,6 +2609,7 @@ oci.identity.user.mfaActivated 9.0.0
 oci.identity.user.mfaDevices 13.1.1
 oci.identity.user.name 9.0.0
 oci.identity.user.oauth2ClientCredentials 13.5.6
+oci.identity.user.policies 14.7.2
 oci.identity.user.previousLogin 9.0.0
 oci.identity.user.smtpCredentials 13.5.6
 oci.identity.user.state 9.0.0
@@ -2806,6 +2813,7 @@ oci.loadBalancer.loadBalancer.isDeleteProtectionEnabled 13.0.6
 oci.loadBalancer.loadBalancer.isPrivate 13.0.6
 oci.loadBalancer.loadBalancer.isRequestIdEnabled 13.20.1
 oci.loadBalancer.loadBalancer.listeners 13.0.6
+oci.loadBalancer.loadBalancer.logs 14.7.2
 oci.loadBalancer.loadBalancer.maximumBandwidthInMbps 13.20.1
 oci.loadBalancer.loadBalancer.minimumBandwidthInMbps 13.20.1
 oci.loadBalancer.loadBalancer.name 13.0.6
@@ -2819,6 +2827,7 @@ oci.loadBalancer.loadBalancer.sslCipherSuites 13.20.1
 oci.loadBalancer.loadBalancer.state 13.0.6
 oci.loadBalancer.loadBalancer.subnets 13.12.2
 oci.loadBalancer.loadBalancer.systemTags 13.12.2
+oci.loadBalancer.loadBalancer.webAppFirewalls 14.7.2
 oci.loadBalancer.loadBalancers 13.0.6
 oci.loadBalancer.ruleSet 13.20.1
 oci.loadBalancer.ruleSet.name 13.20.1
@@ -3324,6 +3333,7 @@ oci.network.securityList.ingressSecurityRules 9.0.0
 oci.network.securityList.name 9.0.0
 oci.network.securityList.region 14.7.2
 oci.network.securityList.state 9.0.0
+oci.network.securityList.subnets 14.7.2
 oci.network.securityList.systemTags 13.21.1
 oci.network.securityList.vcn 13.0.6
 oci.network.securityLists 9.0.0
@@ -3732,6 +3742,7 @@ oci.objectStorage.bucket.lifecycleRule.target 14.2.3
 oci.objectStorage.bucket.lifecycleRule.timeAmount 14.2.3
 oci.objectStorage.bucket.lifecycleRule.timeUnit 14.2.3
 oci.objectStorage.bucket.lifecycleRules 14.2.3
+oci.objectStorage.bucket.logs 14.7.2
 oci.objectStorage.bucket.metadata 13.20.1
 oci.objectStorage.bucket.name 9.0.0
 oci.objectStorage.bucket.namespace 9.0.0

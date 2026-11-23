@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/oracle/oci-go-sdk/v65/core"
@@ -1438,4 +1439,23 @@ type mqlOciNetworkPublicIpInternal struct {
 
 func (o *mqlOciNetworkSecurityList) region() (*mqlOciRegion, error) {
 	return resolveOciRegionByKey(o.MqlRuntime, o.cacheRegion, &o.Region)
+}
+
+// subnets lists the subnets the security list is attached to, read from the
+// subnet listing.
+func (o *mqlOciNetworkSecurityList) subnets() ([]any, error) {
+	items, err := ociServiceCollection(o.MqlRuntime, "oci.network", func(r plugin.Resource) *plugin.TValue[[]any] {
+		return r.(*mqlOciNetwork).GetSubnets()
+	})
+	if err != nil {
+		return nil, err
+	}
+	res := []any{}
+	for _, raw := range items {
+		subnet, ok := raw.(*mqlOciNetworkSubnet)
+		if ok && slices.Contains(subnet.cacheSecurityListIDs, o.Id.Data) {
+			res = append(res, subnet)
+		}
+	}
+	return res, nil
 }

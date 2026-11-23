@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/oracle/oci-go-sdk/v65/logging"
@@ -313,4 +314,72 @@ func resolveOciLoggingLog(runtime *plugin.Runtime, ref ociLogRef, field *plugin.
 		}
 	}
 	return nil, errors.New("oci.logging.log not found: " + ref.logID)
+}
+
+// collectServiceLogs returns the service logs a resource emits: the logs
+// whose source service is service and whose source resource is one of
+// resources. Log groups and their logs are cached by the runtime, so asking on
+// adjacent resources does not list them again.
+func collectServiceLogs(runtime *plugin.Runtime, service string, resources ...string) ([]any, error) {
+	obj, err := CreateResource(runtime, "oci.logging", nil)
+	if err != nil {
+		return nil, err
+	}
+	rawGroups := obj.(*mqlOciLogging).GetLogGroups()
+	if rawGroups.Error != nil {
+		return nil, rawGroups.Error
+	}
+
+	res := []any{}
+	for _, rawGroup := range rawGroups.Data {
+		group, ok := rawGroup.(*mqlOciLoggingLogGroup)
+		if !ok {
+			continue
+		}
+		rawLogs := group.GetLogs()
+		if rawLogs.Error != nil {
+			return nil, rawLogs.Error
+		}
+		for _, rawLog := range rawLogs.Data {
+			l, ok := rawLog.(*mqlOciLoggingLog)
+			if !ok {
+				continue
+			}
+			if ociLogSourceMatches(l.SourceService.Data, l.SourceResource.Data, service, resources) {
+				res = append(res, l)
+			}
+		}
+	}
+	return res, nil
+}
+
+// ociLogSourceMatches reports whether a log's source names the given service
+// and one of the given resources. The service is compared case-insensitively;
+// resource identifiers are compared exactly. An empty resource never matches,
+// so a resource whose identifier is unknown reports no logs rather than every
+// log of the service.
+func ociLogSourceMatches(logService, logResource, service string, resources []string) bool {
+	if logResource == "" || !strings.EqualFold(logService, service) {
+		return false
+	}
+	for _, r := range resources {
+		if r != "" && r == logResource {
+			return true
+		}
+	}
+	return false
+}
+
+func (o *mqlOciLoadBalancerLoadBalancer) logs() ([]any, error) {
+	return collectServiceLogs(o.MqlRuntime, "loadbalancer", o.Id.Data)
+}
+
+func (o *mqlOciApigatewayDeployment) logs() ([]any, error) {
+	return collectServiceLogs(o.MqlRuntime, "apigateway", o.Id.Data)
+}
+
+// logs matches on the bucket name: Object Storage service logs name the bucket
+// they record rather than its OCID.
+func (o *mqlOciObjectStorageBucket) logs() ([]any, error) {
+	return collectServiceLogs(o.MqlRuntime, "objectstorage", o.Name.Data)
 }

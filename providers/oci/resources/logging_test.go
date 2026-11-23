@@ -148,3 +148,14 @@ func TestExtractLogSource(t *testing.T) {
 		})
 	}
 }
+
+func TestOciLogSourceMatches(t *testing.T) {
+	// Synthetic: source fields as the Logging API reports them for service logs.
+	assert.True(t, ociLogSourceMatches("loadbalancer", "ocid1.loadbalancer.oc1..a", "loadbalancer", []string{"ocid1.loadbalancer.oc1..a"}))
+	assert.True(t, ociLogSourceMatches("objectstorage", "my-bucket", "objectStorage", []string{"my-bucket"}))
+	assert.False(t, ociLogSourceMatches("loadbalancer", "ocid1.loadbalancer.oc1..b", "loadbalancer", []string{"ocid1.loadbalancer.oc1..a"}))
+	assert.False(t, ociLogSourceMatches("flowlogs", "ocid1.loadbalancer.oc1..a", "loadbalancer", []string{"ocid1.loadbalancer.oc1..a"}))
+	// A resource with no known identifier must not collect every log of the service.
+	assert.False(t, ociLogSourceMatches("objectstorage", "", "objectstorage", []string{""}))
+	assert.False(t, ociLogSourceMatches("objectstorage", "my-bucket", "objectstorage", []string{""}))
+}

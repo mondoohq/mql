@@ -246,3 +246,32 @@ func TestOciCollectCompartmentJobs(t *testing.T) {
 		assert.Empty(t, res)
 	})
 }
+
+func TestOciNearestByCompartment(t *testing.T) {
+	// Synthetic: root -> parent -> child -> grandchild.
+	parents := map[string]string{"grandchild": "child", "child": "parent", "parent": "root"}
+	parentOf := func(id string) (string, error) { return parents[id], nil }
+
+	byCompartment := map[string]any{"parent": "zone-parent"}
+	got, err := ociNearestByCompartment("grandchild", byCompartment, parentOf)
+	require.NoError(t, err)
+	assert.Equal(t, "zone-parent", got)
+
+	byCompartment["child"] = "zone-child"
+	got, err = ociNearestByCompartment("grandchild", byCompartment, parentOf)
+	require.NoError(t, err)
+	assert.Equal(t, "zone-child", got)
+
+	got, err = ociNearestByCompartment("root", byCompartment, parentOf)
+	require.NoError(t, err)
+	assert.Nil(t, got)
+
+	// A cycle in a malformed tree ends the walk instead of looping.
+	loop := func(id string) (string, error) { return map[string]string{"a": "b", "b": "a"}[id], nil }
+	got, err = ociNearestByCompartment("a", map[string]any{}, loop)
+	require.NoError(t, err)
+	assert.Nil(t, got)
+
+	_, err = ociNearestByCompartment("a", map[string]any{}, func(string) (string, error) { return "", errors.New("tree unavailable") })
+	assert.Error(t, err)
+}

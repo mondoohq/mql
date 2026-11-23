@@ -106,6 +106,25 @@ private oci.compartment @defaults("id name") {
   // see the existence of but not look inside, which is the case a check for
   // over-broad or missing grants is looking for.
   isAccessible() bool
+  // Compartments directly beneath this one
+  children() []oci.compartment
+  // Policies attached to this compartment
+  //
+  // The policies defined in the compartment, not every policy whose
+  // statements are scoped to it.
+  policies() []oci.identity.policy
+  // Security zone governing this compartment
+  //
+  // The zone created for this compartment, or else the one of its nearest
+  // ancestor, since a security zone applies to the compartments beneath it.
+  // Null when no zone governs it.
+  securityZone() oci.cloudGuard.securityZone
+  // Cloud Guard target monitoring this compartment
+  //
+  // The target created for this compartment, or else the one of its nearest
+  // ancestor, since a target covers the compartments beneath it. Null when
+  // Cloud Guard does not monitor it.
+  cloudGuardTarget() oci.cloudGuard.target
   // Compartment description
   description string
   // Compartment creation time
@@ -953,6 +972,8 @@ private oci.identity.user @defaults("name") {
   authTokens() []oci.identity.authToken
   // Groups the user belongs to
   groups() []oci.identity.group
+  // Policies with a statement that grants to one of the user's groups by name or OCID
+  policies() []oci.identity.policy
   // MFA TOTP devices
   mfaDevices() []oci.identity.mfaDevice
   // Database password credentials for OCI database connections
@@ -1039,6 +1060,10 @@ private oci.identity.group @defaults("name") {
   definedTags map[string]map[string]string
   // Users in the group
   members() []oci.identity.user
+  // Policies with a statement that grants to this group by name or OCID
+  //
+  // Statements granting to any-group are not included.
+  policies() []oci.identity.policy
 }
 
 // Oracle Cloud Infrastructure (OCI) IAM policy that grants group permissions to resources
@@ -2310,6 +2335,10 @@ private oci.network.securityList @defaults("name") {
   hasStatelessRules() bool
   // VCN that this security list belongs to
   vcn() oci.network.vcn
+  // Subnets the security list is attached to
+  //
+  // Empty for a security list no subnet uses, whose rules apply to nothing.
+  subnets() []oci.network.subnet
   // Free-form tags for resource management
   freeformTags map[string]string
   // Defined tags for governance and cost tracking
@@ -3380,6 +3409,8 @@ private oci.objectStorage.bucket {
   namespace string
   // Bucket name
   name string
+  // Service logs the bucket emits (read and write access logs)
+  logs() []oci.logging.log
   // Compartment containing the bucket
   compartment() oci.compartment
   // Bucket creation time
@@ -5373,6 +5404,10 @@ private oci.loadBalancer.loadBalancer @defaults("name") {
   compartment() oci.compartment
   // Region the load balancer is in
   region() oci.region
+  // Web application firewalls attached to the load balancer
+  webAppFirewalls() []oci.waf.firewall
+  // Service logs the load balancer emits (access and error logs)
+  logs() []oci.logging.log
   // Shape name (e.g., flexible, 100Mbps, 400Mbps)
   shape string
   // Guaranteed pre-provisioned bandwidth in Mbps
@@ -9524,6 +9559,8 @@ private oci.apigateway.deployment @defaults("name pathPrefix") {
   region() oci.region
   // Parent gateway
   gateway() oci.apigateway.gateway
+  // Service logs the deployment emits (access and execution logs)
+  logs() []oci.logging.log
   // Path prefix on the gateway that this deployment is deployed to
   pathPrefix string
   // Endpoint URL to reach this deployment

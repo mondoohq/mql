@@ -227,3 +227,22 @@ type mqlOciWafPolicyInternal struct {
 	cacheRegion string
 	detail      ociLazy[*waf.WebAppFirewallPolicy]
 }
+
+// webAppFirewalls lists the web application firewalls attached to the load
+// balancer, read from the firewall listing.
+func (o *mqlOciLoadBalancerLoadBalancer) webAppFirewalls() ([]any, error) {
+	items, err := ociServiceCollection(o.MqlRuntime, "oci.waf", func(r plugin.Resource) *plugin.TValue[[]any] {
+		return r.(*mqlOciWaf).GetFirewalls()
+	})
+	if err != nil {
+		return nil, err
+	}
+	res := []any{}
+	for _, raw := range items {
+		fw, ok := raw.(*mqlOciWafFirewall)
+		if ok && fw.cacheLoadBalancerID != "" && fw.cacheLoadBalancerID == o.Id.Data {
+			res = append(res, fw)
+		}
+	}
+	return res, nil
+}
