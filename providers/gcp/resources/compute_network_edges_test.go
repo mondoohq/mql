@@ -3,7 +3,11 @@
 
 package resources
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func TestComputeURLCollection(t *testing.T) {
 	const prefix = "https://www.googleapis.com/compute/v1/"
@@ -99,4 +103,33 @@ func TestComputeURLCollectionDispatch(t *testing.T) {
 	if computeURLCollection(targetURL) != "targetHttpsProxies" {
 		t.Errorf("targetHttpsProxy URL failed to dispatch to targetHttpsProxies")
 	}
+}
+
+func TestComputeRefKey(t *testing.T) {
+	// Synthetic: the same network written with each host form and none.
+	want := "projects/p1/global/networks/n1"
+	assert.Equal(t, want, computeRefKey("https://www.googleapis.com/compute/v1/projects/p1/global/networks/n1"))
+	assert.Equal(t, want, computeRefKey("https://compute.googleapis.com/compute/v1/projects/p1/global/networks/n1"))
+	assert.Equal(t, want, computeRefKey("https://www.googleapis.com/compute/beta/projects/p1/global/networks/n1"))
+	assert.Equal(t, want, computeRefKey("projects/p1/global/networks/n1"))
+	assert.Equal(t, "", computeRefKey(""))
+}
+
+func TestInstancesReferencing(t *testing.T) {
+	a := &mqlGcpProjectComputeServiceInstance{}
+	a.cacheNetworkUrls = []string{"https://www.googleapis.com/compute/v1/projects/p1/global/networks/n1"}
+	// Synthetic: the matching network is on the second NIC, written with the other host.
+	b := &mqlGcpProjectComputeServiceInstance{}
+	b.cacheNetworkUrls = []string{
+		"https://www.googleapis.com/compute/v1/projects/p1/global/networks/other",
+		"https://compute.googleapis.com/compute/v1/projects/p1/global/networks/n1",
+	}
+	// Synthetic: the same network name in another project must not match.
+	c := &mqlGcpProjectComputeServiceInstance{}
+	c.cacheNetworkUrls = []string{"https://www.googleapis.com/compute/v1/projects/p2/global/networks/n1"}
+	d := &mqlGcpProjectComputeServiceInstance{}
+
+	urls := func(i *mqlGcpProjectComputeServiceInstance) []string { return i.cacheNetworkUrls }
+	assert.Equal(t, []any{a, b}, instancesReferencing([]any{a, b, c, d}, "projects/p1/global/networks/n1", urls))
+	assert.Empty(t, instancesReferencing([]any{a, b, c, d}, "projects/p3/global/networks/n1", urls))
 }

@@ -5796,6 +5796,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.computeService.network.networkProfile": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceNetwork).GetNetworkProfile()).ToDataRes(types.String)
 	},
+	"gcp.project.computeService.network.instances": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceNetwork).GetInstances()).ToDataRes(types.Array(types.Resource("gcp.project.computeService.instance")))
+	},
 	"gcp.project.computeService.subnetwork.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceSubnetwork).GetId()).ToDataRes(types.String)
 	},
@@ -5885,6 +5888,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.computeService.subnetwork.utilizationDetails": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceSubnetwork).GetUtilizationDetails()).ToDataRes(types.Dict)
+	},
+	"gcp.project.computeService.subnetwork.instances": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceSubnetwork).GetInstances()).ToDataRes(types.Array(types.Resource("gcp.project.computeService.instance")))
 	},
 	"gcp.project.computeService.subnetwork.logConfig.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceSubnetworkLogConfig).GetId()).ToDataRes(types.String)
@@ -9647,6 +9653,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.iamService.serviceAccount.hasAdminRole": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectIamServiceServiceAccount).GetHasAdminRole()).ToDataRes(types.Bool)
+	},
+	"gcp.project.iamService.serviceAccount.instances": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectIamServiceServiceAccount).GetInstances()).ToDataRes(types.Array(types.Resource("gcp.project.computeService.instance")))
+	},
+	"gcp.project.iamService.serviceAccount.cloudRunServices": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectIamServiceServiceAccount).GetCloudRunServices()).ToDataRes(types.Array(types.Resource("gcp.project.cloudRunService.service")))
+	},
+	"gcp.project.iamService.serviceAccount.cloudFunctions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectIamServiceServiceAccount).GetCloudFunctions()).ToDataRes(types.Array(types.Resource("gcp.project.cloudFunction")))
+	},
+	"gcp.project.iamService.serviceAccount.cloudFunctionsV2": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectIamServiceServiceAccount).GetCloudFunctionsV2()).ToDataRes(types.Array(types.Resource("gcp.project.cloudFunctionV2")))
+	},
+	"gcp.project.iamService.serviceAccount.gkeNodePools": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectIamServiceServiceAccount).GetGkeNodePools()).ToDataRes(types.Array(types.Resource("gcp.project.gkeService.cluster.nodepool")))
 	},
 	"gcp.project.iamService.serviceAccount.key.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectIamServiceServiceAccountKey).GetName()).ToDataRes(types.String)
@@ -25155,6 +25176,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectComputeServiceNetwork).NetworkProfile, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"gcp.project.computeService.network.instances": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceNetwork).Instances, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"gcp.project.computeService.subnetwork.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectComputeServiceSubnetwork).__id, ok = v.Value.(string)
 		return
@@ -25277,6 +25302,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.computeService.subnetwork.utilizationDetails": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectComputeServiceSubnetwork).UtilizationDetails, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.subnetwork.instances": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceSubnetwork).Instances, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"gcp.project.computeService.subnetwork.logConfig.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -30813,6 +30842,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.iamService.serviceAccount.hasAdminRole": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectIamServiceServiceAccount).HasAdminRole, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.iamService.serviceAccount.instances": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectIamServiceServiceAccount).Instances, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.iamService.serviceAccount.cloudRunServices": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectIamServiceServiceAccount).CloudRunServices, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.iamService.serviceAccount.cloudFunctions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectIamServiceServiceAccount).CloudFunctions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.iamService.serviceAccount.cloudFunctionsV2": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectIamServiceServiceAccount).CloudFunctionsV2, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.iamService.serviceAccount.gkeNodePools": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectIamServiceServiceAccount).GkeNodePools, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"gcp.project.iamService.serviceAccount.key.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -58077,6 +58126,7 @@ type mqlGcpProjectComputeServiceNetwork struct {
 	FirewallPolicy                        plugin.TValue[string]
 	FirewallPolicyRef                     plugin.TValue[*mqlGcpProjectComputeServiceFirewallPolicy]
 	NetworkProfile                        plugin.TValue[string]
+	Instances                             plugin.TValue[[]any]
 }
 
 // createGcpProjectComputeServiceNetwork creates a new instance of this resource
@@ -58266,6 +58316,22 @@ func (c *mqlGcpProjectComputeServiceNetwork) GetNetworkProfile() *plugin.TValue[
 	return &c.NetworkProfile
 }
 
+func (c *mqlGcpProjectComputeServiceNetwork) GetInstances() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Instances, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.computeService.network", c.__id, "instances")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.instances()
+	})
+}
+
 // mqlGcpProjectComputeServiceSubnetwork for the gcp.project.computeService.subnetwork resource
 type mqlGcpProjectComputeServiceSubnetwork struct {
 	MqlRuntime *plugin.Runtime
@@ -58301,6 +58367,7 @@ type mqlGcpProjectComputeServiceSubnetwork struct {
 	SystemReservedInternalIpv6Ranges plugin.TValue[[]any]
 	SystemReservedExternalIpv6Ranges plugin.TValue[[]any]
 	UtilizationDetails               plugin.TValue[any]
+	Instances                        plugin.TValue[[]any]
 }
 
 // createGcpProjectComputeServiceSubnetwork creates a new instance of this resource
@@ -58482,6 +58549,22 @@ func (c *mqlGcpProjectComputeServiceSubnetwork) GetSystemReservedExternalIpv6Ran
 
 func (c *mqlGcpProjectComputeServiceSubnetwork) GetUtilizationDetails() *plugin.TValue[any] {
 	return &c.UtilizationDetails
+}
+
+func (c *mqlGcpProjectComputeServiceSubnetwork) GetInstances() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Instances, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.computeService.subnetwork", c.__id, "instances")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.instances()
+	})
 }
 
 // mqlGcpProjectComputeServiceSubnetworkLogConfig for the gcp.project.computeService.subnetwork.logConfig resource
@@ -71647,6 +71730,11 @@ type mqlGcpProjectIamServiceServiceAccount struct {
 	ProjectBindings       plugin.TValue[[]any]
 	ProjectRoles          plugin.TValue[[]any]
 	HasAdminRole          plugin.TValue[bool]
+	Instances             plugin.TValue[[]any]
+	CloudRunServices      plugin.TValue[[]any]
+	CloudFunctions        plugin.TValue[[]any]
+	CloudFunctionsV2      plugin.TValue[[]any]
+	GkeNodePools          plugin.TValue[[]any]
 }
 
 // createGcpProjectIamServiceServiceAccount creates a new instance of this resource
@@ -71837,6 +71925,86 @@ func (c *mqlGcpProjectIamServiceServiceAccount) GetProjectRoles() *plugin.TValue
 func (c *mqlGcpProjectIamServiceServiceAccount) GetHasAdminRole() *plugin.TValue[bool] {
 	return plugin.GetOrCompute[bool](&c.HasAdminRole, func() (bool, error) {
 		return c.hasAdminRole()
+	})
+}
+
+func (c *mqlGcpProjectIamServiceServiceAccount) GetInstances() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Instances, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.iamService.serviceAccount", c.__id, "instances")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.instances()
+	})
+}
+
+func (c *mqlGcpProjectIamServiceServiceAccount) GetCloudRunServices() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.CloudRunServices, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.iamService.serviceAccount", c.__id, "cloudRunServices")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.cloudRunServices()
+	})
+}
+
+func (c *mqlGcpProjectIamServiceServiceAccount) GetCloudFunctions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.CloudFunctions, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.iamService.serviceAccount", c.__id, "cloudFunctions")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.cloudFunctions()
+	})
+}
+
+func (c *mqlGcpProjectIamServiceServiceAccount) GetCloudFunctionsV2() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.CloudFunctionsV2, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.iamService.serviceAccount", c.__id, "cloudFunctionsV2")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.cloudFunctionsV2()
+	})
+}
+
+func (c *mqlGcpProjectIamServiceServiceAccount) GetGkeNodePools() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.GkeNodePools, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.iamService.serviceAccount", c.__id, "gkeNodePools")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.gkeNodePools()
 	})
 }
 

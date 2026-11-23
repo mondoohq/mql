@@ -3142,6 +3142,11 @@ gcp.project.computeService.network @defaults("name") {
   firewallPolicyRef() gcp.project.computeService.firewallPolicy
   // URL of the network profile applied to this network
   networkProfile string
+  // Compute Engine instances with a network interface on this network
+  //
+  // Only instances in the network's own project are listed; instances in
+  // Shared VPC service projects attached to it are not.
+  instances() []gcp.project.computeService.instance
 }
 
 // Google Cloud VPC subnetwork
@@ -3231,6 +3236,11 @@ gcp.project.computeService.subnetwork @defaults("name") {
   // Keys: `internalIpv6Utilization` and `externalIpv6Utilization`, each with
   // the assigned and free address counts for that family.
   utilizationDetails dict
+  // Compute Engine instances with a network interface on this subnetwork
+  //
+  // Only instances in the subnetwork's own project are listed; instances in
+  // Shared VPC service projects attached to it are not.
+  instances() []gcp.project.computeService.instance
 }
 
 // Google Cloud (GCP) Compute VPC network partitioning log configuration
@@ -7837,6 +7847,29 @@ private gcp.project.iamService.serviceAccount @defaults("displayName name") {
   // matched by name only, not by the permissions they carry. Roles granted
   // on folders or the organization are not considered.
   hasAdminRole() bool
+  // Compute Engine instances that run as this service account
+  //
+  // Only instances in the service account's own project are listed. Anyone
+  // who can run code on one of these instances can act as the account.
+  instances() []gcp.project.computeService.instance
+  // Cloud Run services whose revisions run as this service account
+  //
+  // Only services in the service account's own project are listed.
+  cloudRunServices() []gcp.project.cloudRunService.service
+  // Cloud Functions (1st gen) that run as this service account
+  //
+  // Only functions in the service account's own project are listed.
+  cloudFunctions() []gcp.project.cloudFunction
+  // Cloud Run functions (2nd gen) that run as this service account
+  //
+  // Only functions in the service account's own project are listed.
+  cloudFunctionsV2() []gcp.project.cloudFunctionV2
+  // GKE node pools whose nodes run as this service account
+  //
+  // Only node pools in the service account's own project are listed. A node
+  // pool that sets no service account, or sets "default", runs as the Compute
+  // Engine default service account and is listed under that account.
+  gkeNodePools() []gcp.project.gkeService.cluster.nodepool
 }
 
 // Google Cloud (GCP) IAM service account key
