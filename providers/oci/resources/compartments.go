@@ -4,10 +4,12 @@
 package resources
 
 import (
+	"context"
 	"errors"
 
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/oci/connection"
 )
 
 // Compartment-shaped helpers used by listers. The fan-out itself lives in
@@ -86,4 +88,137 @@ func ociCompartmentInaccessible(err error) bool {
 	default:
 		return false
 	}
+}
+
+// children lists the compartments directly beneath this one, read from the
+// tenancy tree the connection already holds.
+func (o *mqlOciCompartment) children() ([]any, error) {
+	conn, ok := o.MqlRuntime.Connection.(*connection.OciConnection)
+	if !ok {
+		return nil, errors.New("oci.compartment requires an oci connection")
+	}
+	all, err := conn.GetCompartments(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	res := []any{}
+	for i := range all {
+		c := all[i]
+		if ociCompartmentParent(stringValue(c.Id), stringValue(c.CompartmentId)) != o.Id.Data {
+			continue
+		}
+		child, err := CreateResource(o.MqlRuntime, "oci.compartment", ociCompartmentArgs(c))
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, child)
+	}
+	return res, nil
+}
+
+// policies lists the policies defined in this compartment.
+func (o *mqlOciCompartment) policies() ([]any, error) {
+	items, err := ociServiceCollection(o.MqlRuntime, "oci.identity", func(r plugin.Resource) *plugin.TValue[[]any] {
+		return r.(*mqlOciIdentity).GetPolicies()
+	})
+	if err != nil {
+		return nil, err
+	}
+	res := []any{}
+	for _, raw := range items {
+		if p, ok := raw.(*mqlOciIdentityPolicy); ok && p.cacheCompartmentID == o.Id.Data {
+			res = append(res, p)
+		}
+	}
+	return res, nil
+}
+
+// securityZone resolves the security zone governing the compartment: its own,
+// or the nearest ancestor's.
+func (o *mqlOciCompartment) securityZone() (*mqlOciCloudGuardSecurityZone, error) {
+	items, err := ociServiceCollection(o.MqlRuntime, "oci.cloudGuard", func(r plugin.Resource) *plugin.TValue[[]any] {
+		return r.(*mqlOciCloudGuard).GetSecurityZones()
+	})
+	if err != nil {
+		return nil, err
+	}
+	byCompartment := map[string]any{}
+	for _, raw := range items {
+		if z, ok := raw.(*mqlOciCloudGuardSecurityZone); ok && z.cacheCompartmentID != "" {
+			byCompartment[z.cacheCompartmentID] = z
+		}
+	}
+	zone, err := ociNearestByCompartment(o.Id.Data, byCompartment, o.compartmentParentOf())
+	if err != nil {
+		return nil, err
+	}
+	if zone == nil {
+		o.SecurityZone.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return zone.(*mqlOciCloudGuardSecurityZone), nil
+}
+
+// cloudGuardTarget resolves the Cloud Guard target monitoring the
+// compartment: its own, or the nearest ancestor's.
+func (o *mqlOciCompartment) cloudGuardTarget() (*mqlOciCloudGuardTarget, error) {
+	items, err := ociServiceCollection(o.MqlRuntime, "oci.cloudGuard", func(r plugin.Resource) *plugin.TValue[[]any] {
+		return r.(*mqlOciCloudGuard).GetTargets()
+	})
+	if err != nil {
+		return nil, err
+	}
+	byCompartment := map[string]any{}
+	for _, raw := range items {
+		t, ok := raw.(*mqlOciCloudGuardTarget)
+		if !ok || t.TargetResourceType.Data != "COMPARTMENT" || t.TargetResourceId.Data == "" {
+			continue
+		}
+		byCompartment[t.TargetResourceId.Data] = t
+	}
+	target, err := ociNearestByCompartment(o.Id.Data, byCompartment, o.compartmentParentOf())
+	if err != nil {
+		return nil, err
+	}
+	if target == nil {
+		o.CloudGuardTarget.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return target.(*mqlOciCloudGuardTarget), nil
+}
+
+// compartmentParentOf returns a lookup of a compartment's parent OCID from
+// the tenancy tree, "" for the root or an OCID the tree does not hold.
+func (o *mqlOciCompartment) compartmentParentOf() func(string) (string, error) {
+	lookup := ociCompartmentLookup(o.MqlRuntime)
+	return func(id string) (string, error) {
+		if lookup == nil {
+			return "", nil
+		}
+		c, err := lookup(id)
+		if err != nil || c == nil {
+			return "", err
+		}
+		return ociCompartmentParent(id, stringValue(c.CompartmentId)), nil
+	}
+}
+
+// ociNearestByCompartment walks from a compartment up through its ancestors
+// and returns the first entry keyed by one of them, or nil when none is. The
+// walk stops at the root or at a compartment seen before, so a malformed tree
+// cannot loop.
+func ociNearestByCompartment(start string, byCompartment map[string]any, parentOf func(string) (string, error)) (any, error) {
+	seen := map[string]bool{}
+	for id := start; id != "" && !seen[id]; {
+		if item, ok := byCompartment[id]; ok {
+			return item, nil
+		}
+		seen[id] = true
+		parent, err := parentOf(id)
+		if err != nil {
+			return nil, err
+		}
+		id = parent
+	}
+	return nil, nil
 }
