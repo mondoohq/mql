@@ -744,3 +744,17 @@ func flattenExecutionLogLevel(spec *apigateway.ApiSpecification) string {
 	}
 	return string(spec.LoggingPolicies.ExecutionLog.LogLevel)
 }
+
+func (o *mqlOciApigatewayGateway) caBundles() ([]any, error) {
+	if err := o.fetchDetails(); err != nil {
+		return nil, err
+	}
+	return resolveOciCertRefsByType(o.MqlRuntime, o.CaBundleIds.Data, "cabundle", "oci.certificates.caBundle")
+}
+
+func (o *mqlOciApigatewayGateway) certificateAuthorities() ([]any, error) {
+	if err := o.fetchDetails(); err != nil {
+		return nil, err
+	}
+	return resolveOciCertRefsByType(o.MqlRuntime, o.CaBundleIds.Data, "certificateauthority", "oci.certificates.certificateAuthority")
+}

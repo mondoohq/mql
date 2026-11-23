@@ -513,7 +513,9 @@ private oci.identity.domain.user.groupMembership @defaults("displayName type") {
   // Empty on a domain that predates membership OCIDs.
   membershipOcid string
   // Group SCIM identifier the membership binds to
-  groupId string
+  //
+  // Deprecated in favor of group.
+  groupId @maturity("deprecated") @replaced_by("oci.identity.domain.user.groupMembership.group") string
   // Group display name, as recorded on the membership
   displayName string
   // Group the membership binds to
@@ -1328,7 +1330,11 @@ private oci.identity.tagDefault @defaults("tagDefinitionName value state") {
 // Oracle Cloud Infrastructure (OCI) tenancy authentication policy
 private oci.identity.authenticationPolicy @defaults("minimumPasswordLength") {
   // Compartment (tenancy) OCID the policy applies to
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.identity.authenticationPolicy.compartment") string
+  // Compartment (tenancy) the policy applies to
+  compartment() oci.compartment
   // Minimum number of characters required in a console password
   minimumPasswordLength int
   // Whether a console password must contain an uppercase character
@@ -1342,7 +1348,11 @@ private oci.identity.authenticationPolicy @defaults("minimumPasswordLength") {
   // Whether a console password is allowed to contain the user name
   passwordUsernameContainmentAllowed bool
   // OCIDs of the network sources that restrict where console and API requests may originate
-  networkSourceIds []string
+  //
+  // Deprecated in favor of networkSources.
+  networkSourceIds @maturity("deprecated") @replaced_by("oci.identity.authenticationPolicy.networkSources") []string
+  // Network sources that restrict where console and API requests may originate
+  networkSources() []oci.identity.networkSource
 }
 
 // Oracle Cloud Infrastructure (OCI) Compute
@@ -3093,9 +3103,10 @@ private oci.network.virtualCircuit @defaults("name type state") {
 private oci.network.virtualCircuit.crossConnectMapping @defaults("vlan customerBgpPeeringIp oracleBgpPeeringIp") {
   // OCID of the cross-connect or cross-connect group the mapping terminates on
   //
+  // Deprecated in favor of crossConnect.
   // Empty on a provider-mediated circuit, where the FastConnect partner owns
   // the port rather than the tenancy.
-  crossConnectId string
+  crossConnectId @maturity("deprecated") @replaced_by("oci.network.virtualCircuit.crossConnectMapping.crossConnect") string
   // Cross-connect the mapping terminates on
   //
   // Null when the mapping names a cross-connect group rather than a single
@@ -9519,7 +9530,13 @@ private oci.apigateway.gateway @defaults("name") {
   // TLS certificate used by the gateway (from the apigateway certificates service)
   certificate() oci.apigateway.certificate
   // OCIDs of CA bundles (from the certificatesmanagement service or the apigateway certificates service) used by the gateway for TLS validation
-  caBundleIds() []string
+  //
+  // Deprecated in favor of caBundles and certificateAuthorities, which resolve the two kinds of reference this list mixes.
+  caBundleIds() @maturity("deprecated") []string
+  // CA bundles from the certificates service the gateway uses for TLS validation
+  caBundles() []oci.certificates.caBundle
+  // Certificate authorities from the certificates service the gateway uses for TLS validation
+  certificateAuthorities() []oci.certificates.certificateAuthority
   // Lifecycle state (e.g., CREATING, ACTIVE, UPDATING, DELETING, DELETED, FAILED)
   state string
   // Creation time
@@ -10451,7 +10468,9 @@ private oci.vulnerabilityScanning.hostScanRecipe @defaults("name compartmentId p
   // Recipe display name
   name string
   // Compartment OCID containing the recipe
-  compartmentId string
+  //
+  // Deprecated in favor of compartment.
+  compartmentId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostScanRecipe.compartment") string
   // Compartment containing the recipe
   compartment() oci.compartment
   // Lifecycle state (CREATING, ACTIVE, UPDATING, DELETING, DELETED, FAILED)
@@ -10496,19 +10515,27 @@ private oci.vulnerabilityScanning.hostScanTarget @defaults("name compartmentId s
   // Target description
   description string
   // Compartment OCID containing the target
-  compartmentId string
+  //
+  // Deprecated in favor of compartment.
+  compartmentId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostScanTarget.compartment") string
   // Compartment containing the target
   compartment() oci.compartment
   // Compartment OCID whose instances this target scans
-  targetCompartmentId string
+  //
+  // Deprecated in favor of targetCompartment.
+  targetCompartmentId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostScanTarget.targetCompartment") string
   // Compartment whose instances this target scans
   targetCompartment() oci.compartment
   // Host scan recipe OCID applied by this target
-  hostScanRecipeId string
+  //
+  // Deprecated in favor of recipe.
+  hostScanRecipeId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostScanTarget.recipe") string
   // Host scan recipe applied by this target
   recipe() oci.vulnerabilityScanning.hostScanRecipe
   // Compute instance OCIDs scanned by this target
-  instanceIds []string
+  //
+  // Deprecated in favor of instances.
+  instanceIds @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostScanTarget.instances") []string
   // Compute instances scanned by this target
   instances() []oci.compute.instance
   // Lifecycle state (CREATING, ACTIVE, UPDATING, DELETING, DELETED, FAILED)
@@ -10530,7 +10557,9 @@ private oci.vulnerabilityScanning.containerScanRecipe @defaults("name compartmen
   // Recipe display name
   name string
   // Compartment OCID containing the recipe
-  compartmentId string
+  //
+  // Deprecated in favor of compartment.
+  compartmentId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.containerScanRecipe.compartment") string
   // Compartment containing the recipe
   compartment() oci.compartment
   // Lifecycle state
@@ -10558,11 +10587,15 @@ private oci.vulnerabilityScanning.containerScanTarget @defaults("name compartmen
   // Target description
   description string
   // Compartment OCID containing the target
-  compartmentId string
+  //
+  // Deprecated in favor of compartment.
+  compartmentId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.containerScanTarget.compartment") string
   // Compartment containing the target
   compartment() oci.compartment
   // Container scan recipe OCID applied by this target
-  containerScanRecipeId string
+  //
+  // Deprecated in favor of recipe.
+  containerScanRecipeId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.containerScanTarget.recipe") string
   // Container scan recipe applied by this target
   recipe() oci.vulnerabilityScanning.containerScanRecipe
   // Registry type (OCIR)
@@ -10592,11 +10625,15 @@ private oci.vulnerabilityScanning.hostAgentScanResult @defaults("name instanceId
   // Scan result display name
   name string
   // Scanned compute instance OCID
-  instanceId string
+  //
+  // Deprecated in favor of instance.
+  instanceId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostAgentScanResult.instance") string
   // Scanned compute instance
   instance() oci.compute.instance
   // Compartment OCID containing the scan result
-  compartmentId string
+  //
+  // Deprecated in favor of compartment.
+  compartmentId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostAgentScanResult.compartment") string
   // Compartment containing the scan result
   compartment() oci.compartment
   // Highest finding severity (NONE, LOW, MEDIUM, HIGH, CRITICAL)
@@ -10672,11 +10709,15 @@ private oci.vulnerabilityScanning.hostPortScanResult @defaults("name instanceId 
   // Scan result display name
   name string
   // Scanned compute instance OCID
-  instanceId string
+  //
+  // Deprecated in favor of instance.
+  instanceId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostPortScanResult.instance") string
   // Scanned compute instance
   instance() oci.compute.instance
   // Compartment OCID containing the scan result
-  compartmentId string
+  //
+  // Deprecated in favor of compartment.
+  compartmentId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostPortScanResult.compartment") string
   // Compartment containing the scan result
   compartment() oci.compartment
   // Highest severity across open ports
@@ -10713,7 +10754,9 @@ private oci.vulnerabilityScanning.hostPortScanResult.openPort @defaults("port pr
   // Finding severity for this open port
   severity string
   // VNIC OCID exposing the port
-  vnicId string
+  //
+  // Deprecated in favor of vnic.
+  vnicId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostPortScanResult.openPort.vnic") string
   // VNIC exposing the port
   vnic() oci.compute.vnic
 }
@@ -10729,11 +10772,15 @@ private oci.vulnerabilityScanning.hostCisBenchmarkScanResult @defaults("name ins
   // Scan result display name
   name string
   // Scanned compute instance OCID
-  instanceId string
+  //
+  // Deprecated in favor of instance.
+  instanceId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostCisBenchmarkScanResult.instance") string
   // Scanned compute instance
   instance() oci.compute.instance
   // Compartment OCID containing the scan result
-  compartmentId string
+  //
+  // Deprecated in favor of compartment.
+  compartmentId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostCisBenchmarkScanResult.compartment") string
   // Compartment containing the scan result
   compartment() oci.compartment
   // Total number of CIS benchmark issues found
@@ -10771,11 +10818,15 @@ private oci.vulnerabilityScanning.hostEndpointProtectionScanResult @defaults("na
   // Scan result display name
   name string
   // Scanned compute instance OCID
-  instanceId string
+  //
+  // Deprecated in favor of instance.
+  instanceId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostEndpointProtectionScanResult.instance") string
   // Scanned compute instance
   instance() oci.compute.instance
   // Compartment OCID containing the scan result
-  compartmentId string
+  //
+  // Deprecated in favor of compartment.
+  compartmentId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostEndpointProtectionScanResult.compartment") string
   // Compartment containing the scan result
   compartment() oci.compartment
   // Overall endpoint protection problem severity
@@ -10823,13 +10874,17 @@ private oci.vulnerabilityScanning.containerScanResult @defaults("repository imag
   // Registry URL the image was pulled from
   registryUrl() string
   // Compartment OCID containing the scan result
-  compartmentId string
+  //
+  // Deprecated in favor of compartment.
+  compartmentId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.containerScanResult.compartment") string
   // Compartment containing the scan result
   compartment() oci.compartment
   // Target compartment OCID (where the source image lives)
   targetCompartmentId() string
   // Container scan target OCID
-  containerScanTargetId string
+  //
+  // Deprecated in favor of target.
+  containerScanTargetId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.containerScanResult.target") string
   // Container scan target that produced the result
   target() oci.vulnerabilityScanning.containerScanTarget
   // Highest finding severity across the image
@@ -10898,7 +10953,9 @@ private oci.vulnerabilityScanning.vulnerability @defaults("name severity vulnera
   // Vulnerability name (typically the CVE id)
   name string
   // Compartment OCID owning the rollup row
-  compartmentId string
+  //
+  // Deprecated in favor of compartment.
+  compartmentId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.vulnerability.compartment") string
   // Compartment owning the rollup row
   compartment() oci.compartment
   // Highest observed severity
@@ -11092,7 +11149,9 @@ private oci.ai.agents.agent @defaults("name state") {
   // Agent display name
   name string
   // Compartment OCID containing the agent
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.agents.agent.compartment") string
   // Compartment containing the agent
   compartment() oci.compartment
   // Description of the agent's purpose
@@ -11134,11 +11193,15 @@ private oci.ai.agents.endpoint @defaults("name state") {
   // Endpoint display name
   name string
   // Compartment OCID containing the endpoint
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.agents.endpoint.compartment") string
   // Compartment containing the endpoint
   compartment() oci.compartment
   // OCID of the agent this endpoint serves
-  agentID string
+  //
+  // Deprecated in favor of agent.
+  agentID @maturity("deprecated") @replaced_by("oci.ai.agents.endpoint.agent") string
   // Agent this endpoint serves
   agent() oci.ai.agents.agent
   // Description of the endpoint
@@ -11207,7 +11270,9 @@ private oci.ai.agents.knowledgeBase @defaults("name state") {
   // Knowledge base display name
   name string
   // Compartment OCID containing the knowledge base
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.agents.knowledgeBase.compartment") string
   // Compartment containing the knowledge base
   compartment() oci.compartment
   // Description of the knowledge base
@@ -11240,11 +11305,15 @@ private oci.ai.agents.dataSource @defaults("name state") {
   // Data source display name
   name string
   // Compartment OCID containing the data source
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.agents.dataSource.compartment") string
   // Compartment containing the data source
   compartment() oci.compartment
   // OCID of the knowledge base this data source feeds
-  knowledgeBaseID string
+  //
+  // Deprecated in favor of knowledgeBase.
+  knowledgeBaseID @maturity("deprecated") @replaced_by("oci.ai.agents.dataSource.knowledgeBase") string
   // Knowledge base this data source feeds
   knowledgeBase() oci.ai.agents.knowledgeBase
   // Description of the data source
@@ -11279,11 +11348,15 @@ private oci.ai.agents.tool @defaults("name toolType state") {
   // Tool display name
   name string
   // Compartment OCID containing the tool
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.agents.tool.compartment") string
   // Compartment containing the tool
   compartment() oci.compartment
   // OCID of the agent this tool is attached to
-  agentID string
+  //
+  // Deprecated in favor of agent.
+  agentID @maturity("deprecated") @replaced_by("oci.ai.agents.tool.agent") string
   // Agent this tool is attached to
   agent() oci.ai.agents.agent
   // Description of the tool
@@ -11359,7 +11432,9 @@ private oci.ai.dataScience.project @defaults("name state") {
   // Project display name
   name string
   // Compartment OCID containing the project
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.dataScience.project.compartment") string
   // Compartment containing the project
   compartment() oci.compartment
   // Description of the project
@@ -11392,11 +11467,15 @@ private oci.ai.dataScience.notebookSession @defaults("name state") {
   // Notebook session display name
   name string
   // Compartment OCID containing the session
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.dataScience.notebookSession.compartment") string
   // Compartment containing the session
   compartment() oci.compartment
   // OCID of the project the session belongs to
-  projectID string
+  //
+  // Deprecated in favor of project.
+  projectID @maturity("deprecated") @replaced_by("oci.ai.dataScience.notebookSession.project") string
   // Project the session belongs to
   project() oci.ai.dataScience.project
   // OCID of the principal that created the session
@@ -11404,7 +11483,9 @@ private oci.ai.dataScience.notebookSession @defaults("name state") {
   // Compute shape backing the session
   shape string
   // OCID of the subnet the session runs in
-  subnetID string
+  //
+  // Deprecated in favor of subnet.
+  subnetID @maturity("deprecated") @replaced_by("oci.ai.dataScience.notebookSession.subnet") string
   // Subnet the session runs in
   subnet() oci.network.subnet
   // Block storage attached to the session, in gigabytes
@@ -11444,17 +11525,23 @@ private oci.ai.dataScience.model @defaults("name state") {
   // Model display name
   name string
   // Compartment OCID containing the model
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.dataScience.model.compartment") string
   // Compartment containing the model
   compartment() oci.compartment
   // OCID of the project the model belongs to
-  projectID string
+  //
+  // Deprecated in favor of project.
+  projectID @maturity("deprecated") @replaced_by("oci.ai.dataScience.model.project") string
   // Project the model belongs to
   project() oci.ai.dataScience.project
   // OCID of the principal that created the model
   createdBy string
   // OCID of the model version set the model belongs to
-  modelVersionSetID string
+  //
+  // Deprecated in favor of modelVersionSet.
+  modelVersionSetID @maturity("deprecated") @replaced_by("oci.ai.dataScience.model.modelVersionSet") string
   // Model version set the model belongs to
   modelVersionSet() oci.ai.dataScience.modelVersionSet
   // Name of the model version set the model belongs to
@@ -11530,11 +11617,15 @@ private oci.ai.dataScience.modelVersionSet @defaults("name state") {
   // Model version set name
   name string
   // Compartment OCID containing the version set
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.dataScience.modelVersionSet.compartment") string
   // Compartment containing the version set
   compartment() oci.compartment
   // OCID of the project the version set belongs to
-  projectID string
+  //
+  // Deprecated in favor of project.
+  projectID @maturity("deprecated") @replaced_by("oci.ai.dataScience.modelVersionSet.project") string
   // Project the version set belongs to
   project() oci.ai.dataScience.project
   // OCID of the principal that created the version set
@@ -11567,11 +11658,15 @@ private oci.ai.dataScience.modelDeployment @defaults("name state") {
   // Model deployment display name
   name string
   // Compartment OCID containing the deployment
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.dataScience.modelDeployment.compartment") string
   // Compartment containing the deployment
   compartment() oci.compartment
   // OCID of the project the deployment belongs to
-  projectID string
+  //
+  // Deprecated in favor of project.
+  projectID @maturity("deprecated") @replaced_by("oci.ai.dataScience.modelDeployment.project") string
   // Project the deployment belongs to
   project() oci.ai.dataScience.project
   // OCID of the principal that created the deployment
@@ -11640,11 +11735,15 @@ private oci.ai.dataScience.job @defaults("name state") {
   // Job display name
   name string
   // Compartment OCID containing the job
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.dataScience.job.compartment") string
   // Compartment containing the job
   compartment() oci.compartment
   // OCID of the project the job belongs to
-  projectID string
+  //
+  // Deprecated in favor of project.
+  projectID @maturity("deprecated") @replaced_by("oci.ai.dataScience.job.project") string
   // Project the job belongs to
   project() oci.ai.dataScience.project
   // OCID of the principal that created the job
@@ -11671,11 +11770,15 @@ private oci.ai.dataScience.pipeline @defaults("name state") {
   // Pipeline display name
   name string
   // Compartment OCID containing the pipeline
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.dataScience.pipeline.compartment") string
   // Compartment containing the pipeline
   compartment() oci.compartment
   // OCID of the project the pipeline belongs to
-  projectID string
+  //
+  // Deprecated in favor of project.
+  projectID @maturity("deprecated") @replaced_by("oci.ai.dataScience.pipeline.project") string
   // Project the pipeline belongs to
   project() oci.ai.dataScience.project
   // OCID of the principal that created the pipeline
@@ -11708,7 +11811,9 @@ private oci.ai.dataScience.privateEndpoint @defaults("name dataScienceResourceTy
   // Private endpoint display name
   name string
   // Compartment OCID containing the private endpoint
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.dataScience.privateEndpoint.compartment") string
   // Compartment containing the private endpoint
   compartment() oci.compartment
   // OCID of the principal that created the private endpoint
@@ -11783,7 +11888,9 @@ private oci.ai.generativeAi.dedicatedAiCluster @defaults("name type state") {
   // Cluster display name
   name string
   // Compartment OCID containing the cluster
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.generativeAi.dedicatedAiCluster.compartment") string
   // Compartment containing the cluster
   compartment() oci.compartment
   // Cluster purpose (HOSTING or FINE_TUNING)
@@ -11832,7 +11939,9 @@ private oci.ai.generativeAi.model @defaults("name type state") {
   // Model display name
   name string
   // Compartment OCID containing the model
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.generativeAi.model.compartment") string
   // Compartment containing the model
   compartment() oci.compartment
   // Model type (BASE or CUSTOM)
@@ -11848,7 +11957,9 @@ private oci.ai.generativeAi.model @defaults("name type state") {
   // Model version
   version string
   // OCID of the base model a custom model was fine-tuned from, when set
-  baseModelID string
+  //
+  // Deprecated in favor of baseModel.
+  baseModelID @maturity("deprecated") @replaced_by("oci.ai.generativeAi.model.baseModel") string
   // Base model a custom model was fine-tuned from, when set
   baseModel() oci.ai.generativeAi.model
   // Fine-tuning configuration for a custom model
@@ -11888,17 +11999,23 @@ private oci.ai.generativeAi.endpoint @defaults("name state") {
   // Endpoint display name
   name string
   // Compartment OCID containing the endpoint
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.generativeAi.endpoint.compartment") string
   // Compartment containing the endpoint
   compartment() oci.compartment
   // Region the endpoint is in
   region() oci.region
   // OCID of the model served by the endpoint
-  modelID string
+  //
+  // Deprecated in favor of model.
+  modelID @maturity("deprecated") @replaced_by("oci.ai.generativeAi.endpoint.model") string
   // Model served by the endpoint
   model() oci.ai.generativeAi.model
   // OCID of the dedicated AI cluster hosting the endpoint
-  dedicatedAiClusterID string
+  //
+  // Deprecated in favor of dedicatedAiCluster.
+  dedicatedAiClusterID @maturity("deprecated") @replaced_by("oci.ai.generativeAi.endpoint.dedicatedAiCluster") string
   // Dedicated AI cluster hosting the endpoint
   dedicatedAiCluster() oci.ai.generativeAi.dedicatedAiCluster
   // OCID of the Generative AI private endpoint isolating this endpoint, when set
@@ -11959,7 +12076,9 @@ private oci.ai.generativeAi.privateEndpoint @defaults("name state") {
   // Private endpoint display name
   name string
   // Compartment OCID containing the private endpoint
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.generativeAi.privateEndpoint.compartment") string
   // Compartment containing the private endpoint
   compartment() oci.compartment
   // Description of the private endpoint
@@ -12292,7 +12411,9 @@ private oci.ai.language.project @defaults("name state") {
   // Project display name
   name string
   // Compartment OCID containing the project
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.language.project.compartment") string
   // Compartment containing the project
   compartment() oci.compartment
   // Description of the project
@@ -12320,11 +12441,15 @@ private oci.ai.language.model @defaults("name state") {
   // Model display name
   name string
   // Compartment OCID containing the model
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.language.model.compartment") string
   // Compartment containing the model
   compartment() oci.compartment
   // OCID of the project the model belongs to
-  projectID string
+  //
+  // Deprecated in favor of project.
+  projectID @maturity("deprecated") @replaced_by("oci.ai.language.model.project") string
   // Project the model belongs to
   project() oci.ai.language.project
   // Description of the model
@@ -12360,15 +12485,21 @@ private oci.ai.language.endpoint @defaults("name state") {
   // Endpoint display name
   name string
   // Compartment OCID containing the endpoint
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.language.endpoint.compartment") string
   // Compartment containing the endpoint
   compartment() oci.compartment
   // OCID of the project the endpoint belongs to
-  projectID string
+  //
+  // Deprecated in favor of project.
+  projectID @maturity("deprecated") @replaced_by("oci.ai.language.endpoint.project") string
   // Project the endpoint belongs to
   project() oci.ai.language.project
   // OCID of the model served by the endpoint
-  modelID string
+  //
+  // Deprecated in favor of model.
+  modelID @maturity("deprecated") @replaced_by("oci.ai.language.endpoint.model") string
   // Model served by the endpoint
   model() oci.ai.language.model
   // Alias of the endpoint
@@ -12414,7 +12545,9 @@ private oci.ai.vision.project @defaults("name state") {
   // Project display name
   name string
   // Compartment OCID containing the project
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.vision.project.compartment") string
   // Compartment containing the project
   compartment() oci.compartment
   // Lifecycle state (e.g., CREATING, ACTIVE, DELETING, DELETED, FAILED)
@@ -12440,11 +12573,15 @@ private oci.ai.vision.model @defaults("name modelType state") {
   // Model display name
   name string
   // Compartment OCID containing the model
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.vision.model.compartment") string
   // Compartment containing the model
   compartment() oci.compartment
   // OCID of the project the model belongs to
-  projectID string
+  //
+  // Deprecated in favor of project.
+  projectID @maturity("deprecated") @replaced_by("oci.ai.vision.model.project") string
   // Project the model belongs to
   project() oci.ai.vision.project
   // Model type (e.g., IMAGE_CLASSIFICATION, OBJECT_DETECTION)
@@ -12489,7 +12626,9 @@ private oci.ai.speech.customization @defaults("name state") {
   // Customization display name
   name string
   // Compartment OCID containing the customization
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.speech.customization.compartment") string
   // Compartment containing the customization
   compartment() oci.compartment
   // Alias of the customization
@@ -12533,7 +12672,9 @@ private oci.ai.document.project @defaults("name state") {
   // Project display name
   name string
   // Compartment OCID containing the project
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.document.project.compartment") string
   // Compartment containing the project
   compartment() oci.compartment
   // Description of the project
@@ -12562,11 +12703,15 @@ private oci.ai.document.model @defaults("name modelType state") {
   // Model display name
   name string
   // Compartment OCID containing the model
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.document.model.compartment") string
   // Compartment containing the model
   compartment() oci.compartment
   // OCID of the project the model belongs to
-  projectID string
+  //
+  // Deprecated in favor of project.
+  projectID @maturity("deprecated") @replaced_by("oci.ai.document.model.project") string
   // Project the model belongs to
   project() oci.ai.document.project
   // Model type (e.g., KEY_VALUE_EXTRACTION, DOCUMENT_CLASSIFICATION)
