@@ -263,7 +263,7 @@ func (a *mqlAzureSubscriptionIotServiceIotHub) ipFilterRules() ([]any, error) {
 		}
 		r, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionIotServiceIotHubIpFilterRule,
 			map[string]*llx.RawData{
-				"__id":   llx.StringData(fmt.Sprintf("%s/ipFilterRules/%d", a.Id.Data, i)),
+				"__id":   llx.StringData(iotHubIPFilterRuleID(a.Id.Data, i, rule.FilterName)),
 				"name":   llx.StringDataPtr(rule.FilterName),
 				"action": llx.StringDataPtr(stringEnumPtr(rule.Action)),
 				"ipMask": llx.StringDataPtr(rule.IPMask),
@@ -274,6 +274,16 @@ func (a *mqlAzureSubscriptionIotServiceIotHub) ipFilterRules() ([]any, error) {
 		res = append(res, r)
 	}
 	return res, nil
+}
+
+// iotHubIPFilterRuleID keys an IP filter rule by its name, which Azure keeps
+// unique within a hub, so the ID stays stable when rules are reordered. A rule
+// without a name falls back to its position.
+func iotHubIPFilterRuleID(hubID string, index int, name *string) string {
+	if name != nil && *name != "" {
+		return hubID + "/ipFilterRules/" + *name
+	}
+	return fmt.Sprintf("%s/ipFilterRules/#%d", hubID, index)
 }
 
 // iotHubAccessRights splits the comma-separated rights of a shared access

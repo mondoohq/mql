@@ -19,3 +19,15 @@ func TestIotHubAccessRights(t *testing.T) {
 		iotHubAccessRights(ptr(armiothub.AccessRightsRegistryWriteServiceConnectDeviceConnect)))
 	assert.Equal(t, []any{"RegistryRead", "ServiceConnect"}, iotHubAccessRights(ptr(armiothub.AccessRights("RegistryRead,ServiceConnect,"))))
 }
+
+func TestIotHubIPFilterRuleID(t *testing.T) {
+	// Synthetic: hub ID and rule names shaped like the IoT Hub ARM API returns them.
+	hub := "/subscriptions/s/resourceGroups/rg/providers/Microsoft.Devices/IotHubs/hub1"
+	named := "allow-office"
+	empty := ""
+	assert.Equal(t, hub+"/ipFilterRules/allow-office", iotHubIPFilterRuleID(hub, 3, &named))
+	// The ID does not move when the rule's position changes.
+	assert.Equal(t, iotHubIPFilterRuleID(hub, 0, &named), iotHubIPFilterRuleID(hub, 5, &named))
+	assert.Equal(t, hub+"/ipFilterRules/#2", iotHubIPFilterRuleID(hub, 2, nil))
+	assert.Equal(t, hub+"/ipFilterRules/#1", iotHubIPFilterRuleID(hub, 1, &empty))
+}
