@@ -6,6 +6,8 @@ package resources
 import (
 	"bytes"
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
@@ -15,28 +17,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// iterateEach hands over every item of every page, following
-// @odata.nextLink. A null element makes the SDK panic converting its page, so
-// that page is lost, but the walk ends with the earlier pages' items kept
-// rather than crashing the scan. The warning names the collection that was
-// cut short and how far the walk got.
-func TestIterateEachPages(t *testing.T) {
+const registrationDetailsPath = "/reports/authenticationMethods/userRegistrationDetails"
+
+// walkRegistrationDetails reads the first page of the registration report from
+// the fake Graph, walks it with iterateEach, and returns the ids handed over
+// and what the walk logged.
+func walkRegistrationDetails(t *testing.T, routes map[string]fakeRoute, each func(id string) error) ([]string, string, error) {
+	t.Helper()
 	var logged bytes.Buffer
 	prev := log.Logger
 	log.Logger = zerolog.New(&logged)
 	t.Cleanup(func() { log.Logger = prev })
 
-	f := newFakeGraph(t, map[string]fakeRoute{
-		"/reports/authenticationMethods/userRegistrationDetails": {status: 200, body: `{
-			"@odata.nextLink": "{{base}}/reports/authenticationMethods/userRegistrationDetails/page2",
-			"value": [{"id": "u1", "isMfaCapable": true}, {"id": "u2", "isMfaCapable": false}]}`},
-		"/reports/authenticationMethods/userRegistrationDetails/page2": {status: 200, body: `{
-			"@odata.nextLink": "{{base}}/reports/authenticationMethods/userRegistrationDetails/page3",
-			"value": [{"id": "u3", "isMfaCapable": true}]}`},
-		"/reports/authenticationMethods/userRegistrationDetails/page3": {status: 200, body: `{
-			"value": [{"id": "u4"}, null, {"id": "u5"}]}`},
-	})
-	client := f.client()
+	client := newFakeGraph(t, routes).client()
 	ctx := context.Background()
 	resp, err := client.Reports().AuthenticationMethods().UserRegistrationDetails().Get(ctx, nil)
 	require.NoError(t, err)
@@ -46,14 +39,185 @@ func TestIterateEachPages(t *testing.T) {
 		models.CreateUserRegistrationDetailsCollectionResponseFromDiscriminatorValue,
 		func(d models.UserRegistrationDetailsable) error {
 			ids = append(ids, *d.GetId())
+			if each != nil {
+				return each(*d.GetId())
+			}
 			return nil
 		})
-	require.NoError(t, err)
-	assert.Equal(t, []string{"u1", "u2", "u3"}, ids)
+	return ids, logged.String(), err
+}
 
-	assert.Contains(t, logged.String(), `"collection":"UserRegistrationDetailsCollectionResponse"`)
-	assert.Contains(t, logged.String(), `"collected":3`)
-	assert.Contains(t, logged.String(), "interface conversion", "the panic is logged as text, not as an empty object")
+// iterateEach hands over every item of every page, following
+// @odata.nextLink. A null entry in a page is skipped: the rest of its page and
+// every later page are still handed over, and one warning names the collection
+// and the number of entries skipped.
+func TestIterateEachPages(t *testing.T) {
+	const skippedWarning = "skipped null entries while paging Graph results"
+	const collection = `"collection":"UserRegistrationDetailsCollectionResponse"`
+
+	cases := []struct {
+		name    string
+		routes  map[string]fakeRoute
+		want    []string
+		skipped string // the warning's count field; empty when no warning is expected
+	}{
+		{
+			// Synthetic: plain paging, no null entries; no target showed this.
+			name: "no null entry",
+			routes: map[string]fakeRoute{
+				registrationDetailsPath: {status: 200, body: `{
+					"@odata.nextLink": "{{base}}` + registrationDetailsPath + `/page2",
+					"value": [{"id": "u1", "isMfaCapable": true}, {"id": "u2", "isMfaCapable": false}]}`},
+				registrationDetailsPath + "/page2": {status: 200, body: `{
+					"value": [{"id": "u3"}]}`},
+			},
+			want: []string{"u1", "u2", "u3"},
+		},
+		{
+			// Synthetic: a null entry on the last page; no target showed this.
+			name: "null entry on the last page",
+			routes: map[string]fakeRoute{
+				registrationDetailsPath: {status: 200, body: `{
+					"@odata.nextLink": "{{base}}` + registrationDetailsPath + `/page2",
+					"value": [{"id": "u1", "isMfaCapable": true}, {"id": "u2", "isMfaCapable": false}]}`},
+				registrationDetailsPath + "/page2": {status: 200, body: `{
+					"@odata.nextLink": "{{base}}` + registrationDetailsPath + `/page3",
+					"value": [{"id": "u3", "isMfaCapable": true}]}`},
+				registrationDetailsPath + "/page3": {status: 200, body: `{
+					"value": [{"id": "u4"}, null, {"id": "u5"}]}`},
+			},
+			want:    []string{"u1", "u2", "u3", "u4", "u5"},
+			skipped: `"skipped":1`,
+		},
+		{
+			// Synthetic: a null entry on a page that has a next page; no
+			// target showed this.
+			name: "null entry on a page followed by another",
+			routes: map[string]fakeRoute{
+				registrationDetailsPath: {status: 200, body: `{
+					"@odata.nextLink": "{{base}}` + registrationDetailsPath + `/page2",
+					"value": [{"id": "u1"}]}`},
+				registrationDetailsPath + "/page2": {status: 200, body: `{
+					"@odata.nextLink": "{{base}}` + registrationDetailsPath + `/page3",
+					"value": [{"id": "u2"}, null, {"id": "u3"}]}`},
+				registrationDetailsPath + "/page3": {status: 200, body: `{
+					"value": [{"id": "u4"}, {"id": "u5"}]}`},
+			},
+			want:    []string{"u1", "u2", "u3", "u4", "u5"},
+			skipped: `"skipped":1`,
+		},
+		{
+			// Synthetic: the first entry of the first page is null, and a
+			// later page holds two more; no target showed this.
+			name: "null entry first on the first page",
+			routes: map[string]fakeRoute{
+				registrationDetailsPath: {status: 200, body: `{
+					"@odata.nextLink": "{{base}}` + registrationDetailsPath + `/page2",
+					"value": [null, {"id": "u1"}, {"id": "u2"}]}`},
+				registrationDetailsPath + "/page2": {status: 200, body: `{
+					"value": [null, {"id": "u3"}, null]}`},
+			},
+			want:    []string{"u1", "u2", "u3"},
+			skipped: `"skipped":3`,
+		},
+		{
+			// Synthetic: a page of nothing but a null entry still leads to
+			// the next page; no target showed this.
+			name: "page holding only a null entry",
+			routes: map[string]fakeRoute{
+				registrationDetailsPath: {status: 200, body: `{
+					"@odata.nextLink": "{{base}}` + registrationDetailsPath + `/page2",
+					"value": [null]}`},
+				registrationDetailsPath + "/page2": {status: 200, body: `{
+					"value": [{"id": "u1"}]}`},
+			},
+			want:    []string{"u1"},
+			skipped: `"skipped":1`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ids, logged, err := walkRegistrationDetails(t, tc.routes, nil)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, ids)
+			if tc.skipped == "" {
+				assert.NotContains(t, logged, skippedWarning)
+				return
+			}
+			assert.Equal(t, 1, strings.Count(logged, skippedWarning), "one warning per walk")
+			assert.Contains(t, logged, collection)
+			assert.Contains(t, logged, tc.skipped)
+			assert.Contains(t, logged, `"level":"warn"`)
+		})
+	}
+}
+
+// Synthetic: an error from each stops the walk where it was raised and is
+// returned as is; the next page is not handed over. No target showed this.
+func TestIterateEachStopsOnCallbackError(t *testing.T) {
+	stop := errors.New("stop here")
+	ids, _, err := walkRegistrationDetails(t, map[string]fakeRoute{
+		registrationDetailsPath: {status: 200, body: `{
+			"@odata.nextLink": "{{base}}` + registrationDetailsPath + `/page2",
+			"value": [{"id": "u1"}, {"id": "u2"}, {"id": "u3"}]}`},
+		registrationDetailsPath + "/page2": {status: 200, body: `{
+			"value": [{"id": "u4"}]}`},
+	}, func(id string) error {
+		if id == "u2" {
+			return stop
+		}
+		return nil
+	})
+	assert.Same(t, stop, err)
+	assert.Equal(t, []string{"u1", "u2"}, ids)
+}
+
+// Synthetic: a refused request for a later page ends the walk with an error,
+// after the earlier pages were handed over. No target showed this.
+func TestIterateEachNextPageError(t *testing.T) {
+	ids, _, err := walkRegistrationDetails(t, map[string]fakeRoute{
+		registrationDetailsPath: {status: 200, body: `{
+			"@odata.nextLink": "{{base}}` + registrationDetailsPath + `/page2",
+			"value": [{"id": "u1"}]}`},
+		registrationDetailsPath + "/page2": {status: 403, body: `{"error":{"code":"Authorization_RequestDenied","message":"denied"}}`},
+	}, nil)
+	require.Error(t, err)
+	assert.Equal(t, []string{"u1"}, ids)
+}
+
+// Synthetic: a page whose next link is the link it was read from would be
+// fetched forever; the walk ends with an error. No target showed this.
+func TestIterateEachStuckNextLink(t *testing.T) {
+	ids, _, err := walkRegistrationDetails(t, map[string]fakeRoute{
+		registrationDetailsPath: {status: 200, body: `{
+			"@odata.nextLink": "{{base}}` + registrationDetailsPath + `/page2",
+			"value": [{"id": "u1"}]}`},
+		registrationDetailsPath + "/page2": {status: 200, body: `{
+			"@odata.nextLink": "{{base}}` + registrationDetailsPath + `/page2",
+			"value": [{"id": "u2"}]}`},
+	}, nil)
+	require.ErrorContains(t, err, "names itself as the next page")
+	assert.Equal(t, []string{"u1", "u2"}, ids)
+}
+
+// Synthetic: responses that are not a readable collection page are refused
+// with an error, not a panic. No target showed this.
+func TestGraphPageRejectsNonPages(t *testing.T) {
+	_, _, _, err := graphPage[models.Userable](nil)
+	assert.ErrorContains(t, err, "response cannot be nil")
+
+	var absent *models.UserCollectionResponse
+	_, _, _, err = graphPage[models.Userable](absent)
+	assert.ErrorContains(t, err, "response cannot be nil")
+
+	_, _, _, err = graphPage[models.Userable](models.NewUser())
+	assert.ErrorContains(t, err, "value property missing")
+
+	// a collection read with the wrong element type
+	users := models.NewUserCollectionResponse()
+	users.SetValue([]models.Userable{models.NewUser()})
+	_, _, _, err = graphPage[models.Groupable](users)
+	assert.ErrorContains(t, err, "UserCollectionResponse holds entries of type *models.User")
 }
 
 // The registration report is held for the whole scan as
