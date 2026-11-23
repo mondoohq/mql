@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/go-github/v93/github"
 	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/github/connection"
 )
@@ -47,6 +48,9 @@ func (c *actionsSetting[T]) get(what, scope string, fetch func() (*T, error)) (*
 func classifyActionsSettingErr(err error, what, scope string) error {
 	switch {
 	case githubForbidden(err):
+		if plugin.StructuredErrors() {
+			return llx.Forbidden(err)
+		}
 		log.Warn().Err(err).Str("scope", scope).Str("setting", what).
 			Msg("permission denied reading an Actions setting; reporting it as unknown")
 		return nil

@@ -10,6 +10,8 @@ import (
 	"github.com/google/go-github/v93/github"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
@@ -25,6 +27,16 @@ func TestClassifyActionsSettingErr(t *testing.T) {
 	assert.Error(t, classifyActionsSettingErr(ghErrorResponse(500), "x", "org"))
 	assert.Error(t, classifyActionsSettingErr(errors.New("connection reset"), "x", "org"),
 		"a transport failure must not turn into a null setting")
+
+	// With structured errors a refusal is a Forbidden error, while a setting
+	// that does not apply to the scope stays null.
+	plugin.ReadFeatures([]byte(mql.Features{byte(mql.StructuredErrors)}))
+	t.Cleanup(func() { plugin.ReadFeatures([]byte(mql.Features{byte(mql.ResourceContext)})) })
+	assert.ErrorIs(t, classifyActionsSettingErr(ghErrorResponse(403), "x", "org"), llx.ErrForbidden)
+	for _, status := range []int{404, 409, 422} {
+		assert.NoError(t, classifyActionsSettingErr(ghErrorResponse(status), "x", "org"),
+			"status %d leaves the setting unknown", status)
+	}
 }
 
 // Synthetic: the cache reads an endpoint once and keeps a refusal as unknown.
