@@ -77,7 +77,7 @@ func TestServiceAccountEmailMatches(t *testing.T) {
 
 func TestIsDefaultComputeServiceAccount(t *testing.T) {
 	assert.True(t, isDefaultComputeServiceAccount("123456789012-compute@developer.gserviceaccount.com"))
-	// Synthetic: look-alikes.
+	// Synthetic: similar-looking names.
 	assert.False(t, isDefaultComputeServiceAccount("sa-compute@developer.gserviceaccount.com"))
 	assert.False(t, isDefaultComputeServiceAccount("123456789012-compute@p1.iam.gserviceaccount.com"))
 	assert.False(t, isDefaultComputeServiceAccount("123456789012@cloudservices.gserviceaccount.com"))
