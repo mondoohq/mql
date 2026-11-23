@@ -635,19 +635,72 @@ func Install(name string, version string) (*Provider, error) {
 	return installVersion(ctx, name, version)
 }
 
+// providerDownloadAttempts is how often a provider archive is fetched before
+// the install gives up on a transfer that keeps breaking off.
+const providerDownloadAttempts = 3
+
+// providerDownloadRetryWait is the pause before the second attempt; it doubles
+// for each one after. A variable so tests don't have to sleep.
+var providerDownloadRetryWait = 2 * time.Second
+
+// downloadProviderArchive fetches a provider archive into memory, starting over
+// when the transfer breaks off partway.
+//
+// The registry's HTTP client retries until the response headers arrive, and no
+// further: once the server has answered 200, a connection that drops while the
+// archive is streaming surfaces as a read error ("unexpected EOF") that nothing
+// below this retries. Archives are tens of megabytes, so that is where a flaky
+// network or a proxy cutting a long transfer shows up, and it used to fail the
+// whole scan on the first occurrence.
+//
+// A failure to get a response at all is returned as is: the client has already
+// retried it, and a 404 does not get better by asking again.
+func downloadProviderArchive(ctx context.Context, name string, version string) ([]byte, error) {
+	logCtx := log.With().Str("provider", name).Str("version", version).Logger()
+
+	wait := providerDownloadRetryWait
+	var readErr error
+	for attempt := 1; attempt <= providerDownloadAttempts; attempt++ {
+		if attempt > 1 {
+			logCtx.Warn().Err(readErr).
+				Int("attempt", attempt).
+				Int("max", providerDownloadAttempts).
+				Msg("provider download was interrupted, retrying")
+			select {
+			case <-ctx.Done():
+				return nil, errors.Wrap(ctx.Err(), "failed to install "+name+"-"+version)
+			case <-time.After(wait):
+			}
+			wait *= 2
+		}
+
+		res, err := registry.DownloadProvider(ctx, name, version, runtime.GOOS, runtime.GOARCH)
+		if err != nil {
+			return nil, err
+		}
+		tar, err := io.ReadAll(res)
+		_ = res.Close()
+		if err == nil {
+			return tar, nil
+		}
+		readErr = err
+
+		// A cancelled install is not a broken transfer.
+		if ctx.Err() != nil {
+			break
+		}
+	}
+
+	logCtx.Debug().Msg("failed to read body of provider download")
+	return nil, errors.Wrap(readErr, "failed to install "+name+"-"+version+", failed to read body")
+}
+
 func installVersion(ctx context.Context, name string, version string) (*Provider, error) {
 	logCtx := log.With().Str("provider", name).Str("version", version).Logger()
 
-	res, err := registry.DownloadProvider(ctx, name, version, runtime.GOOS, runtime.GOARCH)
+	tar, err := downloadProviderArchive(ctx, name, version)
 	if err != nil {
 		return nil, err
-	}
-	defer res.Close()
-
-	var tar []byte
-	if tar, err = io.ReadAll(res); err != nil {
-		logCtx.Debug().Msg("failed to read body of provider download")
-		return nil, errors.Wrap(err, "failed to install "+name+"-"+version+", failed to read body")
 	}
 
 	reader := io.NopCloser(
