@@ -3262,9 +3262,13 @@ func (a *mqlAwsEcsCluster) associatedCapacityProviders() ([]any, error) {
 	}
 	for _, n := range names {
 		name, _ := n.(string)
-		if cp, ok := byName[name]; ok {
-			res = append(res, cp)
+		cp, ok := byName[name]
+		if !ok {
+			log.Debug().Str("cluster", a.Arn.Data).Str("capacityProvider", name).
+				Msg("capacity provider associated with the cluster is not in the capacity provider list, skipping it")
+			continue
 		}
+		res = append(res, cp)
 	}
 	return res, nil
 }

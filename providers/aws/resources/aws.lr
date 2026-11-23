@@ -4413,7 +4413,9 @@ private aws.sagemaker.domain @defaults("arn name status") {
   // KMS key used to encrypt the EFS volume
   kmsKey() aws.kms.key
   // Home EFS file system ID
-  homeEfsFileSystemId() string
+  //
+  // Deprecated in favor of homeEfsFileSystem.
+  homeEfsFileSystemId() @maturity("deprecated") @replaced_by("aws.sagemaker.domain.homeEfsFileSystem") string
   // EFS file system that holds the home directories of the domain's users
   homeEfsFileSystem() aws.efs.filesystem
   // Default user settings
@@ -6637,9 +6639,13 @@ private aws.es.domain @defaults("arn name") {
   // Whether Amazon Cognito authentication for Kibana is enabled
   cognitoEnabled bool
   // Cognito user pool ID for Kibana authentication
-  cognitoUserPoolId string
+  //
+  // Deprecated in favor of cognitoUserPool.
+  cognitoUserPoolId @maturity("deprecated") @replaced_by("aws.es.domain.cognitoUserPool") string
   // Cognito identity pool ID for Kibana authentication
-  cognitoIdentityPoolId string
+  //
+  // Deprecated in favor of cognitoIdentityPool.
+  cognitoIdentityPoolId @maturity("deprecated") @replaced_by("aws.es.domain.cognitoIdentityPool") string
   // IAM role granting Elasticsearch access to Cognito resources
   cognitoRole() aws.iam.role
   // Cognito user pool that authenticates Kibana users (null when Cognito authentication is off)
@@ -11099,7 +11105,9 @@ private aws.emr.cluster @defaults("arn") {
   // Security groups attached to the cluster EC2 instances (EMR-managed and additional)
   securityGroups() []aws.ec2.securitygroup
   // Name of the EC2 key pair used for SSH access to the cluster instances
-  ec2KeyName() string
+  //
+  // Deprecated in favor of keypair.
+  ec2KeyName() @maturity("deprecated") @replaced_by("aws.emr.cluster.keypair") string
   // EC2 key pair used for SSH access to the cluster instances (null when none is set)
   keypair() aws.ec2.keypair
   // EC2 instance profile the cluster nodes run as
