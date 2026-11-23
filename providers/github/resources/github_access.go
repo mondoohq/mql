@@ -471,3 +471,60 @@ func (g *mqlGithubOrganizationCustomRole) roleLookupKeys() (string, int64, error
 	}
 	return orgLogin, g.Id.Data, nil
 }
+
+// ---------- Repository collaborator invitations ----------
+
+type mqlGithubRepositoryInvitationInternal struct {
+	cacheInvitation *github.RepositoryInvitation
+}
+
+func (g *mqlGithubRepositoryInvitation) id() (string, error) {
+	return g.__id, nil
+}
+
+func (g *mqlGithubRepository) pendingInvitations() ([]any, error) {
+	conn := g.MqlRuntime.Connection.(*connection.GithubConnection)
+	owner, repo, err := repoOwnerAndName(g)
+	if err != nil {
+		return nil, err
+	}
+
+	all, err := collectPages(func(opts *github.ListOptions) ([]*github.RepositoryInvitation, *github.Response, error) {
+		return conn.Client().Repositories.ListInvitations(conn.Context(), owner, repo, opts)
+	})
+	if err != nil {
+		if err := classifyReadErr(err, "repository invitations", owner+"/"+repo); err != nil {
+			return nil, err
+		}
+		g.PendingInvitations.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	res := make([]any, 0, len(all))
+	for _, inv := range all {
+		if inv == nil || inv.ID == nil {
+			continue
+		}
+		r, err := CreateResource(g.MqlRuntime, "github.repository.invitation", map[string]*llx.RawData{
+			"__id":        llx.StringData("github.repository.invitation/" + owner + "/" + repo + "/" + strconv.FormatInt(*inv.ID, 10)),
+			"id":          llx.IntDataPtr(inv.ID),
+			"permissions": llx.StringDataPtr(inv.Permissions),
+			"createdAt":   llx.TimeDataPtr(githubTime(inv.CreatedAt)),
+			"expired":     llx.BoolDataPtr(inv.Expired),
+		})
+		if err != nil {
+			return nil, err
+		}
+		r.(*mqlGithubRepositoryInvitation).cacheInvitation = inv
+		res = append(res, r)
+	}
+	return res, nil
+}
+
+func (g *mqlGithubRepositoryInvitation) invitee() (*mqlGithubUser, error) {
+	return embeddedUser(g.MqlRuntime, g.cacheInvitation.GetInvitee(), &g.Invitee)
+}
+
+func (g *mqlGithubRepositoryInvitation) inviter() (*mqlGithubUser, error) {
+	return embeddedUser(g.MqlRuntime, g.cacheInvitation.GetInviter(), &g.Inviter)
+}

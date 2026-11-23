@@ -9,7 +9,9 @@ import (
 	"github.com/google/go-github/v93/github"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // Synthetic: a team built from a listing that reports the parent resolves it
@@ -60,4 +62,19 @@ func TestTeamParentKnownUpgrades(t *testing.T) {
 	assert.True(t, second.parentKnown)
 	require.NotNil(t, second.cacheParent)
 	assert.Equal(t, int64(9), second.cacheParent.GetID())
+}
+
+// Synthetic: the status codes the group mapping endpoints answer with for an
+// organization without the feature; no target showed these.
+func TestClassifyTeamGroupErr(t *testing.T) {
+	for _, status := range []int{400, 403, 404, 422} {
+		assert.NoError(t, classifyTeamGroupErr(ghErrorResponse(status), "x", "o/t"),
+			"status %d reports the groups as unknown", status)
+	}
+	assert.Error(t, classifyTeamGroupErr(ghErrorResponse(500), "x", "o/t"))
+
+	plugin.ReadFeatures([]byte(mql.Features{byte(mql.StructuredErrors)}))
+	t.Cleanup(func() { plugin.ReadFeatures([]byte(mql.Features{byte(mql.ResourceContext)})) })
+	assert.ErrorIs(t, classifyTeamGroupErr(ghErrorResponse(403), "x", "o/t"), llx.ErrForbidden)
+	assert.NoError(t, classifyTeamGroupErr(ghErrorResponse(400), "x", "o/t"))
 }

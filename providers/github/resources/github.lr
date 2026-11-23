@@ -966,6 +966,19 @@ private github.team @defaults("id name") {
   membersCount() int
   // Number of repositories the team can access
   reposCount() int
+  // External groups from the identity provider connected to the team
+  //
+  // Groups whose members Enterprise Managed Users provisioning keeps in sync
+  // with the team's membership. Empty when the team is not connected to a
+  // group. Null when the organization does not use Enterprise Managed Users or
+  // the groups cannot be read.
+  externalGroups() []github.team.externalGroup
+  // Identity provider groups mapped to the team by team synchronization
+  //
+  // Groups whose members team synchronization adds to and removes from the
+  // team. Empty when no group is mapped. Null when the organization does not
+  // use team synchronization or the mappings cannot be read.
+  idpGroups() []github.team.idpGroup
 }
 
 // Team access grant on a repository
@@ -1392,6 +1405,12 @@ github.repository @defaults("fullName") @root {
   // Credentials exposed as environment variables inside codespaces for this
   // repository. Names and timestamps only, never the values.
   codespacesSecrets() []github.codespacesSecret
+  // Invitations to collaborate on the repository that have not been accepted
+  //
+  // A pending invitation is a standing grant of the permission it carries.
+  // Null when the invitations cannot be read, for example without admin
+  // access to the repository.
+  pendingInvitations() []github.repository.invitation
 }
 
 // Copilot coding agent configuration for a repository
@@ -3858,4 +3877,46 @@ private github.codespace @defaults("name state owner.login") {
   billableOwner() github.user
   // Repository the codespace was created from
   repository() github.repository
+}
+
+// Repository collaborator invitation
+//
+// Invitation to collaborate on a repository that has been sent but not yet
+// accepted. Until it expires, the invitee can accept it at any time and take
+// up the `permissions` it grants.
+private github.repository.invitation @defaults("invitee.login permissions expired") {
+  // Invitation ID
+  id int
+  // Permission the invitation grants
+  //
+  // One of read, triage, write, maintain, or admin.
+  permissions string
+  // Time the invitation was created
+  createdAt time
+  // Whether the invitation has expired
+  expired bool
+  // Account invited to collaborate
+  invitee() github.user
+  // Account that sent the invitation
+  inviter() github.user
+}
+
+// External group connected to a team
+private github.team.externalGroup @defaults("name") {
+  // Group ID
+  id int
+  // Group name
+  name string
+  // Time the group was last updated
+  updatedAt time
+}
+
+// Identity provider group mapped to a team
+private github.team.idpGroup @defaults("name") {
+  // Group ID
+  id string
+  // Group name
+  name string
+  // Group description
+  description string
 }

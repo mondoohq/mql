@@ -5,6 +5,7 @@ package resources
 
 import (
 	"errors"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -305,5 +306,120 @@ func (g *mqlGithubTeam) members() ([]any, error) {
 		res = append(res, r)
 	}
 
+	return res, nil
+}
+
+// ---------- Identity provider groups ----------
+
+func (g *mqlGithubTeamExternalGroup) id() (string, error) {
+	return g.__id, nil
+}
+
+func (g *mqlGithubTeamIdpGroup) id() (string, error) {
+	return g.__id, nil
+}
+
+// orgLoginAndSlug returns what the by-slug team endpoints address a team by.
+func (g *mqlGithubTeam) orgLoginAndSlug() (string, string, error) {
+	if g.Slug.Error != nil {
+		return "", "", g.Slug.Error
+	}
+	if g.Organization.Error != nil {
+		return "", "", g.Organization.Error
+	}
+	org := g.Organization.Data
+	if org == nil {
+		return "", "", errors.New("no organization specified")
+	}
+	if org.Login.Error != nil {
+		return "", "", org.Login.Error
+	}
+	return org.Login.Data, g.Slug.Data, nil
+}
+
+// classifyTeamGroupErr is classifyReadErr for the group mapping endpoints,
+// which answer 400 for an organization that does not use Enterprise Managed
+// Users or team synchronization. That is a feature the organization does not
+// have, not a failure of the team.
+func classifyTeamGroupErr(err error, what, scope string) error {
+	if githubResponseStatus(err) == http.StatusBadRequest {
+		log.Debug().Err(err).Str("scope", scope).Str("read", what).
+			Msg("not available for this organization")
+		return nil
+	}
+	return classifyReadErr(err, what, scope)
+}
+
+func (g *mqlGithubTeam) externalGroups() ([]any, error) {
+	orgLogin, slug, err := g.orgLoginAndSlug()
+	if err != nil {
+		return nil, err
+	}
+	conn := g.MqlRuntime.Connection.(*connection.GithubConnection)
+	list, _, err := conn.Client().Teams.ListExternalGroupsForTeamBySlug(conn.Context(), orgLogin, slug)
+	if err != nil {
+		if err := classifyTeamGroupErr(err, "team external groups", orgLogin+"/"+slug); err != nil {
+			return nil, err
+		}
+		g.ExternalGroups.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	res := []any{}
+	if list == nil {
+		return res, nil
+	}
+	for _, group := range list.Groups {
+		if group == nil || group.GroupID == nil {
+			continue
+		}
+		r, err := CreateResource(g.MqlRuntime, "github.team.externalGroup", map[string]*llx.RawData{
+			"__id":      llx.StringData("github.team.externalGroup/" + orgLogin + "/" + strconv.FormatInt(*group.GroupID, 10)),
+			"id":        llx.IntDataPtr(group.GroupID),
+			"name":      llx.StringDataPtr(group.GroupName),
+			"updatedAt": llx.TimeDataPtr(githubTime(group.UpdatedAt)),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, r)
+	}
+	return res, nil
+}
+
+func (g *mqlGithubTeam) idpGroups() ([]any, error) {
+	orgLogin, slug, err := g.orgLoginAndSlug()
+	if err != nil {
+		return nil, err
+	}
+	conn := g.MqlRuntime.Connection.(*connection.GithubConnection)
+	list, _, err := conn.Client().Teams.ListIDPGroupsForTeamBySlug(conn.Context(), orgLogin, slug)
+	if err != nil {
+		if err := classifyTeamGroupErr(err, "team IdP groups", orgLogin+"/"+slug); err != nil {
+			return nil, err
+		}
+		g.IdpGroups.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	res := []any{}
+	if list == nil {
+		return res, nil
+	}
+	for _, group := range list.Groups {
+		if group == nil || group.GroupID == nil {
+			continue
+		}
+		r, err := CreateResource(g.MqlRuntime, "github.team.idpGroup", map[string]*llx.RawData{
+			"__id":        llx.StringData("github.team.idpGroup/" + orgLogin + "/" + *group.GroupID),
+			"id":          llx.StringDataPtr(group.GroupID),
+			"name":        llx.StringDataPtr(group.GroupName),
+			"description": llx.StringDataPtr(group.GroupDescription),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, r)
+	}
 	return res, nil
 }
