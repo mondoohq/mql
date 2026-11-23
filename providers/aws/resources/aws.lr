@@ -15856,6 +15856,17 @@ aws.rds.dbinstance @defaults("id region engine engineVersion") {
   iamDatabaseAuthentication bool
   // Assigned IAM instance profile
   customIamInstanceProfile string
+  // DB parameter groups applied to the instance
+  parameterGroups() []aws.rds.parameterGroup
+  // Whether the instance requires client connections to use TLS
+  //
+  // Read from the engine's TLS enforcement parameter in the instance's
+  // parameter groups: rds.force_ssl for PostgreSQL and SQL Server,
+  // require_secure_transport for MySQL and MariaDB. Null for engines without
+  // such an instance parameter: Aurora instances, which take it from the
+  // cluster parameter group (`aws.rds.dbcluster.transitEncryptionEnabled`),
+  // Oracle, Db2, and RDS Custom.
+  transitEncryptionEnabled() bool
   // Mode of the database activity stream
   activityStreamMode string
   // Status of the database activity stream

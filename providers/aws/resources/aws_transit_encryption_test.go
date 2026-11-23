@@ -31,3 +31,26 @@ func TestParamIndicatesTLS(t *testing.T) {
 		assert.Equal(t, tc.want, paramIndicatesTLS(tc.name, tc.value), "%s=%s", tc.name, tc.value)
 	}
 }
+
+func TestRdsInstanceTLSParameter(t *testing.T) {
+	// Synthetic: RDS engine identifiers as DescribeDBInstances reports them.
+	cases := map[string]string{
+		"postgres":            "rds.force_ssl",
+		"mysql":               "require_secure_transport",
+		"mariadb":             "require_secure_transport",
+		"sqlserver-ee":        "rds.force_ssl",
+		"sqlserver-se":        "rds.force_ssl",
+		"sqlserver-ex":        "rds.force_ssl",
+		"sqlserver-web":       "rds.force_ssl",
+		"aurora-postgresql":   "",
+		"aurora-mysql":        "",
+		"oracle-ee":           "",
+		"db2-se":              "",
+		"custom-oracle-ee":    "",
+		"custom-sqlserver-ee": "",
+		"":                    "",
+	}
+	for engine, want := range cases {
+		assert.Equal(t, want, rdsInstanceTLSParameter(engine), engine)
+	}
+}

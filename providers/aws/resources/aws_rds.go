@@ -287,6 +287,7 @@ type mqlAwsRdsDbinstanceInternal struct {
 	cacheActivityStreamKmsKeyId      *string
 	cacheAssociatedRoles             []rds_types.DBInstanceRole
 	cacheOptionGroupNames            []string
+	cacheParameterGroupNames         []string
 	region                           string
 }
 
@@ -606,6 +607,13 @@ func newMqlAwsRdsInstance(runtime *plugin.Runtime, region string, accountID stri
 		}
 	}
 	mqlDBInstance.cacheOptionGroupNames = optionGroupNames
+	parameterGroupNames := make([]string, 0, len(dbInstance.DBParameterGroups))
+	for _, pg := range dbInstance.DBParameterGroups {
+		if name := convert.ToValue(pg.DBParameterGroupName); name != "" {
+			parameterGroupNames = append(parameterGroupNames, name)
+		}
+	}
+	mqlDBInstance.cacheParameterGroupNames = parameterGroupNames
 	mqlDBInstance.setSecurityGroupArns(sgsArn)
 	return mqlDBInstance, nil
 }
@@ -2366,4 +2374,34 @@ func (a *mqlAwsRdsDbcluster) globalCluster() (*mqlAwsRdsGlobalCluster, error) {
 
 type mqlAwsRdsDbinstanceAssociatedRoleInternal struct {
 	cacheRoleArn string
+}
+
+func (a *mqlAwsRdsDbinstance) parameterGroups() ([]any, error) {
+	res := []any{}
+	if len(a.cacheParameterGroupNames) == 0 {
+		return res, nil
+	}
+	r, err := rdsGetParent(a.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	groups := r.GetParameterGroups()
+	if groups.Error != nil {
+		return nil, groups.Error
+	}
+	// Parameter group names are unique per region only; default groups such as
+	// default.postgres16 exist in every region.
+	byName := map[string]*mqlAwsRdsParameterGroup{}
+	for _, raw := range groups.Data {
+		pg, ok := raw.(*mqlAwsRdsParameterGroup)
+		if ok && pg.Region.Data == a.region {
+			byName[pg.Name.Data] = pg
+		}
+	}
+	for _, name := range a.cacheParameterGroupNames {
+		if pg, ok := byName[name]; ok {
+			res = append(res, pg)
+		}
+	}
+	return res, nil
 }
