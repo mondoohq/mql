@@ -46,6 +46,9 @@ func iterate[T any](ctx context.Context, res any, adapter abstractions.RequestAd
 // null entry is skipped, the rest of its page is handed over and the walk goes
 // on to the next page. One warning per walk says how many entries were skipped
 // and in which collection.
+//
+// An entry of a type derived from T is handed over as the T it is built on,
+// see baseEntry. The SDK's iterator panics on those as well.
 func iterateEach[T any](ctx context.Context, res any, adapter abstractions.RequestAdapter, constructorFunc serialization.ParsableFactory, each func(T) error) error {
 	if adapter == nil {
 		return errors.New("reqAdapter can't be nil")
@@ -127,6 +130,9 @@ func graphPage[T any](res any) (items []T, nulls int, nextLink string, err error
 		}
 		item, ok := entry.Interface().(T)
 		if !ok {
+			item, ok = baseEntry[T](entry)
+		}
+		if !ok {
 			return nil, nulls, "", fmt.Errorf("%s holds entries of type %T, not %s", collectionName(res), entry.Interface(), reflect.TypeFor[T]())
 		}
 		items = append(items, item)
@@ -135,6 +141,38 @@ func graphPage[T any](res any) (items []T, nulls int, nextLink string, err error
 		nextLink = *link
 	}
 	return items, nulls, nextLink, nil
+}
+
+// baseEntry returns the T that a page entry of a derived Graph type is built
+// on. Graph answers a collection with the entries' most specific types: a
+// service principal listing can hold an agentIdentityBlueprintPrincipal, which
+// the SDK models as a struct embedding ServicePrincipal. Such an entry is not
+// a *models.ServicePrincipal, but the one it embeds is, and holds every
+// property of the base type. A caller that asks for the concrete base type
+// gets that one.
+func baseEntry[T any](entry reflect.Value) (T, bool) {
+	var none T
+	if entry.Kind() == reflect.Interface {
+		entry = entry.Elem()
+	}
+	if entry.Kind() != reflect.Pointer || entry.Elem().Kind() != reflect.Struct {
+		return none, false
+	}
+	derived := entry.Elem()
+	for i := 0; i < derived.NumField(); i++ {
+		field := derived.Type().Field(i)
+		if !field.Anonymous || !field.IsExported() || field.Type.Kind() != reflect.Struct {
+			continue
+		}
+		base := derived.Field(i).Addr()
+		if item, ok := base.Interface().(T); ok {
+			return item, true
+		}
+		if item, ok := baseEntry[T](base); ok {
+			return item, true
+		}
+	}
+	return none, false
 }
 
 // isNilValue reports whether v holds no value: an invalid value, a nil

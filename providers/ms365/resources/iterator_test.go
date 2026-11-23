@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
+	"github.com/microsoftgraph/msgraph-sdk-go/serviceprincipals"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
@@ -225,6 +226,40 @@ func TestIterateEachMalformedNextLink(t *testing.T) {
 	require.ErrorContains(t, err, "paging UserRegistrationDetailsCollectionResponse: parsing nextLink")
 	var parseErr *url.Error
 	assert.ErrorAs(t, err, &parseErr)
+}
+
+// Graph answers a listing with each entry's most specific type. A caller that
+// asks for the concrete base type gets a derived entry as the base it is built
+// on, with the base properties readable, and the walk goes on past it.
+//
+// Measured: a Microsoft 365 test tenant, Graph v1.0, 2026-11-23. Its
+// /servicePrincipals/delta listing holds entries with the @odata.type below,
+// which the SDK's iterator could not hand over as *models.ServicePrincipal, so
+// the listing ended at the first page holding one. The ids and names here are
+// made up.
+func TestIterateDerivedEntries(t *testing.T) {
+	client := newFakeGraph(t, map[string]fakeRoute{
+		"/servicePrincipals/delta()": {status: 200, body: `{
+			"@odata.nextLink": "{{base}}/servicePrincipals/delta()/page2",
+			"value": [
+				{"id": "sp1", "displayName": "one"},
+				{"@odata.type": "#microsoft.graph.agentIdentityBlueprintPrincipal", "id": "sp2", "displayName": "two"}]}`},
+		"/servicePrincipals/delta()/page2": {status: 200, body: `{
+			"value": [{"id": "sp3", "displayName": "three"}]}`},
+	}).client()
+	ctx := context.Background()
+	resp, err := client.ServicePrincipals().Delta().GetAsDeltaGetResponse(ctx, nil)
+	require.NoError(t, err)
+	require.IsType(t, &models.AgentIdentityBlueprintPrincipal{}, resp.GetValue()[1], "the fixture must produce a derived entry")
+
+	sps, err := iterate[*models.ServicePrincipal](ctx, resp, client.GetAdapter(), serviceprincipals.CreateDeltaGetResponseFromDiscriminatorValue)
+	require.NoError(t, err)
+	require.Len(t, sps, 3)
+	names := []string{}
+	for _, sp := range sps {
+		names = append(names, *sp.GetId()+"="+*sp.GetDisplayName())
+	}
+	assert.Equal(t, []string{"sp1=one", "sp2=two", "sp3=three"}, names)
 }
 
 // Synthetic: responses that are not a readable collection page are refused
