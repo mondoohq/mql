@@ -342,7 +342,9 @@ oci.ai.generativeAi.endpoint.piiDetectionMode 13.9.2
 oci.ai.generativeAi.endpoint.privateEndpoint 14.3.8
 oci.ai.generativeAi.endpoint.promptInjectionEnabled 13.9.2
 oci.ai.generativeAi.endpoint.promptInjectionMode 13.9.2
+oci.ai.generativeAi.endpoint.region 14.7.2
 oci.ai.generativeAi.endpoint.state 13.9.2
+oci.ai.generativeAi.endpoint.systemTags 14.7.2
 oci.ai.generativeAi.endpoint.timeUpdated 13.9.2
 oci.ai.generativeAi.endpoints 13.9.2
 oci.ai.generativeAi.hostedApplication 14.4.5
@@ -639,6 +641,7 @@ oci.apigateway.deployment.corsAllowedOrigins 13.4.1
 oci.apigateway.deployment.created 13.4.1
 oci.apigateway.deployment.definedTags 13.4.1
 oci.apigateway.deployment.endpoint 13.4.1
+oci.apigateway.deployment.executionLogLevel 14.7.2
 oci.apigateway.deployment.freeformTags 13.4.1
 oci.apigateway.deployment.gateway 13.4.1
 oci.apigateway.deployment.hasDynamicAuthentication 13.4.1
@@ -646,12 +649,14 @@ oci.apigateway.deployment.id 13.4.1
 oci.apigateway.deployment.isAnonymousAccessAllowed 13.4.1
 oci.apigateway.deployment.jwtAudiences 13.4.1
 oci.apigateway.deployment.jwtIssuers 13.4.1
+oci.apigateway.deployment.lifecycleDetails 14.7.2
 oci.apigateway.deployment.mtlsAllowedSans 13.4.1
 oci.apigateway.deployment.mtlsIsVerifiedCertificateRequired 13.4.1
 oci.apigateway.deployment.name 13.4.1
 oci.apigateway.deployment.pathPrefix 13.4.1
 oci.apigateway.deployment.rateLimitKey 13.4.1
 oci.apigateway.deployment.rateLimitPerSecond 13.4.1
+oci.apigateway.deployment.region 14.7.2
 oci.apigateway.deployment.state 13.4.1
 oci.apigateway.deployment.systemTags 13.12.2
 oci.apigateway.deployment.timeUpdated 13.4.1
@@ -1124,6 +1129,7 @@ oci.compartment.definedTags 13.18.1
 oci.compartment.description 9.0.0
 oci.compartment.freeformTags 13.18.1
 oci.compartment.id 9.0.0
+oci.compartment.inactiveStatus 14.7.2
 oci.compartment.isAccessible 13.21.1
 oci.compartment.name 9.0.0
 oci.compartment.parent 13.21.1
@@ -2536,6 +2542,7 @@ oci.identity.policy.definedTags 11.1.0
 oci.identity.policy.description 9.0.0
 oci.identity.policy.freeformTags 11.1.0
 oci.identity.policy.id 9.0.0
+oci.identity.policy.inactiveStatus 14.7.2
 oci.identity.policy.name 9.0.0
 oci.identity.policy.parsedStatements 13.17.2
 oci.identity.policy.state 9.0.0
@@ -2580,6 +2587,7 @@ oci.identity.user.compartment 13.12.2
 oci.identity.user.created 9.0.0
 oci.identity.user.customerSecretKeys 9.0.0
 oci.identity.user.dbCredentials 13.5.6
+oci.identity.user.dbUserName 14.7.2
 oci.identity.user.definedTags 11.1.0
 oci.identity.user.description 9.0.0
 oci.identity.user.email 9.0.0
@@ -2589,6 +2597,7 @@ oci.identity.user.freeformTags 11.1.0
 oci.identity.user.groups 9.0.0
 oci.identity.user.id 9.0.0
 oci.identity.user.identityProvider 13.12.2
+oci.identity.user.inactiveStatus 14.7.2
 oci.identity.user.lastLogin 9.0.0
 oci.identity.user.mfaActivated 9.0.0
 oci.identity.user.mfaDevices 13.1.1
@@ -2800,6 +2809,7 @@ oci.loadBalancer.loadBalancer.listeners 13.0.6
 oci.loadBalancer.loadBalancer.maximumBandwidthInMbps 13.20.1
 oci.loadBalancer.loadBalancer.minimumBandwidthInMbps 13.20.1
 oci.loadBalancer.loadBalancer.name 13.0.6
+oci.loadBalancer.loadBalancer.region 14.7.2
 oci.loadBalancer.loadBalancer.requestIdHeader 13.20.1
 oci.loadBalancer.loadBalancer.ruleSets 13.20.1
 oci.loadBalancer.loadBalancer.securityAttributes 13.18.2
@@ -3312,6 +3322,7 @@ oci.network.securityList.id 9.0.0
 oci.network.securityList.ingressRules 13.17.2
 oci.network.securityList.ingressSecurityRules 9.0.0
 oci.network.securityList.name 9.0.0
+oci.network.securityList.region 14.7.2
 oci.network.securityList.state 9.0.0
 oci.network.securityList.systemTags 13.21.1
 oci.network.securityList.vcn 13.0.6
@@ -3812,6 +3823,7 @@ oci.oke.cluster.podNetworkTypes 13.20.1
 oci.oke.cluster.podsCidr 13.20.1
 oci.oke.cluster.privateEndpoint 13.0.6
 oci.oke.cluster.publicEndpoint 13.0.6
+oci.oke.cluster.region 14.7.2
 oci.oke.cluster.securityAttributes 13.8.2
 oci.oke.cluster.serviceLbSubnets 13.20.1
 oci.oke.cluster.servicesCidr 13.20.1
@@ -4083,6 +4095,7 @@ oci.redis.cluster.discoveryEndpointIpAddress 13.5.1
 oci.redis.cluster.discoveryFqdn 13.5.1
 oci.redis.cluster.freeformTags 13.5.1
 oci.redis.cluster.id 13.5.1
+oci.redis.cluster.lifecycleDetails 14.7.2
 oci.redis.cluster.name 13.5.1
 oci.redis.cluster.networkSecurityGroups 13.5.1
 oci.redis.cluster.nodeCount 13.5.1
@@ -4090,6 +4103,7 @@ oci.redis.cluster.nodeMemoryInGBs 13.5.1
 oci.redis.cluster.primaryCluster 13.21.1
 oci.redis.cluster.primaryEndpointIpAddress 13.5.1
 oci.redis.cluster.primaryFqdn 13.5.1
+oci.redis.cluster.region 14.7.2
 oci.redis.cluster.replicasEndpointIpAddress 13.5.1
 oci.redis.cluster.replicasFqdn 13.5.1
 oci.redis.cluster.shardCount 13.5.1
@@ -4234,6 +4248,7 @@ oci.tenancy 9.0.0
 oci.tenancy.definedTags 13.18.1
 oci.tenancy.description 9.0.0
 oci.tenancy.freeformTags 13.18.1
+oci.tenancy.homeRegion 14.7.2
 oci.tenancy.id 9.0.0
 oci.tenancy.name 9.0.0
 oci.tenancy.retentionPeriod 9.0.0
@@ -4245,6 +4260,8 @@ oci.vault.secret.created 13.0.6
 oci.vault.secret.definedTags 13.7.2
 oci.vault.secret.description 13.0.6
 oci.vault.secret.freeformTags 13.7.2
+oci.vault.secret.generationTemplate 14.7.2
+oci.vault.secret.generationType 14.7.2
 oci.vault.secret.id 13.0.6
 oci.vault.secret.isAutoGenerationEnabled 13.0.6
 oci.vault.secret.isReplica 13.21.1
@@ -4253,8 +4270,11 @@ oci.vault.secret.isScheduledRotationEnabled 13.1.1
 oci.vault.secret.kmsKey 13.0.6
 oci.vault.secret.kmsVault 13.0.6
 oci.vault.secret.lastRotationTime 13.0.6
+oci.vault.secret.lifecycleDetails 14.7.2
 oci.vault.secret.name 13.0.6
 oci.vault.secret.nextRotationTime 13.0.6
+oci.vault.secret.passphraseLength 14.7.2
+oci.vault.secret.region 14.7.2
 oci.vault.secret.replicationTarget 13.21.1
 oci.vault.secret.replicationTarget.key 13.21.1
 oci.vault.secret.replicationTarget.region 13.21.1
@@ -4270,6 +4290,7 @@ oci.vault.secret.sourceVault 13.21.1
 oci.vault.secret.state 13.0.6
 oci.vault.secret.systemTags 13.12.2
 oci.vault.secret.timeOfCurrentVersionExpiry 13.1.1
+oci.vault.secret.timeOfDeletion 14.7.2
 oci.vault.secretVersion 13.1.1
 oci.vault.secretVersion.contentType 13.1.1
 oci.vault.secretVersion.created 13.1.1

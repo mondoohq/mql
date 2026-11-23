@@ -731,3 +731,7 @@ type mqlOciLoadBalancerIpAddressInternal struct {
 func (o *mqlOciLoadBalancerIpAddress) reservedIp() (*mqlOciNetworkPublicIp, error) {
 	return resolveRef(o.MqlRuntime, "oci.network.publicIp", o.cacheReservedIpID, &o.ReservedIp)
 }
+
+func (o *mqlOciLoadBalancerLoadBalancer) region() (*mqlOciRegion, error) {
+	return resolveOciRegionByKey(o.MqlRuntime, o.cacheRegion, &o.Region)
+}

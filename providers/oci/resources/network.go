@@ -1435,3 +1435,7 @@ func initOciNetworkPublicIp(runtime *plugin.Runtime, args map[string]*llx.RawDat
 type mqlOciNetworkPublicIpInternal struct {
 	ociCompartmentRef
 }
+
+func (o *mqlOciNetworkSecurityList) region() (*mqlOciRegion, error) {
+	return resolveOciRegionByKey(o.MqlRuntime, o.cacheRegion, &o.Region)
+}

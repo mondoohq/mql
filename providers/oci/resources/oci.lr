@@ -38,6 +38,11 @@ oci.tenancy @defaults("name") {
   name string
   // Tenancy description
   description string
+  // Home region of the tenancy
+  //
+  // The region where the tenancy was created, where IAM changes are made
+  // before they replicate to the other subscribed regions.
+  homeRegion() oci.region
   // Event retention period duration
   retentionPeriod() time
   // Free-form tags for resource management
@@ -107,6 +112,10 @@ private oci.compartment @defaults("id name") {
   created time
   // Compartment lifecycle state (CREATING, ACTIVE, INACTIVE, DELETING, DELETED)
   state string
+  // Detailed status of an INACTIVE compartment
+  //
+  // Null when the compartment is not inactive.
+  inactiveStatus int
   // Free-form tags for resource management
   freeformTags map[string]string
   // Defined tags for governance and cost tracking
@@ -909,6 +918,16 @@ private oci.identity.user @defaults("name") {
   emailVerified bool
   // Identifier of this user in a federated identity provider, empty for local users
   externalIdentifier string
+  // Database username used with the user's database credentials
+  //
+  // Unique across the tenancy. Empty when no database username is set.
+  dbUserName string
+  // Reason an INACTIVE user is inactive, as a bit mask
+  //
+  // Bit 2 (value 4) is BLOCKED: the user exceeded the maximum number of
+  // failed console login attempts. Bits 0 (SUSPENDED) and 1 (DISABLED) are
+  // reserved. Null when the user is not inactive.
+  inactiveStatus int
   // Federated identity provider this user originates from, when the user is federated
   identityProvider() oci.identity.identityProvider
   // Authentication capabilities the user is permitted to hold
@@ -1036,6 +1055,10 @@ private oci.identity.policy @defaults("name description") {
   created time
   // Policy lifecycle state (CREATING, ACTIVE, INACTIVE, DELETING, DELETED)
   state string
+  // Detailed status of an INACTIVE policy
+  //
+  // Null when the policy is not inactive.
+  inactiveStatus int
   // Policy statements defining permissions
   statements []string
   // Policy statements broken into their grammatical parts
@@ -2260,6 +2283,8 @@ private oci.network.securityList @defaults("name") {
   id string
   // Compartment containing the security list
   compartment() oci.compartment
+  // Region the security list is in
+  region() oci.region
   // Security list display name
   name string
   // Security list creation time
@@ -5188,6 +5213,8 @@ private oci.vault.secret @defaults("name") {
   name string
   // Compartment containing the secret
   compartment() oci.compartment
+  // Region the secret is in
+  region() oci.region
   // Vault containing this secret
   kmsVault() oci.kms.vault
   // KMS key used for encryption
@@ -5196,6 +5223,27 @@ private oci.vault.secret @defaults("name") {
   description string
   // Lifecycle state (e.g., CREATING, ACTIVE, UPDATING, DELETING, DELETED, SCHEDULING_DELETION, PENDING_DELETION, CANCELLING_DELETION, FAILED)
   state string
+  // Detail message describing the current lifecycle state
+  lifecycleDetails string
+  // Time the secret is scheduled for deletion
+  //
+  // Null unless deletion has been scheduled.
+  timeOfDeletion time
+  // Kind of secret the service generates when auto generation is enabled (PASSPHRASE, SSH_KEY, or BYTES)
+  //
+  // Empty when the secret carries no generation context.
+  generationType string
+  // Template the service generates the secret from
+  //
+  // For example SECRETS_DEFAULT_PASSWORD or DBAAS_DEFAULT_PASSWORD for a
+  // passphrase, RSA_2048, RSA_3072, or RSA_4096 for an SSH key, and
+  // BYTES_256 or BYTES_512 for bytes. Empty when the secret carries no
+  // generation context.
+  generationTemplate string
+  // Length of a generated passphrase
+  //
+  // Null unless generationType is PASSPHRASE and a length is set.
+  passphraseLength int
   // Rotation status (NOT_ENABLED, SCHEDULED, IN_PROGRESS, CANCELLING)
   rotationStatus string
   // Last rotation time
@@ -5323,6 +5371,8 @@ private oci.loadBalancer.loadBalancer @defaults("name") {
   name string
   // Compartment containing the load balancer
   compartment() oci.compartment
+  // Region the load balancer is in
+  region() oci.region
   // Shape name (e.g., flexible, 100Mbps, 400Mbps)
   shape string
   // Guaranteed pre-provisioned bandwidth in Mbps
@@ -7792,6 +7842,8 @@ private oci.oke.cluster @defaults("name") {
   name string
   // Compartment containing the cluster
   compartment() oci.compartment
+  // Region the cluster is in
+  region() oci.region
   // Kubernetes version
   kubernetesVersion string
   // Cluster type (BASIC_CLUSTER, ENHANCED_CLUSTER)
@@ -9468,6 +9520,8 @@ private oci.apigateway.deployment @defaults("name pathPrefix") {
   name string
   // Compartment containing the deployment
   compartment() oci.compartment
+  // Region the deployment is in
+  region() oci.region
   // Parent gateway
   gateway() oci.apigateway.gateway
   // Path prefix on the gateway that this deployment is deployed to
@@ -9476,6 +9530,12 @@ private oci.apigateway.deployment @defaults("name pathPrefix") {
   endpoint string
   // Lifecycle state (e.g., CREATING, ACTIVE, UPDATING, DELETING, DELETED, FAILED)
   state string
+  // Detail message describing the current lifecycle state
+  lifecycleDetails string
+  // Minimum level of execution log messages the deployment emits (INFO, WARN, or ERROR)
+  //
+  // Empty when the deployment sets no execution log level.
+  executionLogLevel() string
   // Authentication method configured for this deployment: NONE, TOKEN_AUTHENTICATION, JWT_AUTHENTICATION, CUSTOM_AUTHENTICATION, or DYNAMIC_AUTHENTICATION
   authenticationType() string
   // Whether anonymous (unauthenticated) access is allowed
@@ -9719,6 +9779,8 @@ private oci.redis.cluster @defaults("name softwareVersion state") {
   primaryCluster() oci.redis.cluster
   // Compartment containing the cluster
   compartment() oci.compartment
+  // Region the cluster is in
+  region() oci.region
   // Cache engine version (e.g., REDIS_7_0, VALKEY_7_2, VALKEY_8_1)
   softwareVersion string
   // Cluster mode (SHARDED or NONSHARDED)
@@ -9747,6 +9809,8 @@ private oci.redis.cluster @defaults("name softwareVersion state") {
   discoveryEndpointIpAddress string
   // Cluster lifecycle state (e.g., CREATING, UPDATING, ACTIVE, DELETING, DELETED, FAILED)
   state string
+  // Detail message describing the current lifecycle state
+  lifecycleDetails string
   // Creation time
   created time
   // Last update time
@@ -11790,6 +11854,8 @@ private oci.ai.generativeAi.endpoint @defaults("name state") {
   compartmentID string
   // Compartment containing the endpoint
   compartment() oci.compartment
+  // Region the endpoint is in
+  region() oci.region
   // OCID of the model served by the endpoint
   modelID string
   // Model served by the endpoint
@@ -11832,6 +11898,12 @@ private oci.ai.generativeAi.endpoint @defaults("name state") {
   freeformTags map[string]string
   // Defined tags for governance and cost tracking
   definedTags map[string]map[string]string
+  // System tags
+  //
+  // Tags applied automatically by Oracle, keyed by namespace. The
+  // `Oracle-Tags` namespace records the creating principal in `CreatedBy`
+  // and the creation time in `CreatedOn`.
+  systemTags map[string]dict
 }
 
 // Oracle Cloud Infrastructure (OCI) Generative AI private endpoint

@@ -83,6 +83,7 @@ func (o *mqlOciRedis) clusters() ([]any, error) {
 					"discoveryFqdn":              llx.StringDataPtr(c.DiscoveryFqdn),
 					"discoveryEndpointIpAddress": llx.StringDataPtr(c.DiscoveryEndpointIpAddress),
 					"state":                      llx.StringData(string(c.LifecycleState)),
+					"lifecycleDetails":           llx.StringDataPtr(c.LifecycleDetails),
 					"created":                    llx.TimeDataPtr(created),
 					"timeUpdated":                llx.TimeDataPtr(updated),
 					"freeformTags":               llx.MapData(strMapToAny(c.FreeformTags), types.String),
@@ -212,4 +213,8 @@ func (o *mqlOciRedisCluster) networkSecurityGroups() ([]any, error) {
 		res = append(res, mqlNsg)
 	}
 	return res, nil
+}
+
+func (o *mqlOciRedisCluster) region() (*mqlOciRegion, error) {
+	return resolveOciRegionByKey(o.MqlRuntime, o.cacheRegion, &o.Region)
 }
