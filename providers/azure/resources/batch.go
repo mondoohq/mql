@@ -242,12 +242,11 @@ func createBatchAccountRawData(account *armbatch.Account) (map[string]*llx.RawDa
 		}
 	}
 
-	var access batchNetworkAccess
+	var sdkNetworkProfile *armbatch.NetworkProfile
 	if account.Properties != nil {
-		access = batchNetworkAccessFields(account.Properties.NetworkProfile)
-	} else {
-		access = batchNetworkAccessFields(nil)
+		sdkNetworkProfile = account.Properties.NetworkProfile
 	}
+	access := batchNetworkAccessFields(sdkNetworkProfile)
 
 	return map[string]*llx.RawData{
 		"id":                                    llx.StringDataPtr(account.ID),
@@ -351,10 +350,8 @@ func batchAccountToMql(runtime *plugin.Runtime, account *armbatch.Account) (*mql
 		mqlAccount.cacheIdentityTenantId = convert.ToValue(account.Identity.TenantID)
 	}
 	if account.Properties != nil {
-		mqlAccount.cachePrivateEndpointConnections = account.Properties.PrivateEndpointConnections
-	}
-	if account.Properties != nil {
 		props := account.Properties
+		mqlAccount.cachePrivateEndpointConnections = props.PrivateEndpointConnections
 		if props.KeyVaultReference != nil && props.KeyVaultReference.ID != nil {
 			mqlAccount.cacheKeyVaultId = *props.KeyVaultReference.ID
 		}
