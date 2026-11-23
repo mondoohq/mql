@@ -1029,6 +1029,12 @@ private aws.waf.acl @defaults("name") {
   tokenDomains() []string
   // Label namespace prefix WAF applies to labels this ACL generates
   labelNamespace() string
+  // Security analytics mode of the ACL
+  //
+  // CROSS_REGION transfers and stores the ACL's request logs outside the
+  // region that hosts the ACL for aggregation; DISABLED stops the transfer.
+  // Null when the ACL reports no analytics configuration.
+  analyticsMode() string
   // List of WAF rules
   rules() []aws.waf.rule
   // Scope either REGIONAL or CLOUDFRONT
@@ -3094,6 +3100,11 @@ private aws.iam.loginProfile @defaults("createdAt") {
   createdAt time
   // Whether the user is required to set a new password on next sign-in
   passwordResetRequired bool
+  // Maximum duration in seconds of an AWS Sign-In session for the user
+  //
+  // Null when the setting is unset, in which case the default sign-in
+  // session behavior applies.
+  maxSigninSessionDuration int
 }
 
 // Statement from an IAM or resource-based policy
@@ -3329,6 +3340,11 @@ private aws.iam.role @defaults("arn name") {
   lastUsedRegion() string
   // Maximum session duration in seconds for the role (3600-43200)
   maxSessionDuration int
+  // Maximum duration in seconds of an AWS Sign-In session for users who sign in with the role
+  //
+  // Independent of maxSessionDuration. Null when the setting is unset, in
+  // which case the default sign-in session behavior applies.
+  maxSigninSessionDuration() int
   // Permissions boundary policy attached to the role
   permissionsBoundary() aws.iam.policy
   // EC2 instances that use this role through an instance profile
@@ -3475,6 +3491,20 @@ private aws.iam.samlProvider @defaults("arn name") {
   metadataDocument() string
   // Tags associated with the SAML provider
   tags() map[string]string
+  // Trusted identity propagation context provider
+  //
+  // Null when no context provider is configured for the identity provider.
+  contextProvider() aws.iam.contextProvider
+  // IAM Identity Center instance associated with the identity provider
+  //
+  // Null when no Identity Center instance is associated.
+  identityCenterInstance() aws.identitycenter.instance
+  // ARN of the identity store resolved from the associated Identity Center instance
+  //
+  // Null when no Identity Center instance is associated.
+  identityStoreArn() string
+  // Key hashes of the SAML provider, keyed by identity provider issuer URL
+  keyHashes() map[string][]string
 }
 
 // AWS IAM OpenID Connect (OIDC) identity provider
@@ -3491,6 +3521,39 @@ private aws.iam.oidcProvider @defaults("arn url") {
   createdAt() time
   // Tags associated with the OIDC provider
   tags() map[string]string
+  // Trusted identity propagation context provider
+  //
+  // Null when no context provider is configured for the identity provider.
+  contextProvider() aws.iam.contextProvider
+  // IAM Identity Center instance associated with the identity provider
+  //
+  // Null when no Identity Center instance is associated.
+  identityCenterInstance() aws.identitycenter.instance
+  // ARN of the identity store resolved from the associated Identity Center instance
+  //
+  // Null when no Identity Center instance is associated.
+  identityStoreArn() string
+}
+
+// Trusted identity propagation context provider of an IAM identity provider
+//
+// How IAM derives the subject and trusted context keys from the assertion
+// or token of an external identity provider. `subjectSourceKey` names the
+// claim that supplies the subject, and `keyMappings` maps each source claim
+// to the trusted context key it fills.
+private aws.iam.contextProvider @defaults("subjectSourceKey") {
+  // Claim or attribute in the assertion or token that supplies the subject
+  subjectSourceKey string
+  // Claim or attribute that supplies the subject type
+  //
+  // Null when the subject type is a static subjectTypeValue.
+  subjectTypeSourceKey string
+  // Static subject type, such as user or workload
+  //
+  // Null when the subject type comes from subjectTypeSourceKey.
+  subjectTypeValue string
+  // Trusted context keys filled from the assertion or token, keyed by source key
+  keyMappings map[string]string
 }
 
 // AWS IAM Access Analyzer
@@ -4168,6 +4231,16 @@ private aws.sagemaker.endpoint @defaults("arn name") {
   shadowProductionVariants() []aws.sagemaker.endpoint.productionVariant
   // Data capture configuration
   dataCaptureConfig() aws.sagemaker.endpoint.dataCaptureConfig
+  // Share of the endpoint's capacity that inference routers in other regions can use
+  //
+  // A percentage from the cross-region traffic configuration. Null when no
+  // cross-region traffic configuration is set.
+  crossRegionMaxPercent() int
+  // Invocations per second one InService instance is expected to serve for cross-region traffic
+  //
+  // One value applies to every production variant, whatever its instance
+  // type. Null when no cross-region traffic configuration is set.
+  crossRegionMaxInvocationsPerSecondPerInstance() int
 }
 
 // AWS SageMaker endpoint production variant
@@ -4975,6 +5048,16 @@ private aws.sagemaker.endpointConfig @defaults("arn name") {
   securityGroups() []aws.ec2.securitygroup
   // KMS key that encrypts asynchronous inference output
   asyncOutputKmsKey() aws.kms.key
+  // Share of the endpoint's capacity that inference routers in other regions can use
+  //
+  // A percentage from the cross-region traffic configuration. Null when no
+  // cross-region traffic configuration is set.
+  crossRegionMaxPercent() int
+  // Invocations per second one InService instance is expected to serve for cross-region traffic
+  //
+  // One value applies to every production variant, whatever its instance
+  // type. Null when no cross-region traffic configuration is set.
+  crossRegionMaxInvocationsPerSecondPerInstance() int
 }
 
 // AWS SageMaker endpoint configuration production variant
@@ -7366,6 +7449,31 @@ private aws.elb.mutualAuthentication @defaults("mode trustStoreAssociationStatus
   // One of active or removed. A removed trust store leaves a listener in
   // verify mode with nothing to verify against.
   trustStoreAssociationStatus string
+  // Client certificate identity filters of a Network Load Balancer listener
+  //
+  // The load balancer admits a connection only if the client certificate
+  // matches at least one filter. Empty when no filters are set, which admits
+  // every certificate that passes trust store validation and revocation
+  // checks.
+  clientCertificateIdentityFilters []aws.elb.mutualAuthentication.identityFilter
+}
+
+// Client certificate identity filter on a mutual TLS listener
+private aws.elb.mutualAuthentication.identityFilter @defaults("field matchType value action") {
+  // Action taken when the client certificate matches the filter
+  //
+  // The only supported action is accept.
+  action string
+  // Client certificate field the filter matches
+  //
+  // One of subject-cn (subject common name), subject-ou (subject
+  // organizational unit), san-dns (a DNS name in the subject alternative
+  // name), or san-uri (a URI in the subject alternative name).
+  field string
+  // How the value is matched: exact or prefix
+  matchType string
+  // Value the certificate field is matched against
+  value string
 }
 
 // AWS ELB mutual TLS trust store
@@ -13049,6 +13157,11 @@ private aws.cloudfront.distribution.origin @defaults("id originPath") {
   // the origin leg negotiable down to a deprecated protocol version. Empty
   // for S3 origins, and for custom origins reached over http-only.
   originSslProtocols []string
+  // HTTP version CloudFront uses for requests to a custom origin: http1.1 or http2
+  //
+  // Null for S3 origins and for custom origins that leave it unset, which
+  // CloudFront reaches over HTTP/1.1.
+  originHttpVersion string
   // ACM certificate that CloudFront uses for mutual TLS to the origin (null when origin mTLS is disabled)
   originMtlsClientCertificate() aws.acm.certificate
   // Origin Access Control ID for the origin (empty when OAC is not configured)
@@ -15968,6 +16081,17 @@ aws.rds.dbinstance @defaults("id region engine engineVersion") {
   port int
   // Connection endpoint for the database instance
   endpoint string
+  // DNS address of the DB instance that currently has the primary role
+  //
+  // Follows the primary after a switchover, so clients don't connect to a
+  // different DNS name. A read replica reports the primary endpoint of the
+  // instance it replicates from. Null when not reported.
+  primaryEndpoint string
+  // Whether the DB instance uses VPC networking
+  //
+  // False only for an instance in an Aurora PostgreSQL DB cluster without
+  // VPC networking. Null when not reported.
+  vpcNetworkingEnabled bool
   // Master username for the database instance
   masterUsername string
   // Latest time to which a database can be restored with point-in-time restore
@@ -18009,12 +18133,20 @@ private aws.route53.resolver.firewallRule @defaults("name priority action") {
   confidenceThreshold string
   // Advanced rule-type configuration
   //
-  // Present for advanced and threat-protection rules; exactly one of the
-  // following keys is populated. `dnsThreatProtection`:
+  // Present for advanced, threat-protection, and AutoAllowlist rules; exactly
+  // one of the following keys is populated. `dnsThreatProtection`:
   // `{confidenceThreshold, value}` where value is `DGA`, `DNS_TUNNELING`, or `DICTIONARY_DGA`.
   // `firewallAdvancedContentCategory`: `{category}`.
   // `firewallAdvancedThreatCategory`: `{category}`.
+  // `autoAllowlist`: `{initialDataTimeframeHours, autoAllowlistFirewallDomainListId,
+  // importFromFirewallDomainListId}`, for a rule that allows the domains it
+  // observed in the traffic of the VPCs using the rule group.
   firewallRuleType dict
+  // Managed domain list of an AutoAllowlist rule
+  //
+  // The list DNS Firewall maintains with the domains the rule observed and
+  // allows. Null for any other rule type.
+  autoAllowlistDomainList() aws.route53.resolver.firewallDomainList
   // ID of the threat protection configuration backing a threat-protection rule
   firewallThreatProtectionId string
   // Creation timestamp
@@ -18091,10 +18223,10 @@ private aws.route53.resolver.firewallDomainList @defaults("id name domainCount s
   domains() []string
   // Category of the domain list (e.g., AWS_MANAGED or empty for customer-managed lists)
   category string
-  // Managed-list type for AWS-managed lists
+  // Type of a managed domain list
   //
-  // One of `AWS_MANAGED_DOMAIN_LIST`, `ACCOUNT_MANAGED_DOMAIN_LIST`, or
-  // empty for customer-managed lists.
+  // One of `THREAT`, `CONTENT`, or `AUTOALLOWLIST`, or empty for
+  // customer-managed lists.
   managedListType string
   // Domain list status
   status string
@@ -18110,6 +18242,14 @@ private aws.route53.resolver.firewallDomainList @defaults("id name domainCount s
   creatorRequestId string
   // Tags assigned to the firewall domain list
   tags() map[string]string
+  // Rule group holding the AutoAllowlist rule that owns this domain list
+  //
+  // Null unless managedListType is AUTOALLOWLIST.
+  firewallRuleGroup() aws.route53.resolver.firewallRuleGroup
+  // Threat protection ID of the AutoAllowlist rule that owns this domain list
+  //
+  // Null unless managedListType is AUTOALLOWLIST.
+  firewallThreatProtectionId string
 }
 
 // Route 53 Resolver DNS Firewall per-VPC configuration
@@ -18163,7 +18303,8 @@ aws.ecr {
   // The `rules` key holds the replication rules; each rule carries
   // `destinations` (a list of {region, registryId} targets) and optional
   // `repositoryFilters` ({filter, filterType} entries) that scope which
-  // repositories replicate.
+  // repositories replicate, and `deleteReplicationEnabled` (whether image
+  // deletions and tag removals replicate to the destinations too).
   replicationConfiguration() dict
   // Registry-level scanning configuration of the connection's region
   //
@@ -18208,8 +18349,8 @@ private aws.ecr.registry @defaults("registryId region") {
   // Replication configuration of the registry
   //
   // Same shape as aws.ecr.replicationConfiguration: a `rules` list whose
-  // entries carry `destinations` and `repositoryFilters`. Null when
-  // replication is not configured.
+  // entries carry `destinations`, `repositoryFilters`, and
+  // `deleteReplicationEnabled`. Null when replication is not configured.
   replicationConfiguration dict
   // Scanning configuration of the registry in this region
   //
@@ -18946,7 +19087,7 @@ private aws.apigateway.authorizer @defaults("name type restApiId") {
   id string
   // Name of the authorizer
   name string
-  // Type of authorizer (TOKEN, REQUEST, COGNITO_USER_POOLS)
+  // Type of authorizer (TOKEN, REQUEST, COGNITO_USER_POOLS, JWT)
   type string
   // Optional customer-defined auth type used in OpenAPI imports/exports
   authType string
@@ -18972,6 +19113,15 @@ private aws.apigateway.authorizer @defaults("name type restApiId") {
   userPools() []aws.cognito.userPool
   // Region where the authorizer exists
   region string
+  // JWT configuration of a JWT authorizer
+  //
+  // `DefaultAlgorithms` lists the accepted signing algorithms and `Issuers`
+  // the trusted issuers, each with `Issuer` (the OIDC issuer URL),
+  // `Audiences` (the accepted `aud` values), `JwksUri` (resolved from the
+  // issuer's discovery document), and `AdditionalClaims` (each with
+  // `ClaimName`, `Format`, `ExpectedValues`, and `Required`). Null for any
+  // other authorizer type.
+  jwtConfiguration dict
 }
 
 // Amazon API Gateway request validator
@@ -19740,6 +19890,18 @@ private aws.lambda.function @defaults("arn") {
   // After this period the history is no longer available through the
   // execution-history API. Null when the function is not a durable function.
   durableExecutionRetentionDays int
+  // ARN of the customer-managed runtime the function uses
+  //
+  // Null when the function runs on an AWS-managed runtime.
+  customerManagedRuntimeArn string
+  // Runtime alias that points the function at a customer-managed runtime version
+  //
+  // Null when the function runs on an AWS-managed runtime.
+  customerManagedRuntimeAlias string
+  // Minimum accelerator memory in GB exposed to each execution environment
+  //
+  // Null when the function has no accelerator configuration.
+  acceleratorMemorySize int
   // KMS key encrypting durable-execution payload data, including input, output, and error payloads
   //
   // A customer-managed key configured on the durable function. Null when the
@@ -20658,6 +20820,26 @@ private aws.ec2.vpnconnection.tunnelOption {
   phase1DHGroupNumbers []int
   // Permitted Diffie-Hellman group numbers for phase 2 IKE negotiations
   phase2DHGroupNumbers []int
+  // Additional key exchange rounds permitted for phase 1 IKE negotiations
+  //
+  // Rounds that follow the initial Diffie-Hellman exchange, IKEv2 only.
+  // Empty when no additional key exchange is configured.
+  phase1AdditionalKeyExchanges []aws.ec2.vpnconnection.tunnelOption.additionalKeyExchange
+  // Additional key exchange rounds permitted for phase 2 IKE negotiations
+  //
+  // Rounds that follow the initial Diffie-Hellman exchange, IKEv2 only.
+  // Empty when no additional key exchange is configured.
+  phase2AdditionalKeyExchanges []aws.ec2.vpnconnection.tunnelOption.additionalKeyExchange
+}
+
+// Additional key exchange round of a Site-to-Site VPN tunnel
+private aws.ec2.vpnconnection.tunnelOption.additionalKeyExchange @defaults("round requirement keyExchangeMethods") {
+  // Round number of the additional key exchange
+  round int
+  // Key exchange method numbers permitted for this round
+  keyExchangeMethods []int
+  // Whether the round is mandatory: required or optional
+  requirement string
 }
 
 // Amazon EC2 internet gateway
@@ -21520,6 +21702,11 @@ private aws.ec2.snapshot @defaults("id region volumeSize state") {
   restoreExpiryTime time
   // KMS key used for snapshot encryption
   kmsKey() aws.kms.key
+  // Additional KMS keys associated with the snapshot
+  //
+  // Keys besides kmsKey that are associated with the snapshot. Empty when
+  // there are none.
+  associatedKmsKeys() []aws.kms.key
   // Volume the snapshot was created from, when it is still present in this account
   sourceVolume() aws.ec2.volume
   // Data encryption key identifier shared across a volume and snapshot lineage; snapshots with the same value derive from the same original volume
@@ -23773,6 +23960,10 @@ private aws.neptune.cluster @defaults("arn name status") {
   serverlessV2MinCapacity float
   // Maximum capacity of Neptune Serverless instances, in Neptune capacity units (null for provisioned-only clusters)
   serverlessV2MaxCapacity float
+  // Serverless platform version of a Neptune Serverless cluster
+  //
+  // Null when the cluster does not report one.
+  serverlessV2PlatformVersion string
   // Clusters that replicate from this cluster
   //
   // Only replicas in this account resolve.
@@ -25356,6 +25547,20 @@ private aws.appstream.stack @defaults("name region") {
   embedHostDomains []string
   // Content redirection configuration for URL redirection between streaming session and local client
   contentRedirection() aws.appstream.stack.contentRedirection
+  // Whether WebAuthn redirection between the streaming session and the local device is enabled
+  //
+  // Null when the stack reports no WebAuthn redirection configuration.
+  webAuthnRedirectionEnabled bool
+  // Process executable names allowed to use WebAuthn redirection on Windows fleets
+  //
+  // For example, chrome.exe. Empty when no process list is configured.
+  webAuthnRedirectionProcesses []string
+  // Whether users' cloud storage authentication persists across streaming sessions
+  //
+  // One of REUSE_CREDENTIALS (the default) or FORCE_REAUTHENTICATION, which
+  // removes the stored OneDrive and Google Drive authentication when a
+  // session ends. Null when the stack does not report the setting.
+  storageConnectorAuthentication string
   // Fleets associated with the stack
   associatedFleets() []aws.appstream.fleet
   // Entitlements that gate which apps a SAML user can access in the stack
@@ -25415,12 +25620,43 @@ private aws.appstream.imageBuilder @defaults("name state platform region") {
   // builder in your VPC), `EniPrivateIpAddress` (its private IP address),
   // and `EniIpv6Addresses` (any IPv6 addresses on the interface).
   networkAccessConfiguration dict
+  // Agent access configuration of the image builder
+  //
+  // Null when agent access is not enabled.
+  agentAccessConfig aws.appstream.imageBuilder.agentAccessConfig
   // Time when the image builder was created
   createdAt time
   // Tags associated with the image builder
   tags() map[string]string
   // Region where the image builder exists
   region string
+}
+
+// Agent access configuration of an AppStream 2.0 image builder
+//
+// What an agent may do in the image builder's streaming environment:
+// `agentActions` maps each action (COMPUTER_VISION, COMPUTER_INPUT, or
+// FORWARD_MCP_TOOLS) to ENABLED or DISABLED, `userControlMode` sets whether
+// users can watch or stop the agent, and `screenshotsBucket` receives agent
+// screenshots when `screenshotsUploadEnabled` is true.
+private aws.appstream.imageBuilder.agentAccessConfig @defaults("agentActions userControlMode") {
+  // Permission of each agent action, keyed by action
+  //
+  // Keys are COMPUTER_VISION, COMPUTER_INPUT, or FORWARD_MCP_TOOLS; values
+  // are ENABLED or DISABLED.
+  agentActions map[string]string
+  // How users can interact with agent sessions
+  //
+  // One of VIEW_ONLY, VIEW_STOP, or DISABLED. Null when not reported.
+  userControlMode string
+  // Image format of agent screen captures: PNG or JPEG
+  screenImageFormat string
+  // Screen resolution of the agent streaming environment, such as W_1280xH_720
+  screenResolution string
+  // Whether agent screenshots are uploaded to S3
+  screenshotsUploadEnabled bool
+  // S3 bucket that stores agent screenshots
+  screenshotsBucket() aws.s3.bucket
 }
 
 // Amazon AppStream 2.0 application (used in elastic and app-block-based fleets)
@@ -26403,11 +26639,17 @@ private aws.workspaces.directory @defaults("directoryId directoryName state regi
   ipGroupIds []string
   // Self-service actions users may perform on their own WorkSpace
   //
-  // Keys ChangeComputeType, IncreaseVolumeSize, RebuildWorkspace,
-  // RestartWorkspace, and SwitchRunningMode each hold ENABLED or DISABLED.
+  // Keys ChangeComputeType, EnableEndUserAdvisor, IncreaseVolumeSize,
+  // NestedVirtualization, RebuildWorkspace, RestartWorkspace, and
+  // SwitchRunningMode each hold ENABLED or DISABLED.
   selfservicePermissions dict
   // IAM role identifier
   iamRoleId string
+  // How users are set up on the WorkSpace operating system
+  //
+  // One of LOCAL_USER, DOMAIN_JOIN, ENTRA_JOIN, or SELF_MANAGED. Null when
+  // the directory does not report it.
+  workspaceOsUserMode string
   // Subnets the directory uses
   subnets() []aws.vpc.subnet
   // Which WorkSpaces clients users may connect from
@@ -26842,6 +27084,10 @@ private aws.kinesis.stream @defaults("name status region") {
   // partition key supplied by producers decides the shard. Null for streams
   // in provisioned capacity mode, which do not report a strategy.
   recordDistributionStrategy() string
+  // Number of queues created on the stream
+  //
+  // Null when the stream does not report a queue count.
+  queueCount() int
 }
 
 // Amazon Kinesis enhanced fan-out stream consumer
@@ -28985,6 +29231,11 @@ private aws.msk.cluster.node @defaults("nodeType brokerId instanceType") {
   subnet() aws.vpc.subnet
   // Network interface attached to the broker node
   networkInterface() aws.ec2.networkinterface
+  // Whether the broker is a STANDARD or an EXPRESS broker
+  //
+  // A cluster being upgraded in place from Standard to Express brokers holds
+  // brokers of both types. Null for controller nodes and when not reported.
+  brokerNodeType string
 }
 
 // Cross-account client VPC connection to an MSK cluster
@@ -30367,6 +30618,12 @@ private aws.cloudformation.stack @defaults("name status") {
   resources() []aws.cloudformation.stack.resource
   // ID of the change set that produced the most recent stack operation, if any
   changeSetId string
+  // Alias of the stack
+  //
+  // An alternative name accepted in place of the stack name in any
+  // CloudFormation API call that takes a stack name. Null when no alias is
+  // set.
+  aliasName string
   // Direct parent stack when this is a nested stack, otherwise null
   parentStack() aws.cloudformation.stack
   // Top-level root stack of a nested-stack hierarchy, otherwise null
@@ -30434,6 +30691,10 @@ private aws.cloudformation.stackSet @defaults("name status") {
   executionRoleName() string
   // Organizational unit IDs the stack set targets (SERVICE_MANAGED stack sets)
   organizationalUnitIds() []string
+  // S3 bucket path where CloudFormation stores the execution role stack template body
+  //
+  // Used only with a custom execution role template. Null when not set.
+  outputBucketPath() string
   // Tags for the stack set
   tags() map[string]string
 }

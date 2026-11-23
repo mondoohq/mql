@@ -415,6 +415,7 @@ type mqlAwsCloudformationStackSetInternal struct {
 	cacheExecRole    *string
 	cacheOuIds       []string
 	cacheManagedExec *cf_types.ManagedExecution
+	cacheOutputPath  *string
 }
 
 func (a *mqlAwsCloudformationStackSet) autoDeploymentEnabled() (bool, error) {
@@ -465,6 +466,7 @@ func (a *mqlAwsCloudformationStackSet) fetchDetails() error {
 		a.cacheExecRole = resp.StackSet.ExecutionRoleName
 		a.cacheOuIds = resp.StackSet.OrganizationalUnitIds
 		a.cacheManagedExec = resp.StackSet.ManagedExecution
+		a.cacheOutputPath = resp.StackSet.StackSetOutputBucketPath
 	}
 	a.detailsFetched = true
 	return nil
@@ -512,6 +514,17 @@ func (a *mqlAwsCloudformationStackSet) executionRoleName() (string, error) {
 		return "", nil
 	}
 	return *a.cacheExecRole, nil
+}
+
+func (a *mqlAwsCloudformationStackSet) outputBucketPath() (string, error) {
+	if err := a.fetchDetails(); err != nil {
+		return "", err
+	}
+	if a.cacheOutputPath == nil || *a.cacheOutputPath == "" {
+		a.OutputBucketPath.State = plugin.StateIsNull | plugin.StateIsSet
+		return "", nil
+	}
+	return *a.cacheOutputPath, nil
 }
 
 func (a *mqlAwsCloudformationStackSet) organizationalUnitIds() ([]any, error) {
@@ -579,6 +592,7 @@ func buildCloudformationStackResource(runtime *plugin.Runtime, region string, st
 			"createdAt":                   llx.TimeDataPtr(stack.CreationTime),
 			"updatedAt":                   llx.TimeDataPtr(stack.LastUpdatedTime),
 			"changeSetId":                 llx.StringDataPtr(stack.ChangeSetId),
+			"aliasName":                   llx.StringDataPtr(stack.AliasName),
 		})
 	if err != nil {
 		return nil, err

@@ -323,6 +323,14 @@ func (a *mqlAwsApigatewayRestapi) authorizers() ([]any, error) {
 				providerArns = append(providerArns, p)
 			}
 			authId := convert.ToValue(auth.Id)
+			jwtConfig := llx.NilData
+			if auth.JwtConfiguration != nil {
+				d, err := convert.JsonToDict(auth.JwtConfiguration)
+				if err != nil {
+					return nil, err
+				}
+				jwtConfig = llx.DictData(d)
+			}
 			mqlAuth, err := CreateResource(a.MqlRuntime, ResourceAwsApigatewayAuthorizer,
 				map[string]*llx.RawData{
 					"arn":                          llx.StringData(fmt.Sprintf(apiAuthorizerArnPattern, region, conn.AccountId(), restApiId, authId)),
@@ -338,6 +346,7 @@ func (a *mqlAwsApigatewayRestapi) authorizers() ([]any, error) {
 					"identityValidationExpression": llx.StringData(convert.ToValue(auth.IdentityValidationExpression)),
 					"providerArns":                 llx.ArrayData(providerArns, mqltypes.String),
 					"region":                       llx.StringData(region),
+					"jwtConfiguration":             jwtConfig,
 				})
 			if err != nil {
 				return nil, err

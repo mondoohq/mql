@@ -129,3 +129,40 @@ func TestCrossZoneEnabledFromV2Attrs(t *testing.T) {
 		assert.False(t, crossZoneEnabledFromV2Attrs(nil))
 	})
 }
+
+// Synthetic: mutual TLS identity filters on a verify-mode listener; no target showed this.
+func TestNewMqlElbMutualAuthenticationIdentityFilters(t *testing.T) {
+	listenerArn := "arn:aws:elasticloadbalancing:us-east-1:123456789012:listener/net/nlb/abc/def"
+
+	t.Run("each filter keeps its own values", func(t *testing.T) {
+		raw, err := newMqlElbMutualAuthentication(testRuntime(), listenerArn, &elbtypes.MutualAuthenticationAttributes{
+			Mode: aws.String("verify"),
+			ClientCertificateIdentityFilters: []elbtypes.ClientCertificateIdentityFilter{
+				{Action: "accept", Field: "subject-cn", MatchType: "exact", Value: aws.String("svc-a")},
+				{Action: "accept", Field: "san-uri", MatchType: "prefix", Value: aws.String("spiffe://example.com/")},
+			},
+		})
+		require.NoError(t, err)
+		ma := raw.Value.(*mqlAwsElbMutualAuthentication)
+		filters := ma.ClientCertificateIdentityFilters.Data
+		require.Len(t, filters, 2)
+		first := filters[0].(*mqlAwsElbMutualAuthenticationIdentityFilter)
+		second := filters[1].(*mqlAwsElbMutualAuthenticationIdentityFilter)
+		// Equal keys would hand back the first filter's cached values for the second.
+		assert.NotEqual(t, first.__id, second.__id)
+		assert.Equal(t, "subject-cn", first.Field.Data)
+		assert.Equal(t, "exact", first.MatchType.Data)
+		assert.Equal(t, "svc-a", first.Value.Data)
+		assert.Equal(t, "san-uri", second.Field.Data)
+		assert.Equal(t, "prefix", second.MatchType.Data)
+		assert.Equal(t, "spiffe://example.com/", second.Value.Data)
+		assert.Equal(t, "accept", second.Action.Data)
+	})
+
+	t.Run("no filters is an empty list", func(t *testing.T) {
+		raw, err := newMqlElbMutualAuthentication(testRuntime(), listenerArn+"2", &elbtypes.MutualAuthenticationAttributes{Mode: aws.String("off")})
+		require.NoError(t, err)
+		ma := raw.Value.(*mqlAwsElbMutualAuthentication)
+		assert.Empty(t, ma.ClientCertificateIdentityFilters.Data)
+	})
+}

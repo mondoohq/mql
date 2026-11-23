@@ -65,3 +65,12 @@ func TestCloudfrontCertificateSource(t *testing.T) {
 	assert.Equal(t, "", cloudfrontCertificateSource(&cftypes.ViewerCertificate{CloudFrontDefaultCertificate: aws.Bool(false)}))
 	assert.Equal(t, "", cloudfrontCertificateSource(nil))
 }
+
+// Synthetic: origin HTTP version on S3 and custom origins; no target showed this.
+func TestCloudfrontOriginHttpVersion(t *testing.T) {
+	assert.Nil(t, cloudfrontOriginHttpVersion(nil), "S3 origin")
+	assert.Nil(t, cloudfrontOriginHttpVersion(&cftypes.CustomOriginConfig{}), "custom origin with no version set")
+	got := cloudfrontOriginHttpVersion(&cftypes.CustomOriginConfig{OriginHttpVersion: cftypes.OriginHttpVersionHttp2})
+	require.NotNil(t, got)
+	assert.Equal(t, "http2", *got)
+}
