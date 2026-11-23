@@ -6,6 +6,7 @@ package csproj
 import (
 	"encoding/xml"
 	"io"
+	"strings"
 
 	"go.mondoo.com/mql/providers/os/resources/languages"
 	"go.mondoo.com/mql/providers/os/resources/languages/dotnet"
@@ -17,7 +18,15 @@ var (
 )
 
 // Extractor parses .NET project files (.csproj, .fsproj, .vbproj) for PackageReference elements.
-type Extractor struct{}
+type Extractor struct {
+	// CentralVersions, when set, supplies the versions Central Package
+	// Management assigns the project (see CentralVersionResolver): the
+	// version of a PackageReference that states none.
+	//
+	// Left nil the parser stays hermetic and behaves exactly as before: a
+	// PackageReference without a Version (or VersionOverride) has no version.
+	CentralVersions CentralVersionResolver
+}
 
 func (e *Extractor) Name() string {
 	return "csproj"
@@ -31,6 +40,14 @@ func (e *Extractor) Parse(r io.Reader, filename string) (languages.Bom, error) {
 
 	if filename != "" {
 		proj.evidence = append(proj.evidence, filename)
+	}
+	if e.CentralVersions != nil {
+		if central := e.CentralVersions.CentralPackageVersions(filename); len(central) > 0 {
+			proj.central = make(map[string]string, len(central))
+			for id, v := range central {
+				proj.central[strings.ToLower(id)] = v
+			}
+		}
 	}
 
 	return &proj, nil
@@ -57,7 +74,7 @@ func (p *project) Direct() languages.Packages {
 		if ref.isDev() {
 			continue
 		}
-		direct = append(direct, makePackage(ref, p.evidence))
+		direct = append(direct, makePackage(ref, p.versionOf(ref), p.evidence))
 	}
 	return direct
 }
@@ -66,13 +83,24 @@ func (p *project) Direct() languages.Packages {
 func (p *project) Transitive() languages.Packages {
 	var all languages.Packages
 	for _, ref := range p.allPackageRefs() {
-		all = append(all, makePackage(ref, p.evidence))
+		all = append(all, makePackage(ref, p.versionOf(ref), p.evidence))
 	}
 	return all
 }
 
-func makePackage(ref packageReference, evidence []string) *languages.Package {
-	version := ref.version()
+// versionOf is the version a PackageReference resolves to: its own Version,
+// else its VersionOverride, else the centrally managed one.
+func (p *project) versionOf(ref packageReference) string {
+	if v := ref.version(); v != "" {
+		return v
+	}
+	if v := ref.versionOverride(); v != "" {
+		return v
+	}
+	return p.central[strings.ToLower(ref.Include)]
+}
+
+func makePackage(ref packageReference, version string, evidence []string) *languages.Package {
 	return &languages.Package{
 		Name:         ref.Include,
 		Version:      version,
