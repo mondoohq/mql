@@ -5026,13 +5026,15 @@ private azure.subscription.networkService.applicationGateway.requestRoutingRule 
 // Gateway IP configuration on an Application Gateway. Each entry binds the
 // gateway into a subnet, from which the gateway draws its private addresses.
 // The `subnet` reference traces the network the gateway is deployed into.
-private azure.subscription.networkService.applicationGateway.gatewayIpConfig @defaults("name subnetId") {
+private azure.subscription.networkService.applicationGateway.gatewayIpConfig @defaults("name") {
   // ARM resource ID
   id string
   // Gateway IP configuration name
   name string
   // ARM resource ID of the bound subnet
-  subnetId string
+  //
+  // Deprecated in favor of subnet.
+  subnetId @maturity("deprecated") @replaced_by("azure.subscription.networkService.applicationGateway.gatewayIpConfig.subnet") string
   // Subnet the application gateway is deployed into
   subnet() azure.subscription.networkService.subnet
 }
@@ -5040,20 +5042,24 @@ private azure.subscription.networkService.applicationGateway.gatewayIpConfig @de
 // Azure Application Gateway frontend IP configuration
 //
 // Single frontend IP configuration on an Application Gateway. A
-// configuration bound to a `subnetId` is an internal (private) frontend; one
-// with a `publicIpAddressId` is internet-facing. Use this to audit whether a
+// configuration bound to a `subnet` is an internal (private) frontend; one
+// with a `publicIpAddress` is internet-facing. Use this to audit whether a
 // gateway exposes a public entry point.
-private azure.subscription.networkService.applicationGateway.frontendIpConfig @defaults("name subnetId publicIpAddressId") {
+private azure.subscription.networkService.applicationGateway.frontendIpConfig @defaults("name privateIPAddress") {
   // ARM resource ID
   id string
   // Frontend IP configuration name
   name string
   // ARM resource ID of the bound subnet; non-empty for internal (private) frontends
-  subnetId string
+  //
+  // Deprecated in favor of subnet.
+  subnetId @maturity("deprecated") @replaced_by("azure.subscription.networkService.applicationGateway.frontendIpConfig.subnet") string
   // Bound subnet; null for internet-facing frontends that have no subnet
   subnet() azure.subscription.networkService.subnet
-  // ARM resource ID of the bound public IP address; non-empty for internet-facing frontends (cached for the typed `publicIpAddress` accessor)
-  publicIpAddressId string
+  // ARM resource ID of the bound public IP address; non-empty for internet-facing frontends
+  //
+  // Deprecated in favor of publicIpAddress.
+  publicIpAddressId @maturity("deprecated") @replaced_by("azure.subscription.networkService.applicationGateway.frontendIpConfig.publicIpAddress") string
   // Bound public IP address; null for internal frontends that have no public IP
   publicIpAddress() azure.subscription.networkService.ipAddress
   // Static private IP address, when allocation is static
@@ -8278,7 +8284,9 @@ azure.subscription.webService.appsite @defaults("id name location") {
   // Virtual network connections for the web app site
   virtualNetworkConnections() []azure.subscription.webService.appsite.virtualNetworkConnection
   // ARM resource ID of the subnet the app is regionally VNet-integrated with; empty when no regional VNet integration is configured
-  virtualNetworkSubnetId string
+  //
+  // Deprecated in favor of virtualNetworkSubnet.
+  virtualNetworkSubnetId @maturity("deprecated") @replaced_by("azure.subscription.webService.appsite.virtualNetworkSubnet") string
   // Subnet the app is regionally VNet-integrated with; null when no regional VNet integration is configured
   virtualNetworkSubnet() azure.subscription.networkService.subnet
   // Creation and last-modification provenance recorded by Azure Resource Manager
@@ -15098,7 +15106,9 @@ azure.subscription.cacheService.redisInstance @defaults("id hostName") {
   // Static IP address (when deployed in a VNet)
   staticIp string
   // Subnet ID for VNet-injected caches
-  subnetId string
+  //
+  // Deprecated in favor of subnet.
+  subnetId @maturity("deprecated") @replaced_by("azure.subscription.cacheService.redisInstance.subnet") string
   // Subnet the cache is injected into; null when the cache is not VNet-injected
   subnet() azure.subscription.networkService.subnet
   // Availability zones for the cache
@@ -16554,7 +16564,9 @@ azure.subscription.functionsService.functionApp @defaults("id name location") {
   // Whether public network access is enabled ("Enabled" or "Disabled")
   publicNetworkAccess string
   // ARM resource ID of the subnet the function app is regionally VNet-integrated with; empty when no regional VNet integration is configured
-  virtualNetworkSubnetId string
+  //
+  // Deprecated in favor of virtualNetworkSubnet.
+  virtualNetworkSubnetId @maturity("deprecated") @replaced_by("azure.subscription.functionsService.functionApp.virtualNetworkSubnet") string
   // Subnet the function app is regionally VNet-integrated with; null when no regional VNet integration is configured
   virtualNetworkSubnet() azure.subscription.networkService.subnet
   // Raw Azure Resource Manager site properties
@@ -18323,7 +18335,9 @@ azure.subscription.containerAppService.containerApp @defaults("name location pro
   // Outbound IP addresses used by the container app
   outboundIpAddresses []string
   // ARM resource ID of the parent managed environment
-  managedEnvironmentId string
+  //
+  // Deprecated in favor of managedEnvironment.
+  managedEnvironmentId @maturity("deprecated") @replaced_by("azure.subscription.containerAppService.containerApp.managedEnvironment") string
   // Parent managed environment that hosts the container app
   managedEnvironment() azure.subscription.containerAppService.managedEnvironment
   // Active revision mode ("Single" or "Multiple")
@@ -19985,19 +19999,27 @@ azure.subscription.machineLearningService.workspace @defaults("id name location 
   // Customer-managed Key Vault key encrypting workspace data (null when Microsoft-managed)
   encryptionKey() azure.subscription.keyVaultService.key
   // Resource ID of the linked Key Vault
-  keyVaultId string
+  //
+  // Deprecated in favor of keyVault.
+  keyVaultId @maturity("deprecated") @replaced_by("azure.subscription.machineLearningService.workspace.keyVault") string
   // Key Vault linked to the workspace, holding its secrets
   keyVault() azure.subscription.keyVaultService.vault
   // Resource ID of the linked Storage account
-  storageAccountId string
+  //
+  // Deprecated in favor of storageAccount.
+  storageAccountId @maturity("deprecated") @replaced_by("azure.subscription.machineLearningService.workspace.storageAccount") string
   // Storage account linked to the workspace, holding its datastores
   storageAccount() azure.subscription.storageService.account
   // Resource ID of the linked Application Insights component
-  applicationInsightsId string
+  //
+  // Deprecated in favor of applicationInsights.
+  applicationInsightsId @maturity("deprecated") @replaced_by("azure.subscription.machineLearningService.workspace.applicationInsights") string
   // Application Insights component linked to the workspace for telemetry
   applicationInsights() azure.subscription.monitorService.applicationInsight
   // Resource ID of the linked Container Registry
-  containerRegistryId string
+  //
+  // Deprecated in favor of containerRegistry.
+  containerRegistryId @maturity("deprecated") @replaced_by("azure.subscription.machineLearningService.workspace.containerRegistry") string
   // Container Registry linked to the workspace, holding its environment images
   containerRegistry() azure.subscription.containerRegistryService.registry
   // Real-time inference (online) endpoints serving models from the workspace
