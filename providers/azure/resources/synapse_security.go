@@ -551,10 +551,15 @@ func (a *mqlAzureSubscriptionSynapseServiceWorkspace) bigDataPools() ([]any, err
 	for pager.More() {
 		page, err := pager.NextPage(context.Background())
 		if err != nil {
+			// A workspace without Spark pool support answers 404 or not
+			// applicable: it has no pools, not an unreadable list.
+			if isAzureFeatureUnavailable(err) {
+				return []any{}, nil
+			}
 			return nil, err
 		}
 		for _, pool := range page.Value {
-			if pool == nil || pool.ID == nil {
+			if pool == nil || pool.ID == nil || *pool.ID == "" {
 				continue
 			}
 			r, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionSynapseServiceWorkspaceBigDataPool, synapseBigDataPoolArgs(pool))
