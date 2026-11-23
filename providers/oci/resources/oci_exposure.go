@@ -1074,3 +1074,82 @@ func adbInternetReachable(privateEndpointIp string, publicAccess bool, whitelist
 	// on Exadata Cloud@Customer with access control enabled it denies everyone.
 	return !accessControlEnabled
 }
+
+// ociSubnetEndpointExposure builds the exposure for an endpoint that sits on
+// one subnet behind a set of network security groups and listens without a
+// separately modeled listener, such as a Kubernetes API endpoint or a cache
+// cluster. It is reachable when it has a public IP and its subnet permits
+// internet ingress, routes to an internet gateway, and admits any address
+// through the network security groups or the subnet's own security lists.
+func ociSubnetEndpointExposure(
+	runtime *plugin.Runtime,
+	id string,
+	hasPublicIp bool,
+	subnet *mqlOciNetworkSubnet,
+	nsgs []any,
+	securityAttributes map[string]any,
+) (*mqlOciNetworkExposure, error) {
+	nsgInternetRules, nsgOpenRules, securityGroupAllowsIngress, err := ociCollectOpenNsgRules(nsgs)
+	if err != nil {
+		return nil, err
+	}
+	openRules := append([]any{}, nsgOpenRules...)
+	internetRules := append([]any{}, nsgInternetRules...)
+
+	gates := make([]ociSubnetGate, 0, 1)
+	hasRouteToInternet := false
+	securityListAllowsIngress := false
+	if subnet != nil {
+		prohibit := subnet.GetProhibitInternetIngress()
+		if prohibit.Error != nil {
+			return nil, prohibit.Error
+		}
+		reaches, err := ociSubnetReachesInternet(subnet)
+		if err != nil {
+			return nil, err
+		}
+		hasRouteToInternet = reaches
+
+		sls := subnet.GetSecurityLists()
+		if sls.Error != nil {
+			return nil, sls.Error
+		}
+		slInternetRules, slOpenRules, slAllows, err := ociCollectOpenSecurityListRules(sls.Data)
+		if err != nil {
+			return nil, err
+		}
+		openRules = append(openRules, slOpenRules...)
+		internetRules = append(internetRules, slInternetRules...)
+		securityListAllowsIngress = slAllows
+
+		gates = append(gates, ociSubnetGate{
+			prohibitsIngress:   prohibit.Data,
+			routesToInternet:   reaches,
+			securityListAllows: slAllows,
+		})
+	}
+
+	internetReachable := hasPublicIp && ociAnySubnetAdmitsInternet(gates, len(nsgInternetRules))
+
+	if securityAttributes == nil {
+		securityAttributes = map[string]any{}
+	}
+	res, err := CreateResource(runtime, "oci.network.exposure", ociExposureFields(
+		runtime,
+		id,
+		map[string]*llx.RawData{
+			"internetReachable":          llx.BoolData(internetReachable),
+			"hasPublicIp":                llx.BoolData(hasPublicIp),
+			"securityGroupAllowsIngress": llx.BoolData(securityGroupAllowsIngress),
+			"securityListAllowsIngress":  llx.BoolData(securityListAllowsIngress),
+			"hasRouteToInternet":         llx.BoolData(hasRouteToInternet),
+		},
+		openRules,
+		internetRules,
+		&plugin.TValue[map[string]any]{Data: securityAttributes, State: plugin.StateIsSet},
+	))
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlOciNetworkExposure), nil
+}

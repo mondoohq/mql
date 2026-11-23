@@ -6,6 +6,7 @@ package resources
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/oracle/oci-go-sdk/v65/vault"
 	"github.com/stretchr/testify/assert"
@@ -64,5 +65,56 @@ func TestOciReadSecretGeneration(t *testing.T) {
 		assert.Empty(t, g.Type)
 		assert.Empty(t, g.Template)
 		assert.Nil(t, g.PassphraseLength)
+	})
+}
+
+// decodeSecret runs a GetSecret body through the SDK's own decoder, which is
+// what turns the polymorphic secret rules into concrete types.
+func decodeSecret(t *testing.T, body string) vault.Secret {
+	t.Helper()
+	var s vault.Secret
+	require.NoError(t, json.Unmarshal([]byte(body), &s))
+	return s
+}
+
+func TestOciReadSecretRules(t *testing.T) {
+	t.Run("expiry and reuse rules", func(t *testing.T) {
+		// Synthetic: rule shapes from the Vault API reference.
+		s := decodeSecret(t, `{"id":"s","secretRules":[
+			{"ruleType":"SECRET_EXPIRY_RULE","secretVersionExpiryInterval":"P30D","timeOfAbsoluteExpiry":"2027-01-02T03:04:05Z","isSecretContentRetrievalBlockedOnExpiry":true},
+			{"ruleType":"SECRET_REUSE_RULE","isEnforcedOnDeletedSecretVersions":true}
+		]}`)
+		r := ociReadSecretRules(s.SecretRules)
+		require.NotNil(t, r.ExpiryInterval)
+		assert.Equal(t, "P30D", *r.ExpiryInterval)
+		require.NotNil(t, r.TimeOfAbsoluteExpiry)
+		assert.Equal(t, time.Date(2027, 1, 2, 3, 4, 5, 0, time.UTC), r.TimeOfAbsoluteExpiry.UTC())
+		require.NotNil(t, r.ContentRetrievalBlockedOnExpiry)
+		assert.True(t, *r.ContentRetrievalBlockedOnExpiry)
+		require.NotNil(t, r.ReuseBlockedOnDeletedVersions)
+		assert.True(t, *r.ReuseBlockedOnDeletedVersions)
+	})
+
+	t.Run("rules present with flags unset", func(t *testing.T) {
+		// Synthetic: rules that leave their flags to the service default.
+		s := decodeSecret(t, `{"id":"s","secretRules":[
+			{"ruleType":"SECRET_EXPIRY_RULE","secretVersionExpiryInterval":"P90D"},
+			{"ruleType":"SECRET_REUSE_RULE"}
+		]}`)
+		r := ociReadSecretRules(s.SecretRules)
+		assert.Nil(t, r.TimeOfAbsoluteExpiry)
+		require.NotNil(t, r.ContentRetrievalBlockedOnExpiry)
+		assert.False(t, *r.ContentRetrievalBlockedOnExpiry)
+		require.NotNil(t, r.ReuseBlockedOnDeletedVersions)
+		assert.False(t, *r.ReuseBlockedOnDeletedVersions)
+	})
+
+	t.Run("no rules", func(t *testing.T) {
+		// Synthetic: a secret created without rules.
+		r := ociReadSecretRules(decodeSecret(t, `{"id":"s"}`).SecretRules)
+		assert.Nil(t, r.ExpiryInterval)
+		assert.Nil(t, r.TimeOfAbsoluteExpiry)
+		assert.Nil(t, r.ContentRetrievalBlockedOnExpiry)
+		assert.Nil(t, r.ReuseBlockedOnDeletedVersions)
 	})
 }

@@ -4,10 +4,12 @@
 package resources
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/oracle/oci-go-sdk/v65/apigateway"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // unknownAuthPolicy is a stand-in for a future SDK authentication type the
@@ -329,4 +331,63 @@ func TestFlattenExecutionLogLevel(t *testing.T) {
 			ExecutionLog: &apigateway.ExecutionLogPolicy{LogLevel: apigateway.ExecutionLogPolicyLogLevelWarn},
 		},
 	}))
+}
+
+// decodeApiRoutes runs a deployment specification through the SDK's own
+// decoder, which is what turns the polymorphic backends and authorization
+// policies into concrete types.
+func decodeApiRoutes(t *testing.T, body string) []apigateway.ApiSpecificationRoute {
+	t.Helper()
+	var spec apigateway.ApiSpecification
+	require.NoError(t, json.Unmarshal([]byte(body), &spec))
+	return spec.Routes
+}
+
+func TestFlattenApiRoute(t *testing.T) {
+	// Synthetic: route shapes from the API Gateway deployment specification reference.
+	routes := decodeApiRoutes(t, `{"routes":[
+		{"path":"/insecure","methods":["GET","POST"],"backend":{"type":"HTTP_BACKEND","url":"https://backend.example.com","isSslVerifyDisabled":true},"requestPolicies":{"authorization":{"type":"ANONYMOUS"}}},
+		{"path":"/verified","backend":{"type":"HTTP_BACKEND","url":"https://backend.example.com"}},
+		{"path":"/scoped","methods":["GET"],"backend":{"type":"STOCK_RESPONSE_BACKEND","status":200},"requestPolicies":{"authorization":{"type":"ANY_OF","allowedScope":["read","admin"]}}},
+		{"path":"/fn","backend":{"type":"ORACLE_FUNCTIONS_BACKEND","functionId":"ocid1.fnfunc.oc1..x"},"requestPolicies":{"authorization":{"type":"AUTHENTICATION_ONLY"}}}
+	]}`)
+	require.Len(t, routes, 4)
+
+	insecure := flattenApiRoute(routes[0])
+	assert.Equal(t, "/insecure", insecure.Path)
+	assert.Equal(t, []string{"GET", "POST"}, insecure.Methods)
+	assert.Equal(t, "HTTP_BACKEND", insecure.BackendType)
+	assert.Equal(t, "https://backend.example.com", insecure.BackendURL)
+	require.NotNil(t, insecure.IsSslVerifyDisabled)
+	assert.True(t, *insecure.IsSslVerifyDisabled)
+	assert.Equal(t, "ANONYMOUS", insecure.AuthorizationType)
+
+	verified := flattenApiRoute(routes[1])
+	assert.Empty(t, verified.Methods)
+	require.NotNil(t, verified.IsSslVerifyDisabled)
+	assert.False(t, *verified.IsSslVerifyDisabled)
+	assert.Equal(t, "", verified.AuthorizationType)
+
+	scoped := flattenApiRoute(routes[2])
+	assert.Equal(t, "STOCK_RESPONSE_BACKEND", scoped.BackendType)
+	assert.Nil(t, scoped.IsSslVerifyDisabled)
+	assert.Equal(t, "ANY_OF", scoped.AuthorizationType)
+	assert.Equal(t, []string{"read", "admin"}, scoped.AllowedScopes)
+
+	fn := flattenApiRoute(routes[3])
+	assert.Equal(t, "ORACLE_FUNCTIONS_BACKEND", fn.BackendType)
+	assert.Empty(t, fn.BackendURL)
+	assert.Equal(t, "AUTHENTICATION_ONLY", fn.AuthorizationType)
+}
+
+func TestOciApiRouteID(t *testing.T) {
+	// Synthetic: two routes on one path that split the methods between them.
+	get := ociApiRouteID("dep", ociApiRoute{Path: "/a", Methods: []string{"GET"}})
+	post := ociApiRouteID("dep", ociApiRoute{Path: "/a", Methods: []string{"POST"}})
+	assert.NotEqual(t, get, post)
+	// Method order in the specification does not change the key.
+	assert.Equal(t,
+		ociApiRouteID("dep", ociApiRoute{Path: "/a", Methods: []string{"POST", "GET"}}),
+		ociApiRouteID("dep", ociApiRoute{Path: "/a", Methods: []string{"GET", "POST"}}))
+	assert.NotEqual(t, get, ociApiRouteID("other", ociApiRoute{Path: "/a", Methods: []string{"GET"}}))
 }

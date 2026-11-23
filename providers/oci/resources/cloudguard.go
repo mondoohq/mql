@@ -968,3 +968,26 @@ func (o *mqlOciCloudGuardDetectorRecipe) newDetectorConfigurations(ruleID string
 	}
 	return res, nil
 }
+
+func (o *mqlOciCloudGuard) findingsRegion() (*mqlOciRegion, error) {
+	cfg, err := o.getConfig()
+	if err != nil {
+		return nil, err
+	}
+	name := ""
+	if cfg != nil {
+		name = stringValue(cfg.ReportingRegion)
+	}
+	return resolveOciRegionByName(o.MqlRuntime, name, &o.FindingsRegion)
+}
+
+// targetCompartment resolves the monitored compartment for a target whose
+// resource type is COMPARTMENT. Other target types monitor something that is
+// not a compartment, so they report null.
+func (o *mqlOciCloudGuardTarget) targetCompartment() (*mqlOciCompartment, error) {
+	if o.TargetResourceType.Data != "COMPARTMENT" {
+		o.TargetCompartment.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return resolveOciCompartment(o.MqlRuntime, o.TargetResourceId.Data, &o.TargetCompartment)
+}

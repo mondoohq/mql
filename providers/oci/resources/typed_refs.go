@@ -766,6 +766,10 @@ func (o *mqlOciRedisCluster) compartment() (*mqlOciCompartment, error) {
 	return resolveOciCompartment(o.MqlRuntime, o.cacheCompartmentID, &o.Compartment)
 }
 
+func (o *mqlOciRedisUser) compartment() (*mqlOciCompartment, error) {
+	return resolveOciCompartment(o.MqlRuntime, o.cacheCompartmentID, &o.Compartment)
+}
+
 func (o *mqlOciDataSafeConfiguration) compartment() (*mqlOciCompartment, error) {
 	return resolveOciCompartment(o.MqlRuntime, o.cacheCompartmentID, &o.Compartment)
 }

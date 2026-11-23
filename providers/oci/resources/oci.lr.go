@@ -240,6 +240,7 @@ const (
 	ResourceOciApigateway                                                      string = "oci.apigateway"
 	ResourceOciApigatewayGateway                                               string = "oci.apigateway.gateway"
 	ResourceOciApigatewayDeployment                                            string = "oci.apigateway.deployment"
+	ResourceOciApigatewayDeploymentRoute                                       string = "oci.apigateway.deployment.route"
 	ResourceOciApigatewayCertificate                                           string = "oci.apigateway.certificate"
 	ResourceOciCertificates                                                    string = "oci.certificates"
 	ResourceOciCertificatesCertificate                                         string = "oci.certificates.certificate"
@@ -247,6 +248,7 @@ const (
 	ResourceOciCertificatesCaBundle                                            string = "oci.certificates.caBundle"
 	ResourceOciRedis                                                           string = "oci.redis"
 	ResourceOciRedisCluster                                                    string = "oci.redis.cluster"
+	ResourceOciRedisUser                                                       string = "oci.redis.user"
 	ResourceOciIntegration                                                     string = "oci.integration"
 	ResourceOciIntegrationInstance                                             string = "oci.integration.instance"
 	ResourceOciAnalytics                                                       string = "oci.analytics"
@@ -1275,6 +1277,10 @@ func init() {
 			Init:   initOciApigatewayDeployment,
 			Create: createOciApigatewayDeployment,
 		},
+		"oci.apigateway.deployment.route": {
+			// to override args, implement: initOciApigatewayDeploymentRoute(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createOciApigatewayDeploymentRoute,
+		},
 		"oci.apigateway.certificate": {
 			Init:   initOciApigatewayCertificate,
 			Create: createOciApigatewayCertificate,
@@ -1302,6 +1308,10 @@ func init() {
 		"oci.redis.cluster": {
 			Init:   initOciRedisCluster,
 			Create: createOciRedisCluster,
+		},
+		"oci.redis.user": {
+			Init:   initOciRedisUser,
+			Create: createOciRedisUser,
 		},
 		"oci.integration": {
 			// to override args, implement: initOciIntegration(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -5526,6 +5536,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"oci.cloudGuard.reportingRegion": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciCloudGuard).GetReportingRegion()).ToDataRes(types.String)
 	},
+	"oci.cloudGuard.findingsRegion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciCloudGuard).GetFindingsRegion()).ToDataRes(types.Resource("oci.region"))
+	},
 	"oci.cloudGuard.selfManageResources": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciCloudGuard).GetSelfManageResources()).ToDataRes(types.Bool)
 	},
@@ -5570,6 +5583,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"oci.cloudGuard.target.targetResourceType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciCloudGuardTarget).GetTargetResourceType()).ToDataRes(types.String)
+	},
+	"oci.cloudGuard.target.targetCompartment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciCloudGuardTarget).GetTargetCompartment()).ToDataRes(types.Resource("oci.compartment"))
 	},
 	"oci.cloudGuard.target.state": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciCloudGuardTarget).GetState()).ToDataRes(types.String)
@@ -6545,6 +6561,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"oci.vault.secret.timeOfCurrentVersionExpiry": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciVaultSecret).GetTimeOfCurrentVersionExpiry()).ToDataRes(types.Time)
+	},
+	"oci.vault.secret.currentVersionNumber": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciVaultSecret).GetCurrentVersionNumber()).ToDataRes(types.Int)
+	},
+	"oci.vault.secret.expiryInterval": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciVaultSecret).GetExpiryInterval()).ToDataRes(types.String)
+	},
+	"oci.vault.secret.timeOfAbsoluteExpiry": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciVaultSecret).GetTimeOfAbsoluteExpiry()).ToDataRes(types.Time)
+	},
+	"oci.vault.secret.isContentRetrievalBlockedOnExpiry": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciVaultSecret).GetIsContentRetrievalBlockedOnExpiry()).ToDataRes(types.Bool)
+	},
+	"oci.vault.secret.isReuseBlockedOnDeletedVersions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciVaultSecret).GetIsReuseBlockedOnDeletedVersions()).ToDataRes(types.Bool)
 	},
 	"oci.vault.secret.secretVersions": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciVaultSecret).GetSecretVersions()).ToDataRes(types.Array(types.Resource("oci.vault.secretVersion")))
@@ -8493,6 +8524,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"oci.oke.cluster.endpointSecurityGroups": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciOkeCluster).GetEndpointSecurityGroups()).ToDataRes(types.Array(types.Resource("oci.network.networkSecurityGroup")))
 	},
+	"oci.oke.cluster.exposure": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciOkeCluster).GetExposure()).ToDataRes(types.Resource("oci.network.exposure"))
+	},
 	"oci.oke.cluster.isOpenIdConnectAuthEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciOkeCluster).GetIsOpenIdConnectAuthEnabled()).ToDataRes(types.Bool)
 	},
@@ -9882,6 +9916,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"oci.apigateway.deployment.hasDynamicAuthentication": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciApigatewayDeployment).GetHasDynamicAuthentication()).ToDataRes(types.Bool)
 	},
+	"oci.apigateway.deployment.routes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciApigatewayDeployment).GetRoutes()).ToDataRes(types.Array(types.Resource("oci.apigateway.deployment.route")))
+	},
 	"oci.apigateway.deployment.created": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciApigatewayDeployment).GetCreated()).ToDataRes(types.Time)
 	},
@@ -9896,6 +9933,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"oci.apigateway.deployment.systemTags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciApigatewayDeployment).GetSystemTags()).ToDataRes(types.Map(types.String, types.Dict))
+	},
+	"oci.apigateway.deployment.route.path": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciApigatewayDeploymentRoute).GetPath()).ToDataRes(types.String)
+	},
+	"oci.apigateway.deployment.route.methods": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciApigatewayDeploymentRoute).GetMethods()).ToDataRes(types.Array(types.String))
+	},
+	"oci.apigateway.deployment.route.backendType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciApigatewayDeploymentRoute).GetBackendType()).ToDataRes(types.String)
+	},
+	"oci.apigateway.deployment.route.backendUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciApigatewayDeploymentRoute).GetBackendUrl()).ToDataRes(types.String)
+	},
+	"oci.apigateway.deployment.route.isSslVerifyDisabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciApigatewayDeploymentRoute).GetIsSslVerifyDisabled()).ToDataRes(types.Bool)
+	},
+	"oci.apigateway.deployment.route.authorizationType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciApigatewayDeploymentRoute).GetAuthorizationType()).ToDataRes(types.String)
+	},
+	"oci.apigateway.deployment.route.allowedScopes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciApigatewayDeploymentRoute).GetAllowedScopes()).ToDataRes(types.Array(types.String))
 	},
 	"oci.apigateway.certificate.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciApigatewayCertificate).GetId()).ToDataRes(types.String)
@@ -10074,6 +10132,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"oci.redis.clusters": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciRedis).GetClusters()).ToDataRes(types.Array(types.Resource("oci.redis.cluster")))
 	},
+	"oci.redis.users": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciRedis).GetUsers()).ToDataRes(types.Array(types.Resource("oci.redis.user")))
+	},
 	"oci.redis.cluster.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciRedisCluster).GetId()).ToDataRes(types.String)
 	},
@@ -10113,6 +10174,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"oci.redis.cluster.networkSecurityGroups": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciRedisCluster).GetNetworkSecurityGroups()).ToDataRes(types.Array(types.Resource("oci.network.networkSecurityGroup")))
 	},
+	"oci.redis.cluster.exposure": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciRedisCluster).GetExposure()).ToDataRes(types.Resource("oci.network.exposure"))
+	},
+	"oci.redis.cluster.appliedSecurityAttributes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciRedisCluster).GetAppliedSecurityAttributes()).ToDataRes(types.Array(types.Resource("oci.securityAttributes.applied")))
+	},
+	"oci.redis.cluster.users": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciRedisCluster).GetUsers()).ToDataRes(types.Array(types.Resource("oci.redis.user")))
+	},
 	"oci.redis.cluster.primaryFqdn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciRedisCluster).GetPrimaryFqdn()).ToDataRes(types.String)
 	},
@@ -10151,6 +10221,42 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"oci.redis.cluster.systemTags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciRedisCluster).GetSystemTags()).ToDataRes(types.Map(types.String, types.Dict))
+	},
+	"oci.redis.user.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciRedisUser).GetId()).ToDataRes(types.String)
+	},
+	"oci.redis.user.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciRedisUser).GetName()).ToDataRes(types.String)
+	},
+	"oci.redis.user.compartment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciRedisUser).GetCompartment()).ToDataRes(types.Resource("oci.compartment"))
+	},
+	"oci.redis.user.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciRedisUser).GetDescription()).ToDataRes(types.String)
+	},
+	"oci.redis.user.authenticationType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciRedisUser).GetAuthenticationType()).ToDataRes(types.String)
+	},
+	"oci.redis.user.aclString": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciRedisUser).GetAclString()).ToDataRes(types.String)
+	},
+	"oci.redis.user.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciRedisUser).GetStatus()).ToDataRes(types.String)
+	},
+	"oci.redis.user.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciRedisUser).GetState()).ToDataRes(types.String)
+	},
+	"oci.redis.user.created": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciRedisUser).GetCreated()).ToDataRes(types.Time)
+	},
+	"oci.redis.user.freeformTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciRedisUser).GetFreeformTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"oci.redis.user.definedTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciRedisUser).GetDefinedTags()).ToDataRes(types.Map(types.String, types.Map(types.String, types.String)))
+	},
+	"oci.redis.user.systemTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciRedisUser).GetSystemTags()).ToDataRes(types.Map(types.String, types.Dict))
 	},
 	"oci.integration.instances": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciIntegration).GetInstances()).ToDataRes(types.Array(types.Resource("oci.integration.instance")))
@@ -19924,6 +20030,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOciCloudGuard).ReportingRegion, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"oci.cloudGuard.findingsRegion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciCloudGuard).FindingsRegion, ok = plugin.RawToTValue[*mqlOciRegion](v.Value, v.Error)
+		return
+	},
 	"oci.cloudGuard.selfManageResources": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciCloudGuard).SelfManageResources, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
@@ -19986,6 +20096,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"oci.cloudGuard.target.targetResourceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciCloudGuardTarget).TargetResourceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.cloudGuard.target.targetCompartment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciCloudGuardTarget).TargetCompartment, ok = plugin.RawToTValue[*mqlOciCompartment](v.Value, v.Error)
 		return
 	},
 	"oci.cloudGuard.target.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -21394,6 +21508,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"oci.vault.secret.timeOfCurrentVersionExpiry": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciVaultSecret).TimeOfCurrentVersionExpiry, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"oci.vault.secret.currentVersionNumber": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciVaultSecret).CurrentVersionNumber, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"oci.vault.secret.expiryInterval": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciVaultSecret).ExpiryInterval, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.vault.secret.timeOfAbsoluteExpiry": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciVaultSecret).TimeOfAbsoluteExpiry, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"oci.vault.secret.isContentRetrievalBlockedOnExpiry": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciVaultSecret).IsContentRetrievalBlockedOnExpiry, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"oci.vault.secret.isReuseBlockedOnDeletedVersions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciVaultSecret).IsReuseBlockedOnDeletedVersions, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"oci.vault.secret.secretVersions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -24260,6 +24394,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOciOkeCluster).EndpointSecurityGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"oci.oke.cluster.exposure": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciOkeCluster).Exposure, ok = plugin.RawToTValue[*mqlOciNetworkExposure](v.Value, v.Error)
+		return
+	},
 	"oci.oke.cluster.isOpenIdConnectAuthEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciOkeCluster).IsOpenIdConnectAuthEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
@@ -26244,6 +26382,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOciApigatewayDeployment).HasDynamicAuthentication, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"oci.apigateway.deployment.routes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciApigatewayDeployment).Routes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"oci.apigateway.deployment.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciApigatewayDeployment).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
@@ -26262,6 +26404,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"oci.apigateway.deployment.systemTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciApigatewayDeployment).SystemTags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"oci.apigateway.deployment.route.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciApigatewayDeploymentRoute).__id, ok = v.Value.(string)
+		return
+	},
+	"oci.apigateway.deployment.route.path": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciApigatewayDeploymentRoute).Path, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.apigateway.deployment.route.methods": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciApigatewayDeploymentRoute).Methods, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"oci.apigateway.deployment.route.backendType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciApigatewayDeploymentRoute).BackendType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.apigateway.deployment.route.backendUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciApigatewayDeploymentRoute).BackendUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.apigateway.deployment.route.isSslVerifyDisabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciApigatewayDeploymentRoute).IsSslVerifyDisabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"oci.apigateway.deployment.route.authorizationType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciApigatewayDeploymentRoute).AuthorizationType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.apigateway.deployment.route.allowedScopes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciApigatewayDeploymentRoute).AllowedScopes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"oci.apigateway.certificate.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -26524,6 +26698,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOciRedis).Clusters, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"oci.redis.users": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciRedis).Users, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"oci.redis.cluster.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciRedisCluster).__id, ok = v.Value.(string)
 		return
@@ -26580,6 +26758,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOciRedisCluster).NetworkSecurityGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"oci.redis.cluster.exposure": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciRedisCluster).Exposure, ok = plugin.RawToTValue[*mqlOciNetworkExposure](v.Value, v.Error)
+		return
+	},
+	"oci.redis.cluster.appliedSecurityAttributes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciRedisCluster).AppliedSecurityAttributes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"oci.redis.cluster.users": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciRedisCluster).Users, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"oci.redis.cluster.primaryFqdn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciRedisCluster).PrimaryFqdn, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -26630,6 +26820,58 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"oci.redis.cluster.systemTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciRedisCluster).SystemTags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"oci.redis.user.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciRedisUser).__id, ok = v.Value.(string)
+		return
+	},
+	"oci.redis.user.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciRedisUser).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.redis.user.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciRedisUser).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.redis.user.compartment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciRedisUser).Compartment, ok = plugin.RawToTValue[*mqlOciCompartment](v.Value, v.Error)
+		return
+	},
+	"oci.redis.user.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciRedisUser).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.redis.user.authenticationType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciRedisUser).AuthenticationType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.redis.user.aclString": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciRedisUser).AclString, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.redis.user.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciRedisUser).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.redis.user.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciRedisUser).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.redis.user.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciRedisUser).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"oci.redis.user.freeformTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciRedisUser).FreeformTags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"oci.redis.user.definedTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciRedisUser).DefinedTags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"oci.redis.user.systemTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciRedisUser).SystemTags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
 	"oci.integration.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -46777,6 +47019,7 @@ type mqlOciCloudGuard struct {
 	mqlOciCloudGuardInternal
 	Status              plugin.TValue[bool]
 	ReportingRegion     plugin.TValue[string]
+	FindingsRegion      plugin.TValue[*mqlOciRegion]
 	SelfManageResources plugin.TValue[bool]
 	Targets             plugin.TValue[[]any]
 	Problems            plugin.TValue[[]any]
@@ -46835,6 +47078,22 @@ func (c *mqlOciCloudGuard) GetStatus() *plugin.TValue[bool] {
 func (c *mqlOciCloudGuard) GetReportingRegion() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.ReportingRegion, func() (string, error) {
 		return c.reportingRegion()
+	})
+}
+
+func (c *mqlOciCloudGuard) GetFindingsRegion() *plugin.TValue[*mqlOciRegion] {
+	return plugin.GetOrCompute[*mqlOciRegion](&c.FindingsRegion, func() (*mqlOciRegion, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.cloudGuard", c.__id, "findingsRegion")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciRegion), nil
+			}
+		}
+
+		return c.findingsRegion()
 	})
 }
 
@@ -46998,6 +47257,7 @@ type mqlOciCloudGuardTarget struct {
 	Compartment             plugin.TValue[*mqlOciCompartment]
 	TargetResourceId        plugin.TValue[string]
 	TargetResourceType      plugin.TValue[string]
+	TargetCompartment       plugin.TValue[*mqlOciCompartment]
 	State                   plugin.TValue[string]
 	RecipeCount             plugin.TValue[int64]
 	DetectorRecipes         plugin.TValue[[]any]
@@ -47076,6 +47336,22 @@ func (c *mqlOciCloudGuardTarget) GetTargetResourceId() *plugin.TValue[string] {
 
 func (c *mqlOciCloudGuardTarget) GetTargetResourceType() *plugin.TValue[string] {
 	return &c.TargetResourceType
+}
+
+func (c *mqlOciCloudGuardTarget) GetTargetCompartment() *plugin.TValue[*mqlOciCompartment] {
+	return plugin.GetOrCompute[*mqlOciCompartment](&c.TargetCompartment, func() (*mqlOciCompartment, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.cloudGuard.target", c.__id, "targetCompartment")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciCompartment), nil
+			}
+		}
+
+		return c.targetCompartment()
+	})
 }
 
 func (c *mqlOciCloudGuardTarget) GetState() *plugin.TValue[string] {
@@ -50232,37 +50508,42 @@ type mqlOciVaultSecret struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlOciVaultSecretInternal
-	Id                               plugin.TValue[string]
-	Name                             plugin.TValue[string]
-	Compartment                      plugin.TValue[*mqlOciCompartment]
-	Region                           plugin.TValue[*mqlOciRegion]
-	KmsVault                         plugin.TValue[*mqlOciKmsVault]
-	KmsKey                           plugin.TValue[*mqlOciKmsKey]
-	Description                      plugin.TValue[string]
-	State                            plugin.TValue[string]
-	LifecycleDetails                 plugin.TValue[string]
-	TimeOfDeletion                   plugin.TValue[*time.Time]
-	GenerationType                   plugin.TValue[string]
-	GenerationTemplate               plugin.TValue[string]
-	PassphraseLength                 plugin.TValue[int64]
-	RotationStatus                   plugin.TValue[string]
-	LastRotationTime                 plugin.TValue[*time.Time]
-	NextRotationTime                 plugin.TValue[*time.Time]
-	IsAutoGenerationEnabled          plugin.TValue[bool]
-	IsReplica                        plugin.TValue[bool]
-	IsReplicationWriteForwardEnabled plugin.TValue[bool]
-	ReplicationTargets               plugin.TValue[[]any]
-	SourceRegionName                 plugin.TValue[string]
-	SourceVault                      plugin.TValue[*mqlOciKmsVault]
-	SourceKey                        plugin.TValue[*mqlOciKmsKey]
-	RotationInterval                 plugin.TValue[string]
-	IsScheduledRotationEnabled       plugin.TValue[bool]
-	TimeOfCurrentVersionExpiry       plugin.TValue[*time.Time]
-	SecretVersions                   plugin.TValue[[]any]
-	Created                          plugin.TValue[*time.Time]
-	FreeformTags                     plugin.TValue[map[string]any]
-	DefinedTags                      plugin.TValue[map[string]any]
-	SystemTags                       plugin.TValue[map[string]any]
+	Id                                plugin.TValue[string]
+	Name                              plugin.TValue[string]
+	Compartment                       plugin.TValue[*mqlOciCompartment]
+	Region                            plugin.TValue[*mqlOciRegion]
+	KmsVault                          plugin.TValue[*mqlOciKmsVault]
+	KmsKey                            plugin.TValue[*mqlOciKmsKey]
+	Description                       plugin.TValue[string]
+	State                             plugin.TValue[string]
+	LifecycleDetails                  plugin.TValue[string]
+	TimeOfDeletion                    plugin.TValue[*time.Time]
+	GenerationType                    plugin.TValue[string]
+	GenerationTemplate                plugin.TValue[string]
+	PassphraseLength                  plugin.TValue[int64]
+	RotationStatus                    plugin.TValue[string]
+	LastRotationTime                  plugin.TValue[*time.Time]
+	NextRotationTime                  plugin.TValue[*time.Time]
+	IsAutoGenerationEnabled           plugin.TValue[bool]
+	IsReplica                         plugin.TValue[bool]
+	IsReplicationWriteForwardEnabled  plugin.TValue[bool]
+	ReplicationTargets                plugin.TValue[[]any]
+	SourceRegionName                  plugin.TValue[string]
+	SourceVault                       plugin.TValue[*mqlOciKmsVault]
+	SourceKey                         plugin.TValue[*mqlOciKmsKey]
+	RotationInterval                  plugin.TValue[string]
+	IsScheduledRotationEnabled        plugin.TValue[bool]
+	TimeOfCurrentVersionExpiry        plugin.TValue[*time.Time]
+	CurrentVersionNumber              plugin.TValue[int64]
+	ExpiryInterval                    plugin.TValue[string]
+	TimeOfAbsoluteExpiry              plugin.TValue[*time.Time]
+	IsContentRetrievalBlockedOnExpiry plugin.TValue[bool]
+	IsReuseBlockedOnDeletedVersions   plugin.TValue[bool]
+	SecretVersions                    plugin.TValue[[]any]
+	Created                           plugin.TValue[*time.Time]
+	FreeformTags                      plugin.TValue[map[string]any]
+	DefinedTags                       plugin.TValue[map[string]any]
+	SystemTags                        plugin.TValue[map[string]any]
 }
 
 // createOciVaultSecret creates a new instance of this resource
@@ -50493,6 +50774,36 @@ func (c *mqlOciVaultSecret) GetIsScheduledRotationEnabled() *plugin.TValue[bool]
 func (c *mqlOciVaultSecret) GetTimeOfCurrentVersionExpiry() *plugin.TValue[*time.Time] {
 	return plugin.GetOrCompute[*time.Time](&c.TimeOfCurrentVersionExpiry, func() (*time.Time, error) {
 		return c.timeOfCurrentVersionExpiry()
+	})
+}
+
+func (c *mqlOciVaultSecret) GetCurrentVersionNumber() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.CurrentVersionNumber, func() (int64, error) {
+		return c.currentVersionNumber()
+	})
+}
+
+func (c *mqlOciVaultSecret) GetExpiryInterval() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ExpiryInterval, func() (string, error) {
+		return c.expiryInterval()
+	})
+}
+
+func (c *mqlOciVaultSecret) GetTimeOfAbsoluteExpiry() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.TimeOfAbsoluteExpiry, func() (*time.Time, error) {
+		return c.timeOfAbsoluteExpiry()
+	})
+}
+
+func (c *mqlOciVaultSecret) GetIsContentRetrievalBlockedOnExpiry() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.IsContentRetrievalBlockedOnExpiry, func() (bool, error) {
+		return c.isContentRetrievalBlockedOnExpiry()
+	})
+}
+
+func (c *mqlOciVaultSecret) GetIsReuseBlockedOnDeletedVersions() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.IsReuseBlockedOnDeletedVersions, func() (bool, error) {
+		return c.isReuseBlockedOnDeletedVersions()
 	})
 }
 
@@ -58015,6 +58326,7 @@ type mqlOciOkeCluster struct {
 	ServiceLbSubnets               plugin.TValue[[]any]
 	EndpointSubnet                 plugin.TValue[*mqlOciNetworkSubnet]
 	EndpointSecurityGroups         plugin.TValue[[]any]
+	Exposure                       plugin.TValue[*mqlOciNetworkExposure]
 	IsOpenIdConnectAuthEnabled     plugin.TValue[bool]
 	OpenIdConnectIssuerUrl         plugin.TValue[string]
 	OpenIdConnectClientId          plugin.TValue[string]
@@ -58269,6 +58581,22 @@ func (c *mqlOciOkeCluster) GetEndpointSecurityGroups() *plugin.TValue[[]any] {
 		}
 
 		return c.endpointSecurityGroups()
+	})
+}
+
+func (c *mqlOciOkeCluster) GetExposure() *plugin.TValue[*mqlOciNetworkExposure] {
+	return plugin.GetOrCompute[*mqlOciNetworkExposure](&c.Exposure, func() (*mqlOciNetworkExposure, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.oke.cluster", c.__id, "exposure")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciNetworkExposure), nil
+			}
+		}
+
+		return c.exposure()
 	})
 }
 
@@ -63004,6 +63332,7 @@ type mqlOciApigatewayDeployment struct {
 	RateLimitPerSecond                plugin.TValue[int64]
 	RateLimitKey                      plugin.TValue[string]
 	HasDynamicAuthentication          plugin.TValue[bool]
+	Routes                            plugin.TValue[[]any]
 	Created                           plugin.TValue[*time.Time]
 	TimeUpdated                       plugin.TValue[*time.Time]
 	FreeformTags                      plugin.TValue[map[string]any]
@@ -63208,6 +63537,22 @@ func (c *mqlOciApigatewayDeployment) GetHasDynamicAuthentication() *plugin.TValu
 	})
 }
 
+func (c *mqlOciApigatewayDeployment) GetRoutes() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Routes, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.apigateway.deployment", c.__id, "routes")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.routes()
+	})
+}
+
 func (c *mqlOciApigatewayDeployment) GetCreated() *plugin.TValue[*time.Time] {
 	return &c.Created
 }
@@ -63226,6 +63571,80 @@ func (c *mqlOciApigatewayDeployment) GetDefinedTags() *plugin.TValue[map[string]
 
 func (c *mqlOciApigatewayDeployment) GetSystemTags() *plugin.TValue[map[string]any] {
 	return &c.SystemTags
+}
+
+// mqlOciApigatewayDeploymentRoute for the oci.apigateway.deployment.route resource
+type mqlOciApigatewayDeploymentRoute struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlOciApigatewayDeploymentRouteInternal it will be used here
+	Path                plugin.TValue[string]
+	Methods             plugin.TValue[[]any]
+	BackendType         plugin.TValue[string]
+	BackendUrl          plugin.TValue[string]
+	IsSslVerifyDisabled plugin.TValue[bool]
+	AuthorizationType   plugin.TValue[string]
+	AllowedScopes       plugin.TValue[[]any]
+}
+
+// createOciApigatewayDeploymentRoute creates a new instance of this resource
+func createOciApigatewayDeploymentRoute(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlOciApigatewayDeploymentRoute{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("oci.apigateway.deployment.route", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlOciApigatewayDeploymentRoute) MqlName() string {
+	return "oci.apigateway.deployment.route"
+}
+
+func (c *mqlOciApigatewayDeploymentRoute) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlOciApigatewayDeploymentRoute) GetPath() *plugin.TValue[string] {
+	return &c.Path
+}
+
+func (c *mqlOciApigatewayDeploymentRoute) GetMethods() *plugin.TValue[[]any] {
+	return &c.Methods
+}
+
+func (c *mqlOciApigatewayDeploymentRoute) GetBackendType() *plugin.TValue[string] {
+	return &c.BackendType
+}
+
+func (c *mqlOciApigatewayDeploymentRoute) GetBackendUrl() *plugin.TValue[string] {
+	return &c.BackendUrl
+}
+
+func (c *mqlOciApigatewayDeploymentRoute) GetIsSslVerifyDisabled() *plugin.TValue[bool] {
+	return &c.IsSslVerifyDisabled
+}
+
+func (c *mqlOciApigatewayDeploymentRoute) GetAuthorizationType() *plugin.TValue[string] {
+	return &c.AuthorizationType
+}
+
+func (c *mqlOciApigatewayDeploymentRoute) GetAllowedScopes() *plugin.TValue[[]any] {
+	return &c.AllowedScopes
 }
 
 // mqlOciApigatewayCertificate for the oci.apigateway.certificate resource
@@ -63864,6 +64283,7 @@ type mqlOciRedis struct {
 	__id       string
 	// optional: if you define mqlOciRedisInternal it will be used here
 	Clusters plugin.TValue[[]any]
+	Users    plugin.TValue[[]any]
 }
 
 // createOciRedis creates a new instance of this resource
@@ -63919,6 +64339,22 @@ func (c *mqlOciRedis) GetClusters() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlOciRedis) GetUsers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Users, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.redis", c.__id, "users")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.users()
+	})
+}
+
 // mqlOciRedisCluster for the oci.redis.cluster resource
 type mqlOciRedisCluster struct {
 	MqlRuntime *plugin.Runtime
@@ -63937,6 +64373,9 @@ type mqlOciRedisCluster struct {
 	ShardCount                 plugin.TValue[int64]
 	Subnet                     plugin.TValue[*mqlOciNetworkSubnet]
 	NetworkSecurityGroups      plugin.TValue[[]any]
+	Exposure                   plugin.TValue[*mqlOciNetworkExposure]
+	AppliedSecurityAttributes  plugin.TValue[[]any]
+	Users                      plugin.TValue[[]any]
 	PrimaryFqdn                plugin.TValue[string]
 	PrimaryEndpointIpAddress   plugin.TValue[string]
 	ReplicasFqdn               plugin.TValue[string]
@@ -64101,6 +64540,54 @@ func (c *mqlOciRedisCluster) GetNetworkSecurityGroups() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlOciRedisCluster) GetExposure() *plugin.TValue[*mqlOciNetworkExposure] {
+	return plugin.GetOrCompute[*mqlOciNetworkExposure](&c.Exposure, func() (*mqlOciNetworkExposure, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.redis.cluster", c.__id, "exposure")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciNetworkExposure), nil
+			}
+		}
+
+		return c.exposure()
+	})
+}
+
+func (c *mqlOciRedisCluster) GetAppliedSecurityAttributes() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AppliedSecurityAttributes, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.redis.cluster", c.__id, "appliedSecurityAttributes")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.appliedSecurityAttributes()
+	})
+}
+
+func (c *mqlOciRedisCluster) GetUsers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Users, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.redis.cluster", c.__id, "users")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.users()
+	})
+}
+
 func (c *mqlOciRedisCluster) GetPrimaryFqdn() *plugin.TValue[string] {
 	return &c.PrimaryFqdn
 }
@@ -64150,6 +64637,124 @@ func (c *mqlOciRedisCluster) GetDefinedTags() *plugin.TValue[map[string]any] {
 }
 
 func (c *mqlOciRedisCluster) GetSystemTags() *plugin.TValue[map[string]any] {
+	return &c.SystemTags
+}
+
+// mqlOciRedisUser for the oci.redis.user resource
+type mqlOciRedisUser struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlOciRedisUserInternal
+	Id                 plugin.TValue[string]
+	Name               plugin.TValue[string]
+	Compartment        plugin.TValue[*mqlOciCompartment]
+	Description        plugin.TValue[string]
+	AuthenticationType plugin.TValue[string]
+	AclString          plugin.TValue[string]
+	Status             plugin.TValue[string]
+	State              plugin.TValue[string]
+	Created            plugin.TValue[*time.Time]
+	FreeformTags       plugin.TValue[map[string]any]
+	DefinedTags        plugin.TValue[map[string]any]
+	SystemTags         plugin.TValue[map[string]any]
+}
+
+// createOciRedisUser creates a new instance of this resource
+func createOciRedisUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlOciRedisUser{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("oci.redis.user", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlOciRedisUser) MqlName() string {
+	return "oci.redis.user"
+}
+
+func (c *mqlOciRedisUser) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlOciRedisUser) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlOciRedisUser) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlOciRedisUser) GetCompartment() *plugin.TValue[*mqlOciCompartment] {
+	return plugin.GetOrCompute[*mqlOciCompartment](&c.Compartment, func() (*mqlOciCompartment, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.redis.user", c.__id, "compartment")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciCompartment), nil
+			}
+		}
+
+		return c.compartment()
+	})
+}
+
+func (c *mqlOciRedisUser) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlOciRedisUser) GetAuthenticationType() *plugin.TValue[string] {
+	return &c.AuthenticationType
+}
+
+func (c *mqlOciRedisUser) GetAclString() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.AclString, func() (string, error) {
+		return c.aclString()
+	})
+}
+
+func (c *mqlOciRedisUser) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlOciRedisUser) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlOciRedisUser) GetCreated() *plugin.TValue[*time.Time] {
+	return &c.Created
+}
+
+func (c *mqlOciRedisUser) GetFreeformTags() *plugin.TValue[map[string]any] {
+	return &c.FreeformTags
+}
+
+func (c *mqlOciRedisUser) GetDefinedTags() *plugin.TValue[map[string]any] {
+	return &c.DefinedTags
+}
+
+func (c *mqlOciRedisUser) GetSystemTags() *plugin.TValue[map[string]any] {
 	return &c.SystemTags
 }
 

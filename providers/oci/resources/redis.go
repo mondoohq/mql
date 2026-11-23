@@ -98,6 +98,7 @@ func (o *mqlOciRedis) clusters() ([]any, error) {
 				mqlClusterTyped.cacheNsgIDs = c.NsgIds
 				mqlClusterTyped.cacheRegion = region
 				mqlClusterTyped.cachePrimaryClusterID = stringValue(c.PrimaryClusterId)
+				mqlClusterTyped.cacheSecurityAttributes = definedTagsToAny(c.SecurityAttributes)
 				res = append(res, mqlClusterTyped)
 			}
 
@@ -111,6 +112,10 @@ type mqlOciRedisClusterInternal struct {
 	cacheNsgIDs           []string
 	cacheRegion           string
 	cachePrimaryClusterID string
+	// cacheSecurityAttributes holds the Zero Trust Packet Routing attributes
+	// from the listing, in the namespace-keyed shape the applied-attribute
+	// resolver and the exposure take.
+	cacheSecurityAttributes map[string]any
 }
 
 // redisClusterRole maps the cross-region replication role to a nullable
@@ -227,4 +232,171 @@ func (o *mqlOciRedisCluster) networkSecurityGroups() ([]any, error) {
 
 func (o *mqlOciRedisCluster) region() (*mqlOciRegion, error) {
 	return resolveOciRegionByKey(o.MqlRuntime, o.cacheRegion, &o.Region)
+}
+
+func (o *mqlOciRedisCluster) appliedSecurityAttributes() ([]any, error) {
+	return ociAppliedSecurityAttributes(o.MqlRuntime, o.Id.Data, o.cacheSecurityAttributes)
+}
+
+// exposure breaks down whether the cluster's endpoints are reachable from the
+// internet. OCI Cache gives a cluster private endpoint addresses only, so
+// hasPublicIp is false and so is internetReachable; the subnet, security list
+// and network security group parts are still reported.
+func (o *mqlOciRedisCluster) exposure() (*mqlOciNetworkExposure, error) {
+	subnet := o.GetSubnet()
+	if subnet.Error != nil {
+		return nil, subnet.Error
+	}
+	nsgs := o.GetNetworkSecurityGroups()
+	if nsgs.Error != nil {
+		return nil, nsgs.Error
+	}
+	return ociSubnetEndpointExposure(o.MqlRuntime,
+		"oci.redis.cluster/"+o.Id.Data+"/exposure",
+		false, subnet.Data, nsgs.Data, o.cacheSecurityAttributes)
+}
+
+// users lists the cache users attached to the cluster. The attachment call
+// returns only user OCIDs, which are resolved against the cache user listing
+// rather than read one by one.
+func (o *mqlOciRedisCluster) users() ([]any, error) {
+	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
+	svc, err := conn.RedisClusterClient(o.cacheRegion)
+	if err != nil {
+		return nil, err
+	}
+
+	attached, err := ociPaginate(context.Background(), func(ctx context.Context, page *string) ([]redis.AttachedOciCacheUser, *string, error) {
+		response, err := svc.ListAttachedOciCacheUsers(ctx, redis.ListAttachedOciCacheUsersRequest{
+			RedisClusterId: new(o.Id.Data),
+			Page:           page,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		return response.Items, response.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	res := make([]any, 0, len(attached))
+	for _, a := range attached {
+		id := stringValue(a.OciCacheUserId)
+		if id == "" {
+			continue
+		}
+		user, err := NewResource(o.MqlRuntime, "oci.redis.user", map[string]*llx.RawData{
+			"id": llx.StringData(id),
+		})
+		if err != nil {
+			// A user in a compartment the scan does not reach cannot be
+			// resolved; keep the ones that can.
+			log.Debug().Err(err).Str("user", id).Msg("skipping unresolvable oci cache user")
+			continue
+		}
+		res = append(res, user)
+	}
+	return res, nil
+}
+
+func (o *mqlOciRedis) users() ([]any, error) {
+	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
+
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			svc, err := conn.OciCacheUserClient(region)
+			if err != nil {
+				return nil, err
+			}
+
+			users, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]redis.OciCacheUserSummary, *string, error) {
+				response, err := svc.ListOciCacheUsers(ctx, redis.ListOciCacheUsersRequest{
+					CompartmentId: new(compartmentID),
+					Page:          page,
+				})
+				if err != nil {
+					return nil, nil, err
+				}
+				return response.Items, response.OpcNextPage, nil
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			res := make([]any, 0, len(users))
+			for i := range users {
+				u := users[i]
+				if conn.Filters.IsFilteredOutByTags(u.FreeformTags, u.DefinedTags) {
+					continue
+				}
+				mqlUser, err := createOciResourceInCompartment(o.MqlRuntime, "oci.redis.user", stringValue(u.CompartmentId), map[string]*llx.RawData{
+					"id":                 llx.StringDataPtr(u.Id),
+					"name":               llx.StringDataPtr(u.Name),
+					"description":        llx.StringDataPtr(u.Description),
+					"authenticationType": llx.StringData(string(u.AuthenticationType)),
+					"status":             llx.StringData(string(u.Status)),
+					"state":              llx.StringData(string(u.LifecycleState)),
+					"created":            sdkTimeData(u.TimeCreated),
+					"freeformTags":       llx.MapData(strMapToAny(u.FreeformTags), types.String),
+					"definedTags":        llx.MapData(definedTagsToAny(u.DefinedTags), types.Any),
+					"systemTags":         llx.MapData(definedTagsToAny(u.SystemTags), types.Dict),
+				})
+				if err != nil {
+					return nil, err
+				}
+				typed := mqlUser.(*mqlOciRedisUser)
+				typed.cacheRegion = region
+				res = append(res, typed)
+			}
+			return res, nil
+		})
+}
+
+type mqlOciRedisUserInternal struct {
+	ociCompartmentRef
+	cacheRegion string
+	detail      ociRetryLazy[*redis.OciCacheUser]
+}
+
+func (o *mqlOciRedisUser) id() (string, error) {
+	return "oci.redis.user/" + o.Id.Data, nil
+}
+
+func initOciRedisUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	id, resolve := ociInitArgs(args)
+	if !resolve {
+		return args, nil, nil
+	}
+	items, err := ociServiceCollection(runtime, "oci.redis", func(r plugin.Resource) *plugin.TValue[[]any] {
+		return r.(*mqlOciRedis).GetUsers()
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return ociResolveByID(args, "oci.redis.user", id, items)
+}
+
+// aclString reads the user's access control list, which only the detail call
+// returns. The detail also carries the password hashes of a PASSWORD user;
+// those are never read out of it.
+func (o *mqlOciRedisUser) aclString() (string, error) {
+	u, err := o.detail.get(func() (*redis.OciCacheUser, error) {
+		conn := o.MqlRuntime.Connection.(*connection.OciConnection)
+		svc, err := conn.OciCacheUserClient(o.cacheRegion)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := svc.GetOciCacheUser(context.Background(), redis.GetOciCacheUserRequest{
+			OciCacheUserId: new(o.Id.Data),
+		})
+		if err != nil {
+			return nil, err
+		}
+		return &resp.OciCacheUser, nil
+	})
+	if err != nil || u == nil {
+		return "", err
+	}
+	return stringValue(u.AclString), nil
 }
