@@ -244,6 +244,12 @@ func (o *mqlOciRedisCluster) appliedSecurityAttributes() ([]any, error) {
 // hasPublicIp is false and so is internetReachable; the subnet, security list
 // and network security group parts are still reported.
 func (o *mqlOciRedisCluster) exposure() (*mqlOciNetworkExposure, error) {
+	// A DELETED cluster stays in the listing for a while but has no
+	// endpoints left to expose, and its subnet is usually gone with it.
+	if o.State.Data == string(redis.RedisClusterLifecycleStateDeleted) {
+		o.Exposure.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
 	subnet := o.GetSubnet()
 	if subnet.Error != nil {
 		return nil, subnet.Error

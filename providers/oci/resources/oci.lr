@@ -9935,7 +9935,7 @@ private oci.redis.cluster @defaults("name softwareVersion state") {
   //
   // OCI Cache endpoints carry only private addresses, so internetReachable is
   // false; the breakdown reports which rules would admit traffic from any
-  // address.
+  // address. Null for a DELETED cluster.
   exposure() oci.network.exposure
   // Security attributes applied to this cluster, resolved
   //
