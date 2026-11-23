@@ -316,3 +316,51 @@ func TestVolumeAttachedInstanceIds(t *testing.T) {
 	})
 	assert.Equal(t, []string{"i-0aaa", "i-0bbb"}, got)
 }
+
+// Synthetic: snapshot associated KMS keys; no target showed this.
+func TestAssociatedKmsKeyArns(t *testing.T) {
+	got := associatedKmsKeyArns([]ec2types.AssociatedKmsKey{
+		{KmsKeyId: aws.String("arn:aws:kms:us-east-1:123456789012:key/aaaa")},
+		{KmsKeyId: nil},
+		{KmsKeyId: aws.String("")},
+		{KmsKeyId: aws.String("arn:aws:kms:us-east-1:123456789012:key/bbbb")},
+	})
+	assert.Equal(t, []string{
+		"arn:aws:kms:us-east-1:123456789012:key/aaaa",
+		"arn:aws:kms:us-east-1:123456789012:key/bbbb",
+	}, got)
+	assert.Empty(t, associatedKmsKeyArns(nil))
+}
+
+// Synthetic: VPN tunnel additional key exchange rounds; no target showed this.
+func TestNewMqlVpnAdditionalKeyExchanges(t *testing.T) {
+	rounds, err := newMqlVpnAdditionalKeyExchanges(testRuntime(), "vpn-1/tunnelOption/0/1.2.3.4/phase1", []ec2types.VpnAdditionalKeyExchange{
+		{
+			AdditionalKeyExchangeRound: aws.Int32(1),
+			KeyExchangeMethods:         []ec2types.AdditionalKeyExchangeMethodsListValue{{Value: aws.Int32(36)}, {Value: aws.Int32(37)}},
+			Requirement:                ec2types.AdditionalKeyExchangeRequirementRequired,
+		},
+		{
+			AdditionalKeyExchangeRound: aws.Int32(2),
+			KeyExchangeMethods:         []ec2types.AdditionalKeyExchangeMethodsListValue{{Value: aws.Int32(37)}},
+			Requirement:                ec2types.AdditionalKeyExchangeRequirementOptional,
+		},
+	})
+	require.NoError(t, err)
+	require.Len(t, rounds, 2)
+	r1 := rounds[0].(*mqlAwsEc2VpnconnectionTunnelOptionAdditionalKeyExchange)
+	r2 := rounds[1].(*mqlAwsEc2VpnconnectionTunnelOptionAdditionalKeyExchange)
+	assert.NotEqual(t, r1.__id, r2.__id)
+	assert.Equal(t, int64(1), r1.Round.Data)
+	assert.Equal(t, []any{int64(36), int64(37)}, r1.KeyExchangeMethods.Data)
+	assert.Equal(t, "required", r1.Requirement.Data)
+	assert.Equal(t, int64(2), r2.Round.Data)
+	assert.Equal(t, "optional", r2.Requirement.Data)
+
+	// The same round numbers in the other phase must not collide with phase 1.
+	phase2, err := newMqlVpnAdditionalKeyExchanges(testRuntime(), "vpn-1/tunnelOption/0/1.2.3.4/phase2", []ec2types.VpnAdditionalKeyExchange{
+		{AdditionalKeyExchangeRound: aws.Int32(1), Requirement: ec2types.AdditionalKeyExchangeRequirementOptional},
+	})
+	require.NoError(t, err)
+	assert.NotEqual(t, r1.__id, phase2[0].(*mqlAwsEc2VpnconnectionTunnelOptionAdditionalKeyExchange).__id)
+}

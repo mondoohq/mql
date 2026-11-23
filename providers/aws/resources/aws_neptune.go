@@ -143,6 +143,7 @@ func newMqlAwsNeptuneCluster(runtime *plugin.Runtime, region string, accountID s
 			"copyTagsToSnapshot":               llx.BoolDataPtr(cluster.CopyTagsToSnapshot),
 			"serverlessV2MinCapacity":          llx.FloatDataPtr(serverlessMin),
 			"serverlessV2MaxCapacity":          llx.FloatDataPtr(serverlessMax),
+			"serverlessV2PlatformVersion":      llx.StringDataPtr(cluster.ServerlessV2PlatformVersion),
 		})
 	if err != nil {
 		return nil, err

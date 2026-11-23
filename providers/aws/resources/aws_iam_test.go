@@ -138,3 +138,35 @@ func TestVirtualMfaDeviceArgsUserArn(t *testing.T) {
 		assert.Nil(t, args["userArn"].Value)
 	})
 }
+
+// Synthetic: SAML key hash entries; no target showed this.
+func TestSamlKeyHashesToMap(t *testing.T) {
+	t.Run("hashes are grouped by issuer", func(t *testing.T) {
+		got := samlKeyHashesToMap([]iamtypes.SAMLKeyHashEntry{
+			{IssuerURL: aws.String("https://idp-a.example.com"), KeyHashes: []string{"h1", "h2"}},
+			{IssuerURL: aws.String("https://idp-b.example.com"), KeyHashes: []string{"h3"}},
+			{IssuerURL: aws.String("https://idp-a.example.com"), KeyHashes: []string{"h4"}},
+		})
+		assert.Equal(t, map[string]any{
+			"https://idp-a.example.com": []any{"h1", "h2", "h4"},
+			"https://idp-b.example.com": []any{"h3"},
+		}, got)
+	})
+
+	t.Run("no entries is an empty map", func(t *testing.T) {
+		assert.Empty(t, samlKeyHashesToMap(nil))
+	})
+}
+
+// Synthetic: context provider key definitions; no target showed this.
+func TestContextProviderKeyMappings(t *testing.T) {
+	got := contextProviderKeyMappings([]iamtypes.ContextProviderKeyDefinition{
+		{SourceKey: aws.String("email"), TargetKey: aws.String("user_email")},
+		{SourceKey: aws.String("dept")},
+		{TargetKey: aws.String("orphan")},
+	})
+	assert.Equal(t, map[string]any{
+		"email": "user_email",
+		"dept":  "",
+	}, got)
+}

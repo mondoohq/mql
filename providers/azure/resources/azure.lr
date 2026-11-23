@@ -3014,6 +3014,11 @@ azure.subscription.networkService.firewall @defaults("id name location") {
   //
   // Null for a firewall in a virtual network.
   hubPrivateIpAddress string
+  // TCP idle timeout, in minutes
+  //
+  // How long the firewall keeps an idle TCP flow open before dropping it,
+  // from 4 to 64. Null when the firewall does not report a custom value.
+  tcpIdleTimeoutInMinutes int
 }
 
 // Azure network firewall IP configuration
@@ -4317,6 +4322,10 @@ azure.subscription.networkService.interface @defaults("name location properties.
   migrationPhase string
   // Immutable GUID Azure assigns to the network interface
   resourceGuid string
+  // Index of the physical network adapter the interface is placed on
+  //
+  // Null when the interface does not report one.
+  networkAdapterIndex int
   // Network security group attached to the NIC; null when the NIC inherits NSG enforcement from its subnet only
   networkSecurityGroup() azure.subscription.networkService.securityGroup
   // Custom DNS servers configured on the network interface (overrides VNet-level DNS); empty when the NIC inherits VNet DNS
@@ -5021,6 +5030,16 @@ azure.subscription.networkService.applicationGateway @defaults("id name location
   backendAddressPools() []azure.subscription.networkService.applicationGateway.backendAddressPool
   // Request routing rules that bind each listener to its backend
   requestRoutingRules() []azure.subscription.networkService.applicationGateway.requestRoutingRule
+  // Deployment tier of the gateway
+  //
+  // For example Standard, Accelerated, Elastic, or NetworkIsolated. Applies
+  // only to the Standard_v2 and WAF_v2 SKUs. Null when the gateway does not
+  // report a tier.
+  deploymentTier string
+  // Whether the gateway runs on confidential compute
+  //
+  // Null when the gateway does not report the setting.
+  confidentialComputeEnabled bool
 }
 
 // Azure Application Gateway backend address pool
@@ -6860,6 +6879,18 @@ azure.subscription.networkService.virtualAppliance @defaults("id name location")
   migrationType string
   // Virtual hub the appliance is deployed in
   virtualHub() azure.subscription.networkService.virtualHub
+  // Idle timeout of the appliance's internal load balancer, in minutes
+  //
+  // Applies to a managed appliance. Null when no load balancer configuration
+  // is set, in which case Azure uses 5 minutes.
+  loadBalancerIdleTimeoutInMinutes int
+  // Load distribution policy of the appliance's internal load balancer
+  //
+  // For example Default (five-tuple hash), SourceIP (source and destination
+  // IP), or SourceIPProtocol (source and destination IP plus protocol).
+  // SourceIP keeps a client on one appliance instance. Null when no load
+  // balancer configuration is set, in which case Azure uses Default.
+  loadBalancerDistribution string
 }
 
 // Azure virtual network appliance
@@ -11502,6 +11533,12 @@ private azure.subscription.keyVaultService.key @defaults("kid keyName") {
   keySize() int
   // Elliptic curve name for EC keys (P-256, P-256K, P-384, P-521)
   curveName() string
+  // Identifier of the key in an external key manager
+  //
+  // Set when the key material is held outside Azure in an external key
+  // manager and Key Vault only brokers access to it. Null for a key whose
+  // material Key Vault or its HSM holds.
+  externalKeyId() string
   // Permitted key operations (sign, verify, encrypt, decrypt, wrapKey, unwrapKey, import)
   keyOps() []string
   // Key name
@@ -19700,6 +19737,11 @@ azure.subscription.searchService.service @defaults("id name location publicNetwo
   computeType string
   // Availability of semantic search ("disabled", "free", or "standard")
   semanticSearch string
+  // Billing plan for agentic knowledge retrieval
+  //
+  // For example free or standard. Null when knowledge retrieval is not
+  // configured on the service.
+  knowledgeRetrieval string
   // Whether a service upgrade is available ("available" or "notAvailable")
   upgradeAvailable string
   // When the service was last upgraded
@@ -21392,7 +21434,12 @@ private azure.subscription.cognitiveServicesService.account.raiPolicy @defaults(
   // Custom blocklist references. Each entry has {blocklistName, source, blocking}.
   customBlocklists []dict
   // Custom RAI topic references attached to the policy
-  customTopics []azure.subscription.cognitiveServicesService.account.raiPolicy.topicRef
+  //
+  // Deprecated, please use raiTopics on the account. Azure stops reporting the
+  // topics a policy applies from api-version 2026-11-01 on, so this list cannot
+  // be read once the provider moves to that version. The account's raiTopics
+  // lists every custom topic but not which policy applies it.
+  customTopics @maturity("deprecated") []azure.subscription.cognitiveServicesService.account.raiPolicy.topicRef
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
 }
@@ -23630,6 +23677,16 @@ azure.subscription.netAppService.account.capacityPool.volume @defaults("id name 
   smbAccessBasedEnumeration string
   // SMB non-browsable state ("Enabled" or "Disabled")
   smbNonBrowsable string
+  // SMB opportunistic locks state ("Enabled" or "Disabled")
+  //
+  // Applies to SMB and dual-protocol volumes. Null when the volume does not
+  // report the setting.
+  smbOplocks string
+  // Type of LDAP server the volume uses
+  //
+  // For example ActiveDirectory or OpenLdap. Applies when ldapEnabled is true.
+  // Null when the volume does not report one.
+  ldapServerType string
   // Whether the .snapshot directory is visible to clients
   snapshotDirectoryVisible bool
   // Whether cool access tiering is enabled on the volume

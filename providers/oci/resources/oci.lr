@@ -5873,6 +5873,17 @@ private oci.loadBalancer.healthChecker @defaults("protocol port urlPath") {
   // use it, so a backend whose certificate has expired or been replaced still
   // reports healthy.
   forcePlainText bool
+  // Whether backends set their own weight through the probe response
+  //
+  // When true, an HTTP probe reads the `X-Dynamic-Backend-Weight` header from
+  // each backend's reply and uses it as that backend's weight, so a backend
+  // can shift traffic toward or away from itself. Has no effect on a TCP probe.
+  dynamicBackendWeightEnabled bool
+  // Weight applied when a backend's probe reply carries no valid weight header
+  //
+  // Used only when dynamicBackendWeightEnabled is true. An integer from 1
+  // through 100.
+  defaultWeight int
 }
 
 // Backend server in an Oracle Cloud Infrastructure (OCI) load balancer backend set
@@ -8888,6 +8899,19 @@ private oci.database.autonomousDatabase.consoleUrls @defaults("sqlDevWebUrl apex
   databaseTransformsUrl string
   // Spatial Studio URL
   spatialStudioUrl string
+  // Model Context Protocol (MCP) server URL
+  //
+  // The endpoint AI agents call to run tools against the database. Null on a
+  // database that does not publish one. On publicManagementUrls a non-null
+  // value means the MCP server answers from outside the tenancy's network.
+  mcpUrl string
+  // Agent-to-Agent (A2A) server URL
+  //
+  // The endpoint other AI agents use to delegate tasks to the database's
+  // agents. Null on a database that does not publish one. On
+  // publicManagementUrls a non-null value means the A2A server answers from
+  // outside the tenancy's network.
+  a2aUrl string
 }
 
 // Oracle Cloud Infrastructure (OCI) database backup (for VM/BM databases)

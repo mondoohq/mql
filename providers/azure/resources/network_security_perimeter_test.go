@@ -11,7 +11,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices/v3"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/search/armsearch"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/search/armsearch/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 

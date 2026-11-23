@@ -118,3 +118,19 @@ func TestAnyStrings(t *testing.T) {
 	assert.Equal(t, []string{"a", "b"}, anyStrings([]any{"a", 1, nil, "b"}))
 	assert.Equal(t, []string{}, anyStrings(nil))
 }
+
+func TestKeyBundleExternalKeyID(t *testing.T) {
+	// Synthetic: key held by an external key manager; no live target showed this.
+	ext := "ext-key-01"
+	got := keyBundleExternalKeyID(&azkeys.KeyBundle{Attributes: &azkeys.KeyAttributes{ExternalKey: &azkeys.ExternalKey{ID: &ext}}})
+	require.NotNil(t, got)
+	assert.Equal(t, "ext-key-01", *got)
+
+	// Synthetic: absent at every level reads as null, not an empty string.
+	empty := ""
+	assert.Nil(t, keyBundleExternalKeyID(nil))
+	assert.Nil(t, keyBundleExternalKeyID(&azkeys.KeyBundle{}))
+	assert.Nil(t, keyBundleExternalKeyID(&azkeys.KeyBundle{Attributes: &azkeys.KeyAttributes{}}))
+	assert.Nil(t, keyBundleExternalKeyID(&azkeys.KeyBundle{Attributes: &azkeys.KeyAttributes{ExternalKey: &azkeys.ExternalKey{}}}))
+	assert.Nil(t, keyBundleExternalKeyID(&azkeys.KeyBundle{Attributes: &azkeys.KeyAttributes{ExternalKey: &azkeys.ExternalKey{ID: &empty}}}))
+}

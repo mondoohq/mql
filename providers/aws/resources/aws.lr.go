@@ -30,6 +30,7 @@ const (
 	ResourceAwsOrganizationDelegatedService                                     string = "aws.organization.delegatedService"
 	ResourceAwsOrganizationOrganizationalUnit                                   string = "aws.organization.organizationalUnit"
 	ResourceAwsVpc                                                              string = "aws.vpc"
+	ResourceAwsVpcNetworkFirewallAssociation                                    string = "aws.vpc.networkFirewallAssociation"
 	ResourceAwsVpcEncryptionControl                                             string = "aws.vpc.encryptionControl"
 	ResourceAwsVpcRoutetable                                                    string = "aws.vpc.routetable"
 	ResourceAwsVpcRoutetableRoute                                               string = "aws.vpc.routetable.route"
@@ -123,6 +124,7 @@ const (
 	ResourceAwsIamVirtualmfadevice                                              string = "aws.iam.virtualmfadevice"
 	ResourceAwsIamSamlProvider                                                  string = "aws.iam.samlProvider"
 	ResourceAwsIamOidcProvider                                                  string = "aws.iam.oidcProvider"
+	ResourceAwsIamContextProvider                                               string = "aws.iam.contextProvider"
 	ResourceAwsIamAccessAnalyzer                                                string = "aws.iam.accessAnalyzer"
 	ResourceAwsIamAccessAnalyzerAnalyzer                                        string = "aws.iam.accessAnalyzer.analyzer"
 	ResourceAwsIamAccessAnalyzerArchiveRule                                     string = "aws.iam.accessAnalyzer.archiveRule"
@@ -249,6 +251,7 @@ const (
 	ResourceAwsElb                                                              string = "aws.elb"
 	ResourceAwsElbSslPolicy                                                     string = "aws.elb.sslPolicy"
 	ResourceAwsElbMutualAuthentication                                          string = "aws.elb.mutualAuthentication"
+	ResourceAwsElbMutualAuthenticationIdentityFilter                            string = "aws.elb.mutualAuthentication.identityFilter"
 	ResourceAwsElbTruststore                                                    string = "aws.elb.truststore"
 	ResourceAwsElbTargetgroup                                                   string = "aws.elb.targetgroup"
 	ResourceAwsElbTargetgroupAttributes                                         string = "aws.elb.targetgroup.attributes"
@@ -639,6 +642,7 @@ const (
 	ResourceAwsEc2Vpnconnection                                                 string = "aws.ec2.vpnconnection"
 	ResourceAwsEc2Vgwtelemetry                                                  string = "aws.ec2.vgwtelemetry"
 	ResourceAwsEc2VpnconnectionTunnelOption                                     string = "aws.ec2.vpnconnection.tunnelOption"
+	ResourceAwsEc2VpnconnectionTunnelOptionAdditionalKeyExchange                string = "aws.ec2.vpnconnection.tunnelOption.additionalKeyExchange"
 	ResourceAwsEc2Internetgateway                                               string = "aws.ec2.internetgateway"
 	ResourceAwsEc2Transitgateway                                                string = "aws.ec2.transitgateway"
 	ResourceAwsEc2TransitgatewayAttachment                                      string = "aws.ec2.transitgateway.attachment"
@@ -769,6 +773,7 @@ const (
 	ResourceAwsAppstreamStack                                                   string = "aws.appstream.stack"
 	ResourceAwsAppstreamStackContentRedirection                                 string = "aws.appstream.stack.contentRedirection"
 	ResourceAwsAppstreamImageBuilder                                            string = "aws.appstream.imageBuilder"
+	ResourceAwsAppstreamImageBuilderAgentAccessConfig                           string = "aws.appstream.imageBuilder.agentAccessConfig"
 	ResourceAwsAppstreamApplication                                             string = "aws.appstream.application"
 	ResourceAwsAppstreamImage                                                   string = "aws.appstream.image"
 	ResourceAwsAppstreamUser                                                    string = "aws.appstream.user"
@@ -1162,6 +1167,10 @@ func init() {
 			Init:   initAwsVpc,
 			Create: createAwsVpc,
 		},
+		"aws.vpc.networkFirewallAssociation": {
+			// to override args, implement: initAwsVpcNetworkFirewallAssociation(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsVpcNetworkFirewallAssociation,
+		},
 		"aws.vpc.encryptionControl": {
 			Init:   initAwsVpcEncryptionControl,
 			Create: createAwsVpcEncryptionControl,
@@ -1533,6 +1542,10 @@ func init() {
 		"aws.iam.oidcProvider": {
 			// to override args, implement: initAwsIamOidcProvider(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAwsIamOidcProvider,
+		},
+		"aws.iam.contextProvider": {
+			// to override args, implement: initAwsIamContextProvider(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsIamContextProvider,
 		},
 		"aws.iam.accessAnalyzer": {
 			// to override args, implement: initAwsIamAccessAnalyzer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -2037,6 +2050,10 @@ func init() {
 		"aws.elb.mutualAuthentication": {
 			// to override args, implement: initAwsElbMutualAuthentication(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAwsElbMutualAuthentication,
+		},
+		"aws.elb.mutualAuthentication.identityFilter": {
+			// to override args, implement: initAwsElbMutualAuthenticationIdentityFilter(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsElbMutualAuthenticationIdentityFilter,
 		},
 		"aws.elb.truststore": {
 			// to override args, implement: initAwsElbTruststore(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -3598,6 +3615,10 @@ func init() {
 			// to override args, implement: initAwsEc2VpnconnectionTunnelOption(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAwsEc2VpnconnectionTunnelOption,
 		},
+		"aws.ec2.vpnconnection.tunnelOption.additionalKeyExchange": {
+			// to override args, implement: initAwsEc2VpnconnectionTunnelOptionAdditionalKeyExchange(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsEc2VpnconnectionTunnelOptionAdditionalKeyExchange,
+		},
 		"aws.ec2.internetgateway": {
 			Init:   initAwsEc2Internetgateway,
 			Create: createAwsEc2Internetgateway,
@@ -4117,6 +4138,10 @@ func init() {
 		"aws.appstream.imageBuilder": {
 			// to override args, implement: initAwsAppstreamImageBuilder(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAwsAppstreamImageBuilder,
+		},
+		"aws.appstream.imageBuilder.agentAccessConfig": {
+			// to override args, implement: initAwsAppstreamImageBuilderAgentAccessConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsAppstreamImageBuilderAgentAccessConfig,
 		},
 		"aws.appstream.application": {
 			// to override args, implement: initAwsAppstreamApplication(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -5939,6 +5964,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.vpc.encryptionControl": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsVpc).GetEncryptionControl()).ToDataRes(types.Resource("aws.vpc.encryptionControl"))
 	},
+	"aws.vpc.networkFirewallAssociations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsVpc).GetNetworkFirewallAssociations()).ToDataRes(types.Array(types.Resource("aws.vpc.networkFirewallAssociation")))
+	},
+	"aws.vpc.networkFirewallAssociation.firewall": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsVpcNetworkFirewallAssociation).GetFirewall()).ToDataRes(types.Resource("aws.networkfirewall.firewall"))
+	},
+	"aws.vpc.networkFirewallAssociation.mode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsVpcNetworkFirewallAssociation).GetMode()).ToDataRes(types.String)
+	},
+	"aws.vpc.networkFirewallAssociation.onboardingStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsVpcNetworkFirewallAssociation).GetOnboardingStatus()).ToDataRes(types.String)
+	},
 	"aws.vpc.encryptionControl.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsVpcEncryptionControl).GetId()).ToDataRes(types.String)
 	},
@@ -6032,6 +6069,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.vpc.routetable.route.state": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsVpcRoutetableRoute).GetState()).ToDataRes(types.String)
 	},
+	"aws.vpc.routetable.route.igwFirewall": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsVpcRoutetableRoute).GetIgwFirewall()).ToDataRes(types.Resource("aws.networkfirewall.firewall"))
+	},
+	"aws.vpc.routetable.route.igwFirewallStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsVpcRoutetableRoute).GetIgwFirewallStatus()).ToDataRes(types.String)
+	},
 	"aws.vpc.routetable.association.routeTableAssociationId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsVpcRoutetableAssociation).GetRouteTableAssociationId()).ToDataRes(types.String)
 	},
@@ -6118,6 +6161,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.vpc.subnet.vpc": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsVpcSubnet).GetVpc()).ToDataRes(types.Resource("aws.vpc"))
+	},
+	"aws.vpc.subnet.networkFirewallConnectivityType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsVpcSubnet).GetNetworkFirewallConnectivityType()).ToDataRes(types.String)
 	},
 	"aws.vpc.endpoint.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsVpcEndpoint).GetId()).ToDataRes(types.String)
@@ -6310,6 +6356,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.waf.acl.labelNamespace": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsWafAcl).GetLabelNamespace()).ToDataRes(types.String)
+	},
+	"aws.waf.acl.analyticsMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsWafAcl).GetAnalyticsMode()).ToDataRes(types.String)
 	},
 	"aws.waf.acl.rules": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsWafAcl).GetRules()).ToDataRes(types.Array(types.Resource("aws.waf.rule")))
@@ -6971,6 +7020,33 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.networkfirewall.firewall.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsNetworkfirewallFirewall).GetTags()).ToDataRes(types.Map(types.String, types.String))
 	},
+	"aws.networkfirewall.firewall.firewallType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsNetworkfirewallFirewall).GetFirewallType()).ToDataRes(types.String)
+	},
+	"aws.networkfirewall.firewall.igwFirewallEnforcementMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsNetworkfirewallFirewall).GetIgwFirewallEnforcementMode()).ToDataRes(types.String)
+	},
+	"aws.networkfirewall.firewall.transparentFilteringNatScope": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsNetworkfirewallFirewall).GetTransparentFilteringNatScope()).ToDataRes(types.String)
+	},
+	"aws.networkfirewall.firewall.proxyCertificate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsNetworkfirewallFirewall).GetProxyCertificate()).ToDataRes(types.Resource("aws.acm.certificate"))
+	},
+	"aws.networkfirewall.firewall.proxyDomainName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsNetworkfirewallFirewall).GetProxyDomainName()).ToDataRes(types.String)
+	},
+	"aws.networkfirewall.firewall.contextStoreId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsNetworkfirewallFirewall).GetContextStoreId()).ToDataRes(types.String)
+	},
+	"aws.networkfirewall.firewall.contextStoreOwnerAccountId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsNetworkfirewallFirewall).GetContextStoreOwnerAccountId()).ToDataRes(types.String)
+	},
+	"aws.networkfirewall.firewall.contextStoreSyncStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsNetworkfirewallFirewall).GetContextStoreSyncStatus()).ToDataRes(types.String)
+	},
+	"aws.networkfirewall.firewall.contextStoreSyncStatusMessage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsNetworkfirewallFirewall).GetContextStoreSyncStatusMessage()).ToDataRes(types.String)
+	},
 	"aws.networkfirewall.policy.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsNetworkfirewallPolicy).GetArn()).ToDataRes(types.String)
 	},
@@ -7120,6 +7196,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.networkfirewall.rulegroup.ruleVariables": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsNetworkfirewallRulegroup).GetRuleVariables()).ToDataRes(types.Array(types.Dict))
+	},
+	"aws.networkfirewall.rulegroup.contextSets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsNetworkfirewallRulegroup).GetContextSets()).ToDataRes(types.Map(types.String, types.Array(types.String)))
 	},
 	"aws.networkfirewall.rulegroup.statefulRuleOrder": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsNetworkfirewallRulegroup).GetStatefulRuleOrder()).ToDataRes(types.String)
@@ -8105,6 +8184,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.iam.loginProfile.passwordResetRequired": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsIamLoginProfile).GetPasswordResetRequired()).ToDataRes(types.Bool)
 	},
+	"aws.iam.loginProfile.maxSigninSessionDuration": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsIamLoginProfile).GetMaxSigninSessionDuration()).ToDataRes(types.Int)
+	},
 	"aws.iam.policyStatement.sid": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsIamPolicyStatement).GetSid()).ToDataRes(types.String)
 	},
@@ -8291,6 +8373,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.iam.role.maxSessionDuration": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsIamRole).GetMaxSessionDuration()).ToDataRes(types.Int)
 	},
+	"aws.iam.role.maxSigninSessionDuration": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsIamRole).GetMaxSigninSessionDuration()).ToDataRes(types.Int)
+	},
 	"aws.iam.role.permissionsBoundary": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsIamRole).GetPermissionsBoundary()).ToDataRes(types.Resource("aws.iam.policy"))
 	},
@@ -8411,6 +8496,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.iam.samlProvider.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsIamSamlProvider).GetTags()).ToDataRes(types.Map(types.String, types.String))
 	},
+	"aws.iam.samlProvider.contextProvider": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsIamSamlProvider).GetContextProvider()).ToDataRes(types.Resource("aws.iam.contextProvider"))
+	},
+	"aws.iam.samlProvider.identityCenterInstance": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsIamSamlProvider).GetIdentityCenterInstance()).ToDataRes(types.Resource("aws.identitycenter.instance"))
+	},
+	"aws.iam.samlProvider.identityStoreArn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsIamSamlProvider).GetIdentityStoreArn()).ToDataRes(types.String)
+	},
+	"aws.iam.samlProvider.keyHashes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsIamSamlProvider).GetKeyHashes()).ToDataRes(types.Map(types.String, types.Array(types.String)))
+	},
 	"aws.iam.oidcProvider.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsIamOidcProvider).GetArn()).ToDataRes(types.String)
 	},
@@ -8428,6 +8525,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.iam.oidcProvider.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsIamOidcProvider).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"aws.iam.oidcProvider.contextProvider": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsIamOidcProvider).GetContextProvider()).ToDataRes(types.Resource("aws.iam.contextProvider"))
+	},
+	"aws.iam.oidcProvider.identityCenterInstance": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsIamOidcProvider).GetIdentityCenterInstance()).ToDataRes(types.Resource("aws.identitycenter.instance"))
+	},
+	"aws.iam.oidcProvider.identityStoreArn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsIamOidcProvider).GetIdentityStoreArn()).ToDataRes(types.String)
+	},
+	"aws.iam.contextProvider.subjectSourceKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsIamContextProvider).GetSubjectSourceKey()).ToDataRes(types.String)
+	},
+	"aws.iam.contextProvider.subjectTypeSourceKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsIamContextProvider).GetSubjectTypeSourceKey()).ToDataRes(types.String)
+	},
+	"aws.iam.contextProvider.subjectTypeValue": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsIamContextProvider).GetSubjectTypeValue()).ToDataRes(types.String)
+	},
+	"aws.iam.contextProvider.keyMappings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsIamContextProvider).GetKeyMappings()).ToDataRes(types.Map(types.String, types.String))
 	},
 	"aws.iam.accessAnalyzer.analyzers": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsIamAccessAnalyzer).GetAnalyzers()).ToDataRes(types.Array(types.Resource("aws.iam.accessAnalyzer.analyzer")))
@@ -9127,6 +9245,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.sagemaker.endpoint.dataCaptureConfig": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsSagemakerEndpoint).GetDataCaptureConfig()).ToDataRes(types.Resource("aws.sagemaker.endpoint.dataCaptureConfig"))
+	},
+	"aws.sagemaker.endpoint.crossRegionMaxPercent": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerEndpoint).GetCrossRegionMaxPercent()).ToDataRes(types.Int)
+	},
+	"aws.sagemaker.endpoint.crossRegionMaxInvocationsPerSecondPerInstance": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerEndpoint).GetCrossRegionMaxInvocationsPerSecondPerInstance()).ToDataRes(types.Int)
 	},
 	"aws.sagemaker.endpoint.productionVariant.variantName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsSagemakerEndpointProductionVariant).GetVariantName()).ToDataRes(types.String)
@@ -10141,6 +10265,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.sagemaker.endpointConfig.asyncOutputKmsKey": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsSagemakerEndpointConfig).GetAsyncOutputKmsKey()).ToDataRes(types.Resource("aws.kms.key"))
+	},
+	"aws.sagemaker.endpointConfig.crossRegionMaxPercent": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerEndpointConfig).GetCrossRegionMaxPercent()).ToDataRes(types.Int)
+	},
+	"aws.sagemaker.endpointConfig.crossRegionMaxInvocationsPerSecondPerInstance": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerEndpointConfig).GetCrossRegionMaxInvocationsPerSecondPerInstance()).ToDataRes(types.Int)
 	},
 	"aws.sagemaker.endpointConfig.productionVariant.variantName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsSagemakerEndpointConfigProductionVariant).GetVariantName()).ToDataRes(types.String)
@@ -12727,6 +12857,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.elb.mutualAuthentication.trustStoreAssociationStatus": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsElbMutualAuthentication).GetTrustStoreAssociationStatus()).ToDataRes(types.String)
+	},
+	"aws.elb.mutualAuthentication.clientCertificateIdentityFilters": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsElbMutualAuthentication).GetClientCertificateIdentityFilters()).ToDataRes(types.Array(types.Resource("aws.elb.mutualAuthentication.identityFilter")))
+	},
+	"aws.elb.mutualAuthentication.identityFilter.action": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsElbMutualAuthenticationIdentityFilter).GetAction()).ToDataRes(types.String)
+	},
+	"aws.elb.mutualAuthentication.identityFilter.field": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsElbMutualAuthenticationIdentityFilter).GetField()).ToDataRes(types.String)
+	},
+	"aws.elb.mutualAuthentication.identityFilter.matchType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsElbMutualAuthenticationIdentityFilter).GetMatchType()).ToDataRes(types.String)
+	},
+	"aws.elb.mutualAuthentication.identityFilter.value": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsElbMutualAuthenticationIdentityFilter).GetValue()).ToDataRes(types.String)
 	},
 	"aws.elb.truststore.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsElbTruststore).GetArn()).ToDataRes(types.String)
@@ -18098,6 +18243,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.cloudfront.distribution.origin.originSslProtocols": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCloudfrontDistributionOrigin).GetOriginSslProtocols()).ToDataRes(types.Array(types.String))
 	},
+	"aws.cloudfront.distribution.origin.originHttpVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudfrontDistributionOrigin).GetOriginHttpVersion()).ToDataRes(types.String)
+	},
 	"aws.cloudfront.distribution.origin.originMtlsClientCertificate": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCloudfrontDistributionOrigin).GetOriginMtlsClientCertificate()).ToDataRes(types.Resource("aws.acm.certificate"))
 	},
@@ -20792,6 +20940,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.rds.dbinstance.endpoint": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsRdsDbinstance).GetEndpoint()).ToDataRes(types.String)
 	},
+	"aws.rds.dbinstance.primaryEndpoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRdsDbinstance).GetPrimaryEndpoint()).ToDataRes(types.String)
+	},
+	"aws.rds.dbinstance.vpcNetworkingEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRdsDbinstance).GetVpcNetworkingEnabled()).ToDataRes(types.Bool)
+	},
 	"aws.rds.dbinstance.masterUsername": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsRdsDbinstance).GetMasterUsername()).ToDataRes(types.String)
 	},
@@ -22772,6 +22926,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.route53.resolver.firewallRule.firewallRuleType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsRoute53ResolverFirewallRule).GetFirewallRuleType()).ToDataRes(types.Dict)
 	},
+	"aws.route53.resolver.firewallRule.autoAllowlistDomainList": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRoute53ResolverFirewallRule).GetAutoAllowlistDomainList()).ToDataRes(types.Resource("aws.route53.resolver.firewallDomainList"))
+	},
 	"aws.route53.resolver.firewallRule.firewallThreatProtectionId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsRoute53ResolverFirewallRule).GetFirewallThreatProtectionId()).ToDataRes(types.String)
 	},
@@ -22876,6 +23033,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.route53.resolver.firewallDomainList.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsRoute53ResolverFirewallDomainList).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"aws.route53.resolver.firewallDomainList.firewallRuleGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRoute53ResolverFirewallDomainList).GetFirewallRuleGroup()).ToDataRes(types.Resource("aws.route53.resolver.firewallRuleGroup"))
+	},
+	"aws.route53.resolver.firewallDomainList.firewallThreatProtectionId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRoute53ResolverFirewallDomainList).GetFirewallThreatProtectionId()).ToDataRes(types.String)
 	},
 	"aws.route53.resolver.firewallConfig.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsRoute53ResolverFirewallConfig).GetId()).ToDataRes(types.String)
@@ -23696,6 +23859,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.apigateway.authorizer.region": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsApigatewayAuthorizer).GetRegion()).ToDataRes(types.String)
 	},
+	"aws.apigateway.authorizer.jwtConfiguration": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsApigatewayAuthorizer).GetJwtConfiguration()).ToDataRes(types.Dict)
+	},
 	"aws.apigateway.requestValidator.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsApigatewayRequestValidator).GetArn()).ToDataRes(types.String)
 	},
@@ -24382,6 +24548,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.lambda.function.durableExecutionRetentionDays": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsLambdaFunction).GetDurableExecutionRetentionDays()).ToDataRes(types.Int)
+	},
+	"aws.lambda.function.customerManagedRuntimeArn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsLambdaFunction).GetCustomerManagedRuntimeArn()).ToDataRes(types.String)
+	},
+	"aws.lambda.function.customerManagedRuntimeAlias": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsLambdaFunction).GetCustomerManagedRuntimeAlias()).ToDataRes(types.String)
+	},
+	"aws.lambda.function.acceleratorMemorySize": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsLambdaFunction).GetAcceleratorMemorySize()).ToDataRes(types.Int)
 	},
 	"aws.lambda.function.durableExecutionKmsKey": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsLambdaFunction).GetDurableExecutionKmsKey()).ToDataRes(types.Resource("aws.kms.key"))
@@ -25337,6 +25512,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.ec2.vpnconnection.tunnelOption.phase2DHGroupNumbers": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEc2VpnconnectionTunnelOption).GetPhase2DHGroupNumbers()).ToDataRes(types.Array(types.Int))
 	},
+	"aws.ec2.vpnconnection.tunnelOption.phase1AdditionalKeyExchanges": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2VpnconnectionTunnelOption).GetPhase1AdditionalKeyExchanges()).ToDataRes(types.Array(types.Resource("aws.ec2.vpnconnection.tunnelOption.additionalKeyExchange")))
+	},
+	"aws.ec2.vpnconnection.tunnelOption.phase2AdditionalKeyExchanges": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2VpnconnectionTunnelOption).GetPhase2AdditionalKeyExchanges()).ToDataRes(types.Array(types.Resource("aws.ec2.vpnconnection.tunnelOption.additionalKeyExchange")))
+	},
+	"aws.ec2.vpnconnection.tunnelOption.additionalKeyExchange.round": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2VpnconnectionTunnelOptionAdditionalKeyExchange).GetRound()).ToDataRes(types.Int)
+	},
+	"aws.ec2.vpnconnection.tunnelOption.additionalKeyExchange.keyExchangeMethods": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2VpnconnectionTunnelOptionAdditionalKeyExchange).GetKeyExchangeMethods()).ToDataRes(types.Array(types.Int))
+	},
+	"aws.ec2.vpnconnection.tunnelOption.additionalKeyExchange.requirement": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2VpnconnectionTunnelOptionAdditionalKeyExchange).GetRequirement()).ToDataRes(types.String)
+	},
 	"aws.ec2.internetgateway.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEc2Internetgateway).GetArn()).ToDataRes(types.String)
 	},
@@ -26164,6 +26354,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.ec2.snapshot.kmsKey": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEc2Snapshot).GetKmsKey()).ToDataRes(types.Resource("aws.kms.key"))
+	},
+	"aws.ec2.snapshot.associatedKmsKeys": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2Snapshot).GetAssociatedKmsKeys()).ToDataRes(types.Array(types.Resource("aws.kms.key")))
 	},
 	"aws.ec2.snapshot.sourceVolume": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEc2Snapshot).GetSourceVolume()).ToDataRes(types.Resource("aws.ec2.volume"))
@@ -28349,6 +28542,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.neptune.cluster.serverlessV2MaxCapacity": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsNeptuneCluster).GetServerlessV2MaxCapacity()).ToDataRes(types.Float)
 	},
+	"aws.neptune.cluster.serverlessV2PlatformVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsNeptuneCluster).GetServerlessV2PlatformVersion()).ToDataRes(types.String)
+	},
 	"aws.neptune.cluster.readReplicas": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsNeptuneCluster).GetReadReplicas()).ToDataRes(types.Array(types.Resource("aws.neptune.cluster")))
 	},
@@ -29936,6 +30132,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.appstream.stack.contentRedirection": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsAppstreamStack).GetContentRedirection()).ToDataRes(types.Resource("aws.appstream.stack.contentRedirection"))
 	},
+	"aws.appstream.stack.webAuthnRedirectionEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsAppstreamStack).GetWebAuthnRedirectionEnabled()).ToDataRes(types.Bool)
+	},
+	"aws.appstream.stack.webAuthnRedirectionProcesses": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsAppstreamStack).GetWebAuthnRedirectionProcesses()).ToDataRes(types.Array(types.String))
+	},
+	"aws.appstream.stack.storageConnectorAuthentication": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsAppstreamStack).GetStorageConnectorAuthentication()).ToDataRes(types.String)
+	},
 	"aws.appstream.stack.associatedFleets": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsAppstreamStack).GetAssociatedFleets()).ToDataRes(types.Array(types.Resource("aws.appstream.fleet")))
 	},
@@ -29999,6 +30204,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.appstream.imageBuilder.networkAccessConfiguration": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsAppstreamImageBuilder).GetNetworkAccessConfiguration()).ToDataRes(types.Dict)
 	},
+	"aws.appstream.imageBuilder.agentAccessConfig": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsAppstreamImageBuilder).GetAgentAccessConfig()).ToDataRes(types.Resource("aws.appstream.imageBuilder.agentAccessConfig"))
+	},
 	"aws.appstream.imageBuilder.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsAppstreamImageBuilder).GetCreatedAt()).ToDataRes(types.Time)
 	},
@@ -30007,6 +30215,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.appstream.imageBuilder.region": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsAppstreamImageBuilder).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.appstream.imageBuilder.agentAccessConfig.agentActions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsAppstreamImageBuilderAgentAccessConfig).GetAgentActions()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"aws.appstream.imageBuilder.agentAccessConfig.userControlMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsAppstreamImageBuilderAgentAccessConfig).GetUserControlMode()).ToDataRes(types.String)
+	},
+	"aws.appstream.imageBuilder.agentAccessConfig.screenImageFormat": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsAppstreamImageBuilderAgentAccessConfig).GetScreenImageFormat()).ToDataRes(types.String)
+	},
+	"aws.appstream.imageBuilder.agentAccessConfig.screenResolution": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsAppstreamImageBuilderAgentAccessConfig).GetScreenResolution()).ToDataRes(types.String)
+	},
+	"aws.appstream.imageBuilder.agentAccessConfig.screenshotsUploadEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsAppstreamImageBuilderAgentAccessConfig).GetScreenshotsUploadEnabled()).ToDataRes(types.Bool)
+	},
+	"aws.appstream.imageBuilder.agentAccessConfig.screenshotsBucket": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsAppstreamImageBuilderAgentAccessConfig).GetScreenshotsBucket()).ToDataRes(types.Resource("aws.s3.bucket"))
 	},
 	"aws.appstream.application.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsAppstreamApplication).GetArn()).ToDataRes(types.String)
@@ -30980,6 +31206,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.workspaces.directory.iamRoleId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsWorkspacesDirectory).GetIamRoleId()).ToDataRes(types.String)
 	},
+	"aws.workspaces.directory.workspaceOsUserMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsWorkspacesDirectory).GetWorkspaceOsUserMode()).ToDataRes(types.String)
+	},
 	"aws.workspaces.directory.subnets": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsWorkspacesDirectory).GetSubnets()).ToDataRes(types.Array(types.Resource("aws.vpc.subnet")))
 	},
@@ -31381,6 +31610,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.kinesis.stream.recordDistributionStrategy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsKinesisStream).GetRecordDistributionStrategy()).ToDataRes(types.String)
+	},
+	"aws.kinesis.stream.queueCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsKinesisStream).GetQueueCount()).ToDataRes(types.Int)
 	},
 	"aws.kinesis.streamConsumer.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsKinesisStreamConsumer).GetArn()).ToDataRes(types.String)
@@ -33563,6 +33795,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.msk.cluster.node.networkInterface": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsMskClusterNode).GetNetworkInterface()).ToDataRes(types.Resource("aws.ec2.networkinterface"))
 	},
+	"aws.msk.cluster.node.brokerNodeType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsMskClusterNode).GetBrokerNodeType()).ToDataRes(types.String)
+	},
 	"aws.msk.cluster.clientVpcConnection.vpcConnectionArn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsMskClusterClientVpcConnection).GetVpcConnectionArn()).ToDataRes(types.String)
 	},
@@ -34985,6 +35220,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.cloudformation.stack.changeSetId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCloudformationStack).GetChangeSetId()).ToDataRes(types.String)
 	},
+	"aws.cloudformation.stack.aliasName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudformationStack).GetAliasName()).ToDataRes(types.String)
+	},
 	"aws.cloudformation.stack.parentStack": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCloudformationStack).GetParentStack()).ToDataRes(types.Resource("aws.cloudformation.stack"))
 	},
@@ -35050,6 +35288,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.cloudformation.stackSet.organizationalUnitIds": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCloudformationStackSet).GetOrganizationalUnitIds()).ToDataRes(types.Array(types.String))
+	},
+	"aws.cloudformation.stackSet.outputBucketPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudformationStackSet).GetOutputBucketPath()).ToDataRes(types.String)
 	},
 	"aws.cloudformation.stackSet.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCloudformationStackSet).GetTags()).ToDataRes(types.Map(types.String, types.String))
@@ -41888,6 +42129,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsVpc).EncryptionControl, ok = plugin.RawToTValue[*mqlAwsVpcEncryptionControl](v.Value, v.Error)
 		return
 	},
+	"aws.vpc.networkFirewallAssociations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsVpc).NetworkFirewallAssociations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.vpc.networkFirewallAssociation.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsVpcNetworkFirewallAssociation).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.vpc.networkFirewallAssociation.firewall": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsVpcNetworkFirewallAssociation).Firewall, ok = plugin.RawToTValue[*mqlAwsNetworkfirewallFirewall](v.Value, v.Error)
+		return
+	},
+	"aws.vpc.networkFirewallAssociation.mode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsVpcNetworkFirewallAssociation).Mode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.vpc.networkFirewallAssociation.onboardingStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsVpcNetworkFirewallAssociation).OnboardingStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"aws.vpc.encryptionControl.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsVpcEncryptionControl).__id, ok = v.Value.(string)
 		return
@@ -42024,6 +42285,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsVpcRoutetableRoute).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"aws.vpc.routetable.route.igwFirewall": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsVpcRoutetableRoute).IgwFirewall, ok = plugin.RawToTValue[*mqlAwsNetworkfirewallFirewall](v.Value, v.Error)
+		return
+	},
+	"aws.vpc.routetable.route.igwFirewallStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsVpcRoutetableRoute).IgwFirewallStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"aws.vpc.routetable.association.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsVpcRoutetableAssociation).__id, ok = v.Value.(string)
 		return
@@ -42146,6 +42415,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.vpc.subnet.vpc": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsVpcSubnet).Vpc, ok = plugin.RawToTValue[*mqlAwsVpc](v.Value, v.Error)
+		return
+	},
+	"aws.vpc.subnet.networkFirewallConnectivityType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsVpcSubnet).NetworkFirewallConnectivityType, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.vpc.endpoint.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -42422,6 +42695,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.waf.acl.labelNamespace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsWafAcl).LabelNamespace, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.waf.acl.analyticsMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsWafAcl).AnalyticsMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.waf.acl.rules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -43452,6 +43729,42 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsNetworkfirewallFirewall).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
+	"aws.networkfirewall.firewall.firewallType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsNetworkfirewallFirewall).FirewallType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.networkfirewall.firewall.igwFirewallEnforcementMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsNetworkfirewallFirewall).IgwFirewallEnforcementMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.networkfirewall.firewall.transparentFilteringNatScope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsNetworkfirewallFirewall).TransparentFilteringNatScope, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.networkfirewall.firewall.proxyCertificate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsNetworkfirewallFirewall).ProxyCertificate, ok = plugin.RawToTValue[*mqlAwsAcmCertificate](v.Value, v.Error)
+		return
+	},
+	"aws.networkfirewall.firewall.proxyDomainName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsNetworkfirewallFirewall).ProxyDomainName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.networkfirewall.firewall.contextStoreId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsNetworkfirewallFirewall).ContextStoreId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.networkfirewall.firewall.contextStoreOwnerAccountId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsNetworkfirewallFirewall).ContextStoreOwnerAccountId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.networkfirewall.firewall.contextStoreSyncStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsNetworkfirewallFirewall).ContextStoreSyncStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.networkfirewall.firewall.contextStoreSyncStatusMessage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsNetworkfirewallFirewall).ContextStoreSyncStatusMessage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"aws.networkfirewall.policy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsNetworkfirewallPolicy).__id, ok = v.Value.(string)
 		return
@@ -43662,6 +43975,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.networkfirewall.rulegroup.ruleVariables": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsNetworkfirewallRulegroup).RuleVariables, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.networkfirewall.rulegroup.contextSets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsNetworkfirewallRulegroup).ContextSets, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
 	"aws.networkfirewall.rulegroup.statefulRuleOrder": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -45100,6 +45417,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsIamLoginProfile).PasswordResetRequired, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"aws.iam.loginProfile.maxSigninSessionDuration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsIamLoginProfile).MaxSigninSessionDuration, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
 	"aws.iam.policyStatement.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsIamPolicyStatement).__id, ok = v.Value.(string)
 		return
@@ -45372,6 +45693,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsIamRole).MaxSessionDuration, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
+	"aws.iam.role.maxSigninSessionDuration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsIamRole).MaxSigninSessionDuration, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
 	"aws.iam.role.permissionsBoundary": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsIamRole).PermissionsBoundary, ok = plugin.RawToTValue[*mqlAwsIamPolicy](v.Value, v.Error)
 		return
@@ -45552,6 +45877,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsIamSamlProvider).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
+	"aws.iam.samlProvider.contextProvider": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsIamSamlProvider).ContextProvider, ok = plugin.RawToTValue[*mqlAwsIamContextProvider](v.Value, v.Error)
+		return
+	},
+	"aws.iam.samlProvider.identityCenterInstance": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsIamSamlProvider).IdentityCenterInstance, ok = plugin.RawToTValue[*mqlAwsIdentitycenterInstance](v.Value, v.Error)
+		return
+	},
+	"aws.iam.samlProvider.identityStoreArn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsIamSamlProvider).IdentityStoreArn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.iam.samlProvider.keyHashes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsIamSamlProvider).KeyHashes, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
 	"aws.iam.oidcProvider.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsIamOidcProvider).__id, ok = v.Value.(string)
 		return
@@ -45578,6 +45919,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.iam.oidcProvider.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsIamOidcProvider).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aws.iam.oidcProvider.contextProvider": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsIamOidcProvider).ContextProvider, ok = plugin.RawToTValue[*mqlAwsIamContextProvider](v.Value, v.Error)
+		return
+	},
+	"aws.iam.oidcProvider.identityCenterInstance": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsIamOidcProvider).IdentityCenterInstance, ok = plugin.RawToTValue[*mqlAwsIdentitycenterInstance](v.Value, v.Error)
+		return
+	},
+	"aws.iam.oidcProvider.identityStoreArn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsIamOidcProvider).IdentityStoreArn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.iam.contextProvider.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsIamContextProvider).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.iam.contextProvider.subjectSourceKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsIamContextProvider).SubjectSourceKey, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.iam.contextProvider.subjectTypeSourceKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsIamContextProvider).SubjectTypeSourceKey, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.iam.contextProvider.subjectTypeValue": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsIamContextProvider).SubjectTypeValue, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.iam.contextProvider.keyMappings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsIamContextProvider).KeyMappings, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
 	"aws.iam.accessAnalyzer.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -46586,6 +46959,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.sagemaker.endpoint.dataCaptureConfig": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsSagemakerEndpoint).DataCaptureConfig, ok = plugin.RawToTValue[*mqlAwsSagemakerEndpointDataCaptureConfig](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.endpoint.crossRegionMaxPercent": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerEndpoint).CrossRegionMaxPercent, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.endpoint.crossRegionMaxInvocationsPerSecondPerInstance": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerEndpoint).CrossRegionMaxInvocationsPerSecondPerInstance, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"aws.sagemaker.endpoint.productionVariant.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -48042,6 +48423,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.sagemaker.endpointConfig.asyncOutputKmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsSagemakerEndpointConfig).AsyncOutputKmsKey, ok = plugin.RawToTValue[*mqlAwsKmsKey](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.endpointConfig.crossRegionMaxPercent": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerEndpointConfig).CrossRegionMaxPercent, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aws.sagemaker.endpointConfig.crossRegionMaxInvocationsPerSecondPerInstance": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerEndpointConfig).CrossRegionMaxInvocationsPerSecondPerInstance, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"aws.sagemaker.endpointConfig.productionVariant.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -51814,6 +52203,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.elb.mutualAuthentication.trustStoreAssociationStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsElbMutualAuthentication).TrustStoreAssociationStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.elb.mutualAuthentication.clientCertificateIdentityFilters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsElbMutualAuthentication).ClientCertificateIdentityFilters, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.elb.mutualAuthentication.identityFilter.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsElbMutualAuthenticationIdentityFilter).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.elb.mutualAuthentication.identityFilter.action": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsElbMutualAuthenticationIdentityFilter).Action, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.elb.mutualAuthentication.identityFilter.field": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsElbMutualAuthenticationIdentityFilter).Field, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.elb.mutualAuthentication.identityFilter.matchType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsElbMutualAuthenticationIdentityFilter).MatchType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.elb.mutualAuthentication.identityFilter.value": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsElbMutualAuthenticationIdentityFilter).Value, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.elb.truststore.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -59736,6 +60149,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsCloudfrontDistributionOrigin).OriginSslProtocols, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"aws.cloudfront.distribution.origin.originHttpVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudfrontDistributionOrigin).OriginHttpVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"aws.cloudfront.distribution.origin.originMtlsClientCertificate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsCloudfrontDistributionOrigin).OriginMtlsClientCertificate, ok = plugin.RawToTValue[*mqlAwsAcmCertificate](v.Value, v.Error)
 		return
@@ -63652,6 +64069,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsRdsDbinstance).Endpoint, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"aws.rds.dbinstance.primaryEndpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRdsDbinstance).PrimaryEndpoint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.rds.dbinstance.vpcNetworkingEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRdsDbinstance).VpcNetworkingEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"aws.rds.dbinstance.masterUsername": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsRdsDbinstance).MasterUsername, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -66468,6 +66893,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsRoute53ResolverFirewallRule).FirewallRuleType, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
+	"aws.route53.resolver.firewallRule.autoAllowlistDomainList": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRoute53ResolverFirewallRule).AutoAllowlistDomainList, ok = plugin.RawToTValue[*mqlAwsRoute53ResolverFirewallDomainList](v.Value, v.Error)
+		return
+	},
 	"aws.route53.resolver.firewallRule.firewallThreatProtectionId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsRoute53ResolverFirewallRule).FirewallThreatProtectionId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -66614,6 +67043,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.route53.resolver.firewallDomainList.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsRoute53ResolverFirewallDomainList).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aws.route53.resolver.firewallDomainList.firewallRuleGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRoute53ResolverFirewallDomainList).FirewallRuleGroup, ok = plugin.RawToTValue[*mqlAwsRoute53ResolverFirewallRuleGroup](v.Value, v.Error)
+		return
+	},
+	"aws.route53.resolver.firewallDomainList.firewallThreatProtectionId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRoute53ResolverFirewallDomainList).FirewallThreatProtectionId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.route53.resolver.firewallConfig.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -67804,6 +68241,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsApigatewayAuthorizer).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"aws.apigateway.authorizer.jwtConfiguration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsApigatewayAuthorizer).JwtConfiguration, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
 	"aws.apigateway.requestValidator.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsApigatewayRequestValidator).__id, ok = v.Value.(string)
 		return
@@ -68798,6 +69239,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.lambda.function.durableExecutionRetentionDays": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsLambdaFunction).DurableExecutionRetentionDays, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aws.lambda.function.customerManagedRuntimeArn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsLambdaFunction).CustomerManagedRuntimeArn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.lambda.function.customerManagedRuntimeAlias": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsLambdaFunction).CustomerManagedRuntimeAlias, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.lambda.function.acceleratorMemorySize": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsLambdaFunction).AcceleratorMemorySize, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"aws.lambda.function.durableExecutionKmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -70188,6 +70641,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsEc2VpnconnectionTunnelOption).Phase2DHGroupNumbers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"aws.ec2.vpnconnection.tunnelOption.phase1AdditionalKeyExchanges": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2VpnconnectionTunnelOption).Phase1AdditionalKeyExchanges, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.vpnconnection.tunnelOption.phase2AdditionalKeyExchanges": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2VpnconnectionTunnelOption).Phase2AdditionalKeyExchanges, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.vpnconnection.tunnelOption.additionalKeyExchange.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2VpnconnectionTunnelOptionAdditionalKeyExchange).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.ec2.vpnconnection.tunnelOption.additionalKeyExchange.round": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2VpnconnectionTunnelOptionAdditionalKeyExchange).Round, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.vpnconnection.tunnelOption.additionalKeyExchange.keyExchangeMethods": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2VpnconnectionTunnelOptionAdditionalKeyExchange).KeyExchangeMethods, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.vpnconnection.tunnelOption.additionalKeyExchange.requirement": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2VpnconnectionTunnelOptionAdditionalKeyExchange).Requirement, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"aws.ec2.internetgateway.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsEc2Internetgateway).__id, ok = v.Value.(string)
 		return
@@ -71402,6 +71879,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.ec2.snapshot.kmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsEc2Snapshot).KmsKey, ok = plugin.RawToTValue[*mqlAwsKmsKey](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.snapshot.associatedKmsKeys": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2Snapshot).AssociatedKmsKeys, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"aws.ec2.snapshot.sourceVolume": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -74560,6 +75041,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsNeptuneCluster).ServerlessV2MaxCapacity, ok = plugin.RawToTValue[float64](v.Value, v.Error)
 		return
 	},
+	"aws.neptune.cluster.serverlessV2PlatformVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsNeptuneCluster).ServerlessV2PlatformVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"aws.neptune.cluster.readReplicas": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsNeptuneCluster).ReadReplicas, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -76832,6 +77317,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsAppstreamStack).ContentRedirection, ok = plugin.RawToTValue[*mqlAwsAppstreamStackContentRedirection](v.Value, v.Error)
 		return
 	},
+	"aws.appstream.stack.webAuthnRedirectionEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsAppstreamStack).WebAuthnRedirectionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.appstream.stack.webAuthnRedirectionProcesses": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsAppstreamStack).WebAuthnRedirectionProcesses, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.appstream.stack.storageConnectorAuthentication": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsAppstreamStack).StorageConnectorAuthentication, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"aws.appstream.stack.associatedFleets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsAppstreamStack).AssociatedFleets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -76924,6 +77421,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsAppstreamImageBuilder).NetworkAccessConfiguration, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
+	"aws.appstream.imageBuilder.agentAccessConfig": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsAppstreamImageBuilder).AgentAccessConfig, ok = plugin.RawToTValue[*mqlAwsAppstreamImageBuilderAgentAccessConfig](v.Value, v.Error)
+		return
+	},
 	"aws.appstream.imageBuilder.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsAppstreamImageBuilder).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
@@ -76934,6 +77435,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.appstream.imageBuilder.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsAppstreamImageBuilder).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.appstream.imageBuilder.agentAccessConfig.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsAppstreamImageBuilderAgentAccessConfig).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.appstream.imageBuilder.agentAccessConfig.agentActions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsAppstreamImageBuilderAgentAccessConfig).AgentActions, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aws.appstream.imageBuilder.agentAccessConfig.userControlMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsAppstreamImageBuilderAgentAccessConfig).UserControlMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.appstream.imageBuilder.agentAccessConfig.screenImageFormat": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsAppstreamImageBuilderAgentAccessConfig).ScreenImageFormat, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.appstream.imageBuilder.agentAccessConfig.screenResolution": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsAppstreamImageBuilderAgentAccessConfig).ScreenResolution, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.appstream.imageBuilder.agentAccessConfig.screenshotsUploadEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsAppstreamImageBuilderAgentAccessConfig).ScreenshotsUploadEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.appstream.imageBuilder.agentAccessConfig.screenshotsBucket": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsAppstreamImageBuilderAgentAccessConfig).ScreenshotsBucket, ok = plugin.RawToTValue[*mqlAwsS3Bucket](v.Value, v.Error)
 		return
 	},
 	"aws.appstream.application.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -78356,6 +78885,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsWorkspacesDirectory).IamRoleId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"aws.workspaces.directory.workspaceOsUserMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsWorkspacesDirectory).WorkspaceOsUserMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"aws.workspaces.directory.subnets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsWorkspacesDirectory).Subnets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -78942,6 +79475,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.kinesis.stream.recordDistributionStrategy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsKinesisStream).RecordDistributionStrategy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.kinesis.stream.queueCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsKinesisStream).QueueCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"aws.kinesis.streamConsumer.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -82112,6 +82649,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsMskClusterNode).NetworkInterface, ok = plugin.RawToTValue[*mqlAwsEc2Networkinterface](v.Value, v.Error)
 		return
 	},
+	"aws.msk.cluster.node.brokerNodeType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsMskClusterNode).BrokerNodeType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"aws.msk.cluster.clientVpcConnection.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsMskClusterClientVpcConnection).__id, ok = v.Value.(string)
 		return
@@ -84172,6 +84713,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsCloudformationStack).ChangeSetId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"aws.cloudformation.stack.aliasName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudformationStack).AliasName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"aws.cloudformation.stack.parentStack": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsCloudformationStack).ParentStack, ok = plugin.RawToTValue[*mqlAwsCloudformationStack](v.Value, v.Error)
 		return
@@ -84266,6 +84811,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.cloudformation.stackSet.organizationalUnitIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsCloudformationStackSet).OrganizationalUnitIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.cloudformation.stackSet.outputBucketPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudformationStackSet).OutputBucketPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.cloudformation.stackSet.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -94678,41 +95227,42 @@ type mqlAwsVpc struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAwsVpcInternal
-	Arn                       plugin.TValue[string]
-	Id                        plugin.TValue[string]
-	Name                      plugin.TValue[string]
-	CidrBlock                 plugin.TValue[string]
-	State                     plugin.TValue[string]
-	IsDefault                 plugin.TValue[bool]
-	InstanceTenancy           plugin.TValue[string]
-	OwnerId                   plugin.TValue[string]
-	Region                    plugin.TValue[string]
-	Endpoints                 plugin.TValue[[]any]
-	FlowLogs                  plugin.TValue[[]any]
-	RouteTables               plugin.TValue[[]any]
-	Subnets                   plugin.TValue[[]any]
-	Tags                      plugin.TValue[map[string]any]
-	NatGateways               plugin.TValue[[]any]
-	ServiceEndpoints          plugin.TValue[[]any]
-	PeeringConnections        plugin.TValue[[]any]
-	InternetGatewayBlockMode  plugin.TValue[string]
-	DhcpOptionsId             plugin.TValue[string]
-	InternetGateways          plugin.TValue[[]any]
-	SecurityGroups            plugin.TValue[[]any]
-	DefaultSecurityGroup      plugin.TValue[*mqlAwsEc2Securitygroup]
-	NetworkAcls               plugin.TValue[[]any]
-	DefaultNetworkAcl         plugin.TValue[*mqlAwsEc2Networkacl]
-	BlockPublicAccessOptions  plugin.TValue[any]
-	BlockPublicAccess         plugin.TValue[*mqlAwsEc2VpcBlockPublicAccessOptions]
-	VpnGateways               plugin.TValue[[]any]
-	DhcpOptions               plugin.TValue[*mqlAwsEc2DhcpOptions]
-	EnableDnsSupport          plugin.TValue[bool]
-	EnableDnsHostnames        plugin.TValue[bool]
-	CidrBlockAssociations     plugin.TValue[[]any]
-	Ipv6CidrBlockAssociations plugin.TValue[[]any]
-	CloudformationStack       plugin.TValue[*mqlAwsCloudformationStack]
-	ManagedBy                 plugin.TValue[string]
-	EncryptionControl         plugin.TValue[*mqlAwsVpcEncryptionControl]
+	Arn                         plugin.TValue[string]
+	Id                          plugin.TValue[string]
+	Name                        plugin.TValue[string]
+	CidrBlock                   plugin.TValue[string]
+	State                       plugin.TValue[string]
+	IsDefault                   plugin.TValue[bool]
+	InstanceTenancy             plugin.TValue[string]
+	OwnerId                     plugin.TValue[string]
+	Region                      plugin.TValue[string]
+	Endpoints                   plugin.TValue[[]any]
+	FlowLogs                    plugin.TValue[[]any]
+	RouteTables                 plugin.TValue[[]any]
+	Subnets                     plugin.TValue[[]any]
+	Tags                        plugin.TValue[map[string]any]
+	NatGateways                 plugin.TValue[[]any]
+	ServiceEndpoints            plugin.TValue[[]any]
+	PeeringConnections          plugin.TValue[[]any]
+	InternetGatewayBlockMode    plugin.TValue[string]
+	DhcpOptionsId               plugin.TValue[string]
+	InternetGateways            plugin.TValue[[]any]
+	SecurityGroups              plugin.TValue[[]any]
+	DefaultSecurityGroup        plugin.TValue[*mqlAwsEc2Securitygroup]
+	NetworkAcls                 plugin.TValue[[]any]
+	DefaultNetworkAcl           plugin.TValue[*mqlAwsEc2Networkacl]
+	BlockPublicAccessOptions    plugin.TValue[any]
+	BlockPublicAccess           plugin.TValue[*mqlAwsEc2VpcBlockPublicAccessOptions]
+	VpnGateways                 plugin.TValue[[]any]
+	DhcpOptions                 plugin.TValue[*mqlAwsEc2DhcpOptions]
+	EnableDnsSupport            plugin.TValue[bool]
+	EnableDnsHostnames          plugin.TValue[bool]
+	CidrBlockAssociations       plugin.TValue[[]any]
+	Ipv6CidrBlockAssociations   plugin.TValue[[]any]
+	CloudformationStack         plugin.TValue[*mqlAwsCloudformationStack]
+	ManagedBy                   plugin.TValue[string]
+	EncryptionControl           plugin.TValue[*mqlAwsVpcEncryptionControl]
+	NetworkFirewallAssociations plugin.TValue[[]any]
 }
 
 // createAwsVpc creates a new instance of this resource
@@ -95108,6 +95658,88 @@ func (c *mqlAwsVpc) GetEncryptionControl() *plugin.TValue[*mqlAwsVpcEncryptionCo
 	})
 }
 
+func (c *mqlAwsVpc) GetNetworkFirewallAssociations() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.NetworkFirewallAssociations, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.vpc", c.__id, "networkFirewallAssociations")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.networkFirewallAssociations()
+	})
+}
+
+// mqlAwsVpcNetworkFirewallAssociation for the aws.vpc.networkFirewallAssociation resource
+type mqlAwsVpcNetworkFirewallAssociation struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsVpcNetworkFirewallAssociationInternal
+	Firewall         plugin.TValue[*mqlAwsNetworkfirewallFirewall]
+	Mode             plugin.TValue[string]
+	OnboardingStatus plugin.TValue[string]
+}
+
+// createAwsVpcNetworkFirewallAssociation creates a new instance of this resource
+func createAwsVpcNetworkFirewallAssociation(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsVpcNetworkFirewallAssociation{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.vpc.networkFirewallAssociation", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsVpcNetworkFirewallAssociation) MqlName() string {
+	return "aws.vpc.networkFirewallAssociation"
+}
+
+func (c *mqlAwsVpcNetworkFirewallAssociation) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsVpcNetworkFirewallAssociation) GetFirewall() *plugin.TValue[*mqlAwsNetworkfirewallFirewall] {
+	return plugin.GetOrCompute[*mqlAwsNetworkfirewallFirewall](&c.Firewall, func() (*mqlAwsNetworkfirewallFirewall, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.vpc.networkFirewallAssociation", c.__id, "firewall")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsNetworkfirewallFirewall), nil
+			}
+		}
+
+		return c.firewall()
+	})
+}
+
+func (c *mqlAwsVpcNetworkFirewallAssociation) GetMode() *plugin.TValue[string] {
+	return &c.Mode
+}
+
+func (c *mqlAwsVpcNetworkFirewallAssociation) GetOnboardingStatus() *plugin.TValue[string] {
+	return &c.OnboardingStatus
+}
+
 // mqlAwsVpcEncryptionControl for the aws.vpc.encryptionControl resource
 type mqlAwsVpcEncryptionControl struct {
 	MqlRuntime *plugin.Runtime
@@ -95299,6 +95931,8 @@ type mqlAwsVpcRoutetableRoute struct {
 	CoreNetworkArn            plugin.TValue[string]
 	Origin                    plugin.TValue[string]
 	State                     plugin.TValue[string]
+	IgwFirewall               plugin.TValue[*mqlAwsNetworkfirewallFirewall]
+	IgwFirewallStatus         plugin.TValue[string]
 }
 
 // createAwsVpcRoutetableRoute creates a new instance of this resource
@@ -95522,6 +96156,26 @@ func (c *mqlAwsVpcRoutetableRoute) GetState() *plugin.TValue[string] {
 	return &c.State
 }
 
+func (c *mqlAwsVpcRoutetableRoute) GetIgwFirewall() *plugin.TValue[*mqlAwsNetworkfirewallFirewall] {
+	return plugin.GetOrCompute[*mqlAwsNetworkfirewallFirewall](&c.IgwFirewall, func() (*mqlAwsNetworkfirewallFirewall, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.vpc.routetable.route", c.__id, "igwFirewall")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsNetworkfirewallFirewall), nil
+			}
+		}
+
+		return c.igwFirewall()
+	})
+}
+
+func (c *mqlAwsVpcRoutetableRoute) GetIgwFirewallStatus() *plugin.TValue[string] {
+	return &c.IgwFirewallStatus
+}
+
 // mqlAwsVpcRoutetableAssociation for the aws.vpc.routetable.association resource
 type mqlAwsVpcRoutetableAssociation struct {
 	MqlRuntime *plugin.Runtime
@@ -95608,29 +96262,30 @@ type mqlAwsVpcSubnet struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAwsVpcSubnetInternal
-	Arn                         plugin.TValue[string]
-	Id                          plugin.TValue[string]
-	Name                        plugin.TValue[string]
-	Cidrs                       plugin.TValue[string]
-	MapPublicIpOnLaunch         plugin.TValue[bool]
-	AvailabilityZone            plugin.TValue[string]
-	DefaultForAvailabilityZone  plugin.TValue[bool]
-	AssignIpv6AddressOnCreation plugin.TValue[bool]
-	State                       plugin.TValue[string]
-	OwnerId                     plugin.TValue[string]
-	Region                      plugin.TValue[string]
-	AvailableIpAddressCount     plugin.TValue[int64]
-	InternetGatewayBlockMode    plugin.TValue[string]
-	IsPublic                    plugin.TValue[bool]
-	Tags                        plugin.TValue[map[string]any]
-	RouteTable                  plugin.TValue[*mqlAwsVpcRoutetable]
-	NetworkAcl                  plugin.TValue[*mqlAwsEc2Networkacl]
-	NatGateway                  plugin.TValue[*mqlAwsVpcNatgateway]
-	FlowLogs                    plugin.TValue[[]any]
-	Ipv6CidrBlock               plugin.TValue[string]
-	NetworkInterfaces           plugin.TValue[[]any]
-	Instances                   plugin.TValue[[]any]
-	Vpc                         plugin.TValue[*mqlAwsVpc]
+	Arn                             plugin.TValue[string]
+	Id                              plugin.TValue[string]
+	Name                            plugin.TValue[string]
+	Cidrs                           plugin.TValue[string]
+	MapPublicIpOnLaunch             plugin.TValue[bool]
+	AvailabilityZone                plugin.TValue[string]
+	DefaultForAvailabilityZone      plugin.TValue[bool]
+	AssignIpv6AddressOnCreation     plugin.TValue[bool]
+	State                           plugin.TValue[string]
+	OwnerId                         plugin.TValue[string]
+	Region                          plugin.TValue[string]
+	AvailableIpAddressCount         plugin.TValue[int64]
+	InternetGatewayBlockMode        plugin.TValue[string]
+	IsPublic                        plugin.TValue[bool]
+	Tags                            plugin.TValue[map[string]any]
+	RouteTable                      plugin.TValue[*mqlAwsVpcRoutetable]
+	NetworkAcl                      plugin.TValue[*mqlAwsEc2Networkacl]
+	NatGateway                      plugin.TValue[*mqlAwsVpcNatgateway]
+	FlowLogs                        plugin.TValue[[]any]
+	Ipv6CidrBlock                   plugin.TValue[string]
+	NetworkInterfaces               plugin.TValue[[]any]
+	Instances                       plugin.TValue[[]any]
+	Vpc                             plugin.TValue[*mqlAwsVpc]
+	NetworkFirewallConnectivityType plugin.TValue[string]
 }
 
 // createAwsVpcSubnet creates a new instance of this resource
@@ -95846,6 +96501,10 @@ func (c *mqlAwsVpcSubnet) GetVpc() *plugin.TValue[*mqlAwsVpc] {
 
 		return c.vpc()
 	})
+}
+
+func (c *mqlAwsVpcSubnet) GetNetworkFirewallConnectivityType() *plugin.TValue[string] {
+	return &c.NetworkFirewallConnectivityType
 }
 
 // mqlAwsVpcEndpoint for the aws.vpc.endpoint resource
@@ -96462,6 +97121,7 @@ type mqlAwsWafAcl struct {
 	Capacity                 plugin.TValue[int64]
 	TokenDomains             plugin.TValue[[]any]
 	LabelNamespace           plugin.TValue[string]
+	AnalyticsMode            plugin.TValue[string]
 	Rules                    plugin.TValue[[]any]
 	Scope                    plugin.TValue[string]
 	Region                   plugin.TValue[string]
@@ -96573,6 +97233,12 @@ func (c *mqlAwsWafAcl) GetTokenDomains() *plugin.TValue[[]any] {
 func (c *mqlAwsWafAcl) GetLabelNamespace() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.LabelNamespace, func() (string, error) {
 		return c.labelNamespace()
+	})
+}
+
+func (c *mqlAwsWafAcl) GetAnalyticsMode() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.AnalyticsMode, func() (string, error) {
+		return c.analyticsMode()
 	})
 }
 
@@ -99261,6 +99927,15 @@ type mqlAwsNetworkfirewallFirewall struct {
 	LoggingDestinations            plugin.TValue[[]any]
 	LoggingConfiguration           plugin.TValue[any]
 	Tags                           plugin.TValue[map[string]any]
+	FirewallType                   plugin.TValue[string]
+	IgwFirewallEnforcementMode     plugin.TValue[string]
+	TransparentFilteringNatScope   plugin.TValue[string]
+	ProxyCertificate               plugin.TValue[*mqlAwsAcmCertificate]
+	ProxyDomainName                plugin.TValue[string]
+	ContextStoreId                 plugin.TValue[string]
+	ContextStoreOwnerAccountId     plugin.TValue[string]
+	ContextStoreSyncStatus         plugin.TValue[string]
+	ContextStoreSyncStatusMessage  plugin.TValue[string]
 }
 
 // createAwsNetworkfirewallFirewall creates a new instance of this resource
@@ -99460,6 +100135,54 @@ func (c *mqlAwsNetworkfirewallFirewall) GetLoggingConfiguration() *plugin.TValue
 
 func (c *mqlAwsNetworkfirewallFirewall) GetTags() *plugin.TValue[map[string]any] {
 	return &c.Tags
+}
+
+func (c *mqlAwsNetworkfirewallFirewall) GetFirewallType() *plugin.TValue[string] {
+	return &c.FirewallType
+}
+
+func (c *mqlAwsNetworkfirewallFirewall) GetIgwFirewallEnforcementMode() *plugin.TValue[string] {
+	return &c.IgwFirewallEnforcementMode
+}
+
+func (c *mqlAwsNetworkfirewallFirewall) GetTransparentFilteringNatScope() *plugin.TValue[string] {
+	return &c.TransparentFilteringNatScope
+}
+
+func (c *mqlAwsNetworkfirewallFirewall) GetProxyCertificate() *plugin.TValue[*mqlAwsAcmCertificate] {
+	return plugin.GetOrCompute[*mqlAwsAcmCertificate](&c.ProxyCertificate, func() (*mqlAwsAcmCertificate, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.networkfirewall.firewall", c.__id, "proxyCertificate")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsAcmCertificate), nil
+			}
+		}
+
+		return c.proxyCertificate()
+	})
+}
+
+func (c *mqlAwsNetworkfirewallFirewall) GetProxyDomainName() *plugin.TValue[string] {
+	return &c.ProxyDomainName
+}
+
+func (c *mqlAwsNetworkfirewallFirewall) GetContextStoreId() *plugin.TValue[string] {
+	return &c.ContextStoreId
+}
+
+func (c *mqlAwsNetworkfirewallFirewall) GetContextStoreOwnerAccountId() *plugin.TValue[string] {
+	return &c.ContextStoreOwnerAccountId
+}
+
+func (c *mqlAwsNetworkfirewallFirewall) GetContextStoreSyncStatus() *plugin.TValue[string] {
+	return &c.ContextStoreSyncStatus
+}
+
+func (c *mqlAwsNetworkfirewallFirewall) GetContextStoreSyncStatusMessage() *plugin.TValue[string] {
+	return &c.ContextStoreSyncStatusMessage
 }
 
 // mqlAwsNetworkfirewallPolicy for the aws.networkfirewall.policy resource
@@ -99808,6 +100531,7 @@ type mqlAwsNetworkfirewallRulegroup struct {
 	RulesString          plugin.TValue[string]
 	ReferenceSets        plugin.TValue[[]any]
 	RuleVariables        plugin.TValue[[]any]
+	ContextSets          plugin.TValue[map[string]any]
 	StatefulRuleOrder    plugin.TValue[string]
 	SourceMetadata       plugin.TValue[[]any]
 	EncryptionType       plugin.TValue[string]
@@ -99926,6 +100650,10 @@ func (c *mqlAwsNetworkfirewallRulegroup) GetReferenceSets() *plugin.TValue[[]any
 
 func (c *mqlAwsNetworkfirewallRulegroup) GetRuleVariables() *plugin.TValue[[]any] {
 	return &c.RuleVariables
+}
+
+func (c *mqlAwsNetworkfirewallRulegroup) GetContextSets() *plugin.TValue[map[string]any] {
+	return &c.ContextSets
 }
 
 func (c *mqlAwsNetworkfirewallRulegroup) GetStatefulRuleOrder() *plugin.TValue[string] {
@@ -103831,8 +104559,9 @@ type mqlAwsIamLoginProfile struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlAwsIamLoginProfileInternal it will be used here
-	CreatedAt             plugin.TValue[*time.Time]
-	PasswordResetRequired plugin.TValue[bool]
+	CreatedAt                plugin.TValue[*time.Time]
+	PasswordResetRequired    plugin.TValue[bool]
+	MaxSigninSessionDuration plugin.TValue[int64]
 }
 
 // createAwsIamLoginProfile creates a new instance of this resource
@@ -103878,6 +104607,10 @@ func (c *mqlAwsIamLoginProfile) GetCreatedAt() *plugin.TValue[*time.Time] {
 
 func (c *mqlAwsIamLoginProfile) GetPasswordResetRequired() *plugin.TValue[bool] {
 	return &c.PasswordResetRequired
+}
+
+func (c *mqlAwsIamLoginProfile) GetMaxSigninSessionDuration() *plugin.TValue[int64] {
+	return &c.MaxSigninSessionDuration
 }
 
 // mqlAwsIamPolicyStatement for the aws.iam.policyStatement resource
@@ -104488,6 +105221,7 @@ type mqlAwsIamRole struct {
 	LastUsedAt                  plugin.TValue[*time.Time]
 	LastUsedRegion              plugin.TValue[string]
 	MaxSessionDuration          plugin.TValue[int64]
+	MaxSigninSessionDuration    plugin.TValue[int64]
 	PermissionsBoundary         plugin.TValue[*mqlAwsIamPolicy]
 	UsedByInstances             plugin.TValue[[]any]
 	Path                        plugin.TValue[string]
@@ -104608,6 +105342,12 @@ func (c *mqlAwsIamRole) GetLastUsedRegion() *plugin.TValue[string] {
 
 func (c *mqlAwsIamRole) GetMaxSessionDuration() *plugin.TValue[int64] {
 	return &c.MaxSessionDuration
+}
+
+func (c *mqlAwsIamRole) GetMaxSigninSessionDuration() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MaxSigninSessionDuration, func() (int64, error) {
+		return c.maxSigninSessionDuration()
+	})
 }
 
 func (c *mqlAwsIamRole) GetPermissionsBoundary() *plugin.TValue[*mqlAwsIamPolicy] {
@@ -105082,12 +105822,16 @@ type mqlAwsIamSamlProvider struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAwsIamSamlProviderInternal
-	Arn              plugin.TValue[string]
-	Name             plugin.TValue[string]
-	CreatedAt        plugin.TValue[*time.Time]
-	ValidUntil       plugin.TValue[*time.Time]
-	MetadataDocument plugin.TValue[string]
-	Tags             plugin.TValue[map[string]any]
+	Arn                    plugin.TValue[string]
+	Name                   plugin.TValue[string]
+	CreatedAt              plugin.TValue[*time.Time]
+	ValidUntil             plugin.TValue[*time.Time]
+	MetadataDocument       plugin.TValue[string]
+	Tags                   plugin.TValue[map[string]any]
+	ContextProvider        plugin.TValue[*mqlAwsIamContextProvider]
+	IdentityCenterInstance plugin.TValue[*mqlAwsIdentitycenterInstance]
+	IdentityStoreArn       plugin.TValue[string]
+	KeyHashes              plugin.TValue[map[string]any]
 }
 
 // createAwsIamSamlProvider creates a new instance of this resource
@@ -105161,17 +105905,64 @@ func (c *mqlAwsIamSamlProvider) GetTags() *plugin.TValue[map[string]any] {
 	})
 }
 
+func (c *mqlAwsIamSamlProvider) GetContextProvider() *plugin.TValue[*mqlAwsIamContextProvider] {
+	return plugin.GetOrCompute[*mqlAwsIamContextProvider](&c.ContextProvider, func() (*mqlAwsIamContextProvider, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.iam.samlProvider", c.__id, "contextProvider")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsIamContextProvider), nil
+			}
+		}
+
+		return c.contextProvider()
+	})
+}
+
+func (c *mqlAwsIamSamlProvider) GetIdentityCenterInstance() *plugin.TValue[*mqlAwsIdentitycenterInstance] {
+	return plugin.GetOrCompute[*mqlAwsIdentitycenterInstance](&c.IdentityCenterInstance, func() (*mqlAwsIdentitycenterInstance, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.iam.samlProvider", c.__id, "identityCenterInstance")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsIdentitycenterInstance), nil
+			}
+		}
+
+		return c.identityCenterInstance()
+	})
+}
+
+func (c *mqlAwsIamSamlProvider) GetIdentityStoreArn() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.IdentityStoreArn, func() (string, error) {
+		return c.identityStoreArn()
+	})
+}
+
+func (c *mqlAwsIamSamlProvider) GetKeyHashes() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.KeyHashes, func() (map[string]any, error) {
+		return c.keyHashes()
+	})
+}
+
 // mqlAwsIamOidcProvider for the aws.iam.oidcProvider resource
 type mqlAwsIamOidcProvider struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAwsIamOidcProviderInternal
-	Arn         plugin.TValue[string]
-	Url         plugin.TValue[string]
-	ClientIds   plugin.TValue[[]any]
-	Thumbprints plugin.TValue[[]any]
-	CreatedAt   plugin.TValue[*time.Time]
-	Tags        plugin.TValue[map[string]any]
+	Arn                    plugin.TValue[string]
+	Url                    plugin.TValue[string]
+	ClientIds              plugin.TValue[[]any]
+	Thumbprints            plugin.TValue[[]any]
+	CreatedAt              plugin.TValue[*time.Time]
+	Tags                   plugin.TValue[map[string]any]
+	ContextProvider        plugin.TValue[*mqlAwsIamContextProvider]
+	IdentityCenterInstance plugin.TValue[*mqlAwsIdentitycenterInstance]
+	IdentityStoreArn       plugin.TValue[string]
 }
 
 // createAwsIamOidcProvider creates a new instance of this resource
@@ -105243,6 +106034,103 @@ func (c *mqlAwsIamOidcProvider) GetTags() *plugin.TValue[map[string]any] {
 	return plugin.GetOrCompute[map[string]any](&c.Tags, func() (map[string]any, error) {
 		return c.tags()
 	})
+}
+
+func (c *mqlAwsIamOidcProvider) GetContextProvider() *plugin.TValue[*mqlAwsIamContextProvider] {
+	return plugin.GetOrCompute[*mqlAwsIamContextProvider](&c.ContextProvider, func() (*mqlAwsIamContextProvider, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.iam.oidcProvider", c.__id, "contextProvider")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsIamContextProvider), nil
+			}
+		}
+
+		return c.contextProvider()
+	})
+}
+
+func (c *mqlAwsIamOidcProvider) GetIdentityCenterInstance() *plugin.TValue[*mqlAwsIdentitycenterInstance] {
+	return plugin.GetOrCompute[*mqlAwsIdentitycenterInstance](&c.IdentityCenterInstance, func() (*mqlAwsIdentitycenterInstance, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.iam.oidcProvider", c.__id, "identityCenterInstance")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsIdentitycenterInstance), nil
+			}
+		}
+
+		return c.identityCenterInstance()
+	})
+}
+
+func (c *mqlAwsIamOidcProvider) GetIdentityStoreArn() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.IdentityStoreArn, func() (string, error) {
+		return c.identityStoreArn()
+	})
+}
+
+// mqlAwsIamContextProvider for the aws.iam.contextProvider resource
+type mqlAwsIamContextProvider struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAwsIamContextProviderInternal it will be used here
+	SubjectSourceKey     plugin.TValue[string]
+	SubjectTypeSourceKey plugin.TValue[string]
+	SubjectTypeValue     plugin.TValue[string]
+	KeyMappings          plugin.TValue[map[string]any]
+}
+
+// createAwsIamContextProvider creates a new instance of this resource
+func createAwsIamContextProvider(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsIamContextProvider{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.iam.contextProvider", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsIamContextProvider) MqlName() string {
+	return "aws.iam.contextProvider"
+}
+
+func (c *mqlAwsIamContextProvider) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsIamContextProvider) GetSubjectSourceKey() *plugin.TValue[string] {
+	return &c.SubjectSourceKey
+}
+
+func (c *mqlAwsIamContextProvider) GetSubjectTypeSourceKey() *plugin.TValue[string] {
+	return &c.SubjectTypeSourceKey
+}
+
+func (c *mqlAwsIamContextProvider) GetSubjectTypeValue() *plugin.TValue[string] {
+	return &c.SubjectTypeValue
+}
+
+func (c *mqlAwsIamContextProvider) GetKeyMappings() *plugin.TValue[map[string]any] {
+	return &c.KeyMappings
 }
 
 // mqlAwsIamAccessAnalyzer for the aws.iam.accessAnalyzer resource
@@ -108094,18 +108982,20 @@ type mqlAwsSagemakerEndpoint struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAwsSagemakerEndpointInternal
-	Arn                      plugin.TValue[string]
-	Name                     plugin.TValue[string]
-	EndpointConfig           plugin.TValue[*mqlAwsSagemakerEndpointConfig]
-	Region                   plugin.TValue[string]
-	Tags                     plugin.TValue[map[string]any]
-	CreatedAt                plugin.TValue[*time.Time]
-	LastModifiedAt           plugin.TValue[*time.Time]
-	Status                   plugin.TValue[string]
-	EndpointConfigName       plugin.TValue[string]
-	ProductionVariants       plugin.TValue[[]any]
-	ShadowProductionVariants plugin.TValue[[]any]
-	DataCaptureConfig        plugin.TValue[*mqlAwsSagemakerEndpointDataCaptureConfig]
+	Arn                                           plugin.TValue[string]
+	Name                                          plugin.TValue[string]
+	EndpointConfig                                plugin.TValue[*mqlAwsSagemakerEndpointConfig]
+	Region                                        plugin.TValue[string]
+	Tags                                          plugin.TValue[map[string]any]
+	CreatedAt                                     plugin.TValue[*time.Time]
+	LastModifiedAt                                plugin.TValue[*time.Time]
+	Status                                        plugin.TValue[string]
+	EndpointConfigName                            plugin.TValue[string]
+	ProductionVariants                            plugin.TValue[[]any]
+	ShadowProductionVariants                      plugin.TValue[[]any]
+	DataCaptureConfig                             plugin.TValue[*mqlAwsSagemakerEndpointDataCaptureConfig]
+	CrossRegionMaxPercent                         plugin.TValue[int64]
+	CrossRegionMaxInvocationsPerSecondPerInstance plugin.TValue[int64]
 }
 
 // createAwsSagemakerEndpoint creates a new instance of this resource
@@ -108242,6 +109132,18 @@ func (c *mqlAwsSagemakerEndpoint) GetDataCaptureConfig() *plugin.TValue[*mqlAwsS
 		}
 
 		return c.dataCaptureConfig()
+	})
+}
+
+func (c *mqlAwsSagemakerEndpoint) GetCrossRegionMaxPercent() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.CrossRegionMaxPercent, func() (int64, error) {
+		return c.crossRegionMaxPercent()
+	})
+}
+
+func (c *mqlAwsSagemakerEndpoint) GetCrossRegionMaxInvocationsPerSecondPerInstance() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.CrossRegionMaxInvocationsPerSecondPerInstance, func() (int64, error) {
+		return c.crossRegionMaxInvocationsPerSecondPerInstance()
 	})
 }
 
@@ -111811,20 +112713,22 @@ type mqlAwsSagemakerEndpointConfig struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAwsSagemakerEndpointConfigInternal
-	Arn                    plugin.TValue[string]
-	Name                   plugin.TValue[string]
-	Region                 plugin.TValue[string]
-	CreatedAt              plugin.TValue[*time.Time]
-	Tags                   plugin.TValue[map[string]any]
-	ProductionVariants     plugin.TValue[[]any]
-	DataCaptureConfig      plugin.TValue[*mqlAwsSagemakerEndpointConfigDataCaptureConfig]
-	KmsKey                 plugin.TValue[*mqlAwsKmsKey]
-	AsyncInferenceConfig   plugin.TValue[any]
-	EnableNetworkIsolation plugin.TValue[bool]
-	IamRole                plugin.TValue[*mqlAwsIamRole]
-	Vpc                    plugin.TValue[*mqlAwsVpc]
-	SecurityGroups         plugin.TValue[[]any]
-	AsyncOutputKmsKey      plugin.TValue[*mqlAwsKmsKey]
+	Arn                                           plugin.TValue[string]
+	Name                                          plugin.TValue[string]
+	Region                                        plugin.TValue[string]
+	CreatedAt                                     plugin.TValue[*time.Time]
+	Tags                                          plugin.TValue[map[string]any]
+	ProductionVariants                            plugin.TValue[[]any]
+	DataCaptureConfig                             plugin.TValue[*mqlAwsSagemakerEndpointConfigDataCaptureConfig]
+	KmsKey                                        plugin.TValue[*mqlAwsKmsKey]
+	AsyncInferenceConfig                          plugin.TValue[any]
+	EnableNetworkIsolation                        plugin.TValue[bool]
+	IamRole                                       plugin.TValue[*mqlAwsIamRole]
+	Vpc                                           plugin.TValue[*mqlAwsVpc]
+	SecurityGroups                                plugin.TValue[[]any]
+	AsyncOutputKmsKey                             plugin.TValue[*mqlAwsKmsKey]
+	CrossRegionMaxPercent                         plugin.TValue[int64]
+	CrossRegionMaxInvocationsPerSecondPerInstance plugin.TValue[int64]
 }
 
 // createAwsSagemakerEndpointConfig creates a new instance of this resource
@@ -112007,6 +112911,18 @@ func (c *mqlAwsSagemakerEndpointConfig) GetAsyncOutputKmsKey() *plugin.TValue[*m
 		}
 
 		return c.asyncOutputKmsKey()
+	})
+}
+
+func (c *mqlAwsSagemakerEndpointConfig) GetCrossRegionMaxPercent() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.CrossRegionMaxPercent, func() (int64, error) {
+		return c.crossRegionMaxPercent()
+	})
+}
+
+func (c *mqlAwsSagemakerEndpointConfig) GetCrossRegionMaxInvocationsPerSecondPerInstance() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.CrossRegionMaxInvocationsPerSecondPerInstance, func() (int64, error) {
+		return c.crossRegionMaxInvocationsPerSecondPerInstance()
 	})
 }
 
@@ -121826,11 +122742,12 @@ type mqlAwsElbMutualAuthentication struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAwsElbMutualAuthenticationInternal
-	Mode                          plugin.TValue[string]
-	TrustStore                    plugin.TValue[*mqlAwsElbTruststore]
-	IgnoreClientCertificateExpiry plugin.TValue[bool]
-	AdvertiseTrustStoreCaNames    plugin.TValue[string]
-	TrustStoreAssociationStatus   plugin.TValue[string]
+	Mode                             plugin.TValue[string]
+	TrustStore                       plugin.TValue[*mqlAwsElbTruststore]
+	IgnoreClientCertificateExpiry    plugin.TValue[bool]
+	AdvertiseTrustStoreCaNames       plugin.TValue[string]
+	TrustStoreAssociationStatus      plugin.TValue[string]
+	ClientCertificateIdentityFilters plugin.TValue[[]any]
 }
 
 // createAwsElbMutualAuthentication creates a new instance of this resource
@@ -121895,6 +122812,69 @@ func (c *mqlAwsElbMutualAuthentication) GetAdvertiseTrustStoreCaNames() *plugin.
 
 func (c *mqlAwsElbMutualAuthentication) GetTrustStoreAssociationStatus() *plugin.TValue[string] {
 	return &c.TrustStoreAssociationStatus
+}
+
+func (c *mqlAwsElbMutualAuthentication) GetClientCertificateIdentityFilters() *plugin.TValue[[]any] {
+	return &c.ClientCertificateIdentityFilters
+}
+
+// mqlAwsElbMutualAuthenticationIdentityFilter for the aws.elb.mutualAuthentication.identityFilter resource
+type mqlAwsElbMutualAuthenticationIdentityFilter struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAwsElbMutualAuthenticationIdentityFilterInternal it will be used here
+	Action    plugin.TValue[string]
+	Field     plugin.TValue[string]
+	MatchType plugin.TValue[string]
+	Value     plugin.TValue[string]
+}
+
+// createAwsElbMutualAuthenticationIdentityFilter creates a new instance of this resource
+func createAwsElbMutualAuthenticationIdentityFilter(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsElbMutualAuthenticationIdentityFilter{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.elb.mutualAuthentication.identityFilter", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsElbMutualAuthenticationIdentityFilter) MqlName() string {
+	return "aws.elb.mutualAuthentication.identityFilter"
+}
+
+func (c *mqlAwsElbMutualAuthenticationIdentityFilter) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsElbMutualAuthenticationIdentityFilter) GetAction() *plugin.TValue[string] {
+	return &c.Action
+}
+
+func (c *mqlAwsElbMutualAuthenticationIdentityFilter) GetField() *plugin.TValue[string] {
+	return &c.Field
+}
+
+func (c *mqlAwsElbMutualAuthenticationIdentityFilter) GetMatchType() *plugin.TValue[string] {
+	return &c.MatchType
+}
+
+func (c *mqlAwsElbMutualAuthenticationIdentityFilter) GetValue() *plugin.TValue[string] {
+	return &c.Value
 }
 
 // mqlAwsElbTruststore for the aws.elb.truststore resource
@@ -143193,6 +144173,7 @@ type mqlAwsCloudfrontDistributionOrigin struct {
 	Account                     plugin.TValue[string]
 	OriginProtocolPolicy        plugin.TValue[string]
 	OriginSslProtocols          plugin.TValue[[]any]
+	OriginHttpVersion           plugin.TValue[string]
 	OriginMtlsClientCertificate plugin.TValue[*mqlAwsAcmCertificate]
 	OriginAccessControlId       plugin.TValue[string]
 	OriginAccessControl         plugin.TValue[*mqlAwsCloudfrontOriginAccessControl]
@@ -143267,6 +144248,10 @@ func (c *mqlAwsCloudfrontDistributionOrigin) GetOriginProtocolPolicy() *plugin.T
 
 func (c *mqlAwsCloudfrontDistributionOrigin) GetOriginSslProtocols() *plugin.TValue[[]any] {
 	return &c.OriginSslProtocols
+}
+
+func (c *mqlAwsCloudfrontDistributionOrigin) GetOriginHttpVersion() *plugin.TValue[string] {
+	return &c.OriginHttpVersion
 }
 
 func (c *mqlAwsCloudfrontDistributionOrigin) GetOriginMtlsClientCertificate() *plugin.TValue[*mqlAwsAcmCertificate] {
@@ -153060,6 +154045,8 @@ type mqlAwsRdsDbinstance struct {
 	CreatedAt                          plugin.TValue[*time.Time]
 	Port                               plugin.TValue[int64]
 	Endpoint                           plugin.TValue[string]
+	PrimaryEndpoint                    plugin.TValue[string]
+	VpcNetworkingEnabled               plugin.TValue[bool]
 	MasterUsername                     plugin.TValue[string]
 	LatestRestorableTime               plugin.TValue[*time.Time]
 	BackupSettings                     plugin.TValue[[]any]
@@ -153326,6 +154313,14 @@ func (c *mqlAwsRdsDbinstance) GetPort() *plugin.TValue[int64] {
 
 func (c *mqlAwsRdsDbinstance) GetEndpoint() *plugin.TValue[string] {
 	return &c.Endpoint
+}
+
+func (c *mqlAwsRdsDbinstance) GetPrimaryEndpoint() *plugin.TValue[string] {
+	return &c.PrimaryEndpoint
+}
+
+func (c *mqlAwsRdsDbinstance) GetVpcNetworkingEnabled() *plugin.TValue[bool] {
+	return &c.VpcNetworkingEnabled
 }
 
 func (c *mqlAwsRdsDbinstance) GetMasterUsername() *plugin.TValue[string] {
@@ -159774,6 +160769,7 @@ type mqlAwsRoute53ResolverFirewallRule struct {
 	DnsThreatProtection             plugin.TValue[string]
 	ConfidenceThreshold             plugin.TValue[string]
 	FirewallRuleType                plugin.TValue[any]
+	AutoAllowlistDomainList         plugin.TValue[*mqlAwsRoute53ResolverFirewallDomainList]
 	FirewallThreatProtectionId      plugin.TValue[string]
 	CreationTime                    plugin.TValue[string]
 	ModificationTime                plugin.TValue[string]
@@ -159882,6 +160878,22 @@ func (c *mqlAwsRoute53ResolverFirewallRule) GetConfidenceThreshold() *plugin.TVa
 
 func (c *mqlAwsRoute53ResolverFirewallRule) GetFirewallRuleType() *plugin.TValue[any] {
 	return &c.FirewallRuleType
+}
+
+func (c *mqlAwsRoute53ResolverFirewallRule) GetAutoAllowlistDomainList() *plugin.TValue[*mqlAwsRoute53ResolverFirewallDomainList] {
+	return plugin.GetOrCompute[*mqlAwsRoute53ResolverFirewallDomainList](&c.AutoAllowlistDomainList, func() (*mqlAwsRoute53ResolverFirewallDomainList, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.route53.resolver.firewallRule", c.__id, "autoAllowlistDomainList")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsRoute53ResolverFirewallDomainList), nil
+			}
+		}
+
+		return c.autoAllowlistDomainList()
+	})
 }
 
 func (c *mqlAwsRoute53ResolverFirewallRule) GetFirewallThreatProtectionId() *plugin.TValue[string] {
@@ -160055,21 +161067,23 @@ type mqlAwsRoute53ResolverFirewallDomainList struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAwsRoute53ResolverFirewallDomainListInternal
-	Id               plugin.TValue[string]
-	Arn              plugin.TValue[string]
-	Name             plugin.TValue[string]
-	Region           plugin.TValue[string]
-	DomainCount      plugin.TValue[int64]
-	Domains          plugin.TValue[[]any]
-	Category         plugin.TValue[string]
-	ManagedListType  plugin.TValue[string]
-	Status           plugin.TValue[string]
-	StatusMessage    plugin.TValue[string]
-	ManagedOwnerName plugin.TValue[string]
-	CreationTime     plugin.TValue[string]
-	ModificationTime plugin.TValue[string]
-	CreatorRequestId plugin.TValue[string]
-	Tags             plugin.TValue[map[string]any]
+	Id                         plugin.TValue[string]
+	Arn                        plugin.TValue[string]
+	Name                       plugin.TValue[string]
+	Region                     plugin.TValue[string]
+	DomainCount                plugin.TValue[int64]
+	Domains                    plugin.TValue[[]any]
+	Category                   plugin.TValue[string]
+	ManagedListType            plugin.TValue[string]
+	Status                     plugin.TValue[string]
+	StatusMessage              plugin.TValue[string]
+	ManagedOwnerName           plugin.TValue[string]
+	CreationTime               plugin.TValue[string]
+	ModificationTime           plugin.TValue[string]
+	CreatorRequestId           plugin.TValue[string]
+	Tags                       plugin.TValue[map[string]any]
+	FirewallRuleGroup          plugin.TValue[*mqlAwsRoute53ResolverFirewallRuleGroup]
+	FirewallThreatProtectionId plugin.TValue[string]
 }
 
 // createAwsRoute53ResolverFirewallDomainList creates a new instance of this resource
@@ -160171,6 +161185,26 @@ func (c *mqlAwsRoute53ResolverFirewallDomainList) GetTags() *plugin.TValue[map[s
 	return plugin.GetOrCompute[map[string]any](&c.Tags, func() (map[string]any, error) {
 		return c.tags()
 	})
+}
+
+func (c *mqlAwsRoute53ResolverFirewallDomainList) GetFirewallRuleGroup() *plugin.TValue[*mqlAwsRoute53ResolverFirewallRuleGroup] {
+	return plugin.GetOrCompute[*mqlAwsRoute53ResolverFirewallRuleGroup](&c.FirewallRuleGroup, func() (*mqlAwsRoute53ResolverFirewallRuleGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.route53.resolver.firewallDomainList", c.__id, "firewallRuleGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsRoute53ResolverFirewallRuleGroup), nil
+			}
+		}
+
+		return c.firewallRuleGroup()
+	})
+}
+
+func (c *mqlAwsRoute53ResolverFirewallDomainList) GetFirewallThreatProtectionId() *plugin.TValue[string] {
+	return &c.FirewallThreatProtectionId
 }
 
 // mqlAwsRoute53ResolverFirewallConfig for the aws.route53.resolver.firewallConfig resource
@@ -163162,6 +164196,7 @@ type mqlAwsApigatewayAuthorizer struct {
 	ProviderArns                 plugin.TValue[[]any]
 	UserPools                    plugin.TValue[[]any]
 	Region                       plugin.TValue[string]
+	JwtConfiguration             plugin.TValue[any]
 }
 
 // createAwsApigatewayAuthorizer creates a new instance of this resource
@@ -163299,6 +164334,10 @@ func (c *mqlAwsApigatewayAuthorizer) GetUserPools() *plugin.TValue[[]any] {
 
 func (c *mqlAwsApigatewayAuthorizer) GetRegion() *plugin.TValue[string] {
 	return &c.Region
+}
+
+func (c *mqlAwsApigatewayAuthorizer) GetJwtConfiguration() *plugin.TValue[any] {
+	return &c.JwtConfiguration
 }
 
 // mqlAwsApigatewayRequestValidator for the aws.apigateway.requestValidator resource
@@ -165198,6 +166237,9 @@ type mqlAwsLambdaFunction struct {
 	SourceKmsKey                  plugin.TValue[*mqlAwsKmsKey]
 	DurableExecutionTimeout       plugin.TValue[int64]
 	DurableExecutionRetentionDays plugin.TValue[int64]
+	CustomerManagedRuntimeArn     plugin.TValue[string]
+	CustomerManagedRuntimeAlias   plugin.TValue[string]
+	AcceleratorMemorySize         plugin.TValue[int64]
 	DurableExecutionKmsKey        plugin.TValue[*mqlAwsKmsKey]
 }
 
@@ -165760,6 +166802,18 @@ func (c *mqlAwsLambdaFunction) GetDurableExecutionTimeout() *plugin.TValue[int64
 
 func (c *mqlAwsLambdaFunction) GetDurableExecutionRetentionDays() *plugin.TValue[int64] {
 	return &c.DurableExecutionRetentionDays
+}
+
+func (c *mqlAwsLambdaFunction) GetCustomerManagedRuntimeArn() *plugin.TValue[string] {
+	return &c.CustomerManagedRuntimeArn
+}
+
+func (c *mqlAwsLambdaFunction) GetCustomerManagedRuntimeAlias() *plugin.TValue[string] {
+	return &c.CustomerManagedRuntimeAlias
+}
+
+func (c *mqlAwsLambdaFunction) GetAcceleratorMemorySize() *plugin.TValue[int64] {
+	return &c.AcceleratorMemorySize
 }
 
 func (c *mqlAwsLambdaFunction) GetDurableExecutionKmsKey() *plugin.TValue[*mqlAwsKmsKey] {
@@ -169311,15 +170365,17 @@ type mqlAwsEc2VpnconnectionTunnelOption struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlAwsEc2VpnconnectionTunnelOptionInternal it will be used here
-	OutsideIpAddress           plugin.TValue[string]
-	TunnelInsideCidr           plugin.TValue[string]
-	IkeVersions                plugin.TValue[[]any]
-	Phase1EncryptionAlgorithms plugin.TValue[[]any]
-	Phase2EncryptionAlgorithms plugin.TValue[[]any]
-	Phase1IntegrityAlgorithms  plugin.TValue[[]any]
-	Phase2IntegrityAlgorithms  plugin.TValue[[]any]
-	Phase1DHGroupNumbers       plugin.TValue[[]any]
-	Phase2DHGroupNumbers       plugin.TValue[[]any]
+	OutsideIpAddress             plugin.TValue[string]
+	TunnelInsideCidr             plugin.TValue[string]
+	IkeVersions                  plugin.TValue[[]any]
+	Phase1EncryptionAlgorithms   plugin.TValue[[]any]
+	Phase2EncryptionAlgorithms   plugin.TValue[[]any]
+	Phase1IntegrityAlgorithms    plugin.TValue[[]any]
+	Phase2IntegrityAlgorithms    plugin.TValue[[]any]
+	Phase1DHGroupNumbers         plugin.TValue[[]any]
+	Phase2DHGroupNumbers         plugin.TValue[[]any]
+	Phase1AdditionalKeyExchanges plugin.TValue[[]any]
+	Phase2AdditionalKeyExchanges plugin.TValue[[]any]
 }
 
 // createAwsEc2VpnconnectionTunnelOption creates a new instance of this resource
@@ -169388,6 +170444,68 @@ func (c *mqlAwsEc2VpnconnectionTunnelOption) GetPhase1DHGroupNumbers() *plugin.T
 
 func (c *mqlAwsEc2VpnconnectionTunnelOption) GetPhase2DHGroupNumbers() *plugin.TValue[[]any] {
 	return &c.Phase2DHGroupNumbers
+}
+
+func (c *mqlAwsEc2VpnconnectionTunnelOption) GetPhase1AdditionalKeyExchanges() *plugin.TValue[[]any] {
+	return &c.Phase1AdditionalKeyExchanges
+}
+
+func (c *mqlAwsEc2VpnconnectionTunnelOption) GetPhase2AdditionalKeyExchanges() *plugin.TValue[[]any] {
+	return &c.Phase2AdditionalKeyExchanges
+}
+
+// mqlAwsEc2VpnconnectionTunnelOptionAdditionalKeyExchange for the aws.ec2.vpnconnection.tunnelOption.additionalKeyExchange resource
+type mqlAwsEc2VpnconnectionTunnelOptionAdditionalKeyExchange struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAwsEc2VpnconnectionTunnelOptionAdditionalKeyExchangeInternal it will be used here
+	Round              plugin.TValue[int64]
+	KeyExchangeMethods plugin.TValue[[]any]
+	Requirement        plugin.TValue[string]
+}
+
+// createAwsEc2VpnconnectionTunnelOptionAdditionalKeyExchange creates a new instance of this resource
+func createAwsEc2VpnconnectionTunnelOptionAdditionalKeyExchange(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsEc2VpnconnectionTunnelOptionAdditionalKeyExchange{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.ec2.vpnconnection.tunnelOption.additionalKeyExchange", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsEc2VpnconnectionTunnelOptionAdditionalKeyExchange) MqlName() string {
+	return "aws.ec2.vpnconnection.tunnelOption.additionalKeyExchange"
+}
+
+func (c *mqlAwsEc2VpnconnectionTunnelOptionAdditionalKeyExchange) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsEc2VpnconnectionTunnelOptionAdditionalKeyExchange) GetRound() *plugin.TValue[int64] {
+	return &c.Round
+}
+
+func (c *mqlAwsEc2VpnconnectionTunnelOptionAdditionalKeyExchange) GetKeyExchangeMethods() *plugin.TValue[[]any] {
+	return &c.KeyExchangeMethods
+}
+
+func (c *mqlAwsEc2VpnconnectionTunnelOptionAdditionalKeyExchange) GetRequirement() *plugin.TValue[string] {
+	return &c.Requirement
 }
 
 // mqlAwsEc2Internetgateway for the aws.ec2.internetgateway resource
@@ -172188,6 +173306,7 @@ type mqlAwsEc2Snapshot struct {
 	TransferType                  plugin.TValue[string]
 	RestoreExpiryTime             plugin.TValue[*time.Time]
 	KmsKey                        plugin.TValue[*mqlAwsKmsKey]
+	AssociatedKmsKeys             plugin.TValue[[]any]
 	SourceVolume                  plugin.TValue[*mqlAwsEc2Volume]
 	DataEncryptionKeyId           plugin.TValue[string]
 	OwnerAlias                    plugin.TValue[string]
@@ -172351,6 +173470,22 @@ func (c *mqlAwsEc2Snapshot) GetKmsKey() *plugin.TValue[*mqlAwsKmsKey] {
 		}
 
 		return c.kmsKey()
+	})
+}
+
+func (c *mqlAwsEc2Snapshot) GetAssociatedKmsKeys() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AssociatedKmsKeys, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.ec2.snapshot", c.__id, "associatedKmsKeys")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.associatedKmsKeys()
 	})
 }
 
@@ -179941,6 +181076,7 @@ type mqlAwsNeptuneCluster struct {
 	CopyTagsToSnapshot               plugin.TValue[bool]
 	ServerlessV2MinCapacity          plugin.TValue[float64]
 	ServerlessV2MaxCapacity          plugin.TValue[float64]
+	ServerlessV2PlatformVersion      plugin.TValue[string]
 	ReadReplicas                     plugin.TValue[[]any]
 }
 
@@ -180234,6 +181370,10 @@ func (c *mqlAwsNeptuneCluster) GetServerlessV2MinCapacity() *plugin.TValue[float
 
 func (c *mqlAwsNeptuneCluster) GetServerlessV2MaxCapacity() *plugin.TValue[float64] {
 	return &c.ServerlessV2MaxCapacity
+}
+
+func (c *mqlAwsNeptuneCluster) GetServerlessV2PlatformVersion() *plugin.TValue[string] {
+	return &c.ServerlessV2PlatformVersion
 }
 
 func (c *mqlAwsNeptuneCluster) GetReadReplicas() *plugin.TValue[[]any] {
@@ -185668,20 +186808,23 @@ type mqlAwsAppstreamStack struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAwsAppstreamStackInternal
-	Arn                 plugin.TValue[string]
-	Name                plugin.TValue[string]
-	Description         plugin.TValue[string]
-	CreatedAt           plugin.TValue[*time.Time]
-	AccessEndpoints     plugin.TValue[[]any]
-	ApplicationSettings plugin.TValue[any]
-	StorageConnectors   plugin.TValue[[]any]
-	UserSettings        plugin.TValue[[]any]
-	EmbedHostDomains    plugin.TValue[[]any]
-	ContentRedirection  plugin.TValue[*mqlAwsAppstreamStackContentRedirection]
-	AssociatedFleets    plugin.TValue[[]any]
-	Entitlements        plugin.TValue[[]any]
-	Tags                plugin.TValue[map[string]any]
-	Region              plugin.TValue[string]
+	Arn                            plugin.TValue[string]
+	Name                           plugin.TValue[string]
+	Description                    plugin.TValue[string]
+	CreatedAt                      plugin.TValue[*time.Time]
+	AccessEndpoints                plugin.TValue[[]any]
+	ApplicationSettings            plugin.TValue[any]
+	StorageConnectors              plugin.TValue[[]any]
+	UserSettings                   plugin.TValue[[]any]
+	EmbedHostDomains               plugin.TValue[[]any]
+	ContentRedirection             plugin.TValue[*mqlAwsAppstreamStackContentRedirection]
+	WebAuthnRedirectionEnabled     plugin.TValue[bool]
+	WebAuthnRedirectionProcesses   plugin.TValue[[]any]
+	StorageConnectorAuthentication plugin.TValue[string]
+	AssociatedFleets               plugin.TValue[[]any]
+	Entitlements                   plugin.TValue[[]any]
+	Tags                           plugin.TValue[map[string]any]
+	Region                         plugin.TValue[string]
 }
 
 // createAwsAppstreamStack creates a new instance of this resource
@@ -185771,6 +186914,18 @@ func (c *mqlAwsAppstreamStack) GetContentRedirection() *plugin.TValue[*mqlAwsApp
 
 		return c.contentRedirection()
 	})
+}
+
+func (c *mqlAwsAppstreamStack) GetWebAuthnRedirectionEnabled() *plugin.TValue[bool] {
+	return &c.WebAuthnRedirectionEnabled
+}
+
+func (c *mqlAwsAppstreamStack) GetWebAuthnRedirectionProcesses() *plugin.TValue[[]any] {
+	return &c.WebAuthnRedirectionProcesses
+}
+
+func (c *mqlAwsAppstreamStack) GetStorageConnectorAuthentication() *plugin.TValue[string] {
+	return &c.StorageConnectorAuthentication
 }
 
 func (c *mqlAwsAppstreamStack) GetAssociatedFleets() *plugin.TValue[[]any] {
@@ -185893,6 +187048,7 @@ type mqlAwsAppstreamImageBuilder struct {
 	VpcConfig                   plugin.TValue[any]
 	IamRole                     plugin.TValue[*mqlAwsIamRole]
 	NetworkAccessConfiguration  plugin.TValue[any]
+	AgentAccessConfig           plugin.TValue[*mqlAwsAppstreamImageBuilderAgentAccessConfig]
 	CreatedAt                   plugin.TValue[*time.Time]
 	Tags                        plugin.TValue[map[string]any]
 	Region                      plugin.TValue[string]
@@ -186003,6 +187159,10 @@ func (c *mqlAwsAppstreamImageBuilder) GetNetworkAccessConfiguration() *plugin.TV
 	return &c.NetworkAccessConfiguration
 }
 
+func (c *mqlAwsAppstreamImageBuilder) GetAgentAccessConfig() *plugin.TValue[*mqlAwsAppstreamImageBuilderAgentAccessConfig] {
+	return &c.AgentAccessConfig
+}
+
 func (c *mqlAwsAppstreamImageBuilder) GetCreatedAt() *plugin.TValue[*time.Time] {
 	return &c.CreatedAt
 }
@@ -186015,6 +187175,87 @@ func (c *mqlAwsAppstreamImageBuilder) GetTags() *plugin.TValue[map[string]any] {
 
 func (c *mqlAwsAppstreamImageBuilder) GetRegion() *plugin.TValue[string] {
 	return &c.Region
+}
+
+// mqlAwsAppstreamImageBuilderAgentAccessConfig for the aws.appstream.imageBuilder.agentAccessConfig resource
+type mqlAwsAppstreamImageBuilderAgentAccessConfig struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsAppstreamImageBuilderAgentAccessConfigInternal
+	AgentActions             plugin.TValue[map[string]any]
+	UserControlMode          plugin.TValue[string]
+	ScreenImageFormat        plugin.TValue[string]
+	ScreenResolution         plugin.TValue[string]
+	ScreenshotsUploadEnabled plugin.TValue[bool]
+	ScreenshotsBucket        plugin.TValue[*mqlAwsS3Bucket]
+}
+
+// createAwsAppstreamImageBuilderAgentAccessConfig creates a new instance of this resource
+func createAwsAppstreamImageBuilderAgentAccessConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsAppstreamImageBuilderAgentAccessConfig{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.appstream.imageBuilder.agentAccessConfig", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsAppstreamImageBuilderAgentAccessConfig) MqlName() string {
+	return "aws.appstream.imageBuilder.agentAccessConfig"
+}
+
+func (c *mqlAwsAppstreamImageBuilderAgentAccessConfig) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsAppstreamImageBuilderAgentAccessConfig) GetAgentActions() *plugin.TValue[map[string]any] {
+	return &c.AgentActions
+}
+
+func (c *mqlAwsAppstreamImageBuilderAgentAccessConfig) GetUserControlMode() *plugin.TValue[string] {
+	return &c.UserControlMode
+}
+
+func (c *mqlAwsAppstreamImageBuilderAgentAccessConfig) GetScreenImageFormat() *plugin.TValue[string] {
+	return &c.ScreenImageFormat
+}
+
+func (c *mqlAwsAppstreamImageBuilderAgentAccessConfig) GetScreenResolution() *plugin.TValue[string] {
+	return &c.ScreenResolution
+}
+
+func (c *mqlAwsAppstreamImageBuilderAgentAccessConfig) GetScreenshotsUploadEnabled() *plugin.TValue[bool] {
+	return &c.ScreenshotsUploadEnabled
+}
+
+func (c *mqlAwsAppstreamImageBuilderAgentAccessConfig) GetScreenshotsBucket() *plugin.TValue[*mqlAwsS3Bucket] {
+	return plugin.GetOrCompute[*mqlAwsS3Bucket](&c.ScreenshotsBucket, func() (*mqlAwsS3Bucket, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.appstream.imageBuilder.agentAccessConfig", c.__id, "screenshotsBucket")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsS3Bucket), nil
+			}
+		}
+
+		return c.screenshotsBucket()
+	})
 }
 
 // mqlAwsAppstreamApplication for the aws.appstream.application resource
@@ -189625,6 +190866,7 @@ type mqlAwsWorkspacesDirectory struct {
 	IpGroupIds                     plugin.TValue[[]any]
 	SelfservicePermissions         plugin.TValue[any]
 	IamRoleId                      plugin.TValue[string]
+	WorkspaceOsUserMode            plugin.TValue[string]
 	Subnets                        plugin.TValue[[]any]
 	ClientExperiencePolicy         plugin.TValue[string]
 	ClientReconnectEnabled         plugin.TValue[bool]
@@ -189726,6 +190968,10 @@ func (c *mqlAwsWorkspacesDirectory) GetSelfservicePermissions() *plugin.TValue[a
 
 func (c *mqlAwsWorkspacesDirectory) GetIamRoleId() *plugin.TValue[string] {
 	return &c.IamRoleId
+}
+
+func (c *mqlAwsWorkspacesDirectory) GetWorkspaceOsUserMode() *plugin.TValue[string] {
+	return &c.WorkspaceOsUserMode
 }
 
 func (c *mqlAwsWorkspacesDirectory) GetSubnets() *plugin.TValue[[]any] {
@@ -191192,6 +192438,7 @@ type mqlAwsKinesisStream struct {
 	Tags                       plugin.TValue[map[string]any]
 	Consumers                  plugin.TValue[[]any]
 	RecordDistributionStrategy plugin.TValue[string]
+	QueueCount                 plugin.TValue[int64]
 }
 
 // createAwsKinesisStream creates a new instance of this resource
@@ -191325,6 +192572,12 @@ func (c *mqlAwsKinesisStream) GetConsumers() *plugin.TValue[[]any] {
 func (c *mqlAwsKinesisStream) GetRecordDistributionStrategy() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.RecordDistributionStrategy, func() (string, error) {
 		return c.recordDistributionStrategy()
+	})
+}
+
+func (c *mqlAwsKinesisStream) GetQueueCount() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.QueueCount, func() (int64, error) {
+		return c.queueCount()
 	})
 }
 
@@ -199110,6 +200363,7 @@ type mqlAwsMskClusterNode struct {
 	Endpoints          plugin.TValue[[]any]
 	Subnet             plugin.TValue[*mqlAwsVpcSubnet]
 	NetworkInterface   plugin.TValue[*mqlAwsEc2Networkinterface]
+	BrokerNodeType     plugin.TValue[string]
 }
 
 // createAwsMskClusterNode creates a new instance of this resource
@@ -199210,6 +200464,10 @@ func (c *mqlAwsMskClusterNode) GetNetworkInterface() *plugin.TValue[*mqlAwsEc2Ne
 
 		return c.networkInterface()
 	})
+}
+
+func (c *mqlAwsMskClusterNode) GetBrokerNodeType() *plugin.TValue[string] {
+	return &c.BrokerNodeType
 }
 
 // mqlAwsMskClusterClientVpcConnection for the aws.msk.cluster.clientVpcConnection resource
@@ -204239,6 +205497,7 @@ type mqlAwsCloudformationStack struct {
 	UpdatedAt                   plugin.TValue[*time.Time]
 	Resources                   plugin.TValue[[]any]
 	ChangeSetId                 plugin.TValue[string]
+	AliasName                   plugin.TValue[string]
 	ParentStack                 plugin.TValue[*mqlAwsCloudformationStack]
 	RootStack                   plugin.TValue[*mqlAwsCloudformationStack]
 }
@@ -204387,6 +205646,10 @@ func (c *mqlAwsCloudformationStack) GetChangeSetId() *plugin.TValue[string] {
 	return &c.ChangeSetId
 }
 
+func (c *mqlAwsCloudformationStack) GetAliasName() *plugin.TValue[string] {
+	return &c.AliasName
+}
+
 func (c *mqlAwsCloudformationStack) GetParentStack() *plugin.TValue[*mqlAwsCloudformationStack] {
 	return plugin.GetOrCompute[*mqlAwsCloudformationStack](&c.ParentStack, func() (*mqlAwsCloudformationStack, error) {
 		if c.MqlRuntime.HasRecording {
@@ -204511,6 +205774,7 @@ type mqlAwsCloudformationStackSet struct {
 	AdministrationRole      plugin.TValue[*mqlAwsIamRole]
 	ExecutionRoleName       plugin.TValue[string]
 	OrganizationalUnitIds   plugin.TValue[[]any]
+	OutputBucketPath        plugin.TValue[string]
 	Tags                    plugin.TValue[map[string]any]
 }
 
@@ -204615,6 +205879,12 @@ func (c *mqlAwsCloudformationStackSet) GetExecutionRoleName() *plugin.TValue[str
 func (c *mqlAwsCloudformationStackSet) GetOrganizationalUnitIds() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.OrganizationalUnitIds, func() ([]any, error) {
 		return c.organizationalUnitIds()
+	})
+}
+
+func (c *mqlAwsCloudformationStackSet) GetOutputBucketPath() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.OutputBucketPath, func() (string, error) {
+		return c.outputBucketPath()
 	})
 }
 

@@ -266,6 +266,17 @@ func newLambdaFunctionResource(runtime *plugin.Runtime, region string, accountID
 		"masterArn":                   llx.StringDataPtr(function.MasterArn),
 	}
 
+	args["customerManagedRuntimeArn"] = llx.NilData
+	args["customerManagedRuntimeAlias"] = llx.NilData
+	if function.RuntimeConfig != nil {
+		args["customerManagedRuntimeArn"] = llx.StringDataPtr(function.RuntimeConfig.RuntimeArn)
+		args["customerManagedRuntimeAlias"] = llx.StringDataPtr(function.RuntimeConfig.RuntimeAlias)
+	}
+	args["acceleratorMemorySize"] = llx.NilData
+	if function.AcceleratorConfig != nil && function.AcceleratorConfig.AcceleratorMemorySize > 0 {
+		args["acceleratorMemorySize"] = llx.IntData(int64(function.AcceleratorConfig.AcceleratorMemorySize))
+	}
+
 	if function.DurableConfig != nil {
 		args["durableExecutionTimeout"] = llx.IntDataPtr(function.DurableConfig.ExecutionTimeout)
 		args["durableExecutionRetentionDays"] = llx.IntDataPtr(function.DurableConfig.RetentionPeriodInDays)

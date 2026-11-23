@@ -230,6 +230,17 @@ func (a *mqlAwsWafAcl) tokenDomains() ([]any, error) {
 	return convert.SliceAnyToInterface(a.cachedACL.TokenDomains), nil
 }
 
+func (a *mqlAwsWafAcl) analyticsMode() (string, error) {
+	if err := a.fetchACLDetails(); err != nil {
+		return "", err
+	}
+	if a.cachedACL == nil || a.cachedACL.AnalyticsConfig == nil || a.cachedACL.AnalyticsConfig.Mode == "" {
+		a.AnalyticsMode.State = plugin.StateIsNull | plugin.StateIsSet
+		return "", nil
+	}
+	return string(a.cachedACL.AnalyticsConfig.Mode), nil
+}
+
 func (a *mqlAwsWafAcl) labelNamespace() (string, error) {
 	if err := a.fetchACLDetails(); err != nil {
 		return "", err

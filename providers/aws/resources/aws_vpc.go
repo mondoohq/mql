@@ -168,6 +168,7 @@ func buildVpcResource(runtime *plugin.Runtime, region, accountID string, vpc vpc
 	}
 	mqlVpcRes.cacheCidrBlockAssociations = vpc.CidrBlockAssociationSet
 	mqlVpcRes.cacheIpv6CidrBlockAssociations = vpc.Ipv6CidrBlockAssociationSet
+	mqlVpcRes.cacheNetworkFirewallAssociations = vpc.NetworkFirewallAssociations
 	return mqlVpcRes, nil
 }
 
@@ -242,9 +243,49 @@ func (a *mqlAws) getVpcs(conn *connection.AwsConnection) []*jobpool.Job {
 type mqlAwsVpcInternal struct {
 	cacheCidrBlockAssociations     []vpctypes.VpcCidrBlockAssociation
 	cacheIpv6CidrBlockAssociations []vpctypes.VpcIpv6CidrBlockAssociation
+	// from DescribeVpcs; empty when the VPC has no internet gateway firewall
+	cacheNetworkFirewallAssociations []vpctypes.NetworkFirewallAssociation
 	// set when DescribeVpcEncryptionControls was denied, so callers can tell
 	// "unknown" apart from "no encryption control" (both yield a null field)
 	encryptionControlAccessDenied bool
+}
+
+func (a *mqlAwsVpc) networkFirewallAssociations() ([]any, error) {
+	res := []any{}
+	for _, assoc := range a.cacheNetworkFirewallAssociations {
+		firewallArn := convert.ToValue(assoc.FirewallArn)
+		if firewallArn == "" {
+			continue
+		}
+		r, err := CreateResource(a.MqlRuntime, ResourceAwsVpcNetworkFirewallAssociation,
+			map[string]*llx.RawData{
+				"__id":             llx.StringData(a.Arn.Data + "/networkFirewallAssociation/" + firewallArn),
+				"mode":             llx.StringData(string(assoc.FirewallMode)),
+				"onboardingStatus": llx.StringData(string(assoc.FirewallOnboardingStatus)),
+			})
+		if err != nil {
+			return nil, err
+		}
+		r.(*mqlAwsVpcNetworkFirewallAssociation).cacheFirewallArn = firewallArn
+		res = append(res, r)
+	}
+	return res, nil
+}
+
+type mqlAwsVpcNetworkFirewallAssociationInternal struct {
+	cacheFirewallArn string
+}
+
+func (a *mqlAwsVpcNetworkFirewallAssociation) firewall() (*mqlAwsNetworkfirewallFirewall, error) {
+	fw, err := networkFirewallByArn(a.MqlRuntime, a.cacheFirewallArn)
+	if err != nil {
+		return nil, err
+	}
+	if fw == nil {
+		a.Firewall.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return fw, nil
 }
 
 func (a *mqlAwsVpc) cidrBlockAssociations() ([]any, error) {
@@ -1075,6 +1116,7 @@ type mqlAwsVpcRoutetableRouteInternal struct {
 	cacheTransitGatewayId            string
 	cacheVpcPeeringConnectionId      string
 	cacheEgressOnlyInternetGatewayId string
+	cacheIgwFirewallArn              string
 	region                           string
 }
 
@@ -1196,6 +1238,22 @@ func (a *mqlAwsVpcRoutetableRoute) egressOnlyInternetGateway() (*mqlAwsEc2Egress
 	return res.(*mqlAwsEc2EgressOnlyInternetGateway), nil
 }
 
+func (a *mqlAwsVpcRoutetableRoute) igwFirewall() (*mqlAwsNetworkfirewallFirewall, error) {
+	if a.cacheIgwFirewallArn == "" {
+		a.IgwFirewall.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	fw, err := networkFirewallByArn(a.MqlRuntime, a.cacheIgwFirewallArn)
+	if err != nil {
+		return nil, err
+	}
+	if fw == nil {
+		a.IgwFirewall.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return fw, nil
+}
+
 func (a *mqlAwsVpcRoutetableRoute) managedPrefixList() (*mqlAwsEc2ManagedPrefixList, error) {
 	plID := a.cacheDestinationPrefixListId
 	if plID == "" {
@@ -1244,6 +1302,12 @@ func (a *mqlAwsVpcRoutetable) routeEntries() ([]any, error) {
 			"coreNetworkArn":           llx.StringData(convert.ToValue(route.CoreNetworkArn)),
 			"origin":                   llx.StringData(string(route.Origin)),
 			"state":                    llx.StringData(string(route.State)),
+			"igwFirewallStatus":        llx.NilData,
+		}
+		var igwFirewallArn string
+		if route.IgwFirewall != nil {
+			igwFirewallArn = convert.ToValue(route.IgwFirewall.FirewallArn)
+			args["igwFirewallStatus"] = llx.StringData(string(route.IgwFirewall.Status))
 		}
 
 		mqlRoute, err := CreateResource(a.MqlRuntime, "aws.vpc.routetable.route", args)
@@ -1257,6 +1321,7 @@ func (a *mqlAwsVpcRoutetable) routeEntries() ([]any, error) {
 		mqlRoute.(*mqlAwsVpcRoutetableRoute).cacheTransitGatewayId = convert.ToValue(route.TransitGatewayId)
 		mqlRoute.(*mqlAwsVpcRoutetableRoute).cacheVpcPeeringConnectionId = convert.ToValue(route.VpcPeeringConnectionId)
 		mqlRoute.(*mqlAwsVpcRoutetableRoute).cacheEgressOnlyInternetGatewayId = convert.ToValue(route.EgressOnlyInternetGatewayId)
+		mqlRoute.(*mqlAwsVpcRoutetableRoute).cacheIgwFirewallArn = igwFirewallArn
 		mqlRoute.(*mqlAwsVpcRoutetableRoute).region = a.Region.Data
 		res = append(res, mqlRoute)
 	}
@@ -1444,20 +1509,21 @@ func (a *mqlAwsVpc) subnets() ([]any, error) {
 
 			subnetResource, err := CreateResource(a.MqlRuntime, ResourceAwsVpcSubnet,
 				map[string]*llx.RawData{
-					"arn":                         llx.StringData(fmt.Sprintf(subnetArnPattern, a.Region.Data, conn.AccountId(), convert.ToValue(subnet.SubnetId))),
-					"assignIpv6AddressOnCreation": llx.BoolDataPtr(subnet.AssignIpv6AddressOnCreation),
-					"availabilityZone":            llx.StringDataPtr(subnet.AvailabilityZone),
-					"availableIpAddressCount":     llx.IntDataPtr(subnet.AvailableIpAddressCount),
-					"cidrs":                       llx.StringDataPtr(subnet.CidrBlock),
-					"defaultForAvailabilityZone":  llx.BoolDataPtr(subnet.DefaultForAz),
-					"id":                          llx.StringDataPtr(subnet.SubnetId),
-					"ipv6CidrBlock":               llx.StringData(ipv6CidrBlock),
-					"mapPublicIpOnLaunch":         llx.BoolDataPtr(subnet.MapPublicIpOnLaunch),
-					"name":                        llx.StringData(tagsMap["Name"]),
-					"ownerId":                     llx.StringDataPtr(subnet.OwnerId),
-					"region":                      llx.StringData(a.Region.Data),
-					"state":                       llx.StringData(string(subnet.State)),
-					"tags":                        llx.MapData(toInterfaceMap(tagsMap), types.String),
+					"arn":                             llx.StringData(fmt.Sprintf(subnetArnPattern, a.Region.Data, conn.AccountId(), convert.ToValue(subnet.SubnetId))),
+					"assignIpv6AddressOnCreation":     llx.BoolDataPtr(subnet.AssignIpv6AddressOnCreation),
+					"availabilityZone":                llx.StringDataPtr(subnet.AvailabilityZone),
+					"availableIpAddressCount":         llx.IntDataPtr(subnet.AvailableIpAddressCount),
+					"cidrs":                           llx.StringDataPtr(subnet.CidrBlock),
+					"defaultForAvailabilityZone":      llx.BoolDataPtr(subnet.DefaultForAz),
+					"id":                              llx.StringDataPtr(subnet.SubnetId),
+					"ipv6CidrBlock":                   llx.StringData(ipv6CidrBlock),
+					"mapPublicIpOnLaunch":             llx.BoolDataPtr(subnet.MapPublicIpOnLaunch),
+					"name":                            llx.StringData(tagsMap["Name"]),
+					"ownerId":                         llx.StringDataPtr(subnet.OwnerId),
+					"region":                          llx.StringData(a.Region.Data),
+					"state":                           llx.StringData(string(subnet.State)),
+					"tags":                            llx.MapData(toInterfaceMap(tagsMap), types.String),
+					"networkFirewallConnectivityType": subnetFirewallConnectivityData(subnet.NetworkFirewallConnectivityType),
 				})
 			if err != nil {
 				return nil, err
@@ -1470,6 +1536,16 @@ func (a *mqlAwsVpc) subnets() ([]any, error) {
 		}
 	}
 	return res, nil
+}
+
+// subnetFirewallConnectivityData returns the subnet's internet gateway
+// firewall connectivity type, or null when DescribeSubnets omits it because
+// the VPC has no internet gateway firewall.
+func subnetFirewallConnectivityData(v vpctypes.NetworkFirewallConnectivityType) *llx.RawData {
+	if v == "" {
+		return llx.NilData
+	}
+	return llx.StringData(string(v))
 }
 
 func initAwsVpcSubnet(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -1553,6 +1629,7 @@ func initAwsVpcSubnet(runtime *plugin.Runtime, args map[string]*llx.RawData) (ma
 		args["region"] = llx.StringData(region)
 		args["state"] = llx.StringData(string(subnet.State))
 		args["tags"] = llx.MapData(toInterfaceMap(tagsMap), types.String)
+		args["networkFirewallConnectivityType"] = subnetFirewallConnectivityData(subnet.NetworkFirewallConnectivityType)
 
 		res, err := CreateResource(runtime, ResourceAwsVpcSubnet, args)
 		if err != nil {

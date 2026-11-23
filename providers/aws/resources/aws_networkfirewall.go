@@ -5,7 +5,9 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sort"
 	"sync"
 
 	"golang.org/x/sync/errgroup"
@@ -57,32 +59,44 @@ func (a *mqlAwsNetworkfirewall) getFirewalls(conn *connection.AwsConnection) []*
 			ctx := context.Background()
 
 			res := []any{}
-			paginator := networkfirewall.NewListFirewallsPaginator(svc, &networkfirewall.ListFirewallsInput{})
-			var fwArns []*string
-			for paginator.HasMorePages() {
-				page, err := paginator.NextPage(ctx)
-				if err != nil {
-					if Is400AccessDeniedError(err) {
-						log.Warn().Str("region", region).Msg("error accessing region for AWS API")
-						return res, nil
+			// ListFirewalls without a type returns both standard and internet
+			// gateway firewalls, but DescribeFirewall defaults to FIREWALL and
+			// rejects an ARN of the other type. List once per type so every
+			// ARN is described with the type it was listed under.
+			var refs []nfFirewallRef
+			seen := map[string]struct{}{}
+			for _, fwType := range nfFirewallTypes {
+				paginator := networkfirewall.NewListFirewallsPaginator(svc, &networkfirewall.ListFirewallsInput{FirewallType: fwType})
+				for paginator.HasMorePages() {
+					page, err := paginator.NextPage(ctx)
+					if err != nil {
+						if Is400AccessDeniedError(err) {
+							log.Warn().Str("region", region).Msg("error accessing region for AWS API")
+							return res, nil
+						}
+						if fwType != nftypes.FirewallTypeFirewall && isNfInvalidRequest(err) {
+							// A partition that does not offer this firewall type
+							// rejects the filter; the other types still apply.
+							log.Debug().Err(err).Str("region", region).Str("firewallType", string(fwType)).Msg("network firewall type not supported in region")
+							break
+						}
+						return nil, err
 					}
-					return nil, err
-				}
-				for _, fw := range page.Firewalls {
-					if fw.FirewallArn != nil {
-						fwArns = append(fwArns, fw.FirewallArn)
-					}
+					refs = appendFirewallRefs(refs, seen, fwType, page.Firewalls)
 				}
 			}
 
-			details := make([]*networkfirewall.DescribeFirewallOutput, len(fwArns))
+			details := make([]*networkfirewall.DescribeFirewallOutput, len(refs))
 			g, gctx := errgroup.WithContext(ctx)
 			g.SetLimit(10)
-			for i, arn := range fwArns {
+			for i, ref := range refs {
 				g.Go(func() error {
-					resp, err := svc.DescribeFirewall(gctx, &networkfirewall.DescribeFirewallInput{FirewallArn: arn})
+					resp, err := svc.DescribeFirewall(gctx, &networkfirewall.DescribeFirewallInput{
+						FirewallArn:  &ref.arn,
+						FirewallType: ref.fwType,
+					})
 					if err != nil {
-						if Is400AccessDeniedError(err) {
+						if Is400AccessDeniedError(err) || isNfResourceNotFound(err) {
 							return nil
 						}
 						return err
@@ -95,7 +109,7 @@ func (a *mqlAwsNetworkfirewall) getFirewalls(conn *connection.AwsConnection) []*
 				return nil, err
 			}
 
-			for _, detail := range details {
+			for i, detail := range details {
 				if detail == nil || detail.Firewall == nil {
 					continue
 				}
@@ -132,12 +146,23 @@ func (a *mqlAwsNetworkfirewall) getFirewalls(conn *connection.AwsConnection) []*
 						proxyListeners = append(proxyListeners, d)
 					}
 				}
-				natGatewayIds := make([]string, 0, len(f.NatGatewayMappings))
-				for _, ngm := range f.NatGatewayMappings {
-					if ngm.NatGatewayId != nil {
-						natGatewayIds = append(natGatewayIds, *ngm.NatGatewayId)
-					}
+				var proxyCertArn, proxyDomainName *string
+				if f.ProxySettings != nil {
+					proxyCertArn = f.ProxySettings.CertificateArn
+					proxyDomainName = f.ProxySettings.DomainName
 				}
+				igwEnforcementMode := llx.NilData
+				if f.IgwFirewallConfiguration != nil {
+					igwEnforcementMode = nfEnumData(string(f.IgwFirewallConfiguration.EnforcementMode))
+				}
+				contextSyncStatus, contextSyncMessage := llx.NilData, llx.NilData
+				if detail.FirewallStatus != nil && detail.FirewallStatus.ContextStoreSyncState != nil {
+					cs := detail.FirewallStatus.ContextStoreSyncState
+					contextSyncStatus = nfEnumData(string(cs.SyncStatus))
+					contextSyncMessage = llx.StringDataPtr(cs.StatusMessage)
+				}
+				natGatewayIds := firewallNatGatewayIds(detail.FirewallStatus)
+				noSourcePreservation := len(f.NatGatewayCreateMappings) > 0 || len(natGatewayIds) > 0
 
 				mqlFirewall, err := CreateResource(a.MqlRuntime, "aws.networkfirewall.firewall",
 					map[string]*llx.RawData{
@@ -151,14 +176,23 @@ func (a *mqlAwsNetworkfirewall) getFirewalls(conn *connection.AwsConnection) []*
 						"firewallPolicyArn":              llx.StringDataPtr(f.FirewallPolicyArn),
 						"subnetMappings":                 llx.ArrayData(subnetMappings, types.Dict),
 						"encryptionType":                 llx.StringData(encryptionType),
-						"noSourcePreservation":           llx.BoolData(f.NoSourcePreservation),
+						"noSourcePreservation":           llx.BoolData(noSourcePreservation),
 						"proxyListeners":                 llx.ArrayData(proxyListeners, types.Dict),
 						"tags":                           llx.MapData(tags, types.String),
+						"firewallType":                   llx.StringData(string(refs[i].fwType)),
+						"igwFirewallEnforcementMode":     igwEnforcementMode,
+						"transparentFilteringNatScope":   nfEnumData(string(f.TransparentFilteringNatScope)),
+						"proxyDomainName":                llx.StringDataPtr(proxyDomainName),
+						"contextStoreId":                 llx.StringDataPtr(f.ContextStoreId),
+						"contextStoreOwnerAccountId":     llx.StringDataPtr(f.ContextStoreOwnerAccountId),
+						"contextStoreSyncStatus":         contextSyncStatus,
+						"contextStoreSyncStatusMessage":  contextSyncMessage,
 					})
 				if err != nil {
 					return nil, err
 				}
 				mqlFw := mqlFirewall.(*mqlAwsNetworkfirewallFirewall)
+				mqlFw.cacheProxyCertArn = proxyCertArn
 				mqlFw.cacheVpcId = f.VpcId
 				mqlFw.cacheSubnetIds = subnetIds
 				mqlFw.cacheKmsKeyId = kmsKeyId
@@ -173,11 +207,92 @@ func (a *mqlAwsNetworkfirewall) getFirewalls(conn *connection.AwsConnection) []*
 	return tasks
 }
 
+// nfFirewallTypes lists the firewall types ListFirewalls is called with, one
+// call per type. FIREWALL comes first: a partition that rejects the newer
+// types still reports its standard firewalls.
+var nfFirewallTypes = []nftypes.FirewallType{
+	nftypes.FirewallTypeFirewall,
+	nftypes.FirewallTypeIgwFirewall,
+}
+
+// nfFirewallRef is a firewall ARN together with the type it was listed under,
+// which DescribeFirewall and DescribeLoggingConfiguration need to accept it.
+type nfFirewallRef struct {
+	arn    string
+	fwType nftypes.FirewallType
+}
+
+// appendFirewallRefs records the firewalls of one ListFirewalls page under the
+// type the page was listed with. Entries without an ARN are skipped, and an
+// ARN already recorded keeps the type it was first seen with.
+func appendFirewallRefs(refs []nfFirewallRef, seen map[string]struct{}, fwType nftypes.FirewallType, page []nftypes.FirewallMetadata) []nfFirewallRef {
+	for _, fw := range page {
+		if fw.FirewallArn == nil || *fw.FirewallArn == "" {
+			continue
+		}
+		if _, ok := seen[*fw.FirewallArn]; ok {
+			continue
+		}
+		seen[*fw.FirewallArn] = struct{}{}
+		refs = append(refs, nfFirewallRef{arn: *fw.FirewallArn, fwType: fwType})
+	}
+	return refs
+}
+
+// nfEnumData returns an SDK enum value as a string, or null for the empty
+// value the SDK leaves when the response omits the field.
+func nfEnumData(v string) *llx.RawData {
+	if v == "" {
+		return llx.NilData
+	}
+	return llx.StringData(v)
+}
+
+func isNfInvalidRequest(err error) bool {
+	var e *nftypes.InvalidRequestException
+	return errors.As(err, &e)
+}
+
+func isNfResourceNotFound(err error) bool {
+	var e *nftypes.ResourceNotFoundException
+	return errors.As(err, &e)
+}
+
+// firewallNatGatewayIds returns the NAT gateways a proxy mode firewall sends
+// traffic through, read from the per-Availability-Zone sync states. Zones are
+// visited in sorted order so the list is stable across scans.
+func firewallNatGatewayIds(status *nftypes.FirewallStatus) []string {
+	ids := []string{}
+	if status == nil {
+		return ids
+	}
+	zones := make([]string, 0, len(status.SyncStates))
+	for az := range status.SyncStates {
+		zones = append(zones, az)
+	}
+	sort.Strings(zones)
+	seen := map[string]struct{}{}
+	for _, az := range zones {
+		for _, att := range status.SyncStates[az].NatGatewayAttachments {
+			if att.NatGatewayId == nil || *att.NatGatewayId == "" {
+				continue
+			}
+			if _, ok := seen[*att.NatGatewayId]; ok {
+				continue
+			}
+			seen[*att.NatGatewayId] = struct{}{}
+			ids = append(ids, *att.NatGatewayId)
+		}
+	}
+	return ids
+}
+
 type mqlAwsNetworkfirewallFirewallInternal struct {
 	cacheVpcId         *string
 	cacheSubnetIds     []string
 	cacheKmsKeyId      *string
 	cacheNatGatewayIds []string
+	cacheProxyCertArn  *string
 	cacheStatusVal     *nftypes.FirewallStatus
 	cacheLogConfig     *nftypes.LoggingConfiguration
 	cacheLogFetched    bool
@@ -217,6 +332,40 @@ func (a *mqlAwsNetworkfirewallFirewall) vpc() (*mqlAwsVpc, error) {
 		return nil, err
 	}
 	return mqlVpc.(*mqlAwsVpc), nil
+}
+
+func (a *mqlAwsNetworkfirewallFirewall) proxyCertificate() (*mqlAwsAcmCertificate, error) {
+	if a.cacheProxyCertArn == nil || *a.cacheProxyCertArn == "" {
+		a.ProxyCertificate.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	mqlCert, err := NewResource(a.MqlRuntime, "aws.acm.certificate",
+		map[string]*llx.RawData{"arn": llx.StringDataPtr(a.cacheProxyCertArn)})
+	if err != nil {
+		return nil, err
+	}
+	return mqlCert.(*mqlAwsAcmCertificate), nil
+}
+
+// networkFirewallByArn resolves a firewall from the account's firewall list,
+// which is fetched once and cached. It returns nil when the list holds no
+// firewall with that ARN, for example one owned by another account.
+func networkFirewallByArn(runtime *plugin.Runtime, firewallArn string) (*mqlAwsNetworkfirewallFirewall, error) {
+	obj, err := CreateResource(runtime, "aws.networkfirewall", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	firewalls := obj.(*mqlAwsNetworkfirewall).GetFirewalls()
+	if firewalls.Error != nil {
+		return nil, firewalls.Error
+	}
+	for _, raw := range firewalls.Data {
+		fw := raw.(*mqlAwsNetworkfirewallFirewall)
+		if fw.Arn.Data == firewallArn {
+			return fw, nil
+		}
+	}
+	return nil, nil
 }
 
 func (a *mqlAwsNetworkfirewallFirewall) natGateways() ([]any, error) {
@@ -399,8 +548,12 @@ func (a *mqlAwsNetworkfirewallFirewall) fetchLoggingConfig() (*nftypes.LoggingCo
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	svc := conn.NetworkFirewall(a.Region.Data)
 	ctx := context.Background()
+	if a.FirewallType.Error != nil {
+		return nil, a.FirewallType.Error
+	}
 	resp, err := svc.DescribeLoggingConfiguration(ctx, &networkfirewall.DescribeLoggingConfigurationInput{
-		FirewallArn: &arn,
+		FirewallArn:  &arn,
+		FirewallType: nftypes.FirewallType(a.FirewallType.Data),
 	})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
@@ -883,6 +1036,7 @@ func networkfirewallRuleGroupToMql(runtime *plugin.Runtime, resp *nftypes.RuleGr
 	var statefulRuleOrder string
 	referenceSets := []any{}
 	ruleVariables := []any{}
+	contextSets := map[string]any{}
 	if ruleGroup != nil {
 		var rulesErr error
 		rules, rulesErr = convert.JsonToDict(ruleGroup)
@@ -911,6 +1065,9 @@ func networkfirewallRuleGroupToMql(runtime *plugin.Runtime, resp *nftypes.RuleGr
 					"kind":       "ipSet",
 					"definition": llx.TArr2Raw(ipSet.Definition),
 				})
+			}
+			for name, cs := range ruleGroup.RuleVariables.ContextSets {
+				contextSets[name] = llx.TArr2Raw(cs.Definition)
 			}
 			for name, portSet := range ruleGroup.RuleVariables.PortSets {
 				ruleVariables = append(ruleVariables, map[string]any{
@@ -971,6 +1128,7 @@ func networkfirewallRuleGroupToMql(runtime *plugin.Runtime, resp *nftypes.RuleGr
 			"rulesString":          llx.StringData(rulesString),
 			"referenceSets":        llx.ArrayData(referenceSets, types.Dict),
 			"ruleVariables":        llx.ArrayData(ruleVariables, types.Dict),
+			"contextSets":          llx.MapData(contextSets, types.Array(types.String)),
 			"statefulRuleOrder":    llx.StringData(statefulRuleOrder),
 			"sourceMetadata":       llx.ArrayData(sourceMetadata, types.Dict),
 			"encryptionType":       llx.StringData(encryptionType),

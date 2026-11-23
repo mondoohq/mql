@@ -797,7 +797,8 @@ func newMqlAwsRoute53ResolverFirewallRuleGroup(runtime *plugin.Runtime, region s
 }
 
 type mqlAwsRoute53ResolverFirewallRuleInternal struct {
-	region string
+	region                         string
+	cacheAutoAllowlistDomainListId string
 }
 
 func (a *mqlAwsRoute53ResolverFirewallRuleGroup) firewallRules() ([]any, error) {
@@ -862,7 +863,20 @@ func newMqlAwsRoute53ResolverFirewallRule(runtime *plugin.Runtime, region string
 	}
 	mqlRule := resource.(*mqlAwsRoute53ResolverFirewallRule)
 	mqlRule.region = region
+	if rule.FirewallRuleType != nil && rule.FirewallRuleType.AutoAllowlist != nil {
+		mqlRule.cacheAutoAllowlistDomainListId = convert.ToValue(rule.FirewallRuleType.AutoAllowlist.AutoAllowlistFirewallDomainListId)
+	}
 	return mqlRule, nil
+}
+
+func (a *mqlAwsRoute53ResolverFirewallRule) autoAllowlistDomainList() (*mqlAwsRoute53ResolverFirewallDomainList, error) {
+	domainListID := a.cacheAutoAllowlistDomainListId
+	if domainListID == "" {
+		a.AutoAllowlistDomainList.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return fetchAndCreateFirewallDomainList(a.MqlRuntime, conn, a.region, &resolvertypes.FirewallDomainListMetadata{Id: &domainListID})
 }
 
 // firewallRuleTypeToDict flattens the FirewallRuleType union into a dict
@@ -886,6 +900,19 @@ func firewallRuleTypeToDict(rt *resolvertypes.FirewallRuleType) any {
 	if rt.FirewallAdvancedThreatCategory != nil {
 		out["firewallAdvancedThreatCategory"] = map[string]any{
 			"category": convert.ToValue(rt.FirewallAdvancedThreatCategory.Category),
+		}
+	}
+	if aa := rt.AutoAllowlist; aa != nil {
+		// Optional members read null rather than 0 or "", so a rule with no
+		// import source is not reported as importing from an empty id.
+		var hours any
+		if aa.InitialDataTimeframeHours != nil {
+			hours = int64(*aa.InitialDataTimeframeHours)
+		}
+		out["autoAllowlist"] = map[string]any{
+			"initialDataTimeframeHours":         hours,
+			"autoAllowlistFirewallDomainListId": optionalString(aa.AutoAllowlistFirewallDomainListId),
+			"importFromFirewallDomainListId":    optionalString(aa.ImportFromFirewallDomainListId),
 		}
 	}
 	if len(out) == 0 {
@@ -1095,59 +1122,92 @@ func fetchAndCreateFirewallDomainList(runtime *plugin.Runtime, conn *connection.
 	if resp == nil || resp.FirewallDomainList == nil {
 		return newMqlAwsRoute53ResolverFirewallDomainListFromMeta(runtime, region, meta)
 	}
-	return newMqlAwsRoute53ResolverFirewallDomainList(runtime, region, resp.FirewallDomainList)
+	// The AutoAllowlist owner ids come with both the list metadata and the
+	// GetFirewallDomainList response; prefer the response and fall back to the
+	// metadata, which is all a lookup by id alone has.
+	ruleGroupId := resp.FirewallRuleGroupId
+	if ruleGroupId == nil {
+		ruleGroupId = meta.FirewallRuleGroupId
+	}
+	threatProtectionId := resp.FirewallThreatProtectionId
+	if threatProtectionId == nil {
+		threatProtectionId = meta.FirewallThreatProtectionId
+	}
+	return newMqlAwsRoute53ResolverFirewallDomainList(runtime, region, resp.FirewallDomainList, ruleGroupId, threatProtectionId)
 }
 
 func newMqlAwsRoute53ResolverFirewallDomainListFromMeta(runtime *plugin.Runtime, region string, meta *resolvertypes.FirewallDomainListMetadata) (*mqlAwsRoute53ResolverFirewallDomainList, error) {
 	id := convert.ToValue(meta.Id)
 	resource, err := CreateResource(runtime, "aws.route53.resolver.firewallDomainList", map[string]*llx.RawData{
-		"__id":             llx.StringData(region + "/" + id),
-		"id":               llx.StringData(id),
-		"arn":              llx.StringData(convert.ToValue(meta.Arn)),
-		"name":             llx.StringData(convert.ToValue(meta.Name)),
-		"region":           llx.StringData(region),
-		"domainCount":      llx.IntData(0),
-		"category":         llx.StringData(convert.ToValue(meta.Category)),
-		"managedListType":  llx.StringData(string(meta.ManagedListType)),
-		"status":           llx.StringData(""),
-		"statusMessage":    llx.StringData(""),
-		"managedOwnerName": llx.StringData(convert.ToValue(meta.ManagedOwnerName)),
-		"creationTime":     llx.StringData(""),
-		"modificationTime": llx.StringData(""),
-		"creatorRequestId": llx.StringData(convert.ToValue(meta.CreatorRequestId)),
+		"__id":            llx.StringData(region + "/" + id),
+		"id":              llx.StringData(id),
+		"arn":             llx.StringData(convert.ToValue(meta.Arn)),
+		"name":            llx.StringData(convert.ToValue(meta.Name)),
+		"region":          llx.StringData(region),
+		"domainCount":     llx.IntData(0),
+		"category":        llx.StringData(convert.ToValue(meta.Category)),
+		"managedListType": llx.StringData(string(meta.ManagedListType)),
+		// The list metadata carries a status only for AutoAllowlist lists.
+		"status":                     llx.StringData(string(meta.Status)),
+		"firewallThreatProtectionId": llx.StringDataPtr(meta.FirewallThreatProtectionId),
+		"statusMessage":              llx.StringData(""),
+		"managedOwnerName":           llx.StringData(convert.ToValue(meta.ManagedOwnerName)),
+		"creationTime":               llx.StringData(""),
+		"modificationTime":           llx.StringData(""),
+		"creatorRequestId":           llx.StringData(convert.ToValue(meta.CreatorRequestId)),
 	})
 	if err != nil {
 		return nil, err
 	}
-	return resource.(*mqlAwsRoute53ResolverFirewallDomainList), nil
+	mqlList := resource.(*mqlAwsRoute53ResolverFirewallDomainList)
+	mqlList.cacheFirewallRuleGroupId = convert.ToValue(meta.FirewallRuleGroupId)
+	return mqlList, nil
 }
 
-func newMqlAwsRoute53ResolverFirewallDomainList(runtime *plugin.Runtime, region string, list *resolvertypes.FirewallDomainList) (*mqlAwsRoute53ResolverFirewallDomainList, error) {
+func newMqlAwsRoute53ResolverFirewallDomainList(runtime *plugin.Runtime, region string, list *resolvertypes.FirewallDomainList, ruleGroupId, threatProtectionId *string) (*mqlAwsRoute53ResolverFirewallDomainList, error) {
 	id := convert.ToValue(list.Id)
 	domainCount := int64(0)
 	if list.DomainCount != nil {
 		domainCount = int64(*list.DomainCount)
 	}
 	resource, err := CreateResource(runtime, "aws.route53.resolver.firewallDomainList", map[string]*llx.RawData{
-		"__id":             llx.StringData(region + "/" + id),
-		"id":               llx.StringData(id),
-		"arn":              llx.StringData(convert.ToValue(list.Arn)),
-		"name":             llx.StringData(convert.ToValue(list.Name)),
-		"region":           llx.StringData(region),
-		"domainCount":      llx.IntData(domainCount),
-		"category":         llx.StringData(convert.ToValue(list.Category)),
-		"managedListType":  llx.StringData(string(list.ManagedListType)),
-		"status":           llx.StringData(string(list.Status)),
-		"statusMessage":    llx.StringData(convert.ToValue(list.StatusMessage)),
-		"managedOwnerName": llx.StringData(convert.ToValue(list.ManagedOwnerName)),
-		"creationTime":     llx.StringData(convert.ToValue(list.CreationTime)),
-		"modificationTime": llx.StringData(convert.ToValue(list.ModificationTime)),
-		"creatorRequestId": llx.StringData(convert.ToValue(list.CreatorRequestId)),
+		"__id":                       llx.StringData(region + "/" + id),
+		"id":                         llx.StringData(id),
+		"arn":                        llx.StringData(convert.ToValue(list.Arn)),
+		"name":                       llx.StringData(convert.ToValue(list.Name)),
+		"region":                     llx.StringData(region),
+		"domainCount":                llx.IntData(domainCount),
+		"category":                   llx.StringData(convert.ToValue(list.Category)),
+		"managedListType":            llx.StringData(string(list.ManagedListType)),
+		"status":                     llx.StringData(string(list.Status)),
+		"statusMessage":              llx.StringData(convert.ToValue(list.StatusMessage)),
+		"managedOwnerName":           llx.StringData(convert.ToValue(list.ManagedOwnerName)),
+		"creationTime":               llx.StringData(convert.ToValue(list.CreationTime)),
+		"modificationTime":           llx.StringData(convert.ToValue(list.ModificationTime)),
+		"creatorRequestId":           llx.StringData(convert.ToValue(list.CreatorRequestId)),
+		"firewallThreatProtectionId": llx.StringDataPtr(threatProtectionId),
 	})
 	if err != nil {
 		return nil, err
 	}
-	return resource.(*mqlAwsRoute53ResolverFirewallDomainList), nil
+	mqlList := resource.(*mqlAwsRoute53ResolverFirewallDomainList)
+	mqlList.cacheFirewallRuleGroupId = convert.ToValue(ruleGroupId)
+	return mqlList, nil
+}
+
+func (a *mqlAwsRoute53ResolverFirewallDomainList) firewallRuleGroup() (*mqlAwsRoute53ResolverFirewallRuleGroup, error) {
+	groupId := a.cacheFirewallRuleGroupId
+	if groupId == "" {
+		a.FirewallRuleGroup.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "aws.route53.resolver.firewallRuleGroup", map[string]*llx.RawData{
+		"id": llx.StringData(groupId),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsRoute53ResolverFirewallRuleGroup), nil
 }
 
 func (a *mqlAwsRoute53ResolverFirewallDomainList) domains() ([]any, error) {
@@ -1389,6 +1449,7 @@ type mqlAwsRoute53ResolverQueryLogConfigInternal struct {
 
 type mqlAwsRoute53ResolverFirewallDomainListInternal struct {
 	lazyTags
+	cacheFirewallRuleGroupId string
 }
 
 func (a *mqlAwsRoute53ResolverEndpoint) tags() (map[string]any, error) {

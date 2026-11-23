@@ -51,7 +51,13 @@ func (a *mqlAzureSubscriptionNetworkService) virtualAppliances() ([]any, error) 
 			addressFamily := []any{}
 			var asn int64
 			var virtualHubId *string
+			var lbIdleTimeout *int32
+			var lbDistribution *string
 			if p := nva.Properties; p != nil {
+				if lbc := p.LoadBalancerConfiguration; lbc != nil {
+					lbIdleTimeout = lbc.IdleTimeoutInMinutes
+					lbDistribution = enumStringPtr(lbc.LoadDistribution)
+				}
 				if p.ProvisioningState != nil {
 					provisioningState = string(*p.ProvisioningState)
 				}
@@ -107,6 +113,9 @@ func (a *mqlAzureSubscriptionNetworkService) virtualAppliances() ([]any, error) 
 					"migrationPhase":       llx.StringData(migrationPhase),
 					"migrationPhaseStatus": llx.StringData(migrationPhaseStatus),
 					"migrationType":        llx.StringData(migrationType),
+
+					"loadBalancerIdleTimeoutInMinutes": llx.IntDataPtr(lbIdleTimeout),
+					"loadBalancerDistribution":         llx.StringDataPtr(lbDistribution),
 				})
 			if err != nil {
 				return nil, err

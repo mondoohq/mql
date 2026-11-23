@@ -393,6 +393,8 @@ func newOciAutonomousDatabaseConsoleUrls(runtime *plugin.Runtime, dbID, endpoint
 		"ordsUrl":                          llx.StringDataPtr(urls.OrdsUrl),
 		"databaseTransformsUrl":            llx.StringDataPtr(urls.DatabaseTransformsUrl),
 		"spatialStudioUrl":                 llx.StringDataPtr(urls.SpatialStudioUrl),
+		"mcpUrl":                           llx.StringDataPtr(urls.McpUrl),
+		"a2aUrl":                           llx.StringDataPtr(urls.A2aUrl),
 	})
 	if err != nil {
 		return nil, err

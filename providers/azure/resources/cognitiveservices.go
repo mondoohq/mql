@@ -717,6 +717,9 @@ func raiPolicyToMql(runtime *plugin.Runtime, pol *armcognitiveservices.RaiPolicy
 			}
 			customBlocklists = append(customBlocklists, entry)
 		}
+		// armcognitiveservices v4 (api-version 2026-11-01) no longer returns a
+		// policy's custom topics, which is why the provider stays on v3 and why
+		// customTopics is deprecated.
 		for _, t := range p.CustomTopics {
 			if t == nil {
 				continue

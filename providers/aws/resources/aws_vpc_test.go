@@ -13,6 +13,7 @@ import (
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
@@ -741,4 +742,56 @@ func TestIsVpcEndpointNotFoundError(t *testing.T) {
 	assert.True(t, isVpcEndpointNotFoundError(fmt.Errorf("operation error EC2: DescribeVpcEndpoints, %w", &smithy.GenericAPIError{Code: "InvalidVpcEndpointId.Malformed"})))
 	assert.False(t, isVpcEndpointNotFoundError(&smithy.GenericAPIError{Code: "UnauthorizedOperation"}))
 	assert.False(t, isVpcEndpointNotFoundError(fmt.Errorf("dial tcp: connection refused")))
+}
+
+// Synthetic: DescribeSubnets omits NetworkFirewallConnectivityType for a
+// subnet in a VPC without an internet gateway firewall; that reads as null.
+func TestSubnetFirewallConnectivityData(t *testing.T) {
+	assert.Same(t, llx.NilData, subnetFirewallConnectivityData(""))
+	assert.Equal(t, "outbound-only", subnetFirewallConnectivityData(ec2types.NetworkFirewallConnectivityTypeOutboundOnly).Value)
+}
+
+// Synthetic: a route that no internet gateway firewall inspects has a null
+// igwFirewall without a firewall lookup.
+func TestRouteIgwFirewallNullWhenUnset(t *testing.T) {
+	r := &mqlAwsVpcRoutetableRoute{}
+	got, err := r.igwFirewall()
+	require.NoError(t, err)
+	assert.Nil(t, got)
+	assert.True(t, r.IgwFirewall.IsSet())
+	assert.True(t, r.IgwFirewall.IsNull())
+}
+
+// Synthetic: follows the ec2 v1.350.0 Vpc.NetworkFirewallAssociations model;
+// no VPC with an internet gateway firewall was available to measure. Each
+// association keeps its mode and status, entries without an ARN are skipped,
+// and ids are distinct per firewall.
+func TestVpcNetworkFirewallAssociations(t *testing.T) {
+	runtime := cacheRuntime()
+	vpcRes, err := CreateResource(runtime, ResourceAwsVpc, map[string]*llx.RawData{
+		"arn": llx.StringData(testVpcArn),
+	})
+	require.NoError(t, err)
+	vpc := vpcRes.(*mqlAwsVpc)
+
+	got, err := vpc.networkFirewallAssociations()
+	require.NoError(t, err)
+	assert.Equal(t, []any{}, got)
+
+	vpc.cacheNetworkFirewallAssociations = []ec2types.NetworkFirewallAssociation{
+		{FirewallArn: aws.String("arn:aws:network-firewall:us-east-1:123456789012:firewall/a"), FirewallMode: ec2types.FirewallModeEnforce, FirewallOnboardingStatus: ec2types.FirewallOnboardingStatusActive},
+		{FirewallArn: nil, FirewallMode: ec2types.FirewallModeMonitor},
+		{FirewallArn: aws.String("arn:aws:network-firewall:us-east-1:123456789012:firewall/b"), FirewallMode: ec2types.FirewallModeMonitor, FirewallOnboardingStatus: ec2types.FirewallOnboardingStatusPending},
+	}
+	got, err = vpc.networkFirewallAssociations()
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	a := got[0].(*mqlAwsVpcNetworkFirewallAssociation)
+	b := got[1].(*mqlAwsVpcNetworkFirewallAssociation)
+	assert.Equal(t, "enforce", a.Mode.Data)
+	assert.Equal(t, "active", a.OnboardingStatus.Data)
+	assert.Equal(t, "arn:aws:network-firewall:us-east-1:123456789012:firewall/a", a.cacheFirewallArn)
+	assert.Equal(t, "monitor", b.Mode.Data)
+	assert.Equal(t, "pending", b.OnboardingStatus.Data)
+	assert.NotSame(t, a, b)
 }

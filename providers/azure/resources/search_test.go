@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/search/armsearch"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/search/armsearch/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

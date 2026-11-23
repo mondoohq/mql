@@ -514,6 +514,10 @@ func newMqlAwsRdsInstance(runtime *plugin.Runtime, region string, accountID stri
 	if dbInstance.Endpoint != nil {
 		endpointAddress = dbInstance.Endpoint.Address
 	}
+	var primaryEndpointAddress *string
+	if dbInstance.PrimaryEndpoint != nil {
+		primaryEndpointAddress = dbInstance.PrimaryEndpoint.Address
+	}
 
 	var certificateExpiration *time.Time
 	if dbInstance.CertificateDetails != nil {
@@ -541,6 +545,8 @@ func newMqlAwsRdsInstance(runtime *plugin.Runtime, region string, accountID stri
 			"deletionProtection":                 llx.BoolDataPtr(dbInstance.DeletionProtection),
 			"enabledCloudwatchLogsExports":       llx.ArrayData(stringSliceInterface, types.String),
 			"endpoint":                           llx.StringDataPtr(endpointAddress),
+			"primaryEndpoint":                    llx.StringDataPtr(primaryEndpointAddress),
+			"vpcNetworkingEnabled":               llx.BoolDataPtr(dbInstance.VPCNetworkingEnabled),
 			"engine":                             llx.StringDataPtr(dbInstance.Engine),
 			"engineLifecycleSupport":             llx.StringDataPtr(dbInstance.EngineLifecycleSupport),
 			"engineVersion":                      llx.StringDataPtr(dbInstance.EngineVersion),

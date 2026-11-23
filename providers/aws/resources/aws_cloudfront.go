@@ -96,6 +96,16 @@ func cloudfrontOriginTls(config *cftypes.CustomOriginConfig) (string, []any) {
 	return string(config.OriginProtocolPolicy), protocols
 }
 
+// cloudfrontOriginHttpVersion reports the HTTP version CloudFront uses toward
+// a custom origin. S3 origins carry no custom origin config, and a custom
+// origin that leaves the version unset reports none; both read null.
+func cloudfrontOriginHttpVersion(config *cftypes.CustomOriginConfig) *string {
+	if config == nil {
+		return nil
+	}
+	return nonEmptyEnum(config.OriginHttpVersion)
+}
+
 func (a *mqlAwsCloudfront) distributions() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 
@@ -142,6 +152,7 @@ func (a *mqlAwsCloudfront) distributions() ([]any, error) {
 							"originAccessIdentity":  llx.StringData(oai),
 							"originProtocolPolicy":  llx.StringData(originProtocolPolicy),
 							"originSslProtocols":    llx.ArrayData(originSslProtocols, types.String),
+							"originHttpVersion":     llx.StringDataPtr(cloudfrontOriginHttpVersion(origin.CustomOriginConfig)),
 						})
 					if err != nil {
 						return nil, err
