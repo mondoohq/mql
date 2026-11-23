@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 
 	"golang.org/x/sync/errgroup"
@@ -132,12 +133,8 @@ func (a *mqlAwsNetworkfirewall) getFirewalls(conn *connection.AwsConnection) []*
 						proxyListeners = append(proxyListeners, d)
 					}
 				}
-				natGatewayIds := make([]string, 0, len(f.NatGatewayMappings))
-				for _, ngm := range f.NatGatewayMappings {
-					if ngm.NatGatewayId != nil {
-						natGatewayIds = append(natGatewayIds, *ngm.NatGatewayId)
-					}
-				}
+				natGatewayIds := firewallNatGatewayIds(detail.FirewallStatus)
+				noSourcePreservation := len(f.NatGatewayCreateMappings) > 0 || len(natGatewayIds) > 0
 
 				mqlFirewall, err := CreateResource(a.MqlRuntime, "aws.networkfirewall.firewall",
 					map[string]*llx.RawData{
@@ -151,7 +148,7 @@ func (a *mqlAwsNetworkfirewall) getFirewalls(conn *connection.AwsConnection) []*
 						"firewallPolicyArn":              llx.StringDataPtr(f.FirewallPolicyArn),
 						"subnetMappings":                 llx.ArrayData(subnetMappings, types.Dict),
 						"encryptionType":                 llx.StringData(encryptionType),
-						"noSourcePreservation":           llx.BoolData(f.NoSourcePreservation),
+						"noSourcePreservation":           llx.BoolData(noSourcePreservation),
 						"proxyListeners":                 llx.ArrayData(proxyListeners, types.Dict),
 						"tags":                           llx.MapData(tags, types.String),
 					})
@@ -171,6 +168,35 @@ func (a *mqlAwsNetworkfirewall) getFirewalls(conn *connection.AwsConnection) []*
 		tasks = append(tasks, jobpool.NewJob(f))
 	}
 	return tasks
+}
+
+// firewallNatGatewayIds returns the NAT gateways a proxy mode firewall sends
+// traffic through, read from the per-Availability-Zone sync states. Zones are
+// visited in sorted order so the list is stable across scans.
+func firewallNatGatewayIds(status *nftypes.FirewallStatus) []string {
+	ids := []string{}
+	if status == nil {
+		return ids
+	}
+	zones := make([]string, 0, len(status.SyncStates))
+	for az := range status.SyncStates {
+		zones = append(zones, az)
+	}
+	sort.Strings(zones)
+	seen := map[string]struct{}{}
+	for _, az := range zones {
+		for _, att := range status.SyncStates[az].NatGatewayAttachments {
+			if att.NatGatewayId == nil || *att.NatGatewayId == "" {
+				continue
+			}
+			if _, ok := seen[*att.NatGatewayId]; ok {
+				continue
+			}
+			seen[*att.NatGatewayId] = struct{}{}
+			ids = append(ids, *att.NatGatewayId)
+		}
+	}
+	return ids
 }
 
 type mqlAwsNetworkfirewallFirewallInternal struct {

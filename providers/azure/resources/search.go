@@ -12,7 +12,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/search/armsearch"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/search/armsearch/v2"
 	"github.com/rs/zerolog/log"
 
 	"go.mondoo.com/mql/llx"
@@ -58,9 +58,7 @@ func (a *mqlAzureSubscriptionSearchService) services() ([]any, error) {
 		return nil, err
 	}
 
-	// NewListBySubscriptionPager takes two optional params: *SearchManagementRequestOptions
-	// and *ServicesClientListBySubscriptionOptions. Both are left as default (nil).
-	pager := client.NewListBySubscriptionPager(nil, nil)
+	pager := client.NewListBySubscriptionPager(nil)
 	res := []any{}
 	for pager.More() {
 		page, err := pager.NextPage(ctx)

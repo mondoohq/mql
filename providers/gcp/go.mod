@@ -14,7 +14,7 @@ require (
 	cloud.google.com/go/backupdr v1.20.0
 	cloud.google.com/go/batch v1.24.1
 	cloud.google.com/go/bigquery v1.86.2
-	cloud.google.com/go/bigtable v1.58.0
+	cloud.google.com/go/bigtable v1.58.1
 	cloud.google.com/go/binaryauthorization v1.18.1
 	cloud.google.com/go/certificatemanager v1.17.1
 	cloud.google.com/go/cloudbuild v1.37.0
@@ -54,7 +54,7 @@ require (
 	cloud.google.com/go/security v1.29.1
 	cloud.google.com/go/securitycenter v1.49.1
 	cloud.google.com/go/serviceusage v1.16.1
-	cloud.google.com/go/spanner v1.96.1
+	cloud.google.com/go/spanner v1.96.2
 	github.com/cockroachdb/errors v1.14.0
 	github.com/google/go-containerregistry v0.22.1
 	github.com/googleapis/gax-go/v2 v2.27.0
@@ -67,7 +67,7 @@ require (
 	go.mondoo.com/ranger-rpc v0.8.2
 	golang.org/x/oauth2 v0.38.0
 	golang.org/x/sync v0.25.0
-	google.golang.org/api v0.314.0
+	google.golang.org/api v0.316.0
 	// cloud.google.com/go/accesscontextmanager (v1.17.0) still imports
 	// google.golang.org/genproto/googleapis/identity/accesscontextmanager/type
 	// from this root module. go-genproto dropped that package in

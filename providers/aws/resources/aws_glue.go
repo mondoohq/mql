@@ -907,20 +907,21 @@ func (a *mqlAwsGlue) getCatalogExportEncryptionSettings(conn *connection.AwsConn
 			}
 			// A region with no export configuration returns no entry rather than
 			// one reporting empty encryption, so absence is not read as "no key".
-			if resp.EncryptionConfiguration == nil {
+			if resp.S3TablesConfiguration == nil || resp.S3TablesConfiguration.EncryptionConfiguration == nil {
 				return jobpool.JobResult([]any{}), nil
 			}
+			enc := resp.S3TablesConfiguration.EncryptionConfiguration
 
 			mqlSettings, err := CreateResource(a.MqlRuntime, "aws.glue.catalogExportEncryption",
 				map[string]*llx.RawData{
 					"__id":         llx.StringData("aws.glue.catalogExportEncryption/" + region),
 					"region":       llx.StringData(region),
-					"sseAlgorithm": llx.StringDataPtr(resp.EncryptionConfiguration.SseAlgorithm),
+					"sseAlgorithm": llx.StringDataPtr(enc.SseAlgorithm),
 				})
 			if err != nil {
 				return nil, err
 			}
-			mqlSettings.(*mqlAwsGlueCatalogExportEncryption).cacheKmsKeyArn = resp.EncryptionConfiguration.KmsKeyArn
+			mqlSettings.(*mqlAwsGlueCatalogExportEncryption).cacheKmsKeyArn = enc.KmsKeyArn
 
 			return jobpool.JobResult([]any{mqlSettings}), nil
 		}

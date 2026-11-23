@@ -35,6 +35,35 @@ func TestFirewallNatGatewaysSkipsEmptyIds(t *testing.T) {
 	assert.Empty(t, got)
 }
 
+// Synthetic: the shape follows the networkfirewall v1.82.0 FirewallStatus model;
+// no proxy mode firewall was available to measure. NAT gateway ids moved from
+// Firewall.NatGatewayMappings to the per-zone sync states, so the accessor must
+// read them from there, dedupe a gateway reported by two zones, skip blank ids,
+// and return a stable order whatever order the map iterates in.
+func TestFirewallNatGatewayIds(t *testing.T) {
+	assert.Equal(t, []string{}, firewallNatGatewayIds(nil))
+	assert.Equal(t, []string{}, firewallNatGatewayIds(&nftypes.FirewallStatus{}))
+
+	status := &nftypes.FirewallStatus{
+		SyncStates: map[string]nftypes.SyncState{
+			"us-east-1b": {NatGatewayAttachments: []nftypes.NatGatewayAttachment{
+				{NatGatewayId: aws.String("nat-bbb")},
+				{NatGatewayId: aws.String("nat-shared")},
+			}},
+			"us-east-1a": {NatGatewayAttachments: []nftypes.NatGatewayAttachment{
+				{NatGatewayId: aws.String("nat-aaa")},
+				{NatGatewayId: aws.String("")},
+				{NatGatewayId: nil},
+				{NatGatewayId: aws.String("nat-shared")},
+			}},
+			"us-east-1c": {},
+		},
+	}
+	for range 20 {
+		assert.Equal(t, []string{"nat-aaa", "nat-shared", "nat-bbb"}, firewallNatGatewayIds(status))
+	}
+}
+
 func TestNfAddressesToRaw(t *testing.T) {
 	// Synthetic: SourceIPRanges omitted means "the firewall's VPC CIDRs", which
 	// must read as null and not as the empty list "validate nothing".
