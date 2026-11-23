@@ -3116,7 +3116,10 @@ gcp.project.computeService.network @defaults("name") {
   // Network mode: legacy, custom or auto
   mode string
   // List of URLs for the subnetwork in the network
-  subnetworkUrls []string
+  //
+  // Deprecated in favor of subnetworks, which resolves each URL to the
+  // subnetwork it names.
+  subnetworkUrls @maturity("deprecated") @replaced_by("gcp.project.computeService.network.subnetworks") []string
   // Subnetworks in the network
   subnetworks() []gcp.project.computeService.subnetwork
   // VPC firewall rules attached to the network
@@ -5365,11 +5368,16 @@ private gcp.project.gkeService.cluster @defaults("name description location stat
   // Whether cluster monitoring is enabled (monitoringService is set and not "none")
   monitoringEnabled() bool
   // The name of the Google Compute Engine network to which the cluster is connected
-  network string
+  //
+  // Deprecated in favor of networkConfig.network, which resolves the network.
+  network @maturity("deprecated") @replaced_by("gcp.project.gkeService.cluster.networkConfig.network") string
   // The IP address range of the container pods in this cluster
   clusterIpv4Cidr string
   // The name of the Google Compute Engine subnetwork to which the cluster is connected
-  subnetwork string
+  //
+  // Deprecated in favor of networkConfig.subnetwork, which resolves the
+  // subnetwork.
+  subnetwork @maturity("deprecated") @replaced_by("gcp.project.gkeService.cluster.networkConfig.subnetwork") string
   // The list of node pools for the cluster
   nodePools []gcp.project.gkeService.cluster.nodepool
   // The list of Google Compute Engine zones in which the cluster's nodes should be located
@@ -8324,7 +8332,9 @@ private gcp.project.cloudFunction @defaults("name") {
   // balancer).
   ingressSettings string
   // Resource name of a KMS crypto key used to encrypt/decrypt function resources
-  kmsKeyName string
+  //
+  // Deprecated in favor of kmsKey, which resolves the key this name points to.
+  kmsKeyName @maturity("deprecated") @replaced_by("gcp.project.cloudFunction.kmsKey") string
   // Cloud KMS key used to encrypt/decrypt function resources
   kmsKey() gcp.project.kmsService.keyring.cryptokey
   // Name of the Cloud Build custom WorkerPool that should be used to build the function
