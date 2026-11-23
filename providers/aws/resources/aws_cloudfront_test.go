@@ -28,6 +28,8 @@ func TestS3BucketFromOriginDomain(t *testing.T) {
 		domain string
 		want   string
 	}{
+		// Measured: origin domain Terraform's bucket_regional_domain_name produced for an S3 origin with OAC, us-west-2, 2026-11-23.
+		{"mqlv-te-cf-f96b4356bc33b6cd1915bd0af7.s3.us-west-2.amazonaws.com", "mqlv-te-cf-f96b4356bc33b6cd1915bd0af7"},
 		// Synthetic: the virtual-hosted REST endpoint forms CloudFront accepts for an S3 origin.
 		{"my-bucket.s3.amazonaws.com", "my-bucket"},
 		{"my-bucket.s3.us-west-2.amazonaws.com", "my-bucket"},

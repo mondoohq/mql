@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
@@ -819,15 +818,17 @@ type mqlAwsApigatewayStageInternal struct {
 }
 
 // apigatewayPolicyJSON returns a REST API resource policy as a JSON document.
-// API Gateway returns the policy with its quotes backslash-escaped
-// ({\"Version\":...}), which no JSON parser accepts, so the escaping is
-// undone first. A policy that already parses is returned unchanged.
+// API Gateway returns the policy as the body of a JSON string literal, with
+// its quotes and slashes escaped ({\"Version\":...,\"Resource\":\"arn:...\/*\"}),
+// which no JSON parser accepts as a document. Decoding it as a JSON string
+// undoes exactly that escaping. A policy that already parses is returned
+// unchanged.
 func apigatewayPolicyJSON(raw string) string {
 	if raw == "" || json.Valid([]byte(raw)) {
 		return raw
 	}
-	unquoted, err := strconv.Unquote(`"` + raw + `"`)
-	if err != nil || !json.Valid([]byte(unquoted)) {
+	var unquoted string
+	if err := json.Unmarshal([]byte(`"`+raw+`"`), &unquoted); err != nil || !json.Valid([]byte(unquoted)) {
 		return raw
 	}
 	return unquoted

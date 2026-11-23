@@ -20,6 +20,15 @@ func TestApigatewayPolicyJSON(t *testing.T) {
 	assert.Equal(t, "2012-10-17", doc["Version"])
 	assert.Len(t, doc["Statement"], 1)
 
+	// Measured: GetRestApis on a PRIVATE REST API, us-west-2, 2026-11-23 (account
+	// and ids replaced). Slashes arrive escaped as well as quotes.
+	measured := `{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":\"execute-api:Invoke\",\"Resource\":\"arn:aws:execute-api:us-west-2:123456789012:abcde12345\/*\",\"Condition\":{\"StringEquals\":{\"aws:SourceVpce\":\"vpce-0123456789abcdef0\"}}}]}`
+	got = apigatewayPolicyJSON(measured)
+	doc = map[string]any{}
+	require.NoError(t, json.Unmarshal([]byte(got), &doc))
+	stmt := doc["Statement"].([]any)[0].(map[string]any)
+	assert.Equal(t, "arn:aws:execute-api:us-west-2:123456789012:abcde12345/*", stmt["Resource"])
+
 	// Synthetic: a document that already parses passes through unchanged.
 	plain := `{"Version":"2012-10-17","Statement":[]}`
 	assert.Equal(t, plain, apigatewayPolicyJSON(plain))

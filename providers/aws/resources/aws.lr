@@ -31553,7 +31553,7 @@ private aws.transfer.server @defaults("arn serverId endpointType protocols") {
   vpc() aws.vpc
   // Subnets the server endpoint is placed in (empty for PUBLIC endpoints)
   subnets() []aws.vpc.subnet
-  // Security groups attached to the server endpoint (empty for PUBLIC endpoints)
+  // Security groups attached to the server's VPC endpoint (empty for PUBLIC endpoints)
   securityGroups() []aws.ec2.securitygroup
   // VPC endpoint the server is reached through (null for PUBLIC endpoints)
   vpcEndpoint() aws.vpc.endpoint
@@ -31565,10 +31565,11 @@ private aws.transfer.server @defaults("arn serverId endpointType protocols") {
   directory() aws.directoryservice.directory
   // URL of the API Gateway endpoint that authenticates users when the identity provider type is API_GATEWAY (empty otherwise)
   identityProviderUrl() string
-  // Credentials SFTP users must present with a custom identity provider
+  // Credentials SFTP users must present to a custom identity provider (AWS_LAMBDA or API_GATEWAY)
   //
   // One of PASSWORD, PUBLIC_KEY, PUBLIC_KEY_OR_PASSWORD, or
-  // PUBLIC_KEY_AND_PASSWORD. Empty for service-managed and directory users.
+  // PUBLIC_KEY_AND_PASSWORD. The service reports PUBLIC_KEY_OR_PASSWORD when
+  // none was chosen.
   sftpAuthenticationMethods() string
   // RSA, ECDSA, or ED25519 key fingerprint of the server's host key
   hostKeyFingerprint() string
