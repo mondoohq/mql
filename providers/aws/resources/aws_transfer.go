@@ -886,6 +886,22 @@ func (a *mqlAwsTransferServer) securityGroups() ([]any, error) {
 	if ed == nil {
 		return []any{}, nil
 	}
+	// DescribeServer does not echo the security groups given at creation; they
+	// live on the VPC endpoint the service creates for the server.
+	if len(ed.SecurityGroupIds) == 0 {
+		ep := a.GetVpcEndpoint()
+		if ep.Error != nil {
+			return nil, ep.Error
+		}
+		if ep.Data == nil {
+			return []any{}, nil
+		}
+		sgs := ep.Data.GetSecurityGroups()
+		if sgs.Error != nil {
+			return nil, sgs.Error
+		}
+		return sgs.Data, nil
+	}
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	arns := make([]string, 0, len(ed.SecurityGroupIds))
 	for _, id := range ed.SecurityGroupIds {
