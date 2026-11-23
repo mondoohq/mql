@@ -1540,3 +1540,22 @@ func emrStepAdditionalInfo(info *emrtypes.StepAdditionalInfo) (*llx.RawData, *ll
 	}
 	return llx.StringDataPtr(info.ResourceManager), appIds
 }
+
+func (a *mqlAwsEmrCluster) keypair() (*mqlAwsEc2Keypair, error) {
+	if err := a.fetchClusterDetails(); err != nil {
+		return nil, err
+	}
+	if a.cacheEc2KeyName == "" {
+		a.Keypair.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, ResourceAwsEc2Keypair,
+		map[string]*llx.RawData{
+			"name":   llx.StringData(a.cacheEc2KeyName),
+			"region": llx.StringData(a.Region.Data),
+		})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsEc2Keypair), nil
+}

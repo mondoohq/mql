@@ -4610,3 +4610,21 @@ func sagemakerRegionList(conn *connection.AwsConnection, collect func(svc *sagem
 	}
 	return res, nil
 }
+
+func (a *mqlAwsSagemakerDomain) homeEfsFileSystem() (*mqlAwsEfsFilesystem, error) {
+	if err := a.fetchDetails(); err != nil {
+		return nil, err
+	}
+	fsId := convert.ToValue(a.cacheHomeEfsId)
+	if fsId == "" {
+		a.HomeEfsFileSystem.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	res, err := NewResource(a.MqlRuntime, ResourceAwsEfsFilesystem,
+		map[string]*llx.RawData{"arn": llx.StringData(fmt.Sprintf(efsFilesystemArnPattern, a.Region.Data, conn.AccountId(), fsId))})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsEfsFilesystem), nil
+}

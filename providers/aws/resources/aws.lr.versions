@@ -4816,6 +4816,7 @@ aws.ecs.capacityProviders 13.29.1
 aws.ecs.cluster 11.15.2
 aws.ecs.cluster.activeServicesCount 11.15.2
 aws.ecs.cluster.arn 11.15.2
+aws.ecs.cluster.associatedCapacityProviders 14.12.1
 aws.ecs.cluster.capacityProviderStrategyItem 13.0.3
 aws.ecs.cluster.capacityProviderStrategyItem.base 13.0.3
 aws.ecs.cluster.capacityProviderStrategyItem.capacityProvider 13.0.3
@@ -5823,6 +5824,7 @@ aws.emr.cluster.instanceGroup.runningInstanceCount 13.12.1
 aws.emr.cluster.instanceGroup.status 13.12.1
 aws.emr.cluster.instanceGroups 13.12.1
 aws.emr.cluster.kerberosAttributes 13.21.4
+aws.emr.cluster.keypair 14.12.1
 aws.emr.cluster.logEncryptionKmsKey 13.3.1
 aws.emr.cluster.logUri 13.3.0
 aws.emr.cluster.managedBy 13.39.2
@@ -5913,8 +5915,10 @@ aws.es.domain.automatedSnapshotStartHour 13.21.4
 aws.es.domain.availabilityZones 13.21.4
 aws.es.domain.cloudformationStack 13.39.2
 aws.es.domain.cognitoEnabled 13.21.4
+aws.es.domain.cognitoIdentityPool 14.12.1
 aws.es.domain.cognitoIdentityPoolId 13.21.4
 aws.es.domain.cognitoRole 13.41.1
+aws.es.domain.cognitoUserPool 14.12.1
 aws.es.domain.cognitoUserPoolId 13.21.4
 aws.es.domain.coldStorageEnabled 13.21.4
 aws.es.domain.created 13.21.4
@@ -7652,6 +7656,8 @@ aws.lambda.function.codeSha256 11.15.2
 aws.lambda.function.codeSigningConfig 11.15.2
 aws.lambda.function.codeSize 11.15.2
 aws.lambda.function.concurrency 11.15.2
+aws.lambda.function.deadLetterQueue 14.12.1
+aws.lambda.function.deadLetterTopic 14.12.1
 aws.lambda.function.description 11.15.2
 aws.lambda.function.dlqTargetArn 11.15.2
 aws.lambda.function.durableExecutionKmsKey 13.44.1
@@ -7709,6 +7715,7 @@ aws.lambda.function.runtimeManagementConfig 13.6.3
 aws.lambda.function.runtimeVersionArn 13.39.2
 aws.lambda.function.securityGroups 13.2.7
 aws.lambda.function.signingJobArn 11.15.2
+aws.lambda.function.signingProfile 14.12.1
 aws.lambda.function.signingProfileVersionArn 11.15.2
 aws.lambda.function.snapStartApplyOn 11.15.2
 aws.lambda.function.snapStartOptimizationStatus 11.15.2
@@ -8764,6 +8771,10 @@ aws.opensearch.domain.automatedSnapshotPauseStartTime 13.25.1
 aws.opensearch.domain.automatedSnapshotPauseState 13.25.1
 aws.opensearch.domain.availabilityZoneCount 11.15.2
 aws.opensearch.domain.cloudformationStack 13.39.2
+aws.opensearch.domain.cognitoEnabled 14.12.1
+aws.opensearch.domain.cognitoIdentityPool 14.12.1
+aws.opensearch.domain.cognitoRole 14.12.1
+aws.opensearch.domain.cognitoUserPool 14.12.1
 aws.opensearch.domain.coldStorageEnabled 11.15.2
 aws.opensearch.domain.createdAt 11.15.2
 aws.opensearch.domain.customEndpoint 13.15.2
@@ -9303,6 +9314,7 @@ aws.rds.dbinstance.cloudformationStack 13.39.2
 aws.rds.dbinstance.copyTagsToSnapshot 11.15.2
 aws.rds.dbinstance.createdAt 11.15.2
 aws.rds.dbinstance.customIamInstanceProfile 11.15.2
+aws.rds.dbinstance.customInstanceProfile 14.12.1
 aws.rds.dbinstance.customerOwnedIpEnabled 11.16.1
 aws.rds.dbinstance.dbCapacityReservationIdentifier 14.5.3
 aws.rds.dbinstance.dbCluster 13.38.2
@@ -9331,6 +9343,7 @@ aws.rds.dbinstance.masterUserSecret 11.16.1
 aws.rds.dbinstance.masterUsername 11.15.2
 aws.rds.dbinstance.maxAllocatedStorage 11.15.2
 aws.rds.dbinstance.monitoringInterval 11.15.2
+aws.rds.dbinstance.monitoringRole 14.12.1
 aws.rds.dbinstance.multiAZ 11.15.2
 aws.rds.dbinstance.multiTenant 13.14.2
 aws.rds.dbinstance.name 11.15.2
@@ -10448,6 +10461,7 @@ aws.sagemaker.domain.domainSecurityGroups 13.48.2
 aws.sagemaker.domain.executionRoleIdentityConfig 13.48.2
 aws.sagemaker.domain.executionRoleSessionNameMode 13.25.1
 aws.sagemaker.domain.failureReason 13.12.0
+aws.sagemaker.domain.homeEfsFileSystem 14.12.1
 aws.sagemaker.domain.homeEfsFileSystemId 13.0.2
 aws.sagemaker.domain.kmsKey 13.0.2
 aws.sagemaker.domain.lastModifiedAt 13.0.2

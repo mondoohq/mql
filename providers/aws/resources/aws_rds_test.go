@@ -241,3 +241,12 @@ func TestNewMqlAwsRdsRecommendation(t *testing.T) {
 	assert.Equal(t, "16.3", action.ContextAttributes.Data["CurrentEngineVersion"])
 	assert.Equal(t, []any{"immediately", "next-maintenance-window"}, action.ApplyModes.Data)
 }
+
+func TestInstanceProfileArn(t *testing.T) {
+	// Synthetic: RDS Custom reports the profile as an ARN or as a bare name.
+	assert.Equal(t, "arn:aws:iam::123456789012:instance-profile/AWSRDSCustomProfile",
+		instanceProfileArn("123456789012", "AWSRDSCustomProfile"))
+	assert.Equal(t, "arn:aws:iam::123456789012:instance-profile/path/AWSRDSCustomProfile",
+		instanceProfileArn("123456789012", "arn:aws:iam::123456789012:instance-profile/path/AWSRDSCustomProfile"))
+	assert.Equal(t, "", instanceProfileArn("123456789012", ""))
+}

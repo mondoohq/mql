@@ -9557,6 +9557,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.sagemaker.domain.homeEfsFileSystemId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsSagemakerDomain).GetHomeEfsFileSystemId()).ToDataRes(types.String)
 	},
+	"aws.sagemaker.domain.homeEfsFileSystem": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSagemakerDomain).GetHomeEfsFileSystem()).ToDataRes(types.Resource("aws.efs.filesystem"))
+	},
 	"aws.sagemaker.domain.defaultUserSettings": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsSagemakerDomain).GetDefaultUserSettings()).ToDataRes(types.Dict)
 	},
@@ -12101,6 +12104,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.es.domain.cognitoRole": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEsDomain).GetCognitoRole()).ToDataRes(types.Resource("aws.iam.role"))
 	},
+	"aws.es.domain.cognitoUserPool": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEsDomain).GetCognitoUserPool()).ToDataRes(types.Resource("aws.cognito.userPool"))
+	},
+	"aws.es.domain.cognitoIdentityPool": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEsDomain).GetCognitoIdentityPool()).ToDataRes(types.Resource("aws.cognito.identityPool"))
+	},
 	"aws.es.domain.autoTuneState": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEsDomain).GetAutoTuneState()).ToDataRes(types.String)
 	},
@@ -12289,6 +12298,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.opensearch.domain.advancedSecurityEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsOpensearchDomain).GetAdvancedSecurityEnabled()).ToDataRes(types.Bool)
+	},
+	"aws.opensearch.domain.cognitoEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsOpensearchDomain).GetCognitoEnabled()).ToDataRes(types.Bool)
+	},
+	"aws.opensearch.domain.cognitoUserPool": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsOpensearchDomain).GetCognitoUserPool()).ToDataRes(types.Resource("aws.cognito.userPool"))
+	},
+	"aws.opensearch.domain.cognitoIdentityPool": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsOpensearchDomain).GetCognitoIdentityPool()).ToDataRes(types.Resource("aws.cognito.identityPool"))
+	},
+	"aws.opensearch.domain.cognitoRole": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsOpensearchDomain).GetCognitoRole()).ToDataRes(types.Resource("aws.iam.role"))
 	},
 	"aws.opensearch.domain.processing": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsOpensearchDomain).GetProcessing()).ToDataRes(types.Bool)
@@ -15311,6 +15332,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.ecs.cluster.capacityProviders": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEcsCluster).GetCapacityProviders()).ToDataRes(types.Array(types.String))
 	},
+	"aws.ecs.cluster.associatedCapacityProviders": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEcsCluster).GetAssociatedCapacityProviders()).ToDataRes(types.Array(types.Resource("aws.ecs.capacityProvider")))
+	},
 	"aws.ecs.cluster.defaultCapacityProviderStrategy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEcsCluster).GetDefaultCapacityProviderStrategy()).ToDataRes(types.Array(types.Resource("aws.ecs.cluster.capacityProviderStrategyItem")))
 	},
@@ -16228,6 +16252,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.emr.cluster.ec2KeyName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEmrCluster).GetEc2KeyName()).ToDataRes(types.String)
+	},
+	"aws.emr.cluster.keypair": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEmrCluster).GetKeypair()).ToDataRes(types.Resource("aws.ec2.keypair"))
 	},
 	"aws.emr.cluster.ec2InstanceProfile": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEmrCluster).GetEc2InstanceProfile()).ToDataRes(types.Resource("aws.iam.instanceProfile"))
@@ -20798,6 +20825,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.rds.dbinstance.transitEncryptionEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsRdsDbinstance).GetTransitEncryptionEnabled()).ToDataRes(types.Bool)
 	},
+	"aws.rds.dbinstance.customInstanceProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRdsDbinstance).GetCustomInstanceProfile()).ToDataRes(types.Resource("aws.iam.instanceProfile"))
+	},
+	"aws.rds.dbinstance.monitoringRole": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRdsDbinstance).GetMonitoringRole()).ToDataRes(types.Resource("aws.iam.role"))
+	},
 	"aws.rds.dbinstance.activityStreamMode": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsRdsDbinstance).GetActivityStreamMode()).ToDataRes(types.String)
 	},
@@ -24170,6 +24203,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.lambda.function.dlqTargetArn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsLambdaFunction).GetDlqTargetArn()).ToDataRes(types.String)
 	},
+	"aws.lambda.function.deadLetterQueue": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsLambdaFunction).GetDeadLetterQueue()).ToDataRes(types.Resource("aws.sqs.queue"))
+	},
+	"aws.lambda.function.deadLetterTopic": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsLambdaFunction).GetDeadLetterTopic()).ToDataRes(types.Resource("aws.sns.topic"))
+	},
 	"aws.lambda.function.recursiveLoop": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsLambdaFunction).GetRecursiveLoop()).ToDataRes(types.String)
 	},
@@ -24292,6 +24331,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.lambda.function.signingProfileVersionArn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsLambdaFunction).GetSigningProfileVersionArn()).ToDataRes(types.String)
+	},
+	"aws.lambda.function.signingProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsLambdaFunction).GetSigningProfile()).ToDataRes(types.Resource("aws.signer.signingProfile"))
 	},
 	"aws.lambda.function.signingJobArn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsLambdaFunction).GetSigningJobArn()).ToDataRes(types.String)
@@ -47166,6 +47208,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsSagemakerDomain).HomeEfsFileSystemId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"aws.sagemaker.domain.homeEfsFileSystem": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSagemakerDomain).HomeEfsFileSystem, ok = plugin.RawToTValue[*mqlAwsEfsFilesystem](v.Value, v.Error)
+		return
+	},
 	"aws.sagemaker.domain.defaultUserSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsSagemakerDomain).DefaultUserSettings, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
@@ -50894,6 +50940,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsEsDomain).CognitoRole, ok = plugin.RawToTValue[*mqlAwsIamRole](v.Value, v.Error)
 		return
 	},
+	"aws.es.domain.cognitoUserPool": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEsDomain).CognitoUserPool, ok = plugin.RawToTValue[*mqlAwsCognitoUserPool](v.Value, v.Error)
+		return
+	},
+	"aws.es.domain.cognitoIdentityPool": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEsDomain).CognitoIdentityPool, ok = plugin.RawToTValue[*mqlAwsCognitoIdentityPool](v.Value, v.Error)
+		return
+	},
 	"aws.es.domain.autoTuneState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsEsDomain).AutoTuneState, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -51152,6 +51206,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.opensearch.domain.advancedSecurityEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsOpensearchDomain).AdvancedSecurityEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.opensearch.domain.cognitoEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOpensearchDomain).CognitoEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.opensearch.domain.cognitoUserPool": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOpensearchDomain).CognitoUserPool, ok = plugin.RawToTValue[*mqlAwsCognitoUserPool](v.Value, v.Error)
+		return
+	},
+	"aws.opensearch.domain.cognitoIdentityPool": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOpensearchDomain).CognitoIdentityPool, ok = plugin.RawToTValue[*mqlAwsCognitoIdentityPool](v.Value, v.Error)
+		return
+	},
+	"aws.opensearch.domain.cognitoRole": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOpensearchDomain).CognitoRole, ok = plugin.RawToTValue[*mqlAwsIamRole](v.Value, v.Error)
 		return
 	},
 	"aws.opensearch.domain.processing": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -55562,6 +55632,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsEcsCluster).CapacityProviders, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"aws.ecs.cluster.associatedCapacityProviders": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEcsCluster).AssociatedCapacityProviders, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"aws.ecs.cluster.defaultCapacityProviderStrategy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsEcsCluster).DefaultCapacityProviderStrategy, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -56900,6 +56974,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.emr.cluster.ec2KeyName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsEmrCluster).Ec2KeyName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.emr.cluster.keypair": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEmrCluster).Keypair, ok = plugin.RawToTValue[*mqlAwsEc2Keypair](v.Value, v.Error)
 		return
 	},
 	"aws.emr.cluster.ec2InstanceProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -63618,6 +63696,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsRdsDbinstance).TransitEncryptionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"aws.rds.dbinstance.customInstanceProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRdsDbinstance).CustomInstanceProfile, ok = plugin.RawToTValue[*mqlAwsIamInstanceProfile](v.Value, v.Error)
+		return
+	},
+	"aws.rds.dbinstance.monitoringRole": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRdsDbinstance).MonitoringRole, ok = plugin.RawToTValue[*mqlAwsIamRole](v.Value, v.Error)
+		return
+	},
 	"aws.rds.dbinstance.activityStreamMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsRdsDbinstance).ActivityStreamMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -68474,6 +68560,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsLambdaFunction).DlqTargetArn, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"aws.lambda.function.deadLetterQueue": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsLambdaFunction).DeadLetterQueue, ok = plugin.RawToTValue[*mqlAwsSqsQueue](v.Value, v.Error)
+		return
+	},
+	"aws.lambda.function.deadLetterTopic": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsLambdaFunction).DeadLetterTopic, ok = plugin.RawToTValue[*mqlAwsSnsTopic](v.Value, v.Error)
+		return
+	},
 	"aws.lambda.function.recursiveLoop": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsLambdaFunction).RecursiveLoop, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -68636,6 +68730,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.lambda.function.signingProfileVersionArn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsLambdaFunction).SigningProfileVersionArn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.lambda.function.signingProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsLambdaFunction).SigningProfile, ok = plugin.RawToTValue[*mqlAwsSignerSigningProfile](v.Value, v.Error)
 		return
 	},
 	"aws.lambda.function.signingJobArn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -109654,6 +109752,7 @@ type mqlAwsSagemakerDomain struct {
 	Vpc                             plugin.TValue[*mqlAwsVpc]
 	KmsKey                          plugin.TValue[*mqlAwsKmsKey]
 	HomeEfsFileSystemId             plugin.TValue[string]
+	HomeEfsFileSystem               plugin.TValue[*mqlAwsEfsFilesystem]
 	DefaultUserSettings             plugin.TValue[any]
 	SecurityGroupForDomainBoundary  plugin.TValue[*mqlAwsEc2Securitygroup]
 	AppSecurityGroupManagement      plugin.TValue[string]
@@ -109799,6 +109898,22 @@ func (c *mqlAwsSagemakerDomain) GetKmsKey() *plugin.TValue[*mqlAwsKmsKey] {
 func (c *mqlAwsSagemakerDomain) GetHomeEfsFileSystemId() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.HomeEfsFileSystemId, func() (string, error) {
 		return c.homeEfsFileSystemId()
+	})
+}
+
+func (c *mqlAwsSagemakerDomain) GetHomeEfsFileSystem() *plugin.TValue[*mqlAwsEfsFilesystem] {
+	return plugin.GetOrCompute[*mqlAwsEfsFilesystem](&c.HomeEfsFileSystem, func() (*mqlAwsEfsFilesystem, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.sagemaker.domain", c.__id, "homeEfsFileSystem")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsEfsFilesystem), nil
+			}
+		}
+
+		return c.homeEfsFileSystem()
 	})
 }
 
@@ -119440,6 +119555,8 @@ type mqlAwsEsDomain struct {
 	CognitoUserPoolId                  plugin.TValue[string]
 	CognitoIdentityPoolId              plugin.TValue[string]
 	CognitoRole                        plugin.TValue[*mqlAwsIamRole]
+	CognitoUserPool                    plugin.TValue[*mqlAwsCognitoUserPool]
+	CognitoIdentityPool                plugin.TValue[*mqlAwsCognitoIdentityPool]
 	AutoTuneState                      plugin.TValue[string]
 	ServiceSoftwareCurrentVersion      plugin.TValue[string]
 	ServiceSoftwareNewVersion          plugin.TValue[string]
@@ -119843,6 +119960,38 @@ func (c *mqlAwsEsDomain) GetCognitoRole() *plugin.TValue[*mqlAwsIamRole] {
 	})
 }
 
+func (c *mqlAwsEsDomain) GetCognitoUserPool() *plugin.TValue[*mqlAwsCognitoUserPool] {
+	return plugin.GetOrCompute[*mqlAwsCognitoUserPool](&c.CognitoUserPool, func() (*mqlAwsCognitoUserPool, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.es.domain", c.__id, "cognitoUserPool")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsCognitoUserPool), nil
+			}
+		}
+
+		return c.cognitoUserPool()
+	})
+}
+
+func (c *mqlAwsEsDomain) GetCognitoIdentityPool() *plugin.TValue[*mqlAwsCognitoIdentityPool] {
+	return plugin.GetOrCompute[*mqlAwsCognitoIdentityPool](&c.CognitoIdentityPool, func() (*mqlAwsCognitoIdentityPool, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.es.domain", c.__id, "cognitoIdentityPool")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsCognitoIdentityPool), nil
+			}
+		}
+
+		return c.cognitoIdentityPool()
+	})
+}
+
 func (c *mqlAwsEsDomain) GetAutoTuneState() *plugin.TValue[string] {
 	return &c.AutoTuneState
 }
@@ -120079,6 +120228,10 @@ type mqlAwsOpensearchDomain struct {
 	AnonymousAuthEnabled               plugin.TValue[bool]
 	InternalUserDatabaseEnabled        plugin.TValue[bool]
 	AdvancedSecurityEnabled            plugin.TValue[bool]
+	CognitoEnabled                     plugin.TValue[bool]
+	CognitoUserPool                    plugin.TValue[*mqlAwsCognitoUserPool]
+	CognitoIdentityPool                plugin.TValue[*mqlAwsCognitoIdentityPool]
+	CognitoRole                        plugin.TValue[*mqlAwsIamRole]
 	Processing                         plugin.TValue[bool]
 	UpgradeProcessing                  plugin.TValue[bool]
 	CreatedAt                          plugin.TValue[*time.Time]
@@ -120369,6 +120522,58 @@ func (c *mqlAwsOpensearchDomain) GetInternalUserDatabaseEnabled() *plugin.TValue
 
 func (c *mqlAwsOpensearchDomain) GetAdvancedSecurityEnabled() *plugin.TValue[bool] {
 	return &c.AdvancedSecurityEnabled
+}
+
+func (c *mqlAwsOpensearchDomain) GetCognitoEnabled() *plugin.TValue[bool] {
+	return &c.CognitoEnabled
+}
+
+func (c *mqlAwsOpensearchDomain) GetCognitoUserPool() *plugin.TValue[*mqlAwsCognitoUserPool] {
+	return plugin.GetOrCompute[*mqlAwsCognitoUserPool](&c.CognitoUserPool, func() (*mqlAwsCognitoUserPool, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.opensearch.domain", c.__id, "cognitoUserPool")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsCognitoUserPool), nil
+			}
+		}
+
+		return c.cognitoUserPool()
+	})
+}
+
+func (c *mqlAwsOpensearchDomain) GetCognitoIdentityPool() *plugin.TValue[*mqlAwsCognitoIdentityPool] {
+	return plugin.GetOrCompute[*mqlAwsCognitoIdentityPool](&c.CognitoIdentityPool, func() (*mqlAwsCognitoIdentityPool, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.opensearch.domain", c.__id, "cognitoIdentityPool")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsCognitoIdentityPool), nil
+			}
+		}
+
+		return c.cognitoIdentityPool()
+	})
+}
+
+func (c *mqlAwsOpensearchDomain) GetCognitoRole() *plugin.TValue[*mqlAwsIamRole] {
+	return plugin.GetOrCompute[*mqlAwsIamRole](&c.CognitoRole, func() (*mqlAwsIamRole, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.opensearch.domain", c.__id, "cognitoRole")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsIamRole), nil
+			}
+		}
+
+		return c.cognitoRole()
+	})
 }
 
 func (c *mqlAwsOpensearchDomain) GetProcessing() *plugin.TValue[bool] {
@@ -131400,6 +131605,7 @@ type mqlAwsEcsCluster struct {
 	ActiveServicesCount               plugin.TValue[int64]
 	FargateEphemeralStorageKmsKey     plugin.TValue[*mqlAwsKmsKey]
 	CapacityProviders                 plugin.TValue[[]any]
+	AssociatedCapacityProviders       plugin.TValue[[]any]
 	DefaultCapacityProviderStrategy   plugin.TValue[[]any]
 	ServiceConnectNamespace           plugin.TValue[string]
 	Statistics                        plugin.TValue[map[string]any]
@@ -131584,6 +131790,22 @@ func (c *mqlAwsEcsCluster) GetFargateEphemeralStorageKmsKey() *plugin.TValue[*mq
 
 func (c *mqlAwsEcsCluster) GetCapacityProviders() *plugin.TValue[[]any] {
 	return &c.CapacityProviders
+}
+
+func (c *mqlAwsEcsCluster) GetAssociatedCapacityProviders() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AssociatedCapacityProviders, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.ecs.cluster", c.__id, "associatedCapacityProviders")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.associatedCapacityProviders()
+	})
 }
 
 func (c *mqlAwsEcsCluster) GetDefaultCapacityProviderStrategy() *plugin.TValue[[]any] {
@@ -134774,6 +134996,7 @@ type mqlAwsEmrCluster struct {
 	Subnets                    plugin.TValue[[]any]
 	SecurityGroups             plugin.TValue[[]any]
 	Ec2KeyName                 plugin.TValue[string]
+	Keypair                    plugin.TValue[*mqlAwsEc2Keypair]
 	Ec2InstanceProfile         plugin.TValue[*mqlAwsIamInstanceProfile]
 	SessionEnabled             plugin.TValue[bool]
 }
@@ -135158,6 +135381,22 @@ func (c *mqlAwsEmrCluster) GetSecurityGroups() *plugin.TValue[[]any] {
 func (c *mqlAwsEmrCluster) GetEc2KeyName() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.Ec2KeyName, func() (string, error) {
 		return c.ec2KeyName()
+	})
+}
+
+func (c *mqlAwsEmrCluster) GetKeypair() *plugin.TValue[*mqlAwsEc2Keypair] {
+	return plugin.GetOrCompute[*mqlAwsEc2Keypair](&c.Keypair, func() (*mqlAwsEc2Keypair, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.emr.cluster", c.__id, "keypair")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsEc2Keypair), nil
+			}
+		}
+
+		return c.keypair()
 	})
 }
 
@@ -152832,6 +153071,8 @@ type mqlAwsRdsDbinstance struct {
 	CustomIamInstanceProfile           plugin.TValue[string]
 	ParameterGroups                    plugin.TValue[[]any]
 	TransitEncryptionEnabled           plugin.TValue[bool]
+	CustomInstanceProfile              plugin.TValue[*mqlAwsIamInstanceProfile]
+	MonitoringRole                     plugin.TValue[*mqlAwsIamRole]
 	ActivityStreamMode                 plugin.TValue[string]
 	ActivityStreamStatus               plugin.TValue[string]
 	PendingMaintenanceActions          plugin.TValue[[]any]
@@ -153166,6 +153407,38 @@ func (c *mqlAwsRdsDbinstance) GetParameterGroups() *plugin.TValue[[]any] {
 func (c *mqlAwsRdsDbinstance) GetTransitEncryptionEnabled() *plugin.TValue[bool] {
 	return plugin.GetOrCompute[bool](&c.TransitEncryptionEnabled, func() (bool, error) {
 		return c.transitEncryptionEnabled()
+	})
+}
+
+func (c *mqlAwsRdsDbinstance) GetCustomInstanceProfile() *plugin.TValue[*mqlAwsIamInstanceProfile] {
+	return plugin.GetOrCompute[*mqlAwsIamInstanceProfile](&c.CustomInstanceProfile, func() (*mqlAwsIamInstanceProfile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.rds.dbinstance", c.__id, "customInstanceProfile")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsIamInstanceProfile), nil
+			}
+		}
+
+		return c.customInstanceProfile()
+	})
+}
+
+func (c *mqlAwsRdsDbinstance) GetMonitoringRole() *plugin.TValue[*mqlAwsIamRole] {
+	return plugin.GetOrCompute[*mqlAwsIamRole](&c.MonitoringRole, func() (*mqlAwsIamRole, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.rds.dbinstance", c.__id, "monitoringRole")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsIamRole), nil
+			}
+		}
+
+		return c.monitoringRole()
 	})
 }
 
@@ -164865,6 +165138,8 @@ type mqlAwsLambdaFunction struct {
 	Runtime                       plugin.TValue[string]
 	Concurrency                   plugin.TValue[int64]
 	DlqTargetArn                  plugin.TValue[string]
+	DeadLetterQueue               plugin.TValue[*mqlAwsSqsQueue]
+	DeadLetterTopic               plugin.TValue[*mqlAwsSnsTopic]
 	RecursiveLoop                 plugin.TValue[string]
 	Policy                        plugin.TValue[any]
 	PolicyStatements              plugin.TValue[[]any]
@@ -164906,6 +165181,7 @@ type mqlAwsLambdaFunction struct {
 	SnapStartOptimizationStatus   plugin.TValue[string]
 	FileSystemConfigs             plugin.TValue[[]any]
 	SigningProfileVersionArn      plugin.TValue[string]
+	SigningProfile                plugin.TValue[*mqlAwsSignerSigningProfile]
 	SigningJobArn                 plugin.TValue[string]
 	EventSourceMappings           plugin.TValue[[]any]
 	Aliases                       plugin.TValue[[]any]
@@ -164982,6 +165258,38 @@ func (c *mqlAwsLambdaFunction) GetConcurrency() *plugin.TValue[int64] {
 
 func (c *mqlAwsLambdaFunction) GetDlqTargetArn() *plugin.TValue[string] {
 	return &c.DlqTargetArn
+}
+
+func (c *mqlAwsLambdaFunction) GetDeadLetterQueue() *plugin.TValue[*mqlAwsSqsQueue] {
+	return plugin.GetOrCompute[*mqlAwsSqsQueue](&c.DeadLetterQueue, func() (*mqlAwsSqsQueue, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.lambda.function", c.__id, "deadLetterQueue")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsSqsQueue), nil
+			}
+		}
+
+		return c.deadLetterQueue()
+	})
+}
+
+func (c *mqlAwsLambdaFunction) GetDeadLetterTopic() *plugin.TValue[*mqlAwsSnsTopic] {
+	return plugin.GetOrCompute[*mqlAwsSnsTopic](&c.DeadLetterTopic, func() (*mqlAwsSnsTopic, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.lambda.function", c.__id, "deadLetterTopic")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsSnsTopic), nil
+			}
+		}
+
+		return c.deadLetterTopic()
+	})
 }
 
 func (c *mqlAwsLambdaFunction) GetRecursiveLoop() *plugin.TValue[string] {
@@ -165268,6 +165576,22 @@ func (c *mqlAwsLambdaFunction) GetFileSystemConfigs() *plugin.TValue[[]any] {
 
 func (c *mqlAwsLambdaFunction) GetSigningProfileVersionArn() *plugin.TValue[string] {
 	return &c.SigningProfileVersionArn
+}
+
+func (c *mqlAwsLambdaFunction) GetSigningProfile() *plugin.TValue[*mqlAwsSignerSigningProfile] {
+	return plugin.GetOrCompute[*mqlAwsSignerSigningProfile](&c.SigningProfile, func() (*mqlAwsSignerSigningProfile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.lambda.function", c.__id, "signingProfile")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsSignerSigningProfile), nil
+			}
+		}
+
+		return c.signingProfile()
+	})
 }
 
 func (c *mqlAwsLambdaFunction) GetSigningJobArn() *plugin.TValue[string] {

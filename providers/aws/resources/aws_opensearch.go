@@ -188,6 +188,10 @@ type mqlAwsOpensearchDomainInternal struct {
 	cacheIndexSlowLogGroupArn   *string
 	cacheSearchSlowLogGroupArn  *string
 	cacheApplicationLogGroupArn *string
+
+	cacheCognitoUserPoolId     string
+	cacheCognitoIdentityPoolId string
+	cacheCognitoRoleArn        string
 }
 
 func newMqlAwsOpensearchDomain(runtime *plugin.Runtime, region string, accountID string, domain opensearch_types.DomainStatus) (*mqlAwsOpensearchDomain, error) {
@@ -431,6 +435,7 @@ func newMqlAwsOpensearchDomain(runtime *plugin.Runtime, region string, accountID
 			"anonymousAuthEnabled":               llx.BoolData(anonymousAuthEnabled),
 			"internalUserDatabaseEnabled":        llx.BoolData(internalUserDatabaseEnabled),
 			"advancedSecurityEnabled":            llx.BoolData(advancedSecurityEnabled),
+			"cognitoEnabled":                     llx.BoolData(domain.CognitoOptions != nil && convert.ToValue(domain.CognitoOptions.Enabled)),
 			"processing":                         llx.BoolDataPtr(domain.Processing),
 			"upgradeProcessing":                  llx.BoolDataPtr(domain.UpgradeProcessing),
 			"createdAt":                          createdAt,
@@ -473,6 +478,11 @@ func newMqlAwsOpensearchDomain(runtime *plugin.Runtime, region string, accountID
 	mqlDomain.cacheSearchSlowLogGroupArn = searchSlowLogArn
 	mqlDomain.cacheApplicationLogGroupArn = applicationLogArn
 	mqlDomain.setSecurityGroupArns(sgArns)
+	if domain.CognitoOptions != nil && convert.ToValue(domain.CognitoOptions.Enabled) {
+		mqlDomain.cacheCognitoUserPoolId = convert.ToValue(domain.CognitoOptions.UserPoolId)
+		mqlDomain.cacheCognitoIdentityPoolId = convert.ToValue(domain.CognitoOptions.IdentityPoolId)
+		mqlDomain.cacheCognitoRoleArn = convert.ToValue(domain.CognitoOptions.RoleArn)
+	}
 	return mqlDomain, nil
 }
 
@@ -628,4 +638,39 @@ func (a *mqlAwsOpensearchDomain) searchSlowLogGroup() (*mqlAwsCloudwatchLoggroup
 
 func (a *mqlAwsOpensearchDomain) applicationLogGroup() (*mqlAwsCloudwatchLoggroup, error) {
 	return esResolveLogGroup(a.MqlRuntime, a.cacheApplicationLogGroupArn, &a.ApplicationLogGroup)
+}
+
+func (a *mqlAwsOpensearchDomain) cognitoUserPool() (*mqlAwsCognitoUserPool, error) {
+	pool, err := resolveCognitoUserPoolById(a.MqlRuntime, a.cacheCognitoUserPoolId)
+	if err != nil {
+		return nil, err
+	}
+	if pool == nil {
+		a.CognitoUserPool.State = plugin.StateIsNull | plugin.StateIsSet
+	}
+	return pool, nil
+}
+
+func (a *mqlAwsOpensearchDomain) cognitoIdentityPool() (*mqlAwsCognitoIdentityPool, error) {
+	pool, err := resolveCognitoIdentityPool(a.MqlRuntime, a.cacheCognitoIdentityPoolId)
+	if err != nil {
+		return nil, err
+	}
+	if pool == nil {
+		a.CognitoIdentityPool.State = plugin.StateIsNull | plugin.StateIsSet
+	}
+	return pool, nil
+}
+
+func (a *mqlAwsOpensearchDomain) cognitoRole() (*mqlAwsIamRole, error) {
+	if a.cacheCognitoRoleArn == "" {
+		a.CognitoRole.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, ResourceAwsIamRole,
+		map[string]*llx.RawData{"arn": llx.StringData(a.cacheCognitoRoleArn)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsIamRole), nil
 }

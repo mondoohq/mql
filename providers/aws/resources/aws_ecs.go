@@ -3238,3 +3238,33 @@ type mqlAwsEcsTaskSetInternal struct {
 	cacheClusterArn string
 	cacheServiceArn string
 }
+
+func (a *mqlAwsEcsCluster) associatedCapacityProviders() ([]any, error) {
+	res := []any{}
+	names := a.CapacityProviders.Data
+	if len(names) == 0 {
+		return res, nil
+	}
+	obj, err := CreateResource(a.MqlRuntime, ResourceAwsEcs, map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	all := obj.(*mqlAwsEcs).GetCapacityProviders()
+	if all.Error != nil {
+		return nil, all.Error
+	}
+	byName := map[string]*mqlAwsEcsCapacityProvider{}
+	for _, raw := range all.Data {
+		cp, ok := raw.(*mqlAwsEcsCapacityProvider)
+		if ok && cp.Region.Data == a.Region.Data {
+			byName[cp.Name.Data] = cp
+		}
+	}
+	for _, n := range names {
+		name, _ := n.(string)
+		if cp, ok := byName[name]; ok {
+			res = append(res, cp)
+		}
+	}
+	return res, nil
+}
