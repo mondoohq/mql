@@ -924,6 +924,19 @@ azure.subscription.computeService.vm @defaults("name location properties.hardwar
   flexProfilePreferredVmSize string
   // ID of the resource that manages this VM (e.g. VMSS ARM resource ID)
   managedBy string
+  // VM size (for example "Standard_D2s_v5")
+  //
+  // With a flex profile this is unset and flexProfilePreferredVmSize holds
+  // the preferred size.
+  vmSize string
+  // Priority of the VM ("Regular", "Low", or "Spot")
+  priority string
+  // What happens to a Spot or Low priority VM when Azure evicts it ("Deallocate" or "Delete"); null for a Regular VM
+  evictionPolicy string
+  // Dedicated host the VM is placed on; null when it does not run on a dedicated host
+  dedicatedHost() azure.subscription.computeService.dedicatedHost
+  // Dedicated host group the VM is placed in; null when it does not run in a host group
+  dedicatedHostGroup() azure.subscription.computeService.dedicatedHostGroup
   // Unique 128-bit VM identifier
   vmId string
   // Provisioning state of the VM (e.g. Succeeded, Failed, Creating, Updating, Deleting)
@@ -2937,6 +2950,21 @@ azure.subscription.networkService.firewall @defaults("id name location") {
   applicationRules() []azure.subscription.networkService.firewall.applicationRule
   // Diagnostic settings configured on the firewall (forwarding logs and metrics to Log Analytics, storage, or Event Hub)
   diagnosticSettings() []azure.subscription.monitorService.diagnosticsetting
+  // Availability zones the firewall is deployed across
+  zones []string
+  // Virtual hub the firewall is deployed into, null for a firewall in a virtual network
+  virtualHub() azure.subscription.networkService.virtualHub
+  // IP groups referenced by the firewall's rules
+  ipGroups() []azure.subscription.networkService.ipGroup
+  // Public IP addresses of a firewall deployed into a virtual hub
+  //
+  // Empty for a firewall in a virtual network, whose public addresses are
+  // reached through ipConfigurations.
+  hubPublicIpAddresses []string
+  // Private IP address of a firewall deployed into a virtual hub
+  //
+  // Null for a firewall in a virtual network.
+  hubPrivateIpAddress string
 }
 
 // Azure network firewall IP configuration
@@ -4549,6 +4577,13 @@ private azure.subscription.networkService.securityGroup @defaults("id name locat
   securityRules() []azure.subscription.networkService.securityrule
   // Security group default security rules
   defaultSecurityRules() []azure.subscription.networkService.securityrule
+  // Provisioning state of the security group ("Succeeded", "Updating", "Deleting", or "Failed")
+  provisioningState string
+  // Whether rule changes are applied to existing flows
+  //
+  // When false, a connection already allowed keeps flowing after a rule
+  // that would now deny it is added, until the connection ends.
+  flushConnection bool
   // Network Watcher flow log that targets this security group
   //
   // Resolves the flow log whose target resource is this network security group,
@@ -4920,6 +4955,70 @@ azure.subscription.networkService.applicationGateway @defaults("id name location
   publicIpAddresses() []azure.subscription.networkService.ipAddress
   // Diagnostic settings configured on the application gateway (forwarding logs and metrics to Log Analytics, storage, or Event Hub)
   diagnosticSettings() []azure.subscription.monitorService.diagnosticsetting
+  // SKU name ("Basic", "Standard_v2", or "WAF_v2"; the retired v1 SKUs report "Standard_Small", "WAF_Medium", and similar)
+  skuName string
+  // SKU tier ("Basic", "Standard_v2", or "WAF_v2"; the retired v1 tiers report "Standard" or "WAF")
+  skuTier string
+  // Fixed instance count, null when the gateway autoscales
+  capacity int
+  // Availability zones the gateway is deployed across
+  zones []string
+  // Provisioning state of the gateway ("Succeeded", "Updating", "Deleting", or "Failed")
+  provisioningState string
+  // Private endpoint connections to the gateway's private link frontends
+  privateEndpointConnections() []azure.subscription.privateEndpointConnection
+  // Backend address pools the gateway forwards requests to
+  backendAddressPools() []azure.subscription.networkService.applicationGateway.backendAddressPool
+  // Request routing rules that bind each listener to its backend
+  requestRoutingRules() []azure.subscription.networkService.applicationGateway.requestRoutingRule
+}
+
+// Azure Application Gateway backend address pool
+//
+// Set of backend targets an Application Gateway forwards requests to.
+// Members are listed as IP addresses and FQDNs (ipAddresses, fqdns) or as
+// network interface IP configurations (backendIpConfigurations).
+private azure.subscription.networkService.applicationGateway.backendAddressPool @defaults("name") {
+  // ARM resource ID
+  id string
+  // Backend address pool name
+  name string
+  // IP addresses of the pool's members
+  ipAddresses []string
+  // Fully qualified domain names of the pool's members
+  fqdns []string
+  // Provisioning state of the pool
+  provisioningState string
+  // Network interface IP configurations that are members of the pool
+  //
+  // Lists standalone network interfaces. Members that are virtual machine
+  // scale set instances are not included.
+  backendIpConfigurations() []azure.subscription.networkService.interface.ipConfiguration
+}
+
+// Azure Application Gateway request routing rule
+//
+// Rule that binds a listener to the backend it forwards to. A "Basic" rule
+// sends every request to one backend pool with one set of HTTP settings; a
+// "PathBasedRouting" rule chooses by URL path. A rule that redirects instead
+// of forwarding has no backend pool.
+private azure.subscription.networkService.applicationGateway.requestRoutingRule @defaults("name ruleType priority") {
+  // ARM resource ID
+  id string
+  // Rule name
+  name string
+  // Rule type ("Basic" or "PathBasedRouting")
+  ruleType string
+  // Evaluation priority, lower numbers first; null on gateways that predate rule priorities
+  priority int
+  // Provisioning state of the rule
+  provisioningState string
+  // Listener the rule applies to
+  listener() azure.subscription.networkService.applicationGateway.listener
+  // Backend address pool requests are forwarded to; null for a path-based or redirect rule
+  backendAddressPool() azure.subscription.networkService.applicationGateway.backendAddressPool
+  // Backend HTTP settings used to reach the pool; null for a path-based or redirect rule
+  backendHttpSettings() azure.subscription.networkService.applicationGateway.backendHttpSettings
 }
 
 // Azure Application Gateway IP configuration
@@ -4996,6 +5095,10 @@ private azure.subscription.networkService.applicationGateway.listener @defaults(
   sslProfileId string
   // Name of the SSL profile bound to the listener (matches `name` of an entry in the parent gateway's `sslProfiles`); empty when no profile is set
   sslProfileName string
+  // SSL certificate the listener presents; null for an Http listener
+  sslCertificate() azure.subscription.networkService.applicationGateway.sslCertificate
+  // SSL profile bound to the listener; null when no profile is set
+  sslProfile() azure.subscription.networkService.applicationGateway.sslProfile
   // Provisioning state of the listener
   provisioningState string
 }
@@ -9693,6 +9796,14 @@ private azure.subscription.postgreSqlService.flexibleServer @defaults("name loca
   storageTier string
   // Storage type backing the server ("Premium_LRS", "PremiumV2_LRS", or "UltraSSD_LRS")
   storageType string
+  // Provisioned storage IOPS
+  storageIops int
+  // Provisioned storage throughput in MB/s; null for storage types without a separate throughput setting
+  storageThroughput int
+  // Compute SKU name (for example "Standard_B1ms" or "Standard_D2ds_v5")
+  skuName string
+  // Compute tier ("Burstable", "GeneralPurpose", or "MemoryOptimized")
+  skuTier string
   // Role of the server in a replication set
   //
   // One of Primary, AsyncReplica, GeoAsyncReplica, or None. A replica
@@ -10309,6 +10420,14 @@ private azure.subscription.mySqlService.flexibleServer @defaults("name location 
   storageLogOnDisk bool
   // Storage redundancy type ("LocalRedundancy" or "ZoneRedundancy")
   storageRedundancy string
+  // Provisioned storage size in GiB
+  storageSizeGB int
+  // Provisioned storage IOPS
+  storageIops int
+  // Compute SKU name (for example "Standard_B1ms" or "Standard_D2ds_v4")
+  skuName string
+  // Compute tier ("Burstable", "GeneralPurpose", or "MemoryOptimized")
+  skuTier string
   // Interval between automatic backups, in hours
   backupIntervalHours int
   // Maintenance patch strategy ("Regular" or "VirtualCanary")

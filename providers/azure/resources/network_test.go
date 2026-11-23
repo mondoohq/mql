@@ -206,3 +206,90 @@ func TestVirtualNetworkIDFromSubnetID(t *testing.T) {
 		assert.Equal(t, "", virtualNetworkIDFromSubnetID(""))
 	})
 }
+
+func TestFirewallHubFields(t *testing.T) {
+	t.Run("nil properties", func(t *testing.T) {
+		// Synthetic: a firewall record without properties.
+		got := firewallHubFields(nil)
+		assert.Equal(t, []any{}, got.publicIPs)
+		assert.Nil(t, got.privateIP)
+		assert.Empty(t, got.virtualHubID)
+		assert.Empty(t, got.ipGroupIDs)
+	})
+	t.Run("virtual network firewall has no hub addresses", func(t *testing.T) {
+		// Synthetic: a firewall in a virtual network references IP groups but
+		// carries no hub addresses or virtual hub.
+		got := firewallHubFields(&network.AzureFirewallPropertiesFormat{
+			IPGroups: []*network.AzureFirewallIPGroups{
+				{ID: ptr("/subscriptions/s/resourceGroups/rg/providers/Microsoft.Network/ipGroups/g1")},
+				nil,
+				{ID: ptr("")},
+				{ChangeNumber: ptr("3")},
+			},
+		})
+		assert.Equal(t, []any{}, got.publicIPs)
+		assert.Nil(t, got.privateIP)
+		assert.Empty(t, got.virtualHubID)
+		assert.Equal(t, []string{"/subscriptions/s/resourceGroups/rg/providers/Microsoft.Network/ipGroups/g1"}, got.ipGroupIDs)
+	})
+	t.Run("secured hub firewall", func(t *testing.T) {
+		// Synthetic: hub addresses with a nil entry in the address list.
+		hubID := "/subscriptions/s/resourceGroups/rg/providers/Microsoft.Network/virtualHubs/hub1"
+		got := firewallHubFields(&network.AzureFirewallPropertiesFormat{
+			VirtualHub: &network.SubResource{ID: &hubID},
+			HubIPAddresses: &network.HubIPAddresses{
+				PrivateIPAddress: ptr("10.0.64.4"),
+				PublicIPs: &network.HubPublicIPAddresses{
+					Count:     ptr[int32](2),
+					Addresses: []*network.AzureFirewallPublicIPAddress{{Address: ptr("20.1.2.3")}, nil, {Address: ptr("20.1.2.4")}},
+				},
+			},
+		})
+		assert.Equal(t, []any{"20.1.2.3", "20.1.2.4"}, got.publicIPs)
+		assert.Equal(t, "10.0.64.4", *got.privateIP)
+		assert.Equal(t, hubID, got.virtualHubID)
+	})
+}
+
+func TestAppGatewayBackendPoolFields(t *testing.T) {
+	t.Run("nil properties", func(t *testing.T) {
+		// Synthetic: a pool record without properties.
+		got := appGatewayBackendPoolFields(nil)
+		assert.Equal(t, []any{}, got.ipAddresses)
+		assert.Equal(t, []any{}, got.fqdns)
+		assert.Empty(t, got.ipConfigIDs)
+		assert.Nil(t, got.provisioningState)
+	})
+	t.Run("addresses, FQDNs and network interface members", func(t *testing.T) {
+		// Synthetic: a pool mixing every member kind, including a scale set
+		// instance that is left out and empty entries.
+		nicCfg := "/subscriptions/s/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/nic1/ipConfigurations/ipconfig1"
+		vmssCfg := "/subscriptions/s/resourceGroups/rg/providers/Microsoft.Compute/virtualMachineScaleSets/ss/virtualMachines/0/networkInterfaces/nic/ipConfigurations/ipconfig1"
+		got := appGatewayBackendPoolFields(&network.ApplicationGatewayBackendAddressPoolPropertiesFormat{
+			ProvisioningState: ptr(network.ProvisioningStateSucceeded),
+			BackendAddresses: []*network.ApplicationGatewayBackendAddress{
+				{IPAddress: ptr("10.0.1.4")},
+				{Fqdn: ptr("app.example.com")},
+				{IPAddress: ptr("")},
+				nil,
+			},
+			BackendIPConfigurations: []*network.InterfaceIPConfiguration{{ID: &nicCfg}, {ID: &vmssCfg}, nil, {}},
+		})
+		assert.Equal(t, []any{"10.0.1.4"}, got.ipAddresses)
+		assert.Equal(t, []any{"app.example.com"}, got.fqdns)
+		assert.Equal(t, []string{nicCfg}, got.ipConfigIDs)
+		assert.Equal(t, "Succeeded", *got.provisioningState)
+	})
+}
+
+func TestNicIDFromIPConfigID(t *testing.T) {
+	// Synthetic: ARM ID shapes; no target showed these.
+	assert.Equal(t,
+		"/subscriptions/s/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/nic1",
+		nicIDFromIPConfigID("/subscriptions/s/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/nic1/ipConfigurations/ipconfig1"))
+	assert.Equal(t,
+		"/subscriptions/s/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/nic1",
+		nicIDFromIPConfigID("/subscriptions/s/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/nic1/IPCONFIGURATIONS/ipconfig1"))
+	assert.Empty(t, nicIDFromIPConfigID("/subscriptions/s/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/nic1"))
+	assert.Empty(t, nicIDFromIPConfigID(""))
+}
