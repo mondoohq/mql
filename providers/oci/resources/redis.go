@@ -181,17 +181,27 @@ func (o *mqlOciRedisCluster) primaryCluster() (*mqlOciRedisCluster, error) {
 }
 
 func (o *mqlOciRedisCluster) subnet() (*mqlOciNetworkSubnet, error) {
-	if o.cacheSubnetID == "" {
-		o.Subnet.State = plugin.StateIsSet | plugin.StateIsNull
+	return ociRedisClusterSubnet(o.State.Data, func() *plugin.TValue[[]any] {
+		obj, err := CreateResource(o.MqlRuntime, "oci.network", nil)
+		if err != nil {
+			return &plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet}
+		}
+		return obj.(*mqlOciNetwork).GetSubnets()
+	}, o.cacheSubnetID, &o.Subnet)
+}
+
+// ociRedisClusterSubnet resolves a cache cluster's subnet through the subnet
+// listing. The listing keeps reporting a cluster for a while after it is
+// DELETED, and its subnet is often deleted with it. Both are an absence, not
+// a failure: a DELETED cluster has no subnet, and a subnet the listing does
+// not hold reads as null instead of the not-found error the subnet init
+// raises. The listing is not read for a DELETED cluster.
+func ociRedisClusterSubnet(state string, subnets func() *plugin.TValue[[]any], id string, field *plugin.TValue[*mqlOciNetworkSubnet]) (*mqlOciNetworkSubnet, error) {
+	if id == "" || state == string(redis.RedisClusterLifecycleStateDeleted) {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	mqlSubnet, err := NewResource(o.MqlRuntime, "oci.network.subnet", map[string]*llx.RawData{
-		"id": llx.StringData(o.cacheSubnetID),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return mqlSubnet.(*mqlOciNetworkSubnet), nil
+	return ociListedRef(subnets(), id, field)
 }
 
 func (o *mqlOciRedisCluster) networkSecurityGroups() ([]any, error) {
