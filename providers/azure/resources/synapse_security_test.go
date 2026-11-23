@@ -6,6 +6,7 @@ package resources
 import (
 	"testing"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/synapse/armsynapse"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -60,4 +61,55 @@ func TestSynapseFirewallFlagsAreMutuallyExclusive(t *testing.T) {
 		azure := isAzureServicesRule(c[0], c[1])
 		assert.Falsef(t, all && azure, "range %s-%s reported as both", c[0], c[1])
 	}
+}
+
+func TestSynapseBigDataPoolArgs(t *testing.T) {
+	id := "/subscriptions/s/resourceGroups/rg/providers/Microsoft.Synapse/workspaces/ws/bigDataPools/spark1"
+	t.Run("pool without properties keeps every setting null", func(t *testing.T) {
+		// Synthetic: a pool record without properties.
+		args := synapseBigDataPoolArgs(&armsynapse.BigDataPoolResourceInfo{ID: &id, Name: ptr("spark1")})
+		assert.Equal(t, id, args["__id"].Value)
+		assert.Nil(t, args["sparkVersion"].Value)
+		assert.Nil(t, args["autoScaleEnabled"].Value)
+		assert.Nil(t, args["sessionLevelPackagesEnabled"].Value)
+	})
+	t.Run("autoscaling pool with auto-pause", func(t *testing.T) {
+		// Synthetic: covers the nested autoscale, auto-pause and dynamic
+		// executor blocks.
+		args := synapseBigDataPoolArgs(&armsynapse.BigDataPoolResourceInfo{
+			ID:   &id,
+			Name: ptr("spark1"),
+			Properties: &armsynapse.BigDataPoolResourceProperties{
+				SparkVersion:                ptr("3.4"),
+				NodeSize:                    ptr(armsynapse.NodeSizeSmall),
+				NodeSizeFamily:              ptr(armsynapse.NodeSizeFamilyMemoryOptimized),
+				SessionLevelPackagesEnabled: ptr(true),
+				IsComputeIsolationEnabled:   ptr(false),
+				AutoScale:                   &armsynapse.AutoScaleProperties{Enabled: ptr(true), MinNodeCount: ptr[int32](3), MaxNodeCount: ptr[int32](10)},
+				AutoPause:                   &armsynapse.AutoPauseProperties{Enabled: ptr(true), DelayInMinutes: ptr[int32](15)},
+				DynamicExecutorAllocation:   &armsynapse.DynamicExecutorAllocation{Enabled: ptr(false)},
+			},
+		})
+		assert.Equal(t, "3.4", args["sparkVersion"].Value)
+		assert.Equal(t, "Small", args["nodeSize"].Value)
+		assert.Equal(t, "MemoryOptimized", args["nodeSizeFamily"].Value)
+		assert.Equal(t, true, args["sessionLevelPackagesEnabled"].Value)
+		assert.Equal(t, false, args["computeIsolationEnabled"].Value)
+		assert.Equal(t, true, args["autoScaleEnabled"].Value)
+		assert.Equal(t, int64(3), args["autoScaleMinNodeCount"].Value)
+		assert.Equal(t, int64(10), args["autoScaleMaxNodeCount"].Value)
+		assert.Equal(t, true, args["autoPauseEnabled"].Value)
+		assert.Equal(t, int64(15), args["autoPauseDelayInMinutes"].Value)
+		assert.Equal(t, false, args["dynamicExecutorAllocationEnabled"].Value)
+		assert.Nil(t, args["nodeCount"].Value)
+	})
+}
+
+func TestSynapseWorkspaceRef(t *testing.T) {
+	// Synthetic: ARM ID shapes.
+	sub, rg, ws, err := synapseWorkspaceRef("/subscriptions/s/resourceGroups/rg/providers/Microsoft.Synapse/workspaces/ws")
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"s", "rg", "ws"}, []string{sub, rg, ws})
+	_, _, _, err = synapseWorkspaceRef("/subscriptions/s/resourceGroups/rg/providers/Microsoft.Storage/storageAccounts/sa")
+	assert.Error(t, err)
 }

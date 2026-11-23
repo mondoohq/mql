@@ -422,6 +422,7 @@ const (
 	ResourceAzureSubscriptionDataFactoryServiceFactoryManagedPrivateEndpoint                            string = "azure.subscription.dataFactoryService.factory.managedPrivateEndpoint"
 	ResourceAzureSubscriptionSynapseService                                                             string = "azure.subscription.synapseService"
 	ResourceAzureSubscriptionSynapseServiceWorkspace                                                    string = "azure.subscription.synapseService.workspace"
+	ResourceAzureSubscriptionSynapseServiceWorkspaceBigDataPool                                         string = "azure.subscription.synapseService.workspace.bigDataPool"
 	ResourceAzureSubscriptionSynapseServiceWorkspaceFirewallRule                                        string = "azure.subscription.synapseService.workspace.firewallRule"
 	ResourceAzureSubscriptionSynapseServiceWorkspaceSqlPool                                             string = "azure.subscription.synapseService.workspace.sqlPool"
 	ResourceAzureSubscriptionContainerRegistryService                                                   string = "azure.subscription.containerRegistryService"
@@ -2275,6 +2276,10 @@ func init() {
 		"azure.subscription.synapseService.workspace": {
 			Init:   initAzureSubscriptionSynapseServiceWorkspace,
 			Create: createAzureSubscriptionSynapseServiceWorkspace,
+		},
+		"azure.subscription.synapseService.workspace.bigDataPool": {
+			// to override args, implement: initAzureSubscriptionSynapseServiceWorkspaceBigDataPool(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionSynapseServiceWorkspaceBigDataPool,
 		},
 		"azure.subscription.synapseService.workspace.firewallRule": {
 			// to override args, implement: initAzureSubscriptionSynapseServiceWorkspaceFirewallRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -18167,6 +18172,75 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.synapseService.workspace.diagnosticSettings": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspace).GetDiagnosticSettings()).ToDataRes(types.Array(types.Resource("azure.subscription.monitorService.diagnosticsetting")))
+	},
+	"azure.subscription.synapseService.workspace.sqlEntraAdminLogin": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspace).GetSqlEntraAdminLogin()).ToDataRes(types.String)
+	},
+	"azure.subscription.synapseService.workspace.sqlEntraAdminObjectId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspace).GetSqlEntraAdminObjectId()).ToDataRes(types.String)
+	},
+	"azure.subscription.synapseService.workspace.sqlThreatDetectionState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspace).GetSqlThreatDetectionState()).ToDataRes(types.String)
+	},
+	"azure.subscription.synapseService.workspace.sqlAuditingState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspace).GetSqlAuditingState()).ToDataRes(types.String)
+	},
+	"azure.subscription.synapseService.workspace.sqlAuditingRetentionDays": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspace).GetSqlAuditingRetentionDays()).ToDataRes(types.Int)
+	},
+	"azure.subscription.synapseService.workspace.sqlMinimalTlsVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspace).GetSqlMinimalTlsVersion()).ToDataRes(types.String)
+	},
+	"azure.subscription.synapseService.workspace.sqlVulnerabilityAssessmentRecurringScansEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspace).GetSqlVulnerabilityAssessmentRecurringScansEnabled()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.synapseService.workspace.bigDataPools": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspace).GetBigDataPools()).ToDataRes(types.Array(types.Resource("azure.subscription.synapseService.workspace.bigDataPool")))
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).GetId()).ToDataRes(types.String)
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).GetName()).ToDataRes(types.String)
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.sparkVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).GetSparkVersion()).ToDataRes(types.String)
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.nodeSize": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).GetNodeSize()).ToDataRes(types.String)
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.nodeSizeFamily": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).GetNodeSizeFamily()).ToDataRes(types.String)
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.nodeCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).GetNodeCount()).ToDataRes(types.Int)
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.autoScaleEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).GetAutoScaleEnabled()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.autoScaleMinNodeCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).GetAutoScaleMinNodeCount()).ToDataRes(types.Int)
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.autoScaleMaxNodeCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).GetAutoScaleMaxNodeCount()).ToDataRes(types.Int)
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.autoPauseEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).GetAutoPauseEnabled()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.autoPauseDelayInMinutes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).GetAutoPauseDelayInMinutes()).ToDataRes(types.Int)
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.computeIsolationEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).GetComputeIsolationEnabled()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.sessionLevelPackagesEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).GetSessionLevelPackagesEnabled()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.dynamicExecutorAllocationEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).GetDynamicExecutorAllocationEnabled()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.provisioningState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).GetProvisioningState()).ToDataRes(types.String)
 	},
 	"azure.subscription.synapseService.workspace.firewallRule.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspaceFirewallRule).GetName()).ToDataRes(types.String)
@@ -47448,6 +47522,102 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.synapseService.workspace.diagnosticSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionSynapseServiceWorkspace).DiagnosticSettings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.synapseService.workspace.sqlEntraAdminLogin": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSynapseServiceWorkspace).SqlEntraAdminLogin, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.synapseService.workspace.sqlEntraAdminObjectId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSynapseServiceWorkspace).SqlEntraAdminObjectId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.synapseService.workspace.sqlThreatDetectionState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSynapseServiceWorkspace).SqlThreatDetectionState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.synapseService.workspace.sqlAuditingState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSynapseServiceWorkspace).SqlAuditingState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.synapseService.workspace.sqlAuditingRetentionDays": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSynapseServiceWorkspace).SqlAuditingRetentionDays, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.synapseService.workspace.sqlMinimalTlsVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSynapseServiceWorkspace).SqlMinimalTlsVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.synapseService.workspace.sqlVulnerabilityAssessmentRecurringScansEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSynapseServiceWorkspace).SqlVulnerabilityAssessmentRecurringScansEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.synapseService.workspace.bigDataPools": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSynapseServiceWorkspace).BigDataPools, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.sparkVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).SparkVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.nodeSize": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).NodeSize, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.nodeSizeFamily": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).NodeSizeFamily, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.nodeCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).NodeCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.autoScaleEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).AutoScaleEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.autoScaleMinNodeCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).AutoScaleMinNodeCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.autoScaleMaxNodeCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).AutoScaleMaxNodeCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.autoPauseEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).AutoPauseEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.autoPauseDelayInMinutes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).AutoPauseDelayInMinutes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.computeIsolationEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).ComputeIsolationEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.sessionLevelPackagesEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).SessionLevelPackagesEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.dynamicExecutorAllocationEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).DynamicExecutorAllocationEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.synapseService.workspace.bigDataPool.provisioningState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool).ProvisioningState, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.synapseService.workspace.firewallRule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -110277,38 +110447,46 @@ type mqlAzureSubscriptionSynapseServiceWorkspace struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAzureSubscriptionSynapseServiceWorkspaceInternal
-	Id                            plugin.TValue[string]
-	Name                          plugin.TValue[string]
-	Location                      plugin.TValue[string]
-	Tags                          plugin.TValue[map[string]any]
-	Type                          plugin.TValue[string]
-	Properties                    plugin.TValue[any]
-	Identity                      plugin.TValue[any]
-	ResourceIdentity              plugin.TValue[*mqlAzureSubscriptionResourceIdentity]
-	ManagedVirtualNetwork         plugin.TValue[string]
-	PublicNetworkAccess           plugin.TValue[string]
-	Encryption                    plugin.TValue[any]
-	ManagedResourceGroupName      plugin.TValue[string]
-	SqlAdministratorLogin         plugin.TValue[string]
-	ProvisioningState             plugin.TValue[string]
-	TrustedServiceBypassEnabled   plugin.TValue[bool]
-	AzureADOnlyAuthentication     plugin.TValue[bool]
-	PreventDataExfiltration       plugin.TValue[bool]
-	AllowedAadTenantIdsForLinking plugin.TValue[[]any]
-	ComputeSubnet                 plugin.TValue[*mqlAzureSubscriptionNetworkServiceSubnet]
-	GitRepositoryType             plugin.TValue[string]
-	GitAccountName                plugin.TValue[string]
-	GitRepositoryName             plugin.TValue[string]
-	GitCollaborationBranch        plugin.TValue[string]
-	PurviewResourceId             plugin.TValue[string]
-	DefaultStorageFilesystem      plugin.TValue[string]
-	DefaultStorage                plugin.TValue[*mqlAzureSubscriptionStorageServiceAccount]
-	CmkKey                        plugin.TValue[*mqlAzureSubscriptionKeyVaultServiceKey]
-	UserAssignedIdentities        plugin.TValue[[]any]
-	PrivateEndpointConnections    plugin.TValue[[]any]
-	FirewallRules                 plugin.TValue[[]any]
-	SqlPools                      plugin.TValue[[]any]
-	DiagnosticSettings            plugin.TValue[[]any]
+	Id                                              plugin.TValue[string]
+	Name                                            plugin.TValue[string]
+	Location                                        plugin.TValue[string]
+	Tags                                            plugin.TValue[map[string]any]
+	Type                                            plugin.TValue[string]
+	Properties                                      plugin.TValue[any]
+	Identity                                        plugin.TValue[any]
+	ResourceIdentity                                plugin.TValue[*mqlAzureSubscriptionResourceIdentity]
+	ManagedVirtualNetwork                           plugin.TValue[string]
+	PublicNetworkAccess                             plugin.TValue[string]
+	Encryption                                      plugin.TValue[any]
+	ManagedResourceGroupName                        plugin.TValue[string]
+	SqlAdministratorLogin                           plugin.TValue[string]
+	ProvisioningState                               plugin.TValue[string]
+	TrustedServiceBypassEnabled                     plugin.TValue[bool]
+	AzureADOnlyAuthentication                       plugin.TValue[bool]
+	PreventDataExfiltration                         plugin.TValue[bool]
+	AllowedAadTenantIdsForLinking                   plugin.TValue[[]any]
+	ComputeSubnet                                   plugin.TValue[*mqlAzureSubscriptionNetworkServiceSubnet]
+	GitRepositoryType                               plugin.TValue[string]
+	GitAccountName                                  plugin.TValue[string]
+	GitRepositoryName                               plugin.TValue[string]
+	GitCollaborationBranch                          plugin.TValue[string]
+	PurviewResourceId                               plugin.TValue[string]
+	DefaultStorageFilesystem                        plugin.TValue[string]
+	DefaultStorage                                  plugin.TValue[*mqlAzureSubscriptionStorageServiceAccount]
+	CmkKey                                          plugin.TValue[*mqlAzureSubscriptionKeyVaultServiceKey]
+	UserAssignedIdentities                          plugin.TValue[[]any]
+	PrivateEndpointConnections                      plugin.TValue[[]any]
+	FirewallRules                                   plugin.TValue[[]any]
+	SqlPools                                        plugin.TValue[[]any]
+	DiagnosticSettings                              plugin.TValue[[]any]
+	SqlEntraAdminLogin                              plugin.TValue[string]
+	SqlEntraAdminObjectId                           plugin.TValue[string]
+	SqlThreatDetectionState                         plugin.TValue[string]
+	SqlAuditingState                                plugin.TValue[string]
+	SqlAuditingRetentionDays                        plugin.TValue[int64]
+	SqlMinimalTlsVersion                            plugin.TValue[string]
+	SqlVulnerabilityAssessmentRecurringScansEnabled plugin.TValue[bool]
+	BigDataPools                                    plugin.TValue[[]any]
 }
 
 // createAzureSubscriptionSynapseServiceWorkspace creates a new instance of this resource
@@ -110570,6 +110748,178 @@ func (c *mqlAzureSubscriptionSynapseServiceWorkspace) GetDiagnosticSettings() *p
 
 		return c.diagnosticSettings()
 	})
+}
+
+func (c *mqlAzureSubscriptionSynapseServiceWorkspace) GetSqlEntraAdminLogin() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SqlEntraAdminLogin, func() (string, error) {
+		return c.sqlEntraAdminLogin()
+	})
+}
+
+func (c *mqlAzureSubscriptionSynapseServiceWorkspace) GetSqlEntraAdminObjectId() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SqlEntraAdminObjectId, func() (string, error) {
+		return c.sqlEntraAdminObjectId()
+	})
+}
+
+func (c *mqlAzureSubscriptionSynapseServiceWorkspace) GetSqlThreatDetectionState() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SqlThreatDetectionState, func() (string, error) {
+		return c.sqlThreatDetectionState()
+	})
+}
+
+func (c *mqlAzureSubscriptionSynapseServiceWorkspace) GetSqlAuditingState() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SqlAuditingState, func() (string, error) {
+		return c.sqlAuditingState()
+	})
+}
+
+func (c *mqlAzureSubscriptionSynapseServiceWorkspace) GetSqlAuditingRetentionDays() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.SqlAuditingRetentionDays, func() (int64, error) {
+		return c.sqlAuditingRetentionDays()
+	})
+}
+
+func (c *mqlAzureSubscriptionSynapseServiceWorkspace) GetSqlMinimalTlsVersion() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SqlMinimalTlsVersion, func() (string, error) {
+		return c.sqlMinimalTlsVersion()
+	})
+}
+
+func (c *mqlAzureSubscriptionSynapseServiceWorkspace) GetSqlVulnerabilityAssessmentRecurringScansEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.SqlVulnerabilityAssessmentRecurringScansEnabled, func() (bool, error) {
+		return c.sqlVulnerabilityAssessmentRecurringScansEnabled()
+	})
+}
+
+func (c *mqlAzureSubscriptionSynapseServiceWorkspace) GetBigDataPools() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.BigDataPools, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.synapseService.workspace", c.__id, "bigDataPools")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.bigDataPools()
+	})
+}
+
+// mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool for the azure.subscription.synapseService.workspace.bigDataPool resource
+type mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPoolInternal it will be used here
+	Id                               plugin.TValue[string]
+	Name                             plugin.TValue[string]
+	SparkVersion                     plugin.TValue[string]
+	NodeSize                         plugin.TValue[string]
+	NodeSizeFamily                   plugin.TValue[string]
+	NodeCount                        plugin.TValue[int64]
+	AutoScaleEnabled                 plugin.TValue[bool]
+	AutoScaleMinNodeCount            plugin.TValue[int64]
+	AutoScaleMaxNodeCount            plugin.TValue[int64]
+	AutoPauseEnabled                 plugin.TValue[bool]
+	AutoPauseDelayInMinutes          plugin.TValue[int64]
+	ComputeIsolationEnabled          plugin.TValue[bool]
+	SessionLevelPackagesEnabled      plugin.TValue[bool]
+	DynamicExecutorAllocationEnabled plugin.TValue[bool]
+	ProvisioningState                plugin.TValue[string]
+}
+
+// createAzureSubscriptionSynapseServiceWorkspaceBigDataPool creates a new instance of this resource
+func createAzureSubscriptionSynapseServiceWorkspaceBigDataPool(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.subscription.synapseService.workspace.bigDataPool", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool) MqlName() string {
+	return "azure.subscription.synapseService.workspace.bigDataPool"
+}
+
+func (c *mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool) GetSparkVersion() *plugin.TValue[string] {
+	return &c.SparkVersion
+}
+
+func (c *mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool) GetNodeSize() *plugin.TValue[string] {
+	return &c.NodeSize
+}
+
+func (c *mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool) GetNodeSizeFamily() *plugin.TValue[string] {
+	return &c.NodeSizeFamily
+}
+
+func (c *mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool) GetNodeCount() *plugin.TValue[int64] {
+	return &c.NodeCount
+}
+
+func (c *mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool) GetAutoScaleEnabled() *plugin.TValue[bool] {
+	return &c.AutoScaleEnabled
+}
+
+func (c *mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool) GetAutoScaleMinNodeCount() *plugin.TValue[int64] {
+	return &c.AutoScaleMinNodeCount
+}
+
+func (c *mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool) GetAutoScaleMaxNodeCount() *plugin.TValue[int64] {
+	return &c.AutoScaleMaxNodeCount
+}
+
+func (c *mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool) GetAutoPauseEnabled() *plugin.TValue[bool] {
+	return &c.AutoPauseEnabled
+}
+
+func (c *mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool) GetAutoPauseDelayInMinutes() *plugin.TValue[int64] {
+	return &c.AutoPauseDelayInMinutes
+}
+
+func (c *mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool) GetComputeIsolationEnabled() *plugin.TValue[bool] {
+	return &c.ComputeIsolationEnabled
+}
+
+func (c *mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool) GetSessionLevelPackagesEnabled() *plugin.TValue[bool] {
+	return &c.SessionLevelPackagesEnabled
+}
+
+func (c *mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool) GetDynamicExecutorAllocationEnabled() *plugin.TValue[bool] {
+	return &c.DynamicExecutorAllocationEnabled
+}
+
+func (c *mqlAzureSubscriptionSynapseServiceWorkspaceBigDataPool) GetProvisioningState() *plugin.TValue[string] {
+	return &c.ProvisioningState
 }
 
 // mqlAzureSubscriptionSynapseServiceWorkspaceFirewallRule for the azure.subscription.synapseService.workspace.firewallRule resource
