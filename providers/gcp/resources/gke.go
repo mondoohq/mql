@@ -164,6 +164,7 @@ func initGcpProjectGkeServiceCluster(runtime *plugin.Runtime, args map[string]*l
 type mqlGcpProjectGkeServiceClusterNodepoolInternal struct {
 	cacheInstanceGroupUrls []string
 	cacheProjectId         string
+	cacheServiceAccount    string
 }
 
 func (g *mqlGcpProjectGkeServiceClusterNodepool) id() (string, error) {
@@ -1058,6 +1059,7 @@ func createMqlNodePool(runtime *plugin.Runtime, np *containerpb.NodePool, cluste
 	mqlNodePool := res.(*mqlGcpProjectGkeServiceClusterNodepool)
 	mqlNodePool.cacheInstanceGroupUrls = np.InstanceGroupUrls
 	mqlNodePool.cacheProjectId = projectId
+	mqlNodePool.cacheServiceAccount = np.GetConfig().GetServiceAccount()
 	return res, nil
 }
 

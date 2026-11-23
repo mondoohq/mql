@@ -2544,6 +2544,7 @@ gcp.project.computeService.network.firewallPolicyRef 13.27.2
 gcp.project.computeService.network.firewalls 13.34.2
 gcp.project.computeService.network.gatewayIPv4 9.0.0
 gcp.project.computeService.network.id 9.0.0
+gcp.project.computeService.network.instances 14.11.1
 gcp.project.computeService.network.internalIpv6Range 11.6.6
 gcp.project.computeService.network.legacy 13.12.2
 gcp.project.computeService.network.mode 9.0.0
@@ -2853,6 +2854,7 @@ gcp.project.computeService.subnetwork.externalIpv6Prefix 9.0.0
 gcp.project.computeService.subnetwork.fingerprint 9.0.0
 gcp.project.computeService.subnetwork.gatewayAddress 9.0.0
 gcp.project.computeService.subnetwork.id 9.0.0
+gcp.project.computeService.subnetwork.instances 14.11.1
 gcp.project.computeService.subnetwork.internalIpv6Prefix 9.0.0
 gcp.project.computeService.subnetwork.ipCidrRange 9.0.0
 gcp.project.computeService.subnetwork.ipCollection 13.36.1
@@ -4264,14 +4266,19 @@ gcp.project.iamService.roles 11.6.6
 gcp.project.iamService.serviceAccount 9.0.0
 gcp.project.iamService.serviceAccount.activeUserManagedKeys 13.12.2
 gcp.project.iamService.serviceAccount.canBeImpersonated 13.19.2
+gcp.project.iamService.serviceAccount.cloudFunctions 14.11.1
+gcp.project.iamService.serviceAccount.cloudFunctionsV2 14.11.1
+gcp.project.iamService.serviceAccount.cloudRunServices 14.11.1
 gcp.project.iamService.serviceAccount.description 9.0.0
 gcp.project.iamService.serviceAccount.disabled 9.0.0
 gcp.project.iamService.serviceAccount.displayName 9.0.0
 gcp.project.iamService.serviceAccount.email 9.0.0
+gcp.project.iamService.serviceAccount.gkeNodePools 14.11.1
 gcp.project.iamService.serviceAccount.hasAdminRole 14.4.6
 gcp.project.iamService.serviceAccount.hasUserManagedKeys 13.12.2
 gcp.project.iamService.serviceAccount.iamPolicy 13.19.2
 gcp.project.iamService.serviceAccount.impersonators 13.34.2
+gcp.project.iamService.serviceAccount.instances 14.11.1
 gcp.project.iamService.serviceAccount.isDefault 13.18.1
 gcp.project.iamService.serviceAccount.key 9.0.0
 gcp.project.iamService.serviceAccount.key.ageInDays 13.18.1

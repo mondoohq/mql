@@ -5,6 +5,7 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 
@@ -811,4 +812,91 @@ func (g *mqlGcpProjectComputeServiceInstanceNetworkInterface) subnetwork() (*mql
 		g.Subnetwork.State = plugin.StateIsSet | plugin.StateIsNull
 	}
 	return subnet, nil
+}
+
+// computeRefKey reduces a Compute Engine self-link or partial path to the part
+// after the API host and version, so references written with either host, or
+// without one, compare equal. Returns "" for an empty reference.
+func computeRefKey(ref string) string {
+	for _, prefix := range []string{
+		"https://www.googleapis.com/compute/v1/",
+		"https://compute.googleapis.com/compute/v1/",
+		"https://www.googleapis.com/compute/beta/",
+		"https://compute.googleapis.com/compute/beta/",
+	} {
+		ref = strings.TrimPrefix(ref, prefix)
+	}
+	return strings.TrimPrefix(ref, "/")
+}
+
+// projectComputeInstances returns the instances listed for a project.
+func projectComputeInstances(runtime *plugin.Runtime, projectId string) ([]any, error) {
+	obj, err := CreateResource(runtime, "gcp.project.computeService", map[string]*llx.RawData{
+		"projectId": llx.StringData(projectId),
+	})
+	if err != nil {
+		return nil, err
+	}
+	list := obj.(*mqlGcpProjectComputeService).GetInstances()
+	if list.Error != nil {
+		return nil, list.Error
+	}
+	return list.Data, nil
+}
+
+// instancesReferencing keeps the instances whose URLs, read by urls, include
+// key.
+func instancesReferencing(instances []any, key string, urls func(*mqlGcpProjectComputeServiceInstance) []string) []any {
+	res := []any{}
+	for _, i := range instances {
+		inst, ok := i.(*mqlGcpProjectComputeServiceInstance)
+		if !ok {
+			continue
+		}
+		for _, u := range urls(inst) {
+			if computeRefKey(u) == key {
+				res = append(res, inst)
+				break
+			}
+		}
+	}
+	return res
+}
+
+func (g *mqlGcpProjectComputeServiceNetwork) instances() ([]any, error) {
+	if g.ProjectId.Error != nil {
+		return nil, g.ProjectId.Error
+	}
+	if g.Name.Error != nil {
+		return nil, g.Name.Error
+	}
+	instances, err := projectComputeInstances(g.MqlRuntime, g.ProjectId.Data)
+	if err != nil {
+		return nil, err
+	}
+	key := "projects/" + g.ProjectId.Data + "/global/networks/" + g.Name.Data
+	return instancesReferencing(instances, key, func(i *mqlGcpProjectComputeServiceInstance) []string {
+		return i.cacheNetworkUrls
+	}), nil
+}
+
+func (g *mqlGcpProjectComputeServiceSubnetwork) instances() ([]any, error) {
+	if g.ProjectId.Error != nil {
+		return nil, g.ProjectId.Error
+	}
+	if g.Name.Error != nil {
+		return nil, g.Name.Error
+	}
+	region := RegionNameFromRegionUrl(g.cacheRegionUrl)
+	if region == "" {
+		return nil, errors.New("subnetwork has no region")
+	}
+	instances, err := projectComputeInstances(g.MqlRuntime, g.ProjectId.Data)
+	if err != nil {
+		return nil, err
+	}
+	key := "projects/" + g.ProjectId.Data + "/regions/" + region + "/subnetworks/" + g.Name.Data
+	return instancesReferencing(instances, key, func(i *mqlGcpProjectComputeServiceInstance) []string {
+		return i.cacheSubnetworkUrls
+	}), nil
 }
