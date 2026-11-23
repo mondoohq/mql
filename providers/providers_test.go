@@ -7,8 +7,11 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -202,7 +205,33 @@ type fakeRegistry struct {
 	downloadErr error
 	downloads   int
 	lookups     int
+
+	// brokenBodies is how many downloads hand out a body that breaks off
+	// partway before one delivers the whole archive.
+	brokenBodies int
+	// onDownload runs at the start of every download, if set.
+	onDownload func()
 }
+
+// truncatedBody delivers the first half of an archive and then fails the way a
+// dropped connection does.
+type truncatedBody struct {
+	r io.Reader
+}
+
+func newTruncatedBody(archive []byte) io.ReadCloser {
+	return &truncatedBody{r: bytes.NewReader(archive[:len(archive)/2])}
+}
+
+func (b *truncatedBody) Read(p []byte) (int, error) {
+	n, err := b.r.Read(p)
+	if err == io.EOF {
+		return n, io.ErrUnexpectedEOF
+	}
+	return n, err
+}
+
+func (b *truncatedBody) Close() error { return nil }
 
 func (r *fakeRegistry) GetLatestVersion(ctx context.Context, name string) (string, error) {
 	r.lookups++
@@ -214,8 +243,14 @@ func (r *fakeRegistry) GetLatestVersion(ctx context.Context, name string) (strin
 
 func (r *fakeRegistry) DownloadProvider(ctx context.Context, name, version, os, arch string) (io.ReadCloser, error) {
 	r.downloads++
+	if r.onDownload != nil {
+		r.onDownload()
+	}
 	if r.downloadErr != nil {
 		return nil, r.downloadErr
+	}
+	if r.downloads <= r.brokenBodies {
+		return newTruncatedBody(r.archive), nil
 	}
 	return io.NopCloser(bytes.NewReader(r.archive)), nil
 }
@@ -299,6 +334,92 @@ func TestTryProviderUpdateSchemaOnlyDownloadFails(t *testing.T) {
 	_, err := TryProviderUpdate(schemaOnly, UpdateProvidersConfig{Enabled: true})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "registry is down")
+}
+
+func TestInstallRetriesInterruptedDownload(t *testing.T) {
+	const name = "testp"
+	const version = "1.2.3"
+
+	archive, err := buildTarXz(map[string][]byte{
+		name:                     []byte(`fake-binary`),
+		name + ".json":           []byte(`{"Name":"testp","ID":"testp","Version":"1.2.3"}`),
+		name + ".resources.json": []byte(`{"resources":{}}`),
+	})
+	require.NoError(t, err)
+
+	// Swaps a package-level variable, so this test and its subtests must not
+	// run in parallel with anything that installs a provider.
+	origWait := providerDownloadRetryWait
+	providerDownloadRetryWait = time.Millisecond
+	t.Cleanup(func() { providerDownloadRetryWait = origWait })
+
+	// Synthetic: reproduces the reported symptom, "failed to read body:
+	// unexpected EOF" on `installing provider 'os'` in a CI pipeline. The
+	// server answers 200 with the archive's full Content-Length and then drops
+	// the connection halfway through, which is what the real registry client
+	// sees when a transfer is cut. No capture of the original transfer exists.
+	t.Run("connection dropped mid-archive, then a clean transfer", func(t *testing.T) {
+		var requests atomic.Int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Both paths announce the whole archive; only the first two
+			// transfers fall short of it.
+			w.Header().Set("Content-Length", strconv.Itoa(len(archive)))
+			w.WriteHeader(http.StatusOK)
+			if requests.Add(1) > 2 {
+				_, _ = w.Write(archive)
+				return
+			}
+			_, _ = w.Write(archive[:len(archive)/2])
+			w.(http.Flusher).Flush()
+			conn, _, err := w.(http.Hijacker).Hijack()
+			if err == nil {
+				_ = conn.Close()
+			}
+		}))
+		defer srv.Close()
+
+		dir := useTestProviderPath(t, NewMondooProviderRegistry(WithBaseURL(srv.URL)))
+
+		installed, err := Install(name, version)
+		require.NoError(t, err)
+		assert.Equal(t, version, installed.Version)
+		assert.FileExists(t, filepath.Join(dir, name, name))
+		assert.Equal(t, int32(3), requests.Load())
+	})
+
+	// Synthetic: a transfer that never completes; no target showed this.
+	t.Run("gives up after the last attempt", func(t *testing.T) {
+		reg := &fakeRegistry{archive: archive, brokenBodies: providerDownloadAttempts}
+		dir := useTestProviderPath(t, reg)
+
+		_, err := Install(name, version)
+		require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+		assert.Contains(t, err.Error(), "failed to install testp-1.2.3, failed to read body")
+		assert.Equal(t, 3, reg.downloads)
+		assert.NoFileExists(t, filepath.Join(dir, name, name))
+	})
+
+	// Synthetic: a failure to get a response (a 404, a registry that is down)
+	// was already retried by the HTTP client and is not repeated here.
+	t.Run("does not retry a failed request", func(t *testing.T) {
+		reg := &fakeRegistry{archive: archive, downloadErr: errors.New("registry is down")}
+		useTestProviderPath(t, reg)
+
+		_, err := Install(name, version)
+		require.ErrorContains(t, err, "registry is down")
+		assert.Equal(t, 1, reg.downloads)
+	})
+
+	// Synthetic: the install is cancelled while the archive is streaming.
+	t.Run("does not retry a cancelled install", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		reg := &fakeRegistry{archive: archive, brokenBodies: providerDownloadAttempts, onDownload: cancel}
+		useTestProviderPath(t, reg)
+
+		_, err := installVersion(ctx, name, version)
+		require.Error(t, err)
+		assert.Equal(t, 1, reg.downloads)
+	})
 }
 
 func TestArchiveFileName(t *testing.T) {
