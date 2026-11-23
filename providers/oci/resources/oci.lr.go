@@ -6928,6 +6928,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"oci.loadBalancer.healthChecker.forcePlainText": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciLoadBalancerHealthChecker).GetForcePlainText()).ToDataRes(types.Bool)
 	},
+	"oci.loadBalancer.healthChecker.dynamicBackendWeightEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciLoadBalancerHealthChecker).GetDynamicBackendWeightEnabled()).ToDataRes(types.Bool)
+	},
+	"oci.loadBalancer.healthChecker.defaultWeight": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciLoadBalancerHealthChecker).GetDefaultWeight()).ToDataRes(types.Int)
+	},
 	"oci.loadBalancer.backend.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciLoadBalancerBackend).GetName()).ToDataRes(types.String)
 	},
@@ -9198,6 +9204,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"oci.database.autonomousDatabase.consoleUrls.spatialStudioUrl": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciDatabaseAutonomousDatabaseConsoleUrls).GetSpatialStudioUrl()).ToDataRes(types.String)
+	},
+	"oci.database.autonomousDatabase.consoleUrls.mcpUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciDatabaseAutonomousDatabaseConsoleUrls).GetMcpUrl()).ToDataRes(types.String)
+	},
+	"oci.database.autonomousDatabase.consoleUrls.a2aUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciDatabaseAutonomousDatabaseConsoleUrls).GetA2aUrl()).ToDataRes(types.String)
 	},
 	"oci.database.backup.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciDatabaseBackup).GetId()).ToDataRes(types.String)
@@ -22045,6 +22057,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOciLoadBalancerHealthChecker).ForcePlainText, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"oci.loadBalancer.healthChecker.dynamicBackendWeightEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciLoadBalancerHealthChecker).DynamicBackendWeightEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"oci.loadBalancer.healthChecker.defaultWeight": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciLoadBalancerHealthChecker).DefaultWeight, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
 	"oci.loadBalancer.backend.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciLoadBalancerBackend).__id, ok = v.Value.(string)
 		return
@@ -25387,6 +25407,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"oci.database.autonomousDatabase.consoleUrls.spatialStudioUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciDatabaseAutonomousDatabaseConsoleUrls).SpatialStudioUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.database.autonomousDatabase.consoleUrls.mcpUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciDatabaseAutonomousDatabaseConsoleUrls).McpUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.database.autonomousDatabase.consoleUrls.a2aUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciDatabaseAutonomousDatabaseConsoleUrls).A2aUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"oci.database.backup.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -52180,15 +52208,17 @@ type mqlOciLoadBalancerHealthChecker struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlOciLoadBalancerHealthCheckerInternal it will be used here
-	Protocol          plugin.TValue[string]
-	Port              plugin.TValue[int64]
-	ReturnCode        plugin.TValue[int64]
-	ResponseBodyRegex plugin.TValue[string]
-	UrlPath           plugin.TValue[string]
-	Retries           plugin.TValue[int64]
-	TimeoutInMillis   plugin.TValue[int64]
-	IntervalInMillis  plugin.TValue[int64]
-	ForcePlainText    plugin.TValue[bool]
+	Protocol                    plugin.TValue[string]
+	Port                        plugin.TValue[int64]
+	ReturnCode                  plugin.TValue[int64]
+	ResponseBodyRegex           plugin.TValue[string]
+	UrlPath                     plugin.TValue[string]
+	Retries                     plugin.TValue[int64]
+	TimeoutInMillis             plugin.TValue[int64]
+	IntervalInMillis            plugin.TValue[int64]
+	ForcePlainText              plugin.TValue[bool]
+	DynamicBackendWeightEnabled plugin.TValue[bool]
+	DefaultWeight               plugin.TValue[int64]
 }
 
 // createOciLoadBalancerHealthChecker creates a new instance of this resource
@@ -52257,6 +52287,14 @@ func (c *mqlOciLoadBalancerHealthChecker) GetIntervalInMillis() *plugin.TValue[i
 
 func (c *mqlOciLoadBalancerHealthChecker) GetForcePlainText() *plugin.TValue[bool] {
 	return &c.ForcePlainText
+}
+
+func (c *mqlOciLoadBalancerHealthChecker) GetDynamicBackendWeightEnabled() *plugin.TValue[bool] {
+	return &c.DynamicBackendWeightEnabled
+}
+
+func (c *mqlOciLoadBalancerHealthChecker) GetDefaultWeight() *plugin.TValue[int64] {
+	return &c.DefaultWeight
 }
 
 // mqlOciLoadBalancerBackend for the oci.loadBalancer.backend resource
@@ -61194,6 +61232,8 @@ type mqlOciDatabaseAutonomousDatabaseConsoleUrls struct {
 	OrdsUrl                          plugin.TValue[string]
 	DatabaseTransformsUrl            plugin.TValue[string]
 	SpatialStudioUrl                 plugin.TValue[string]
+	McpUrl                           plugin.TValue[string]
+	A2aUrl                           plugin.TValue[string]
 }
 
 // createOciDatabaseAutonomousDatabaseConsoleUrls creates a new instance of this resource
@@ -61262,6 +61302,14 @@ func (c *mqlOciDatabaseAutonomousDatabaseConsoleUrls) GetDatabaseTransformsUrl()
 
 func (c *mqlOciDatabaseAutonomousDatabaseConsoleUrls) GetSpatialStudioUrl() *plugin.TValue[string] {
 	return &c.SpatialStudioUrl
+}
+
+func (c *mqlOciDatabaseAutonomousDatabaseConsoleUrls) GetMcpUrl() *plugin.TValue[string] {
+	return &c.McpUrl
+}
+
+func (c *mqlOciDatabaseAutonomousDatabaseConsoleUrls) GetA2aUrl() *plugin.TValue[string] {
+	return &c.A2aUrl
 }
 
 // mqlOciDatabaseBackup for the oci.database.backup resource

@@ -1591,11 +1591,13 @@ oci.database.autonomousDatabase.backups 13.4.1
 oci.database.autonomousDatabase.compartment 13.6.2
 oci.database.autonomousDatabase.connectionUrls 13.3.1
 oci.database.autonomousDatabase.consoleUrls 13.21.1
+oci.database.autonomousDatabase.consoleUrls.a2aUrl 14.7.2
 oci.database.autonomousDatabase.consoleUrls.apexUrl 13.21.1
 oci.database.autonomousDatabase.consoleUrls.databaseTransformsUrl 13.21.1
 oci.database.autonomousDatabase.consoleUrls.graphStudioUrl 13.21.1
 oci.database.autonomousDatabase.consoleUrls.machineLearningNotebookUrl 13.21.1
 oci.database.autonomousDatabase.consoleUrls.machineLearningUserManagementUrl 13.21.1
+oci.database.autonomousDatabase.consoleUrls.mcpUrl 14.7.2
 oci.database.autonomousDatabase.consoleUrls.mongoDbUrl 13.21.1
 oci.database.autonomousDatabase.consoleUrls.ordsUrl 13.21.1
 oci.database.autonomousDatabase.consoleUrls.spatialStudioUrl 13.21.1
@@ -2775,6 +2777,8 @@ oci.loadBalancer.certificateBundle.certificates 13.20.1
 oci.loadBalancer.certificateBundle.name 13.20.1
 oci.loadBalancer.certificateBundle.publicCertificate 13.20.1
 oci.loadBalancer.healthChecker 13.21.1
+oci.loadBalancer.healthChecker.defaultWeight 14.7.2
+oci.loadBalancer.healthChecker.dynamicBackendWeightEnabled 14.7.2
 oci.loadBalancer.healthChecker.forcePlainText 13.21.1
 oci.loadBalancer.healthChecker.intervalInMillis 13.21.1
 oci.loadBalancer.healthChecker.port 13.21.1

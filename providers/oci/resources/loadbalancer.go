@@ -492,16 +492,18 @@ func (o *mqlOciLoadBalancerBackendSet) healthCheck() (*mqlOciLoadBalancerHealthC
 	}
 
 	res, err := CreateResource(o.MqlRuntime, "oci.loadBalancer.healthChecker", map[string]*llx.RawData{
-		"__id":              llx.StringData(o.__id + "/healthChecker"),
-		"protocol":          llx.StringDataPtr(hc.Protocol),
-		"port":              llx.IntDataPtr(hc.Port),
-		"returnCode":        llx.IntDataPtr(hc.ReturnCode),
-		"responseBodyRegex": llx.StringDataPtr(hc.ResponseBodyRegex),
-		"urlPath":           llx.StringDataPtr(hc.UrlPath),
-		"retries":           llx.IntDataPtr(hc.Retries),
-		"timeoutInMillis":   llx.IntDataPtr(hc.TimeoutInMillis),
-		"intervalInMillis":  llx.IntDataPtr(hc.IntervalInMillis),
-		"forcePlainText":    llx.BoolDataPtr(hc.IsForcePlainText),
+		"__id":                        llx.StringData(o.__id + "/healthChecker"),
+		"protocol":                    llx.StringDataPtr(hc.Protocol),
+		"port":                        llx.IntDataPtr(hc.Port),
+		"returnCode":                  llx.IntDataPtr(hc.ReturnCode),
+		"responseBodyRegex":           llx.StringDataPtr(hc.ResponseBodyRegex),
+		"urlPath":                     llx.StringDataPtr(hc.UrlPath),
+		"retries":                     llx.IntDataPtr(hc.Retries),
+		"timeoutInMillis":             llx.IntDataPtr(hc.TimeoutInMillis),
+		"intervalInMillis":            llx.IntDataPtr(hc.IntervalInMillis),
+		"forcePlainText":              llx.BoolDataPtr(hc.IsForcePlainText),
+		"dynamicBackendWeightEnabled": llx.BoolDataPtr(hc.IsDynamicBackendWeightEnabled),
+		"defaultWeight":               llx.IntDataPtr(hc.DefaultWeight),
 	})
 	if err != nil {
 		return nil, err
