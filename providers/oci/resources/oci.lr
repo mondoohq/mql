@@ -4220,7 +4220,9 @@ private oci.cloudGuard.target @defaults("name") {
   targetResourceType string
   // Compartment the target monitors
   //
-  // Null unless targetResourceType is COMPARTMENT.
+  // Set for a COMPARTMENT target and for the SECURITY_ZONE target Cloud Guard
+  // creates with a security zone, which monitors the zone's compartment. Null
+  // for other target types.
   targetCompartment() oci.compartment
   // Target lifecycle state (e.g., CREATING, UPDATING, ACTIVE, INACTIVE, DELETING, DELETED, FAILED)
   state string
