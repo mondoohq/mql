@@ -94,12 +94,20 @@ func TestOciRedactRedisACL(t *testing.T) {
 			ociRedactRedisACL("on ~cache:* +@read -@dangerous !6b86b273ff34fce19b6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b <x"))
 	})
 
-	t.Run("credential inside a selector masks to its closing parenthesis", func(t *testing.T) {
+	t.Run("credential inside a selector masks to the end", func(t *testing.T) {
 		got := ociRedactRedisACL("on (~sel:* >pass word +get) ~after:* +@read")
-		assert.Equal(t, "on (~sel:* >***) ~after:* +@read", got)
+		assert.Equal(t, "on (~sel:* >***", got)
 		assert.NotContains(t, got, "word")
 		assert.NotContains(t, got, "+get")
+		assert.NotContains(t, got, "~after:*")
 		assert.Equal(t, "on (>***", ociRedactRedisACL("on (>pass never-closed +get"))
+	})
+
+	t.Run("password containing a closing parenthesis", func(t *testing.T) {
+		got := ociRedactRedisACL("(>pa) leak ~x")
+		assert.Equal(t, "(>***", got)
+		assert.NotContains(t, got, "leak")
+		assert.NotContains(t, got, "~x")
 	})
 
 	t.Run("unknown tokens are masked", func(t *testing.T) {
