@@ -3948,10 +3948,13 @@ func azureAppGatewayToMql(runtime *plugin.Runtime, ag network.ApplicationGateway
 		"resourceGuid":                   llx.StringDataPtr(resourceGuid),
 		"zones":                          llx.ArrayData(strPtrsToAny(ag.Zones), types.String),
 	}
-	var skuName, skuTier, provisioningState *string
+	var skuName, skuTier, provisioningState, deploymentTier *string
 	var capacity *int32
+	var confidentialComputeEnabled *bool
 	if ag.Properties != nil {
 		provisioningState = stringEnumPtr(ag.Properties.ProvisioningState)
+		deploymentTier = stringEnumPtr(ag.Properties.DeploymentTier)
+		confidentialComputeEnabled = ag.Properties.EnableConfidentialCompute
 		if sku := ag.Properties.SKU; sku != nil {
 			skuName = stringEnumPtr(sku.Name)
 			skuTier = stringEnumPtr(sku.Tier)
@@ -3964,6 +3967,8 @@ func azureAppGatewayToMql(runtime *plugin.Runtime, ag network.ApplicationGateway
 	args["skuTier"] = llx.StringDataPtr(skuTier)
 	args["capacity"] = llx.IntDataPtr(capacity)
 	args["provisioningState"] = llx.StringDataPtr(provisioningState)
+	args["deploymentTier"] = llx.StringDataPtr(deploymentTier)
+	args["confidentialComputeEnabled"] = llx.BoolDataPtr(confidentialComputeEnabled)
 
 	mqlAg, err := CreateResource(runtime, "azure.subscription.networkService.applicationGateway", args)
 	if err != nil {
@@ -4552,8 +4557,10 @@ func azureFirewallToMql(runtime *plugin.Runtime, fw network.AzureFirewall) (*mql
 	}
 	var fwSkuTier, fwSkuName, fwProvisioningState, fwThreatIntelMode, fwAfcServiceEndpoint *string
 	var fwAiSecurityAddOn *bool
+	var fwTcpIdleTimeout *int32
 	if fw.Properties != nil {
 		fwAiSecurityAddOn = fw.Properties.AiSecurityAddOn
+		fwTcpIdleTimeout = fw.Properties.TCPIdleTimeoutInMinutes
 		fwProvisioningState = (*string)(fw.Properties.ProvisioningState)
 		fwThreatIntelMode = (*string)(fw.Properties.ThreatIntelMode)
 		if fw.Properties.SKU != nil {
@@ -4565,20 +4572,21 @@ func azureFirewallToMql(runtime *plugin.Runtime, fw network.AzureFirewall) (*mql
 		}
 	}
 	args := map[string]*llx.RawData{
-		"id":                 llx.StringDataPtr(fw.ID),
-		"name":               llx.StringDataPtr(fw.Name),
-		"type":               llx.StringDataPtr(fw.Type),
-		"location":           llx.StringDataPtr(fw.Location),
-		"tags":               llx.MapData(convert.PtrMapStrToInterface(fw.Tags), types.String),
-		"etag":               llx.StringDataPtr(fw.Etag),
-		"properties":         llx.DictData(props),
-		"skuTier":            llx.StringDataPtr(fwSkuTier),
-		"skuName":            llx.StringDataPtr(fwSkuName),
-		"provisioningState":  llx.StringDataPtr(fwProvisioningState),
-		"threatIntelMode":    llx.StringDataPtr(fwThreatIntelMode),
-		"afcServiceEndpoint": llx.StringDataPtr(fwAfcServiceEndpoint),
-		"aiSecurityAddOn":    llx.BoolDataPtr(fwAiSecurityAddOn),
-		"zones":              llx.ArrayData(strPtrsToAny(fw.Zones), types.String),
+		"id":                      llx.StringDataPtr(fw.ID),
+		"name":                    llx.StringDataPtr(fw.Name),
+		"type":                    llx.StringDataPtr(fw.Type),
+		"location":                llx.StringDataPtr(fw.Location),
+		"tags":                    llx.MapData(convert.PtrMapStrToInterface(fw.Tags), types.String),
+		"etag":                    llx.StringDataPtr(fw.Etag),
+		"properties":              llx.DictData(props),
+		"skuTier":                 llx.StringDataPtr(fwSkuTier),
+		"skuName":                 llx.StringDataPtr(fwSkuName),
+		"provisioningState":       llx.StringDataPtr(fwProvisioningState),
+		"threatIntelMode":         llx.StringDataPtr(fwThreatIntelMode),
+		"afcServiceEndpoint":      llx.StringDataPtr(fwAfcServiceEndpoint),
+		"aiSecurityAddOn":         llx.BoolDataPtr(fwAiSecurityAddOn),
+		"tcpIdleTimeoutInMinutes": llx.IntDataPtr(fwTcpIdleTimeout),
+		"zones":                   llx.ArrayData(strPtrsToAny(fw.Zones), types.String),
 	}
 	hub := firewallHubFields(fw.Properties)
 	args["hubPublicIpAddresses"] = llx.ArrayData(hub.publicIPs, types.String)
@@ -5592,6 +5600,7 @@ func azureInterfaceToMql(runtime *plugin.Runtime, iface network.Interface) (*mql
 
 	var enableIPForwarding, enableAcceleratedNetworking, primary *llx.RawData
 	var disableTcpStateTracking *llx.RawData
+	var networkAdapterIndex *int32
 	var networkSecurityGroupId, internalDnsNameLabel string
 	var nicType, auxiliaryMode, auxiliarySku, migrationPhase string
 	var privateEndpointId, privateLinkServiceId, resourceGuid string
@@ -5608,6 +5617,7 @@ func azureInterfaceToMql(runtime *plugin.Runtime, iface network.Interface) (*mql
 		auxiliaryMode = convert.ToValue(stringEnumPtr(iface.Properties.AuxiliaryMode))
 		auxiliarySku = convert.ToValue(stringEnumPtr(iface.Properties.AuxiliarySKU))
 		migrationPhase = convert.ToValue(stringEnumPtr(iface.Properties.MigrationPhase))
+		networkAdapterIndex = iface.Properties.NetworkAdapterIndex
 		if iface.Properties.ResourceGUID != nil {
 			resourceGuid = *iface.Properties.ResourceGUID
 		}
@@ -5699,6 +5709,7 @@ func azureInterfaceToMql(runtime *plugin.Runtime, iface network.Interface) (*mql
 			"migrationPhase":              llx.StringData(migrationPhase),
 			"hostedWorkloads":             llx.ArrayData(hostedWorkloads, types.String),
 			"resourceGuid":                llx.StringData(resourceGuid),
+			"networkAdapterIndex":         llx.IntDataPtr(networkAdapterIndex),
 		})
 	if err != nil {
 		return nil, err

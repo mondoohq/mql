@@ -6153,6 +6153,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.networkService.firewall.hubPrivateIpAddress": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceFirewall).GetHubPrivateIpAddress()).ToDataRes(types.String)
 	},
+	"azure.subscription.networkService.firewall.tcpIdleTimeoutInMinutes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceFirewall).GetTcpIdleTimeoutInMinutes()).ToDataRes(types.Int)
+	},
 	"azure.subscription.networkService.firewall.ipConfig.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceFirewallIpConfig).GetId()).ToDataRes(types.String)
 	},
@@ -7380,6 +7383,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.networkService.interface.resourceGuid": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceInterface).GetResourceGuid()).ToDataRes(types.String)
 	},
+	"azure.subscription.networkService.interface.networkAdapterIndex": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceInterface).GetNetworkAdapterIndex()).ToDataRes(types.Int)
+	},
 	"azure.subscription.networkService.interface.networkSecurityGroup": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceInterface).GetNetworkSecurityGroup()).ToDataRes(types.Resource("azure.subscription.networkService.securityGroup"))
 	},
@@ -8090,6 +8096,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.networkService.applicationGateway.requestRoutingRules": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceApplicationGateway).GetRequestRoutingRules()).ToDataRes(types.Array(types.Resource("azure.subscription.networkService.applicationGateway.requestRoutingRule")))
+	},
+	"azure.subscription.networkService.applicationGateway.deploymentTier": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceApplicationGateway).GetDeploymentTier()).ToDataRes(types.String)
+	},
+	"azure.subscription.networkService.applicationGateway.confidentialComputeEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceApplicationGateway).GetConfidentialComputeEnabled()).ToDataRes(types.Bool)
 	},
 	"azure.subscription.networkService.applicationGateway.backendAddressPool.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceApplicationGatewayBackendAddressPool).GetId()).ToDataRes(types.String)
@@ -9797,6 +9809,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.networkService.virtualAppliance.virtualHub": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceVirtualAppliance).GetVirtualHub()).ToDataRes(types.Resource("azure.subscription.networkService.virtualHub"))
+	},
+	"azure.subscription.networkService.virtualAppliance.loadBalancerIdleTimeoutInMinutes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceVirtualAppliance).GetLoadBalancerIdleTimeoutInMinutes()).ToDataRes(types.Int)
+	},
+	"azure.subscription.networkService.virtualAppliance.loadBalancerDistribution": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceVirtualAppliance).GetLoadBalancerDistribution()).ToDataRes(types.String)
 	},
 	"azure.subscription.networkService.virtualNetworkAppliance.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceVirtualNetworkAppliance).GetId()).ToDataRes(types.String)
@@ -14501,6 +14519,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.keyVaultService.key.curveName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionKeyVaultServiceKey).GetCurveName()).ToDataRes(types.String)
+	},
+	"azure.subscription.keyVaultService.key.externalKeyId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionKeyVaultServiceKey).GetExternalKeyId()).ToDataRes(types.String)
 	},
 	"azure.subscription.keyVaultService.key.keyOps": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionKeyVaultServiceKey).GetKeyOps()).ToDataRes(types.Array(types.String))
@@ -22173,6 +22194,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.searchService.service.semanticSearch": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionSearchServiceService).GetSemanticSearch()).ToDataRes(types.String)
 	},
+	"azure.subscription.searchService.service.knowledgeRetrieval": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSearchServiceService).GetKnowledgeRetrieval()).ToDataRes(types.String)
+	},
 	"azure.subscription.searchService.service.upgradeAvailable": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionSearchServiceService).GetUpgradeAvailable()).ToDataRes(types.String)
 	},
@@ -25751,6 +25775,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.netAppService.account.capacityPool.volume.smbNonBrowsable": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetAppServiceAccountCapacityPoolVolume).GetSmbNonBrowsable()).ToDataRes(types.String)
+	},
+	"azure.subscription.netAppService.account.capacityPool.volume.smbOplocks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetAppServiceAccountCapacityPoolVolume).GetSmbOplocks()).ToDataRes(types.String)
+	},
+	"azure.subscription.netAppService.account.capacityPool.volume.ldapServerType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetAppServiceAccountCapacityPoolVolume).GetLdapServerType()).ToDataRes(types.String)
 	},
 	"azure.subscription.netAppService.account.capacityPool.volume.snapshotDirectoryVisible": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetAppServiceAccountCapacityPoolVolume).GetSnapshotDirectoryVisible()).ToDataRes(types.Bool)
@@ -30269,6 +30299,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionNetworkServiceFirewall).HubPrivateIpAddress, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.networkService.firewall.tcpIdleTimeoutInMinutes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceFirewall).TcpIdleTimeoutInMinutes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.networkService.firewall.ipConfig.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionNetworkServiceFirewallIpConfig).__id, ok = v.Value.(string)
 		return
@@ -32049,6 +32083,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionNetworkServiceInterface).ResourceGuid, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.networkService.interface.networkAdapterIndex": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceInterface).NetworkAdapterIndex, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.networkService.interface.networkSecurityGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionNetworkServiceInterface).NetworkSecurityGroup, ok = plugin.RawToTValue[*mqlAzureSubscriptionNetworkServiceSecurityGroup](v.Value, v.Error)
 		return
@@ -33051,6 +33089,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.networkService.applicationGateway.requestRoutingRules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionNetworkServiceApplicationGateway).RequestRoutingRules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkService.applicationGateway.deploymentTier": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceApplicationGateway).DeploymentTier, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkService.applicationGateway.confidentialComputeEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceApplicationGateway).ConfidentialComputeEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.networkService.applicationGateway.backendAddressPool.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -35531,6 +35577,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.networkService.virtualAppliance.virtualHub": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionNetworkServiceVirtualAppliance).VirtualHub, ok = plugin.RawToTValue[*mqlAzureSubscriptionNetworkServiceVirtualHub](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkService.virtualAppliance.loadBalancerIdleTimeoutInMinutes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceVirtualAppliance).LoadBalancerIdleTimeoutInMinutes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkService.virtualAppliance.loadBalancerDistribution": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceVirtualAppliance).LoadBalancerDistribution, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.networkService.virtualNetworkAppliance.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -42323,6 +42377,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.keyVaultService.key.curveName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionKeyVaultServiceKey).CurveName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.keyVaultService.key.externalKeyId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionKeyVaultServiceKey).ExternalKeyId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.keyVaultService.key.keyOps": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -53525,6 +53583,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionSearchServiceService).SemanticSearch, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.searchService.service.knowledgeRetrieval": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSearchServiceService).KnowledgeRetrieval, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.searchService.service.upgradeAvailable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionSearchServiceService).UpgradeAvailable, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -58671,6 +58733,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.netAppService.account.capacityPool.volume.smbNonBrowsable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionNetAppServiceAccountCapacityPoolVolume).SmbNonBrowsable, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.netAppService.account.capacityPool.volume.smbOplocks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetAppServiceAccountCapacityPoolVolume).SmbOplocks, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.netAppService.account.capacityPool.volume.ldapServerType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetAppServiceAccountCapacityPoolVolume).LdapServerType, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.netAppService.account.capacityPool.volume.snapshotDirectoryVisible": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -68821,6 +68891,7 @@ type mqlAzureSubscriptionNetworkServiceFirewall struct {
 	IpGroups                  plugin.TValue[[]any]
 	HubPublicIpAddresses      plugin.TValue[[]any]
 	HubPrivateIpAddress       plugin.TValue[string]
+	TcpIdleTimeoutInMinutes   plugin.TValue[int64]
 }
 
 // createAzureSubscriptionNetworkServiceFirewall creates a new instance of this resource
@@ -69066,6 +69137,10 @@ func (c *mqlAzureSubscriptionNetworkServiceFirewall) GetHubPublicIpAddresses() *
 
 func (c *mqlAzureSubscriptionNetworkServiceFirewall) GetHubPrivateIpAddress() *plugin.TValue[string] {
 	return &c.HubPrivateIpAddress
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceFirewall) GetTcpIdleTimeoutInMinutes() *plugin.TValue[int64] {
+	return &c.TcpIdleTimeoutInMinutes
 }
 
 // mqlAzureSubscriptionNetworkServiceFirewallIpConfig for the azure.subscription.networkService.firewall.ipConfig resource
@@ -73278,6 +73353,7 @@ type mqlAzureSubscriptionNetworkServiceInterface struct {
 	AuxiliarySku                plugin.TValue[string]
 	MigrationPhase              plugin.TValue[string]
 	ResourceGuid                plugin.TValue[string]
+	NetworkAdapterIndex         plugin.TValue[int64]
 	NetworkSecurityGroup        plugin.TValue[*mqlAzureSubscriptionNetworkServiceSecurityGroup]
 	DnsServers                  plugin.TValue[[]any]
 	AppliedDnsServers           plugin.TValue[[]any]
@@ -73425,6 +73501,10 @@ func (c *mqlAzureSubscriptionNetworkServiceInterface) GetMigrationPhase() *plugi
 
 func (c *mqlAzureSubscriptionNetworkServiceInterface) GetResourceGuid() *plugin.TValue[string] {
 	return &c.ResourceGuid
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceInterface) GetNetworkAdapterIndex() *plugin.TValue[int64] {
+	return &c.NetworkAdapterIndex
 }
 
 func (c *mqlAzureSubscriptionNetworkServiceInterface) GetNetworkSecurityGroup() *plugin.TValue[*mqlAzureSubscriptionNetworkServiceSecurityGroup] {
@@ -75320,6 +75400,8 @@ type mqlAzureSubscriptionNetworkServiceApplicationGateway struct {
 	PrivateEndpointConnections           plugin.TValue[[]any]
 	BackendAddressPools                  plugin.TValue[[]any]
 	RequestRoutingRules                  plugin.TValue[[]any]
+	DeploymentTier                       plugin.TValue[string]
+	ConfidentialComputeEnabled           plugin.TValue[bool]
 }
 
 // createAzureSubscriptionNetworkServiceApplicationGateway creates a new instance of this resource
@@ -75637,6 +75719,14 @@ func (c *mqlAzureSubscriptionNetworkServiceApplicationGateway) GetRequestRouting
 
 		return c.requestRoutingRules()
 	})
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceApplicationGateway) GetDeploymentTier() *plugin.TValue[string] {
+	return &c.DeploymentTier
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceApplicationGateway) GetConfidentialComputeEnabled() *plugin.TValue[bool] {
+	return &c.ConfidentialComputeEnabled
 }
 
 // mqlAzureSubscriptionNetworkServiceApplicationGatewayBackendAddressPool for the azure.subscription.networkService.applicationGateway.backendAddressPool resource
@@ -81167,27 +81257,29 @@ type mqlAzureSubscriptionNetworkServiceVirtualAppliance struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAzureSubscriptionNetworkServiceVirtualApplianceInternal
-	Id                   plugin.TValue[string]
-	Name                 plugin.TValue[string]
-	Location             plugin.TValue[string]
-	Tags                 plugin.TValue[map[string]any]
-	Type                 plugin.TValue[string]
-	Etag                 plugin.TValue[string]
-	ProvisioningState    plugin.TValue[string]
-	Asn                  plugin.TValue[int64]
-	Vendor               plugin.TValue[string]
-	BundledScaleUnit     plugin.TValue[string]
-	MarketplaceVersion   plugin.TValue[string]
-	AddressPrefix        plugin.TValue[string]
-	AddressPrefixV6      plugin.TValue[string]
-	PrivateIpAddressV6   plugin.TValue[string]
-	AddressFamily        plugin.TValue[[]any]
-	DeploymentType       plugin.TValue[string]
-	SshPublicKey         plugin.TValue[string]
-	MigrationPhase       plugin.TValue[string]
-	MigrationPhaseStatus plugin.TValue[string]
-	MigrationType        plugin.TValue[string]
-	VirtualHub           plugin.TValue[*mqlAzureSubscriptionNetworkServiceVirtualHub]
+	Id                               plugin.TValue[string]
+	Name                             plugin.TValue[string]
+	Location                         plugin.TValue[string]
+	Tags                             plugin.TValue[map[string]any]
+	Type                             plugin.TValue[string]
+	Etag                             plugin.TValue[string]
+	ProvisioningState                plugin.TValue[string]
+	Asn                              plugin.TValue[int64]
+	Vendor                           plugin.TValue[string]
+	BundledScaleUnit                 plugin.TValue[string]
+	MarketplaceVersion               plugin.TValue[string]
+	AddressPrefix                    plugin.TValue[string]
+	AddressPrefixV6                  plugin.TValue[string]
+	PrivateIpAddressV6               plugin.TValue[string]
+	AddressFamily                    plugin.TValue[[]any]
+	DeploymentType                   plugin.TValue[string]
+	SshPublicKey                     plugin.TValue[string]
+	MigrationPhase                   plugin.TValue[string]
+	MigrationPhaseStatus             plugin.TValue[string]
+	MigrationType                    plugin.TValue[string]
+	VirtualHub                       plugin.TValue[*mqlAzureSubscriptionNetworkServiceVirtualHub]
+	LoadBalancerIdleTimeoutInMinutes plugin.TValue[int64]
+	LoadBalancerDistribution         plugin.TValue[string]
 }
 
 // createAzureSubscriptionNetworkServiceVirtualAppliance creates a new instance of this resource
@@ -81321,6 +81413,14 @@ func (c *mqlAzureSubscriptionNetworkServiceVirtualAppliance) GetVirtualHub() *pl
 
 		return c.virtualHub()
 	})
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceVirtualAppliance) GetLoadBalancerIdleTimeoutInMinutes() *plugin.TValue[int64] {
+	return &c.LoadBalancerIdleTimeoutInMinutes
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceVirtualAppliance) GetLoadBalancerDistribution() *plugin.TValue[string] {
+	return &c.LoadBalancerDistribution
 }
 
 // mqlAzureSubscriptionNetworkServiceVirtualNetworkAppliance for the azure.subscription.networkService.virtualNetworkAppliance resource
@@ -97597,6 +97697,7 @@ type mqlAzureSubscriptionKeyVaultServiceKey struct {
 	KeyType        plugin.TValue[string]
 	KeySize        plugin.TValue[int64]
 	CurveName      plugin.TValue[string]
+	ExternalKeyId  plugin.TValue[string]
 	KeyOps         plugin.TValue[[]any]
 	KeyName        plugin.TValue[string]
 	Version        plugin.TValue[string]
@@ -97692,6 +97793,12 @@ func (c *mqlAzureSubscriptionKeyVaultServiceKey) GetKeySize() *plugin.TValue[int
 func (c *mqlAzureSubscriptionKeyVaultServiceKey) GetCurveName() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.CurveName, func() (string, error) {
 		return c.curveName()
+	})
+}
+
+func (c *mqlAzureSubscriptionKeyVaultServiceKey) GetExternalKeyId() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ExternalKeyId, func() (string, error) {
+		return c.externalKeyId()
 	})
 }
 
@@ -125552,6 +125659,7 @@ type mqlAzureSubscriptionSearchServiceService struct {
 	DataExfiltrationProtections            plugin.TValue[[]any]
 	ComputeType                            plugin.TValue[string]
 	SemanticSearch                         plugin.TValue[string]
+	KnowledgeRetrieval                     plugin.TValue[string]
 	UpgradeAvailable                       plugin.TValue[string]
 	ServiceUpgradedAt                      plugin.TValue[*time.Time]
 	CmkEnforcement                         plugin.TValue[string]
@@ -125667,6 +125775,10 @@ func (c *mqlAzureSubscriptionSearchServiceService) GetComputeType() *plugin.TVal
 
 func (c *mqlAzureSubscriptionSearchServiceService) GetSemanticSearch() *plugin.TValue[string] {
 	return &c.SemanticSearch
+}
+
+func (c *mqlAzureSubscriptionSearchServiceService) GetKnowledgeRetrieval() *plugin.TValue[string] {
+	return &c.KnowledgeRetrieval
 }
 
 func (c *mqlAzureSubscriptionSearchServiceService) GetUpgradeAvailable() *plugin.TValue[string] {
@@ -138040,6 +138152,8 @@ type mqlAzureSubscriptionNetAppServiceAccountCapacityPoolVolume struct {
 	SmbContinuouslyAvailable         plugin.TValue[bool]
 	SmbAccessBasedEnumeration        plugin.TValue[string]
 	SmbNonBrowsable                  plugin.TValue[string]
+	SmbOplocks                       plugin.TValue[string]
+	LdapServerType                   plugin.TValue[string]
 	SnapshotDirectoryVisible         plugin.TValue[bool]
 	CoolAccess                       plugin.TValue[bool]
 	IsLargeVolume                    plugin.TValue[bool]
@@ -138172,6 +138286,14 @@ func (c *mqlAzureSubscriptionNetAppServiceAccountCapacityPoolVolume) GetSmbAcces
 
 func (c *mqlAzureSubscriptionNetAppServiceAccountCapacityPoolVolume) GetSmbNonBrowsable() *plugin.TValue[string] {
 	return &c.SmbNonBrowsable
+}
+
+func (c *mqlAzureSubscriptionNetAppServiceAccountCapacityPoolVolume) GetSmbOplocks() *plugin.TValue[string] {
+	return &c.SmbOplocks
+}
+
+func (c *mqlAzureSubscriptionNetAppServiceAccountCapacityPoolVolume) GetLdapServerType() *plugin.TValue[string] {
+	return &c.LdapServerType
 }
 
 func (c *mqlAzureSubscriptionNetAppServiceAccountCapacityPoolVolume) GetSnapshotDirectoryVisible() *plugin.TValue[bool] {

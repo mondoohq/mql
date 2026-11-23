@@ -3551,6 +3551,7 @@ azure.subscription.keyVaultService.key.created 9.0.1
 azure.subscription.keyVaultService.key.curveName 11.6.1
 azure.subscription.keyVaultService.key.enabled 9.0.1
 azure.subscription.keyVaultService.key.expires 9.0.1
+azure.subscription.keyVaultService.key.externalKeyId 14.12.1
 azure.subscription.keyVaultService.key.keyName 9.0.1
 azure.subscription.keyVaultService.key.keyOps 11.6.1
 azure.subscription.keyVaultService.key.keySize 11.6.1
@@ -4599,6 +4600,7 @@ azure.subscription.netAppService.account.capacityPool.volume.id 13.36.1
 azure.subscription.netAppService.account.capacityPool.volume.isLargeVolume 13.36.1
 azure.subscription.netAppService.account.capacityPool.volume.kerberosEnabled 13.36.1
 azure.subscription.netAppService.account.capacityPool.volume.ldapEnabled 13.36.1
+azure.subscription.netAppService.account.capacityPool.volume.ldapServerType 14.12.1
 azure.subscription.netAppService.account.capacityPool.volume.location 13.36.1
 azure.subscription.netAppService.account.capacityPool.volume.mountTargetIpAddresses 13.36.1
 azure.subscription.netAppService.account.capacityPool.volume.name 13.36.1
@@ -4611,6 +4613,7 @@ azure.subscription.netAppService.account.capacityPool.volume.smbAccessBasedEnume
 azure.subscription.netAppService.account.capacityPool.volume.smbContinuouslyAvailable 13.36.1
 azure.subscription.netAppService.account.capacityPool.volume.smbEncryption 13.36.1
 azure.subscription.netAppService.account.capacityPool.volume.smbNonBrowsable 13.36.1
+azure.subscription.netAppService.account.capacityPool.volume.smbOplocks 14.12.1
 azure.subscription.netAppService.account.capacityPool.volume.snapshotDirectoryVisible 13.36.1
 azure.subscription.netAppService.account.capacityPool.volume.subnet 13.36.1
 azure.subscription.netAppService.account.capacityPool.volume.systemMetadata 13.36.1
@@ -4765,7 +4768,9 @@ azure.subscription.networkService.applicationGateway.backendHttpSettings.trusted
 azure.subscription.networkService.applicationGateway.backendHttpSettings.validateCertChainAndExpiry 13.29.1
 azure.subscription.networkService.applicationGateway.backendHttpSettings.validateSNI 13.29.1
 azure.subscription.networkService.applicationGateway.capacity 14.12.1
+azure.subscription.networkService.applicationGateway.confidentialComputeEnabled 14.12.1
 azure.subscription.networkService.applicationGateway.defaultPredefinedSslPolicy 13.35.1
+azure.subscription.networkService.applicationGateway.deploymentTier 14.12.1
 azure.subscription.networkService.applicationGateway.diagnosticSettings 14.12.1
 azure.subscription.networkService.applicationGateway.disableDefaultServerHeaderInResponse 13.35.1
 azure.subscription.networkService.applicationGateway.enableFips 13.35.1
@@ -5195,6 +5200,7 @@ azure.subscription.networkService.firewall.provisioningState 9.0.8
 azure.subscription.networkService.firewall.skuName 9.0.8
 azure.subscription.networkService.firewall.skuTier 9.0.8
 azure.subscription.networkService.firewall.tags 9.0.8
+azure.subscription.networkService.firewall.tcpIdleTimeoutInMinutes 14.12.1
 azure.subscription.networkService.firewall.threatIntelMode 9.0.8
 azure.subscription.networkService.firewall.type 9.0.8
 azure.subscription.networkService.firewall.virtualHub 14.12.1
@@ -5356,6 +5362,7 @@ azure.subscription.networkService.interface.ipConfiguration.virtualNetworkTaps 1
 azure.subscription.networkService.interface.location 9.0.1
 azure.subscription.networkService.interface.migrationPhase 13.35.1
 azure.subscription.networkService.interface.name 9.0.1
+azure.subscription.networkService.interface.networkAdapterIndex 14.12.1
 azure.subscription.networkService.interface.networkSecurityGroup 13.12.2
 azure.subscription.networkService.interface.nicType 13.35.1
 azure.subscription.networkService.interface.primary 11.4.28
@@ -5900,6 +5907,8 @@ azure.subscription.networkService.virtualAppliance.bundledScaleUnit 13.25.1
 azure.subscription.networkService.virtualAppliance.deploymentType 13.25.1
 azure.subscription.networkService.virtualAppliance.etag 13.25.1
 azure.subscription.networkService.virtualAppliance.id 13.25.1
+azure.subscription.networkService.virtualAppliance.loadBalancerDistribution 14.12.1
+azure.subscription.networkService.virtualAppliance.loadBalancerIdleTimeoutInMinutes 14.12.1
 azure.subscription.networkService.virtualAppliance.location 13.25.1
 azure.subscription.networkService.virtualAppliance.marketplaceVersion 13.25.1
 azure.subscription.networkService.virtualAppliance.migrationPhase 13.35.1
@@ -6693,6 +6702,7 @@ azure.subscription.searchService.service.hostingMode 13.11.3
 azure.subscription.searchService.service.id 13.11.3
 azure.subscription.searchService.service.identity 13.11.3
 azure.subscription.searchService.service.internetReachable 14.5.4
+azure.subscription.searchService.service.knowledgeRetrieval 14.12.1
 azure.subscription.searchService.service.location 13.11.3
 azure.subscription.searchService.service.name 13.11.3
 azure.subscription.searchService.service.networkRuleSet 13.11.3

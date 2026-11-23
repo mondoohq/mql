@@ -1127,6 +1127,32 @@ func (a *mqlAzureSubscriptionKeyVaultServiceKey) curveName() (string, error) {
 	return "", nil
 }
 
+func (a *mqlAzureSubscriptionKeyVaultServiceKey) externalKeyId() (string, error) {
+	keyResp, err := a.fetchKeyDetails()
+	if err != nil {
+		return "", err
+	}
+	id := keyBundleExternalKeyID(&keyResp.KeyBundle)
+	if id == nil {
+		a.ExternalKeyId.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *id, nil
+}
+
+// keyBundleExternalKeyID returns the external key manager's identifier for the
+// key, or nil when Key Vault holds the key material itself.
+func keyBundleExternalKeyID(bundle *azkeys.KeyBundle) *string {
+	if bundle == nil || bundle.Attributes == nil || bundle.Attributes.ExternalKey == nil {
+		return nil
+	}
+	id := bundle.Attributes.ExternalKey.ID
+	if id == nil || *id == "" {
+		return nil
+	}
+	return id
+}
+
 func (a *mqlAzureSubscriptionKeyVaultServiceKey) keyOps() ([]any, error) {
 	keyResp, err := a.fetchKeyDetails()
 	if err != nil {

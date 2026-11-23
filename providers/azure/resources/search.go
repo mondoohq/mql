@@ -100,7 +100,7 @@ func searchServiceToMql(runtime *plugin.Runtime, svc *armsearch.Service) (*mqlAz
 	var disableLocalAuth bool
 	var replicaCount, partitionCount int64
 	var authMode string
-	var aadAuthFailureMode, computeType, semanticSearch, upgradeAvailable *string
+	var aadAuthFailureMode, computeType, semanticSearch, upgradeAvailable, knowledgeRetrieval *string
 	var serviceUpgradedAt *time.Time
 	dataExfiltrationProtections := []any{}
 	networkRuleSet := llx.NilData
@@ -156,6 +156,7 @@ func searchServiceToMql(runtime *plugin.Runtime, svc *armsearch.Service) (*mqlAz
 		}
 		computeType = stringEnumPtr(p.ComputeType)
 		semanticSearch = stringEnumPtr(p.SemanticSearch)
+		knowledgeRetrieval = stringEnumPtr(p.KnowledgeRetrieval)
 		upgradeAvailable = stringEnumPtr(p.UpgradeAvailable)
 		serviceUpgradedAt = p.ServiceUpgradedAt
 		if p.NetworkRuleSet != nil {
@@ -196,6 +197,7 @@ func searchServiceToMql(runtime *plugin.Runtime, svc *armsearch.Service) (*mqlAz
 		"dataExfiltrationProtections": llx.ArrayData(dataExfiltrationProtections, types.String),
 		"computeType":                 llx.StringDataPtr(computeType),
 		"semanticSearch":              llx.StringDataPtr(semanticSearch),
+		"knowledgeRetrieval":          llx.StringDataPtr(knowledgeRetrieval),
 		"upgradeAvailable":            llx.StringDataPtr(upgradeAvailable),
 		"serviceUpgradedAt":           llx.TimeDataPtr(serviceUpgradedAt),
 	}

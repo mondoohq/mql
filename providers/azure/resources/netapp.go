@@ -554,6 +554,8 @@ func createNetAppVolumeResource(runtime *plugin.Runtime, volume *armnetapp.Volum
 			"smbContinuouslyAvailable":         llx.BoolDataPtr(props.SmbContinuouslyAvailable),
 			"smbAccessBasedEnumeration":        llx.StringData(enumString(props.SmbAccessBasedEnumeration)),
 			"smbNonBrowsable":                  llx.StringData(enumString(props.SmbNonBrowsable)),
+			"smbOplocks":                       llx.StringDataPtr(enumStringPtr(props.SmbOplocks)),
+			"ldapServerType":                   llx.StringDataPtr(enumStringPtr(props.LdapServerType)),
 			"snapshotDirectoryVisible":         llx.BoolDataPtr(props.SnapshotDirectoryVisible),
 			"coolAccess":                       llx.BoolDataPtr(props.CoolAccess),
 			"isLargeVolume":                    llx.BoolDataPtr(props.IsLargeVolume),
