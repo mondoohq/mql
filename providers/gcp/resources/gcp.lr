@@ -1124,6 +1124,16 @@ gcp.project @defaults("name number") {
   iamPolicy() []gcp.resourcemanager.binding
   // Whether the project's IAM policy grants any role to allUsers or allAuthenticatedUsers
   hasPublicIamBinding() bool
+  // Whether billing is enabled for the project
+  //
+  // False when the project has no billing account, or its billing account is
+  // closed. Paid APIs stop serving a project without billing.
+  billingEnabled() bool
+  // Resource name of the billing account the project is linked to
+  //
+  // For example billingAccounts/012345-567890-ABCDEF. Empty when the project
+  // has no billing account.
+  billingAccount() string
   // IAM bindings using primitive roles (roles/owner, roles/editor, roles/viewer); prefer predefined or custom roles instead
   primitiveRoleBindings() []gcp.resourcemanager.binding
   // Audit logging configuration
@@ -2376,6 +2386,13 @@ gcp.project.computeService.instance @defaults("name id") {
   // Null when the instance was not created from a machine image, or the
   // machine image no longer exists.
   machineImage() gcp.project.computeService.machineImage
+  // IAM policy bindings set on the instance itself
+  //
+  // Roles granted here apply to this VM only, on top of the project and
+  // folder policies. A grant such as roles/compute.instanceAdmin.v1 or
+  // roles/iam.serviceAccountUser on the instance lets the member control the
+  // VM, or act as its service account, without any project-level role.
+  iamPolicy() []gcp.resourcemanager.binding
 }
 
 // Compute instance internet-exposure breakdown
@@ -3349,6 +3366,12 @@ gcp.project.computeService.subnetwork @defaults("name") {
   // Only instances in the subnetwork's own project are listed; instances in
   // Shared VPC service projects attached to it are not.
   instances() []gcp.project.computeService.instance
+  // IAM policy bindings set on the subnetwork
+  //
+  // A grant of roles/compute.networkUser here lets the member attach
+  // workloads to this subnetwork, which is how a Shared VPC host project
+  // shares individual subnetworks with service projects.
+  iamPolicy() []gcp.resourcemanager.binding
 }
 
 // Google Cloud (GCP) Compute VPC network partitioning log configuration
@@ -5834,6 +5857,38 @@ private gcp.project.gkeService.cluster @defaults("name description location stat
   nodePoolAutoConfig dict
   // Node auto-provisioning settings, and the defaults applied to the nodes it creates
   nodeAutoprovisioning gcp.project.gkeService.cluster.nodeAutoprovisioningConfig
+  // End of standard support for the cluster's minor version
+  //
+  // After this date the cluster is automatically upgraded, or moves to
+  // extended support when it is enrolled in the Extended release channel.
+  // Null when GKE does not report the date.
+  endOfStandardSupport() time
+  // End of extended support for the cluster's minor version
+  //
+  // Null when GKE does not report the date, for example on a cluster that is
+  // not on the Extended release channel.
+  endOfExtendedSupport() time
+  // Auto-upgrade status of the cluster
+  //
+  // Entries are ACTIVE, MINOR_UPGRADE_PAUSED, UPGRADE_PAUSED, or UNKNOWN. A
+  // paused status means the cluster is not receiving the upgrades its
+  // release channel would otherwise apply; `autoUpgradePausedReasons` says why.
+  autoUpgradeStatus() []string
+  // Reasons auto-upgrades are paused on the cluster
+  //
+  // Entries such as MAINTENANCE_WINDOW, MAINTENANCE_EXCLUSION_NO_UPGRADES,
+  // MAINTENANCE_EXCLUSION_NO_MINOR_UPGRADES, CLUSTER_DISRUPTION_BUDGET,
+  // CLUSTER_DISRUPTION_BUDGET_MINOR_UPGRADE, or SYSTEM_CONFIG. Empty when
+  // upgrades are not paused.
+  autoUpgradePausedReasons() []string
+  // Version the cluster's next automatic minor upgrade targets
+  //
+  // Empty when GKE has no minor upgrade target for the cluster.
+  minorTargetVersion() string
+  // Version the cluster's next automatic patch upgrade targets
+  //
+  // Empty when GKE has no patch upgrade target for the cluster.
+  patchTargetVersion() string
 }
 
 // Node auto-provisioning settings of a GKE cluster

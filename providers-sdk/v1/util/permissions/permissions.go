@@ -1257,6 +1257,16 @@ var gcpPermissionOverrides = map[string]map[string]string{
 	"binaryauthorization": {
 		"GetSystemPolicy": "binaryauthorization.policy.get",
 	},
+	"cloudbilling": {
+		// Reading a project's billing link is gated on the project itself;
+		// no cloudbilling.projects.* permission exists.
+		"Projects.GetBillingInfo": "resourcemanager.projects.get",
+	},
+	"container": {
+		// FetchClusterUpgradeInfo starts with none of the derivable verbs, so
+		// without an entry it is dropped. It reads the cluster.
+		"FetchClusterUpgradeInfo": "container.clusters.get",
+	},
 	"cloudkms": {
 		"GetCryptoKey": "cloudkms.cryptoKeys.get",
 		"GetIamPolicy": "cloudkms.cryptoKeys.getIamPolicy",

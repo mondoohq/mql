@@ -4881,3 +4881,80 @@ func (g *mqlGcpProjectComputeServiceBackendService) loggingEnabled() (bool, erro
 	enabled, _ := logMap["enable"].(bool)
 	return enabled, nil
 }
+
+func (g *mqlGcpProjectComputeServiceInstance) iamPolicy() ([]any, error) {
+	if g.ProjectId.Error != nil {
+		return nil, g.ProjectId.Error
+	}
+	if g.Name.Error != nil {
+		return nil, g.Name.Error
+	}
+	zone := g.GetZone()
+	if zone.Error != nil {
+		return nil, zone.Error
+	}
+	if zone.Data == nil {
+		return nil, errors.New("instance has no zone")
+	}
+	zoneName := zone.Data.GetName()
+	if zoneName.Error != nil {
+		return nil, zoneName.Error
+	}
+	projectId := g.ProjectId.Data
+	name := g.Name.Data
+
+	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
+	client, err := conn.Client(cloudresourcemanager.CloudPlatformReadOnlyScope, iam.CloudPlatformScope, compute.CloudPlatformScope)
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	svc, err := compute.NewService(ctx, option.WithHTTPClient(client))
+	if err != nil {
+		return nil, err
+	}
+	policy, err := svc.Instances.GetIamPolicy(projectId, zoneName.Data, name).OptionsRequestedPolicyVersion(3).Context(ctx).Do()
+	if err != nil {
+		if rerr := classifyRefusal(err, "compute.instances.getIamPolicy"); rerr != nil {
+			return nil, rerr
+		}
+		return nil, err
+	}
+	return computeIamBindingsToResources(g.MqlRuntime,
+		"gcp.project.computeService.instance/"+projectId+"/"+zoneName.Data+"/"+name, policy.Bindings)
+}
+
+func (g *mqlGcpProjectComputeServiceSubnetwork) iamPolicy() ([]any, error) {
+	if g.ProjectId.Error != nil {
+		return nil, g.ProjectId.Error
+	}
+	if g.Name.Error != nil {
+		return nil, g.Name.Error
+	}
+	region := RegionNameFromRegionUrl(g.cacheRegionUrl)
+	if region == "" {
+		return nil, errors.New("subnetwork has no region")
+	}
+	projectId := g.ProjectId.Data
+	name := g.Name.Data
+
+	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
+	client, err := conn.Client(cloudresourcemanager.CloudPlatformReadOnlyScope, iam.CloudPlatformScope, compute.CloudPlatformScope)
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	svc, err := compute.NewService(ctx, option.WithHTTPClient(client))
+	if err != nil {
+		return nil, err
+	}
+	policy, err := svc.Subnetworks.GetIamPolicy(projectId, region, name).OptionsRequestedPolicyVersion(3).Context(ctx).Do()
+	if err != nil {
+		if rerr := classifyRefusal(err, "compute.subnetworks.getIamPolicy"); rerr != nil {
+			return nil, rerr
+		}
+		return nil, err
+	}
+	return computeIamBindingsToResources(g.MqlRuntime,
+		"gcp.project.computeService.subnetwork/"+projectId+"/"+region+"/"+name, policy.Bindings)
+}

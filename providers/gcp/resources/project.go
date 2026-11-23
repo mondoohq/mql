@@ -18,6 +18,7 @@ import (
 	"go.mondoo.com/mql/providers/gcp/connection"
 	"go.mondoo.com/mql/types"
 
+	"google.golang.org/api/cloudbilling/v1"
 	"google.golang.org/api/cloudresourcemanager/v3"
 	"google.golang.org/api/compute/v1"
 	"google.golang.org/api/iam/v1"
@@ -41,6 +42,9 @@ type mqlGcpProjectInternal struct {
 	iamPolicyOnce       sync.Once
 	iamPolicyCache      *cloudresourcemanager.Policy
 	iamPolicyErr        error
+	billingInfoOnce     sync.Once
+	billingInfo         *cloudbilling.ProjectBillingInfo
+	billingInfoErr      error
 	// computeLocations caches the project's regions and zones. Both the
 	// recommendations and the insights listers need the full location set, and
 	// each listing is two paginated Compute API calls, so the result is resolved
@@ -670,4 +674,53 @@ func (g *mqlGcpProject) isServiceEnabled(serviceName string) (bool, error) {
 	}
 
 	return false, nil
+}
+
+// fetchBillingInfo reads the project's billing link once and serves both
+// billing fields from it. A refusal is returned classified, so it fails only
+// the billing fields and not the project.
+func (g *mqlGcpProject) fetchBillingInfo() (*cloudbilling.ProjectBillingInfo, error) {
+	g.billingInfoOnce.Do(func() {
+		if g.Id.Error != nil {
+			g.billingInfoErr = g.Id.Error
+			return
+		}
+		conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
+		client, err := conn.Client(cloudbilling.CloudPlatformScope)
+		if err != nil {
+			g.billingInfoErr = err
+			return
+		}
+		svc, err := cloudbilling.NewService(context.Background(), option.WithHTTPClient(client))
+		if err != nil {
+			g.billingInfoErr = err
+			return
+		}
+		info, err := svc.Projects.GetBillingInfo("projects/" + g.Id.Data).Do()
+		if err != nil {
+			if rerr := classifyRefusal(err, "resourcemanager.projects.get"); rerr != nil {
+				err = rerr
+			}
+			g.billingInfoErr = err
+			return
+		}
+		g.billingInfo = info
+	})
+	return g.billingInfo, g.billingInfoErr
+}
+
+func (g *mqlGcpProject) billingEnabled() (bool, error) {
+	info, err := g.fetchBillingInfo()
+	if err != nil {
+		return false, err
+	}
+	return info.BillingEnabled, nil
+}
+
+func (g *mqlGcpProject) billingAccount() (string, error) {
+	info, err := g.fetchBillingInfo()
+	if err != nil {
+		return "", err
+	}
+	return info.BillingAccountName, nil
 }

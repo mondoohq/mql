@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"go.mondoo.com/mql/llx"
@@ -277,6 +278,11 @@ type mqlGcpProjectGkeServiceClusterInternal struct {
 	cacheLoggingService            string
 	cacheMonitoringService         string
 	cacheNetworkPolicyConfig       any
+
+	upgradeInfoLock    sync.Mutex
+	upgradeInfoFetched bool
+	upgradeInfo        *containerpb.ClusterUpgradeInfo
+	upgradeInfoErr     error
 }
 
 func (g *mqlGcpProjectGkeServiceCluster) databaseEncryptionKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
@@ -1598,4 +1604,144 @@ func newGkeDatabaseEncryption(de *containerpb.DatabaseEncryption) gkeDatabaseEnc
 		"currentState": res.currentState,
 	}
 	return res
+}
+
+// fetchUpgradeInfo calls FetchClusterUpgradeInfo once per cluster and serves
+// every upgrade field from the one response.
+func (g *mqlGcpProjectGkeServiceCluster) fetchUpgradeInfo() (*containerpb.ClusterUpgradeInfo, error) {
+	g.upgradeInfoLock.Lock()
+	defer g.upgradeInfoLock.Unlock()
+	if g.upgradeInfoFetched {
+		return g.upgradeInfo, g.upgradeInfoErr
+	}
+	g.upgradeInfoFetched = true
+
+	if g.ProjectId.Error != nil {
+		g.upgradeInfoErr = g.ProjectId.Error
+		return nil, g.upgradeInfoErr
+	}
+	if g.Location.Error != nil {
+		g.upgradeInfoErr = g.Location.Error
+		return nil, g.upgradeInfoErr
+	}
+	if g.Name.Error != nil {
+		g.upgradeInfoErr = g.Name.Error
+		return nil, g.upgradeInfoErr
+	}
+
+	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
+	creds, err := conn.Credentials(container.DefaultAuthScopes()...)
+	if err != nil {
+		g.upgradeInfoErr = err
+		return nil, err
+	}
+	ctx := context.Background()
+	client, err := container.NewClusterManagerClient(ctx, option.WithCredentials(creds), connection.GRPCClientTraceOption())
+	if err != nil {
+		g.upgradeInfoErr = err
+		return nil, err
+	}
+	defer client.Close()
+
+	info, err := client.FetchClusterUpgradeInfo(ctx, &containerpb.FetchClusterUpgradeInfoRequest{
+		Name: fmt.Sprintf("projects/%s/locations/%s/clusters/%s", g.ProjectId.Data, g.Location.Data, g.Name.Data),
+	})
+	if err != nil {
+		if rerr := classifyRefusal(err, "container.clusters.get"); rerr != nil {
+			err = rerr
+		}
+		g.upgradeInfoErr = err
+		return nil, err
+	}
+	g.upgradeInfo = info
+	return info, nil
+}
+
+// upgradeInfoTime parses a support end date from the upgrade info response, or
+// returns nil when the field is unset or unparseable. Despite their
+// *Timestamp names, GKE returns these fields as plain dates (2027-08-09); an
+// RFC 3339 value is accepted too.
+func upgradeInfoTime(ts *string) *time.Time {
+	if ts == nil || *ts == "" {
+		return nil
+	}
+	if t, err := time.Parse(time.RFC3339, *ts); err == nil {
+		return &t
+	}
+	if t, err := time.Parse("2006-01-02", *ts); err == nil {
+		return &t
+	}
+	return nil
+}
+
+func upgradeStatusStrings(in []containerpb.ClusterUpgradeInfo_AutoUpgradeStatus) []any {
+	res := make([]any, 0, len(in))
+	for _, s := range in {
+		res = append(res, s.String())
+	}
+	return res
+}
+
+func upgradePausedReasonStrings(in []containerpb.ClusterUpgradeInfo_AutoUpgradePausedReason) []any {
+	res := make([]any, 0, len(in))
+	for _, s := range in {
+		res = append(res, s.String())
+	}
+	return res
+}
+
+func (g *mqlGcpProjectGkeServiceCluster) endOfStandardSupport() (*time.Time, error) {
+	info, err := g.fetchUpgradeInfo()
+	if err != nil {
+		return nil, err
+	}
+	t := upgradeInfoTime(info.EndOfStandardSupportTimestamp)
+	if t == nil {
+		g.EndOfStandardSupport.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return t, nil
+}
+
+func (g *mqlGcpProjectGkeServiceCluster) endOfExtendedSupport() (*time.Time, error) {
+	info, err := g.fetchUpgradeInfo()
+	if err != nil {
+		return nil, err
+	}
+	t := upgradeInfoTime(info.EndOfExtendedSupportTimestamp)
+	if t == nil {
+		g.EndOfExtendedSupport.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return t, nil
+}
+
+func (g *mqlGcpProjectGkeServiceCluster) autoUpgradeStatus() ([]any, error) {
+	info, err := g.fetchUpgradeInfo()
+	if err != nil {
+		return nil, err
+	}
+	return upgradeStatusStrings(info.AutoUpgradeStatus), nil
+}
+
+func (g *mqlGcpProjectGkeServiceCluster) autoUpgradePausedReasons() ([]any, error) {
+	info, err := g.fetchUpgradeInfo()
+	if err != nil {
+		return nil, err
+	}
+	return upgradePausedReasonStrings(info.PausedReason), nil
+}
+
+func (g *mqlGcpProjectGkeServiceCluster) minorTargetVersion() (string, error) {
+	info, err := g.fetchUpgradeInfo()
+	if err != nil {
+		return "", err
+	}
+	return info.GetMinorTargetVersion(), nil
+}
+
+func (g *mqlGcpProjectGkeServiceCluster) patchTargetVersion() (string, error) {
+	info, err := g.fetchUpgradeInfo()
+	if err != nil {
+		return "", err
+	}
+	return info.GetPatchTargetVersion(), nil
 }
