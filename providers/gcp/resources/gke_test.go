@@ -5,6 +5,7 @@ package resources
 
 import (
 	"testing"
+	"time"
 
 	"cloud.google.com/go/container/apiv1/containerpb"
 	"github.com/stretchr/testify/assert"
@@ -131,4 +132,38 @@ func TestNewGkeDatabaseEncryption(t *testing.T) {
 		assert.Empty(t, got.currentState)
 		require.Contains(t, got.dict, "currentState")
 	})
+}
+
+func TestUpgradeInfoTime(t *testing.T) {
+	s := func(v string) *string { return &v }
+	// Measured: FetchClusterUpgradeInfo on a live zonal GKE 1.36 cluster on the
+	// REGULAR channel, 2026-11-23, returned date-only values:
+	// endOfStandardSupportTimestamp "2027-08-09",
+	// endOfExtendedSupportTimestamp "2028-06-09".
+	got := upgradeInfoTime(s("2027-08-09"))
+	require.NotNil(t, got)
+	assert.Equal(t, time.Date(2027, 8, 9, 0, 0, 0, 0, time.UTC), got.UTC())
+	got = upgradeInfoTime(s("2028-06-09"))
+	require.NotNil(t, got)
+	assert.Equal(t, time.Date(2028, 6, 9, 0, 0, 0, 0, time.UTC), got.UTC())
+	// Synthetic: RFC 3339 timestamp, the form the field name suggests.
+	got = upgradeInfoTime(s("2027-02-14T00:00:00Z"))
+	require.NotNil(t, got)
+	assert.Equal(t, time.Date(2027, 2, 14, 0, 0, 0, 0, time.UTC), got.UTC())
+	// Synthetic: unset, empty, and unparseable values are null, not year 1.
+	assert.Nil(t, upgradeInfoTime(nil))
+	assert.Nil(t, upgradeInfoTime(s("")))
+	assert.Nil(t, upgradeInfoTime(s("soon")))
+}
+
+func TestUpgradeStatusStrings(t *testing.T) {
+	// Synthetic: enum values render as their API names.
+	assert.Equal(t, []any{"ACTIVE", "MINOR_UPGRADE_PAUSED"}, upgradeStatusStrings([]containerpb.ClusterUpgradeInfo_AutoUpgradeStatus{
+		containerpb.ClusterUpgradeInfo_ACTIVE, containerpb.ClusterUpgradeInfo_MINOR_UPGRADE_PAUSED,
+	}))
+	assert.Equal(t, []any{"MAINTENANCE_WINDOW", "SYSTEM_CONFIG"}, upgradePausedReasonStrings([]containerpb.ClusterUpgradeInfo_AutoUpgradePausedReason{
+		containerpb.ClusterUpgradeInfo_MAINTENANCE_WINDOW, containerpb.ClusterUpgradeInfo_SYSTEM_CONFIG,
+	}))
+	assert.Empty(t, upgradeStatusStrings(nil))
+	assert.Empty(t, upgradePausedReasonStrings(nil))
 }

@@ -1167,6 +1167,8 @@ gcp.project.bigtableService.table.instanceName 11.3.1
 gcp.project.bigtableService.table.name 11.3.1
 gcp.project.bigtableService.table.projectId 11.3.1
 gcp.project.bigtableService.table.tieredStorageConfig 13.12.2
+gcp.project.billingAccount 14.11.1
+gcp.project.billingEnabled 14.11.1
 gcp.project.binaryAuthorization 9.0.0
 gcp.project.binaryAuthorizationControl 11.0.15
 gcp.project.binaryAuthorizationControl.admissionRule 11.0.15
@@ -2270,6 +2272,7 @@ gcp.project.computeService.instance.hasFullCloudPlatformScope 13.12.2
 gcp.project.computeService.instance.hasInstanceSshKeys 13.21.2
 gcp.project.computeService.instance.hasPublicIp 13.12.2
 gcp.project.computeService.instance.hostname 9.0.0
+gcp.project.computeService.instance.iamPolicy 14.11.1
 gcp.project.computeService.instance.id 9.0.0
 gcp.project.computeService.instance.instanceEncryption 13.37.1
 gcp.project.computeService.instance.instanceEncryptionKey 13.16.3
@@ -2853,6 +2856,7 @@ gcp.project.computeService.subnetwork.enableFlowLogs 9.0.0
 gcp.project.computeService.subnetwork.externalIpv6Prefix 9.0.0
 gcp.project.computeService.subnetwork.fingerprint 9.0.0
 gcp.project.computeService.subnetwork.gatewayAddress 9.0.0
+gcp.project.computeService.subnetwork.iamPolicy 14.11.1
 gcp.project.computeService.subnetwork.id 9.0.0
 gcp.project.computeService.subnetwork.instances 14.11.1
 gcp.project.computeService.subnetwork.internalIpv6Prefix 9.0.0
@@ -3916,6 +3920,8 @@ gcp.project.gkeService.cluster.anonymousAuthenticationConfig 13.16.3
 gcp.project.gkeService.cluster.authenticatorGroupsEnabled 13.32.1
 gcp.project.gkeService.cluster.authenticatorGroupsSecurityGroup 13.32.1
 gcp.project.gkeService.cluster.autoUpgradePatchMode 13.36.1
+gcp.project.gkeService.cluster.autoUpgradePausedReasons 14.11.1
+gcp.project.gkeService.cluster.autoUpgradeStatus 14.11.1
 gcp.project.gkeService.cluster.autopilotEnabled 9.0.0
 gcp.project.gkeService.cluster.autopilotWorkloadPolicyAllowNetAdmin 13.21.2
 gcp.project.gkeService.cluster.basicAuthEnabled 13.18.1
@@ -3957,6 +3963,8 @@ gcp.project.gkeService.cluster.description 9.0.0
 gcp.project.gkeService.cluster.enableKubernetesAlpha 9.0.0
 gcp.project.gkeService.cluster.enableTpu 11.6.6
 gcp.project.gkeService.cluster.enabledK8sBetaApis 13.1.2
+gcp.project.gkeService.cluster.endOfExtendedSupport 14.11.1
+gcp.project.gkeService.cluster.endOfStandardSupport 14.11.1
 gcp.project.gkeService.cluster.endpoint 9.0.0
 gcp.project.gkeService.cluster.enterpriseClusterTier 13.36.1
 gcp.project.gkeService.cluster.enterpriseDesiredTier 13.36.1
@@ -4002,6 +4010,7 @@ gcp.project.gkeService.cluster.masterAuth 9.0.0
 gcp.project.gkeService.cluster.masterAuthorizedNetworksAllowed 13.18.1
 gcp.project.gkeService.cluster.masterAuthorizedNetworksCidrs 13.18.1
 gcp.project.gkeService.cluster.meshCertificates 13.7.2
+gcp.project.gkeService.cluster.minorTargetVersion 14.11.1
 gcp.project.gkeService.cluster.monitoringConfig 13.16.3
 gcp.project.gkeService.cluster.monitoringEnabled 13.12.2
 gcp.project.gkeService.cluster.name 9.0.0
@@ -4160,6 +4169,7 @@ gcp.project.gkeService.cluster.notificationConfig.id 13.7.2
 gcp.project.gkeService.cluster.notificationConfig.pubsubEnabled 13.7.2
 gcp.project.gkeService.cluster.notificationConfig.pubsubTopic 13.7.2
 gcp.project.gkeService.cluster.notificationConfig.topic 13.7.2
+gcp.project.gkeService.cluster.patchTargetVersion 14.11.1
 gcp.project.gkeService.cluster.podAutoscalingHpaProfile 13.36.1
 gcp.project.gkeService.cluster.privateClusterConfig 9.0.0
 gcp.project.gkeService.cluster.projectId 9.0.0
