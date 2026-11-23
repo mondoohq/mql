@@ -303,3 +303,16 @@ func TestNetworkAclRegionAndId(t *testing.T) {
 	_, _, ok = networkAclRegionAndId("acl-0abc")
 	assert.False(t, ok)
 }
+
+func TestVolumeAttachedInstanceIds(t *testing.T) {
+	assert.Empty(t, volumeAttachedInstanceIds(nil))
+	// Synthetic: a Multi-Attach volume lists one attachment per instance; a
+	// service-managed attachment carries no instance id and is skipped.
+	got := volumeAttachedInstanceIds([]ec2types.VolumeAttachment{
+		{InstanceId: aws.String("i-0aaa")},
+		{InstanceId: aws.String("i-0bbb")},
+		{InstanceId: aws.String("i-0aaa")},
+		{InstanceId: nil, AssociatedResource: aws.String("arn:aws:ecs:us-east-1:123456789012:task/x")},
+	})
+	assert.Equal(t, []string{"i-0aaa", "i-0bbb"}, got)
+}

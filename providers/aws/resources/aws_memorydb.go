@@ -145,6 +145,13 @@ func newMqlAwsMemorydbCluster(runtime *plugin.Runtime, region string, accountID 
 		}
 	}
 
+	var endpointAddress *string
+	var endpointPort *int32
+	if cluster.ClusterEndpoint != nil {
+		endpointAddress = cluster.ClusterEndpoint.Address
+		endpointPort = &cluster.ClusterEndpoint.Port
+	}
+
 	resource, err := CreateResource(runtime, "aws.memorydb.cluster",
 		map[string]*llx.RawData{
 			"__id":                    llx.StringDataPtr(cluster.ARN),
@@ -166,6 +173,15 @@ func newMqlAwsMemorydbCluster(runtime *plugin.Runtime, region string, accountID 
 			"maintenanceWindow":       llx.StringDataPtr(cluster.MaintenanceWindow),
 			"autoMinorVersionUpgrade": llx.BoolDataPtr(cluster.AutoMinorVersionUpgrade),
 			"region":                  llx.StringData(region),
+			"snsTopicStatus":          llx.StringDataPtr(cluster.SnsTopicStatus),
+			"endpointAddress":         llx.StringDataPtr(endpointAddress),
+			"endpointPort":            llx.IntDataPtr(endpointPort),
+			"dataTiering":             memorydbDataTiering(cluster.DataTiering),
+			"networkType":             llx.StringData(string(cluster.NetworkType)),
+			"ipDiscovery":             llx.StringData(string(cluster.IpDiscovery)),
+			"availabilityMode":        llx.StringData(string(cluster.AvailabilityMode)),
+			"parameterGroupStatus":    llx.StringDataPtr(cluster.ParameterGroupStatus),
+			"multiRegionClusterName":  llx.StringDataPtr(cluster.MultiRegionClusterName),
 		})
 	if err != nil {
 		return nil, err
@@ -173,13 +189,88 @@ func newMqlAwsMemorydbCluster(runtime *plugin.Runtime, region string, accountID 
 
 	mqlCluster := resource.(*mqlAwsMemorydbCluster)
 	mqlCluster.cacheKmsKeyId = cluster.KmsKeyId
+	mqlCluster.cacheSnsTopicArn = convert.ToValue(cluster.SnsTopicArn)
 	mqlCluster.setSecurityGroupArns(sgs)
 	return mqlCluster, nil
 }
 
 type mqlAwsMemorydbClusterInternal struct {
 	securityGroupIdHandler
-	cacheKmsKeyId *string
+	cacheKmsKeyId    *string
+	cacheSnsTopicArn string
+}
+
+// memorydbDataTiering maps the two-state DataTieringStatus enum to a bool,
+// null when the API did not report it.
+func memorydbDataTiering(v memorydb_types.DataTieringStatus) *llx.RawData {
+	switch v {
+	case memorydb_types.DataTieringStatusTrue:
+		return llx.BoolData(true)
+	case memorydb_types.DataTieringStatusFalse:
+		return llx.BoolData(false)
+	}
+	return llx.NilData
+}
+
+func (a *mqlAwsMemorydbCluster) acl() (*mqlAwsMemorydbAcl, error) {
+	name := a.AclName.Data
+	if name == "" {
+		a.Acl.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	obj, err := CreateResource(a.MqlRuntime, ResourceAwsMemorydb, map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	acls := obj.(*mqlAwsMemorydb).GetAcls()
+	if acls.Error != nil {
+		return nil, acls.Error
+	}
+	for _, raw := range acls.Data {
+		acl, ok := raw.(*mqlAwsMemorydbAcl)
+		if ok && acl.Name.Data == name && acl.Region.Data == a.Region.Data {
+			return acl, nil
+		}
+	}
+	a.Acl.State = plugin.StateIsNull | plugin.StateIsSet
+	return nil, nil
+}
+
+func (a *mqlAwsMemorydbCluster) subnetGroup() (*mqlAwsMemorydbSubnetGroup, error) {
+	name := a.SubnetGroupName.Data
+	if name == "" {
+		a.SubnetGroup.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	obj, err := CreateResource(a.MqlRuntime, ResourceAwsMemorydb, map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	groups := obj.(*mqlAwsMemorydb).GetSubnetGroups()
+	if groups.Error != nil {
+		return nil, groups.Error
+	}
+	for _, raw := range groups.Data {
+		g, ok := raw.(*mqlAwsMemorydbSubnetGroup)
+		if ok && g.Name.Data == name && g.Region.Data == a.Region.Data {
+			return g, nil
+		}
+	}
+	a.SubnetGroup.State = plugin.StateIsNull | plugin.StateIsSet
+	return nil, nil
+}
+
+func (a *mqlAwsMemorydbCluster) snsTopic() (*mqlAwsSnsTopic, error) {
+	if a.cacheSnsTopicArn == "" {
+		a.SnsTopic.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	topic, err := NewResource(a.MqlRuntime, ResourceAwsSnsTopic,
+		map[string]*llx.RawData{"arn": llx.StringData(a.cacheSnsTopicArn)})
+	if err != nil {
+		return nil, err
+	}
+	return topic.(*mqlAwsSnsTopic), nil
 }
 
 func (a *mqlAwsMemorydbCluster) kmsKey() (*mqlAwsKmsKey, error) {

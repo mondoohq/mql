@@ -95,10 +95,17 @@ func (a *mqlAwsNeptune) getDbClusters(conn *connection.AwsConnection) []*jobpool
 type mqlAwsNeptuneClusterInternal struct {
 	cacheKmsKeyId string
 	securityGroupIdHandler
-	cacheRoleArns []string
+	cacheRoleArns          []string
+	cacheMemberIdentifiers []string
+	cacheReadReplicaIds    []string
 }
 
 func newMqlAwsNeptuneCluster(runtime *plugin.Runtime, region string, accountID string, cluster neptune_types.DBCluster) (*mqlAwsNeptuneCluster, error) {
+	var serverlessMin, serverlessMax *float64
+	if cluster.ServerlessV2ScalingConfiguration != nil {
+		serverlessMin = cluster.ServerlessV2ScalingConfiguration.MinCapacity
+		serverlessMax = cluster.ServerlessV2ScalingConfiguration.MaxCapacity
+	}
 	resource, err := CreateResource(runtime, "aws.neptune.cluster",
 		map[string]*llx.RawData{
 			"__id":                             llx.StringDataPtr(cluster.DBClusterArn),
@@ -133,11 +140,20 @@ func newMqlAwsNeptuneCluster(runtime *plugin.Runtime, region string, accountID s
 			"storageEncrypted":                 llx.BoolDataPtr(cluster.StorageEncrypted),
 			"storageType":                      llx.StringDataPtr(cluster.StorageType),
 			"networkType":                      llx.StringDataPtr(cluster.NetworkType),
+			"copyTagsToSnapshot":               llx.BoolDataPtr(cluster.CopyTagsToSnapshot),
+			"serverlessV2MinCapacity":          llx.FloatDataPtr(serverlessMin),
+			"serverlessV2MaxCapacity":          llx.FloatDataPtr(serverlessMax),
 		})
 	if err != nil {
 		return nil, err
 	}
 	resource.(*mqlAwsNeptuneCluster).cacheKmsKeyId = convert.ToValue(cluster.KmsKeyId)
+	for _, m := range cluster.DBClusterMembers {
+		if id := convert.ToValue(m.DBInstanceIdentifier); id != "" {
+			resource.(*mqlAwsNeptuneCluster).cacheMemberIdentifiers = append(resource.(*mqlAwsNeptuneCluster).cacheMemberIdentifiers, id)
+		}
+	}
+	resource.(*mqlAwsNeptuneCluster).cacheReadReplicaIds = cluster.ReadReplicaIdentifiers
 	sgsArn := []string{}
 	for _, sg := range cluster.VpcSecurityGroups {
 		if sg.VpcSecurityGroupId != nil {
@@ -522,4 +538,95 @@ func (a *mqlAwsNeptuneSnapshot) tags() (map[string]any, error) {
 		}
 		return tagsToMap(resp.TagList, func(t neptune_types.Tag) *string { return t.Key }, func(t neptune_types.Tag) *string { return t.Value }), nil
 	})
+}
+
+// neptuneClusterRefMatches reports whether a reference to a Neptune cluster,
+// given either as a cluster ARN or as a bare cluster identifier, names the
+// cluster with this ARN and identifier. A bare identifier is unique only
+// within a region, so it matches only a cluster in the referring region.
+func neptuneClusterRefMatches(ref, clusterArn, identifier string, sameRegion bool) bool {
+	if ref == "" {
+		return false
+	}
+	return ref == clusterArn || (sameRegion && ref == identifier)
+}
+
+func (a *mqlAwsNeptuneCluster) members() ([]any, error) {
+	res := []any{}
+	if len(a.cacheMemberIdentifiers) == 0 {
+		return res, nil
+	}
+	obj, err := CreateResource(a.MqlRuntime, ResourceAwsNeptune, map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	instances := obj.(*mqlAwsNeptune).GetInstances()
+	if instances.Error != nil {
+		return nil, instances.Error
+	}
+	byName := map[string]*mqlAwsNeptuneInstance{}
+	for _, raw := range instances.Data {
+		inst, ok := raw.(*mqlAwsNeptuneInstance)
+		if ok && inst.Region.Data == a.Region.Data {
+			byName[inst.Name.Data] = inst
+		}
+	}
+	for _, id := range a.cacheMemberIdentifiers {
+		if inst, ok := byName[id]; ok {
+			res = append(res, inst)
+		}
+	}
+	return res, nil
+}
+
+func (a *mqlAwsNeptuneCluster) readReplicas() ([]any, error) {
+	res := []any{}
+	if len(a.cacheReadReplicaIds) == 0 {
+		return res, nil
+	}
+	obj, err := CreateResource(a.MqlRuntime, ResourceAwsNeptune, map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	clusters := obj.(*mqlAwsNeptune).GetClusters()
+	if clusters.Error != nil {
+		return nil, clusters.Error
+	}
+	for _, ref := range a.cacheReadReplicaIds {
+		for _, raw := range clusters.Data {
+			c, ok := raw.(*mqlAwsNeptuneCluster)
+			if !ok {
+				continue
+			}
+			if neptuneClusterRefMatches(ref, c.Arn.Data, c.ClusterIdentifier.Data, c.Region.Data == a.Region.Data) {
+				res = append(res, c)
+				break
+			}
+		}
+	}
+	return res, nil
+}
+
+func (a *mqlAwsNeptuneInstance) cluster() (*mqlAwsNeptuneCluster, error) {
+	id := a.ClusterIdentifier.Data
+	if id == "" {
+		a.Cluster.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	obj, err := CreateResource(a.MqlRuntime, ResourceAwsNeptune, map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	clusters := obj.(*mqlAwsNeptune).GetClusters()
+	if clusters.Error != nil {
+		return nil, clusters.Error
+	}
+	for _, raw := range clusters.Data {
+		c, ok := raw.(*mqlAwsNeptuneCluster)
+		if ok && c.ClusterIdentifier.Data == id && c.Region.Data == a.Region.Data {
+			return c, nil
+		}
+	}
+	a.Cluster.State = plugin.StateIsNull | plugin.StateIsSet
+	return nil, nil
 }

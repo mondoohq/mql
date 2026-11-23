@@ -25,6 +25,9 @@ type mqlAwsApigatewayRestapiInternal struct {
 	// resourcesDenied records a refused GetResources read, so resources and
 	// methods each report their own field as null rather than empty.
 	resourcesDenied bool
+	// cacheVpcEndpointIds holds EndpointConfiguration.VpcEndpointIds for the
+	// vpcEndpoints accessor.
+	cacheVpcEndpointIds []string
 }
 
 // apigatewayMethodSpec is the part of an embedded method the schema reads,
