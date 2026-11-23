@@ -5,6 +5,7 @@ package resources
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,7 +13,10 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/network/resources/certificates"
 	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
+	"go.mondoo.com/mql/providers/os/resources/windows"
 	"go.mondoo.com/mql/utils/syncx"
 )
 
@@ -194,4 +198,94 @@ func TestOsRootCertificates_AixBundleWins(t *testing.T) {
 	require.NoError(t, err)
 	runtime := &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
 	assert.Equal(t, []string{"/var/ssl/certs/ca-bundle.crt"}, initedPaths(t, runtime))
+}
+
+// storeRuntime builds a Windows runtime, with the store command answering as given.
+func storeRuntime(t *testing.T, platform *inventory.Platform, command string, out *mock.Command) *plugin.Runtime {
+	t.Helper()
+	conn, err := mock.New(0, &inventory.Asset{Platform: platform}, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{command: out},
+	}))
+	require.NoError(t, err)
+	return &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+}
+
+// storeContent runs the init and returns its files and content.
+func storeContent(t *testing.T, runtime *plugin.Runtime) ([]any, []any) {
+	t.Helper()
+	args, _, err := initOsRootCertificates(runtime, map[string]*llx.RawData{})
+	require.NoError(t, err)
+	return args["files"].Value.([]any), args["content"].Value.([]any)
+}
+
+// commonNames parses content the way the shared certificates resource does.
+func commonNames(t *testing.T, content []any) ([]string, int) {
+	t.Helper()
+	require.Len(t, content, 1)
+	certs, skipped, err := certificates.ParseCertsFromPEMPartial(strings.NewReader(content[0].(string)))
+	require.NoError(t, err)
+	names := []string{}
+	for _, c := range certs {
+		names = append(names, c.Subject.CommonName)
+	}
+	return names, skipped
+}
+
+var windowsServer2022 = &inventory.Platform{
+	Name:    "windows",
+	Version: "20348",
+	Family:  []string{"windows", "os"},
+}
+
+// Windows errored with "root certificates are not supported on this
+// platform: windows 20348". The roots come from LocalMachine\Root.
+//
+// Measured: Windows Server 2022 Datacenter (build 20348), 2026-11-22, two of
+// the 33 entries RootCertificatesScript returned there.
+func TestOsRootCertificates_Windows(t *testing.T) {
+	data, err := os.ReadFile("windows/testdata/root-store.json")
+	require.NoError(t, err)
+	runtime := storeRuntime(t, windowsServer2022, powershell.Encode(windows.RootCertificatesScript),
+		&mock.Command{Stdout: string(data)})
+
+	files, content := storeContent(t, runtime)
+	assert.Empty(t, files)
+	names, skipped := commonNames(t, content)
+	assert.Equal(t, []string{"Microsoft Root Certificate Authority 2011", "Amazon Root CA 3"}, names)
+	assert.Equal(t, 0, skipped)
+}
+
+// Synthetic: a store entry without valid bytes; no target showed this. It
+// is counted as unparseable rather than dropped.
+func TestOsRootCertificates_WindowsBadEntryIsUnparseable(t *testing.T) {
+	data, err := os.ReadFile("windows/testdata/root-store.json")
+	require.NoError(t, err)
+	out := strings.Replace(string(data), "[", `[{"Location":"LocalMachine","Store":"Root","Thumbprint":"AA","Der":"not base64"},`, 1)
+	runtime := storeRuntime(t, windowsServer2022, powershell.Encode(windows.RootCertificatesScript),
+		&mock.Command{Stdout: out})
+
+	_, content := storeContent(t, runtime)
+	names, skipped := commonNames(t, content)
+	assert.Len(t, names, 2)
+	assert.Equal(t, 1, skipped)
+}
+
+// Synthetic: an empty Root store; no target showed this. It is an empty
+// list, not a bundle that fails to parse.
+func TestOsRootCertificates_WindowsEmptyStore(t *testing.T) {
+	runtime := storeRuntime(t, windowsServer2022, powershell.Encode(windows.RootCertificatesScript),
+		&mock.Command{Stdout: ""})
+
+	_, content := storeContent(t, runtime)
+	assert.Empty(t, content)
+}
+
+// Synthetic: the store cannot be read; no target showed this. An error, not
+// an empty list that reads as a host trusting no CA.
+func TestOsRootCertificates_WindowsStoreUnreadable(t *testing.T) {
+	runtime := storeRuntime(t, windowsServer2022, powershell.Encode(windows.RootCertificatesScript),
+		&mock.Command{Stderr: "Access is denied.", ExitStatus: 1})
+
+	_, _, err := initOsRootCertificates(runtime, map[string]*llx.RawData{})
+	assert.ErrorContains(t, err, "Access is denied.")
 }

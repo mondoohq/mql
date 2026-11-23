@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
+	"os"
 	"strings"
 	"testing"
 
@@ -119,4 +120,59 @@ func TestCertificatePemParsesAsX509(t *testing.T) {
 
 	_, err := x509.ParseCertificate(block.Bytes)
 	require.NoError(t, err, "the fixture must be a real certificate for this test to mean anything")
+}
+
+// Measured: Windows Server 2022 Datacenter (build 20348), 2026-11-22,
+// RootCertificatesScript output. Two of the 33 Root entries.
+func TestPemBundle_MeasuredRootStore(t *testing.T) {
+	data, err := os.ReadFile("testdata/root-store.json")
+	require.NoError(t, err)
+	certs, err := ParseCertificates(strings.NewReader(string(data)))
+	require.NoError(t, err)
+	require.Len(t, certs, 2)
+
+	bundle := []byte(PemBundle(certs))
+	var subjects []string
+	for len(bundle) > 0 {
+		var block *pem.Block
+		block, bundle = pem.Decode(bundle)
+		if block == nil {
+			break
+		}
+		c, err := x509.ParseCertificate(block.Bytes)
+		require.NoError(t, err)
+		subjects = append(subjects, c.Subject.CommonName)
+	}
+	assert.Equal(t, []string{"Microsoft Root Certificate Authority 2011", "Amazon Root CA 3"}, subjects)
+}
+
+// Synthetic: an entry without valid bytes; no target showed this. It keeps
+// a block of its own, which the x509 parser rejects, and does not stop the
+// entries after it from decoding.
+func TestPemBundle_BadEntryKeepsItsBlock(t *testing.T) {
+	bundle := []byte(PemBundle([]Certificate{
+		{Thumbprint: "AA", Der: "not base64 !"},
+		{Thumbprint: "BB", Der: ""},
+		{Thumbprint: "CC", Der: derFixture},
+	}))
+
+	var parsed, rejected int
+	for len(bundle) > 0 {
+		var block *pem.Block
+		block, bundle = pem.Decode(bundle)
+		if block == nil {
+			break
+		}
+		if _, err := x509.ParseCertificate(block.Bytes); err != nil {
+			rejected++
+		} else {
+			parsed++
+		}
+	}
+	assert.Equal(t, 1, parsed)
+	assert.Equal(t, 2, rejected)
+}
+
+func TestPemBundle_Empty(t *testing.T) {
+	assert.Equal(t, "", PemBundle(nil))
 }
