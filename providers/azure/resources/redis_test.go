@@ -184,3 +184,12 @@ func TestAzureSubscriptionCacheServiceRedis(t *testing.T) {
 		// privateEndpointConnections is now lazy-loaded and no longer in rawData
 	})
 }
+
+func TestRedisCacheRef(t *testing.T) {
+	// Synthetic: ARM ID shapes.
+	sub, rg, name, err := redisCacheRef("/subscriptions/s/resourceGroups/rg/providers/Microsoft.Cache/Redis/cache1")
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"s", "rg", "cache1"}, []string{sub, rg, name})
+	_, _, _, err = redisCacheRef("/subscriptions/s/resourceGroups/rg/providers/Microsoft.Storage/storageAccounts/sa")
+	assert.Error(t, err)
+}

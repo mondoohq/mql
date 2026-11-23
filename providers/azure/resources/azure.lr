@@ -15086,8 +15086,20 @@ private azure.subscription.iotService.iotHub @defaults("id name location") {
   diagnosticSettings() []azure.subscription.monitorService.diagnosticsetting
   // Diagnostic settings categories the IoT hub can emit (available log and metric categories)
   diagnosticSettingsCategories() []azure.subscription.monitorService.diagnosticSettingsCategory
+  // Legacy IP filter rules, applied in order; the first matching rule decides
+  ipFilterRules() []azure.subscription.iotService.iotHub.ipFilterRule
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
+}
+
+// IoT hub IP filter rule
+private azure.subscription.iotService.iotHub.ipFilterRule @defaults("name action ipMask") {
+  // Rule name
+  name string
+  // Action for matching addresses ("Accept" or "Reject")
+  action string
+  // Address range the rule matches, in CIDR notation
+  ipMask string
 }
 
 // Azure Cache for Redis
@@ -15226,6 +15238,51 @@ azure.subscription.cacheService.redisInstance @defaults("id hostName") {
   systemMetadata() azure.subscription.systemData
   // Diagnostic settings configured on the Redis cache (forwarding logs and metrics to Log Analytics, storage, or Event Hub)
   diagnosticSettings() []azure.subscription.monitorService.diagnosticsetting
+  // System-assigned managed identity of the cache, null when it has none
+  systemAssignedIdentity() azure.subscription.managedIdentity
+  // Data-plane access policies defined on the cache, built-in and custom
+  accessPolicies() []azure.subscription.cacheService.redisInstance.accessPolicy
+  // Microsoft Entra principals granted data-plane access, each with its access policy
+  accessPolicyAssignments() []azure.subscription.cacheService.redisInstance.accessPolicyAssignment
+}
+
+// Azure Cache for Redis access policy
+//
+// A named set of Redis permissions that Microsoft Entra principals are
+// assigned to. The built-in policies are "Data Owner", "Data Contributor",
+// and "Data Reader"; custom policies list their own permissions.
+private azure.subscription.cacheService.redisInstance.accessPolicy @defaults("name type") {
+  // ARM resource ID
+  id string
+  // Policy name
+  name string
+  // Policy type ("BuiltIn" or "Custom")
+  type string
+  // Redis ACL permissions the policy grants (for example "+@read +@connection ~*")
+  permissions string
+  // Provisioning state of the policy
+  provisioningState string
+}
+
+// Azure Cache for Redis access policy assignment
+//
+// Grants a Microsoft Entra principal data-plane access to the cache with one
+// access policy.
+private azure.subscription.cacheService.redisInstance.accessPolicyAssignment @defaults("objectIdAlias accessPolicyName") {
+  // ARM resource ID
+  id string
+  // Assignment name
+  name string
+  // Name of the access policy assigned
+  accessPolicyName string
+  // Object ID of the Microsoft Entra principal granted access
+  objectId string
+  // Username the principal authenticates to Redis with
+  objectIdAlias string
+  // Provisioning state of the assignment
+  provisioningState string
+  // Access policy assigned
+  accessPolicy() azure.subscription.cacheService.redisInstance.accessPolicy
 }
 
 // Azure Cache for Redis firewall rule
@@ -18583,6 +18640,47 @@ azure.subscription.containerAppService.containerApp @defaults("name location pro
   revisions() []azure.subscription.containerAppService.containerApp.revision
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
+  // Secrets declared on the app, by name and source; values are never returned
+  secrets() []azure.subscription.containerAppService.containerApp.secret
+  // Custom domains bound to the app's ingress
+  customDomains() []azure.subscription.containerAppService.containerApp.customDomain
+}
+
+// Container App secret
+//
+// A secret declared on a Container App, selected by `name`. Reports whether
+// the value is stored in the app itself or referenced from Key Vault, and for
+// a Key Vault reference the secret and the managed identity that reads it.
+// The secret value is never read.
+private azure.subscription.containerAppService.containerApp.secret @defaults("name keyVaultReferenced") {
+  // Secret name
+  name string
+  // Whether the value is referenced from Key Vault rather than stored in the app
+  keyVaultReferenced bool
+  // Key Vault secret URL the value is read from, empty when stored in the app
+  keyVaultSecretUrl string
+  // Key Vault secret the value is read from, null when stored in the app
+  keyVaultSecret() azure.subscription.keyVaultService.secret
+  // Managed identity the app reads the Key Vault secret with, null when stored in the app
+  identity() azure.subscription.managedIdentity
+}
+
+// Container App custom domain
+private azure.subscription.containerAppService.containerApp.customDomain @defaults("name bindingType") {
+  // Host name
+  name string
+  // TLS binding of the host name ("SniEnabled", "Disabled", or "Auto")
+  //
+  // "Disabled" serves the host name without a certificate, so HTTPS
+  // requests to it fail.
+  bindingType string
+  // ARM resource ID of the bound certificate, an environment or a managed certificate; empty when none is bound
+  certificateId string
+  // Environment certificate bound to the host name
+  //
+  // Null when no certificate is bound or the binding uses a managed
+  // certificate, which certificateId still identifies.
+  certificate() azure.subscription.containerAppService.managedEnvironment.certificate
 }
 
 // Ingress IP restriction rule of a container app

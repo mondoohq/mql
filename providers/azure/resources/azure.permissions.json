@@ -1,7 +1,7 @@
 {
   "provider": "azure",
   "version": "14.12.0",
-  "generated_at": "2026-11-23T13:21:56-08:00",
+  "generated_at": "2026-11-23T13:24:57-08:00",
   "permissions": [
     "Microsoft.Advisor/recommendations/read",
     "Microsoft.ApiManagement/service/apis/policies/read",
@@ -45,6 +45,8 @@
     "Microsoft.BotService/botServices/channels/read",
     "Microsoft.BotService/botServices/connections/read",
     "Microsoft.BotService/botServices/read",
+    "Microsoft.Cache/redis/accessPolicies/read",
+    "Microsoft.Cache/redis/accessPolicyAssignments/read",
     "Microsoft.Cache/redis/firewallRules/read",
     "Microsoft.Cache/redis/patchSchedules/read",
     "Microsoft.Cache/redis/read",
@@ -641,6 +643,18 @@
       "service": "Microsoft.BotService",
       "action": "NewListPager",
       "source_file": "botservice.go"
+    },
+    {
+      "permission": "Microsoft.Cache/redis/accessPolicies/read",
+      "service": "Microsoft.Cache",
+      "action": "NewListPager",
+      "source_file": "redis.go"
+    },
+    {
+      "permission": "Microsoft.Cache/redis/accessPolicyAssignments/read",
+      "service": "Microsoft.Cache",
+      "action": "NewListPager",
+      "source_file": "redis.go"
     },
     {
       "permission": "Microsoft.Cache/redis/firewallRules/read",
