@@ -664,7 +664,9 @@ oci.apigateway.deployment.timeUpdated 13.4.1
 oci.apigateway.deployments 13.4.1
 oci.apigateway.gateway 13.4.1
 oci.apigateway.gateway.caBundleIds 13.4.1
+oci.apigateway.gateway.caBundles 14.7.2
 oci.apigateway.gateway.certificate 13.4.1
+oci.apigateway.gateway.certificateAuthorities 14.7.2
 oci.apigateway.gateway.compartment 13.12.2
 oci.apigateway.gateway.created 13.4.1
 oci.apigateway.gateway.definedTags 13.4.1
@@ -2199,9 +2201,11 @@ oci.identity.authToken.expires 9.0.0
 oci.identity.authToken.id 9.0.0
 oci.identity.authToken.state 9.0.0
 oci.identity.authenticationPolicy 13.5.6
+oci.identity.authenticationPolicy.compartment 14.7.2
 oci.identity.authenticationPolicy.compartmentID 13.5.6
 oci.identity.authenticationPolicy.minimumPasswordLength 13.5.6
 oci.identity.authenticationPolicy.networkSourceIds 13.5.6
+oci.identity.authenticationPolicy.networkSources 14.7.2
 oci.identity.authenticationPolicy.passwordRequiresLowercase 13.5.6
 oci.identity.authenticationPolicy.passwordRequiresNumeric 13.5.6
 oci.identity.authenticationPolicy.passwordRequiresSpecial 13.5.6

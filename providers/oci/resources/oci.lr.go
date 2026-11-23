@@ -3066,6 +3066,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"oci.identity.authenticationPolicy.compartmentID": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciIdentityAuthenticationPolicy).GetCompartmentID()).ToDataRes(types.String)
 	},
+	"oci.identity.authenticationPolicy.compartment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciIdentityAuthenticationPolicy).GetCompartment()).ToDataRes(types.Resource("oci.compartment"))
+	},
 	"oci.identity.authenticationPolicy.minimumPasswordLength": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciIdentityAuthenticationPolicy).GetMinimumPasswordLength()).ToDataRes(types.Int)
 	},
@@ -3086,6 +3089,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"oci.identity.authenticationPolicy.networkSourceIds": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciIdentityAuthenticationPolicy).GetNetworkSourceIds()).ToDataRes(types.Array(types.String))
+	},
+	"oci.identity.authenticationPolicy.networkSources": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciIdentityAuthenticationPolicy).GetNetworkSources()).ToDataRes(types.Array(types.Resource("oci.identity.networkSource")))
 	},
 	"oci.compute.instances": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciCompute).GetInstances()).ToDataRes(types.Array(types.Resource("oci.compute.instance")))
@@ -9786,6 +9792,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"oci.apigateway.gateway.caBundleIds": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciApigatewayGateway).GetCaBundleIds()).ToDataRes(types.Array(types.String))
 	},
+	"oci.apigateway.gateway.caBundles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciApigatewayGateway).GetCaBundles()).ToDataRes(types.Array(types.Resource("oci.certificates.caBundle")))
+	},
+	"oci.apigateway.gateway.certificateAuthorities": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciApigatewayGateway).GetCertificateAuthorities()).ToDataRes(types.Array(types.Resource("oci.certificates.certificateAuthority")))
+	},
 	"oci.apigateway.gateway.state": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciApigatewayGateway).GetState()).ToDataRes(types.String)
 	},
@@ -16384,6 +16396,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOciIdentityAuthenticationPolicy).CompartmentID, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"oci.identity.authenticationPolicy.compartment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciIdentityAuthenticationPolicy).Compartment, ok = plugin.RawToTValue[*mqlOciCompartment](v.Value, v.Error)
+		return
+	},
 	"oci.identity.authenticationPolicy.minimumPasswordLength": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciIdentityAuthenticationPolicy).MinimumPasswordLength, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
@@ -16410,6 +16426,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"oci.identity.authenticationPolicy.networkSourceIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciIdentityAuthenticationPolicy).NetworkSourceIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"oci.identity.authenticationPolicy.networkSources": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciIdentityAuthenticationPolicy).NetworkSources, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"oci.compute.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -26098,6 +26118,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"oci.apigateway.gateway.caBundleIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciApigatewayGateway).CaBundleIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"oci.apigateway.gateway.caBundles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciApigatewayGateway).CaBundles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"oci.apigateway.gateway.certificateAuthorities": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciApigatewayGateway).CertificateAuthorities, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"oci.apigateway.gateway.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -37306,6 +37334,7 @@ type mqlOciIdentityAuthenticationPolicy struct {
 	__id       string
 	// optional: if you define mqlOciIdentityAuthenticationPolicyInternal it will be used here
 	CompartmentID                      plugin.TValue[string]
+	Compartment                        plugin.TValue[*mqlOciCompartment]
 	MinimumPasswordLength              plugin.TValue[int64]
 	PasswordRequiresUppercase          plugin.TValue[bool]
 	PasswordRequiresLowercase          plugin.TValue[bool]
@@ -37313,6 +37342,7 @@ type mqlOciIdentityAuthenticationPolicy struct {
 	PasswordRequiresSpecial            plugin.TValue[bool]
 	PasswordUsernameContainmentAllowed plugin.TValue[bool]
 	NetworkSourceIds                   plugin.TValue[[]any]
+	NetworkSources                     plugin.TValue[[]any]
 }
 
 // createOciIdentityAuthenticationPolicy creates a new instance of this resource
@@ -37356,6 +37386,22 @@ func (c *mqlOciIdentityAuthenticationPolicy) GetCompartmentID() *plugin.TValue[s
 	return &c.CompartmentID
 }
 
+func (c *mqlOciIdentityAuthenticationPolicy) GetCompartment() *plugin.TValue[*mqlOciCompartment] {
+	return plugin.GetOrCompute[*mqlOciCompartment](&c.Compartment, func() (*mqlOciCompartment, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.identity.authenticationPolicy", c.__id, "compartment")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciCompartment), nil
+			}
+		}
+
+		return c.compartment()
+	})
+}
+
 func (c *mqlOciIdentityAuthenticationPolicy) GetMinimumPasswordLength() *plugin.TValue[int64] {
 	return &c.MinimumPasswordLength
 }
@@ -37382,6 +37428,22 @@ func (c *mqlOciIdentityAuthenticationPolicy) GetPasswordUsernameContainmentAllow
 
 func (c *mqlOciIdentityAuthenticationPolicy) GetNetworkSourceIds() *plugin.TValue[[]any] {
 	return &c.NetworkSourceIds
+}
+
+func (c *mqlOciIdentityAuthenticationPolicy) GetNetworkSources() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.NetworkSources, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.identity.authenticationPolicy", c.__id, "networkSources")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.networkSources()
+	})
 }
 
 // mqlOciCompute for the oci.compute resource
@@ -62698,24 +62760,26 @@ type mqlOciApigatewayGateway struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlOciApigatewayGatewayInternal
-	Id                    plugin.TValue[string]
-	Name                  plugin.TValue[string]
-	Compartment           plugin.TValue[*mqlOciCompartment]
-	EndpointType          plugin.TValue[string]
-	IpMode                plugin.TValue[string]
-	Hostname              plugin.TValue[string]
-	HasResponseCache      plugin.TValue[bool]
-	IpAddresses           plugin.TValue[[]any]
-	Subnet                plugin.TValue[*mqlOciNetworkSubnet]
-	NetworkSecurityGroups plugin.TValue[[]any]
-	Certificate           plugin.TValue[*mqlOciApigatewayCertificate]
-	CaBundleIds           plugin.TValue[[]any]
-	State                 plugin.TValue[string]
-	Created               plugin.TValue[*time.Time]
-	TimeUpdated           plugin.TValue[*time.Time]
-	FreeformTags          plugin.TValue[map[string]any]
-	DefinedTags           plugin.TValue[map[string]any]
-	SystemTags            plugin.TValue[map[string]any]
+	Id                     plugin.TValue[string]
+	Name                   plugin.TValue[string]
+	Compartment            plugin.TValue[*mqlOciCompartment]
+	EndpointType           plugin.TValue[string]
+	IpMode                 plugin.TValue[string]
+	Hostname               plugin.TValue[string]
+	HasResponseCache       plugin.TValue[bool]
+	IpAddresses            plugin.TValue[[]any]
+	Subnet                 plugin.TValue[*mqlOciNetworkSubnet]
+	NetworkSecurityGroups  plugin.TValue[[]any]
+	Certificate            plugin.TValue[*mqlOciApigatewayCertificate]
+	CaBundleIds            plugin.TValue[[]any]
+	CaBundles              plugin.TValue[[]any]
+	CertificateAuthorities plugin.TValue[[]any]
+	State                  plugin.TValue[string]
+	Created                plugin.TValue[*time.Time]
+	TimeUpdated            plugin.TValue[*time.Time]
+	FreeformTags           plugin.TValue[map[string]any]
+	DefinedTags            plugin.TValue[map[string]any]
+	SystemTags             plugin.TValue[map[string]any]
 }
 
 // createOciApigatewayGateway creates a new instance of this resource
@@ -62854,6 +62918,38 @@ func (c *mqlOciApigatewayGateway) GetCertificate() *plugin.TValue[*mqlOciApigate
 func (c *mqlOciApigatewayGateway) GetCaBundleIds() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.CaBundleIds, func() ([]any, error) {
 		return c.caBundleIds()
+	})
+}
+
+func (c *mqlOciApigatewayGateway) GetCaBundles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.CaBundles, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.apigateway.gateway", c.__id, "caBundles")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.caBundles()
+	})
+}
+
+func (c *mqlOciApigatewayGateway) GetCertificateAuthorities() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.CertificateAuthorities, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.apigateway.gateway", c.__id, "certificateAuthorities")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.certificateAuthorities()
 	})
 }
 

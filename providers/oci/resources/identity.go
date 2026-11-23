@@ -1278,3 +1278,29 @@ func ociPolicySubjectNamesGroup(subject string, g ociGroupRef) bool {
 	subject = strings.Trim(subject, `'"`)
 	return g.name != "" && strings.EqualFold(subject, g.name)
 }
+
+func (o *mqlOciIdentityAuthenticationPolicy) compartment() (*mqlOciCompartment, error) {
+	return resolveOciCompartment(o.MqlRuntime, o.CompartmentID.Data, &o.Compartment)
+}
+
+// networkSources resolves the policy's network source OCIDs against the
+// network source listing. The network source resource has no init, so the
+// listed instances are the only fully populated ones.
+func (o *mqlOciIdentityAuthenticationPolicy) networkSources() ([]any, error) {
+	if len(o.NetworkSourceIds.Data) == 0 {
+		return []any{}, nil
+	}
+	items, err := ociServiceCollection(o.MqlRuntime, "oci.identity", func(r plugin.Resource) *plugin.TValue[[]any] {
+		return r.(*mqlOciIdentity).GetNetworkSources()
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ociMatchPolicyPrincipals(o.NetworkSourceIds.Data, items, func(raw any) (id, name string, ok bool) {
+		ns, ok := raw.(*mqlOciIdentityNetworkSource)
+		if !ok {
+			return "", "", false
+		}
+		return ns.Id.Data, "", true
+	}), nil
+}
