@@ -27,6 +27,7 @@ type mqlAzureSubscriptionDataFactoryServiceFactoryInternal struct {
 	cacheCmkKeyVersion           string
 	cacheCmkUserAssignedIdentity string
 	cacheSystemData              any
+	cachePurviewAccountId        string
 }
 
 func (a *mqlAzureSubscriptionDataFactoryServiceFactory) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
@@ -98,6 +99,7 @@ func (a *mqlAzureSubscriptionDataFactoryService) factories() ([]any, error) {
 			var repoConfig any
 			var cmkKeyName, cmkKeyVaultUri, cmkKeyVersion, cmkUserAssignedIdentity string
 			var created *llx.RawData
+			purviewAccountId := ""
 
 			if factory.Properties != nil {
 				if factory.Properties.PublicNetworkAccess != nil {
@@ -130,6 +132,9 @@ func (a *mqlAzureSubscriptionDataFactoryService) factories() ([]any, error) {
 					}
 				}
 				created = llx.TimeDataPtr(factory.Properties.CreateTime)
+				if pc := factory.Properties.PurviewConfiguration; pc != nil && pc.PurviewResourceID != nil {
+					purviewAccountId = *pc.PurviewResourceID
+				}
 			}
 			if created == nil {
 				created = llx.TimeData(llx.NeverFutureTime)
@@ -167,6 +172,7 @@ func (a *mqlAzureSubscriptionDataFactoryService) factories() ([]any, error) {
 			factoryRes.cacheCmkKeyVaultUri = cmkKeyVaultUri
 			factoryRes.cacheCmkKeyVersion = cmkKeyVersion
 			factoryRes.cacheCmkUserAssignedIdentity = cmkUserAssignedIdentity
+			factoryRes.cachePurviewAccountId = purviewAccountId
 			sysData, err := convert.JsonToDict(factory.SystemData)
 			if err != nil {
 				return nil, err

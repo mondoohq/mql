@@ -494,3 +494,51 @@ func isFactoryAccessDeniedError(err error) bool {
 	}
 	return false
 }
+
+// purviewAccount resolves the Microsoft Purview account the factory reports
+// lineage to.
+func (a *mqlAzureSubscriptionDataFactoryServiceFactory) purviewAccount() (*mqlAzureSubscriptionPurviewServiceAccount, error) {
+	if a.cachePurviewAccountId == "" {
+		a.PurviewAccount.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, ResourceAzureSubscriptionPurviewServiceAccount,
+		map[string]*llx.RawData{"id": llx.StringData(a.cachePurviewAccountId)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAzureSubscriptionPurviewServiceAccount), nil
+}
+
+// privateEndpointConnections lists the factory's private endpoint connections.
+// The factory record does not carry them, so this is one list call per factory.
+func (a *mqlAzureSubscriptionDataFactoryServiceFactory) privateEndpointConnections() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	parsed, err := ParseResourceID(a.Id.Data)
+	if err != nil {
+		return nil, err
+	}
+	rg, factoryName, err := factoryResourceGroup(a.Id.Data)
+	if err != nil {
+		return nil, err
+	}
+	client, err := armdatafactory.NewPrivateEndPointConnectionsClient(parsed.SubscriptionID, conn.Token(), &arm.ClientOptions{
+		ClientOptions: conn.ClientOptions(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	entries := []*armdatafactory.PrivateEndpointConnectionResource{}
+	pager := client.NewListByFactoryPager(rg, factoryName, nil)
+	for pager.More() {
+		page, err := pager.NextPage(context.Background())
+		if err != nil {
+			if isFactoryAccessDeniedError(err) {
+				return refusedCollection(&a.PrivateEndpointConnections, err, "Microsoft.DataFactory/factories/privateEndpointConnections/read")
+			}
+			return nil, err
+		}
+		entries = append(entries, page.Value...)
+	}
+	return azurePrivateEndpointConnectionsToMql(a.MqlRuntime, entries)
+}

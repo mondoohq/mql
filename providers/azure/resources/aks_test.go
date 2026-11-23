@@ -106,3 +106,38 @@ func TestInitAksClusterMatchesIDCaseInsensitively(t *testing.T) {
 	require.NoError(t, err)
 	assert.Same(t, cluster, res)
 }
+
+func TestAksContainerInsightsEnabled(t *testing.T) {
+	// Synthetic: the two places Container insights can be switched on, plus
+	// the disabled and absent cases; no target showed these.
+	assert.False(t, aksContainerInsightsEnabled(nil))
+	assert.False(t, aksContainerInsightsEnabled(&clusters.ManagedClusterProperties{}))
+	assert.True(t, aksContainerInsightsEnabled(&clusters.ManagedClusterProperties{
+		AzureMonitorProfile: &clusters.ManagedClusterAzureMonitorProfile{
+			ContainerInsights: &clusters.ManagedClusterAzureMonitorProfileContainerInsights{Enabled: ptr(true)},
+		},
+	}))
+	assert.True(t, aksContainerInsightsEnabled(&clusters.ManagedClusterProperties{
+		AddonProfiles: map[string]*clusters.ManagedClusterAddonProfile{"omsAgent": {Enabled: ptr(true)}},
+	}))
+	assert.False(t, aksContainerInsightsEnabled(&clusters.ManagedClusterProperties{
+		AddonProfiles: map[string]*clusters.ManagedClusterAddonProfile{
+			"omsagent":                  {Enabled: ptr(false)},
+			"azurepolicy":               {Enabled: ptr(true)},
+			"ingressApplicationGateway": nil,
+		},
+		AzureMonitorProfile: &clusters.ManagedClusterAzureMonitorProfile{
+			ContainerInsights: &clusters.ManagedClusterAzureMonitorProfileContainerInsights{Enabled: ptr(false)},
+		},
+	}))
+}
+
+func TestAksCustomPrivateDNSZoneID(t *testing.T) {
+	// Synthetic: the documented setting values; no target showed these.
+	zone := "/subscriptions/s/resourceGroups/rg/providers/Microsoft.Network/privateDnsZones/privatelink.eastus.azmk8s.io"
+	assert.Equal(t, zone, aksCustomPrivateDNSZoneID(zone))
+	assert.Empty(t, aksCustomPrivateDNSZoneID("system"))
+	assert.Empty(t, aksCustomPrivateDNSZoneID("System"))
+	assert.Empty(t, aksCustomPrivateDNSZoneID("none"))
+	assert.Empty(t, aksCustomPrivateDNSZoneID(""))
+}

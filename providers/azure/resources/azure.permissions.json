@@ -1,7 +1,7 @@
 {
   "provider": "azure",
   "version": "14.12.0",
-  "generated_at": "2026-11-23T12:59:37-08:00",
+  "generated_at": "2026-11-23T13:21:56-08:00",
   "permissions": [
     "Microsoft.Advisor/recommendations/read",
     "Microsoft.ApiManagement/service/apis/policies/read",
@@ -114,6 +114,7 @@
     "Microsoft.DataFactory/factories/linkedservices/read",
     "Microsoft.DataFactory/factories/managedVirtualNetworks/managedPrivateEndpoints/read",
     "Microsoft.DataFactory/factories/managedVirtualNetworks/read",
+    "Microsoft.DataFactory/factories/privateEndpointConnections/read",
     "Microsoft.DataFactory/factories/read",
     "Microsoft.DataProtection/backupVaults/backupInstances/read",
     "Microsoft.DataProtection/backupVaults/backupPolicies/read",
@@ -1051,6 +1052,12 @@
     },
     {
       "permission": "Microsoft.DataFactory/factories/managedVirtualNetworks/read",
+      "service": "Microsoft.DataFactory",
+      "action": "NewListByFactoryPager",
+      "source_file": "datafactory_extras.go"
+    },
+    {
+      "permission": "Microsoft.DataFactory/factories/privateEndpointConnections/read",
       "service": "Microsoft.DataFactory",
       "action": "NewListByFactoryPager",
       "source_file": "datafactory_extras.go"

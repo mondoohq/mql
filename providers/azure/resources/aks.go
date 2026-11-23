@@ -422,6 +422,10 @@ func (a *mqlAzureSubscriptionAksService) clusters() ([]any, error) {
 
 					"kubernetesResourceObjectEncryption": llx.StringDataPtr(aksKubernetesResourceObjectEncryption(entry.Properties.SecurityProfile)),
 					"enableFIPS":                         llx.BoolDataPtr(entry.Properties.EnableFIPS),
+
+					"currentKubernetesVersion": llx.StringDataPtr(entry.Properties.CurrentKubernetesVersion),
+					"outboundType":             llx.StringDataPtr(aksOutboundType(entry.Properties.NetworkProfile)),
+					"containerInsightsEnabled": llx.BoolData(aksContainerInsightsEnabled(entry.Properties)),
 				})
 			if err != nil {
 				return nil, err
@@ -837,4 +841,67 @@ func aksSku(sku *clusters.ManagedClusterSKU) (name string, tier string) {
 		tier = string(*sku.Tier)
 	}
 	return name, tier
+}
+
+// aksOutboundType returns the cluster's egress type, or nil when the network
+// profile does not report one.
+func aksOutboundType(np *clusters.NetworkProfile) *string {
+	if np == nil {
+		return nil
+	}
+	return stringEnumPtr(np.OutboundType)
+}
+
+// aksContainerInsightsEnabled reports whether Container insights is enabled,
+// through either the Azure Monitor profile or the legacy omsagent add-on
+// (whose key ARM returns as "omsagent" or "omsAgent").
+func aksContainerInsightsEnabled(p *clusters.ManagedClusterProperties) bool {
+	if p == nil {
+		return false
+	}
+	if amp := p.AzureMonitorProfile; amp != nil && amp.ContainerInsights != nil && convert.ToValue(amp.ContainerInsights.Enabled) {
+		return true
+	}
+	for name, addon := range p.AddonProfiles {
+		if strings.EqualFold(name, "omsagent") && addon != nil && convert.ToValue(addon.Enabled) {
+			return true
+		}
+	}
+	return false
+}
+
+// aksCustomPrivateDNSZoneID returns the private DNS zone setting when it names
+// a custom zone, and "" for the "system" and "none" modes or an unset value.
+func aksCustomPrivateDNSZoneID(setting string) string {
+	switch strings.ToLower(strings.TrimSpace(setting)) {
+	case "", "system", "none":
+		return ""
+	}
+	return setting
+}
+
+func (a *mqlAzureSubscriptionAksServiceCluster) apiServerPrivateDnsZone() (*mqlAzureSubscriptionDnsServicePrivateZone, error) {
+	id := aksCustomPrivateDNSZoneID(a.PrivateDnsZone.Data)
+	return resolveServerPrivateDnsZone(a.MqlRuntime, &id, &a.ApiServerPrivateDnsZone)
+}
+
+func (a *mqlAzureSubscriptionAksServiceClusterNodePool) vnetSubnet() (*mqlAzureSubscriptionNetworkServiceSubnet, error) {
+	return cognitiveServicesResolveSubnet(a.MqlRuntime, &a.VnetSubnet, a.VnetSubnetId.Data)
+}
+
+func (a *mqlAzureSubscriptionAksServiceClusterNodePool) podSubnet() (*mqlAzureSubscriptionNetworkServiceSubnet, error) {
+	return cognitiveServicesResolveSubnet(a.MqlRuntime, &a.PodSubnet, a.PodSubnetId.Data)
+}
+
+func (a *mqlAzureSubscriptionAksServiceClusterNodePool) nodePublicIpPrefix() (*mqlAzureSubscriptionNetworkServicePublicIpPrefix, error) {
+	if a.NodePublicIPPrefixId.Data == "" {
+		a.NodePublicIpPrefix.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, ResourceAzureSubscriptionNetworkServicePublicIpPrefix,
+		map[string]*llx.RawData{"id": llx.StringData(a.NodePublicIPPrefixId.Data)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAzureSubscriptionNetworkServicePublicIpPrefix), nil
 }
