@@ -112,3 +112,9 @@ func TestAzureKeyvaultIdParser(t *testing.T) {
 		assert.Equal(t, testCases[i].expected, *val)
 	}
 }
+
+func TestAnyStrings(t *testing.T) {
+	// Synthetic: a string list with a non-string element mixed in.
+	assert.Equal(t, []string{"a", "b"}, anyStrings([]any{"a", 1, nil, "b"}))
+	assert.Equal(t, []string{}, anyStrings(nil))
+}

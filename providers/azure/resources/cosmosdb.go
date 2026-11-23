@@ -962,3 +962,7 @@ func cosmosKeysMetadataToMql(runtime *plugin.Runtime, accountID string, km *cosm
 	}
 	return llx.ResourceData(res, resourceName), nil
 }
+
+func (a *mqlAzureSubscriptionCosmosDbServiceAccountVirtualNetworkRule) subnet() (*mqlAzureSubscriptionNetworkServiceSubnet, error) {
+	return cognitiveServicesResolveSubnet(a.MqlRuntime, &a.Subnet, a.SubnetId.Data)
+}

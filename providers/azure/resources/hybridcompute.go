@@ -190,11 +190,21 @@ func (a *mqlAzureSubscriptionComputeService) hybridMachines() ([]any, error) {
 				agentConfig = m.Properties.AgentConfiguration
 			}
 			maps.Copy(machineArgs, hybridAgentConfigArgs(agentConfig))
+			mgmt := hybridMachineManagementFields(m)
+			machineArgs["kind"] = llx.StringDataPtr(mgmt.kind)
+			machineArgs["identityType"] = llx.StringDataPtr(mgmt.identityType)
+			machineArgs["principalId"] = llx.StringDataPtr(mgmt.principalID)
+			machineArgs["patchMode"] = llx.StringDataPtr(mgmt.patchMode)
+			machineArgs["assessmentMode"] = llx.StringDataPtr(mgmt.assessmentMode)
+			machineArgs["hotpatchEnabled"] = llx.BoolDataPtr(mgmt.hotpatchEnabled)
+			machineArgs["agentAutoUpgradeEnabled"] = llx.BoolDataPtr(mgmt.agentAutoUpgradeEnabled)
+			machineArgs["mssqlDiscovered"] = llx.BoolDataPtr(mgmt.mssqlDiscovered)
 			mqlMachine, err := CreateResource(a.MqlRuntime, "azure.subscription.computeService.hybridMachine", machineArgs)
 			if err != nil {
 				return nil, err
 			}
 			mqlMachine.(*mqlAzureSubscriptionComputeServiceHybridMachine).cacheSystemData = systemDataDict
+			mqlMachine.(*mqlAzureSubscriptionComputeServiceHybridMachine).cacheIdentityTenantId = convert.ToValue(mgmt.tenantID)
 			res = append(res, mqlMachine)
 		}
 	}
@@ -321,7 +331,64 @@ func hybridMachineExtensionToMql(runtime *plugin.Runtime, ext *hybridcompute.Mac
 }
 
 type mqlAzureSubscriptionComputeServiceHybridMachineInternal struct {
-	cacheSystemData any
+	cacheSystemData       any
+	cacheIdentityTenantId string
+}
+
+// hybridMachineManagement holds the machine's identity, patch, and agent
+// upgrade settings.
+type hybridMachineManagement struct {
+	kind                    *string
+	identityType            *string
+	principalID             *string
+	tenantID                *string
+	patchMode               *string
+	assessmentMode          *string
+	hotpatchEnabled         *bool
+	agentAutoUpgradeEnabled *bool
+	mssqlDiscovered         *bool
+}
+
+// hybridMachineManagementFields reads the machine's identity, patch settings,
+// agent upgrade setting, and SQL Server discovery flag. Patch settings live
+// under the Windows or the Linux OS profile, whichever the machine has.
+func hybridMachineManagementFields(m *hybridcompute.Machine) hybridMachineManagement {
+	var res hybridMachineManagement
+	if m == nil {
+		return res
+	}
+	res.kind = stringEnumPtr(m.Kind)
+	if id := m.Identity; id != nil {
+		res.identityType = stringEnumPtr(id.Type)
+		res.principalID = id.PrincipalID
+		res.tenantID = id.TenantID
+	}
+	p := m.Properties
+	if p == nil {
+		return res
+	}
+	res.mssqlDiscovered = parseAgentBool(p.MssqlDiscovered)
+	if p.AgentUpgrade != nil {
+		res.agentAutoUpgradeEnabled = p.AgentUpgrade.EnableAutomaticUpgrade
+	}
+	var patch *hybridcompute.PatchSettings
+	if osp := p.OSProfile; osp != nil {
+		if osp.WindowsConfiguration != nil && osp.WindowsConfiguration.PatchSettings != nil {
+			patch = osp.WindowsConfiguration.PatchSettings
+		} else if osp.LinuxConfiguration != nil {
+			patch = osp.LinuxConfiguration.PatchSettings
+		}
+	}
+	if patch != nil {
+		res.patchMode = stringEnumPtr(patch.PatchMode)
+		res.assessmentMode = stringEnumPtr(patch.AssessmentMode)
+		res.hotpatchEnabled = patch.EnableHotpatching
+	}
+	return res
+}
+
+func (a *mqlAzureSubscriptionComputeServiceHybridMachine) systemAssignedIdentity() (*mqlAzureSubscriptionManagedIdentity, error) {
+	return newSystemAssignedManagedIdentity(a.MqlRuntime, a.Id.Data, a.PrincipalId.Data, a.cacheIdentityTenantId, &a.SystemAssignedIdentity)
 }
 
 type mqlAzureSubscriptionComputeServiceHybridMachineExtensionInternal struct {

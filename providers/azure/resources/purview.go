@@ -221,3 +221,12 @@ type mqlAzureSubscriptionPurviewServiceAccountInternal struct {
 func (a *mqlAzureSubscriptionPurviewServiceAccount) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
 	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
+
+// initAzureSubscriptionPurviewServiceAccount resolves a Purview account by its
+// ARM ID from the subscription's account list.
+func initAzureSubscriptionPurviewServiceAccount(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	return initFromServiceList(runtime, args,
+		ResourceAzureSubscriptionPurviewService,
+		func(s *mqlAzureSubscriptionPurviewService) *plugin.TValue[[]any] { return s.GetAccounts() },
+		ResourceAzureSubscriptionPurviewServiceAccount)
+}

@@ -1304,6 +1304,33 @@ azure.subscription.computeService.hybridMachine @defaults("name location osName 
   systemMetadata() azure.subscription.systemData
   // Installed Arc machine extensions
   extensions() []azure.subscription.computeService.hybridMachine.extension
+  // Platform Arc manages the machine through
+  //
+  // One of "AVS", "AWS", "EPS", "GCP", "HCI", "SCVMM", or "VMware". Null for
+  // a machine onboarded directly with the Connected Machine agent.
+  kind string
+  // Managed identity type ("SystemAssigned" for an onboarded machine)
+  identityType string
+  // Object ID (principal ID) of the machine's system-assigned managed identity
+  principalId string
+  // System-assigned managed identity of the machine, null when it has none
+  systemAssignedIdentity() azure.subscription.managedIdentity
+  // How OS patches are applied ("AutomaticByPlatform", "AutomaticByOS", "Manual", or "ImageDefault")
+  patchMode string
+  // How the machine is assessed for missing patches ("AutomaticByPlatform" for periodic assessment, or "ImageDefault")
+  assessmentMode string
+  // Whether hotpatching is enabled, so security updates apply without a reboot
+  //
+  // Null when the machine has not reported its patch settings.
+  hotpatchEnabled bool
+  // Whether the Connected Machine agent upgrades itself automatically
+  //
+  // Null when the setting was never configured.
+  agentAutoUpgradeEnabled bool
+  // Whether SQL Server was discovered on the machine
+  //
+  // Null when the agent has not reported discovery.
+  mssqlDiscovered bool
 }
 
 // Extension installed on an Azure Arc-enabled server (Microsoft.HybridCompute/machines/extensions)
@@ -2232,10 +2259,28 @@ azure.subscription.batchService.account @defaults("id name location") {
   networkProfile dict
   // Private endpoint connections
   //
-  // One entry per private endpoint connection. Keys: `id`, `name`,
-  // `type`, `etag`, and `properties` (with `groupIds`, `privateEndpoint`,
-  // `privateLinkServiceConnectionState`, and `provisioningState`).
-  privateEndpointConnections []dict
+  // Deprecated in favor of privateLinkConnections, which carries the
+  // connections as typed resources.
+  privateEndpointConnections @maturity("deprecated") @replaced_by("azure.subscription.batchService.account.privateLinkConnections") []dict
+  // Private endpoint connections to the account
+  privateLinkConnections() []azure.subscription.privateEndpointConnection
+  // Managed identity type ("SystemAssigned", "UserAssigned", "SystemAssigned,UserAssigned", or "None")
+  identityType string
+  // System-assigned managed identity of the account, null when it has none
+  systemAssignedIdentity() azure.subscription.managedIdentity
+  // Default action for the account endpoint ("Allow" or "Deny")
+  //
+  // Null when the account sets no access profile for the endpoint, which
+  // then follows publicNetworkAccess alone.
+  accountAccessDefaultAction string
+  // Source IP ranges allowed to reach the account endpoint when the default action is Deny
+  accountAccessIpRules []string
+  // Default action for the node management endpoint ("Allow" or "Deny")
+  //
+  // Null when the account sets no access profile for the endpoint.
+  nodeManagementAccessDefaultAction string
+  // Source IP ranges allowed to reach the node management endpoint when the default action is Deny
+  nodeManagementAccessIpRules []string
   // Batch account pools
   pools() []azure.subscription.batchService.account.pool
   // Batch account diagnostic settings
@@ -7186,6 +7231,8 @@ private azure.subscription.storageService.account @defaults("id name location") 
   networkRuleIpRanges []string
   // Virtual network subnet resource IDs allowed by network rules
   networkRuleVirtualNetworkSubnetIds []string
+  // Virtual network subnets allowed by network rules
+  networkRuleSubnets() []azure.subscription.networkService.subnet
   // Provisioning state of the storage account
   provisioningState string
   // When the storage account was created
@@ -10666,6 +10713,8 @@ private azure.subscription.cosmosDbService.account.virtualNetworkRule @defaults(
   subnetId string
   // Whether to allow requests from the subnet even if the service endpoint is not configured
   ignoreMissingVNetServiceEndpoint bool
+  // Virtual network subnet the rule allows
+  subnet() azure.subscription.networkService.subnet
 }
 
 // Azure Cosmos DB for MongoDB (vCore) cluster
@@ -11223,6 +11272,15 @@ azure.subscription.keyVaultService.managedHsm @defaults("name location") {
   provisioningState string
   // Scheduled purge date (if soft-deleted)
   scheduledPurgeDate time
+  // Security domain activation status ("Active", "NotActivated", "Failed", or "Unknown")
+  //
+  // A pool whose security domain was never downloaded is "NotActivated" and
+  // cannot perform key operations.
+  securityDomainActivationStatus string
+  // Detail message for the security domain activation status
+  securityDomainActivationStatusMessage string
+  // Detail message about the pool's current state
+  statusMessage string
   // Geo-replicated regions
   regions []dict
   // Private endpoint connections
@@ -11274,6 +11332,10 @@ private azure.subscription.keyVaultService.vault @defaults("vaultName type vault
   tags map[string]string
   // Vault URL
   vaultUri() string
+  // Microsoft Entra tenant that authenticates requests to the vault
+  tenantId() string
+  // Provisioning state of the vault ("Succeeded" or "RegisteringDns")
+  provisioningState() string
   // Raw vault properties
   //
   // The unprocessed vault property bag from Azure Resource Manager,
@@ -11373,6 +11435,8 @@ private azure.subscription.keyVaultService.vault.networkAcls @defaults("defaultA
   ipRules []string
   // List of virtual network subnet resource IDs
   virtualNetworkSubnetIds []string
+  // Virtual network subnets allowed to reach the vault
+  virtualNetworkSubnets() []azure.subscription.networkService.subnet
 }
 
 // Inbound network rule set of a managed HSM pool
@@ -11393,6 +11457,8 @@ private azure.subscription.keyVaultService.managedHsm.networkRuleSet @defaults("
   ipRules []string
   // Resource IDs of the virtual network subnets allowed to reach the pool
   virtualNetworkSubnetIds []string
+  // Virtual network subnets allowed to reach the pool
+  virtualNetworkSubnets() []azure.subscription.networkService.subnet
   // Names of the Azure service tags allowed to reach the pool
   serviceTags []string
 }
@@ -14060,7 +14126,27 @@ azure.subscription.aksService.cluster @defaults("name location kubernetesVersion
   // CIDR ranges authorized to access the AKS API server
   apiServerAuthorizedIPRanges []string
   // Private DNS zone mode for the AKS cluster
+  //
+  // "system" or "none", or the ARM resource ID of a custom zone, which
+  // apiServerPrivateDnsZone resolves.
   privateDnsZone string
+  // Custom private DNS zone the private API server's name is registered in
+  //
+  // Null when the cluster uses the AKS-managed zone ("system"), no zone
+  // ("none"), or is not a private cluster.
+  apiServerPrivateDnsZone() azure.subscription.dnsService.privateZone
+  // Kubernetes version the control plane is running
+  //
+  // kubernetesVersion is the requested version, which may be a major.minor
+  // alias such as "1.30"; this is the resolved patch version.
+  currentKubernetesVersion string
+  // How egress traffic leaves the cluster ("loadBalancer", "managedNATGateway", "userAssignedNATGateway", "userDefinedRouting", or "none")
+  outboundType string
+  // Whether Container insights sends container logs to Log Analytics
+  //
+  // True when either the Azure Monitor profile or the legacy omsagent
+  // add-on enables it.
+  containerInsightsEnabled bool
   // Whether Microsoft Defender security monitoring is enabled
   defenderEnabled bool
   // Whether Microsoft Defender security gating is enabled
@@ -14337,6 +14423,12 @@ private azure.subscription.aksService.cluster.nodePool @defaults("name mode vmSi
   proximityPlacementGroupId string
   // Resource ID of the dedicated host group (empty when not configured)
   hostGroupId string
+  // Subnet the pool's nodes are joined to; null when AKS created the virtual network
+  vnetSubnet() azure.subscription.networkService.subnet
+  // Subnet pods are placed in; null unless the pool uses a dedicated pod subnet
+  podSubnet() azure.subscription.networkService.subnet
+  // Public IP prefix node public IPs are allocated from; null when not configured
+  nodePublicIpPrefix() azure.subscription.networkService.publicIpPrefix
   // Provisioning state of the pool
   provisioningState string
   // Power state of the pool ("Running" or "Stopped")
@@ -15251,6 +15343,10 @@ azure.subscription.dataFactoryService.factory @defaults("name location") {
   integrationRuntimes() []azure.subscription.dataFactoryService.factory.integrationRuntime
   // Managed virtual network for the factory, if one exists
   managedVirtualNetwork() azure.subscription.dataFactoryService.factory.managedVirtualNetwork
+  // Microsoft Purview account the factory reports data lineage to; null when not connected
+  purviewAccount() azure.subscription.purviewService.account
+  // Private endpoint connections to the factory
+  privateEndpointConnections() []azure.subscription.privateEndpointConnection
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
   // Diagnostic settings configured on the data factory (forwarding logs and metrics to Log Analytics, storage, or Event Hub)
