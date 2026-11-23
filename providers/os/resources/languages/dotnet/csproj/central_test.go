@@ -27,6 +27,8 @@ const centralProject = `<Project Sdk="Microsoft.NET.Sdk">
     <PackageReference Include="serilog" />
     <PackageReference Include="Polly" VersionOverride="8.4.0" />
     <PackageReference Include="Dapper" Version="2.1.35" />
+    <PackageReference Include="MediatR" Version="11.0.0" VersionOverride="12.2.0" />
+    <PackageReference Include="Local" Version="1.2.3" />
     <PackageReference Include="Unmanaged" />
     <PackageReference Include="xunit" PrivateAssets="all" />
   </ItemGroup>
@@ -37,7 +39,8 @@ func TestCsprojCentralPackageVersions(t *testing.T) {
 		"Newtonsoft.Json": "13.0.3",
 		"Serilog":         "3.1.1", // ids are case-insensitive
 		"Polly":           "8.2.0", // overridden by the project
-		"Dapper":          "2.0.0", // the project's own Version wins
+		"Dapper":          "2.0.0", // a Version under CPM is an error (NU1008); the central one applies
+		"MediatR":         "12.0.0",
 		"xunit":           "2.9.0",
 	}}
 	info, err := (&Extractor{CentralVersions: central}).Parse(strings.NewReader(centralProject), "src/Api/Api.csproj")
@@ -48,7 +51,9 @@ func TestCsprojCentralPackageVersions(t *testing.T) {
 		"Newtonsoft.Json": "13.0.3",
 		"serilog":         "3.1.1",
 		"Polly":           "8.4.0",
-		"Dapper":          "2.1.35",
+		"Dapper":          "2.0.0",
+		"MediatR":         "12.2.0", // VersionOverride wins over Version and the central version
+		"Local":           "1.2.3",  // not centrally listed: its own Version is the last resort
 		"Unmanaged":       "",
 		"xunit":           "2.9.0",
 	} {
@@ -65,6 +70,8 @@ func TestCsprojWithoutCentralResolverIsUnchanged(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "", info.Transitive().Find("Newtonsoft.Json").Version)
 	assert.Equal(t, "8.4.0", info.Transitive().Find("Polly").Version, "VersionOverride is read on its own too")
+	assert.Equal(t, "2.1.35", info.Transitive().Find("Dapper").Version, "without central versions a reference's own Version is the answer")
+	assert.Equal(t, "11.0.0", info.Transitive().Find("MediatR").Version, "without central versions Version wins over VersionOverride")
 }
 
 func TestParsePackageVersions(t *testing.T) {

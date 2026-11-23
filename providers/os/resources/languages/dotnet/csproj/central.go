@@ -27,7 +27,9 @@ type CentralVersionResolver interface {
 	CentralPackageVersions(projectFile string) map[string]string
 }
 
-// maxPropsBytes bounds one Directory.Packages.props read.
+// maxPropsBytes bounds how much ParsePackageVersions reads from its reader.
+// It guards this parser only: a caller that reads the file into memory
+// before handing over a reader should bound that read itself.
 const maxPropsBytes = 8 << 20
 
 type packageVersionsDoc struct {
@@ -49,7 +51,8 @@ type packageVersionsDoc struct {
 //
 // A version spelled as an MSBuild property ("$(SerilogVersion)") is not
 // evaluated and is left out: this reads a file, it does not run MSBuild, and
-// an absent version is better than a wrong one.
+// an absent version is better than a wrong one. At most maxPropsBytes (8 MiB)
+// are read from r.
 func ParsePackageVersions(r io.Reader) (versions map[string]string, enabled bool, err error) {
 	var doc packageVersionsDoc
 	dec := xml.NewDecoder(io.LimitReader(r, maxPropsBytes))

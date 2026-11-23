@@ -88,16 +88,28 @@ func (p *project) Transitive() languages.Packages {
 	return all
 }
 
-// versionOf is the version a PackageReference resolves to: its own Version,
-// else its VersionOverride, else the centrally managed one.
+// versionOf is the version a PackageReference resolves to.
+//
+// Under Central Package Management (the resolver supplied central versions),
+// MSBuild's order applies: the reference's VersionOverride, then the central
+// version. A Version on the reference is an error there (NU1008) and is only
+// a last resort. Without central versions the reference's own Version is the
+// answer; VersionOverride exists only under Central Package Management, so it
+// is still the project's own statement and serves as the fallback.
 func (p *project) versionOf(ref packageReference) string {
+	if len(p.central) > 0 {
+		if v := ref.versionOverride(); v != "" {
+			return v
+		}
+		if v := p.central[strings.ToLower(ref.Include)]; v != "" {
+			return v
+		}
+		return ref.version()
+	}
 	if v := ref.version(); v != "" {
 		return v
 	}
-	if v := ref.versionOverride(); v != "" {
-		return v
-	}
-	return p.central[strings.ToLower(ref.Include)]
+	return ref.versionOverride()
 }
 
 func makePackage(ref packageReference, version string, evidence []string) *languages.Package {
