@@ -263,3 +263,8 @@ func initAzureSubscriptionDataFactoryServiceFactory(runtime *plugin.Runtime, arg
 
 	return nil, nil, errors.New("azure data factory does not exist")
 }
+
+func (a *mqlAzureSubscriptionDataFactoryServiceFactory) diagnosticSettings() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
+}

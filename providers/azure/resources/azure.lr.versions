@@ -692,6 +692,7 @@ azure.subscription.cacheService.redisInstance.configuration.maxmemoryPolicy 13.3
 azure.subscription.cacheService.redisInstance.configuration.preferredDataPersistenceAuthMethod 13.36.1
 azure.subscription.cacheService.redisInstance.configuration.rdbBackupEnabled 13.36.1
 azure.subscription.cacheService.redisInstance.configuration.rdbBackupFrequency 13.36.1
+azure.subscription.cacheService.redisInstance.diagnosticSettings 14.12.1
 azure.subscription.cacheService.redisInstance.disableAccessKeyAuthentication 13.35.1
 azure.subscription.cacheService.redisInstance.enableNonSslPort 11.4.4
 azure.subscription.cacheService.redisInstance.firewallRule 11.4.32
@@ -2225,6 +2226,7 @@ azure.subscription.containerRegistryService.registry.credentialSet.systemMetadat
 azure.subscription.containerRegistryService.registry.credentialSet.type 13.5.1
 azure.subscription.containerRegistryService.registry.credentialSets 13.5.1
 azure.subscription.containerRegistryService.registry.dataEndpointEnabled 13.3.3
+azure.subscription.containerRegistryService.registry.diagnosticSettings 14.12.1
 azure.subscription.containerRegistryService.registry.encryption 13.3.3
 azure.subscription.containerRegistryService.registry.encryption.id 13.3.3
 azure.subscription.containerRegistryService.registry.encryption.key 13.3.3
@@ -2613,6 +2615,7 @@ azure.subscription.dataFactoryService.factory 13.3.0
 azure.subscription.dataFactoryService.factory.cmkIdentity 13.23.1
 azure.subscription.dataFactoryService.factory.cmkKey 13.23.1
 azure.subscription.dataFactoryService.factory.created 13.3.0
+azure.subscription.dataFactoryService.factory.diagnosticSettings 14.12.1
 azure.subscription.dataFactoryService.factory.id 13.3.0
 azure.subscription.dataFactoryService.factory.identity 13.3.0
 azure.subscription.dataFactoryService.factory.integrationRuntime 13.10.2
@@ -3365,6 +3368,7 @@ azure.subscription.functionsService.functionApp.clientCertMode 13.3.3
 azure.subscription.functionsService.functionApp.configuration 13.11.3
 azure.subscription.functionsService.functionApp.connectionStrings 13.10.2
 azure.subscription.functionsService.functionApp.defaultHostName 13.3.3
+azure.subscription.functionsService.functionApp.diagnosticSettings 14.12.1
 azure.subscription.functionsService.functionApp.function 13.3.3
 azure.subscription.functionsService.functionApp.function.config 13.3.3
 azure.subscription.functionsService.functionApp.function.id 13.3.3
@@ -3496,6 +3500,7 @@ azure.subscription.keyVaultService.key.updated 9.0.1
 azure.subscription.keyVaultService.key.version 9.0.1
 azure.subscription.keyVaultService.key.versions 9.0.1
 azure.subscription.keyVaultService.managedHsm 13.3.3
+azure.subscription.keyVaultService.managedHsm.diagnosticSettings 14.12.1
 azure.subscription.keyVaultService.managedHsm.enablePurgeProtection 13.3.3
 azure.subscription.keyVaultService.managedHsm.enableSoftDelete 13.3.3
 azure.subscription.keyVaultService.managedHsm.hsmUri 13.3.3
@@ -4377,6 +4382,7 @@ azure.subscription.mySqlService.flexibleServer.dataEncryptionType 13.1.8
 azure.subscription.mySqlService.flexibleServer.databasePort 13.23.1
 azure.subscription.mySqlService.flexibleServer.databases 9.0.1
 azure.subscription.mySqlService.flexibleServer.delegatedSubnet 13.35.1
+azure.subscription.mySqlService.flexibleServer.diagnosticSettings 14.12.1
 azure.subscription.mySqlService.flexibleServer.firewallRules 9.0.1
 azure.subscription.mySqlService.flexibleServer.fullVersion 13.23.1
 azure.subscription.mySqlService.flexibleServer.geoBackupEncryptionKey 13.8.2
@@ -4662,6 +4668,7 @@ azure.subscription.networkService.applicationGateway.backendHttpSettings.trusted
 azure.subscription.networkService.applicationGateway.backendHttpSettings.validateCertChainAndExpiry 13.29.1
 azure.subscription.networkService.applicationGateway.backendHttpSettings.validateSNI 13.29.1
 azure.subscription.networkService.applicationGateway.defaultPredefinedSslPolicy 13.35.1
+azure.subscription.networkService.applicationGateway.diagnosticSettings 14.12.1
 azure.subscription.networkService.applicationGateway.disableDefaultServerHeaderInResponse 13.35.1
 azure.subscription.networkService.applicationGateway.enableFips 13.35.1
 azure.subscription.networkService.applicationGateway.enableHttp2 13.35.1
@@ -5033,6 +5040,7 @@ azure.subscription.networkService.firewall.applicationRule.name 9.0.8
 azure.subscription.networkService.firewall.applicationRule.priority 13.16.2
 azure.subscription.networkService.firewall.applicationRule.rules 13.16.2
 azure.subscription.networkService.firewall.applicationRules 9.0.8
+azure.subscription.networkService.firewall.diagnosticSettings 14.12.1
 azure.subscription.networkService.firewall.etag 9.0.8
 azure.subscription.networkService.firewall.id 9.0.8
 azure.subscription.networkService.firewall.ipConfig 9.0.8
@@ -5584,6 +5592,7 @@ azure.subscription.networkService.routeTable.type 11.4.28
 azure.subscription.networkService.routeTables 11.4.28
 azure.subscription.networkService.securityGroup 9.0.1
 azure.subscription.networkService.securityGroup.defaultSecurityRules 9.0.1
+azure.subscription.networkService.securityGroup.diagnosticSettings 14.12.1
 azure.subscription.networkService.securityGroup.etag 9.0.1
 azure.subscription.networkService.securityGroup.flowLog 13.16.2
 azure.subscription.networkService.securityGroup.id 9.0.1
@@ -5836,6 +5845,7 @@ azure.subscription.networkService.virtualNetwork.defaultNatGateway 13.23.1
 azure.subscription.networkService.virtualNetwork.dhcpOptions 9.0.10
 azure.subscription.networkService.virtualNetwork.dhcpOptions.dnsServers 9.0.10
 azure.subscription.networkService.virtualNetwork.dhcpOptions.id 9.0.10
+azure.subscription.networkService.virtualNetwork.diagnosticSettings 14.12.1
 azure.subscription.networkService.virtualNetwork.enableDdosProtection 9.0.10
 azure.subscription.networkService.virtualNetwork.enableVmProtection 9.0.10
 azure.subscription.networkService.virtualNetwork.encryptionEnabled 13.0.2
@@ -6315,6 +6325,7 @@ azure.subscription.postgreSqlService.flexibleServer.dataEncryptionKey 13.1.8
 azure.subscription.postgreSqlService.flexibleServer.dataEncryptionType 11.4.28
 azure.subscription.postgreSqlService.flexibleServer.databases 11.0.9
 azure.subscription.postgreSqlService.flexibleServer.delegatedSubnet 13.35.1
+azure.subscription.postgreSqlService.flexibleServer.diagnosticSettings 14.12.1
 azure.subscription.postgreSqlService.flexibleServer.entraTenantId 13.35.1
 azure.subscription.postgreSqlService.flexibleServer.firewallRules 11.0.9
 azure.subscription.postgreSqlService.flexibleServer.fullVersion 13.35.1
@@ -6445,6 +6456,7 @@ azure.subscription.recoveryServicesService.vault.backupPolicy.type 13.3.3
 azure.subscription.recoveryServicesService.vault.backupStorageVersion 13.3.3
 azure.subscription.recoveryServicesService.vault.costManagementGranularityLevel 13.30.1
 azure.subscription.recoveryServicesService.vault.crossSubscriptionRestoreState 13.36.1
+azure.subscription.recoveryServicesService.vault.diagnosticSettings 14.12.1
 azure.subscription.recoveryServicesService.vault.encryption 13.3.3
 azure.subscription.recoveryServicesService.vault.encryption.id 13.3.3
 azure.subscription.recoveryServicesService.vault.encryption.infrastructureEncryption 13.3.3
@@ -7683,6 +7695,7 @@ azure.subscription.synapseService.workspace.cmkKey 13.23.1
 azure.subscription.synapseService.workspace.computeSubnet 13.35.1
 azure.subscription.synapseService.workspace.defaultStorage 13.23.1
 azure.subscription.synapseService.workspace.defaultStorageFilesystem 13.23.1
+azure.subscription.synapseService.workspace.diagnosticSettings 14.12.1
 azure.subscription.synapseService.workspace.encryption 13.3.0
 azure.subscription.synapseService.workspace.firewallRule 13.33.8
 azure.subscription.synapseService.workspace.firewallRule.allowsAllIpv4 13.33.8

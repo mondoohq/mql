@@ -6032,6 +6032,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.networkService.firewall.applicationRules": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceFirewall).GetApplicationRules()).ToDataRes(types.Array(types.Resource("azure.subscription.networkService.firewall.applicationRule")))
 	},
+	"azure.subscription.networkService.firewall.diagnosticSettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceFirewall).GetDiagnosticSettings()).ToDataRes(types.Array(types.Resource("azure.subscription.monitorService.diagnosticsetting")))
+	},
 	"azure.subscription.networkService.firewall.ipConfig.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceFirewallIpConfig).GetId()).ToDataRes(types.String)
 	},
@@ -6802,6 +6805,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.networkService.virtualNetwork.flowLogs": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceVirtualNetwork).GetFlowLogs()).ToDataRes(types.Array(types.Resource("azure.subscription.networkService.watcher.flowlog")))
+	},
+	"azure.subscription.networkService.virtualNetwork.diagnosticSettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceVirtualNetwork).GetDiagnosticSettings()).ToDataRes(types.Array(types.Resource("azure.subscription.monitorService.diagnosticsetting")))
 	},
 	"azure.subscription.networkService.virtualNetwork.peering.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering).GetId()).ToDataRes(types.String)
@@ -7574,6 +7580,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.networkService.securityGroup.flowLog": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceSecurityGroup).GetFlowLog()).ToDataRes(types.Resource("azure.subscription.networkService.watcher.flowlog"))
 	},
+	"azure.subscription.networkService.securityGroup.diagnosticSettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceSecurityGroup).GetDiagnosticSettings()).ToDataRes(types.Array(types.Resource("azure.subscription.monitorService.diagnosticsetting")))
+	},
 	"azure.subscription.networkService.securityrule.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceSecurityrule).GetId()).ToDataRes(types.String)
 	},
@@ -7930,6 +7939,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.networkService.applicationGateway.publicIpAddresses": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceApplicationGateway).GetPublicIpAddresses()).ToDataRes(types.Array(types.Resource("azure.subscription.networkService.ipAddress")))
+	},
+	"azure.subscription.networkService.applicationGateway.diagnosticSettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceApplicationGateway).GetDiagnosticSettings()).ToDataRes(types.Array(types.Resource("azure.subscription.monitorService.diagnosticsetting")))
 	},
 	"azure.subscription.networkService.applicationGateway.gatewayIpConfig.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceApplicationGatewayGatewayIpConfig).GetId()).ToDataRes(types.String)
@@ -12710,6 +12722,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.postgreSqlService.flexibleServer.systemMetadata": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionPostgreSqlServiceFlexibleServer).GetSystemMetadata()).ToDataRes(types.Resource("azure.subscription.systemData"))
 	},
+	"azure.subscription.postgreSqlService.flexibleServer.diagnosticSettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionPostgreSqlServiceFlexibleServer).GetDiagnosticSettings()).ToDataRes(types.Array(types.Resource("azure.subscription.monitorService.diagnosticsetting")))
+	},
 	"azure.subscription.postgreSqlService.server.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionPostgreSqlServiceServer).GetId()).ToDataRes(types.String)
 	},
@@ -13261,6 +13276,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.mySqlService.flexibleServer.systemMetadata": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionMySqlServiceFlexibleServer).GetSystemMetadata()).ToDataRes(types.Resource("azure.subscription.systemData"))
+	},
+	"azure.subscription.mySqlService.flexibleServer.diagnosticSettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMySqlServiceFlexibleServer).GetDiagnosticSettings()).ToDataRes(types.Array(types.Resource("azure.subscription.monitorService.diagnosticsetting")))
 	},
 	"azure.subscription.mySqlService.flexibleServer.administrator.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionMySqlServiceFlexibleServerAdministrator).GetId()).ToDataRes(types.String)
@@ -14056,6 +14074,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.keyVaultService.managedHsm.roleAssignments": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionKeyVaultServiceManagedHsm).GetRoleAssignments()).ToDataRes(types.Array(types.Resource("azure.subscription.authorizationService.roleAssignment")))
+	},
+	"azure.subscription.keyVaultService.managedHsm.diagnosticSettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionKeyVaultServiceManagedHsm).GetDiagnosticSettings()).ToDataRes(types.Array(types.Resource("azure.subscription.monitorService.diagnosticsetting")))
 	},
 	"azure.subscription.keyVaultService.vault.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionKeyVaultServiceVault).GetId()).ToDataRes(types.String)
@@ -17654,6 +17675,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.cacheService.redisInstance.systemMetadata": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionCacheServiceRedisInstance).GetSystemMetadata()).ToDataRes(types.Resource("azure.subscription.systemData"))
 	},
+	"azure.subscription.cacheService.redisInstance.diagnosticSettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCacheServiceRedisInstance).GetDiagnosticSettings()).ToDataRes(types.Array(types.Resource("azure.subscription.monitorService.diagnosticsetting")))
+	},
 	"azure.subscription.cacheService.redisInstance.firewallRule.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionCacheServiceRedisInstanceFirewallRule).GetId()).ToDataRes(types.String)
 	},
@@ -17779,6 +17803,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.dataFactoryService.factory.systemMetadata": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionDataFactoryServiceFactory).GetSystemMetadata()).ToDataRes(types.Resource("azure.subscription.systemData"))
+	},
+	"azure.subscription.dataFactoryService.factory.diagnosticSettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDataFactoryServiceFactory).GetDiagnosticSettings()).ToDataRes(types.Array(types.Resource("azure.subscription.monitorService.diagnosticsetting")))
 	},
 	"azure.subscription.dataFactoryService.factory.linkedService.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionDataFactoryServiceFactoryLinkedService).GetId()).ToDataRes(types.String)
@@ -17996,6 +18023,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.synapseService.workspace.sqlPools": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspace).GetSqlPools()).ToDataRes(types.Array(types.Resource("azure.subscription.synapseService.workspace.sqlPool")))
 	},
+	"azure.subscription.synapseService.workspace.diagnosticSettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspace).GetDiagnosticSettings()).ToDataRes(types.Array(types.Resource("azure.subscription.monitorService.diagnosticsetting")))
+	},
 	"azure.subscription.synapseService.workspace.firewallRule.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionSynapseServiceWorkspaceFirewallRule).GetName()).ToDataRes(types.String)
 	},
@@ -18160,6 +18190,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.containerRegistryService.registry.systemMetadata": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionContainerRegistryServiceRegistry).GetSystemMetadata()).ToDataRes(types.Resource("azure.subscription.systemData"))
+	},
+	"azure.subscription.containerRegistryService.registry.diagnosticSettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionContainerRegistryServiceRegistry).GetDiagnosticSettings()).ToDataRes(types.Array(types.Resource("azure.subscription.monitorService.diagnosticsetting")))
 	},
 	"azure.subscription.containerRegistryService.registry.networkRuleSet.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionContainerRegistryServiceRegistryNetworkRuleSet).GetId()).ToDataRes(types.String)
@@ -18914,6 +18947,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.recoveryServicesService.vault.systemMetadata": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionRecoveryServicesServiceVault).GetSystemMetadata()).ToDataRes(types.Resource("azure.subscription.systemData"))
 	},
+	"azure.subscription.recoveryServicesService.vault.diagnosticSettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionRecoveryServicesServiceVault).GetDiagnosticSettings()).ToDataRes(types.Array(types.Resource("azure.subscription.monitorService.diagnosticsetting")))
+	},
 	"azure.subscription.recoveryServicesService.deletedVault.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionRecoveryServicesServiceDeletedVault).GetId()).ToDataRes(types.String)
 	},
@@ -19126,6 +19162,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.functionsService.functionApp.systemMetadata": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).GetSystemMetadata()).ToDataRes(types.Resource("azure.subscription.systemData"))
+	},
+	"azure.subscription.functionsService.functionApp.diagnosticSettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).GetDiagnosticSettings()).ToDataRes(types.Array(types.Resource("azure.subscription.monitorService.diagnosticsetting")))
 	},
 	"azure.subscription.functionsService.functionApp.appSetting.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionFunctionsServiceFunctionAppAppSetting).GetId()).ToDataRes(types.String)
@@ -29653,6 +29692,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionNetworkServiceFirewall).ApplicationRules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.networkService.firewall.diagnosticSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceFirewall).DiagnosticSettings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.networkService.firewall.ipConfig.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionNetworkServiceFirewallIpConfig).__id, ok = v.Value.(string)
 		return
@@ -30781,6 +30824,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionNetworkServiceVirtualNetwork).FlowLogs, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.networkService.virtualNetwork.diagnosticSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceVirtualNetwork).DiagnosticSettings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.networkService.virtualNetwork.peering.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering).__id, ok = v.Value.(string)
 		return
@@ -31881,6 +31928,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionNetworkServiceSecurityGroup).FlowLog, ok = plugin.RawToTValue[*mqlAzureSubscriptionNetworkServiceWatcherFlowlog](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.networkService.securityGroup.diagnosticSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceSecurityGroup).DiagnosticSettings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.networkService.securityrule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionNetworkServiceSecurityrule).__id, ok = v.Value.(string)
 		return
@@ -32383,6 +32434,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.networkService.applicationGateway.publicIpAddresses": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionNetworkServiceApplicationGateway).PublicIpAddresses, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkService.applicationGateway.diagnosticSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceApplicationGateway).DiagnosticSettings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.networkService.applicationGateway.gatewayIpConfig.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -39309,6 +39364,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionPostgreSqlServiceFlexibleServer).SystemMetadata, ok = plugin.RawToTValue[*mqlAzureSubscriptionSystemData](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.postgreSqlService.flexibleServer.diagnosticSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionPostgreSqlServiceFlexibleServer).DiagnosticSettings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.postgreSqlService.server.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionPostgreSqlServiceServer).__id, ok = v.Value.(string)
 		return
@@ -40099,6 +40158,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.mySqlService.flexibleServer.systemMetadata": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionMySqlServiceFlexibleServer).SystemMetadata, ok = plugin.RawToTValue[*mqlAzureSubscriptionSystemData](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.mySqlService.flexibleServer.diagnosticSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMySqlServiceFlexibleServer).DiagnosticSettings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.mySqlService.flexibleServer.administrator.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -41243,6 +41306,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.keyVaultService.managedHsm.roleAssignments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionKeyVaultServiceManagedHsm).RoleAssignments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.keyVaultService.managedHsm.diagnosticSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionKeyVaultServiceManagedHsm).DiagnosticSettings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.keyVaultService.vault.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -46509,6 +46576,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionCacheServiceRedisInstance).SystemMetadata, ok = plugin.RawToTValue[*mqlAzureSubscriptionSystemData](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.cacheService.redisInstance.diagnosticSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCacheServiceRedisInstance).DiagnosticSettings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.cacheService.redisInstance.firewallRule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionCacheServiceRedisInstanceFirewallRule).__id, ok = v.Value.(string)
 		return
@@ -46695,6 +46766,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.dataFactoryService.factory.systemMetadata": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionDataFactoryServiceFactory).SystemMetadata, ok = plugin.RawToTValue[*mqlAzureSubscriptionSystemData](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.dataFactoryService.factory.diagnosticSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDataFactoryServiceFactory).DiagnosticSettings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.dataFactoryService.factory.linkedService.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -47009,6 +47084,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionSynapseServiceWorkspace).SqlPools, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.synapseService.workspace.diagnosticSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSynapseServiceWorkspace).DiagnosticSettings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.synapseService.workspace.firewallRule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionSynapseServiceWorkspaceFirewallRule).__id, ok = v.Value.(string)
 		return
@@ -47243,6 +47322,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.containerRegistryService.registry.systemMetadata": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionContainerRegistryServiceRegistry).SystemMetadata, ok = plugin.RawToTValue[*mqlAzureSubscriptionSystemData](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.containerRegistryService.registry.diagnosticSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionContainerRegistryServiceRegistry).DiagnosticSettings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.containerRegistryService.registry.networkRuleSet.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -48345,6 +48428,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionRecoveryServicesServiceVault).SystemMetadata, ok = plugin.RawToTValue[*mqlAzureSubscriptionSystemData](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.recoveryServicesService.vault.diagnosticSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionRecoveryServicesServiceVault).DiagnosticSettings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.recoveryServicesService.deletedVault.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionRecoveryServicesServiceDeletedVault).__id, ok = v.Value.(string)
 		return
@@ -48667,6 +48754,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.functionsService.functionApp.systemMetadata": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).SystemMetadata, ok = plugin.RawToTValue[*mqlAzureSubscriptionSystemData](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.functionsService.functionApp.diagnosticSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).DiagnosticSettings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.functionsService.functionApp.appSetting.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -67486,6 +67577,7 @@ type mqlAzureSubscriptionNetworkServiceFirewall struct {
 	NetworkRules              plugin.TValue[[]any]
 	NatRules                  plugin.TValue[[]any]
 	ApplicationRules          plugin.TValue[[]any]
+	DiagnosticSettings        plugin.TValue[[]any]
 }
 
 // createAzureSubscriptionNetworkServiceFirewall creates a new instance of this resource
@@ -67670,6 +67762,22 @@ func (c *mqlAzureSubscriptionNetworkServiceFirewall) GetApplicationRules() *plug
 		}
 
 		return c.applicationRules()
+	})
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceFirewall) GetDiagnosticSettings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DiagnosticSettings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.networkService.firewall", c.__id, "diagnosticSettings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.diagnosticSettings()
 	})
 }
 
@@ -70269,6 +70377,7 @@ type mqlAzureSubscriptionNetworkServiceVirtualNetwork struct {
 	Peerings                    plugin.TValue[[]any]
 	DefaultNatGateway           plugin.TValue[*mqlAzureSubscriptionNetworkServiceNatGateway]
 	FlowLogs                    plugin.TValue[[]any]
+	DiagnosticSettings          plugin.TValue[[]any]
 }
 
 // createAzureSubscriptionNetworkServiceVirtualNetwork creates a new instance of this resource
@@ -70449,6 +70558,22 @@ func (c *mqlAzureSubscriptionNetworkServiceVirtualNetwork) GetFlowLogs() *plugin
 		}
 
 		return c.flowLogs()
+	})
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceVirtualNetwork) GetDiagnosticSettings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DiagnosticSettings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.networkService.virtualNetwork", c.__id, "diagnosticSettings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.diagnosticSettings()
 	})
 }
 
@@ -72942,6 +73067,7 @@ type mqlAzureSubscriptionNetworkServiceSecurityGroup struct {
 	SecurityRules        plugin.TValue[[]any]
 	DefaultSecurityRules plugin.TValue[[]any]
 	FlowLog              plugin.TValue[*mqlAzureSubscriptionNetworkServiceWatcherFlowlog]
+	DiagnosticSettings   plugin.TValue[[]any]
 }
 
 // createAzureSubscriptionNetworkServiceSecurityGroup creates a new instance of this resource
@@ -73086,6 +73212,22 @@ func (c *mqlAzureSubscriptionNetworkServiceSecurityGroup) GetFlowLog() *plugin.T
 		}
 
 		return c.flowLog()
+	})
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceSecurityGroup) GetDiagnosticSettings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DiagnosticSettings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.networkService.securityGroup", c.__id, "diagnosticSettings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.diagnosticSettings()
 	})
 }
 
@@ -73872,6 +74014,7 @@ type mqlAzureSubscriptionNetworkServiceApplicationGateway struct {
 	GatewayIpConfigs                     plugin.TValue[[]any]
 	DisableDefaultServerHeaderInResponse plugin.TValue[bool]
 	PublicIpAddresses                    plugin.TValue[[]any]
+	DiagnosticSettings                   plugin.TValue[[]any]
 }
 
 // createAzureSubscriptionNetworkServiceApplicationGateway creates a new instance of this resource
@@ -74104,6 +74247,22 @@ func (c *mqlAzureSubscriptionNetworkServiceApplicationGateway) GetPublicIpAddres
 		}
 
 		return c.publicIpAddresses()
+	})
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceApplicationGateway) GetDiagnosticSettings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DiagnosticSettings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.networkService.applicationGateway", c.__id, "diagnosticSettings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.diagnosticSettings()
 	})
 }
 
@@ -90077,6 +90236,7 @@ type mqlAzureSubscriptionPostgreSqlServiceFlexibleServer struct {
 	TenantId                     plugin.TValue[string]
 	UserAssignedIdentities       plugin.TValue[[]any]
 	SystemMetadata               plugin.TValue[*mqlAzureSubscriptionSystemData]
+	DiagnosticSettings           plugin.TValue[[]any]
 }
 
 // createAzureSubscriptionPostgreSqlServiceFlexibleServer creates a new instance of this resource
@@ -90433,6 +90593,22 @@ func (c *mqlAzureSubscriptionPostgreSqlServiceFlexibleServer) GetSystemMetadata(
 		}
 
 		return c.systemMetadata()
+	})
+}
+
+func (c *mqlAzureSubscriptionPostgreSqlServiceFlexibleServer) GetDiagnosticSettings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DiagnosticSettings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.postgreSqlService.flexibleServer", c.__id, "diagnosticSettings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.diagnosticSettings()
 	})
 }
 
@@ -91939,6 +92115,7 @@ type mqlAzureSubscriptionMySqlServiceFlexibleServer struct {
 	ThreatProtectionState      plugin.TValue[string]
 	AzureAdAdministrators      plugin.TValue[[]any]
 	SystemMetadata             plugin.TValue[*mqlAzureSubscriptionSystemData]
+	DiagnosticSettings         plugin.TValue[[]any]
 }
 
 // createAzureSubscriptionMySqlServiceFlexibleServer creates a new instance of this resource
@@ -92305,6 +92482,22 @@ func (c *mqlAzureSubscriptionMySqlServiceFlexibleServer) GetSystemMetadata() *pl
 		}
 
 		return c.systemMetadata()
+	})
+}
+
+func (c *mqlAzureSubscriptionMySqlServiceFlexibleServer) GetDiagnosticSettings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DiagnosticSettings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.mySqlService.flexibleServer", c.__id, "diagnosticSettings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.diagnosticSettings()
 	})
 }
 
@@ -94839,6 +95032,7 @@ type mqlAzureSubscriptionKeyVaultServiceManagedHsm struct {
 	SystemMetadata             plugin.TValue[*mqlAzureSubscriptionSystemData]
 	Keys                       plugin.TValue[[]any]
 	RoleAssignments            plugin.TValue[[]any]
+	DiagnosticSettings         plugin.TValue[[]any]
 }
 
 // createAzureSubscriptionKeyVaultServiceManagedHsm creates a new instance of this resource
@@ -95023,6 +95217,22 @@ func (c *mqlAzureSubscriptionKeyVaultServiceManagedHsm) GetRoleAssignments() *pl
 		}
 
 		return c.roleAssignments()
+	})
+}
+
+func (c *mqlAzureSubscriptionKeyVaultServiceManagedHsm) GetDiagnosticSettings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DiagnosticSettings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.keyVaultService.managedHsm", c.__id, "diagnosticSettings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.diagnosticSettings()
 	})
 }
 
@@ -107808,6 +108018,7 @@ type mqlAzureSubscriptionCacheServiceRedisInstance struct {
 	FirewallRules                  plugin.TValue[[]any]
 	PatchSchedules                 plugin.TValue[[]any]
 	SystemMetadata                 plugin.TValue[*mqlAzureSubscriptionSystemData]
+	DiagnosticSettings             plugin.TValue[[]any]
 }
 
 // createAzureSubscriptionCacheServiceRedisInstance creates a new instance of this resource
@@ -108080,6 +108291,22 @@ func (c *mqlAzureSubscriptionCacheServiceRedisInstance) GetSystemMetadata() *plu
 		}
 
 		return c.systemMetadata()
+	})
+}
+
+func (c *mqlAzureSubscriptionCacheServiceRedisInstance) GetDiagnosticSettings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DiagnosticSettings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.cacheService.redisInstance", c.__id, "diagnosticSettings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.diagnosticSettings()
 	})
 }
 
@@ -108454,6 +108681,7 @@ type mqlAzureSubscriptionDataFactoryServiceFactory struct {
 	IntegrationRuntimes    plugin.TValue[[]any]
 	ManagedVirtualNetwork  plugin.TValue[*mqlAzureSubscriptionDataFactoryServiceFactoryManagedVirtualNetwork]
 	SystemMetadata         plugin.TValue[*mqlAzureSubscriptionSystemData]
+	DiagnosticSettings     plugin.TValue[[]any]
 }
 
 // createAzureSubscriptionDataFactoryServiceFactory creates a new instance of this resource
@@ -108654,6 +108882,22 @@ func (c *mqlAzureSubscriptionDataFactoryServiceFactory) GetSystemMetadata() *plu
 		}
 
 		return c.systemMetadata()
+	})
+}
+
+func (c *mqlAzureSubscriptionDataFactoryServiceFactory) GetDiagnosticSettings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DiagnosticSettings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.dataFactoryService.factory", c.__id, "diagnosticSettings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.diagnosticSettings()
 	})
 }
 
@@ -109190,6 +109434,7 @@ type mqlAzureSubscriptionSynapseServiceWorkspace struct {
 	PrivateEndpointConnections    plugin.TValue[[]any]
 	FirewallRules                 plugin.TValue[[]any]
 	SqlPools                      plugin.TValue[[]any]
+	DiagnosticSettings            plugin.TValue[[]any]
 }
 
 // createAzureSubscriptionSynapseServiceWorkspace creates a new instance of this resource
@@ -109434,6 +109679,22 @@ func (c *mqlAzureSubscriptionSynapseServiceWorkspace) GetSqlPools() *plugin.TVal
 		}
 
 		return c.sqlPools()
+	})
+}
+
+func (c *mqlAzureSubscriptionSynapseServiceWorkspace) GetDiagnosticSettings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DiagnosticSettings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.synapseService.workspace", c.__id, "diagnosticSettings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.diagnosticSettings()
 	})
 }
 
@@ -109729,6 +109990,7 @@ type mqlAzureSubscriptionContainerRegistryServiceRegistry struct {
 	CredentialSets                   plugin.TValue[[]any]
 	ConnectedRegistries              plugin.TValue[[]any]
 	SystemMetadata                   plugin.TValue[*mqlAzureSubscriptionSystemData]
+	DiagnosticSettings               plugin.TValue[[]any]
 }
 
 // createAzureSubscriptionContainerRegistryServiceRegistry creates a new instance of this resource
@@ -110049,6 +110311,22 @@ func (c *mqlAzureSubscriptionContainerRegistryServiceRegistry) GetSystemMetadata
 		}
 
 		return c.systemMetadata()
+	})
+}
+
+func (c *mqlAzureSubscriptionContainerRegistryServiceRegistry) GetDiagnosticSettings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DiagnosticSettings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.containerRegistryService.registry", c.__id, "diagnosticSettings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.diagnosticSettings()
 	})
 }
 
@@ -112578,6 +112856,7 @@ type mqlAzureSubscriptionRecoveryServicesServiceVault struct {
 	BackupPolicies                      plugin.TValue[[]any]
 	ProtectedItems                      plugin.TValue[[]any]
 	SystemMetadata                      plugin.TValue[*mqlAzureSubscriptionSystemData]
+	DiagnosticSettings                  plugin.TValue[[]any]
 }
 
 // createAzureSubscriptionRecoveryServicesServiceVault creates a new instance of this resource
@@ -112842,6 +113121,22 @@ func (c *mqlAzureSubscriptionRecoveryServicesServiceVault) GetSystemMetadata() *
 		}
 
 		return c.systemMetadata()
+	})
+}
+
+func (c *mqlAzureSubscriptionRecoveryServicesServiceVault) GetDiagnosticSettings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DiagnosticSettings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.recoveryServicesService.vault", c.__id, "diagnosticSettings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.diagnosticSettings()
 	})
 }
 
@@ -113545,6 +113840,7 @@ type mqlAzureSubscriptionFunctionsServiceFunctionApp struct {
 	AppSettings               plugin.TValue[[]any]
 	ConnectionStrings         plugin.TValue[[]any]
 	SystemMetadata            plugin.TValue[*mqlAzureSubscriptionSystemData]
+	DiagnosticSettings        plugin.TValue[[]any]
 }
 
 // createAzureSubscriptionFunctionsServiceFunctionApp creates a new instance of this resource
@@ -113759,6 +114055,22 @@ func (c *mqlAzureSubscriptionFunctionsServiceFunctionApp) GetSystemMetadata() *p
 		}
 
 		return c.systemMetadata()
+	})
+}
+
+func (c *mqlAzureSubscriptionFunctionsServiceFunctionApp) GetDiagnosticSettings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DiagnosticSettings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.functionsService.functionApp", c.__id, "diagnosticSettings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.diagnosticSettings()
 	})
 }
 

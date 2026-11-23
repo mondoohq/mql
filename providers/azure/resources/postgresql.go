@@ -914,3 +914,8 @@ func postgresFullVersion(version, minorVersion *string) *string {
 	full := *version + "." + *minorVersion
 	return &full
 }
+
+func (a *mqlAzureSubscriptionPostgreSqlServiceFlexibleServer) diagnosticSettings() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
+}

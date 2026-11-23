@@ -2311,3 +2311,8 @@ func keyVaultPageFault(field *plugin.TValue[[]any], collected []any, what string
 
 	return nil, err
 }
+
+func (a *mqlAzureSubscriptionKeyVaultServiceManagedHsm) diagnosticSettings() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
+}

@@ -988,3 +988,8 @@ func initAzureSubscriptionMySqlServiceFlexibleServer(runtime *plugin.Runtime, ar
 
 	return nil, nil, errors.New("azure mysql flexible server does not exist")
 }
+
+func (a *mqlAzureSubscriptionMySqlServiceFlexibleServer) diagnosticSettings() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
+}

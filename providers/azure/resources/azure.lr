@@ -2935,6 +2935,8 @@ azure.subscription.networkService.firewall @defaults("id name location") {
   natRules() []azure.subscription.networkService.firewall.natRule
   // List of application rules for the firewall
   applicationRules() []azure.subscription.networkService.firewall.applicationRule
+  // Diagnostic settings configured on the firewall (forwarding logs and metrics to Log Analytics, storage, or Event Hub)
+  diagnosticSettings() []azure.subscription.monitorService.diagnosticsetting
 }
 
 // Azure network firewall IP configuration
@@ -3760,6 +3762,8 @@ azure.subscription.networkService.virtualNetwork @defaults("id name location") {
   defaultNatGateway() azure.subscription.networkService.natGateway
   // Flow logs that target this virtual network
   flowLogs() []azure.subscription.networkService.watcher.flowlog
+  // Diagnostic settings configured on the virtual network (forwarding logs and metrics to Log Analytics, storage, or Event Hub)
+  diagnosticSettings() []azure.subscription.monitorService.diagnosticsetting
 }
 
 // Azure VNet peering
@@ -4552,6 +4556,8 @@ private azure.subscription.networkService.securityGroup @defaults("id name locat
   // no flow log targets the NSG. Use this to verify NSG flow logs are enabled
   // with adequate retention without traversing every Network Watcher.
   flowLog() azure.subscription.networkService.watcher.flowlog
+  // Diagnostic settings configured on the network security group (forwarding logs and metrics to Log Analytics, storage, or Event Hub)
+  diagnosticSettings() []azure.subscription.monitorService.diagnosticsetting
 }
 
 // Azure network security rule
@@ -4912,6 +4918,8 @@ azure.subscription.networkService.applicationGateway @defaults("id name location
   disableDefaultServerHeaderInResponse bool
   // Public IP addresses bound to the application gateway's internet-facing frontends, empty for an internal-only gateway
   publicIpAddresses() []azure.subscription.networkService.ipAddress
+  // Diagnostic settings configured on the application gateway (forwarding logs and metrics to Log Analytics, storage, or Event Hub)
+  diagnosticSettings() []azure.subscription.monitorService.diagnosticsetting
 }
 
 // Azure Application Gateway IP configuration
@@ -9767,6 +9775,8 @@ private azure.subscription.postgreSqlService.flexibleServer @defaults("name loca
   userAssignedIdentities() []azure.subscription.managedIdentity
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
+  // Diagnostic settings configured on the PostgreSQL flexible server (forwarding logs and metrics to Log Analytics, storage, or Event Hub)
+  diagnosticSettings() []azure.subscription.monitorService.diagnosticsetting
 }
 
 // Azure Database for PostgreSQL server
@@ -10311,6 +10321,8 @@ private azure.subscription.mySqlService.flexibleServer @defaults("name location 
   azureAdAdministrators() []azure.subscription.mySqlService.flexibleServer.administrator
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
+  // Diagnostic settings configured on the MySQL flexible server (forwarding logs and metrics to Log Analytics, storage, or Event Hub)
+  diagnosticSettings() []azure.subscription.monitorService.diagnosticsetting
 }
 
 // Azure Database for MySQL flexible server Microsoft Entra administrator
@@ -11108,6 +11120,8 @@ azure.subscription.keyVaultService.managedHsm @defaults("name location") {
   // does not appear here; initialAdminObjectIds names its bootstrap
   // administrators.
   roleAssignments() []azure.subscription.authorizationService.roleAssignment
+  // Diagnostic settings configured on the Managed HSM pool (forwarding logs and metrics to Log Analytics, storage, or Event Hub)
+  diagnosticSettings() []azure.subscription.monitorService.diagnosticsetting
 }
 
 // Azure Key Vault vault
@@ -14989,6 +15003,8 @@ azure.subscription.cacheService.redisInstance @defaults("id hostName") {
   patchSchedules() []azure.subscription.cacheService.redisInstance.patchSchedule
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
+  // Diagnostic settings configured on the Redis cache (forwarding logs and metrics to Log Analytics, storage, or Event Hub)
+  diagnosticSettings() []azure.subscription.monitorService.diagnosticsetting
 }
 
 // Azure Cache for Redis firewall rule
@@ -15108,6 +15124,8 @@ azure.subscription.dataFactoryService.factory @defaults("name location") {
   managedVirtualNetwork() azure.subscription.dataFactoryService.factory.managedVirtualNetwork
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
+  // Diagnostic settings configured on the data factory (forwarding logs and metrics to Log Analytics, storage, or Event Hub)
+  diagnosticSettings() []azure.subscription.monitorService.diagnosticsetting
 }
 
 // Azure Data Factory linked service
@@ -15355,6 +15373,8 @@ azure.subscription.synapseService.workspace @defaults("name location") {
   firewallRules() []azure.subscription.synapseService.workspace.firewallRule
   // Dedicated SQL pools in the workspace
   sqlPools() []azure.subscription.synapseService.workspace.sqlPool
+  // Diagnostic settings configured on the Synapse workspace (forwarding logs and metrics to Log Analytics, storage, or Event Hub)
+  diagnosticSettings() []azure.subscription.monitorService.diagnosticsetting
 }
 
 // Synapse workspace IP firewall rule
@@ -15519,6 +15539,8 @@ azure.subscription.containerRegistryService.registry @defaults("id name location
   connectedRegistries() []azure.subscription.containerRegistryService.registry.connectedRegistry
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
+  // Diagnostic settings configured on the container registry (forwarding logs and metrics to Log Analytics, storage, or Event Hub)
+  diagnosticSettings() []azure.subscription.monitorService.diagnosticsetting
 }
 
 // Network rule set for an Azure Container Registry
@@ -16189,6 +16211,8 @@ azure.subscription.recoveryServicesService.vault @defaults("id name location sku
   protectedItems() []azure.subscription.recoveryServicesService.vault.protectedItem
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
+  // Diagnostic settings configured on the Recovery Services vault (forwarding logs and metrics to Log Analytics, storage, or Event Hub)
+  diagnosticSettings() []azure.subscription.monitorService.diagnosticsetting
 }
 
 // Soft-deleted Azure Recovery Services vault
@@ -16436,6 +16460,8 @@ azure.subscription.functionsService.functionApp @defaults("id name location") {
   connectionStrings() []dict
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
+  // Diagnostic settings configured on the function app (forwarding logs and metrics to Log Analytics, storage, or Event Hub)
+  diagnosticSettings() []azure.subscription.monitorService.diagnosticsetting
 }
 
 // Azure Function App application setting

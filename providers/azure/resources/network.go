@@ -6994,3 +6994,23 @@ func initAzureSubscriptionNetworkServiceApplicationGateway(runtime *plugin.Runti
 		func(s *mqlAzureSubscriptionNetworkService) *plugin.TValue[[]any] { return s.GetApplicationGateways() },
 		ResourceAzureSubscriptionNetworkServiceApplicationGateway)
 }
+
+func (a *mqlAzureSubscriptionNetworkServiceFirewall) diagnosticSettings() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
+}
+
+func (a *mqlAzureSubscriptionNetworkServiceApplicationGateway) diagnosticSettings() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
+}
+
+func (a *mqlAzureSubscriptionNetworkServiceSecurityGroup) diagnosticSettings() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
+}
+
+func (a *mqlAzureSubscriptionNetworkServiceVirtualNetwork) diagnosticSettings() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
+}

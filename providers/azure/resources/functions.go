@@ -299,3 +299,8 @@ func (a *mqlAzureSubscriptionFunctionsServiceFunctionApp) configuration() (*mqlA
 	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
 	return webAppSiteConfigToMql(a.MqlRuntime, conn, a.Id.Data)
 }
+
+func (a *mqlAzureSubscriptionFunctionsServiceFunctionApp) diagnosticSettings() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
+}

@@ -588,3 +588,8 @@ func (a *mqlAzureSubscriptionCacheServiceRedisInstancePrivateEndpointConnection)
 	}
 	return res.(*mqlAzureSubscriptionNetworkServicePrivateEndpoint), nil
 }
+
+func (a *mqlAzureSubscriptionCacheServiceRedisInstance) diagnosticSettings() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
+}
