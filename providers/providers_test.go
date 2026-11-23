@@ -347,6 +347,8 @@ func TestInstallRetriesInterruptedDownload(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	// Swaps a package-level variable, so this test and its subtests must not
+	// run in parallel with anything that installs a provider.
 	origWait := providerDownloadRetryWait
 	providerDownloadRetryWait = time.Millisecond
 	t.Cleanup(func() { providerDownloadRetryWait = origWait })
@@ -359,12 +361,14 @@ func TestInstallRetriesInterruptedDownload(t *testing.T) {
 	t.Run("connection dropped mid-archive, then a clean transfer", func(t *testing.T) {
 		var requests atomic.Int32
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Both paths announce the whole archive; only the first two
+			// transfers fall short of it.
+			w.Header().Set("Content-Length", strconv.Itoa(len(archive)))
+			w.WriteHeader(http.StatusOK)
 			if requests.Add(1) > 2 {
 				_, _ = w.Write(archive)
 				return
 			}
-			w.Header().Set("Content-Length", strconv.Itoa(len(archive)))
-			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write(archive[:len(archive)/2])
 			w.(http.Flusher).Flush()
 			conn, _, err := w.(http.Hijacker).Hijack()
