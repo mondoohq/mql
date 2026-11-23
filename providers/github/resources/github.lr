@@ -313,6 +313,33 @@ github.organization @defaults("login name") @root {
   // can be skipped where the account does not include it rather than reported
   // as a finding.
   features() github.organization.features
+  // Code security configurations available to the organization
+  //
+  // Each configuration bundles the GitHub Advanced Security, Dependabot,
+  // secret scanning and code scanning settings that GitHub applies to every
+  // repository attached to it, which is how GHAS is enabled across an
+  // organization. Includes the configurations GitHub provides as well as the
+  // organization's own. Null when the configurations cannot be read, for
+  // example without organization admin access.
+  codeSecurityConfigurations() []github.codeSecurityConfiguration
+  // Secret scanning custom patterns defined at the organization level
+  //
+  // Patterns the organization adds to secret scanning to detect credentials
+  // GitHub has no provider pattern for. Null when the patterns cannot be read.
+  secretScanningCustomPatterns() []github.secretScanningCustomPattern
+  // Push protection settings and detection statistics for each secret scanning pattern
+  //
+  // One entry per provider pattern and per custom pattern, reporting whether
+  // push protection blocks it in this organization and how often it raised an
+  // alert, was a false positive or was bypassed. Null when the settings cannot
+  // be read.
+  secretScanningPatternConfigurations() []github.secretScanningPatternConfiguration
+  // Repository security advisories across the organization's repositories
+  //
+  // Advisories maintainers drafted, published or closed for vulnerabilities in
+  // the organization's own code. Null when the advisories cannot be read, for
+  // example without the security manager role or organization admin access.
+  securityAdvisories() []github.repositorySecurityAdvisory
 }
 
 // GitHub Organization Subscription
@@ -1301,6 +1328,30 @@ github.repository @defaults("fullName") @root {
   // Null when the token lacks the access GitHub requires to report the
   // repository's merge settings.
   allowUpdateBranch() bool
+  // Code security configuration attached to the repository
+  //
+  // The configuration that sets the repository's GitHub Advanced Security,
+  // Dependabot, secret scanning and code scanning features.
+  // codeSecurityConfigurationState reports whether the attachment took effect.
+  // Null when no configuration is attached or it cannot be read.
+  codeSecurityConfiguration() github.codeSecurityConfiguration
+  // State of the repository's code security configuration attachment
+  //
+  // One of attached, attaching, detached, removed, enforced, failed, updating,
+  // or removed_by_enterprise. Null when no configuration is attached or it
+  // cannot be read.
+  codeSecurityConfigurationState() string
+  // Secret scanning custom patterns defined on the repository
+  //
+  // Patterns defined on the repository itself. Organization patterns also
+  // apply to the repository and are reported on the organization. Null when
+  // the patterns cannot be read.
+  secretScanningCustomPatterns() []github.secretScanningCustomPattern
+  // Security advisories drafted, published or closed for the repository
+  //
+  // Null when the advisories cannot be read, for example without admin access
+  // or the security manager role.
+  securityAdvisories() []github.repositorySecurityAdvisory
 }
 
 // Copilot coding agent configuration for a repository
@@ -3309,4 +3360,246 @@ github.metadata @defaults("enterpriseServer version") {
   // reports a release, and on an installation that does not answer with a
   // version.
   version string
+}
+
+// Code security configuration
+//
+// A named set of GitHub Advanced Security, Dependabot, secret scanning and
+// code scanning settings that an organization attaches to its repositories.
+// Each feature field is one of enabled, disabled, or not_set, where not_set
+// leaves the repository's own setting in place. `enforcement` reports whether
+// repository administrators can change the attached settings, and
+// `defaultForNewRepos` whether the configuration is applied to new
+// repositories automatically. `repositories` lists the repositories it is
+// attached to.
+private github.codeSecurityConfiguration @defaults("name targetType enforcement") {
+  // Configuration ID
+  id int
+  // Configuration name
+  name string
+  // Configuration description
+  description string
+  // Owner of the configuration
+  //
+  // One of global (provided by GitHub), organization, or enterprise.
+  targetType string
+  // Whether repository administrators are blocked from changing the attached settings
+  //
+  // One of enforced or unenforced.
+  enforcement string
+  // GitHub Advanced Security setting
+  //
+  // One of enabled, disabled, code_security, or secret_protection.
+  advancedSecurity string
+  // GitHub Code Security setting
+  codeSecurity string
+  // GitHub Secret Protection setting
+  secretProtection string
+  // Dependency graph setting
+  dependencyGraph string
+  // Automatic dependency submission setting
+  dependencyGraphAutosubmitAction string
+  // Whether automatic dependency submission runs on runners labeled `dependency-submission`
+  dependencyGraphAutosubmitActionLabeledRunners bool
+  // Dependabot alerts setting
+  dependabotAlerts string
+  // Dependabot security updates setting
+  dependabotSecurityUpdates string
+  // Delegated dismissal setting for Dependabot alerts
+  dependabotDelegatedAlertDismissal string
+  // Code scanning default setup setting
+  codeScanningDefaultSetup string
+  // Type of runner code scanning default setup uses
+  //
+  // One of standard, labeled, or not_set.
+  codeScanningDefaultSetupRunnerType string
+  // Runner label code scanning default setup uses when the runner type is labeled
+  codeScanningDefaultSetupRunnerLabel string
+  // Whether repositories with code scanning advanced setup keep it when the configuration is applied
+  codeScanningAllowAdvanced bool
+  // Delegated dismissal setting for code scanning alerts
+  codeScanningDelegatedAlertDismissal string
+  // Secret scanning setting
+  secretScanning string
+  // Secret scanning push protection setting
+  secretScanningPushProtection string
+  // Delegated bypass setting for secret scanning push protection
+  //
+  // When enabled, a contributor blocked by push protection must request a
+  // bypass that a reviewer in `secretScanningDelegatedBypassReviewers`
+  // approves, instead of bypassing the block alone.
+  secretScanningDelegatedBypass string
+  // Reviewers who can approve a push protection bypass request
+  //
+  // Each entry has `reviewerId` and `reviewerType`, which is TEAM for a team
+  // or ROLE for an organization role.
+  secretScanningDelegatedBypassReviewers []dict
+  // Teams that can approve a push protection bypass request
+  secretScanningDelegatedBypassTeams() []github.team
+  // Secret scanning validity checks setting
+  secretScanningValidityChecks string
+  // Secret scanning non-provider patterns setting
+  secretScanningNonProviderPatterns string
+  // Copilot secret scanning generic secret detection setting
+  secretScanningGenericSecrets string
+  // Delegated dismissal setting for secret scanning alerts
+  secretScanningDelegatedAlertDismissal string
+  // Secret scanning extended metadata setting
+  secretScanningExtendedMetadata string
+  // Private vulnerability reporting setting
+  privateVulnerabilityReporting string
+  // Time the configuration was created
+  createdAt time
+  // Time the configuration was last updated
+  updatedAt time
+  // Repositories GitHub applies the configuration to automatically when they are created
+  //
+  // One of all, none, private_and_internal, or public. Null when the default
+  // configurations cannot be read.
+  defaultForNewRepos() string
+  // Repositories the configuration is attached to, with the status of each attachment
+  repositories() []github.codeSecurityConfigurationRepository
+}
+
+// Repository attached to a code security configuration
+private github.codeSecurityConfigurationRepository @defaults("repository.fullName status") {
+  // Attached repository
+  repository github.repository
+  // Attachment status
+  //
+  // One of attached, attaching, detached, removed, enforced, failed,
+  // updating, or removed_by_enterprise.
+  status string
+}
+
+// Secret scanning custom pattern
+//
+// Regular expression an organization or repository adds to secret scanning
+// to detect a credential format that GitHub has no provider pattern for.
+// `state` reports whether the pattern is published and raising alerts, and
+// `pushProtectionEnabled` whether a push containing a match is blocked.
+private github.secretScanningCustomPattern @defaults("name state pushProtectionEnabled") {
+  // Pattern ID
+  id int
+  // Pattern name
+  name string
+  // Pattern slug
+  slug string
+  // Regular expression the secret matches
+  pattern string
+  // Pattern state
+  //
+  // One of published or unpublished.
+  state string
+  // Whether push protection blocks pushes containing a match
+  pushProtectionEnabled bool
+  // Regular expression that must precede the secret
+  startDelimiter string
+  // Regular expression that must follow the secret
+  endDelimiter string
+  // Additional regular expressions the secret must match
+  mustMatch []string
+  // Regular expressions the secret must not match
+  mustNotMatch []string
+  // Scope the pattern is defined in (organization, repository)
+  scope string
+  // Time the pattern was created
+  createdAt time
+  // Time the pattern was last updated
+  updatedAt time
+}
+
+// Secret scanning pattern configuration
+//
+// Push protection setting and alert statistics for a single secret scanning
+// pattern in an organization. `kind` separates GitHub's provider patterns from
+// the organization's custom patterns. `setting` is the organization's own
+// choice and `defaultSetting` what GitHub applies when the organization makes
+// none, so a pattern with `setting == "disabled"` is one the organization
+// opted out of blocking.
+private github.secretScanningPatternConfiguration @defaults("displayName kind setting") {
+  // Kind of pattern (provider, custom)
+  kind string
+  // Token type the pattern detects
+  tokenType string
+  // Pattern slug
+  slug string
+  // Display name of the pattern
+  displayName string
+  // Version of a custom pattern, empty for a provider pattern
+  customPatternVersion string
+  // Push protection setting chosen by the organization
+  //
+  // One of not-set, disabled, or enabled.
+  setting string
+  // Push protection setting GitHub applies when the organization sets none
+  //
+  // One of disabled or enabled.
+  defaultSetting string
+  // Push protection setting chosen by the enterprise
+  //
+  // One of not-set, disabled, or enabled.
+  enterpriseSetting string
+  // Number of alerts the pattern raised
+  alertTotal int
+  // Share of all alerts raised by the pattern, in percent
+  alertTotalPercentage int
+  // Number of alerts closed as false positives
+  falsePositives int
+  // Share of the pattern's alerts closed as false positives, in percent
+  falsePositiveRate int
+  // Share of the pattern's push protection blocks that were bypassed, in percent
+  bypassRate int
+}
+
+// Repository security advisory
+//
+// Advisory a repository's maintainers draft to coordinate the fix and
+// disclosure of a vulnerability in their own code. `state` reports where the
+// advisory is in that process, and a draft or triage advisory names an
+// unpublished vulnerability. `collaboratingUsers` and `collaboratingTeams`
+// can read the advisory and its private fork, which holds the unreleased fix.
+private github.repositorySecurityAdvisory @defaults("ghsaId severity state") {
+  // GitHub Security Advisory ID
+  ghsaId string
+  // CVE ID, empty when none is assigned
+  cveId string
+  // Short summary of the advisory
+  summary string
+  // Detailed description of the advisory
+  description string
+  // Advisory state
+  //
+  // One of published, closed, withdrawn, draft, or triage.
+  state string
+  // Severity of the vulnerability
+  //
+  // One of critical, high, medium, or low.
+  severity string
+  // CVSS base score
+  cvssScore float
+  // CVSS vector string
+  cvssVector string
+  // CWE IDs the vulnerability is classified under
+  cweIds []string
+  // Time the advisory was created
+  createdAt time
+  // Time the advisory was last updated
+  updatedAt time
+  // Time the advisory was published, null while it is unpublished
+  publishedAt time
+  // Time the advisory was closed, null while it is open
+  closedAt time
+  // Time the advisory was withdrawn, null unless it was withdrawn
+  withdrawnAt time
+  // Account that created the advisory
+  author() github.user
+  // Account that published the advisory, null while it is unpublished
+  publisher() github.user
+  // Accounts given access to collaborate on the advisory
+  collaboratingUsers() []github.user
+  // Teams given access to collaborate on the advisory
+  collaboratingTeams() []github.team
+  // Temporary private fork where the fix is developed, null when none exists
+  privateFork() github.repository
 }

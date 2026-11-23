@@ -2283,6 +2283,10 @@ type mqlGithubRepositoryInternal struct {
 	detailOnce sync.Once
 	detail     *github.Repository
 	detailErr  error
+
+	// codeSecurityConfig is the repository's code security configuration
+	// attachment, read once for the two fields that report it.
+	codeSecurityConfig repoCodeSecurityConfig
 }
 
 // newMqlGithubRepositoryFromGet builds a repository from a
