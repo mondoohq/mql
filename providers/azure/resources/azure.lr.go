@@ -410,7 +410,6 @@ const (
 	ResourceAzureSubscriptionIotService                                                                 string = "azure.subscription.iotService"
 	ResourceAzureSubscriptionIotServiceIotHub                                                           string = "azure.subscription.iotService.iotHub"
 	ResourceAzureSubscriptionIotServiceIotHubIpFilterRule                                               string = "azure.subscription.iotService.iotHub.ipFilterRule"
-	ResourceAzureSubscriptionIotServiceIotHubSharedAccessPolicy                                         string = "azure.subscription.iotService.iotHub.sharedAccessPolicy"
 	ResourceAzureSubscriptionCacheService                                                               string = "azure.subscription.cacheService"
 	ResourceAzureSubscriptionCacheServiceRedisInstance                                                  string = "azure.subscription.cacheService.redisInstance"
 	ResourceAzureSubscriptionCacheServiceRedisInstanceAccessPolicy                                      string = "azure.subscription.cacheService.redisInstance.accessPolicy"
@@ -2234,10 +2233,6 @@ func init() {
 		"azure.subscription.iotService.iotHub.ipFilterRule": {
 			// to override args, implement: initAzureSubscriptionIotServiceIotHubIpFilterRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAzureSubscriptionIotServiceIotHubIpFilterRule,
-		},
-		"azure.subscription.iotService.iotHub.sharedAccessPolicy": {
-			// to override args, implement: initAzureSubscriptionIotServiceIotHubSharedAccessPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
-			Create: createAzureSubscriptionIotServiceIotHubSharedAccessPolicy,
 		},
 		"azure.subscription.cacheService": {
 			Init:   initAzureSubscriptionCacheService,
@@ -17828,9 +17823,6 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.iotService.iotHub.ipFilterRules": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionIotServiceIotHub).GetIpFilterRules()).ToDataRes(types.Array(types.Resource("azure.subscription.iotService.iotHub.ipFilterRule")))
 	},
-	"azure.subscription.iotService.iotHub.sharedAccessPolicies": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAzureSubscriptionIotServiceIotHub).GetSharedAccessPolicies()).ToDataRes(types.Array(types.Resource("azure.subscription.iotService.iotHub.sharedAccessPolicy")))
-	},
 	"azure.subscription.iotService.iotHub.systemMetadata": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionIotServiceIotHub).GetSystemMetadata()).ToDataRes(types.Resource("azure.subscription.systemData"))
 	},
@@ -17842,12 +17834,6 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.iotService.iotHub.ipFilterRule.ipMask": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionIotServiceIotHubIpFilterRule).GetIpMask()).ToDataRes(types.String)
-	},
-	"azure.subscription.iotService.iotHub.sharedAccessPolicy.keyName": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAzureSubscriptionIotServiceIotHubSharedAccessPolicy).GetKeyName()).ToDataRes(types.String)
-	},
-	"azure.subscription.iotService.iotHub.sharedAccessPolicy.rights": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAzureSubscriptionIotServiceIotHubSharedAccessPolicy).GetRights()).ToDataRes(types.Array(types.String))
 	},
 	"azure.subscription.cacheService.subscriptionId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionCacheService).GetSubscriptionId()).ToDataRes(types.String)
@@ -47203,10 +47189,6 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionIotServiceIotHub).IpFilterRules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
-	"azure.subscription.iotService.iotHub.sharedAccessPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionIotServiceIotHub).SharedAccessPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
-		return
-	},
 	"azure.subscription.iotService.iotHub.systemMetadata": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionIotServiceIotHub).SystemMetadata, ok = plugin.RawToTValue[*mqlAzureSubscriptionSystemData](v.Value, v.Error)
 		return
@@ -47225,18 +47207,6 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.iotService.iotHub.ipFilterRule.ipMask": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionIotServiceIotHubIpFilterRule).IpMask, ok = plugin.RawToTValue[string](v.Value, v.Error)
-		return
-	},
-	"azure.subscription.iotService.iotHub.sharedAccessPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionIotServiceIotHubSharedAccessPolicy).__id, ok = v.Value.(string)
-		return
-	},
-	"azure.subscription.iotService.iotHub.sharedAccessPolicy.keyName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionIotServiceIotHubSharedAccessPolicy).KeyName, ok = plugin.RawToTValue[string](v.Value, v.Error)
-		return
-	},
-	"azure.subscription.iotService.iotHub.sharedAccessPolicy.rights": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionIotServiceIotHubSharedAccessPolicy).Rights, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.cacheService.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -109565,7 +109535,6 @@ type mqlAzureSubscriptionIotServiceIotHub struct {
 	DiagnosticSettings            plugin.TValue[[]any]
 	DiagnosticSettingsCategories  plugin.TValue[[]any]
 	IpFilterRules                 plugin.TValue[[]any]
-	SharedAccessPolicies          plugin.TValue[[]any]
 	SystemMetadata                plugin.TValue[*mqlAzureSubscriptionSystemData]
 }
 
@@ -109774,22 +109743,6 @@ func (c *mqlAzureSubscriptionIotServiceIotHub) GetIpFilterRules() *plugin.TValue
 	})
 }
 
-func (c *mqlAzureSubscriptionIotServiceIotHub) GetSharedAccessPolicies() *plugin.TValue[[]any] {
-	return plugin.GetOrCompute[[]any](&c.SharedAccessPolicies, func() ([]any, error) {
-		if c.MqlRuntime.HasRecording {
-			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.iotService.iotHub", c.__id, "sharedAccessPolicies")
-			if err != nil {
-				return nil, err
-			}
-			if d != nil {
-				return d.Value.([]any), nil
-			}
-		}
-
-		return c.sharedAccessPolicies()
-	})
-}
-
 func (c *mqlAzureSubscriptionIotServiceIotHub) GetSystemMetadata() *plugin.TValue[*mqlAzureSubscriptionSystemData] {
 	return plugin.GetOrCompute[*mqlAzureSubscriptionSystemData](&c.SystemMetadata, func() (*mqlAzureSubscriptionSystemData, error) {
 		if c.MqlRuntime.HasRecording {
@@ -109858,55 +109811,6 @@ func (c *mqlAzureSubscriptionIotServiceIotHubIpFilterRule) GetAction() *plugin.T
 
 func (c *mqlAzureSubscriptionIotServiceIotHubIpFilterRule) GetIpMask() *plugin.TValue[string] {
 	return &c.IpMask
-}
-
-// mqlAzureSubscriptionIotServiceIotHubSharedAccessPolicy for the azure.subscription.iotService.iotHub.sharedAccessPolicy resource
-type mqlAzureSubscriptionIotServiceIotHubSharedAccessPolicy struct {
-	MqlRuntime *plugin.Runtime
-	__id       string
-	// optional: if you define mqlAzureSubscriptionIotServiceIotHubSharedAccessPolicyInternal it will be used here
-	KeyName plugin.TValue[string]
-	Rights  plugin.TValue[[]any]
-}
-
-// createAzureSubscriptionIotServiceIotHubSharedAccessPolicy creates a new instance of this resource
-func createAzureSubscriptionIotServiceIotHubSharedAccessPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
-	res := &mqlAzureSubscriptionIotServiceIotHubSharedAccessPolicy{
-		MqlRuntime: runtime,
-	}
-
-	err := SetAllData(res, args)
-	if err != nil {
-		return res, err
-	}
-
-	// to override __id implement: id() (string, error)
-
-	if runtime.HasRecording {
-		args, err = runtime.ResourceFromRecording("azure.subscription.iotService.iotHub.sharedAccessPolicy", res.__id)
-		if err != nil || args == nil {
-			return res, err
-		}
-		return res, SetAllData(res, args)
-	}
-
-	return res, nil
-}
-
-func (c *mqlAzureSubscriptionIotServiceIotHubSharedAccessPolicy) MqlName() string {
-	return "azure.subscription.iotService.iotHub.sharedAccessPolicy"
-}
-
-func (c *mqlAzureSubscriptionIotServiceIotHubSharedAccessPolicy) MqlID() string {
-	return c.__id
-}
-
-func (c *mqlAzureSubscriptionIotServiceIotHubSharedAccessPolicy) GetKeyName() *plugin.TValue[string] {
-	return &c.KeyName
-}
-
-func (c *mqlAzureSubscriptionIotServiceIotHubSharedAccessPolicy) GetRights() *plugin.TValue[[]any] {
-	return &c.Rights
 }
 
 // mqlAzureSubscriptionCacheService for the azure.subscription.cacheService resource

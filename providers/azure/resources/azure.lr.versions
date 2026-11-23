@@ -3497,10 +3497,6 @@ azure.subscription.iotService.iotHub.privateEndpointConnections 13.24.1
 azure.subscription.iotService.iotHub.provisioningState 13.5.1
 azure.subscription.iotService.iotHub.publicNetworkAccess 13.5.1
 azure.subscription.iotService.iotHub.restrictOutboundNetworkAccess 13.5.1
-azure.subscription.iotService.iotHub.sharedAccessPolicies 14.12.1
-azure.subscription.iotService.iotHub.sharedAccessPolicy 14.12.1
-azure.subscription.iotService.iotHub.sharedAccessPolicy.keyName 14.12.1
-azure.subscription.iotService.iotHub.sharedAccessPolicy.rights 14.12.1
 azure.subscription.iotService.iotHub.sku 13.5.1
 azure.subscription.iotService.iotHub.skuData 13.36.1
 azure.subscription.iotService.iotHub.state 13.5.1

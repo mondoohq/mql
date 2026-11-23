@@ -15088,8 +15088,6 @@ private azure.subscription.iotService.iotHub @defaults("id name location") {
   diagnosticSettingsCategories() []azure.subscription.monitorService.diagnosticSettingsCategory
   // Legacy IP filter rules, applied in order; the first matching rule decides
   ipFilterRules() []azure.subscription.iotService.iotHub.ipFilterRule
-  // Shared access policies, by name and granted rights; keys are never returned
-  sharedAccessPolicies() []azure.subscription.iotService.iotHub.sharedAccessPolicy
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
 }
@@ -15102,19 +15100,6 @@ private azure.subscription.iotService.iotHub.ipFilterRule @defaults("name action
   action string
   // Address range the rule matches, in CIDR notation
   ipMask string
-}
-
-// IoT hub shared access policy
-//
-// A named shared access policy on an IoT hub. Anyone holding one of its keys
-// gets the listed rights, so a policy granting RegistryWrite or
-// ServiceConnect is as sensitive as an administrator credential. The keys are
-// never read.
-private azure.subscription.iotService.iotHub.sharedAccessPolicy @defaults("keyName rights") {
-  // Policy name (for example "iothubowner")
-  keyName string
-  // Rights the policy grants ("RegistryRead", "RegistryWrite", "ServiceConnect", or "DeviceConnect")
-  rights []string
 }
 
 // Azure Cache for Redis
