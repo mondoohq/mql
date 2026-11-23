@@ -1158,10 +1158,14 @@ func authSettingsV2Args(settings web.SiteAuthSettingsV2, properties any) map[str
 // A credential that cannot read the configuration (403) or an app with no V2
 // configuration (404) yields null rather than failing the query.
 func (a *mqlAzureSubscriptionWebServiceAppsite) authSettingsV2() (*mqlAzureSubscriptionWebServiceAppsiteauthsettingsv2, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	return siteAuthSettingsV2(a.MqlRuntime, a.Id.Data, &a.AuthSettingsV2)
+}
+
+func siteAuthSettingsV2(runtime *plugin.Runtime, siteID string, field *plugin.TValue[*mqlAzureSubscriptionWebServiceAppsiteauthsettingsv2]) (*mqlAzureSubscriptionWebServiceAppsiteauthsettingsv2, error) {
+	conn := runtime.Connection.(*connection.AzureConnection)
 	ctx := context.Background()
 
-	resourceID, err := ParseResourceID(a.Id.Data)
+	resourceID, err := ParseResourceID(siteID)
 	if err != nil {
 		return nil, err
 	}
@@ -1181,8 +1185,8 @@ func (a *mqlAzureSubscriptionWebServiceAppsite) authSettingsV2() (*mqlAzureSubsc
 	if err != nil {
 		var respErr *azcore.ResponseError
 		if errors.As(err, &respErr) && (respErr.StatusCode == http.StatusForbidden || respErr.StatusCode == http.StatusNotFound) {
-			log.Warn().Err(err).Str("site", a.Id.Data).Msg("could not read app service auth settings v2")
-			a.AuthSettingsV2.State = plugin.StateIsSet | plugin.StateIsNull
+			log.Warn().Err(err).Str("site", siteID).Msg("could not read app service auth settings v2")
+			field.State = plugin.StateIsSet | plugin.StateIsNull
 			return nil, nil
 		}
 		return nil, err
@@ -1193,7 +1197,7 @@ func (a *mqlAzureSubscriptionWebServiceAppsite) authSettingsV2() (*mqlAzureSubsc
 		return nil, err
 	}
 
-	res, err := CreateResource(a.MqlRuntime, "azure.subscription.webService.appsiteauthsettingsv2",
+	res, err := CreateResource(runtime, "azure.subscription.webService.appsiteauthsettingsv2",
 		authSettingsV2Args(settings.SiteAuthSettingsV2, properties))
 	if err != nil {
 		return nil, err
@@ -1239,10 +1243,14 @@ func (a *mqlAzureSubscriptionWebServiceAppsite) metadata() (any, error) {
 }
 
 func (a *mqlAzureSubscriptionWebServiceAppsite) ftp() (*mqlAzureSubscriptionWebServiceAppsiteBasicPublishingCredentialsPolicies, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	return siteFtpPublishingPolicy(a.MqlRuntime, a.Id.Data)
+}
+
+func siteFtpPublishingPolicy(runtime *plugin.Runtime, siteID string) (*mqlAzureSubscriptionWebServiceAppsiteBasicPublishingCredentialsPolicies, error) {
+	conn := runtime.Connection.(*connection.AzureConnection)
 	ctx := context.Background()
 	token := conn.Token()
-	id := a.Id.Data
+	id := siteID
 	resourceID, err := ParseResourceID(id)
 	if err != nil {
 		return nil, err
@@ -1272,7 +1280,7 @@ func (a *mqlAzureSubscriptionWebServiceAppsite) ftp() (*mqlAzureSubscriptionWebS
 	if response.Properties != nil {
 		args["allow"] = llx.BoolDataPtr(response.Properties.Allow)
 	}
-	mqlResource, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionWebServiceAppsiteBasicPublishingCredentialsPolicies, args)
+	mqlResource, err := CreateResource(runtime, ResourceAzureSubscriptionWebServiceAppsiteBasicPublishingCredentialsPolicies, args)
 	if err != nil {
 		return nil, err
 	}
@@ -1284,10 +1292,14 @@ func (a *mqlAzureSubscriptionWebServiceAppsiteBasicPublishingCredentialsPolicies
 }
 
 func (a *mqlAzureSubscriptionWebServiceAppsite) scm() (*mqlAzureSubscriptionWebServiceAppsiteBasicPublishingCredentialsPolicies, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	return siteScmPublishingPolicy(a.MqlRuntime, a.Id.Data)
+}
+
+func siteScmPublishingPolicy(runtime *plugin.Runtime, siteID string) (*mqlAzureSubscriptionWebServiceAppsiteBasicPublishingCredentialsPolicies, error) {
+	conn := runtime.Connection.(*connection.AzureConnection)
 	ctx := context.Background()
 	token := conn.Token()
-	id := a.Id.Data
+	id := siteID
 	resourceID, err := ParseResourceID(id)
 	if err != nil {
 		return nil, err
@@ -1317,7 +1329,7 @@ func (a *mqlAzureSubscriptionWebServiceAppsite) scm() (*mqlAzureSubscriptionWebS
 	if response.Properties != nil {
 		args["allow"] = llx.BoolDataPtr(response.Properties.Allow)
 	}
-	mqlResource, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionWebServiceAppsiteBasicPublishingCredentialsPolicies, args)
+	mqlResource, err := CreateResource(runtime, ResourceAzureSubscriptionWebServiceAppsiteBasicPublishingCredentialsPolicies, args)
 	if err != nil {
 		return nil, err
 	}
@@ -1816,10 +1828,14 @@ func (a *mqlAzureSubscriptionWebServiceAppsite) applicationSettings() (any, erro
 }
 
 func (a *mqlAzureSubscriptionWebServiceAppsite) privateEndpointConnections() ([]any, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	return sitePrivateEndpointConnections(a.MqlRuntime, a.Id.Data)
+}
+
+func sitePrivateEndpointConnections(runtime *plugin.Runtime, siteID string) ([]any, error) {
+	conn := runtime.Connection.(*connection.AzureConnection)
 	ctx := context.Background()
 	token := conn.Token()
-	id := a.Id.Data
+	id := siteID
 
 	resourceID, err := ParseResourceID(id)
 	if err != nil {
@@ -1879,7 +1895,7 @@ func (a *mqlAzureSubscriptionWebServiceAppsite) privateEndpointConnections() ([]
 					pecPrivateEndpointID = convert.ToValue(props.PrivateEndpoint.ID)
 				}
 				if props.PrivateLinkServiceConnectionState != nil {
-					stateRes, err := newPrivateLinkServiceConnectionState(a.MqlRuntime, convert.ToValue(entry.ID),
+					stateRes, err := newPrivateLinkServiceConnectionState(runtime, convert.ToValue(entry.ID),
 						props.PrivateLinkServiceConnectionState.ActionsRequired,
 						props.PrivateLinkServiceConnectionState.Description,
 						props.PrivateLinkServiceConnectionState.Status)
@@ -1893,7 +1909,7 @@ func (a *mqlAzureSubscriptionWebServiceAppsite) privateEndpointConnections() ([]
 				}
 			}
 
-			mqlRes, err := newAzurePrivateEndpointConnection(a.MqlRuntime, privateEndpoint, pecPrivateEndpointID)
+			mqlRes, err := newAzurePrivateEndpointConnection(runtime, privateEndpoint, pecPrivateEndpointID)
 			if err != nil {
 				return nil, err
 			}
@@ -2169,11 +2185,15 @@ func (a *mqlAzureSubscriptionWebService) certificates() ([]any, error) {
 }
 
 func (a *mqlAzureSubscriptionWebServiceAppsite) hostNameBindings() ([]any, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	return siteHostNameBindings(a.MqlRuntime, a.Id.Data)
+}
+
+func siteHostNameBindings(runtime *plugin.Runtime, siteID string) ([]any, error) {
+	conn := runtime.Connection.(*connection.AzureConnection)
 	ctx := context.Background()
 	token := conn.Token()
 
-	resourceID, err := ParseResourceID(a.Id.Data)
+	resourceID, err := ParseResourceID(siteID)
 	if err != nil {
 		return nil, err
 	}
@@ -2227,7 +2247,7 @@ func (a *mqlAzureSubscriptionWebServiceAppsite) hostNameBindings() ([]any, error
 				"virtualIP":    llx.StringDataPtr(virtualIP),
 			}
 
-			mqlResource, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionWebServiceAppsiteHostNameBinding, args)
+			mqlResource, err := CreateResource(runtime, ResourceAzureSubscriptionWebServiceAppsiteHostNameBinding, args)
 			if err != nil {
 				return nil, err
 			}
