@@ -278,7 +278,12 @@ func (a *mqlAzureSubscriptionPostgreSqlService) flexibleServers() ([]any, error)
 			var fullVersion, administratorLogin, state, availabilityZone *string
 			var haMode, haState, standbyAvailabilityZone *string
 			var storageAutoGrow, storageTier, storageType *string
-			var storageSizeGB *int32
+			var storageSizeGB, storageIops, storageThroughput *int32
+			var skuName, skuTier *string
+			if dbServer.SKU != nil {
+				skuName = dbServer.SKU.Name
+				skuTier = stringEnumPtr(dbServer.SKU.Tier)
+			}
 			var replicationRole, entraTenantId *string
 			var delegatedSubnetId, privateDnsZoneId, sourceServerId *string
 			var maintenanceWindow any
@@ -306,6 +311,8 @@ func (a *mqlAzureSubscriptionPostgreSqlService) flexibleServers() ([]any, error)
 					storageTier = stringEnumPtr(st.Tier)
 					storageType = stringEnumPtr(st.Type)
 					storageSizeGB = st.StorageSizeGB
+					storageIops = st.Iops
+					storageThroughput = st.Throughput
 				}
 				if n := p.Network; n != nil {
 					delegatedSubnetId = n.DelegatedSubnetResourceID
@@ -383,6 +390,10 @@ func (a *mqlAzureSubscriptionPostgreSqlService) flexibleServers() ([]any, error)
 					"storageAutoGrow":         llx.StringDataPtr(storageAutoGrow),
 					"storageTier":             llx.StringDataPtr(storageTier),
 					"storageType":             llx.StringDataPtr(storageType),
+					"storageIops":             llx.IntDataPtr(storageIops),
+					"storageThroughput":       llx.IntDataPtr(storageThroughput),
+					"skuName":                 llx.StringDataPtr(skuName),
+					"skuTier":                 llx.StringDataPtr(skuTier),
 					"replicationRole":         llx.StringDataPtr(replicationRole),
 					"entraTenantId":           llx.StringDataPtr(entraTenantId),
 					"maintenanceWindow":       llx.DictData(maintenanceWindow),

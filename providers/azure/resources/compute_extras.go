@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -876,4 +877,118 @@ type mqlAzureSubscriptionComputeServiceGalleryImageVersionInternal struct {
 
 func (a *mqlAzureSubscriptionComputeServiceGalleryImageVersion) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
 	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
+}
+
+// vmPlacement holds the VM's size, priority, and dedicated host placement.
+type vmPlacement struct {
+	vmSize               *string
+	priority             *string
+	evictionPolicy       *string
+	dedicatedHostID      string
+	dedicatedHostGroupID string
+}
+
+// vmPlacementFields reads the VM's size, priority, eviction policy, and the
+// dedicated host and host group it is placed on. Every value is optional: an
+// absent pointer leaves the field null rather than empty.
+func vmPlacementFields(p *compute.VirtualMachineProperties) vmPlacement {
+	var res vmPlacement
+	if p == nil {
+		return res
+	}
+	if p.HardwareProfile != nil {
+		res.vmSize = stringEnumPtr(p.HardwareProfile.VMSize)
+	}
+	res.priority = stringEnumPtr(p.Priority)
+	res.evictionPolicy = stringEnumPtr(p.EvictionPolicy)
+	if p.Host != nil && p.Host.ID != nil {
+		res.dedicatedHostID = *p.Host.ID
+	}
+	if p.HostGroup != nil && p.HostGroup.ID != nil {
+		res.dedicatedHostGroupID = *p.HostGroup.ID
+	}
+	return res
+}
+
+// dedicatedHost resolves the dedicated host the VM is placed on.
+func (a *mqlAzureSubscriptionComputeServiceVm) dedicatedHost() (*mqlAzureSubscriptionComputeServiceDedicatedHost, error) {
+	if a.cacheDedicatedHostId == "" {
+		a.DedicatedHost.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, ResourceAzureSubscriptionComputeServiceDedicatedHost,
+		map[string]*llx.RawData{"id": llx.StringData(a.cacheDedicatedHostId)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAzureSubscriptionComputeServiceDedicatedHost), nil
+}
+
+// dedicatedHostGroup resolves the dedicated host group the VM is placed in.
+func (a *mqlAzureSubscriptionComputeServiceVm) dedicatedHostGroup() (*mqlAzureSubscriptionComputeServiceDedicatedHostGroup, error) {
+	if a.cacheDedicatedHostGroupId == "" {
+		a.DedicatedHostGroup.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, ResourceAzureSubscriptionComputeServiceDedicatedHostGroup,
+		map[string]*llx.RawData{"id": llx.StringData(a.cacheDedicatedHostGroupId)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAzureSubscriptionComputeServiceDedicatedHostGroup), nil
+}
+
+// initAzureSubscriptionComputeServiceDedicatedHostGroup resolves a host group
+// by its ARM ID from the subscription's host group list.
+func initAzureSubscriptionComputeServiceDedicatedHostGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	return initFromServiceList(runtime, args,
+		ResourceAzureSubscriptionComputeService,
+		func(s *mqlAzureSubscriptionComputeService) *plugin.TValue[[]any] { return s.GetDedicatedHostGroups() },
+		ResourceAzureSubscriptionComputeServiceDedicatedHostGroup)
+}
+
+// dedicatedHostGroupIDFromHostID returns the ARM ID of the host group that
+// holds the dedicated host with the given ARM ID: the host ID without its
+// trailing "/hosts/<name>". It returns "" when the ID has no such segment.
+func dedicatedHostGroupIDFromHostID(hostID string) string {
+	i := strings.LastIndex(strings.ToLower(hostID), "/hosts/")
+	if i <= 0 || i+len("/hosts/") == len(hostID) {
+		return ""
+	}
+	return hostID[:i]
+}
+
+// initAzureSubscriptionComputeServiceDedicatedHost resolves a dedicated host
+// by its ARM ID from its host group's host list.
+func initAzureSubscriptionComputeServiceDedicatedHost(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 1 {
+		return args, nil, nil
+	}
+	if args["id"] == nil {
+		return nil, nil, missingResourceID(ResourceAzureSubscriptionComputeServiceDedicatedHost)
+	}
+	id, ok := args["id"].Value.(string)
+	if !ok {
+		return nil, nil, errors.New("id must be a non-nil string value")
+	}
+	groupID := dedicatedHostGroupIDFromHostID(id)
+	if groupID == "" {
+		return nil, nil, fmt.Errorf("%q is not a dedicated host ID", id)
+	}
+	group, err := NewResource(runtime, ResourceAzureSubscriptionComputeServiceDedicatedHostGroup,
+		map[string]*llx.RawData{"id": llx.StringData(groupID)})
+	if err != nil {
+		return nil, nil, err
+	}
+	hosts := group.(*mqlAzureSubscriptionComputeServiceDedicatedHostGroup).GetHosts()
+	if hosts.Error != nil {
+		return nil, nil, hosts.Error
+	}
+	for _, h := range hosts.Data {
+		host, ok := h.(*mqlAzureSubscriptionComputeServiceDedicatedHost)
+		if ok && strings.EqualFold(host.Id.Data, id) {
+			return args, host, nil
+		}
+	}
+	return nil, nil, fmt.Errorf("%s with id %q not found", ResourceAzureSubscriptionComputeServiceDedicatedHost, id)
 }

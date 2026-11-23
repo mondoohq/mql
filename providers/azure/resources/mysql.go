@@ -213,7 +213,12 @@ func (a *mqlAzureSubscriptionMySqlService) flexibleServers() ([]any, error) {
 			}
 
 			var fullVersion, storageRedundancy, maintenancePatchStrategy *string
-			var databasePort, backupIntervalHours *int32
+			var databasePort, backupIntervalHours, storageSizeGB, storageIops *int32
+			var skuName, skuTier *string
+			if dbServer.SKU != nil {
+				skuName = dbServer.SKU.Name
+				skuTier = stringEnumPtr(dbServer.SKU.Tier)
+			}
 			var storageAutoIoScaling, storageLogOnDisk *bool
 			if dbServer.Properties != nil {
 				fullVersion = dbServer.Properties.FullVersion
@@ -223,6 +228,8 @@ func (a *mqlAzureSubscriptionMySqlService) flexibleServers() ([]any, error) {
 				}
 				if dbServer.Properties.Storage != nil {
 					storageRedundancy = (*string)(dbServer.Properties.Storage.StorageRedundancy)
+					storageSizeGB = dbServer.Properties.Storage.StorageSizeGB
+					storageIops = dbServer.Properties.Storage.Iops
 					if dbServer.Properties.Storage.AutoIoScaling != nil {
 						v := *dbServer.Properties.Storage.AutoIoScaling == flexible.EnableStatusEnumEnabled
 						storageAutoIoScaling = &v
@@ -296,6 +303,10 @@ func (a *mqlAzureSubscriptionMySqlService) flexibleServers() ([]any, error) {
 					"storageAutoIoScaling":     llx.BoolDataPtr(storageAutoIoScaling),
 					"storageLogOnDisk":         llx.BoolDataPtr(storageLogOnDisk),
 					"storageRedundancy":        llx.StringDataPtr(storageRedundancy),
+					"storageSizeGB":            llx.IntDataPtr(storageSizeGB),
+					"storageIops":              llx.IntDataPtr(storageIops),
+					"skuName":                  llx.StringDataPtr(skuName),
+					"skuTier":                  llx.StringDataPtr(skuTier),
 					"backupIntervalHours":      llx.IntDataPtr(backupIntervalHours),
 					"maintenancePatchStrategy": llx.StringDataPtr(maintenancePatchStrategy),
 
