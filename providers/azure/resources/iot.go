@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/iothub/armiothub/v2"
@@ -21,6 +22,8 @@ type mqlAzureSubscriptionIotServiceIotHubInternal struct {
 	cacheSystemData                 any
 	cacheUserAssignedIdentityIds    []string
 	cachePrivateEndpointConnections []*armiothub.PrivateEndpointConnection
+	cacheIPFilterRules              []*armiothub.IPFilterRule
+	cacheAuthorizationPolicies      []*armiothub.SharedAccessSignatureAuthorizationRule
 }
 
 func (a *mqlAzureSubscriptionIotService) id() (string, error) {
@@ -242,9 +245,70 @@ func (a *mqlAzureSubscriptionIotService) iotHubs() ([]any, error) {
 			mqlHubRes.cacheUserAssignedIdentityIds = userAssignedIdentityIds
 			if hub.Properties != nil {
 				mqlHubRes.cachePrivateEndpointConnections = hub.Properties.PrivateEndpointConnections
+				mqlHubRes.cacheIPFilterRules = hub.Properties.IPFilterRules
+				mqlHubRes.cacheAuthorizationPolicies = hub.Properties.AuthorizationPolicies
 			}
 			res = append(res, mqlHub)
 		}
 	}
 	return keepTagMatches(a.MqlRuntime, res), nil
+}
+
+// ipFilterRules returns the hub's legacy IP filter rules, in evaluation order.
+func (a *mqlAzureSubscriptionIotServiceIotHub) ipFilterRules() ([]any, error) {
+	res := []any{}
+	for i, rule := range a.cacheIPFilterRules {
+		if rule == nil {
+			continue
+		}
+		r, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionIotServiceIotHubIpFilterRule,
+			map[string]*llx.RawData{
+				"__id":   llx.StringData(fmt.Sprintf("%s/ipFilterRules/%d", a.Id.Data, i)),
+				"name":   llx.StringDataPtr(rule.FilterName),
+				"action": llx.StringDataPtr(stringEnumPtr(rule.Action)),
+				"ipMask": llx.StringDataPtr(rule.IPMask),
+			})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, r)
+	}
+	return res, nil
+}
+
+// iotHubAccessRights splits the comma-separated rights of a shared access
+// policy (for example "RegistryWrite, ServiceConnect, DeviceConnect").
+func iotHubAccessRights(rights *armiothub.AccessRights) []any {
+	res := []any{}
+	if rights == nil {
+		return res
+	}
+	for _, r := range strings.Split(string(*rights), ",") {
+		if r = strings.TrimSpace(r); r != "" {
+			res = append(res, r)
+		}
+	}
+	return res
+}
+
+// sharedAccessPolicies returns the hub's shared access policies by name and
+// rights. The keys are never read.
+func (a *mqlAzureSubscriptionIotServiceIotHub) sharedAccessPolicies() ([]any, error) {
+	res := []any{}
+	for _, p := range a.cacheAuthorizationPolicies {
+		if p == nil || p.KeyName == nil || *p.KeyName == "" {
+			continue
+		}
+		r, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionIotServiceIotHubSharedAccessPolicy,
+			map[string]*llx.RawData{
+				"__id":    llx.StringData(a.Id.Data + "/sharedAccessPolicies/" + *p.KeyName),
+				"keyName": llx.StringDataPtr(p.KeyName),
+				"rights":  llx.ArrayData(iotHubAccessRights(p.Rights), types.String),
+			})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, r)
+	}
+	return res, nil
 }

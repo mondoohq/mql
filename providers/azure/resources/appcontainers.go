@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -38,6 +39,9 @@ type mqlAzureSubscriptionContainerAppServiceContainerAppInternal struct {
 	authConfigsLock    sync.Mutex
 	authConfigsFetched atomic.Bool
 	authConfigsCache   []any
+
+	cacheSecrets       []*apps.Secret
+	cacheCustomDomains []*apps.CustomDomain
 }
 
 type mqlAzureSubscriptionContainerAppServiceManagedEnvironmentInternal struct {
@@ -960,6 +964,12 @@ func acaContainerAppToMQL(runtime *plugin.Runtime, entry *apps.ContainerApp) (pl
 	appRes := mqlApp.(*mqlAzureSubscriptionContainerAppServiceContainerApp)
 	appRes.cacheUserAssignedIdentityIds = userAssignedIdentityIds
 	appRes.cacheIdentityTenantId = identityTenantId
+	if props != nil && props.Configuration != nil {
+		appRes.cacheSecrets = props.Configuration.Secrets
+		if props.Configuration.Ingress != nil {
+			appRes.cacheCustomDomains = props.Configuration.Ingress.CustomDomains
+		}
+	}
 	rg, name := resourceGroupAndName(appRes.Id.Data, "containerApps")
 	appRes.cacheRGAndName.resourceGroup = rg
 	appRes.cacheRGAndName.name = name
@@ -1704,4 +1714,148 @@ func (a *mqlAzureSubscriptionContainerAppServiceManagedEnvironment) maintenanceC
 	a.maintenanceCache = res
 	a.maintenanceFetched.Store(true)
 	return res, nil
+}
+
+type mqlAzureSubscriptionContainerAppServiceContainerAppSecretInternal struct {
+	cacheAppId          string
+	cacheAppPrincipalId string
+	cacheIdentity       string
+}
+
+// acaSecretSource describes where a container app secret's value comes from,
+// without the value itself.
+type acaSecretSource struct {
+	keyVaultURL string
+	// "system" for the app's system-assigned identity, a user-assigned
+	// identity's ARM ID, or "" when the secret is not read from Key Vault.
+	identity string
+}
+
+func acaSecretSourceOf(sec *apps.Secret) acaSecretSource {
+	var res acaSecretSource
+	if sec == nil {
+		return res
+	}
+	if sec.KeyVaultURL != nil {
+		res.keyVaultURL = *sec.KeyVaultURL
+	}
+	if sec.Identity != nil {
+		res.identity = *sec.Identity
+	}
+	return res
+}
+
+// secrets lists the container app's secrets by name and source. Values are
+// never read: the app record does not carry them, and the listSecrets action
+// that would is not called.
+func (a *mqlAzureSubscriptionContainerAppServiceContainerApp) secrets() ([]any, error) {
+	res := []any{}
+	for _, sec := range a.cacheSecrets {
+		if sec == nil || sec.Name == nil || *sec.Name == "" {
+			continue
+		}
+		src := acaSecretSourceOf(sec)
+		r, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionContainerAppServiceContainerAppSecret,
+			map[string]*llx.RawData{
+				"__id":               llx.StringData(a.Id.Data + "/secrets/" + *sec.Name),
+				"name":               llx.StringDataPtr(sec.Name),
+				"keyVaultReferenced": llx.BoolData(src.keyVaultURL != ""),
+				"keyVaultSecretUrl":  llx.StringData(src.keyVaultURL),
+			})
+		if err != nil {
+			return nil, err
+		}
+		mqlSec := r.(*mqlAzureSubscriptionContainerAppServiceContainerAppSecret)
+		mqlSec.cacheAppId = a.Id.Data
+		mqlSec.cacheAppPrincipalId = a.PrincipalId.Data
+		mqlSec.cacheIdentity = src.identity
+		res = append(res, mqlSec)
+	}
+	return res, nil
+}
+
+func (a *mqlAzureSubscriptionContainerAppServiceContainerAppSecret) keyVaultSecret() (*mqlAzureSubscriptionKeyVaultServiceSecret, error) {
+	if a.KeyVaultSecretUrl.Data == "" {
+		a.KeyVaultSecret.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return newKeyVaultSecretResource(a.MqlRuntime, a.KeyVaultSecretUrl.Data)
+}
+
+// identity resolves the managed identity the app reads a Key Vault secret
+// with: its system-assigned identity, or the named user-assigned one.
+func (a *mqlAzureSubscriptionContainerAppServiceContainerAppSecret) identity() (*mqlAzureSubscriptionManagedIdentity, error) {
+	switch {
+	case a.cacheIdentity == "":
+		a.Identity.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	case strings.EqualFold(a.cacheIdentity, "system"):
+		return newSystemAssignedManagedIdentity(a.MqlRuntime, a.cacheAppId, a.cacheAppPrincipalId, "", &a.Identity)
+	}
+	res, err := NewResource(a.MqlRuntime, ResourceAzureSubscriptionManagedIdentity,
+		map[string]*llx.RawData{"__id": llx.StringData(a.cacheIdentity)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAzureSubscriptionManagedIdentity), nil
+}
+
+// acaEnvironmentIDFromCertificateID returns the managed environment ARM ID of
+// an environment certificate, or "" when the ID is not an environment
+// certificate (a managed certificate, for example).
+func acaEnvironmentIDFromCertificateID(certID string) string {
+	i := strings.LastIndex(strings.ToLower(certID), "/certificates/")
+	if i <= 0 || !strings.Contains(strings.ToLower(certID[:i]), "/managedenvironments/") {
+		return ""
+	}
+	return certID[:i]
+}
+
+// customDomains lists the custom host names bound to the app's ingress.
+func (a *mqlAzureSubscriptionContainerAppServiceContainerApp) customDomains() ([]any, error) {
+	res := []any{}
+	for _, d := range a.cacheCustomDomains {
+		if d == nil || d.Name == nil || *d.Name == "" {
+			continue
+		}
+		r, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionContainerAppServiceContainerAppCustomDomain,
+			map[string]*llx.RawData{
+				"__id":          llx.StringData(a.Id.Data + "/customDomains/" + *d.Name),
+				"name":          llx.StringDataPtr(d.Name),
+				"bindingType":   llx.StringDataPtr(stringEnumPtr(d.BindingType)),
+				"certificateId": llx.StringData(convert.ToValue(d.CertificateID)),
+			})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, r)
+	}
+	return res, nil
+}
+
+// certificate resolves the environment certificate bound to the domain from the
+// environment's certificate list. Managed certificates are not modeled, so a
+// domain bound to one reads null here and keeps its certificateId.
+func (a *mqlAzureSubscriptionContainerAppServiceContainerAppCustomDomain) certificate() (*mqlAzureSubscriptionContainerAppServiceManagedEnvironmentCertificate, error) {
+	envID := acaEnvironmentIDFromCertificateID(a.CertificateId.Data)
+	if envID == "" {
+		a.Certificate.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	env, err := NewResource(a.MqlRuntime, ResourceAzureSubscriptionContainerAppServiceManagedEnvironment,
+		map[string]*llx.RawData{"id": llx.StringData(envID)})
+	if err != nil {
+		return nil, err
+	}
+	certs := env.(*mqlAzureSubscriptionContainerAppServiceManagedEnvironment).GetCertificates()
+	if certs.Error != nil {
+		return nil, certs.Error
+	}
+	for _, c := range certs.Data {
+		cert, ok := c.(*mqlAzureSubscriptionContainerAppServiceManagedEnvironmentCertificate)
+		if ok && strings.EqualFold(cert.Id.Data, a.CertificateId.Data) {
+			return cert, nil
+		}
+	}
+	return nil, fmt.Errorf("container apps environment certificate %q not found", a.CertificateId.Data)
 }
