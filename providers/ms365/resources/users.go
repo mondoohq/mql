@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 
@@ -824,15 +825,105 @@ func (a *mqlMicrosoftUser) signInActivity() (any, error) {
 	return ms.userBatches.signInActivity.resolve(a.Id.Data, ms.indexedUserIDs(), ms.loadUserSignInActivity)
 }
 
-// loadUserSignInActivity fetches the signInActivity of the given users in one
-// batched Graph request.
+// userSignInActivityPageSize is the largest page Graph serves when a user
+// listing selects signInActivity.
+const userSignInActivityPageSize = int32(120)
+
+// loadUserSignInActivity fetches the signInActivity of the given users.
+//
+// Up to one $batch call's worth of users is read with a request per user.
+// More than that is read from the tenant's user listing instead, 120 users a
+// page: a request per user is slow and throttled, and over every user of a
+// tenant with tens of thousands of them it does not finish within a scan.
+// Users the listing does not return are then read with a request each.
 func (m *mqlMicrosoft) loadUserSignInActivity(ids []string) (map[string]any, map[string]error, error) {
 	conn := m.MqlRuntime.Connection.(*connection.Ms365Connection)
 	graphClient, err := conn.GraphClient()
 	if err != nil {
 		return nil, nil, err
 	}
-	ctx := context.Background()
+	return fetchUserSignInActivity(context.Background(), graphClient, ids)
+}
+
+func fetchUserSignInActivity(ctx context.Context, graphClient *msgraphsdkgo.GraphServiceClient, ids []string) (map[string]any, map[string]error, error) {
+	if len(ids) <= batchChunkSize {
+		return batchUserSignInActivity(ctx, graphClient, ids)
+	}
+	data, err := listUserSignInActivity(ctx, graphClient, ids)
+	if err != nil {
+		return nil, nil, err
+	}
+	var missing []string
+	for _, id := range ids {
+		if _, ok := data[id]; !ok {
+			missing = append(missing, id)
+		}
+	}
+	if len(missing) == 0 {
+		return data, nil, nil
+	}
+	rest, errs, err := batchUserSignInActivity(ctx, graphClient, missing)
+	if err != nil {
+		return nil, nil, err
+	}
+	maps.Copy(data, rest)
+	return data, errs, nil
+}
+
+// listUserSignInActivity reads the signInActivity of every user in the tenant
+// from the user listing and returns it for the users in ids.
+func listUserSignInActivity(ctx context.Context, graphClient *msgraphsdkgo.GraphServiceClient, ids []string) (map[string]any, error) {
+	wanted := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		wanted[id] = struct{}{}
+	}
+	top := userSignInActivityPageSize
+	resp, err := graphClient.Users().Get(ctx, &users.UsersRequestBuilderGetRequestConfiguration{
+		QueryParameters: &users.UsersRequestBuilderGetQueryParameters{
+			Select: []string{"id", "signInActivity"},
+			Top:    &top,
+		},
+	})
+	if err != nil {
+		return nil, transformError(err)
+	}
+	data := make(map[string]any, len(ids))
+	err = iterateEach(ctx, resp, graphClient.GetAdapter(), users.CreateDeltaGetResponseFromDiscriminatorValue,
+		func(u *models.User) error {
+			if u.GetId() == nil {
+				return nil
+			}
+			id := *u.GetId()
+			if _, ok := wanted[id]; !ok {
+				return nil
+			}
+			dict, err := userSignInActivityDict(u)
+			if err != nil {
+				return err
+			}
+			data[id] = dict
+			return nil
+		})
+	if err != nil {
+		return nil, transformError(err)
+	}
+	return data, nil
+}
+
+// userSignInActivityDict converts a user's signInActivity, nil for a user
+// that never signed in. The user listing returns an empty signInActivity for
+// such a user where a read by id returns none; both read as nil.
+func userSignInActivityDict(u *models.User) (any, error) {
+	activity := newSignInActivity(u.GetSignInActivity())
+	if activity == nil || *activity == (SignInActivity{}) {
+		return nil, nil
+	}
+	return convert.JsonToDict(activity)
+}
+
+// batchUserSignInActivity reads the signInActivity of the given users with a
+// request per user, sent through the Graph $batch endpoint.
+func batchUserSignInActivity(ctx context.Context, graphClient *msgraphsdkgo.GraphServiceClient, ids []string) (map[string]any, map[string]error, error) {
 	config := &users.UserItemRequestBuilderGetRequestConfiguration{
 		QueryParameters: &users.UserItemRequestBuilderGetQueryParameters{
 			Select: []string{"signInActivity"},
@@ -844,7 +935,7 @@ func (m *mqlMicrosoft) loadUserSignInActivity(ids []string) (map[string]any, map
 	data := make(map[string]any, len(ids))
 	errs, _, err := batchEach(ctx, graphClient.GetAdapter(), ids, build, models.CreateUserFromDiscriminatorValue,
 		func(id string, u *models.User) error {
-			dict, err := convert.JsonToDict(newSignInActivity(u.GetSignInActivity()))
+			dict, err := userSignInActivityDict(u)
 			if err != nil {
 				return err
 			}

@@ -5,9 +5,11 @@ package resources
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 
@@ -347,4 +349,113 @@ func TestFetchUserGroupMemberships(t *testing.T) {
 	assert.NoError(t, errs["u-1"])
 	require.Len(t, direct["u-1"], 1)
 	assert.Equal(t, "g-1", *direct["u-1"][0].GetId())
+}
+
+// signInActivityIDs returns n user ids, more than one $batch call holds when
+// n exceeds batchChunkSize.
+func signInActivityIDs(n int) []string {
+	ids := make([]string, n)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("u-%02d", i+1)
+	}
+	return ids
+}
+
+func TestFetchUserSignInActivityListsLargeFetches(t *testing.T) {
+	// Synthetic: two pages of the v1.0 user listing with signInActivity
+	// selected; no per-user route exists, so a request per user would 404.
+	ids := signInActivityIDs(batchChunkSize + 1)
+	var page1, page2 []string
+	for i, id := range ids {
+		row := `{"id": "` + id + `", "signInActivity": {"lastSignInDateTime": "2026-11-01T10:00:00Z"}}`
+		switch i {
+		case 1: // never signed in
+			row = `{"id": "` + id + `"}`
+		case 2: // never signed in, as the listing of a live tenant returns it
+			row = `{"id": "` + id + `", "signInActivity": {"lastSignInDateTime": null, "lastNonInteractiveSignInDateTime": null}}`
+		}
+		if i < 10 {
+			page1 = append(page1, row)
+		} else {
+			page2 = append(page2, row)
+		}
+	}
+	page2 = append(page2, `{"id": "not-asked-for", "signInActivity": {"lastSignInDateTime": "2026-01-01T00:00:00Z"}}`)
+	f := newFakeGraph(t, map[string]fakeRoute{
+		"/users": {status: 200, body: `{
+			"@odata.nextLink": "{{base}}/users/page2",
+			"value": [` + strings.Join(page1, ",") + `]}`},
+		"/users/page2": {status: 200, body: `{"value": [` + strings.Join(page2, ",") + `]}`},
+	})
+
+	got, errs, err := fetchUserSignInActivity(context.Background(), f.client(), ids)
+	require.NoError(t, err)
+	assert.Empty(t, errs)
+	assert.Zero(t, f.batchCalls, "every user is read from the listing, none with a request of its own")
+	require.Len(t, got, len(ids), "both pages are read and a user that was not asked for is left out")
+
+	first, ok := got[ids[0]].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "2026-11-01T10:00:00Z", first["lastSignInDateTime"])
+	assert.Contains(t, got, ids[1], "a user without sign-in activity is loaded")
+	assert.Nil(t, got[ids[1]], "and has none")
+	assert.Contains(t, got, ids[2])
+	assert.Nil(t, got[ids[2]], "an empty signInActivity reads as none, as a read by id does")
+	last, ok := got[ids[len(ids)-1]].(map[string]any)
+	require.True(t, ok, "the second page is followed")
+	assert.Equal(t, "2026-11-01T10:00:00Z", last["lastSignInDateTime"])
+}
+
+func TestFetchUserSignInActivityReadsUsersMissingFromListing(t *testing.T) {
+	// Synthetic: the listing leaves out the last two users; one is readable
+	// by id, the other is refused.
+	ids := signInActivityIDs(batchChunkSize + 1)
+	absent, refused := ids[len(ids)-2], ids[len(ids)-1]
+	var rows []string
+	for _, id := range ids[:len(ids)-2] {
+		rows = append(rows, `{"id": "`+id+`"}`)
+	}
+	f := newFakeGraph(t, map[string]fakeRoute{
+		"/users":            {status: 200, body: `{"value": [` + strings.Join(rows, ",") + `]}`},
+		"/users/" + absent:  {status: 200, body: `{"id": "` + absent + `", "signInActivity": {"lastSignInDateTime": "2026-10-05T07:30:00Z"}}`},
+		"/users/" + refused: {status: 403, body: `{"error":{"code":"Authorization_RequestDenied","message":"denied"}}`},
+	})
+
+	got, errs, err := fetchUserSignInActivity(context.Background(), f.client(), ids)
+	require.NoError(t, err)
+	assert.Equal(t, 1, f.batchCalls, "only the users the listing left out are read by id")
+	assert.Len(t, f.steps, 2)
+
+	activity, ok := got[absent].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "2026-10-05T07:30:00Z", activity["lastSignInDateTime"])
+	assert.Error(t, errs[refused])
+	assert.NotContains(t, got, refused, "a refused lookup is an error, not a user that never signed in")
+}
+
+func TestFetchUserSignInActivityReadsFewUsersByID(t *testing.T) {
+	// Synthetic: a single user, as when one user is looked up by id; the
+	// listing has no route, so reading it would fail the fetch.
+	f := newFakeGraph(t, map[string]fakeRoute{
+		"/users/u-1": {status: 200, body: `{"id": "u-1", "signInActivity": {"lastSignInDateTime": "2026-11-01T10:00:00Z"}}`},
+	})
+
+	got, errs, err := fetchUserSignInActivity(context.Background(), f.client(), []string{"u-1"})
+	require.NoError(t, err)
+	assert.Empty(t, errs)
+	assert.Equal(t, 1, f.batchCalls)
+	activity, ok := got["u-1"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "2026-11-01T10:00:00Z", activity["lastSignInDateTime"])
+}
+
+func TestFetchUserSignInActivityListingRefused(t *testing.T) {
+	// Synthetic: Graph answers 403 for a tenant without Entra ID P1/P2 or
+	// without AuditLog.Read.All.
+	f := newFakeGraph(t, map[string]fakeRoute{
+		"/users": {status: 403, body: `{"error":{"code":"Authentication_RequestFromNonPremiumTenantOrB2CTenant","message":"Neither tenant is B2C or tenant doesn't have premium license"}}`},
+	})
+	_, _, err := fetchUserSignInActivity(context.Background(), f.client(), signInActivityIDs(batchChunkSize+1))
+	assert.Error(t, err, "a refusal is an error, never users that read as 'never signed in'")
+	assert.Zero(t, f.batchCalls)
 }
