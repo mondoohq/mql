@@ -4415,3 +4415,11 @@ func (a *mqlGcpProjectVertexaiServiceModelDeploymentMonitoringJob) managedBy() (
 func (a *mqlGcpProjectVertexaiServiceModelDeploymentMonitoringJob) endpoint() (*mqlGcpProjectVertexaiServiceEndpoint, error) {
 	return resolveVertexaiEndpointRef(a.MqlRuntime, &a.Endpoint, a.cacheEndpointName)
 }
+
+func (g *mqlGcpProjectVertexaiServiceEndpoint) managedBy() (string, error) {
+	return managedByFromLabels(g.GetLabels())
+}
+
+func (g *mqlGcpProjectVertexaiServiceNotebookRuntimeTemplate) managedBy() (string, error) {
+	return managedByFromLabels(g.GetLabels())
+}

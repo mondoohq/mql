@@ -1474,3 +1474,46 @@ func parseDataprocImageMajorMinor(v string) (int, int, bool) {
 	}
 	return major, minor, true
 }
+
+// dataprocZoneRef splits a Dataproc zoneUri into the project and zone name.
+// Dataproc accepts a full Compute Engine URL, a projects/{p}/zones/{z} path, or
+// a bare zone name, in which case the zone belongs to defaultProject. Returns
+// empty strings for an empty or malformed value.
+func dataprocZoneRef(zoneUri, defaultProject string) (project, zone string) {
+	ref := strings.TrimPrefix(zoneUri, "https://www.googleapis.com/compute/v1/")
+	ref = strings.TrimPrefix(ref, "https://compute.googleapis.com/compute/v1/")
+	if ref == "" {
+		return "", ""
+	}
+	parts := strings.Split(ref, "/")
+	switch {
+	case len(parts) == 1:
+		if defaultProject == "" {
+			return "", ""
+		}
+		return defaultProject, parts[0]
+	case len(parts) == 4 && parts[0] == "projects" && parts[2] == "zones" && parts[1] != "" && parts[3] != "":
+		return parts[1], parts[3]
+	default:
+		return "", ""
+	}
+}
+
+func (g *mqlGcpProjectDataprocServiceClusterConfigGceCluster) zone() (*mqlGcpProjectComputeServiceZone, error) {
+	if g.ZoneUri.Error != nil {
+		return nil, g.ZoneUri.Error
+	}
+	project, zoneName := dataprocZoneRef(g.ZoneUri.Data, g.ProjectId.Data)
+	if zoneName == "" {
+		g.Zone.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(g.MqlRuntime, "gcp.project.computeService.zone", map[string]*llx.RawData{
+		"name":      llx.StringData(zoneName),
+		"projectId": llx.StringData(project),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGcpProjectComputeServiceZone), nil
+}

@@ -834,3 +834,32 @@ func (g *mqlGcpProjectCloudBuildServiceBuild) iamServiceAccount() (*mqlGcpProjec
 	}
 	return res.(*mqlGcpProjectIamServiceServiceAccount), nil
 }
+
+// getCloudBuildWorkerPoolByName resolves a worker pool resource name
+// (projects/{project}/locations/{location}/workerPools/{pool}) against the
+// pools listed for its project. A project number in the name is listed under
+// defaultProject. Returns nil when the name is empty, malformed, or no listed
+// pool matches.
+func getCloudBuildWorkerPoolByName(runtime *plugin.Runtime, name, defaultProject string) (*mqlGcpProjectCloudBuildServiceWorkerPool, error) {
+	project := projectOfResourceName(name, "workerPools", defaultProject)
+	if project == "" {
+		return nil, nil
+	}
+	obj, err := CreateResource(runtime, "gcp.project.cloudBuildService", map[string]*llx.RawData{
+		"projectId": llx.StringData(project),
+	})
+	if err != nil {
+		return nil, err
+	}
+	pools := obj.(*mqlGcpProjectCloudBuildService).GetWorkerPools()
+	if pools.Error != nil {
+		return nil, pools.Error
+	}
+	for _, p := range pools.Data {
+		pool := p.(*mqlGcpProjectCloudBuildServiceWorkerPool)
+		if sameLocationScopedName(pool.Name.Data, name) {
+			return pool, nil
+		}
+	}
+	return nil, nil
+}

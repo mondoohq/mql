@@ -791,10 +791,11 @@ func (g *mqlGcpProjectComputeServiceAttachedDisk) source() (*mqlGcpProjectComput
 }
 
 type mqlGcpProjectComputeServiceInstanceInternal struct {
-	instanceMachineType       string
-	cacheNetworkUrls          []string
-	cacheSubnetworkUrls       []string
-	cacheServiceAccountEmails []string
+	instanceMachineType        string
+	cacheNetworkUrls           []string
+	cacheSubnetworkUrls        []string
+	cacheServiceAccountEmails  []string
+	cacheSourceMachineImageUrl string
 }
 
 func newMqlComputeServiceInstance(projectId string, zone *mqlGcpProjectComputeServiceZone, runtime *plugin.Runtime, instance *compute.Instance) (*mqlGcpProjectComputeServiceInstance, error) {
@@ -827,6 +828,8 @@ func newMqlComputeServiceInstance(projectId string, zone *mqlGcpProjectComputeSe
 	if instance.ResourceStatus != nil {
 		physicalHost = instance.ResourceStatus.PhysicalHost
 	}
+	effective := effectiveInstanceMetadataArgs(instance.ResourceStatus)
+	upcomingMaintenance := upcomingMaintenanceToDict(instance.ResourceStatus)
 
 	var enableIntegrityMonitoring bool
 	var enableSecureBoot bool
@@ -980,7 +983,7 @@ func newMqlComputeServiceInstance(projectId string, zone *mqlGcpProjectComputeSe
 		tagsItems = instance.Tags.Items
 	}
 
-	entry, err := CreateResource(runtime, "gcp.project.computeService.instance", map[string]*llx.RawData{
+	args := map[string]*llx.RawData{
 		"id":                              llx.StringData(instanceId),
 		"projectId":                       llx.StringData(projectId),
 		"name":                            llx.StringData(instance.Name),
@@ -1029,11 +1032,20 @@ func newMqlComputeServiceInstance(projectId string, zone *mqlGcpProjectComputeSe
 		"sourceMachineImageEncryptionKey": llx.DictData(mqlSourceMachineImageEncryptionKey),
 		"sourceMachineImageEncryption":    sourceMachineImageEncryption,
 		"advancedMachineFeatures":         llx.DictData(mqlAdvancedMachineFeatures),
-	})
+	}
+	for k, v := range effective {
+		args[k] = v
+	}
+	args["upcomingMaintenance"] = llx.NilData
+	if upcomingMaintenance != nil {
+		args["upcomingMaintenance"] = llx.DictData(upcomingMaintenance)
+	}
+	entry, err := CreateResource(runtime, "gcp.project.computeService.instance", args)
 	if err != nil {
 		return nil, err
 	}
 	mqlR := entry.(*mqlGcpProjectComputeServiceInstance)
+	mqlR.cacheSourceMachineImageUrl = instance.SourceMachineImage
 	mqlR.instanceMachineType = instance.MachineType
 	mqlR.cacheNetworkUrls = networkUrls
 	mqlR.cacheSubnetworkUrls = subnetworkUrls
@@ -1885,6 +1897,7 @@ type mqlGcpProjectComputeServiceImageInternal struct {
 	cacheSourceImageUrl    string
 	cacheSourceSnapshotUrl string
 	cacheKmsKeyName        string
+	cacheReplacementUrl    string
 }
 
 func (g *mqlGcpProjectComputeServiceImage) kmsKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
@@ -2045,6 +2058,7 @@ func (g *mqlGcpProjectComputeService) images() ([]any, error) {
 			if err != nil {
 				return err
 			}
+			dep := imageDeprecation(image.Deprecated)
 			mqlImage, err := CreateResource(g.MqlRuntime, "gcp.project.computeService.image", map[string]*llx.RawData{
 				"id":                           llx.StringData(strconv.FormatUint(image.Id, 10)),
 				"projectId":                    llx.StringData(projectId),
@@ -2065,11 +2079,18 @@ func (g *mqlGcpProjectComputeService) images() ([]any, error) {
 				"imageEncryptionKey":           llx.DictData(customerEncryptionKeyToDict(image.ImageEncryptionKey)),
 				"imageEncryption":              imageEncryption,
 				"shieldedInstanceInitialState": llx.DictData(shieldedInitialState),
+				"deprecationState":             llx.StringData(dep.state),
+				"deprecatedAt":                 llx.TimeDataPtr(parseTime(dep.deprecated)),
+				"obsoleteAt":                   llx.TimeDataPtr(parseTime(dep.obsolete)),
+				"deletedAt":                    llx.TimeDataPtr(parseTime(dep.deleted)),
+				"guestOsFeatures":              llx.ArrayData(guestOsFeatureTypes(image.GuestOsFeatures), types.String),
+				"licenseCodes":                 llx.ArrayData(int64sToInterface(image.LicenseCodes), types.Int),
 			})
 			if err != nil {
 				return err
 			}
 			mqlI := mqlImage.(*mqlGcpProjectComputeServiceImage)
+			mqlI.cacheReplacementUrl = dep.replacement
 			mqlI.cacheSourceDiskUrl = image.SourceDisk
 			mqlI.cacheSourceImageUrl = image.SourceImage
 			mqlI.cacheSourceSnapshotUrl = image.SourceSnapshot

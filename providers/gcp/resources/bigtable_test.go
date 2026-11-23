@@ -92,3 +92,10 @@ func TestDictDataOrNilReportsNullForNilMap(t *testing.T) {
 		"a table with no backup policy must read null, not {}")
 	assert.Equal(t, map[string]any{"k": "v"}, dictDataOrNil(map[string]any{"k": "v"}).Value)
 }
+
+func TestBigtableEditionToString(t *testing.T) {
+	// Synthetic: every edition the SDK defines.
+	assert.Equal(t, "ENTERPRISE", bigtableEditionToString(bigtable.Enterprise))
+	assert.Equal(t, "ENTERPRISE_PLUS", bigtableEditionToString(bigtable.EnterprisePlus))
+	assert.Equal(t, "EDITION_UNSPECIFIED", bigtableEditionToString(bigtable.EditionUnspecified))
+}
