@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -169,6 +170,73 @@ func TestFirewallSourceRangesContainPublic(t *testing.T) {
 			assert.Equal(t, tc.want, firewallSourceRangesContainPublic(tc.ranges))
 		})
 	}
+}
+
+// v4Slash8s returns first.0.0.0/8 through last.0.0.0/8, stepping by step.
+func v4Slash8s(first, last, step int) []any {
+	out := []any{}
+	for i := first; i <= last; i += step {
+		out = append(out, fmt.Sprintf("%d.0.0.0/8", i))
+	}
+	return out
+}
+
+// v4Slash9s returns the two /9s of every /8 from first through last.
+func v4Slash9s(first, last int) []any {
+	out := []any{}
+	for i := first; i <= last; i++ {
+		out = append(out, fmt.Sprintf("%d.0.0.0/9", i), fmt.Sprintf("%d.128.0.0/9", i))
+	}
+	return out
+}
+
+// v6OddSlash12s returns every other /12 inside 2000::/3, 256 in all.
+func v6OddSlash12s() []any {
+	out := []any{}
+	for i := 1; i < 512; i += 2 {
+		out = append(out, fmt.Sprintf("%x::/12", 0x2000+i<<4))
+	}
+	return out
+}
+
+func TestInternetSourceFamilies(t *testing.T) {
+	cases := []struct {
+		name   string
+		ranges []any
+		wantV4 bool
+		wantV6 bool
+	}{
+		{"256 /8s cover all of ipv4", v4Slash8s(0, 255, 1), true, false},
+		{"448 /9s cover 0.0.0.0 through 223.255.255.255", v4Slash9s(0, 223), true, false},
+		{"128 /9s span 0.0.0.0/2", v4Slash9s(0, 63), true, false},
+		{"odd /8s cover half the routable space with no aligned /7", v4Slash8s(1, 223, 2), true, false},
+		{"odd /8s one short of half", v4Slash8s(1, 221, 2), false, false},
+		{"two /8s straddling a /7 boundary", []any{"1.0.0.0/8", "2.0.0.0/8"}, false, false},
+		{"two /8s forming an aligned /7", []any{"2.0.0.0/8", "3.0.0.0/8"}, true, false},
+		{"/8s inside multicast and reserved", v4Slash8s(224, 255, 1), false, false},
+		{"private ranges", []any{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}, false, false},
+		{"mixed families both open", append(v4Slash8s(0, 255, 1), "2000::/4", "3000::/4"), true, true},
+		{"ipv6 /12s forming an aligned /11", []any{"2000::/12", "2010::/12"}, false, true},
+		{"ipv6 /12s with a gap", []any{"2000::/12", "2020::/12"}, false, false},
+		{"ipv6 every other /12 covers half of 2000::/3", v6OddSlash12s(), false, true},
+		{"ipv6 hosts are ignored", []any{"2001:db8::1/128", "2001:db8::2/128"}, false, false},
+		{"ipv4 open, ipv6 gap", append(v4Slash9s(0, 223), "2000::/12", "2020::/12"), true, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			v4, v6 := internetSourceFamilies(tc.ranges)
+			assert.Equal(t, tc.wantV4, v4, "ipv4")
+			assert.Equal(t, tc.wantV6, v6, "ipv6")
+			assert.Equal(t, tc.wantV4 || tc.wantV6, firewallSourceRangesContainPublic(tc.ranges))
+		})
+	}
+}
+
+func TestMergeSpans(t *testing.T) {
+	got := mergeSpans([]addrSpan{{10, 20}, {0, 4}, {21, 30}, {5, 5}, {40, 50}, {45, 46}})
+	assert.Equal(t, []addrSpan{{0, 5}, {10, 30}, {40, 50}}, got)
+	full := mergeSpans([]addrSpan{{0, ^uint64(0)}, {7, 9}})
+	assert.Equal(t, []addrSpan{{0, ^uint64(0)}}, full)
 }
 
 func TestAllowedRulePermitsPortWithHalvesSourceRanges(t *testing.T) {

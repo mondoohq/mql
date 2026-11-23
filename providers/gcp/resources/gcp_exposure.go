@@ -5,8 +5,6 @@ package resources
 
 import (
 	"net/netip"
-	"slices"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -14,26 +12,13 @@ import (
 	"go.mondoo.com/mql/types"
 )
 
-// openCIDRs are the source ranges that mean "the entire internet".
-var openCIDRs = map[string]struct{}{
-	"0.0.0.0/0": {},
-	"::/0":      {},
-}
-
-// isOpenCIDR reports whether a CIDR string represents the whole internet
-// (IPv4 0.0.0.0/0 or IPv6 ::/0). Surrounding whitespace is tolerated.
-func isOpenCIDR(cidr string) bool {
-	_, ok := openCIDRs[strings.TrimSpace(cidr)]
-	return ok
-}
-
 // gkeControlPlaneInternetReachable derives whether a GKE cluster's control
 // plane (Kubernetes API server) is reachable from the public internet.
 //
 // It is reachable when the public IP endpoint is enabled AND either:
 //   - master authorized networks is NOT enforced (any source IP may connect), or
-//   - the authorized-networks allowlist itself contains an open CIDR
-//     (0.0.0.0/0 or ::/0), which whitelists the entire internet.
+//   - the authorized-networks allowlist admits the internet: 0.0.0.0/0, ::/0,
+//     or ranges that together cover most of it (see internetSourceFamilies).
 //
 // When the public endpoint is disabled the control plane is private and never
 // internet-reachable, regardless of the authorized-networks configuration.
@@ -44,7 +29,12 @@ func gkeControlPlaneInternetReachable(publicEndpointEnabled, authorizedNetworksE
 	if !authorizedNetworksEnforced {
 		return true
 	}
-	return slices.ContainsFunc(authorizedCIDRs, isOpenCIDR)
+	ranges := make([]any, 0, len(authorizedCIDRs))
+	for _, c := range authorizedCIDRs {
+		ranges = append(ranges, c)
+	}
+	v4, v6 := internetSourceFamilies(ranges)
+	return v4 || v6
 }
 
 func (g *mqlGcpProjectGkeServiceCluster) controlPlaneInternetReachable() (bool, error) {
@@ -417,27 +407,13 @@ func (t firewallTraffic) covers(other firewallTraffic) bool {
 // openSourceFamilies reports which address families an allow rule's source
 // ranges open to the internet.
 //
-// A family counts when any of its ranges admits a large part of the internet
-// (see firewallPrefixAdmitsInternet): 0.0.0.0/0 and ::/0, but also 0.0.0.0/1
-// plus 128.0.0.0/1 or 2000::/3. Erring wide here errs toward reporting an
+// A family counts when its ranges, taken together, admit a large part of the
+// internet (see internetSourceFamilies): 0.0.0.0/0 and ::/0, but also
+// 0.0.0.0/1 plus 128.0.0.0/1, 2000::/3, or many narrow ranges whose union
+// covers most of the address space. Erring wide here errs toward reporting an
 // instance reachable.
 func openSourceFamilies(sourceRanges []any) (v4 bool, v6 bool) {
-	for _, s := range sourceRanges {
-		cidr, ok := s.(string)
-		if !ok {
-			continue
-		}
-		p, err := netip.ParsePrefix(strings.TrimSpace(cidr))
-		if err != nil || !firewallPrefixAdmitsInternet(p) {
-			continue
-		}
-		if p.Addr().Is4() {
-			v4 = true
-		} else {
-			v6 = true
-		}
-	}
-	return v4, v6
+	return internetSourceFamilies(sourceRanges)
 }
 
 // coveredSourceFamilies reports which address families a deny rule's source
@@ -449,8 +425,7 @@ func openSourceFamilies(sourceRanges []any) (v4 bool, v6 bool) {
 // for a zero-length prefix. A deny on 0.0.0.0/1 alone leaves half the internet
 // allowed, so it covers nothing.
 func coveredSourceFamilies(sourceRanges []any) (v4 bool, v6 bool) {
-	type span struct{ lo, hi uint64 }
-	spans := []span{}
+	spans := []addrSpan{}
 	for _, s := range sourceRanges {
 		cidr, ok := s.(string)
 		if !ok {
@@ -460,28 +435,19 @@ func coveredSourceFamilies(sourceRanges []any) (v4 bool, v6 bool) {
 		if err != nil {
 			continue
 		}
-		p = p.Masked()
 		if !p.Addr().Is4() {
 			if p.Bits() == 0 {
 				v6 = true
 			}
 			continue
 		}
-		b := p.Addr().As4()
-		lo := uint64(b[0])<<24 | uint64(b[1])<<16 | uint64(b[2])<<8 | uint64(b[3])
-		spans = append(spans, span{lo, lo + (uint64(1) << (32 - p.Bits())) - 1})
-	}
-	sort.Slice(spans, func(i, j int) bool { return spans[i].lo < spans[j].lo })
-	var next uint64
-	for _, sp := range spans {
-		if sp.lo > next {
-			break
-		}
-		if sp.hi+1 > next {
-			next = sp.hi + 1
+		// prefixSpan masks host bits itself.
+		if span, ok := prefixSpan(p); ok {
+			spans = append(spans, span)
 		}
 	}
-	v4 = next > 0xFFFFFFFF
+	merged := mergeSpans(spans)
+	v4 = len(merged) == 1 && merged[0].lo == 0 && merged[0].hi == 0xFFFFFFFF
 	return v4, v6
 }
 
@@ -854,8 +820,8 @@ func (g *mqlGcpProjectComputeServiceInstance) exposure() (*mqlGcpProjectComputeS
 }
 
 // internetReachable reports whether the Cloud SQL instance is reachable from the
-// internet: it has a public IP and an authorized network that admits any address
-// (0.0.0.0/0). Reuses the existing publicIpEnabled and hasOpenAuthorizedNetworks
+// internet: it has a public IP and authorized networks that admit the internet
+// (see sqlAuthorizedNetworksOpen). Reuses the existing publicIpEnabled and hasOpenAuthorizedNetworks
 // signals.
 func (g *mqlGcpProjectSqlServiceInstance) internetReachable() (bool, error) {
 	public := g.GetPublicIpEnabled()
