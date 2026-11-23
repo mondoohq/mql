@@ -177,9 +177,9 @@ func newMqlAwsMemorydbCluster(runtime *plugin.Runtime, region string, accountID 
 			"endpointAddress":         llx.StringDataPtr(endpointAddress),
 			"endpointPort":            llx.IntDataPtr(endpointPort),
 			"dataTiering":             memorydbDataTiering(cluster.DataTiering),
-			"networkType":             llx.StringData(string(cluster.NetworkType)),
-			"ipDiscovery":             llx.StringData(string(cluster.IpDiscovery)),
-			"availabilityMode":        llx.StringData(string(cluster.AvailabilityMode)),
+			"networkType":             llx.StringDataPtr(nonEmptyEnum(cluster.NetworkType)),
+			"ipDiscovery":             llx.StringDataPtr(nonEmptyEnum(cluster.IpDiscovery)),
+			"availabilityMode":        llx.StringDataPtr(nonEmptyEnum(cluster.AvailabilityMode)),
 			"parameterGroupStatus":    llx.StringDataPtr(cluster.ParameterGroupStatus),
 			"multiRegionClusterName":  llx.StringDataPtr(cluster.MultiRegionClusterName),
 		})
