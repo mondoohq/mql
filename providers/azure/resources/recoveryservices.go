@@ -929,3 +929,8 @@ func (a *mqlAzureSubscriptionRecoveryServicesServiceVault) protectedItems() ([]a
 func (a *mqlAzureSubscriptionRecoveryServicesServiceVaultProtectedItem) id() (string, error) {
 	return a.Id.Data, nil
 }
+
+func (a *mqlAzureSubscriptionRecoveryServicesServiceVault) diagnosticSettings() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
+}

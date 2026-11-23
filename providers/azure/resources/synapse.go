@@ -372,3 +372,8 @@ func initAzureSubscriptionSynapseServiceWorkspace(runtime *plugin.Runtime, args 
 
 	return nil, nil, errors.New("azure synapse workspace does not exist")
 }
+
+func (a *mqlAzureSubscriptionSynapseServiceWorkspace) diagnosticSettings() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
+}
