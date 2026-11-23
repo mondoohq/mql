@@ -2,18 +2,6 @@ module go.mondoo.com/mql/providers/aws
 
 replace go.mondoo.com/mql => ../..
 
-// AppStream DescribeImages fails with "deserialization failed, expected string,
-// got major type 7" from service/appstream v1.64.0 on, the release that moved
-// AppStream to the CBOR protocol. AWS's own public image
-// Amazon-AppStream2-Sample-Image-06-17-2024 returns
-// Applications[].Metadata.WORKING_DIRECTORY as null, the SDK models Metadata as
-// map[string]string, and the whole call fails, so aws.appstream.images errors
-// in every account. Upstream: aws/aws-sdk-go-v2#3501 (an API modeling issue,
-// open). v1.63.0 decodes the null as an empty string. This replace holds the
-// build there, and the `// pin v1.63.0` in the require block keeps the weekly
-// `version mod-update` job from advancing it. Drop both once #3501 is fixed.
-replace github.com/aws/aws-sdk-go-v2/service/appstream => github.com/aws/aws-sdk-go-v2/service/appstream v1.63.0
-
 go 1.27.3
 
 require (
