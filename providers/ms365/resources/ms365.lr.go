@@ -19,6 +19,8 @@ const (
 	ResourceMicrosoft                                                                                    string = "microsoft"
 	ResourceMicrosoftIdentityAndAccessAccessReviews                                                      string = "microsoft.identityAndAccess.accessReviews"
 	ResourceMicrosoftIdentityAndAccessAccessReviewDefinition                                             string = "microsoft.identityAndAccess.accessReviewDefinition"
+	ResourceMicrosoftIdentityAndAccessAccessReviewInstance                                               string = "microsoft.identityAndAccess.accessReviewInstance"
+	ResourceMicrosoftIdentityAndAccessAccessReviewDecision                                               string = "microsoft.identityAndAccess.accessReviewDecision"
 	ResourceMicrosoftIdentityAndAccessAccessReviewDefinitionReviewerScope                                string = "microsoft.identityAndAccess.accessReviewDefinition.reviewerScope"
 	ResourceMicrosoftIdentityAndAccessAccessReviewDefinitionScope                                        string = "microsoft.identityAndAccess.accessReviewDefinition.scope"
 	ResourceMicrosoftIdentityAndAccessAccessReviewDefinitionAccessReviewScheduleSettings                 string = "microsoft.identityAndAccess.accessReviewDefinition.accessReviewScheduleSettings"
@@ -137,6 +139,7 @@ const (
 	ResourceMicrosoftSecurityInformationProtectionLabelPolicy                                            string = "microsoft.security.informationProtection.labelPolicy"
 	ResourceMicrosoftSecurityInformationProtectionSensitivityLabel                                       string = "microsoft.security.informationProtection.sensitivityLabel"
 	ResourceMicrosoftPolicies                                                                            string = "microsoft.policies"
+	ResourceMicrosoftPoliciesTenantAuthorizationPolicy                                                   string = "microsoft.policies.tenantAuthorizationPolicy"
 	ResourceMicrosoftDeviceRegistrationPolicy                                                            string = "microsoft.deviceRegistrationPolicy"
 	ResourceMicrosoftDeviceRegistrationPolicyJoinPolicy                                                  string = "microsoft.deviceRegistrationPolicy.joinPolicy"
 	ResourceMicrosoftDeviceRegistrationPolicyRegistrationPolicy                                          string = "microsoft.deviceRegistrationPolicy.registrationPolicy"
@@ -279,6 +282,14 @@ func init() {
 		"microsoft.identityAndAccess.accessReviewDefinition": {
 			// to override args, implement: initMicrosoftIdentityAndAccessAccessReviewDefinition(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMicrosoftIdentityAndAccessAccessReviewDefinition,
+		},
+		"microsoft.identityAndAccess.accessReviewInstance": {
+			// to override args, implement: initMicrosoftIdentityAndAccessAccessReviewInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftIdentityAndAccessAccessReviewInstance,
+		},
+		"microsoft.identityAndAccess.accessReviewDecision": {
+			// to override args, implement: initMicrosoftIdentityAndAccessAccessReviewDecision(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftIdentityAndAccessAccessReviewDecision,
 		},
 		"microsoft.identityAndAccess.accessReviewDefinition.reviewerScope": {
 			// to override args, implement: initMicrosoftIdentityAndAccessAccessReviewDefinitionReviewerScope(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -751,6 +762,10 @@ func init() {
 		"microsoft.policies": {
 			// to override args, implement: initMicrosoftPolicies(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMicrosoftPolicies,
+		},
+		"microsoft.policies.tenantAuthorizationPolicy": {
+			Init:   initMicrosoftPoliciesTenantAuthorizationPolicy,
+			Create: createMicrosoftPoliciesTenantAuthorizationPolicy,
 		},
 		"microsoft.deviceRegistrationPolicy": {
 			// to override args, implement: initMicrosoftDeviceRegistrationPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -1416,6 +1431,75 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.identityAndAccess.accessReviewDefinition.settings": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDefinition).GetSettings()).ToDataRes(types.Resource("microsoft.identityAndAccess.accessReviewDefinition.accessReviewScheduleSettings"))
 	},
+	"microsoft.identityAndAccess.accessReviewDefinition.instances": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDefinition).GetInstances()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.accessReviewInstance")))
+	},
+	"microsoft.identityAndAccess.accessReviewInstance.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewInstance).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessReviewInstance.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewInstance).GetStatus()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessReviewInstance.startDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewInstance).GetStartDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.identityAndAccess.accessReviewInstance.endDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewInstance).GetEndDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.identityAndAccess.accessReviewInstance.decisions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewInstance).GetDecisions()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.accessReviewDecision")))
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.decision": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetDecision()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.recommendation": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetRecommendation()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.justification": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetJustification()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.reviewedDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetReviewedDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.reviewedBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetReviewedBy()).ToDataRes(types.Resource("microsoft.user"))
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.appliedDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetAppliedDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.applyResult": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetApplyResult()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.principalId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetPrincipalId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.principalType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetPrincipalType()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.principalDisplayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetPrincipalDisplayName()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.principalUser": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetPrincipalUser()).ToDataRes(types.Resource("microsoft.user"))
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.principalServicePrincipal": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetPrincipalServicePrincipal()).ToDataRes(types.Resource("microsoft.serviceprincipal"))
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.resourceId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetResourceId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.resourceType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetResourceType()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.resourceDisplayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetResourceDisplayName()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.resourceGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).GetResourceGroup()).ToDataRes(types.Resource("microsoft.group"))
+	},
 	"microsoft.identityAndAccess.accessReviewDefinition.reviewerScope.query": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviewDefinitionReviewerScope).GetQuery()).ToDataRes(types.String)
 	},
@@ -1832,6 +1916,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.users.count": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftUsers).GetCount()).ToDataRes(types.Int)
+	},
+	"microsoft.users.memberCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftUsers).GetMemberCount()).ToDataRes(types.Int)
+	},
+	"microsoft.users.guestCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftUsers).GetGuestCount()).ToDataRes(types.Int)
 	},
 	"microsoft.users.list": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftUsers).GetList()).ToDataRes(types.Array(types.Resource("microsoft.user")))
@@ -2301,6 +2391,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.identityAndAccess.roleEligibilityScheduleInstance.principalId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance).GetPrincipalId()).ToDataRes(types.String)
 	},
+	"microsoft.identityAndAccess.roleEligibilityScheduleInstance.principalType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance).GetPrincipalType()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.roleEligibilityScheduleInstance.principalUser": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance).GetPrincipalUser()).ToDataRes(types.Resource("microsoft.user"))
+	},
+	"microsoft.identityAndAccess.roleEligibilityScheduleInstance.principalGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance).GetPrincipalGroup()).ToDataRes(types.Resource("microsoft.group"))
+	},
+	"microsoft.identityAndAccess.roleEligibilityScheduleInstance.principalServicePrincipal": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance).GetPrincipalServicePrincipal()).ToDataRes(types.Resource("microsoft.serviceprincipal"))
+	},
 	"microsoft.identityAndAccess.roleEligibilityScheduleInstance.roleDefinition": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance).GetRoleDefinition()).ToDataRes(types.Resource("microsoft.rolemanagement.roledefinition"))
 	},
@@ -2463,11 +2565,44 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.rules": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicy).GetRules()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule")))
 	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.roleDefinition": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicy).GetRoleDefinition()).ToDataRes(types.Resource("microsoft.rolemanagement.roledefinition"))
+	},
 	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule).GetId()).ToDataRes(types.String)
 	},
 	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.target": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule).GetTarget()).ToDataRes(types.Resource("microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.target"))
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule).GetType()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.enabledRules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule).GetEnabledRules()).ToDataRes(types.Array(types.String))
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.isExpirationRequired": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule).GetIsExpirationRequired()).ToDataRes(types.Bool)
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.maximumDuration": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule).GetMaximumDuration()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.isApprovalRequired": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule).GetIsApprovalRequired()).ToDataRes(types.Bool)
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.isApprovalRequiredForExtension": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule).GetIsApprovalRequiredForExtension()).ToDataRes(types.Bool)
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.isRequestorJustificationRequired": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule).GetIsRequestorJustificationRequired()).ToDataRes(types.Bool)
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.approvalMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule).GetApprovalMode()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.authenticationContextEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule).GetAuthenticationContextEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.authenticationContextClaimValue": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule).GetAuthenticationContextClaimValue()).ToDataRes(types.String)
 	},
 	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.target.caller": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRuleTarget).GetCaller()).ToDataRes(types.String)
@@ -2940,6 +3075,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.user.signInActivity": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftUser).GetSignInActivity()).ToDataRes(types.Dict)
 	},
+	"microsoft.user.memberOf": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftUser).GetMemberOf()).ToDataRes(types.Array(types.Resource("microsoft.group")))
+	},
+	"microsoft.user.transitiveMemberOf": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftUser).GetTransitiveMemberOf()).ToDataRes(types.Array(types.Resource("microsoft.group")))
+	},
+	"microsoft.user.directoryRoleAssignments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftUser).GetDirectoryRoleAssignments()).ToDataRes(types.Array(types.Resource("microsoft.rolemanagement.roleassignment")))
+	},
+	"microsoft.user.directoryRoleEligibilities": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftUser).GetDirectoryRoleEligibilities()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.roleEligibilityScheduleInstance")))
+	},
 	"microsoft.user.authenticationRequirements.perUserMfaState": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftUserAuthenticationRequirements).GetPerUserMfaState()).ToDataRes(types.String)
 	},
@@ -3240,6 +3387,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.group.members": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftGroup).GetMembers()).ToDataRes(types.Array(types.Resource("microsoft.user")))
 	},
+	"microsoft.group.memberGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftGroup).GetMemberGroups()).ToDataRes(types.Array(types.Resource("microsoft.group")))
+	},
+	"microsoft.group.memberServicePrincipals": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftGroup).GetMemberServicePrincipals()).ToDataRes(types.Array(types.Resource("microsoft.serviceprincipal")))
+	},
+	"microsoft.group.transitiveMemberUsers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftGroup).GetTransitiveMemberUsers()).ToDataRes(types.Array(types.Resource("microsoft.user")))
+	},
+	"microsoft.group.transitiveMemberServicePrincipals": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftGroup).GetTransitiveMemberServicePrincipals()).ToDataRes(types.Array(types.Resource("microsoft.serviceprincipal")))
+	},
 	"microsoft.group.owners": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftGroup).GetOwners()).ToDataRes(types.Array(types.Resource("microsoft.group.owner")))
 	},
@@ -3290,6 +3449,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.group.preferredDataLocation": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftGroup).GetPreferredDataLocation()).ToDataRes(types.String)
+	},
+	"microsoft.group.directoryRoleAssignments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftGroup).GetDirectoryRoleAssignments()).ToDataRes(types.Array(types.Resource("microsoft.rolemanagement.roleassignment")))
+	},
+	"microsoft.group.directoryRoleEligibilities": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftGroup).GetDirectoryRoleEligibilities()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.roleEligibilityScheduleInstance")))
 	},
 	"microsoft.group.owner.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftGroupOwner).GetId()).ToDataRes(types.String)
@@ -3642,6 +3807,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.application.owners": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftApplication).GetOwners()).ToDataRes(types.Array(types.Resource("microsoft.user")))
 	},
+	"microsoft.application.ownerServicePrincipals": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftApplication).GetOwnerServicePrincipals()).ToDataRes(types.Array(types.Resource("microsoft.serviceprincipal")))
+	},
 	"microsoft.application.servicePrincipal": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftApplication).GetServicePrincipal()).ToDataRes(types.Resource("microsoft.serviceprincipal"))
 	},
@@ -3738,6 +3906,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.keyCredential.startDateTime": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftKeyCredential).GetStartDateTime()).ToDataRes(types.Time)
 	},
+	"microsoft.keyCredential.lastSignInDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftKeyCredential).GetLastSignInDateTime()).ToDataRes(types.Time)
+	},
 	"microsoft.passwordCredential.keyId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftPasswordCredential).GetKeyId()).ToDataRes(types.String)
 	},
@@ -3755,6 +3926,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.passwordCredential.startDateTime": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftPasswordCredential).GetStartDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.passwordCredential.lastSignInDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPasswordCredential).GetLastSignInDateTime()).ToDataRes(types.Time)
 	},
 	"microsoft.application.federatedIdentityCredential.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftApplicationFederatedIdentityCredential).GetId()).ToDataRes(types.String)
@@ -3876,6 +4050,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.serviceprincipal.owners": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftServiceprincipal).GetOwners()).ToDataRes(types.Array(types.Resource("microsoft.user")))
 	},
+	"microsoft.serviceprincipal.ownerServicePrincipals": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceprincipal).GetOwnerServicePrincipals()).ToDataRes(types.Array(types.Resource("microsoft.serviceprincipal")))
+	},
 	"microsoft.serviceprincipal.federatedIdentityCredentials": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftServiceprincipal).GetFederatedIdentityCredentials()).ToDataRes(types.Array(types.Resource("microsoft.application.federatedIdentityCredential")))
 	},
@@ -3890,6 +4067,33 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.serviceprincipal.homeRealmDiscoveryPolicies": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftServiceprincipal).GetHomeRealmDiscoveryPolicies()).ToDataRes(types.Array(types.Resource("microsoft.policies.homeRealmDiscoveryPolicy")))
+	},
+	"microsoft.serviceprincipal.memberOf": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceprincipal).GetMemberOf()).ToDataRes(types.Array(types.Resource("microsoft.group")))
+	},
+	"microsoft.serviceprincipal.transitiveMemberOf": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceprincipal).GetTransitiveMemberOf()).ToDataRes(types.Array(types.Resource("microsoft.group")))
+	},
+	"microsoft.serviceprincipal.lastSignInDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceprincipal).GetLastSignInDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.serviceprincipal.lastAppOnlyClientSignInDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceprincipal).GetLastAppOnlyClientSignInDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.serviceprincipal.lastDelegatedClientSignInDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceprincipal).GetLastDelegatedClientSignInDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.serviceprincipal.lastAppOnlyResourceSignInDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceprincipal).GetLastAppOnlyResourceSignInDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.serviceprincipal.lastDelegatedResourceSignInDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceprincipal).GetLastDelegatedResourceSignInDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.serviceprincipal.directoryRoleAssignments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceprincipal).GetDirectoryRoleAssignments()).ToDataRes(types.Array(types.Resource("microsoft.rolemanagement.roleassignment")))
+	},
+	"microsoft.serviceprincipal.directoryRoleEligibilities": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceprincipal).GetDirectoryRoleEligibilities()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.roleEligibilityScheduleInstance")))
 	},
 	"microsoft.serviceprincipal.assignment.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftServiceprincipalAssignment).GetId()).ToDataRes(types.String)
@@ -3920,6 +4124,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.application.permission.status": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftApplicationPermission).GetStatus()).ToDataRes(types.String)
+	},
+	"microsoft.application.permission.resource": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftApplicationPermission).GetResource()).ToDataRes(types.Resource("microsoft.serviceprincipal"))
+	},
+	"microsoft.application.permission.grantedDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftApplicationPermission).GetGrantedDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.application.permission.consentType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftApplicationPermission).GetConsentType()).ToDataRes(types.String)
 	},
 	"microsoft.oauth2PermissionGrant.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftOauth2PermissionGrant).GetId()).ToDataRes(types.String)
@@ -4449,6 +4662,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.policies.authorizationPolicy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftPolicies).GetAuthorizationPolicy()).ToDataRes(types.Dict)
 	},
+	"microsoft.policies.tenantAuthorizationPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPolicies).GetTenantAuthorizationPolicy()).ToDataRes(types.Resource("microsoft.policies.tenantAuthorizationPolicy"))
+	},
 	"microsoft.policies.identitySecurityDefaultsEnforcementPolicy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftPolicies).GetIdentitySecurityDefaultsEnforcementPolicy()).ToDataRes(types.Dict)
 	},
@@ -4508,6 +4724,54 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.policies.featureRolloutPolicies": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftPolicies).GetFeatureRolloutPolicies()).ToDataRes(types.Array(types.Resource("microsoft.policies.featureRolloutPolicy")))
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetDisplayName()).ToDataRes(types.String)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetDescription()).ToDataRes(types.String)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.allowInvitesFrom": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetAllowInvitesFrom()).ToDataRes(types.String)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.allowedToSignUpEmailBasedSubscriptions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetAllowedToSignUpEmailBasedSubscriptions()).ToDataRes(types.Bool)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.allowedToUseSSPR": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetAllowedToUseSSPR()).ToDataRes(types.Bool)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.allowEmailVerifiedUsersToJoinOrganization": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetAllowEmailVerifiedUsersToJoinOrganization()).ToDataRes(types.Bool)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.allowUserConsentForRiskyApps": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetAllowUserConsentForRiskyApps()).ToDataRes(types.Bool)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.blockMsolPowerShell": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetBlockMsolPowerShell()).ToDataRes(types.Bool)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.guestUserRoleId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetGuestUserRoleId()).ToDataRes(types.String)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.defaultUserAllowedToCreateApps": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetDefaultUserAllowedToCreateApps()).ToDataRes(types.Bool)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.defaultUserAllowedToCreateSecurityGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetDefaultUserAllowedToCreateSecurityGroups()).ToDataRes(types.Bool)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.defaultUserAllowedToCreateTenants": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetDefaultUserAllowedToCreateTenants()).ToDataRes(types.Bool)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.defaultUserAllowedToReadBitlockerKeysForOwnedDevice": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetDefaultUserAllowedToReadBitlockerKeysForOwnedDevice()).ToDataRes(types.Bool)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.defaultUserAllowedToReadOtherUsers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetDefaultUserAllowedToReadOtherUsers()).ToDataRes(types.Bool)
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.defaultUserPermissionGrantPoliciesAssigned": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GetDefaultUserPermissionGrantPoliciesAssigned()).ToDataRes(types.Array(types.String))
 	},
 	"microsoft.deviceRegistrationPolicy.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftDeviceRegistrationPolicy).GetId()).ToDataRes(types.String)
@@ -5189,6 +5453,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.rolemanagement.roledefinition.assignments": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftRolemanagementRoledefinition).GetAssignments()).ToDataRes(types.Array(types.Resource("microsoft.rolemanagement.roleassignment")))
+	},
+	"microsoft.rolemanagement.roledefinition.isPrivileged": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftRolemanagementRoledefinition).GetIsPrivileged()).ToDataRes(types.Bool)
+	},
+	"microsoft.rolemanagement.roledefinition.pimPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftRolemanagementRoledefinition).GetPimPolicy()).ToDataRes(types.Resource("microsoft.identityAndAccess.privilegedIdentityManagement.policy"))
 	},
 	"microsoft.rolemanagement.roleassignment.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftRolemanagementRoleassignment).GetId()).ToDataRes(types.String)
@@ -7981,6 +8251,106 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDefinition).Settings, ok = plugin.RawToTValue[*mqlMicrosoftIdentityAndAccessAccessReviewDefinitionAccessReviewScheduleSettings](v.Value, v.Error)
 		return
 	},
+	"microsoft.identityAndAccess.accessReviewDefinition.instances": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDefinition).Instances, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewInstance.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewInstance).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewInstance.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewInstance).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewInstance.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewInstance).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewInstance.startDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewInstance).StartDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewInstance.endDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewInstance).EndDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewInstance.decisions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewInstance).Decisions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.decision": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).Decision, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.recommendation": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).Recommendation, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.justification": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).Justification, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.reviewedDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).ReviewedDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.reviewedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).ReviewedBy, ok = plugin.RawToTValue[*mqlMicrosoftUser](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.appliedDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).AppliedDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.applyResult": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).ApplyResult, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.principalId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).PrincipalId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.principalType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).PrincipalType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.principalDisplayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).PrincipalDisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.principalUser": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).PrincipalUser, ok = plugin.RawToTValue[*mqlMicrosoftUser](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.principalServicePrincipal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).PrincipalServicePrincipal, ok = plugin.RawToTValue[*mqlMicrosoftServiceprincipal](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.resourceId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).ResourceId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.resourceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).ResourceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.resourceDisplayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).ResourceDisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessReviewDecision.resourceGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDecision).ResourceGroup, ok = plugin.RawToTValue[*mqlMicrosoftGroup](v.Value, v.Error)
+		return
+	},
 	"microsoft.identityAndAccess.accessReviewDefinition.reviewerScope.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftIdentityAndAccessAccessReviewDefinitionReviewerScope).__id, ok = v.Value.(string)
 		return
@@ -8611,6 +8981,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.users.count": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftUsers).Count, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"microsoft.users.memberCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftUsers).MemberCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"microsoft.users.guestCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftUsers).GuestCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"microsoft.users.list": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -9313,6 +9691,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance).PrincipalId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"microsoft.identityAndAccess.roleEligibilityScheduleInstance.principalType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance).PrincipalType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.roleEligibilityScheduleInstance.principalUser": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance).PrincipalUser, ok = plugin.RawToTValue[*mqlMicrosoftUser](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.roleEligibilityScheduleInstance.principalGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance).PrincipalGroup, ok = plugin.RawToTValue[*mqlMicrosoftGroup](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.roleEligibilityScheduleInstance.principalServicePrincipal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance).PrincipalServicePrincipal, ok = plugin.RawToTValue[*mqlMicrosoftServiceprincipal](v.Value, v.Error)
+		return
+	},
 	"microsoft.identityAndAccess.roleEligibilityScheduleInstance.roleDefinition": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance).RoleDefinition, ok = plugin.RawToTValue[*mqlMicrosoftRolemanagementRoledefinition](v.Value, v.Error)
 		return
@@ -9545,6 +9939,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicy).Rules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.roleDefinition": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicy).RoleDefinition, ok = plugin.RawToTValue[*mqlMicrosoftRolemanagementRoledefinition](v.Value, v.Error)
+		return
+	},
 	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule).__id, ok = v.Value.(string)
 		return
@@ -9555,6 +9953,46 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.target": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule).Target, ok = plugin.RawToTValue[*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRuleTarget](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.enabledRules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule).EnabledRules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.isExpirationRequired": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule).IsExpirationRequired, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.maximumDuration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule).MaximumDuration, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.isApprovalRequired": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule).IsApprovalRequired, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.isApprovalRequiredForExtension": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule).IsApprovalRequiredForExtension, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.isRequestorJustificationRequired": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule).IsRequestorJustificationRequired, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.approvalMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule).ApprovalMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.authenticationContextEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule).AuthenticationContextEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.authenticationContextClaimValue": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule).AuthenticationContextClaimValue, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.target.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -10305,6 +10743,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftUser).SignInActivity, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
+	"microsoft.user.memberOf": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftUser).MemberOf, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.user.transitiveMemberOf": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftUser).TransitiveMemberOf, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.user.directoryRoleAssignments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftUser).DirectoryRoleAssignments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.user.directoryRoleEligibilities": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftUser).DirectoryRoleEligibilities, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"microsoft.user.authenticationRequirements.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftUserAuthenticationRequirements).__id, ok = v.Value.(string)
 		return
@@ -10749,6 +11203,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftGroup).Members, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"microsoft.group.memberGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftGroup).MemberGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.group.memberServicePrincipals": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftGroup).MemberServicePrincipals, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.group.transitiveMemberUsers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftGroup).TransitiveMemberUsers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.group.transitiveMemberServicePrincipals": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftGroup).TransitiveMemberServicePrincipals, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"microsoft.group.owners": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftGroup).Owners, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -10815,6 +11285,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.group.preferredDataLocation": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftGroup).PreferredDataLocation, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.group.directoryRoleAssignments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftGroup).DirectoryRoleAssignments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.group.directoryRoleEligibilities": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftGroup).DirectoryRoleEligibilities, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"microsoft.group.owner.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -11325,6 +11803,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftApplication).Owners, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"microsoft.application.ownerServicePrincipals": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftApplication).OwnerServicePrincipals, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"microsoft.application.servicePrincipal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftApplication).ServicePrincipal, ok = plugin.RawToTValue[*mqlMicrosoftServiceprincipal](v.Value, v.Error)
 		return
@@ -11461,6 +11943,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftKeyCredential).StartDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
+	"microsoft.keyCredential.lastSignInDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftKeyCredential).LastSignInDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
 	"microsoft.passwordCredential.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftPasswordCredential).__id, ok = v.Value.(string)
 		return
@@ -11487,6 +11973,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.passwordCredential.startDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftPasswordCredential).StartDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.passwordCredential.lastSignInDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPasswordCredential).LastSignInDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"microsoft.application.federatedIdentityCredential.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -11657,6 +12147,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftServiceprincipal).Owners, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"microsoft.serviceprincipal.ownerServicePrincipals": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceprincipal).OwnerServicePrincipals, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"microsoft.serviceprincipal.federatedIdentityCredentials": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftServiceprincipal).FederatedIdentityCredentials, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -11675,6 +12169,42 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.serviceprincipal.homeRealmDiscoveryPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftServiceprincipal).HomeRealmDiscoveryPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceprincipal.memberOf": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceprincipal).MemberOf, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceprincipal.transitiveMemberOf": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceprincipal).TransitiveMemberOf, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceprincipal.lastSignInDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceprincipal).LastSignInDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceprincipal.lastAppOnlyClientSignInDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceprincipal).LastAppOnlyClientSignInDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceprincipal.lastDelegatedClientSignInDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceprincipal).LastDelegatedClientSignInDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceprincipal.lastAppOnlyResourceSignInDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceprincipal).LastAppOnlyResourceSignInDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceprincipal.lastDelegatedResourceSignInDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceprincipal).LastDelegatedResourceSignInDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceprincipal.directoryRoleAssignments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceprincipal).DirectoryRoleAssignments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceprincipal.directoryRoleEligibilities": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceprincipal).DirectoryRoleEligibilities, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"microsoft.serviceprincipal.assignment.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -11723,6 +12253,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.application.permission.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftApplicationPermission).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.application.permission.resource": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftApplicationPermission).Resource, ok = plugin.RawToTValue[*mqlMicrosoftServiceprincipal](v.Value, v.Error)
+		return
+	},
+	"microsoft.application.permission.grantedDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftApplicationPermission).GrantedDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.application.permission.consentType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftApplicationPermission).ConsentType, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"microsoft.oauth2PermissionGrant.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -12497,6 +13039,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftPolicies).AuthorizationPolicy, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
+	"microsoft.policies.tenantAuthorizationPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPolicies).TenantAuthorizationPolicy, ok = plugin.RawToTValue[*mqlMicrosoftPoliciesTenantAuthorizationPolicy](v.Value, v.Error)
+		return
+	},
 	"microsoft.policies.identitySecurityDefaultsEnforcementPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftPolicies).IdentitySecurityDefaultsEnforcementPolicy, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
@@ -12575,6 +13121,74 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.policies.featureRolloutPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftPolicies).FeatureRolloutPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.allowInvitesFrom": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).AllowInvitesFrom, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.allowedToSignUpEmailBasedSubscriptions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).AllowedToSignUpEmailBasedSubscriptions, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.allowedToUseSSPR": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).AllowedToUseSSPR, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.allowEmailVerifiedUsersToJoinOrganization": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).AllowEmailVerifiedUsersToJoinOrganization, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.allowUserConsentForRiskyApps": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).AllowUserConsentForRiskyApps, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.blockMsolPowerShell": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).BlockMsolPowerShell, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.guestUserRoleId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).GuestUserRoleId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.defaultUserAllowedToCreateApps": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).DefaultUserAllowedToCreateApps, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.defaultUserAllowedToCreateSecurityGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).DefaultUserAllowedToCreateSecurityGroups, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.defaultUserAllowedToCreateTenants": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).DefaultUserAllowedToCreateTenants, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.defaultUserAllowedToReadBitlockerKeysForOwnedDevice": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).DefaultUserAllowedToReadBitlockerKeysForOwnedDevice, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.defaultUserAllowedToReadOtherUsers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).DefaultUserAllowedToReadOtherUsers, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tenantAuthorizationPolicy.defaultUserPermissionGrantPoliciesAssigned": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy).DefaultUserPermissionGrantPoliciesAssigned, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"microsoft.deviceRegistrationPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -13659,6 +14273,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.rolemanagement.roledefinition.assignments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftRolemanagementRoledefinition).Assignments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.rolemanagement.roledefinition.isPrivileged": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftRolemanagementRoledefinition).IsPrivileged, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.rolemanagement.roledefinition.pimPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftRolemanagementRoledefinition).PimPolicy, ok = plugin.RawToTValue[*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicy](v.Value, v.Error)
 		return
 	},
 	"microsoft.rolemanagement.roleassignment.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -18004,6 +18626,7 @@ type mqlMicrosoftIdentityAndAccessAccessReviewDefinition struct {
 	Reviewers      plugin.TValue[any]
 	ReviewerScopes plugin.TValue[[]any]
 	Settings       plugin.TValue[*mqlMicrosoftIdentityAndAccessAccessReviewDefinitionAccessReviewScheduleSettings]
+	Instances      plugin.TValue[[]any]
 }
 
 // createMicrosoftIdentityAndAccessAccessReviewDefinition creates a new instance of this resource
@@ -18064,6 +18687,270 @@ func (c *mqlMicrosoftIdentityAndAccessAccessReviewDefinition) GetReviewerScopes(
 
 func (c *mqlMicrosoftIdentityAndAccessAccessReviewDefinition) GetSettings() *plugin.TValue[*mqlMicrosoftIdentityAndAccessAccessReviewDefinitionAccessReviewScheduleSettings] {
 	return &c.Settings
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDefinition) GetInstances() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Instances, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.accessReviewDefinition", c.__id, "instances")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.instances()
+	})
+}
+
+// mqlMicrosoftIdentityAndAccessAccessReviewInstance for the microsoft.identityAndAccess.accessReviewInstance resource
+type mqlMicrosoftIdentityAndAccessAccessReviewInstance struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMicrosoftIdentityAndAccessAccessReviewInstanceInternal
+	Id            plugin.TValue[string]
+	Status        plugin.TValue[string]
+	StartDateTime plugin.TValue[*time.Time]
+	EndDateTime   plugin.TValue[*time.Time]
+	Decisions     plugin.TValue[[]any]
+}
+
+// createMicrosoftIdentityAndAccessAccessReviewInstance creates a new instance of this resource
+func createMicrosoftIdentityAndAccessAccessReviewInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftIdentityAndAccessAccessReviewInstance{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.identityAndAccess.accessReviewInstance", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewInstance) MqlName() string {
+	return "microsoft.identityAndAccess.accessReviewInstance"
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewInstance) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewInstance) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewInstance) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewInstance) GetStartDateTime() *plugin.TValue[*time.Time] {
+	return &c.StartDateTime
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewInstance) GetEndDateTime() *plugin.TValue[*time.Time] {
+	return &c.EndDateTime
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewInstance) GetDecisions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Decisions, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.accessReviewInstance", c.__id, "decisions")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.decisions()
+	})
+}
+
+// mqlMicrosoftIdentityAndAccessAccessReviewDecision for the microsoft.identityAndAccess.accessReviewDecision resource
+type mqlMicrosoftIdentityAndAccessAccessReviewDecision struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMicrosoftIdentityAndAccessAccessReviewDecisionInternal
+	Id                        plugin.TValue[string]
+	Decision                  plugin.TValue[string]
+	Recommendation            plugin.TValue[string]
+	Justification             plugin.TValue[string]
+	ReviewedDateTime          plugin.TValue[*time.Time]
+	ReviewedBy                plugin.TValue[*mqlMicrosoftUser]
+	AppliedDateTime           plugin.TValue[*time.Time]
+	ApplyResult               plugin.TValue[string]
+	PrincipalId               plugin.TValue[string]
+	PrincipalType             plugin.TValue[string]
+	PrincipalDisplayName      plugin.TValue[string]
+	PrincipalUser             plugin.TValue[*mqlMicrosoftUser]
+	PrincipalServicePrincipal plugin.TValue[*mqlMicrosoftServiceprincipal]
+	ResourceId                plugin.TValue[string]
+	ResourceType              plugin.TValue[string]
+	ResourceDisplayName       plugin.TValue[string]
+	ResourceGroup             plugin.TValue[*mqlMicrosoftGroup]
+}
+
+// createMicrosoftIdentityAndAccessAccessReviewDecision creates a new instance of this resource
+func createMicrosoftIdentityAndAccessAccessReviewDecision(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftIdentityAndAccessAccessReviewDecision{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.identityAndAccess.accessReviewDecision", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) MqlName() string {
+	return "microsoft.identityAndAccess.accessReviewDecision"
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetDecision() *plugin.TValue[string] {
+	return &c.Decision
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetRecommendation() *plugin.TValue[string] {
+	return &c.Recommendation
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetJustification() *plugin.TValue[string] {
+	return &c.Justification
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetReviewedDateTime() *plugin.TValue[*time.Time] {
+	return &c.ReviewedDateTime
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetReviewedBy() *plugin.TValue[*mqlMicrosoftUser] {
+	return plugin.GetOrCompute[*mqlMicrosoftUser](&c.ReviewedBy, func() (*mqlMicrosoftUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.accessReviewDecision", c.__id, "reviewedBy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftUser), nil
+			}
+		}
+
+		return c.reviewedBy()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetAppliedDateTime() *plugin.TValue[*time.Time] {
+	return &c.AppliedDateTime
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetApplyResult() *plugin.TValue[string] {
+	return &c.ApplyResult
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetPrincipalId() *plugin.TValue[string] {
+	return &c.PrincipalId
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetPrincipalType() *plugin.TValue[string] {
+	return &c.PrincipalType
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetPrincipalDisplayName() *plugin.TValue[string] {
+	return &c.PrincipalDisplayName
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetPrincipalUser() *plugin.TValue[*mqlMicrosoftUser] {
+	return plugin.GetOrCompute[*mqlMicrosoftUser](&c.PrincipalUser, func() (*mqlMicrosoftUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.accessReviewDecision", c.__id, "principalUser")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftUser), nil
+			}
+		}
+
+		return c.principalUser()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetPrincipalServicePrincipal() *plugin.TValue[*mqlMicrosoftServiceprincipal] {
+	return plugin.GetOrCompute[*mqlMicrosoftServiceprincipal](&c.PrincipalServicePrincipal, func() (*mqlMicrosoftServiceprincipal, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.accessReviewDecision", c.__id, "principalServicePrincipal")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftServiceprincipal), nil
+			}
+		}
+
+		return c.principalServicePrincipal()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetResourceId() *plugin.TValue[string] {
+	return &c.ResourceId
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetResourceType() *plugin.TValue[string] {
+	return &c.ResourceType
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetResourceDisplayName() *plugin.TValue[string] {
+	return &c.ResourceDisplayName
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessReviewDecision) GetResourceGroup() *plugin.TValue[*mqlMicrosoftGroup] {
+	return plugin.GetOrCompute[*mqlMicrosoftGroup](&c.ResourceGroup, func() (*mqlMicrosoftGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.accessReviewDecision", c.__id, "resourceGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftGroup), nil
+			}
+		}
+
+		return c.resourceGroup()
+	})
 }
 
 // mqlMicrosoftIdentityAndAccessAccessReviewDefinitionReviewerScope for the microsoft.identityAndAccess.accessReviewDefinition.reviewerScope resource
@@ -19681,10 +20568,12 @@ type mqlMicrosoftUsers struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlMicrosoftUsersInternal it will be used here
-	Filter plugin.TValue[string]
-	Search plugin.TValue[string]
-	Count  plugin.TValue[int64]
-	List   plugin.TValue[[]any]
+	Filter      plugin.TValue[string]
+	Search      plugin.TValue[string]
+	Count       plugin.TValue[int64]
+	MemberCount plugin.TValue[int64]
+	GuestCount  plugin.TValue[int64]
+	List        plugin.TValue[[]any]
 }
 
 // createMicrosoftUsers creates a new instance of this resource
@@ -19730,6 +20619,18 @@ func (c *mqlMicrosoftUsers) GetSearch() *plugin.TValue[string] {
 func (c *mqlMicrosoftUsers) GetCount() *plugin.TValue[int64] {
 	return plugin.GetOrCompute[int64](&c.Count, func() (int64, error) {
 		return c.count()
+	})
+}
+
+func (c *mqlMicrosoftUsers) GetMemberCount() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MemberCount, func() (int64, error) {
+		return c.memberCount()
+	})
+}
+
+func (c *mqlMicrosoftUsers) GetGuestCount() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.GuestCount, func() (int64, error) {
+		return c.guestCount()
 	})
 }
 
@@ -21641,6 +22542,10 @@ type mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance struct {
 	mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstanceInternal
 	Id                        plugin.TValue[string]
 	PrincipalId               plugin.TValue[string]
+	PrincipalType             plugin.TValue[string]
+	PrincipalUser             plugin.TValue[*mqlMicrosoftUser]
+	PrincipalGroup            plugin.TValue[*mqlMicrosoftGroup]
+	PrincipalServicePrincipal plugin.TValue[*mqlMicrosoftServiceprincipal]
 	RoleDefinition            plugin.TValue[*mqlMicrosoftRolemanagementRoledefinition]
 	DirectoryScopeId          plugin.TValue[string]
 	AppScopeId                plugin.TValue[string]
@@ -21688,6 +22593,58 @@ func (c *mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance) GetId() *
 
 func (c *mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance) GetPrincipalId() *plugin.TValue[string] {
 	return &c.PrincipalId
+}
+
+func (c *mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance) GetPrincipalType() *plugin.TValue[string] {
+	return &c.PrincipalType
+}
+
+func (c *mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance) GetPrincipalUser() *plugin.TValue[*mqlMicrosoftUser] {
+	return plugin.GetOrCompute[*mqlMicrosoftUser](&c.PrincipalUser, func() (*mqlMicrosoftUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.roleEligibilityScheduleInstance", c.__id, "principalUser")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftUser), nil
+			}
+		}
+
+		return c.principalUser()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance) GetPrincipalGroup() *plugin.TValue[*mqlMicrosoftGroup] {
+	return plugin.GetOrCompute[*mqlMicrosoftGroup](&c.PrincipalGroup, func() (*mqlMicrosoftGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.roleEligibilityScheduleInstance", c.__id, "principalGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftGroup), nil
+			}
+		}
+
+		return c.principalGroup()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance) GetPrincipalServicePrincipal() *plugin.TValue[*mqlMicrosoftServiceprincipal] {
+	return plugin.GetOrCompute[*mqlMicrosoftServiceprincipal](&c.PrincipalServicePrincipal, func() (*mqlMicrosoftServiceprincipal, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.roleEligibilityScheduleInstance", c.__id, "principalServicePrincipal")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftServiceprincipal), nil
+			}
+		}
+
+		return c.principalServicePrincipal()
+	})
 }
 
 func (c *mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance) GetRoleDefinition() *plugin.TValue[*mqlMicrosoftRolemanagementRoledefinition] {
@@ -22171,6 +23128,7 @@ type mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicy struct {
 	LastModifiedDateTime  plugin.TValue[*time.Time]
 	LastModifiedBy        plugin.TValue[any]
 	Rules                 plugin.TValue[[]any]
+	RoleDefinition        plugin.TValue[*mqlMicrosoftRolemanagementRoledefinition]
 }
 
 // createMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicy creates a new instance of this resource
@@ -22253,13 +23211,39 @@ func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicy) GetRul
 	})
 }
 
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicy) GetRoleDefinition() *plugin.TValue[*mqlMicrosoftRolemanagementRoledefinition] {
+	return plugin.GetOrCompute[*mqlMicrosoftRolemanagementRoledefinition](&c.RoleDefinition, func() (*mqlMicrosoftRolemanagementRoledefinition, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.privilegedIdentityManagement.policy", c.__id, "roleDefinition")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftRolemanagementRoledefinition), nil
+			}
+		}
+
+		return c.roleDefinition()
+	})
+}
+
 // mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule for the microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule resource
 type mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRuleInternal it will be used here
-	Id     plugin.TValue[string]
-	Target plugin.TValue[*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRuleTarget]
+	Id                               plugin.TValue[string]
+	Target                           plugin.TValue[*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRuleTarget]
+	Type                             plugin.TValue[string]
+	EnabledRules                     plugin.TValue[[]any]
+	IsExpirationRequired             plugin.TValue[bool]
+	MaximumDuration                  plugin.TValue[string]
+	IsApprovalRequired               plugin.TValue[bool]
+	IsApprovalRequiredForExtension   plugin.TValue[bool]
+	IsRequestorJustificationRequired plugin.TValue[bool]
+	ApprovalMode                     plugin.TValue[string]
+	AuthenticationContextEnabled     plugin.TValue[bool]
+	AuthenticationContextClaimValue  plugin.TValue[string]
 }
 
 // createMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule creates a new instance of this resource
@@ -22300,6 +23284,46 @@ func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule) Ge
 
 func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule) GetTarget() *plugin.TValue[*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRuleTarget] {
 	return &c.Target
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule) GetEnabledRules() *plugin.TValue[[]any] {
+	return &c.EnabledRules
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule) GetIsExpirationRequired() *plugin.TValue[bool] {
+	return &c.IsExpirationRequired
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule) GetMaximumDuration() *plugin.TValue[string] {
+	return &c.MaximumDuration
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule) GetIsApprovalRequired() *plugin.TValue[bool] {
+	return &c.IsApprovalRequired
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule) GetIsApprovalRequiredForExtension() *plugin.TValue[bool] {
+	return &c.IsApprovalRequiredForExtension
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule) GetIsRequestorJustificationRequired() *plugin.TValue[bool] {
+	return &c.IsRequestorJustificationRequired
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule) GetApprovalMode() *plugin.TValue[string] {
+	return &c.ApprovalMode
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule) GetAuthenticationContextEnabled() *plugin.TValue[bool] {
+	return &c.AuthenticationContextEnabled
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule) GetAuthenticationContextClaimValue() *plugin.TValue[string] {
+	return &c.AuthenticationContextClaimValue
 }
 
 // mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRuleTarget for the microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.target resource
@@ -24327,6 +25351,10 @@ type mqlMicrosoftUser struct {
 	ExternalUserState          plugin.TValue[string]
 	PasswordPolicies           plugin.TValue[string]
 	SignInActivity             plugin.TValue[any]
+	MemberOf                   plugin.TValue[[]any]
+	TransitiveMemberOf         plugin.TValue[[]any]
+	DirectoryRoleAssignments   plugin.TValue[[]any]
+	DirectoryRoleEligibilities plugin.TValue[[]any]
 }
 
 // createMicrosoftUser creates a new instance of this resource
@@ -24550,6 +25578,70 @@ func (c *mqlMicrosoftUser) GetPasswordPolicies() *plugin.TValue[string] {
 func (c *mqlMicrosoftUser) GetSignInActivity() *plugin.TValue[any] {
 	return plugin.GetOrCompute[any](&c.SignInActivity, func() (any, error) {
 		return c.signInActivity()
+	})
+}
+
+func (c *mqlMicrosoftUser) GetMemberOf() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MemberOf, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.user", c.__id, "memberOf")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.memberOf()
+	})
+}
+
+func (c *mqlMicrosoftUser) GetTransitiveMemberOf() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TransitiveMemberOf, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.user", c.__id, "transitiveMemberOf")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.transitiveMemberOf()
+	})
+}
+
+func (c *mqlMicrosoftUser) GetDirectoryRoleAssignments() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DirectoryRoleAssignments, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.user", c.__id, "directoryRoleAssignments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.directoryRoleAssignments()
+	})
+}
+
+func (c *mqlMicrosoftUser) GetDirectoryRoleEligibilities() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DirectoryRoleEligibilities, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.user", c.__id, "directoryRoleEligibilities")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.directoryRoleEligibilities()
 	})
 }
 
@@ -25534,31 +26626,37 @@ type mqlMicrosoftGroup struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlMicrosoftGroupInternal it will be used here
-	Id                            plugin.TValue[string]
-	DisplayName                   plugin.TValue[string]
-	SecurityEnabled               plugin.TValue[bool]
-	MailEnabled                   plugin.TValue[bool]
-	MailNickname                  plugin.TValue[string]
-	Mail                          plugin.TValue[string]
-	Visibility                    plugin.TValue[string]
-	Members                       plugin.TValue[[]any]
-	Owners                        plugin.TValue[[]any]
-	GroupTypes                    plugin.TValue[[]any]
-	MembershipRule                plugin.TValue[string]
-	MembershipRuleProcessingState plugin.TValue[string]
-	CreatedDateTime               plugin.TValue[*time.Time]
-	Description                   plugin.TValue[string]
-	ExpirationDateTime            plugin.TValue[*time.Time]
-	IsAssignableToRole            plugin.TValue[bool]
-	RenewedDateTime               plugin.TValue[*time.Time]
-	OnPremisesSyncEnabled         plugin.TValue[bool]
-	OnPremisesLastSyncDateTime    plugin.TValue[*time.Time]
-	Classification                plugin.TValue[string]
-	DeletedDateTime               plugin.TValue[*time.Time]
-	ProxyAddresses                plugin.TValue[[]any]
-	Theme                         plugin.TValue[string]
-	PreferredLanguage             plugin.TValue[string]
-	PreferredDataLocation         plugin.TValue[string]
+	Id                                plugin.TValue[string]
+	DisplayName                       plugin.TValue[string]
+	SecurityEnabled                   plugin.TValue[bool]
+	MailEnabled                       plugin.TValue[bool]
+	MailNickname                      plugin.TValue[string]
+	Mail                              plugin.TValue[string]
+	Visibility                        plugin.TValue[string]
+	Members                           plugin.TValue[[]any]
+	MemberGroups                      plugin.TValue[[]any]
+	MemberServicePrincipals           plugin.TValue[[]any]
+	TransitiveMemberUsers             plugin.TValue[[]any]
+	TransitiveMemberServicePrincipals plugin.TValue[[]any]
+	Owners                            plugin.TValue[[]any]
+	GroupTypes                        plugin.TValue[[]any]
+	MembershipRule                    plugin.TValue[string]
+	MembershipRuleProcessingState     plugin.TValue[string]
+	CreatedDateTime                   plugin.TValue[*time.Time]
+	Description                       plugin.TValue[string]
+	ExpirationDateTime                plugin.TValue[*time.Time]
+	IsAssignableToRole                plugin.TValue[bool]
+	RenewedDateTime                   plugin.TValue[*time.Time]
+	OnPremisesSyncEnabled             plugin.TValue[bool]
+	OnPremisesLastSyncDateTime        plugin.TValue[*time.Time]
+	Classification                    plugin.TValue[string]
+	DeletedDateTime                   plugin.TValue[*time.Time]
+	ProxyAddresses                    plugin.TValue[[]any]
+	Theme                             plugin.TValue[string]
+	PreferredLanguage                 plugin.TValue[string]
+	PreferredDataLocation             plugin.TValue[string]
+	DirectoryRoleAssignments          plugin.TValue[[]any]
+	DirectoryRoleEligibilities        plugin.TValue[[]any]
 }
 
 // createMicrosoftGroup creates a new instance of this resource
@@ -25642,6 +26740,70 @@ func (c *mqlMicrosoftGroup) GetMembers() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlMicrosoftGroup) GetMemberGroups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MemberGroups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.group", c.__id, "memberGroups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.memberGroups()
+	})
+}
+
+func (c *mqlMicrosoftGroup) GetMemberServicePrincipals() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MemberServicePrincipals, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.group", c.__id, "memberServicePrincipals")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.memberServicePrincipals()
+	})
+}
+
+func (c *mqlMicrosoftGroup) GetTransitiveMemberUsers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TransitiveMemberUsers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.group", c.__id, "transitiveMemberUsers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.transitiveMemberUsers()
+	})
+}
+
+func (c *mqlMicrosoftGroup) GetTransitiveMemberServicePrincipals() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TransitiveMemberServicePrincipals, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.group", c.__id, "transitiveMemberServicePrincipals")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.transitiveMemberServicePrincipals()
+	})
+}
+
 func (c *mqlMicrosoftGroup) GetOwners() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.Owners, func() ([]any, error) {
 		if c.MqlRuntime.HasRecording {
@@ -25720,6 +26882,38 @@ func (c *mqlMicrosoftGroup) GetPreferredLanguage() *plugin.TValue[string] {
 
 func (c *mqlMicrosoftGroup) GetPreferredDataLocation() *plugin.TValue[string] {
 	return &c.PreferredDataLocation
+}
+
+func (c *mqlMicrosoftGroup) GetDirectoryRoleAssignments() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DirectoryRoleAssignments, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.group", c.__id, "directoryRoleAssignments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.directoryRoleAssignments()
+	})
+}
+
+func (c *mqlMicrosoftGroup) GetDirectoryRoleEligibilities() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DirectoryRoleEligibilities, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.group", c.__id, "directoryRoleEligibilities")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.directoryRoleEligibilities()
+	})
 }
 
 // mqlMicrosoftGroupOwner for the microsoft.group.owner resource
@@ -26697,6 +27891,7 @@ type mqlMicrosoftApplication struct {
 	Certificates                      plugin.TValue[[]any]
 	HasExpiredCredentials             plugin.TValue[bool]
 	Owners                            plugin.TValue[[]any]
+	OwnerServicePrincipals            plugin.TValue[[]any]
 	ServicePrincipal                  plugin.TValue[*mqlMicrosoftServiceprincipal]
 	FederatedIdentityCredentials      plugin.TValue[[]any]
 	AppManagementPolicies             plugin.TValue[[]any]
@@ -26844,6 +28039,22 @@ func (c *mqlMicrosoftApplication) GetOwners() *plugin.TValue[[]any] {
 		}
 
 		return c.owners()
+	})
+}
+
+func (c *mqlMicrosoftApplication) GetOwnerServicePrincipals() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.OwnerServicePrincipals, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.application", c.__id, "ownerServicePrincipals")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.ownerServicePrincipals()
 	})
 }
 
@@ -27029,14 +28240,15 @@ type mqlMicrosoftKeyCredential struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlMicrosoftKeyCredentialInternal it will be used here
-	KeyId         plugin.TValue[string]
-	Description   plugin.TValue[string]
-	Thumbprint    plugin.TValue[string]
-	Type          plugin.TValue[string]
-	Usage         plugin.TValue[string]
-	Expires       plugin.TValue[*time.Time]
-	Expired       plugin.TValue[bool]
-	StartDateTime plugin.TValue[*time.Time]
+	KeyId              plugin.TValue[string]
+	Description        plugin.TValue[string]
+	Thumbprint         plugin.TValue[string]
+	Type               plugin.TValue[string]
+	Usage              plugin.TValue[string]
+	Expires            plugin.TValue[*time.Time]
+	Expired            plugin.TValue[bool]
+	StartDateTime      plugin.TValue[*time.Time]
+	LastSignInDateTime plugin.TValue[*time.Time]
 }
 
 // createMicrosoftKeyCredential creates a new instance of this resource
@@ -27103,17 +28315,24 @@ func (c *mqlMicrosoftKeyCredential) GetStartDateTime() *plugin.TValue[*time.Time
 	return &c.StartDateTime
 }
 
+func (c *mqlMicrosoftKeyCredential) GetLastSignInDateTime() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.LastSignInDateTime, func() (*time.Time, error) {
+		return c.lastSignInDateTime()
+	})
+}
+
 // mqlMicrosoftPasswordCredential for the microsoft.passwordCredential resource
 type mqlMicrosoftPasswordCredential struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlMicrosoftPasswordCredentialInternal it will be used here
-	KeyId         plugin.TValue[string]
-	Description   plugin.TValue[string]
-	Hint          plugin.TValue[string]
-	Expires       plugin.TValue[*time.Time]
-	Expired       plugin.TValue[bool]
-	StartDateTime plugin.TValue[*time.Time]
+	KeyId              plugin.TValue[string]
+	Description        plugin.TValue[string]
+	Hint               plugin.TValue[string]
+	Expires            plugin.TValue[*time.Time]
+	Expired            plugin.TValue[bool]
+	StartDateTime      plugin.TValue[*time.Time]
+	LastSignInDateTime plugin.TValue[*time.Time]
 }
 
 // createMicrosoftPasswordCredential creates a new instance of this resource
@@ -27170,6 +28389,12 @@ func (c *mqlMicrosoftPasswordCredential) GetExpired() *plugin.TValue[bool] {
 
 func (c *mqlMicrosoftPasswordCredential) GetStartDateTime() *plugin.TValue[*time.Time] {
 	return &c.StartDateTime
+}
+
+func (c *mqlMicrosoftPasswordCredential) GetLastSignInDateTime() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.LastSignInDateTime, func() (*time.Time, error) {
+		return c.lastSignInDateTime()
+	})
 }
 
 // mqlMicrosoftApplicationFederatedIdentityCredential for the microsoft.application.federatedIdentityCredential resource
@@ -27246,45 +28471,55 @@ type mqlMicrosoftServiceprincipal struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlMicrosoftServiceprincipalInternal
-	Id                           plugin.TValue[string]
-	Type                         plugin.TValue[string]
-	Name                         plugin.TValue[string]
-	AppId                        plugin.TValue[string]
-	AppOwnerOrganizationId       plugin.TValue[string]
-	Description                  plugin.TValue[string]
-	Tags                         plugin.TValue[[]any]
-	Enabled                      plugin.TValue[bool]
-	HomepageUrl                  plugin.TValue[string]
-	TermsOfServiceUrl            plugin.TValue[string]
-	ReplyUrls                    plugin.TValue[[]any]
-	AssignmentRequired           plugin.TValue[bool]
-	VisibleToUsers               plugin.TValue[bool]
-	Notes                        plugin.TValue[string]
-	Assignments                  plugin.TValue[[]any]
-	ApplicationTemplateId        plugin.TValue[string]
-	VerifiedPublisher            plugin.TValue[any]
-	LoginUrl                     plugin.TValue[string]
-	LogoutUrl                    plugin.TValue[string]
-	ServicePrincipalNames        plugin.TValue[[]any]
-	SignInAudience               plugin.TValue[string]
-	PreferredSingleSignOnMode    plugin.TValue[string]
-	NotificationEmailAddresses   plugin.TValue[[]any]
-	AppRoleAssignmentRequired    plugin.TValue[bool]
-	IsFirstParty                 plugin.TValue[bool]
-	AppRoles                     plugin.TValue[[]any]
-	Permissions                  plugin.TValue[[]any]
-	AlternativeNames             plugin.TValue[[]any]
-	AppDescription               plugin.TValue[string]
-	DisabledByMicrosoftStatus    plugin.TValue[string]
-	KeyCredentials               plugin.TValue[[]any]
-	PasswordCredentials          plugin.TValue[[]any]
-	Oauth2PermissionScopes       plugin.TValue[[]any]
-	Owners                       plugin.TValue[[]any]
-	FederatedIdentityCredentials plugin.TValue[[]any]
-	AppManagementPolicies        plugin.TValue[[]any]
-	TokenLifetimePolicies        plugin.TValue[[]any]
-	ClaimsMappingPolicies        plugin.TValue[[]any]
-	HomeRealmDiscoveryPolicies   plugin.TValue[[]any]
+	Id                                  plugin.TValue[string]
+	Type                                plugin.TValue[string]
+	Name                                plugin.TValue[string]
+	AppId                               plugin.TValue[string]
+	AppOwnerOrganizationId              plugin.TValue[string]
+	Description                         plugin.TValue[string]
+	Tags                                plugin.TValue[[]any]
+	Enabled                             plugin.TValue[bool]
+	HomepageUrl                         plugin.TValue[string]
+	TermsOfServiceUrl                   plugin.TValue[string]
+	ReplyUrls                           plugin.TValue[[]any]
+	AssignmentRequired                  plugin.TValue[bool]
+	VisibleToUsers                      plugin.TValue[bool]
+	Notes                               plugin.TValue[string]
+	Assignments                         plugin.TValue[[]any]
+	ApplicationTemplateId               plugin.TValue[string]
+	VerifiedPublisher                   plugin.TValue[any]
+	LoginUrl                            plugin.TValue[string]
+	LogoutUrl                           plugin.TValue[string]
+	ServicePrincipalNames               plugin.TValue[[]any]
+	SignInAudience                      plugin.TValue[string]
+	PreferredSingleSignOnMode           plugin.TValue[string]
+	NotificationEmailAddresses          plugin.TValue[[]any]
+	AppRoleAssignmentRequired           plugin.TValue[bool]
+	IsFirstParty                        plugin.TValue[bool]
+	AppRoles                            plugin.TValue[[]any]
+	Permissions                         plugin.TValue[[]any]
+	AlternativeNames                    plugin.TValue[[]any]
+	AppDescription                      plugin.TValue[string]
+	DisabledByMicrosoftStatus           plugin.TValue[string]
+	KeyCredentials                      plugin.TValue[[]any]
+	PasswordCredentials                 plugin.TValue[[]any]
+	Oauth2PermissionScopes              plugin.TValue[[]any]
+	Owners                              plugin.TValue[[]any]
+	OwnerServicePrincipals              plugin.TValue[[]any]
+	FederatedIdentityCredentials        plugin.TValue[[]any]
+	AppManagementPolicies               plugin.TValue[[]any]
+	TokenLifetimePolicies               plugin.TValue[[]any]
+	ClaimsMappingPolicies               plugin.TValue[[]any]
+	HomeRealmDiscoveryPolicies          plugin.TValue[[]any]
+	MemberOf                            plugin.TValue[[]any]
+	TransitiveMemberOf                  plugin.TValue[[]any]
+	LastSignInDateTime                  plugin.TValue[*time.Time]
+	LastAppOnlyClientSignInDateTime     plugin.TValue[*time.Time]
+	LastDelegatedClientSignInDateTime   plugin.TValue[*time.Time]
+	LastAppOnlyResourceSignInDateTime   plugin.TValue[*time.Time]
+	LastDelegatedResourceSignInDateTime plugin.TValue[*time.Time]
+	DirectoryRoleAssignments            plugin.TValue[[]any]
+	DirectoryRoleEligibilities          plugin.TValue[[]any]
 }
 
 // createMicrosoftServiceprincipal creates a new instance of this resource
@@ -27498,6 +28733,22 @@ func (c *mqlMicrosoftServiceprincipal) GetOwners() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlMicrosoftServiceprincipal) GetOwnerServicePrincipals() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.OwnerServicePrincipals, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.serviceprincipal", c.__id, "ownerServicePrincipals")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.ownerServicePrincipals()
+	})
+}
+
 func (c *mqlMicrosoftServiceprincipal) GetFederatedIdentityCredentials() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.FederatedIdentityCredentials, func() ([]any, error) {
 		if c.MqlRuntime.HasRecording {
@@ -27578,6 +28829,100 @@ func (c *mqlMicrosoftServiceprincipal) GetHomeRealmDiscoveryPolicies() *plugin.T
 	})
 }
 
+func (c *mqlMicrosoftServiceprincipal) GetMemberOf() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MemberOf, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.serviceprincipal", c.__id, "memberOf")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.memberOf()
+	})
+}
+
+func (c *mqlMicrosoftServiceprincipal) GetTransitiveMemberOf() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TransitiveMemberOf, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.serviceprincipal", c.__id, "transitiveMemberOf")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.transitiveMemberOf()
+	})
+}
+
+func (c *mqlMicrosoftServiceprincipal) GetLastSignInDateTime() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.LastSignInDateTime, func() (*time.Time, error) {
+		return c.lastSignInDateTime()
+	})
+}
+
+func (c *mqlMicrosoftServiceprincipal) GetLastAppOnlyClientSignInDateTime() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.LastAppOnlyClientSignInDateTime, func() (*time.Time, error) {
+		return c.lastAppOnlyClientSignInDateTime()
+	})
+}
+
+func (c *mqlMicrosoftServiceprincipal) GetLastDelegatedClientSignInDateTime() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.LastDelegatedClientSignInDateTime, func() (*time.Time, error) {
+		return c.lastDelegatedClientSignInDateTime()
+	})
+}
+
+func (c *mqlMicrosoftServiceprincipal) GetLastAppOnlyResourceSignInDateTime() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.LastAppOnlyResourceSignInDateTime, func() (*time.Time, error) {
+		return c.lastAppOnlyResourceSignInDateTime()
+	})
+}
+
+func (c *mqlMicrosoftServiceprincipal) GetLastDelegatedResourceSignInDateTime() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.LastDelegatedResourceSignInDateTime, func() (*time.Time, error) {
+		return c.lastDelegatedResourceSignInDateTime()
+	})
+}
+
+func (c *mqlMicrosoftServiceprincipal) GetDirectoryRoleAssignments() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DirectoryRoleAssignments, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.serviceprincipal", c.__id, "directoryRoleAssignments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.directoryRoleAssignments()
+	})
+}
+
+func (c *mqlMicrosoftServiceprincipal) GetDirectoryRoleEligibilities() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DirectoryRoleEligibilities, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.serviceprincipal", c.__id, "directoryRoleEligibilities")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.directoryRoleEligibilities()
+	})
+}
+
 // mqlMicrosoftServiceprincipalAssignment for the microsoft.serviceprincipal.assignment resource
 type mqlMicrosoftServiceprincipalAssignment struct {
 	MqlRuntime *plugin.Runtime
@@ -27641,14 +28986,17 @@ func (c *mqlMicrosoftServiceprincipalAssignment) GetType() *plugin.TValue[string
 type mqlMicrosoftApplicationPermission struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlMicrosoftApplicationPermissionInternal it will be used here
-	AppId       plugin.TValue[string]
-	AppName     plugin.TValue[string]
-	Id          plugin.TValue[string]
-	Name        plugin.TValue[string]
-	Description plugin.TValue[string]
-	Type        plugin.TValue[string]
-	Status      plugin.TValue[string]
+	mqlMicrosoftApplicationPermissionInternal
+	AppId           plugin.TValue[string]
+	AppName         plugin.TValue[string]
+	Id              plugin.TValue[string]
+	Name            plugin.TValue[string]
+	Description     plugin.TValue[string]
+	Type            plugin.TValue[string]
+	Status          plugin.TValue[string]
+	Resource        plugin.TValue[*mqlMicrosoftServiceprincipal]
+	GrantedDateTime plugin.TValue[*time.Time]
+	ConsentType     plugin.TValue[string]
 }
 
 // createMicrosoftApplicationPermission creates a new instance of this resource
@@ -27709,6 +29057,30 @@ func (c *mqlMicrosoftApplicationPermission) GetType() *plugin.TValue[string] {
 
 func (c *mqlMicrosoftApplicationPermission) GetStatus() *plugin.TValue[string] {
 	return &c.Status
+}
+
+func (c *mqlMicrosoftApplicationPermission) GetResource() *plugin.TValue[*mqlMicrosoftServiceprincipal] {
+	return plugin.GetOrCompute[*mqlMicrosoftServiceprincipal](&c.Resource, func() (*mqlMicrosoftServiceprincipal, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.application.permission", c.__id, "resource")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftServiceprincipal), nil
+			}
+		}
+
+		return c.resource()
+	})
+}
+
+func (c *mqlMicrosoftApplicationPermission) GetGrantedDateTime() *plugin.TValue[*time.Time] {
+	return &c.GrantedDateTime
+}
+
+func (c *mqlMicrosoftApplicationPermission) GetConsentType() *plugin.TValue[string] {
+	return &c.ConsentType
 }
 
 // mqlMicrosoftOauth2PermissionGrant for the microsoft.oauth2PermissionGrant resource
@@ -29502,6 +30874,7 @@ type mqlMicrosoftPolicies struct {
 	__id       string
 	// optional: if you define mqlMicrosoftPoliciesInternal it will be used here
 	AuthorizationPolicy                       plugin.TValue[any]
+	TenantAuthorizationPolicy                 plugin.TValue[*mqlMicrosoftPoliciesTenantAuthorizationPolicy]
 	IdentitySecurityDefaultsEnforcementPolicy plugin.TValue[any]
 	AdminConsentRequestPolicy                 plugin.TValue[*mqlMicrosoftAdminConsentRequestPolicy]
 	PermissionGrantPolicies                   plugin.TValue[[]any]
@@ -29559,6 +30932,22 @@ func (c *mqlMicrosoftPolicies) MqlID() string {
 func (c *mqlMicrosoftPolicies) GetAuthorizationPolicy() *plugin.TValue[any] {
 	return plugin.GetOrCompute[any](&c.AuthorizationPolicy, func() (any, error) {
 		return c.authorizationPolicy()
+	})
+}
+
+func (c *mqlMicrosoftPolicies) GetTenantAuthorizationPolicy() *plugin.TValue[*mqlMicrosoftPoliciesTenantAuthorizationPolicy] {
+	return plugin.GetOrCompute[*mqlMicrosoftPoliciesTenantAuthorizationPolicy](&c.TenantAuthorizationPolicy, func() (*mqlMicrosoftPoliciesTenantAuthorizationPolicy, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.policies", c.__id, "tenantAuthorizationPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftPoliciesTenantAuthorizationPolicy), nil
+			}
+		}
+
+		return c.tenantAuthorizationPolicy()
 	})
 }
 
@@ -29840,6 +31229,125 @@ func (c *mqlMicrosoftPolicies) GetFeatureRolloutPolicies() *plugin.TValue[[]any]
 
 		return c.featureRolloutPolicies()
 	})
+}
+
+// mqlMicrosoftPoliciesTenantAuthorizationPolicy for the microsoft.policies.tenantAuthorizationPolicy resource
+type mqlMicrosoftPoliciesTenantAuthorizationPolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMicrosoftPoliciesTenantAuthorizationPolicyInternal it will be used here
+	Id                                                  plugin.TValue[string]
+	DisplayName                                         plugin.TValue[string]
+	Description                                         plugin.TValue[string]
+	AllowInvitesFrom                                    plugin.TValue[string]
+	AllowedToSignUpEmailBasedSubscriptions              plugin.TValue[bool]
+	AllowedToUseSSPR                                    plugin.TValue[bool]
+	AllowEmailVerifiedUsersToJoinOrganization           plugin.TValue[bool]
+	AllowUserConsentForRiskyApps                        plugin.TValue[bool]
+	BlockMsolPowerShell                                 plugin.TValue[bool]
+	GuestUserRoleId                                     plugin.TValue[string]
+	DefaultUserAllowedToCreateApps                      plugin.TValue[bool]
+	DefaultUserAllowedToCreateSecurityGroups            plugin.TValue[bool]
+	DefaultUserAllowedToCreateTenants                   plugin.TValue[bool]
+	DefaultUserAllowedToReadBitlockerKeysForOwnedDevice plugin.TValue[bool]
+	DefaultUserAllowedToReadOtherUsers                  plugin.TValue[bool]
+	DefaultUserPermissionGrantPoliciesAssigned          plugin.TValue[[]any]
+}
+
+// createMicrosoftPoliciesTenantAuthorizationPolicy creates a new instance of this resource
+func createMicrosoftPoliciesTenantAuthorizationPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftPoliciesTenantAuthorizationPolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.policies.tenantAuthorizationPolicy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) MqlName() string {
+	return "microsoft.policies.tenantAuthorizationPolicy"
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetAllowInvitesFrom() *plugin.TValue[string] {
+	return &c.AllowInvitesFrom
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetAllowedToSignUpEmailBasedSubscriptions() *plugin.TValue[bool] {
+	return &c.AllowedToSignUpEmailBasedSubscriptions
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetAllowedToUseSSPR() *plugin.TValue[bool] {
+	return &c.AllowedToUseSSPR
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetAllowEmailVerifiedUsersToJoinOrganization() *plugin.TValue[bool] {
+	return &c.AllowEmailVerifiedUsersToJoinOrganization
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetAllowUserConsentForRiskyApps() *plugin.TValue[bool] {
+	return &c.AllowUserConsentForRiskyApps
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetBlockMsolPowerShell() *plugin.TValue[bool] {
+	return &c.BlockMsolPowerShell
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetGuestUserRoleId() *plugin.TValue[string] {
+	return &c.GuestUserRoleId
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetDefaultUserAllowedToCreateApps() *plugin.TValue[bool] {
+	return &c.DefaultUserAllowedToCreateApps
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetDefaultUserAllowedToCreateSecurityGroups() *plugin.TValue[bool] {
+	return &c.DefaultUserAllowedToCreateSecurityGroups
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetDefaultUserAllowedToCreateTenants() *plugin.TValue[bool] {
+	return &c.DefaultUserAllowedToCreateTenants
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetDefaultUserAllowedToReadBitlockerKeysForOwnedDevice() *plugin.TValue[bool] {
+	return &c.DefaultUserAllowedToReadBitlockerKeysForOwnedDevice
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetDefaultUserAllowedToReadOtherUsers() *plugin.TValue[bool] {
+	return &c.DefaultUserAllowedToReadOtherUsers
+}
+
+func (c *mqlMicrosoftPoliciesTenantAuthorizationPolicy) GetDefaultUserPermissionGrantPoliciesAssigned() *plugin.TValue[[]any] {
+	return &c.DefaultUserPermissionGrantPoliciesAssigned
 }
 
 // mqlMicrosoftDeviceRegistrationPolicy for the microsoft.deviceRegistrationPolicy resource
@@ -33091,6 +34599,8 @@ type mqlMicrosoftRolemanagementRoledefinition struct {
 	TemplateId      plugin.TValue[string]
 	Version         plugin.TValue[string]
 	Assignments     plugin.TValue[[]any]
+	IsPrivileged    plugin.TValue[bool]
+	PimPolicy       plugin.TValue[*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicy]
 }
 
 // createMicrosoftRolemanagementRoledefinition creates a new instance of this resource
@@ -33175,6 +34685,28 @@ func (c *mqlMicrosoftRolemanagementRoledefinition) GetAssignments() *plugin.TVal
 		}
 
 		return c.assignments()
+	})
+}
+
+func (c *mqlMicrosoftRolemanagementRoledefinition) GetIsPrivileged() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.IsPrivileged, func() (bool, error) {
+		return c.isPrivileged()
+	})
+}
+
+func (c *mqlMicrosoftRolemanagementRoledefinition) GetPimPolicy() *plugin.TValue[*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicy] {
+	return plugin.GetOrCompute[*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicy](&c.PimPolicy, func() (*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicy, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.rolemanagement.roledefinition", c.__id, "pimPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicy), nil
+			}
+		}
+
+		return c.pimPolicy()
 	})
 }
 

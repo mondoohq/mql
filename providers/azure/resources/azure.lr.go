@@ -3281,6 +3281,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.entraPrincipal.userPrincipalName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureEntraPrincipal).GetUserPrincipalName()).ToDataRes(types.String)
 	},
+	"azure.entraPrincipal.userType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureEntraPrincipal).GetUserType()).ToDataRes(types.String)
+	},
 	"azure.entraPrincipal.appId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureEntraPrincipal).GetAppId()).ToDataRes(types.String)
 	},
@@ -3295,6 +3298,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.entraPrincipal.isAssignableToRole": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureEntraPrincipal).GetIsAssignableToRole()).ToDataRes(types.Bool)
+	},
+	"azure.entraPrincipal.roleAssignments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureEntraPrincipal).GetRoleAssignments()).ToDataRes(types.Array(types.Resource("azure.subscription.authorizationService.roleAssignment")))
+	},
+	"azure.entraPrincipal.managedIdentity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureEntraPrincipal).GetManagedIdentity()).ToDataRes(types.Resource("azure.subscription.managedIdentity"))
 	},
 	"azure.subscription.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscription).GetId()).ToDataRes(types.String)
@@ -16112,6 +16121,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.authorizationService.roleManagementPolicies": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionAuthorizationService).GetRoleManagementPolicies()).ToDataRes(types.Array(types.Resource("azure.subscription.authorizationService.roleManagementPolicy")))
 	},
+	"azure.subscription.authorizationService.principals": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionAuthorizationService).GetPrincipals()).ToDataRes(types.Array(types.Resource("azure.entraPrincipal")))
+	},
 	"azure.subscription.authorizationService.roleManagementPolicy.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionAuthorizationServiceRoleManagementPolicy).GetId()).ToDataRes(types.String)
 	},
@@ -16415,6 +16427,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.resourceIdentity.userAssignedIdentities": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionResourceIdentity).GetUserAssignedIdentities()).ToDataRes(types.Array(types.Resource("azure.subscription.managedIdentity")))
 	},
+	"azure.subscription.resourceIdentity.systemAssignedIdentity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionResourceIdentity).GetSystemAssignedIdentity()).ToDataRes(types.Resource("azure.subscription.managedIdentity"))
+	},
+	"azure.subscription.resourceIdentity.roleAssignments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionResourceIdentity).GetRoleAssignments()).ToDataRes(types.Array(types.Resource("azure.subscription.authorizationService.roleAssignment")))
+	},
 	"azure.subscription.maintenanceWindow.customWindow": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionMaintenanceWindow).GetCustomWindow()).ToDataRes(types.String)
 	},
@@ -16537,6 +16555,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.managedIdentity.systemMetadata": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionManagedIdentity).GetSystemMetadata()).ToDataRes(types.Resource("azure.subscription.systemData"))
+	},
+	"azure.subscription.managedIdentity.attachedResources": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionManagedIdentity).GetAttachedResources()).ToDataRes(types.Array(types.Resource("azure.subscription.resource")))
 	},
 	"azure.subscription.managedIdentity.federatedCredential.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionManagedIdentityFederatedCredential).GetId()).ToDataRes(types.String)
@@ -25764,6 +25785,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureEntraPrincipal).UserPrincipalName, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"azure.entraPrincipal.userType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureEntraPrincipal).UserType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"azure.entraPrincipal.appId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureEntraPrincipal).AppId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -25782,6 +25807,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.entraPrincipal.isAssignableToRole": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureEntraPrincipal).IsAssignableToRole, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.entraPrincipal.roleAssignments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureEntraPrincipal).RoleAssignments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.entraPrincipal.managedIdentity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureEntraPrincipal).ManagedIdentity, ok = plugin.RawToTValue[*mqlAzureSubscriptionManagedIdentity](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -44228,6 +44261,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionAuthorizationService).RoleManagementPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.authorizationService.principals": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionAuthorizationService).Principals, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.authorizationService.roleManagementPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionAuthorizationServiceRoleManagementPolicy).__id, ok = v.Value.(string)
 		return
@@ -44676,6 +44713,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionResourceIdentity).UserAssignedIdentities, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.resourceIdentity.systemAssignedIdentity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionResourceIdentity).SystemAssignedIdentity, ok = plugin.RawToTValue[*mqlAzureSubscriptionManagedIdentity](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.resourceIdentity.roleAssignments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionResourceIdentity).RoleAssignments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.maintenanceWindow.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionMaintenanceWindow).__id, ok = v.Value.(string)
 		return
@@ -44890,6 +44935,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.managedIdentity.systemMetadata": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionManagedIdentity).SystemMetadata, ok = plugin.RawToTValue[*mqlAzureSubscriptionSystemData](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.managedIdentity.attachedResources": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionManagedIdentity).AttachedResources, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.managedIdentity.federatedCredential.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -58355,11 +58404,14 @@ type mqlAzureEntraPrincipal struct {
 	DisplayName          plugin.TValue[string]
 	PrincipalType        plugin.TValue[string]
 	UserPrincipalName    plugin.TValue[string]
+	UserType             plugin.TValue[string]
 	AppId                plugin.TValue[string]
 	AppOwnerTenantId     plugin.TValue[string]
 	ServicePrincipalType plugin.TValue[string]
 	AccountEnabled       plugin.TValue[bool]
 	IsAssignableToRole   plugin.TValue[bool]
+	RoleAssignments      plugin.TValue[[]any]
+	ManagedIdentity      plugin.TValue[*mqlAzureSubscriptionManagedIdentity]
 }
 
 // createAzureEntraPrincipal creates a new instance of this resource
@@ -58410,6 +58462,10 @@ func (c *mqlAzureEntraPrincipal) GetUserPrincipalName() *plugin.TValue[string] {
 	return &c.UserPrincipalName
 }
 
+func (c *mqlAzureEntraPrincipal) GetUserType() *plugin.TValue[string] {
+	return &c.UserType
+}
+
 func (c *mqlAzureEntraPrincipal) GetAppId() *plugin.TValue[string] {
 	return &c.AppId
 }
@@ -58428,6 +58484,38 @@ func (c *mqlAzureEntraPrincipal) GetAccountEnabled() *plugin.TValue[bool] {
 
 func (c *mqlAzureEntraPrincipal) GetIsAssignableToRole() *plugin.TValue[bool] {
 	return &c.IsAssignableToRole
+}
+
+func (c *mqlAzureEntraPrincipal) GetRoleAssignments() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.RoleAssignments, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.entraPrincipal", c.__id, "roleAssignments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.roleAssignments()
+	})
+}
+
+func (c *mqlAzureEntraPrincipal) GetManagedIdentity() *plugin.TValue[*mqlAzureSubscriptionManagedIdentity] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionManagedIdentity](&c.ManagedIdentity, func() (*mqlAzureSubscriptionManagedIdentity, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.entraPrincipal", c.__id, "managedIdentity")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionManagedIdentity), nil
+			}
+		}
+
+		return c.managedIdentity()
+	})
 }
 
 // mqlAzureSubscription for the azure.subscription resource
@@ -102310,6 +102398,7 @@ type mqlAzureSubscriptionAuthorizationService struct {
 	RoleEligibilitySchedules plugin.TValue[[]any]
 	RoleAssignmentSchedules  plugin.TValue[[]any]
 	RoleManagementPolicies   plugin.TValue[[]any]
+	Principals               plugin.TValue[[]any]
 }
 
 // createAzureSubscriptionAuthorizationService creates a new instance of this resource
@@ -102478,6 +102567,22 @@ func (c *mqlAzureSubscriptionAuthorizationService) GetRoleManagementPolicies() *
 		}
 
 		return c.roleManagementPolicies()
+	})
+}
+
+func (c *mqlAzureSubscriptionAuthorizationService) GetPrincipals() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Principals, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.authorizationService", c.__id, "principals")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.principals()
 	})
 }
 
@@ -103470,6 +103575,8 @@ type mqlAzureSubscriptionResourceIdentity struct {
 	PrincipalId            plugin.TValue[string]
 	TenantId               plugin.TValue[string]
 	UserAssignedIdentities plugin.TValue[[]any]
+	SystemAssignedIdentity plugin.TValue[*mqlAzureSubscriptionManagedIdentity]
+	RoleAssignments        plugin.TValue[[]any]
 }
 
 // createAzureSubscriptionResourceIdentity creates a new instance of this resource
@@ -103529,6 +103636,38 @@ func (c *mqlAzureSubscriptionResourceIdentity) GetUserAssignedIdentities() *plug
 		}
 
 		return c.userAssignedIdentities()
+	})
+}
+
+func (c *mqlAzureSubscriptionResourceIdentity) GetSystemAssignedIdentity() *plugin.TValue[*mqlAzureSubscriptionManagedIdentity] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionManagedIdentity](&c.SystemAssignedIdentity, func() (*mqlAzureSubscriptionManagedIdentity, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.resourceIdentity", c.__id, "systemAssignedIdentity")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionManagedIdentity), nil
+			}
+		}
+
+		return c.systemAssignedIdentity()
+	})
+}
+
+func (c *mqlAzureSubscriptionResourceIdentity) GetRoleAssignments() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.RoleAssignments, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.resourceIdentity", c.__id, "roleAssignments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.roleAssignments()
 	})
 }
 
@@ -104178,6 +104317,7 @@ type mqlAzureSubscriptionManagedIdentity struct {
 	FederatedIdentityCredentials plugin.TValue[[]any]
 	FederatedCredentials         plugin.TValue[[]any]
 	SystemMetadata               plugin.TValue[*mqlAzureSubscriptionSystemData]
+	AttachedResources            plugin.TValue[[]any]
 }
 
 // createAzureSubscriptionManagedIdentity creates a new instance of this resource
@@ -104279,6 +104419,22 @@ func (c *mqlAzureSubscriptionManagedIdentity) GetSystemMetadata() *plugin.TValue
 		}
 
 		return c.systemMetadata()
+	})
+}
+
+func (c *mqlAzureSubscriptionManagedIdentity) GetAttachedResources() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AttachedResources, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.managedIdentity", c.__id, "attachedResources")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.attachedResources()
 	})
 }
 

@@ -221,6 +221,30 @@ func (k *mqlK8sIngress) labels() (map[string]any, error) {
 	return convert.MapToInterfaceMap(ing.GetLabels()), nil
 }
 
+func (k *mqlK8sIngress) tlsHosts() ([]any, error) {
+	ing, err := k.getIngress()
+	if err != nil {
+		return nil, err
+	}
+	return ingressTLSHosts(ing), nil
+}
+
+// ingressTLSHosts lists each host the Ingress's TLS entries name, once.
+func ingressTLSHosts(ing *networkingv1.Ingress) []any {
+	hosts := []any{}
+	seen := map[string]bool{}
+	for _, t := range ing.Spec.TLS {
+		for _, h := range t.Hosts {
+			if h == "" || seen[h] {
+				continue
+			}
+			seen[h] = true
+			hosts = append(hosts, h)
+		}
+	}
+	return hosts
+}
+
 func (k *mqlK8sIngress) ingressClassName() (string, error) {
 	ing, err := k.getIngress()
 	if err != nil {

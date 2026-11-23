@@ -70,6 +70,10 @@ func (c *mqlCloudflare) zones() ([]any, error) {
 
 			"createdOn":  llx.TimeData(zone.CreatedOn),
 			"modifiedOn": llx.TimeData(zone.ModifiedOn),
+
+			"activatedOn":       zoneActivatedOn(zone),
+			"plan":              llx.StringData(zone.Plan.Name),
+			"vanityNameServers": llx.ArrayData(convert.SliceAnyToInterface(zone.VanityNameServers), types.String),
 		})
 		if err != nil {
 			return nil, err

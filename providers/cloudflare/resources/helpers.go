@@ -130,6 +130,26 @@ func refusedList(err error, permissions ...string) ([]any, error) {
 	return degradedList(err)
 }
 
+// refusedErr classifies a 401 or 403 from an endpoint every plan provides as
+// an authentication or permission error naming the permission, when
+// structured errors are on. Every other error, and every error with the flag
+// off, is returned unchanged. Unlike refusedList it never degrades to an empty
+// value: the caller always gets an error.
+func refusedErr(err error, permissions ...string) error {
+	if plugin.StructuredErrors() {
+		var apiErr *cloudflare.Error
+		if errors.As(err, &apiErr) && !isCredentialScope(apiErr) {
+			switch apiErr.StatusCode {
+			case http.StatusUnauthorized:
+				return llx.Unauthenticated(err, llx.WithPermissions(permissions...))
+			case http.StatusForbidden:
+				return llx.Forbidden(err, llx.WithPermissions(permissions...))
+			}
+		}
+	}
+	return err
+}
+
 // cloudflareTimeLayouts are the timestamp formats seen on Cloudflare endpoints
 // that report a date as a JSON string rather than an RFC 3339 timestamp. The
 // client-certificate and content-scanning endpoints are the two cases we hit:

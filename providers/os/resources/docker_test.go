@@ -119,3 +119,52 @@ func TestDockerImageRefsDropsNonePlaceholders(t *testing.T) {
 		[]any{"alpine@sha256:0a4eaa0eecf5f8c050e5bba433f58c052be7587ee8af3e8b3910ef9ab5fbe9f5"},
 		dockerImageRefs([]string{"alpine@sha256:0a4eaa0eecf5f8c050e5bba433f58c052be7587ee8af3e8b3910ef9ab5fbe9f5"}, dockerNoneDigest))
 }
+
+func testDockerContainer(id string, names ...string) *mqlDockerContainer {
+	ns := make([]any, len(names))
+	for i, n := range names {
+		ns[i] = n
+	}
+	return &mqlDockerContainer{
+		Id:    plugin.TValue[string]{Data: id, State: plugin.StateIsSet},
+		Names: plugin.TValue[[]any]{Data: ns, State: plugin.StateIsSet},
+	}
+}
+
+func TestMatchDockerContainer(t *testing.T) {
+	web := testDockerContainer("93a5a846c3e5f1d2", "web")
+	db := testDockerContainer("93b7c0ffee000000", "db")
+	// A name that looks like an ID prefix of no container.
+	cache := testDockerContainer("1c2d3e4f5a6b7c8d", "cafe")
+	all := []*mqlDockerContainer{web, db, cache}
+
+	c, err := matchDockerContainer(all, "93a5a846c3e5f1d2")
+	require.NoError(t, err)
+	assert.Same(t, web, c)
+
+	c, err = matchDockerContainer(all, "93a5")
+	require.NoError(t, err)
+	assert.Same(t, web, c)
+
+	c, err = matchDockerContainer(all, "db")
+	require.NoError(t, err)
+	assert.Same(t, db, c)
+
+	c, err = matchDockerContainer(all, "cafe")
+	require.NoError(t, err)
+	assert.Same(t, cache, c)
+
+	_, err = matchDockerContainer(all, "93")
+	assert.ErrorContains(t, err, "matches 2 containers")
+
+	_, err = matchDockerContainer(all, "missing")
+	assert.ErrorContains(t, err, "not found")
+}
+
+func TestDockerEngineName(t *testing.T) {
+	// The component names Docker Engine and Podman's
+	// Docker-compatible API report.
+	assert.Equal(t, "Docker", dockerEngineName([]string{"Engine", "containerd", "runc", "docker-init"}))
+	assert.Equal(t, "Podman", dockerEngineName([]string{"Podman Engine", "Conmon", "OCI Runtime (crun)"}))
+	assert.Equal(t, "Docker", dockerEngineName(nil))
+}

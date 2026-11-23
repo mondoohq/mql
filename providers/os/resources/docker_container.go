@@ -124,6 +124,26 @@ func (p *mqlDockerContainer) fetchInspect() (*container.InspectResponse, error) 
 	return &res.Container, nil
 }
 
+func (p *mqlDockerContainer) createdAt() (*time.Time, error) {
+	inspect, err := p.loadInspect()
+	if err != nil {
+		return nil, err
+	}
+	if inspect.Created == "" {
+		p.CreatedAt.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	t, err := time.Parse(time.RFC3339Nano, inspect.Created)
+	if err != nil {
+		return nil, llx.MalformedData(fmt.Errorf("docker reported container creation time %q: %w", inspect.Created, err))
+	}
+	if t.IsZero() {
+		p.CreatedAt.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return &t, nil
+}
+
 func (p *mqlDockerContainer) hostConfig() (any, error) {
 	inspect, err := p.loadInspect()
 	if err != nil {

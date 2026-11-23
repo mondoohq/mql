@@ -408,7 +408,7 @@ func (r *mqlMikrotik) services() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return buildList(r.MqlRuntime, rows, newMikrotikService)
+	return buildList(r.MqlRuntime, serviceRows(rows), newMikrotikService)
 }
 
 func (r *mqlMikrotik) firewallRules() ([]any, error) {

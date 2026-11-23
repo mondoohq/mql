@@ -605,6 +605,60 @@ func (a *mqlAzureSubscriptionManagedIdentity) systemMetadata() (*mqlAzureSubscri
 	return systemMetadataFromRaw(a.MqlRuntime, a.__id, a.cacheSystemData, &a.SystemMetadata)
 }
 
+// attachedResources scans the subscription's resource list for the resources
+// whose identity block names this identity: by resource ID among the attached
+// user-assigned identities, or by principal ID for the system-assigned one.
+func (a *mqlAzureSubscriptionManagedIdentity) attachedResources() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	r, err := CreateResource(a.MqlRuntime, ResourceAzureSubscription, map[string]*llx.RawData{
+		"__id":           llx.StringData("/subscriptions/" + conn.SubId()),
+		"subscriptionId": llx.StringData(conn.SubId()),
+	})
+	if err != nil {
+		return nil, err
+	}
+	resources := r.(*mqlAzureSubscription).GetResources()
+	if resources.Error != nil {
+		return nil, resources.Error
+	}
+
+	res := []any{}
+	for _, item := range resources.Data {
+		resource, ok := item.(*mqlAzureSubscriptionResource)
+		if !ok {
+			continue
+		}
+		identity := resource.GetResourceIdentity()
+		if identity.Error != nil || identity.Data == nil {
+			continue
+		}
+		if identityUses(identity.Data.PrincipalId.Data, identity.Data.cacheUserAssignedIdentityIds, a.PrincipalId.Data, a.cacheResourceID) {
+			res = append(res, resource)
+		}
+	}
+	return res, nil
+}
+
+// identityUses reports whether a resource's identity block, given by its
+// system-assigned principal ID and attached user-assigned identity IDs, refers
+// to the managed identity with the given principal ID and ARM resource ID. A
+// system-assigned identity has no ARM resource ID of its own, so it matches on
+// the principal alone; empty values never match.
+func identityUses(systemPrincipalID string, userAssignedIDs []string, principalID, resourceID string) bool {
+	if principalID != "" && strings.EqualFold(systemPrincipalID, principalID) {
+		return true
+	}
+	if resourceID == "" {
+		return false
+	}
+	for _, id := range userAssignedIDs {
+		if strings.EqualFold(id, resourceID) {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *mqlAzureSubscriptionManagedIdentity) roleAssignments() ([]any, error) {
 	return roleAssignmentsForPrincipal(a.MqlRuntime, a.PrincipalId.Data)
 }
@@ -661,7 +715,8 @@ func filterRoleAssignmentsByPrincipal(assignments []any, principalId string) []a
 		if !ok {
 			continue
 		}
-		if assignment.PrincipalId.Data == principalId {
+		// Object IDs are GUIDs, and Graph and ARM need not agree on their case.
+		if strings.EqualFold(assignment.PrincipalId.Data, principalId) {
 			res = append(res, assignment)
 		}
 	}

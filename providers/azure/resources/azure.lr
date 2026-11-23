@@ -109,6 +109,12 @@ private azure.entraPrincipal @defaults("displayName principalType") {
   principalType string
   // User principal name, for users
   userPrincipalName string
+  // Whether a user is a member of the tenant or a guest
+  //
+  // "Member" or "Guest" for users, empty for other object types. A guest
+  // holding an Azure role is an outside account with standing access to
+  // the subscription.
+  userType string
   // Application (client) ID, for service principals and applications
   appId string
   // Tenant that owns the application behind a service principal
@@ -137,6 +143,27 @@ private azure.entraPrincipal @defaults("displayName principalType") {
   // escalation path, because whoever can add members to it can grant
   // themselves the group's roles.
   isAssignableToRole bool
+  // Azure role assignments granted directly to this principal in the subscription
+  //
+  // Every assignment in the subscription's role-assignment list that
+  // names this principal, at any scope that list covers: the
+  // subscription itself, its resource groups and resources, and the
+  // management groups above it. Assignments made to a group this
+  // principal belongs to are not included; they appear on the group.
+  roleAssignments() []azure.subscription.authorizationService.roleAssignment
+  // Managed identity behind this principal
+  //
+  // Set when servicePrincipalType is "ManagedIdentity" and the identity
+  // lives in the subscription: a user-assigned identity, or the
+  // system-assigned identity of one of the subscription's resources. Its
+  // attachedResources are the workloads that hold this principal's
+  // grants, for example
+  // `azure.subscription.iam.principals.where(roleAssignments.any(role.isPrivilegeEscalating)) { managedIdentity.attachedResources }`.
+  // Null for other principals, for managed identities of another
+  // subscription, and for identities whose owning resource the
+  // subscription's resources list does not report (such as those Microsoft
+  // Defender creates for its own extensions).
+  managedIdentity() azure.subscription.managedIdentity
 }
 
 
@@ -13139,6 +13166,17 @@ private azure.subscription.authorizationService {
   roleAssignmentSchedules() []azure.subscription.authorizationService.roleAssignmentSchedule
   // PIM role management policies: the rules governing how privileged roles are activated and assigned
   roleManagementPolicies() []azure.subscription.authorizationService.roleManagementPolicy
+  // Microsoft Entra principals holding a role assignment in the subscription
+  //
+  // One entry per distinct user, group, service principal, or device
+  // named by roleAssignments, resolved against the directory, so each
+  // grantee can be audited once with all of its grants in its own
+  // roleAssignments, for example
+  // `principals.where(roleAssignments.any(role.isPrivilegeEscalating))`.
+  // A grant to a deleted principal has no entry here; find those with
+  // `roleAssignments.where(principal == null)`. Requires Microsoft Graph
+  // directory read access, like the principal field of a role assignment.
+  principals() []azure.entraPrincipal
 }
 
 // Azure PIM role management policy
@@ -13499,6 +13537,19 @@ private azure.subscription.resourceIdentity @defaults("type principalId") {
   tenantId string
   // User-assigned managed identities attached to the resource
   userAssignedIdentities() []azure.subscription.managedIdentity
+  // System-assigned managed identity of the resource
+  //
+  // Null when the resource has no system-assigned identity.
+  systemAssignedIdentity() azure.subscription.managedIdentity
+  // Azure role assignments the resource can exercise through its identities
+  //
+  // The assignments granted to the system-assigned identity and to every
+  // attached user-assigned identity, at any scope the subscription's
+  // role-assignment list covers. This is what code running on the
+  // resource is authorized to do, so
+  // `azure.subscription.resources.where(resourceIdentity.roleAssignments.any(role.isPrivilegeEscalating))`
+  // finds every resource whose identity can grant itself more access.
+  roleAssignments() []azure.subscription.authorizationService.roleAssignment
 }
 
 // Azure managed database maintenance window
@@ -13720,6 +13771,14 @@ private azure.subscription.managedIdentity @defaults("name") {
   federatedCredentials() []azure.subscription.managedIdentity.federatedCredential
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
+  // Resources in the subscription that use this identity
+  //
+  // For a user-assigned identity, every resource it is attached to; for a
+  // system-assigned identity, the resource that owns it. Drawn from the
+  // subscription's resources list, so a resource in another subscription
+  // that uses this identity is not included. Pair with roleAssignments
+  // to see which workloads hold the identity's privileges.
+  attachedResources() []azure.subscription.resource
 }
 
 // Federated identity credential on a user-assigned managed identity

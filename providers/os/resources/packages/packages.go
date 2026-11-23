@@ -191,6 +191,14 @@ type OperatingSystemPkgManager interface {
 	Files(name string, version string, arch string) ([]FileRecord, error)
 }
 
+// UpdatesUnknown is implemented by a package manager whose packages no update
+// check can answer for: nothing on the host offers their newer versions, so
+// available and outdated are null rather than "no newer version". Managers
+// that have always reported no newer version without a check keep doing so.
+type UpdatesUnknown interface {
+	UpdatesUnknown() bool
+}
+
 // this will find the right package manager for the operating system
 func ResolveSystemPkgManagers(conn shared.Connection) ([]OperatingSystemPkgManager, error) {
 	var pms []OperatingSystemPkgManager
@@ -341,6 +349,15 @@ func ResolveSystemPkgManagers(conn shared.Connection) ([]OperatingSystemPkgManag
 				break
 			}
 		}
+	}
+
+	// Oracle Database homes (unzip + runInstaller, RAC, Grid Infrastructure)
+	// are in no package database and no Add/Remove Programs list. Every
+	// non-container platform that can host one is probed; the probe is a Stat
+	// of oraInst.loc/oratab on Unix and a registry read on Windows (see
+	// oracle_packages.go).
+	if pm := resolveOraclePkgManager(conn, asset.Platform); pm != nil {
+		pms = append(pms, pm)
 	}
 
 	// Nix can be installed on any Linux or macOS system.

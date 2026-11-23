@@ -630,6 +630,7 @@ cloudflare.zone 11.0.0
 cloudflare.zone.account 11.0.0
 cloudflare.zone.account.id 11.0.0
 cloudflare.zone.account.name 11.0.0
+cloudflare.zone.activatedOn 14.4.1
 cloudflare.zone.aiAudit 13.7.2
 cloudflare.zone.aiAudit.robotsStatus 13.7.2
 cloudflare.zone.aiAudit.sitemaps 13.7.2
@@ -849,13 +850,16 @@ cloudflare.zone.owner.id 11.1.0
 cloudflare.zone.owner.name 11.1.0
 cloudflare.zone.owner.ownerType 11.1.0
 cloudflare.zone.pageRule 13.1.0
+cloudflare.zone.pageRule.actions 14.4.1
 cloudflare.zone.pageRule.createdAt 13.1.0
 cloudflare.zone.pageRule.id 13.1.0
 cloudflare.zone.pageRule.priority 13.1.0
 cloudflare.zone.pageRule.status 13.1.0
+cloudflare.zone.pageRule.targets 14.4.1
 cloudflare.zone.pageRule.updatedAt 13.1.0
 cloudflare.zone.pageRules 13.1.0
 cloudflare.zone.paused 11.0.0
+cloudflare.zone.plan 14.4.1
 cloudflare.zone.precursor 13.8.1
 cloudflare.zone.precursor.defaultMode 13.8.1
 cloudflare.zone.precursor.enforcementRule 13.8.1
@@ -935,6 +939,8 @@ cloudflare.zone.settings.websockets 13.3.6
 cloudflare.zone.settings.zeroRtt 13.3.6
 cloudflare.zone.status 11.0.0
 cloudflare.zone.type 11.0.0
+cloudflare.zone.universalSslEnabled 14.4.1
+cloudflare.zone.vanityNameServers 14.4.1
 cloudflare.zone.wafRule 13.1.1
 cloudflare.zone.wafRule.action 13.1.1
 cloudflare.zone.wafRule.categoryOverride 13.8.1

@@ -599,11 +599,15 @@ func (a *mqlAwsIamInstanceProfile) iamRoles() ([]any, error) {
 }
 
 func (a *mqlAwsIam) createIamUser(usr *iamtypes.User) (plugin.Resource, error) {
+	return newIamUserResource(a.MqlRuntime, usr)
+}
+
+func newIamUserResource(runtime *plugin.Runtime, usr *iamtypes.User) (plugin.Resource, error) {
 	if usr == nil {
 		return nil, errors.New("no iam user provided")
 	}
 
-	res, err := CreateResource(a.MqlRuntime, ResourceAwsIamUser,
+	res, err := CreateResource(runtime, ResourceAwsIamUser,
 		map[string]*llx.RawData{
 			"arn":              llx.StringDataPtr(usr.Arn),
 			"id":               llx.StringDataPtr(usr.UserId),
@@ -1331,7 +1335,7 @@ type mqlAwsIamUserInternal struct {
 	attachedPoliciesLock    sync.Mutex
 
 	groupsFetched atomic.Bool
-	groupsCache   []any
+	groupsCache   []iamtypes.Group
 	groupsLock    sync.Mutex
 
 	loginProfileFetched atomic.Bool
@@ -2348,9 +2352,9 @@ func (a *mqlAwsIamRole) usedByInstances() ([]any, error) {
 }
 
 type mqlAwsIamGroupInternal struct {
-	usernamesFetched atomic.Bool
-	usernamesCache   []any
-	usernamesLock    sync.Mutex
+	usersFetched atomic.Bool
+	usersCache   []iamtypes.User
+	usersLock    sync.Mutex
 }
 
 // createIamGroup builds a group resource straight from a ListGroups summary,
@@ -2358,10 +2362,14 @@ type mqlAwsIamGroupInternal struct {
 // not in that summary and is loaded lazily, so listing groups no longer makes
 // a GetGroup call per group.
 func (a *mqlAwsIam) createIamGroup(group *iamtypes.Group) (plugin.Resource, error) {
+	return newIamGroupResource(a.MqlRuntime, group)
+}
+
+func newIamGroupResource(runtime *plugin.Runtime, group *iamtypes.Group) (plugin.Resource, error) {
 	if group == nil {
 		return nil, errors.New("no iam group provided")
 	}
-	return CreateResource(a.MqlRuntime, ResourceAwsIamGroup,
+	return CreateResource(runtime, ResourceAwsIamGroup,
 		map[string]*llx.RawData{
 			"arn":       llx.StringDataPtr(group.Arn),
 			"id":        llx.StringDataPtr(group.GroupId),
@@ -2413,7 +2421,7 @@ func initAwsIamGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 
 	if args["name"] != nil {
 		groupname := args["name"].Value.(string)
-		usernames := []any{}
+		var members []iamtypes.User
 		var grp *iamtypes.Group
 		paginator := iam.NewGetGroupPaginator(svc, &iam.GetGroupInput{
 			GroupName: &groupname,
@@ -2424,9 +2432,7 @@ func initAwsIamGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 				return nil, nil, err
 			}
 			grp = resp.Group
-			for _, user := range resp.Users {
-				usernames = append(usernames, convert.ToValue(user.UserName))
-			}
+			members = append(members, resp.Users...)
 		}
 		if grp == nil {
 			return nil, nil, fmt.Errorf("aws.iam.group %q not found", groupname)
@@ -2445,8 +2451,8 @@ func initAwsIamGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 		// We already paid for the membership list in GetGroup; seed the cache so
 		// reading usernames during the asset scan doesn't make a second call.
 		g := mqlGroup.(*mqlAwsIamGroup)
-		g.usernamesCache = usernames
-		g.usernamesFetched.Store(true)
+		g.usersCache = members
+		g.usersFetched.Store(true)
 		return args, g, nil
 	}
 
@@ -2460,17 +2466,17 @@ func (a *mqlAwsIamGroup) id() (string, error) {
 	return a.Arn.Data, nil
 }
 
-// usernames lists the group's members. ListGroups (used to build the group in
+// members lists the group's users. ListGroups (used to build the group in
 // the first place) does not return membership, so this lazily calls GetGroup
-// only when the field is actually read.
-func (a *mqlAwsIamGroup) usernames() ([]any, error) {
-	if a.usernamesFetched.Load() {
-		return a.usernamesCache, nil
+// once, when usernames or users is first read.
+func (a *mqlAwsIamGroup) members() ([]iamtypes.User, error) {
+	if a.usersFetched.Load() {
+		return a.usersCache, nil
 	}
-	a.usernamesLock.Lock()
-	defer a.usernamesLock.Unlock()
-	if a.usernamesFetched.Load() {
-		return a.usernamesCache, nil
+	a.usersLock.Lock()
+	defer a.usersLock.Unlock()
+	if a.usersFetched.Load() {
+		return a.usersCache, nil
 	}
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
@@ -2478,7 +2484,7 @@ func (a *mqlAwsIamGroup) usernames() ([]any, error) {
 	ctx := context.Background()
 	groupname := a.Name.Data
 
-	res := []any{}
+	var res []iamtypes.User
 	paginator := iam.NewGetGroupPaginator(svc, &iam.GetGroupInput{
 		GroupName: &groupname,
 	})
@@ -2487,13 +2493,39 @@ func (a *mqlAwsIamGroup) usernames() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
-		for _, user := range resp.Users {
-			res = append(res, convert.ToValue(user.UserName))
-		}
+		res = append(res, resp.Users...)
 	}
 
-	a.usernamesCache = res
-	a.usernamesFetched.Store(true)
+	a.usersCache = res
+	a.usersFetched.Store(true)
+	return res, nil
+}
+
+func (a *mqlAwsIamGroup) usernames() ([]any, error) {
+	users, err := a.members()
+	if err != nil {
+		return nil, err
+	}
+	res := make([]any, 0, len(users))
+	for _, user := range users {
+		res = append(res, convert.ToValue(user.UserName))
+	}
+	return res, nil
+}
+
+func (a *mqlAwsIamGroup) users() ([]any, error) {
+	users, err := a.members()
+	if err != nil {
+		return nil, err
+	}
+	res := make([]any, 0, len(users))
+	for i := range users {
+		user, err := newIamUserResource(a.MqlRuntime, &users[i])
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, user)
+	}
 	return res, nil
 }
 
@@ -2539,7 +2571,9 @@ func (a *mqlAwsIamGroup) inlinePolicies() ([]any, error) {
 	return convert.SliceAnyToInterface(policyNames), nil
 }
 
-func (a *mqlAwsIamUser) groups() ([]any, error) {
+// memberOf lists the groups the user belongs to, calling ListGroupsForUser
+// once, when groups or groupDetails is first read.
+func (a *mqlAwsIamUser) memberOf() ([]iamtypes.Group, error) {
 	if a.groupsFetched.Load() {
 		return a.groupsCache, nil
 	}
@@ -2550,30 +2584,52 @@ func (a *mqlAwsIamUser) groups() ([]any, error) {
 	}
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-
 	svc := conn.Iam("")
 	ctx := context.Background()
-
 	username := a.Name.Data
 
-	res := []any{}
-	params := &iam.ListGroupsForUserInput{
+	var res []iamtypes.Group
+	paginator := iam.NewListGroupsForUserPaginator(svc, &iam.ListGroupsForUserInput{
 		UserName: &username,
-	}
-	paginator := iam.NewListGroupsForUserPaginator(svc, params)
+	})
 	for paginator.HasMorePages() {
 		userGroups, err := paginator.NextPage(ctx)
 		if err != nil {
 			return nil, err
 		}
-
-		for _, group := range userGroups.Groups {
-			res = append(res, convert.ToValue(group.GroupName))
-		}
+		res = append(res, userGroups.Groups...)
 	}
 
 	a.groupsCache = res
 	a.groupsFetched.Store(true)
+	return res, nil
+}
+
+func (a *mqlAwsIamUser) groups() ([]any, error) {
+	groups, err := a.memberOf()
+	if err != nil {
+		return nil, err
+	}
+	res := make([]any, 0, len(groups))
+	for _, group := range groups {
+		res = append(res, convert.ToValue(group.GroupName))
+	}
+	return res, nil
+}
+
+func (a *mqlAwsIamUser) groupDetails() ([]any, error) {
+	groups, err := a.memberOf()
+	if err != nil {
+		return nil, err
+	}
+	res := make([]any, 0, len(groups))
+	for i := range groups {
+		group, err := newIamGroupResource(a.MqlRuntime, &groups[i])
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, group)
+	}
 	return res, nil
 }
 

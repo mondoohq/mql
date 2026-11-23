@@ -361,6 +361,7 @@ func loadBalancerArgs(lb *godo.LoadBalancer) map[string]*llx.RawData {
 		"enableProxyProtocol":          llx.BoolData(lb.EnableProxyProtocol),
 		"enableBackendKeepalive":       llx.BoolData(lb.EnableBackendKeepalive),
 		"tags":                         llx.ArrayData(tags, types.String),
+		"backendTag":                   llx.StringData(lb.Tag),
 		"healthCheck":                  llx.DictData(hc),
 		"stickySessions":               llx.DictData(ss),
 		"disableLetsEncryptDnsRecords": llx.BoolDataPtr(lb.DisableLetsEncryptDNSRecords),

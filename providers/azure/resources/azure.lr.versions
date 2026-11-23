@@ -9,9 +9,12 @@ azure.entraPrincipal.appOwnerTenantId 13.33.8
 azure.entraPrincipal.displayName 13.33.8
 azure.entraPrincipal.id 13.33.8
 azure.entraPrincipal.isAssignableToRole 13.33.8
+azure.entraPrincipal.managedIdentity 14.10.1
 azure.entraPrincipal.principalType 13.33.8
+azure.entraPrincipal.roleAssignments 14.9.1
 azure.entraPrincipal.servicePrincipalType 13.33.8
 azure.entraPrincipal.userPrincipalName 13.33.8
+azure.entraPrincipal.userType 14.11.1
 azure.managementGroup 13.33.8
 azure.managementGroup.children 13.33.8
 azure.managementGroup.displayName 13.33.8
@@ -387,6 +390,7 @@ azure.subscription.authorizationService.denyAssignment.scope 13.5.1
 azure.subscription.authorizationService.denyAssignment.type 13.5.1
 azure.subscription.authorizationService.denyAssignments 13.5.1
 azure.subscription.authorizationService.managedIdentities 11.2.1
+azure.subscription.authorizationService.principals 14.9.1
 azure.subscription.authorizationService.roleAssignment 11.2.1
 azure.subscription.authorizationService.roleAssignment.condition 11.2.1
 azure.subscription.authorizationService.roleAssignment.createdAt 11.2.1
@@ -4021,6 +4025,7 @@ azure.subscription.maintenanceWindow.startHour 13.36.1
 azure.subscription.maintenanceWindow.startMinute 13.36.1
 azure.subscription.managedByTenants 11.4.28
 azure.subscription.managedIdentity 11.2.1
+azure.subscription.managedIdentity.attachedResources 14.9.1
 azure.subscription.managedIdentity.clientId 11.2.1
 azure.subscription.managedIdentity.federatedCredential 14.5.3
 azure.subscription.managedIdentity.federatedCredential.audiences 14.5.3
@@ -6511,6 +6516,8 @@ azure.subscription.resource.type 9.0.0
 azure.subscription.resourceGroups 11.4.28
 azure.subscription.resourceIdentity 13.36.1
 azure.subscription.resourceIdentity.principalId 13.36.1
+azure.subscription.resourceIdentity.roleAssignments 14.9.1
+azure.subscription.resourceIdentity.systemAssignedIdentity 14.9.1
 azure.subscription.resourceIdentity.tenantId 13.36.1
 azure.subscription.resourceIdentity.type 13.36.1
 azure.subscription.resourceIdentity.userAssignedIdentities 13.36.1

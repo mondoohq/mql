@@ -297,6 +297,10 @@ func (p *mqlPackage) available() (string, error) {
 	if p.updates == nil {
 		return "", nil
 	}
+	if p.updates.unknown() {
+		p.Available.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
 	return p.updates.lookup(p.Name.Data, p.Arch.Data)
 }
 
@@ -304,6 +308,11 @@ func (p *mqlPackage) outdated() (bool, error) {
 	available := p.GetAvailable()
 	if available.Error != nil {
 		return false, available.Error
+	}
+	// no newer version is known either way, so neither is whether there is one
+	if available.State&plugin.StateIsNull != 0 {
+		p.Outdated.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
 	}
 	return available.Data != "", nil
 }
@@ -549,6 +558,13 @@ func (u *pkgUpdates) load() {
 	for name := range ambiguous {
 		delete(u.byName, name)
 	}
+}
+
+// unknown reports whether the manager can say nothing about newer versions
+// (packages.UpdatesUnknown).
+func (u *pkgUpdates) unknown() bool {
+	m, ok := u.pm.(packages.UpdatesUnknown)
+	return ok && m.UpdatesUnknown()
 }
 
 // lookup returns the newer version the package manager offers for a package,

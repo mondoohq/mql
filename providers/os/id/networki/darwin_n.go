@@ -6,6 +6,7 @@ package networki
 import (
 	"bufio"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -75,7 +76,44 @@ func (n *neti) detectDarwinInterfaces() ([]Interface, error) {
 		return interfaces, errors.Join(errs...)
 	}
 
+	for i := range interfaces {
+		if interfaces[i].Virtual == nil {
+			interfaces[i].Virtual = darwinInterfaceVirtual(interfaces[i].Name)
+		}
+		// ifconfig prints a status line only for interfaces that have a link
+		// (Ethernet, Wi-Fi). Loopback, tunnels and bridges have none, so they
+		// are active when the kernel reports them RUNNING.
+		if interfaces[i].Active == nil && interfaces[i].Flags != nil {
+			interfaces[i].Active = new(slices.Contains(interfaces[i].Flags, "RUNNING"))
+		}
+	}
+
 	return interfaces, nil
+}
+
+// darwinVirtualPrefixes are the BSD name prefixes of the interfaces macOS
+// creates in software: loopback, tunnels (gif, stf, utun, ipsec, ppp), bridges
+// and bonds, Apple Wireless Direct Link (awdl, llw), the Wi-Fi hotspot and
+// Wi-Fi Aware interfaces (ap, nan), the peripheral network interfaces behind
+// USB-C ports (anpi), packet taps, and hypervisor interfaces.
+var darwinVirtualPrefixes = []string{
+	"lo", "gif", "stf", "utun", "ipsec", "ppp", "bridge", "bond", "vlan",
+	"awdl", "llw", "ap", "nan", "anpi", "pktap", "iptap", "feth", "vmnet",
+	"vmenet", "tap", "tun",
+}
+
+// darwinInterfaceVirtual reports whether a macOS interface is virtual, by its
+// BSD name: en* are the hardware ports (Ethernet, Wi-Fi, Thunderbolt), the
+// prefixes above are created in software, and anything else is unknown.
+func darwinInterfaceVirtual(name string) *bool {
+	base := strings.TrimRight(name, "0123456789")
+	if base == "en" {
+		return new(false)
+	}
+	if slices.Contains(darwinVirtualPrefixes, base) {
+		return new(true)
+	}
+	return nil
 }
 
 func (n *neti) getMacSystemConfigInterfaces() ([]Interface, error) {
@@ -204,9 +242,6 @@ func (n *neti) getMacIfconfigInterfaces() (interfaces []Interface, err error) {
 				interfaces = append(interfaces, *currentInterface)
 			}
 			currentInterface = &Interface{Name: header[1]}
-			if strings.HasPrefix(currentInterface.Name, "vmnet") {
-				currentInterface.Virtual = new(true)
-			}
 
 			// Flags and MTU are only ever on this line, and reading them here
 			// rather than from any line carrying them keeps a membership line

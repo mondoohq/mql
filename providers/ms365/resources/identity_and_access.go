@@ -232,7 +232,7 @@ func listRoleManagementPolicyRules(runtime *plugin.Runtime, policyID string) ([]
 		if rule.GetId() == nil {
 			continue
 		}
-		ruleResource, err := newMqlRoleManagementPolicyRule(runtime, rule)
+		ruleResource, err := newMqlRoleManagementPolicyRule(runtime, policyID, rule)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create MQL resource for rule ID %s: %w", *rule.GetId(), err)
 		}
@@ -242,15 +242,77 @@ func listRoleManagementPolicyRules(runtime *plugin.Runtime, policyID string) ([]
 	return ruleResources, nil
 }
 
-func newMqlRoleManagementPolicyRule(runtime *plugin.Runtime, rule models.UnifiedRoleManagementPolicyRuleable) (any, error) {
+// policyRuleKind names a rule by the settings it carries. Every policy uses
+// the same rule IDs, so the kind comes from the rule's type, not its ID.
+func policyRuleKind(rule models.UnifiedRoleManagementPolicyRuleable) string {
+	switch rule.(type) {
+	case models.UnifiedRoleManagementPolicyEnablementRuleable:
+		return "enablement"
+	case models.UnifiedRoleManagementPolicyApprovalRuleable:
+		return "approval"
+	case models.UnifiedRoleManagementPolicyExpirationRuleable:
+		return "expiration"
+	case models.UnifiedRoleManagementPolicyAuthenticationContextRuleable:
+		return "authenticationContext"
+	case models.UnifiedRoleManagementPolicyNotificationRuleable:
+		return "notification"
+	}
+	return ""
+}
+
+// policyRuleSettings returns the fields a rule's kind sets. A field the kind
+// does not carry stays null, rather than reading as false or empty.
+func policyRuleSettings(rule models.UnifiedRoleManagementPolicyRuleable) map[string]*llx.RawData {
+	fields := map[string]*llx.RawData{
+		"enabledRules":                     llx.NilData,
+		"isExpirationRequired":             llx.NilData,
+		"maximumDuration":                  llx.NilData,
+		"isApprovalRequired":               llx.NilData,
+		"isApprovalRequiredForExtension":   llx.NilData,
+		"isRequestorJustificationRequired": llx.NilData,
+		"approvalMode":                     llx.NilData,
+		"authenticationContextEnabled":     llx.NilData,
+		"authenticationContextClaimValue":  llx.NilData,
+	}
+	switch r := rule.(type) {
+	case models.UnifiedRoleManagementPolicyEnablementRuleable:
+		enabled := r.GetEnabledRules()
+		if enabled == nil {
+			enabled = []string{}
+		}
+		fields["enabledRules"] = llx.ArrayData(convert.SliceAnyToInterface(enabled), types.String)
+	case models.UnifiedRoleManagementPolicyApprovalRuleable:
+		if s := r.GetSetting(); s != nil {
+			fields["isApprovalRequired"] = llx.BoolDataPtr(s.GetIsApprovalRequired())
+			fields["isApprovalRequiredForExtension"] = llx.BoolDataPtr(s.GetIsApprovalRequiredForExtension())
+			fields["isRequestorJustificationRequired"] = llx.BoolDataPtr(s.GetIsRequestorJustificationRequired())
+			fields["approvalMode"] = llx.StringDataPtr(s.GetApprovalMode())
+		}
+	case models.UnifiedRoleManagementPolicyExpirationRuleable:
+		fields["isExpirationRequired"] = llx.BoolDataPtr(r.GetIsExpirationRequired())
+		if d := r.GetMaximumDuration(); d != nil {
+			fields["maximumDuration"] = llx.StringData(d.String())
+		}
+	case models.UnifiedRoleManagementPolicyAuthenticationContextRuleable:
+		fields["authenticationContextEnabled"] = llx.BoolDataPtr(r.GetIsEnabled())
+		fields["authenticationContextClaimValue"] = llx.StringDataPtr(r.GetClaimValue())
+	}
+	return fields
+}
+
+// newMqlRoleManagementPolicyRule builds a rule of the policy policyID. Rule IDs
+// such as Enablement_EndUser_Assignment repeat in every policy, so the cache
+// key carries the policy ID; keyed by the rule ID alone, every policy would
+// report the first policy's rule.
+func newMqlRoleManagementPolicyRule(runtime *plugin.Runtime, policyID string, rule models.UnifiedRoleManagementPolicyRuleable) (any, error) {
 	const targetResource = ResourceMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRuleTarget
 	var mqlPolicyRuleTarget plugin.Resource
 	var err error
+	ruleKey := policyID + "/" + *rule.GetId()
 
 	if rule.GetTarget() != nil {
-		ruleTargetID := fmt.Sprintf("%s-ruleTarget", *rule.GetId())
 		targetData := map[string]*llx.RawData{
-			"__id":                llx.StringData(ruleTargetID),
+			"__id":                llx.StringData(ruleKey + "-ruleTarget"),
 			"caller":              llx.StringDataPtr(rule.GetTarget().GetCaller()),
 			"enforcedSettings":    llx.ArrayData(convert.SliceAnyToInterface(rule.GetTarget().GetEnforcedSettings()), types.String),
 			"inheritableSettings": llx.ArrayData(convert.SliceAnyToInterface(rule.GetTarget().GetInheritableSettings()), types.String),
@@ -264,12 +326,12 @@ func newMqlRoleManagementPolicyRule(runtime *plugin.Runtime, rule models.Unified
 		}
 	}
 
-	resource, err := CreateResource(runtime, ResourceMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule,
-		map[string]*llx.RawData{
-			"__id":   llx.StringDataPtr(rule.GetId()),
-			"id":     llx.StringDataPtr(rule.GetId()),
-			"target": llx.ResourceData(mqlPolicyRuleTarget, targetResource),
-		})
+	args := policyRuleSettings(rule)
+	args["__id"] = llx.StringData(ruleKey)
+	args["id"] = llx.StringDataPtr(rule.GetId())
+	args["type"] = llx.StringData(policyRuleKind(rule))
+	args["target"] = llx.ResourceData(mqlPolicyRuleTarget, targetResource)
+	resource, err := CreateResource(runtime, ResourceMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule, args)
 	if err != nil {
 		return nil, err
 	}
@@ -297,12 +359,24 @@ func (a *mqlMicrosoftIdentityAndAccess) roleEligibilityScheduleInstances() ([]an
 		return nil, err
 	}
 
-	var instances []any
+	principalIDs := make([]string, 0, len(roleEligibilityScheduleInstances))
 	for _, inst := range roleEligibilityScheduleInstances {
-		if inst.GetId() == nil {
+		if inst == nil {
 			continue
 		}
-		instanceResource, err := newMqlRoleEligibilityScheduleInstance(a.MqlRuntime, inst)
+		principalIDs = append(principalIDs, strVal(inst.GetPrincipalId()))
+	}
+	principalTypes, err := principalTypesByID(ctx, graphClient, principalIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	var instances []any
+	for _, inst := range roleEligibilityScheduleInstances {
+		if inst == nil || inst.GetId() == nil {
+			continue
+		}
+		instanceResource, err := newMqlRoleEligibilityScheduleInstance(a.MqlRuntime, inst, principalTypes)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create MQL resource for rule ID %s: %w", *inst.GetId(), err)
 		}
@@ -316,11 +390,12 @@ type mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstanceInternal struct
 	cacheRoleDefinitionID string
 }
 
-func newMqlRoleEligibilityScheduleInstance(runtime *plugin.Runtime, inst models.UnifiedRoleEligibilityScheduleInstanceable) (*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance, error) {
+func newMqlRoleEligibilityScheduleInstance(runtime *plugin.Runtime, inst models.UnifiedRoleEligibilityScheduleInstanceable, principalTypes map[string]string) (*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance, error) {
 	resource, err := CreateResource(runtime, "microsoft.identityAndAccess.roleEligibilityScheduleInstance", map[string]*llx.RawData{
 		"id":                        llx.StringDataPtr(inst.GetId()),
 		"__id":                      llx.StringDataPtr(inst.GetId()),
 		"principalId":               llx.StringDataPtr(inst.GetPrincipalId()),
+		"principalType":             llx.StringData(principalTypes[strVal(inst.GetPrincipalId())]),
 		"directoryScopeId":          llx.StringDataPtr(inst.GetDirectoryScopeId()),
 		"appScopeId":                llx.StringDataPtr(inst.GetAppScopeId()),
 		"startDateTime":             graphTimeData(inst.GetStartDateTime()),
@@ -645,4 +720,16 @@ func newMqlAccessReviewDefinition(runtime *plugin.Runtime, d models.AccessReview
 	}
 
 	return resource.(*mqlMicrosoftIdentityAndAccessAccessReviewDefinition), nil
+}
+
+func (a *mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance) principalUser() (*mqlMicrosoftUser, error) {
+	return principalOfType(a.MqlRuntime, &a.PrincipalUser, a.PrincipalType.Data, "user", a.PrincipalId.Data, ResourceMicrosoftUser)
+}
+
+func (a *mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance) principalGroup() (*mqlMicrosoftGroup, error) {
+	return principalOfType(a.MqlRuntime, &a.PrincipalGroup, a.PrincipalType.Data, "group", a.PrincipalId.Data, ResourceMicrosoftGroup)
+}
+
+func (a *mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance) principalServicePrincipal() (*mqlMicrosoftServiceprincipal, error) {
+	return principalOfType(a.MqlRuntime, &a.PrincipalServicePrincipal, a.PrincipalType.Data, "servicePrincipal", a.PrincipalId.Data, ResourceMicrosoftServiceprincipal)
 }

@@ -89,6 +89,7 @@ Show the user:
 
 - Every source file must start with the copyright header (see AGENTS.md)
 - Every resource and field in `.lr` files must have a doc-comment (see AGENTS.md for format rules)
+- A new provider's first `Version` in `config.go` is the major of the mql it ships with, at `.0.0`: mql 14.x gives `14.0.0`. The scaffold sets this from the tree's mql version; check it before the first release, since a provider published on an older major (`13.0.0` while mql is on 14) needs a second bump to catch up.
 - All `.lr.versions` entries for a brand-new provider should use the same version as `config.go` `Version`
 - If you add `mql*Internal` structs, run `./mqlr generate` twice (second pass detects and embeds them)
 - Connection setup (API keys, OAuth, env vars) goes in `connection/connection.go`

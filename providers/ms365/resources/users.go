@@ -13,6 +13,7 @@ import (
 	abstractions "github.com/microsoft/kiota-abstractions-go"
 	"github.com/microsoftgraph/msgraph-beta-sdk-go/auditlogs"
 	betamodels "github.com/microsoftgraph/msgraph-beta-sdk-go/models"
+	msgraphsdkgo "github.com/microsoftgraph/msgraph-sdk-go"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/microsoftgraph/msgraph-sdk-go/users"
 	"github.com/rs/zerolog/log"
@@ -144,21 +145,96 @@ func (a *mqlMicrosoftUsers) list() ([]any, error) {
 	return res, nil
 }
 
-// count returns the total number of users in the tenant via the Graph
-// $count endpoint, avoiding a full user-list fetch (which is prohibitively
-// slow on large tenants).
+// The values of a user's userType that memberCount and guestCount count.
+const (
+	userTypeMember = "Member"
+	userTypeGuest  = "Guest"
+)
+
+// count returns the number of users via the Graph $count endpoint, avoiding
+// a full user-list fetch (which is prohibitively slow on large tenants).
 func (a *mqlMicrosoftUsers) count() (int64, error) {
+	return a.countUsers("")
+}
+
+func (a *mqlMicrosoftUsers) memberCount() (int64, error) {
+	return a.countUsers(userTypeMember)
+}
+
+func (a *mqlMicrosoftUsers) guestCount() (int64, error) {
+	return a.countUsers(userTypeGuest)
+}
+
+// countUsers counts the users this resource lists, of one userType when one
+// is given.
+func (a *mqlMicrosoftUsers) countUsers(userType string) (int64, error) {
+	filter, search, err := a.countQuery(userType)
+	if err != nil {
+		return 0, err
+	}
+
 	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
 	graphClient, err := conn.GraphClient()
 	if err != nil {
 		return 0, err
 	}
+	return fetchUserCount(context.Background(), graphClient, filter, search)
+}
 
-	opts := &users.CountRequestBuilderGetRequestConfiguration{Headers: abstractions.NewRequestHeaders()}
-	opts.Headers.Add("ConsistencyLevel", "eventual")
-	count, err := graphClient.Users().Count().Get(context.Background(), opts)
+// countQuery returns the $filter and $search of a count request. They are the
+// filter and search list applies, so a count agrees with the length of the
+// list it stands in for, with the filter narrowed to userType when one is
+// given. Either is empty when it does not apply.
+func (a *mqlMicrosoftUsers) countQuery(userType string) (filter string, search string, err error) {
+	if a.Filter.State == plugin.StateIsSet {
+		filter = a.Filter.Data
+	}
+	if a.Search.State == plugin.StateIsSet {
+		search, err = parseSearch(a.Search.Data)
+		if err != nil {
+			return "", "", err
+		}
+	}
+	return userTypeFilter(filter, userType), search, nil
+}
+
+// userTypeFilter narrows an OData filter to the users of one userType. The
+// filter is parenthesized first: `and` binds tighter than `or`, so appending
+// to `a or b` as is would only narrow b. An empty userType leaves the filter
+// as it is.
+func userTypeFilter(filter, userType string) string {
+	if userType == "" {
+		return filter
+	}
+	byType := odataEqFilter("userType", userType)
+	if filter == "" {
+		return byType
+	}
+	return "(" + filter + ") and " + byType
+}
+
+// fetchUserCount asks Graph's /users/$count how many users match filter and
+// search. Either may be empty, and with both empty it counts every user.
+//
+// Permissions: User.Read.All
+func fetchUserCount(ctx context.Context, graphClient *msgraphsdkgo.GraphServiceClient, filter, search string) (int64, error) {
+	// $count is an advanced query, which Graph only answers with this header
+	headers := abstractions.NewRequestHeaders()
+	headers.Add("ConsistencyLevel", "eventual")
+	opts := &users.CountRequestBuilderGetRequestConfiguration{
+		Headers:         headers,
+		QueryParameters: &users.CountRequestBuilderGetQueryParameters{},
+	}
+	if filter != "" {
+		opts.QueryParameters.Filter = &filter
+	}
+	if search != "" {
+		opts.QueryParameters.Search = &search
+	}
+
+	count, err := graphClient.Users().Count().Get(ctx, opts)
 	if err != nil {
-		return 0, transformError(err)
+		return 0, classifyGraphError(err, "User.Read.All")
 	}
 	if count == nil {
 		// This should never happen, but we better check
@@ -1261,4 +1337,131 @@ func newMqlUserRegistrationDetails(runtime *plugin.Runtime, details userRegistra
 	}
 
 	return resource.(*mqlMicrosoftUserAuthenticationMethodsUserRegistrationDetails), nil
+}
+
+func (a *mqlMicrosoftUser) memberOf() ([]any, error) {
+	return a.groupMemberships(false)
+}
+
+func (a *mqlMicrosoftUser) transitiveMemberOf() ([]any, error) {
+	return a.groupMemberships(true)
+}
+
+// groupMemberships resolves the user's direct or transitive groups through a
+// cache shared by every indexed user, so a query over all users batches the
+// membership lookups instead of issuing one request per user.
+func (a *mqlMicrosoftUser) groupMemberships(transitive bool) ([]any, error) {
+	ms, err := a.microsoftParent()
+	if err != nil {
+		return nil, err
+	}
+	cache := &ms.userBatches.memberOf
+	if transitive {
+		cache = &ms.userBatches.transitiveOf
+	}
+	v, err := cache.resolve(a.Id.Data, ms.indexedUserIDs(), func(ids []string) (map[string]any, map[string]error, error) {
+		return ms.loadUserGroupMemberships(ids, transitive)
+	})
+	if err != nil {
+		return nil, err
+	}
+	groups, _ := v.([]models.Groupable)
+	res := make([]any, 0, len(groups))
+	for _, g := range groups {
+		r, err := newMqlMicrosoftGroup(a.MqlRuntime, g)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, r)
+	}
+	return res, nil
+}
+
+// userGroupPageSize is the most groups Graph returns on one page of a
+// membership listing. Almost every user fits on the first page, which the
+// batched request returns; the rest are paged one user at a time.
+const userGroupPageSize = int32(999)
+
+// loadUserGroupMemberships fetches the groups of the given users for the
+// membership batch cache.
+func (m *mqlMicrosoft) loadUserGroupMemberships(ids []string, transitive bool) (map[string]any, map[string]error, error) {
+	conn := m.MqlRuntime.Connection.(*connection.Ms365Connection)
+	graphClient, err := conn.GraphClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	groups, errs, err := fetchUserGroupMemberships(context.Background(), graphClient, ids, transitive)
+	if err != nil {
+		return nil, nil, err
+	}
+	data := make(map[string]any, len(groups))
+	for id, g := range groups {
+		data[id] = g
+	}
+	return data, errs, nil
+}
+
+// fetchUserGroupMemberships reads the direct or transitive groups of the given
+// users in one batched Graph request, following the next page only for the
+// users whose memberships do not fit on the first one. A user whose lookup
+// fails is reported in the error map and left out of the result.
+func fetchUserGroupMemberships(ctx context.Context, graphClient *msgraphsdkgo.GraphServiceClient, ids []string, transitive bool) (map[string][]models.Groupable, map[string]error, error) {
+	top := userGroupPageSize
+	build := func(id string) (*abstractions.RequestInformation, error) {
+		if transitive {
+			return graphClient.Users().ByUserId(id).TransitiveMemberOf().GraphGroup().ToGetRequestInformation(ctx,
+				&users.ItemTransitiveMemberOfGraphGroupRequestBuilderGetRequestConfiguration{
+					QueryParameters: &users.ItemTransitiveMemberOfGraphGroupRequestBuilderGetQueryParameters{Top: &top},
+				})
+		}
+		return graphClient.Users().ByUserId(id).MemberOf().GraphGroup().ToGetRequestInformation(ctx,
+			&users.ItemMemberOfGraphGroupRequestBuilderGetRequestConfiguration{
+				QueryParameters: &users.ItemMemberOfGraphGroupRequestBuilderGetQueryParameters{Top: &top},
+			})
+	}
+	return fetchGroupMemberships(ctx, graphClient, ids, build)
+}
+
+// fetchGroupMemberships runs one group-membership request per directory object
+// through $batch, following the next page only for the objects whose
+// memberships do not fit on the first one. An object whose lookup fails is
+// reported in the error map and left out of the result.
+func fetchGroupMemberships(ctx context.Context, graphClient *msgraphsdkgo.GraphServiceClient, ids []string, build func(id string) (*abstractions.RequestInformation, error)) (map[string][]models.Groupable, map[string]error, error) {
+	data := make(map[string][]models.Groupable, len(ids))
+	paged := map[string]*models.GroupCollectionResponse{}
+	errs, _, err := batchEach(ctx, graphClient.GetAdapter(), ids, build, models.CreateGroupCollectionResponseFromDiscriminatorValue,
+		func(id string, coll *models.GroupCollectionResponse) error {
+			if next := coll.GetOdataNextLink(); next != nil && *next != "" {
+				paged[id] = coll
+				return nil
+			}
+			data[id] = groupsWithID(coll.GetValue())
+			return nil
+		})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	for id, coll := range paged {
+		all, err := iterate[models.Groupable](ctx, coll, graphClient.GetAdapter(), models.CreateGroupCollectionResponseFromDiscriminatorValue)
+		if err != nil {
+			errs[id] = transformError(err)
+			continue
+		}
+		data[id] = groupsWithID(all)
+	}
+	return data, errs, nil
+}
+
+// groupsWithID drops the entries Graph returned without a group id, which
+// cannot be keyed as resources.
+func groupsWithID(groups []models.Groupable) []models.Groupable {
+	res := make([]models.Groupable, 0, len(groups))
+	for _, g := range groups {
+		if g == nil || g.GetId() == nil || *g.GetId() == "" {
+			continue
+		}
+		res = append(res, g)
+	}
+	return res
 }

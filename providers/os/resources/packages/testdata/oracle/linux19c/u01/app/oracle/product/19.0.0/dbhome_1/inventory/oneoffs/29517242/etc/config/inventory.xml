@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<oneoff_inventory>
+    <patch_description>Database Release Update : 19.3.0.0.190416 (29517242)</patch_description>
+    <patch_id number="29517242"/>
+    <base_bugs>
+        <bug description="EXAMPLE FIXED BUG ONE" number="1000001"/>
+        <bug description="EXAMPLE FIXED BUG TWO" number="1000002"/>
+    </base_bugs>
+</oneoff_inventory>

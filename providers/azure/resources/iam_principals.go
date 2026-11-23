@@ -60,11 +60,21 @@ type graphPrincipal struct {
 	ID                     string `json:"id"`
 	DisplayName            string `json:"displayName"`
 	UserPrincipalName      string `json:"userPrincipalName"`
+	UserType               string `json:"userType"`
 	AppID                  string `json:"appId"`
 	AppOwnerOrganizationID string `json:"appOwnerOrganizationId"`
 	ServicePrincipalType   string `json:"servicePrincipalType"`
 	AccountEnabled         *bool  `json:"accountEnabled"`
 	IsAssignableToRole     *bool  `json:"isAssignableToRole"`
+}
+
+// graphPrincipalSelect is every property graphPrincipal decodes. getByIds
+// returns only a type's default properties unless asked, and a user's
+// defaults leave out accountEnabled and userType, so without this list both
+// read empty for every user.
+var graphPrincipalSelect = []string{
+	"id", "displayName", "userPrincipalName", "userType", "appId",
+	"appOwnerOrganizationId", "servicePrincipalType", "accountEnabled", "isAssignableToRole",
 }
 
 type graphGetByIdsRequest struct {
@@ -110,7 +120,7 @@ func fetchGraphPrincipals(ctx context.Context, conn *connection.AzureConnection,
 	}
 
 	client := http.Client{Timeout: graphRequestTimeout}
-	url := graphEndpoint + "/directoryObjects/getByIds"
+	url := graphEndpoint + "/directoryObjects/getByIds?$select=" + strings.Join(graphPrincipalSelect, ",")
 
 	for start := 0; start < len(ids); start += graphGetByIdsBatchSize {
 		end := min(start+graphGetByIdsBatchSize, len(ids))
@@ -185,10 +195,10 @@ type mqlAzureSubscriptionAuthorizationServiceInternal struct {
 	// round trips in place of one, which invites the 429 throttling that
 	// batching exists to avoid. The stall this risks instead is bounded by
 	// graphRequestTimeout.
-	principalsMu   sync.Mutex
-	principals     map[string]*graphPrincipal
-	principalsMiss map[string]struct{}
-	principalsSeed bool
+	principalsMu      sync.Mutex
+	principalMemo     map[string]*graphPrincipal
+	principalMemoMiss map[string]struct{}
+	principalMemoSeed bool
 }
 
 // assignmentPrincipalIDs returns the principal IDs named by the subscription's
@@ -233,21 +243,21 @@ func (a *mqlAzureSubscriptionAuthorizationService) resolvePrincipal(principalID 
 	a.principalsMu.Lock()
 	defer a.principalsMu.Unlock()
 
-	if a.principals == nil {
-		a.principals = map[string]*graphPrincipal{}
-		a.principalsMiss = map[string]struct{}{}
+	if a.principalMemo == nil {
+		a.principalMemo = map[string]*graphPrincipal{}
+		a.principalMemoMiss = map[string]struct{}{}
 	}
-	if p, ok := a.principals[key]; ok {
+	if p, ok := a.principalMemo[key]; ok {
 		return p, nil
 	}
-	if _, ok := a.principalsMiss[key]; ok {
+	if _, ok := a.principalMemoMiss[key]; ok {
 		return nil, nil
 	}
 
 	wanted := []string{principalID}
-	if !a.principalsSeed {
+	if !a.principalMemoSeed {
 		wanted = append(wanted, a.assignmentPrincipalIDs()...)
-		a.principalsSeed = true
+		a.principalMemoSeed = true
 	}
 
 	// Deduplicate while preserving the requested ID first, and skip anything
@@ -260,10 +270,10 @@ func (a *mqlAzureSubscriptionAuthorizationService) resolvePrincipal(principalID 
 			continue
 		}
 		seen[k] = struct{}{}
-		if _, done := a.principals[k]; done {
+		if _, done := a.principalMemo[k]; done {
 			continue
 		}
-		if _, done := a.principalsMiss[k]; done {
+		if _, done := a.principalMemoMiss[k]; done {
 			continue
 		}
 		ids = append(ids, id)
@@ -273,17 +283,17 @@ func (a *mqlAzureSubscriptionAuthorizationService) resolvePrincipal(principalID 
 	if err != nil {
 		return nil, err
 	}
-	maps.Copy(a.principals, found)
+	maps.Copy(a.principalMemo, found)
 	// Every ID we asked about and did not get back is a principal Graph cannot
 	// resolve; record it so a repeat query doesn't re-request it.
 	for _, id := range ids {
 		k := strings.ToLower(id)
-		if _, ok := a.principals[k]; !ok {
-			a.principalsMiss[k] = struct{}{}
+		if _, ok := a.principalMemo[k]; !ok {
+			a.principalMemoMiss[k] = struct{}{}
 		}
 	}
 
-	if p, ok := a.principals[key]; ok {
+	if p, ok := a.principalMemo[key]; ok {
 		return p, nil
 	}
 	return nil, nil
@@ -327,14 +337,27 @@ func (a *mqlAzureSubscriptionAuthorizationServiceRoleAssignment) principal() (*m
 		a.Principal.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
+	return newMqlEntraPrincipal(a.MqlRuntime, conn.SubId(), p)
+}
 
-	res, err := CreateResource(a.MqlRuntime, ResourceAzureEntraPrincipal,
+// entraPrincipalID keys a principal by the subscription it was resolved for.
+// Discovered subscriptions share one resource cache, and roleAssignments on the
+// principal answers for its own subscription, so keying on the object ID alone
+// would hand one subscription's grants to every other subscription the same
+// principal appears in.
+func entraPrincipalID(subscriptionID, objectID string) string {
+	return "/subscriptions/" + subscriptionID + "/principals/" + strings.ToLower(objectID)
+}
+
+func newMqlEntraPrincipal(runtime *plugin.Runtime, subscriptionID string, p *graphPrincipal) (*mqlAzureEntraPrincipal, error) {
+	res, err := CreateResource(runtime, ResourceAzureEntraPrincipal,
 		map[string]*llx.RawData{
-			"__id":                 llx.StringData(p.ID),
+			"__id":                 llx.StringData(entraPrincipalID(subscriptionID, p.ID)),
 			"id":                   llx.StringData(p.ID),
 			"displayName":          llx.StringData(p.DisplayName),
 			"principalType":        llx.StringData(principalTypeFromODataType(p.ODataType)),
 			"userPrincipalName":    llx.StringData(p.UserPrincipalName),
+			"userType":             llx.StringData(p.UserType),
 			"appId":                llx.StringData(p.AppID),
 			"appOwnerTenantId":     llx.StringData(p.AppOwnerOrganizationID),
 			"servicePrincipalType": llx.StringData(p.ServicePrincipalType),
@@ -345,4 +368,147 @@ func (a *mqlAzureSubscriptionAuthorizationServiceRoleAssignment) principal() (*m
 		return nil, err
 	}
 	return res.(*mqlAzureEntraPrincipal), nil
+}
+
+func (a *mqlAzureEntraPrincipal) roleAssignments() ([]any, error) {
+	return roleAssignmentsForPrincipal(a.MqlRuntime, a.Id.Data)
+}
+
+// principals resolves every distinct principal the subscription's role
+// assignments name, in the order the assignments list them. The first
+// resolution seeds the memo with all of them in one batched Graph request, so
+// the rest are served without further calls. Principals Graph does not know
+// (deleted objects) are left out.
+func (a *mqlAzureSubscriptionAuthorizationService) principals() ([]any, error) {
+	// Read the list here rather than through assignmentPrincipalIDs, which
+	// swallows a listing failure: an empty principal list would claim nobody
+	// holds access.
+	assignments := a.GetRoleAssignments()
+	if assignments.Error != nil {
+		return nil, assignments.Error
+	}
+	ids := make([]string, 0, len(assignments.Data))
+	for _, item := range assignments.Data {
+		if assignment, ok := item.(*mqlAzureSubscriptionAuthorizationServiceRoleAssignment); ok {
+			ids = append(ids, assignment.PrincipalId.Data)
+		}
+	}
+
+	res := []any{}
+	for _, id := range distinctPrincipalIDs(ids) {
+		p, err := a.resolvePrincipal(id)
+		if err != nil {
+			return nil, err
+		}
+		if p == nil {
+			continue
+		}
+		mqlPrincipal, err := newMqlEntraPrincipal(a.MqlRuntime, a.SubscriptionId.Data, p)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlPrincipal)
+	}
+	return res, nil
+}
+
+// distinctPrincipalIDs drops empty and repeated principal IDs, comparing case
+// insensitively, and keeps the first spelling of each in its original order.
+func distinctPrincipalIDs(ids []string) []string {
+	seen := map[string]struct{}{}
+	res := []string{}
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		k := strings.ToLower(id)
+		if _, dup := seen[k]; dup {
+			continue
+		}
+		seen[k] = struct{}{}
+		res = append(res, id)
+	}
+	return res
+}
+
+// managedIdentity resolves a managed-identity principal to the identity in the
+// subscription: a user-assigned identity by its principal ID, or else the
+// system-assigned identity of the resource that carries this principal. Both
+// lookups read lists the runtime already caches, and run only for principals
+// Graph reports as managed identities.
+func (a *mqlAzureEntraPrincipal) managedIdentity() (*mqlAzureSubscriptionManagedIdentity, error) {
+	if a.Id.Data == "" || !strings.EqualFold(a.ServicePrincipalType.Data, "ManagedIdentity") {
+		a.ManagedIdentity.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	conn, ok := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	if !ok {
+		return nil, errors.New("invalid connection provided, it is not an Azure connection")
+	}
+	r, err := CreateResource(a.MqlRuntime, ResourceAzureSubscription, map[string]*llx.RawData{
+		"__id":           llx.StringData("/subscriptions/" + conn.SubId()),
+		"subscriptionId": llx.StringData(conn.SubId()),
+	})
+	if err != nil {
+		return nil, err
+	}
+	sub := r.(*mqlAzureSubscription)
+
+	iamVal := sub.GetIam()
+	if iamVal.Error != nil {
+		return nil, iamVal.Error
+	}
+	if iamVal.Data == nil {
+		return nil, errors.New("cannot resolve the authorization service for the subscription")
+	}
+	userAssigned := iamVal.Data.GetManagedIdentities()
+	if userAssigned.Error != nil {
+		return nil, userAssigned.Error
+	}
+	if mi := userAssignedIdentityByPrincipal(userAssigned.Data, a.Id.Data); mi != nil {
+		return mi, nil
+	}
+
+	resources := sub.GetResources()
+	if resources.Error != nil {
+		return nil, resources.Error
+	}
+	owner := systemIdentityOwner(resources.Data, a.Id.Data)
+	if owner == nil {
+		a.ManagedIdentity.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return newSystemAssignedManagedIdentity(a.MqlRuntime, owner.cacheOwnerId, owner.PrincipalId.Data, owner.TenantId.Data, &a.ManagedIdentity)
+}
+
+// userAssignedIdentityByPrincipal finds the user-assigned identity whose
+// service principal has the given object ID.
+func userAssignedIdentityByPrincipal(identities []any, principalID string) *mqlAzureSubscriptionManagedIdentity {
+	for _, item := range identities {
+		mi, ok := item.(*mqlAzureSubscriptionManagedIdentity)
+		if ok && mi.PrincipalId.Data != "" && strings.EqualFold(mi.PrincipalId.Data, principalID) {
+			return mi
+		}
+	}
+	return nil
+}
+
+// systemIdentityOwner finds the identity block of the resource whose
+// system-assigned identity has the given principal ID.
+func systemIdentityOwner(resources []any, principalID string) *mqlAzureSubscriptionResourceIdentity {
+	for _, item := range resources {
+		resource, ok := item.(*mqlAzureSubscriptionResource)
+		if !ok {
+			continue
+		}
+		identity := resource.GetResourceIdentity()
+		if identity.Error != nil || identity.Data == nil {
+			continue
+		}
+		if identity.Data.PrincipalId.Data != "" && strings.EqualFold(identity.Data.PrincipalId.Data, principalID) {
+			return identity.Data
+		}
+	}
+	return nil
 }

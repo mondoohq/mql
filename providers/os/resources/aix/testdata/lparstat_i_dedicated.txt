@@ -1,0 +1,28 @@
+Node Name                                  : aixded01
+Partition Name                             : aixded01
+Partition Number                           : 7
+Type                                       : Dedicated-SMT-8
+Mode                                       : Donating
+Entitled Capacity                          : 4.00
+Partition Group-ID                         : 32775
+Shared Pool ID                             : -
+Online Virtual CPUs                        : 4
+Maximum Virtual CPUs                       : 8
+Minimum Virtual CPUs                       : 1
+Online Memory                              : 32768 MB
+Maximum Memory                             : 65536 MB
+Minimum Memory                             : 4096 MB
+Variable Capacity Weight                   : -
+Minimum Capacity                           : 1.00
+Maximum Capacity                           : 8.00
+Capacity Increment                         : 1.00
+Maximum Physical CPUs in system            : 32
+Active Physical CPUs in system             : 32
+Active CPUs in Pool                        : -
+Shared Physical CPUs in system             : -
+Maximum Capacity of Pool                   : -
+Entitled Capacity of Pool                  : -
+Unallocated Capacity                       : -
+Physical CPU Percentage                    : 100.00%
+Unallocated Weight                         : -
+Memory Mode                                : Dedicated

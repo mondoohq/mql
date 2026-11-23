@@ -26,6 +26,9 @@ const (
 	// IdDetector_Action1Endpoint identifies a Linux, macOS or Windows host by the
 	// endpoint ID of its Action1 agent. Opt-in: it is never part of the defaults.
 	IdDetector_Action1Endpoint = "action1-endpoint"
+	// IdDetector_SentinelOneAgent identifies a host by the agent UUID of its
+	// SentinelOne agent. Opt-in: it is never part of the defaults.
+	IdDetector_SentinelOneAgent = "sentinelone-agent"
 
 	// IdDetector_MountPath derives an identifier from the directory a
 	// filesystem connection reads. It is the last resort for a target that

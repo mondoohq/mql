@@ -385,7 +385,10 @@ func (r *mqlNpmPackages) getPaths() ([]string, error) {
 	sort.Strings(paths)
 	paths = slices.Compact(paths)
 
-	if len(paths) == 0 {
+	// paths: [] searches nothing. Falling back to the defaults would answer
+	// a scoped search, such as one fed by an empty files.find, with the
+	// system-wide inventory.
+	if len(paths) == 0 && !r.Paths.IsSet() {
 		conn := r.MqlRuntime.Connection.(shared.Connection)
 		paths = expandNodeStreamPrefixes(conn.FileSystem(), defaultNpmPaths, resolveConnectionPath(conn))
 	}
@@ -413,7 +416,9 @@ func (r *mqlNpmPackages) gatherData() error {
 	var filePaths []string
 	fs := conn.FileSystem()
 
-	if len(paths) > 1 {
+	if len(paths) == 0 {
+		// nothing to search
+	} else if len(paths) > 1 {
 		// no specific path was provided, we search through default locations
 		// here we are not going to have a root package, only direct and transitive dependencies
 		directDependencies, transitiveDependencies, filePaths, err = collectNpmPackagesInPaths(r.MqlRuntime, fs, paths)

@@ -165,9 +165,26 @@ func serviceAddress(row map[string]string) string {
 	return row["address"]
 }
 
+// serviceRows drops the session rows from an /ip/service reply. RouterOS lists
+// each open management session, the scanner's own API login included, as a
+// dynamic row flagged `connection` that repeats the service name with the
+// session's local and remote address and no source restriction. It is a
+// session, not a listener, so it would list the service twice, the second
+// time without its restriction.
+func serviceRows(rows []map[string]string) []map[string]string {
+	out := make([]map[string]string, 0, len(rows))
+	for _, row := range rows {
+		if row["connection"] == "true" {
+			continue
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
 func newMikrotikService(runtime *plugin.Runtime, row map[string]string) (plugin.Resource, error) {
 	res, err := CreateResource(runtime, "mikrotik.ip.service", map[string]*llx.RawData{
-		"__id":        llx.StringData("mikrotik.ip.service/" + row["name"]),
+		"__id":        llx.StringData(rowID("mikrotik.ip.service/", row, row["name"], row["port"], row["proto"])),
 		"name":        llx.StringData(row["name"]),
 		"port":        intField(row, "port"),
 		"address":     llx.StringData(serviceAddress(row)),
@@ -177,6 +194,7 @@ func newMikrotikService(runtime *plugin.Runtime, row map[string]string) (plugin.
 		"maxSessions": intField(row, "max-sessions"),
 		"disabled":    boolField(row, "disabled"),
 		"invalid":     boolField(row, "invalid"),
+		"dynamic":     boolField(row, "dynamic"),
 	})
 	if err != nil {
 		return nil, err
@@ -190,6 +208,7 @@ func newMikrotikService(runtime *plugin.Runtime, row map[string]string) (plugin.
 func newMikrotikFirewallFilter(runtime *plugin.Runtime, row map[string]string) (plugin.Resource, error) {
 	args := firewallRuleArgs("mikrotik.ip.firewall.filter/", row)
 	args["connectionState"] = llx.StringData(row["connection-state"])
+	args["matchers"] = firewallMatchers(row)
 	return CreateResource(runtime, "mikrotik.ip.firewall.filter", args)
 }
 

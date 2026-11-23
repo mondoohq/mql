@@ -287,6 +287,7 @@ mikrotik.ip.firewall.filter.inInterface 13.0.0
 mikrotik.ip.firewall.filter.invalid 13.0.0
 mikrotik.ip.firewall.filter.log 13.0.0
 mikrotik.ip.firewall.filter.logPrefix 13.0.0
+mikrotik.ip.firewall.filter.matchers 14.2.1
 mikrotik.ip.firewall.filter.outInterface 13.0.0
 mikrotik.ip.firewall.filter.packets 13.0.0
 mikrotik.ip.firewall.filter.protocol 13.0.0
@@ -468,6 +469,7 @@ mikrotik.ip.service.address 13.0.0
 mikrotik.ip.service.certificate 13.0.0
 mikrotik.ip.service.certificateRef 13.0.11
 mikrotik.ip.service.disabled 13.0.0
+mikrotik.ip.service.dynamic 14.2.1
 mikrotik.ip.service.invalid 13.0.0
 mikrotik.ip.service.maxSessions 13.0.0
 mikrotik.ip.service.name 13.0.0
@@ -527,6 +529,7 @@ mikrotik.ipv6.firewall.filter.inInterface 13.0.11
 mikrotik.ipv6.firewall.filter.invalid 13.0.11
 mikrotik.ipv6.firewall.filter.log 13.0.11
 mikrotik.ipv6.firewall.filter.logPrefix 13.0.11
+mikrotik.ipv6.firewall.filter.matchers 14.2.1
 mikrotik.ipv6.firewall.filter.outInterface 13.0.11
 mikrotik.ipv6.firewall.filter.packets 13.0.11
 mikrotik.ipv6.firewall.filter.protocol 13.0.11

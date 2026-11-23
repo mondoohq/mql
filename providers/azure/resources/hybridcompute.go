@@ -5,7 +5,6 @@ package resources
 
 import (
 	"context"
-	"errors"
 	"maps"
 	"strings"
 	"time"
@@ -41,7 +40,7 @@ func (a *mqlAzureSubscriptionComputeService) hybridMachines() ([]any, error) {
 		if err != nil {
 			if isAzureNotConfigured(err) {
 				log.Warn().Err(err).Msg("could not list azure hybridMachines, returning partial results")
-				return res, nil
+				return keepTagMatches(a.MqlRuntime, res), nil
 			}
 			return nil, err
 		}
@@ -200,7 +199,7 @@ func (a *mqlAzureSubscriptionComputeService) hybridMachines() ([]any, error) {
 		}
 	}
 
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 func (a *mqlAzureSubscriptionComputeServiceHybridMachine) id() (string, error) {
@@ -329,53 +328,14 @@ type mqlAzureSubscriptionComputeServiceHybridMachineExtensionInternal struct {
 	cacheSystemData any
 }
 
+// initAzureSubscriptionComputeServiceHybridMachine resolves a single Arc
+// machine by its ARM id. Called without arguments, as for a discovered
+// azure-hybridcompute-machine asset, it takes the id from the asset.
 func initAzureSubscriptionComputeServiceHybridMachine(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	if len(args) > 1 {
-		return args, nil, nil
-	}
-
-	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil && ids.id != "" {
-			args["id"] = llx.StringData(ids.id)
-		}
-	}
-
-	if args["id"] == nil {
-		return nil, nil, errors.New("id required to fetch azure hybrid machine")
-	}
-
-	conn, ok := runtime.Connection.(*connection.AzureConnection)
-	if !ok {
-		return nil, nil, errors.New("invalid connection provided, it is not an Azure connection")
-	}
-
-	res, err := NewResource(runtime, "azure.subscription.computeService", map[string]*llx.RawData{
-		"subscriptionId": llx.StringData(conn.SubId()),
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-	computeSvc := res.(*mqlAzureSubscriptionComputeService)
-	machines := computeSvc.GetHybridMachines()
-	if machines.Error != nil {
-		return nil, nil, machines.Error
-	}
-	id, ok := args["id"].Value.(string)
-	if !ok {
-		return nil, nil, errors.New("id must be a non-nil string value")
-	}
-	wantID := strings.ToLower(id)
-	for _, entry := range machines.Data {
-		machine, ok := entry.(*mqlAzureSubscriptionComputeServiceHybridMachine)
-		if !ok {
-			continue
-		}
-		if strings.ToLower(machine.Id.Data) == wantID {
-			return args, machine, nil
-		}
-	}
-
-	return nil, nil, errors.New("azure hybrid machine does not exist")
+	return initFromServiceList(runtime, args,
+		ResourceAzureSubscriptionComputeService,
+		func(s *mqlAzureSubscriptionComputeService) *plugin.TValue[[]any] { return s.GetHybridMachines() },
+		ResourceAzureSubscriptionComputeServiceHybridMachine)
 }
 
 // parseAgentBool reads the "true"/"false" strings the Connected Machine agent

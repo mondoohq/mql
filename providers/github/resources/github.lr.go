@@ -64,6 +64,7 @@ const (
 	ResourceGithubWebhook                            string = "github.webhook"
 	ResourceGithubWorkflow                           string = "github.workflow"
 	ResourceGithubBranch                             string = "github.branch"
+	ResourceGithubBranchRules                        string = "github.branchRules"
 	ResourceGithubBranchprotection                   string = "github.branchprotection"
 	ResourceGithubCommit                             string = "github.commit"
 	ResourceGithubMergeRequest                       string = "github.mergeRequest"
@@ -289,6 +290,10 @@ func init() {
 		"github.branch": {
 			// to override args, implement: initGithubBranch(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createGithubBranch,
+		},
+		"github.branchRules": {
+			// to override args, implement: initGithubBranchRules(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGithubBranchRules,
 		},
 		"github.branchprotection": {
 			// to override args, implement: initGithubBranchprotection(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -2063,6 +2068,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"github.branch.protectionRules": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubBranch).GetProtectionRules()).ToDataRes(types.Resource("github.branchprotection"))
 	},
+	"github.branch.rules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubBranch).GetRules()).ToDataRes(types.Resource("github.branchRules"))
+	},
 	"github.branch.repoName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubBranch).GetRepoName()).ToDataRes(types.String)
 	},
@@ -2071,6 +2079,57 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"github.branch.isDefault": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubBranch).GetIsDefault()).ToDataRes(types.Bool)
+	},
+	"github.branchRules.requiresPullRequest": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubBranchRules).GetRequiresPullRequest()).ToDataRes(types.Bool)
+	},
+	"github.branchRules.requiredApprovingReviewCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubBranchRules).GetRequiredApprovingReviewCount()).ToDataRes(types.Int)
+	},
+	"github.branchRules.requireCodeOwnerReview": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubBranchRules).GetRequireCodeOwnerReview()).ToDataRes(types.Bool)
+	},
+	"github.branchRules.dismissStaleReviewsOnPush": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubBranchRules).GetDismissStaleReviewsOnPush()).ToDataRes(types.Bool)
+	},
+	"github.branchRules.requireLastPushApproval": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubBranchRules).GetRequireLastPushApproval()).ToDataRes(types.Bool)
+	},
+	"github.branchRules.requiredReviewThreadResolution": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubBranchRules).GetRequiredReviewThreadResolution()).ToDataRes(types.Bool)
+	},
+	"github.branchRules.requiresStatusChecks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubBranchRules).GetRequiresStatusChecks()).ToDataRes(types.Bool)
+	},
+	"github.branchRules.requiredStatusChecks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubBranchRules).GetRequiredStatusChecks()).ToDataRes(types.Array(types.String))
+	},
+	"github.branchRules.requiresSignatures": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubBranchRules).GetRequiresSignatures()).ToDataRes(types.Bool)
+	},
+	"github.branchRules.requiresLinearHistory": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubBranchRules).GetRequiresLinearHistory()).ToDataRes(types.Bool)
+	},
+	"github.branchRules.blocksForcePushes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubBranchRules).GetBlocksForcePushes()).ToDataRes(types.Bool)
+	},
+	"github.branchRules.blocksDeletions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubBranchRules).GetBlocksDeletions()).ToDataRes(types.Bool)
+	},
+	"github.branchRules.restrictsUpdates": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubBranchRules).GetRestrictsUpdates()).ToDataRes(types.Bool)
+	},
+	"github.branchRules.requiresDeployments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubBranchRules).GetRequiresDeployments()).ToDataRes(types.Bool)
+	},
+	"github.branchRules.requiresCodeScanning": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubBranchRules).GetRequiresCodeScanning()).ToDataRes(types.Bool)
+	},
+	"github.branchRules.requiresMergeQueue": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubBranchRules).GetRequiresMergeQueue()).ToDataRes(types.Bool)
+	},
+	"github.branchRules.rulesetIds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubBranchRules).GetRulesetIds()).ToDataRes(types.Array(types.Int))
 	},
 	"github.branchprotection.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubBranchprotection).GetId()).ToDataRes(types.String)
@@ -5350,6 +5409,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGithubBranch).ProtectionRules, ok = plugin.RawToTValue[*mqlGithubBranchprotection](v.Value, v.Error)
 		return
 	},
+	"github.branch.rules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubBranch).Rules, ok = plugin.RawToTValue[*mqlGithubBranchRules](v.Value, v.Error)
+		return
+	},
 	"github.branch.repoName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGithubBranch).RepoName, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -5360,6 +5423,78 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"github.branch.isDefault": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGithubBranch).IsDefault, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.branchRules.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubBranchRules).__id, ok = v.Value.(string)
+		return
+	},
+	"github.branchRules.requiresPullRequest": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubBranchRules).RequiresPullRequest, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.branchRules.requiredApprovingReviewCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubBranchRules).RequiredApprovingReviewCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.branchRules.requireCodeOwnerReview": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubBranchRules).RequireCodeOwnerReview, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.branchRules.dismissStaleReviewsOnPush": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubBranchRules).DismissStaleReviewsOnPush, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.branchRules.requireLastPushApproval": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubBranchRules).RequireLastPushApproval, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.branchRules.requiredReviewThreadResolution": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubBranchRules).RequiredReviewThreadResolution, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.branchRules.requiresStatusChecks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubBranchRules).RequiresStatusChecks, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.branchRules.requiredStatusChecks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubBranchRules).RequiredStatusChecks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.branchRules.requiresSignatures": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubBranchRules).RequiresSignatures, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.branchRules.requiresLinearHistory": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubBranchRules).RequiresLinearHistory, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.branchRules.blocksForcePushes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubBranchRules).BlocksForcePushes, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.branchRules.blocksDeletions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubBranchRules).BlocksDeletions, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.branchRules.restrictsUpdates": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubBranchRules).RestrictsUpdates, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.branchRules.requiresDeployments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubBranchRules).RequiresDeployments, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.branchRules.requiresCodeScanning": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubBranchRules).RequiresCodeScanning, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.branchRules.requiresMergeQueue": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubBranchRules).RequiresMergeQueue, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.branchRules.rulesetIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubBranchRules).RulesetIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"github.branchprotection.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -12700,6 +12835,7 @@ type mqlGithubBranch struct {
 	HeadCommit      plugin.TValue[*mqlGithubCommit]
 	HeadCommitSha   plugin.TValue[string]
 	ProtectionRules plugin.TValue[*mqlGithubBranchprotection]
+	Rules           plugin.TValue[*mqlGithubBranchRules]
 	RepoName        plugin.TValue[string]
 	Owner           plugin.TValue[*mqlGithubUser]
 	IsDefault       plugin.TValue[bool]
@@ -12786,6 +12922,22 @@ func (c *mqlGithubBranch) GetProtectionRules() *plugin.TValue[*mqlGithubBranchpr
 	})
 }
 
+func (c *mqlGithubBranch) GetRules() *plugin.TValue[*mqlGithubBranchRules] {
+	return plugin.GetOrCompute[*mqlGithubBranchRules](&c.Rules, func() (*mqlGithubBranchRules, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.branch", c.__id, "rules")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGithubBranchRules), nil
+			}
+		}
+
+		return c.rules()
+	})
+}
+
 func (c *mqlGithubBranch) GetRepoName() *plugin.TValue[string] {
 	return &c.RepoName
 }
@@ -12796,6 +12948,130 @@ func (c *mqlGithubBranch) GetOwner() *plugin.TValue[*mqlGithubUser] {
 
 func (c *mqlGithubBranch) GetIsDefault() *plugin.TValue[bool] {
 	return &c.IsDefault
+}
+
+// mqlGithubBranchRules for the github.branchRules resource
+type mqlGithubBranchRules struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGithubBranchRulesInternal it will be used here
+	RequiresPullRequest            plugin.TValue[bool]
+	RequiredApprovingReviewCount   plugin.TValue[int64]
+	RequireCodeOwnerReview         plugin.TValue[bool]
+	DismissStaleReviewsOnPush      plugin.TValue[bool]
+	RequireLastPushApproval        plugin.TValue[bool]
+	RequiredReviewThreadResolution plugin.TValue[bool]
+	RequiresStatusChecks           plugin.TValue[bool]
+	RequiredStatusChecks           plugin.TValue[[]any]
+	RequiresSignatures             plugin.TValue[bool]
+	RequiresLinearHistory          plugin.TValue[bool]
+	BlocksForcePushes              plugin.TValue[bool]
+	BlocksDeletions                plugin.TValue[bool]
+	RestrictsUpdates               plugin.TValue[bool]
+	RequiresDeployments            plugin.TValue[bool]
+	RequiresCodeScanning           plugin.TValue[bool]
+	RequiresMergeQueue             plugin.TValue[bool]
+	RulesetIds                     plugin.TValue[[]any]
+}
+
+// createGithubBranchRules creates a new instance of this resource
+func createGithubBranchRules(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGithubBranchRules{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("github.branchRules", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGithubBranchRules) MqlName() string {
+	return "github.branchRules"
+}
+
+func (c *mqlGithubBranchRules) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGithubBranchRules) GetRequiresPullRequest() *plugin.TValue[bool] {
+	return &c.RequiresPullRequest
+}
+
+func (c *mqlGithubBranchRules) GetRequiredApprovingReviewCount() *plugin.TValue[int64] {
+	return &c.RequiredApprovingReviewCount
+}
+
+func (c *mqlGithubBranchRules) GetRequireCodeOwnerReview() *plugin.TValue[bool] {
+	return &c.RequireCodeOwnerReview
+}
+
+func (c *mqlGithubBranchRules) GetDismissStaleReviewsOnPush() *plugin.TValue[bool] {
+	return &c.DismissStaleReviewsOnPush
+}
+
+func (c *mqlGithubBranchRules) GetRequireLastPushApproval() *plugin.TValue[bool] {
+	return &c.RequireLastPushApproval
+}
+
+func (c *mqlGithubBranchRules) GetRequiredReviewThreadResolution() *plugin.TValue[bool] {
+	return &c.RequiredReviewThreadResolution
+}
+
+func (c *mqlGithubBranchRules) GetRequiresStatusChecks() *plugin.TValue[bool] {
+	return &c.RequiresStatusChecks
+}
+
+func (c *mqlGithubBranchRules) GetRequiredStatusChecks() *plugin.TValue[[]any] {
+	return &c.RequiredStatusChecks
+}
+
+func (c *mqlGithubBranchRules) GetRequiresSignatures() *plugin.TValue[bool] {
+	return &c.RequiresSignatures
+}
+
+func (c *mqlGithubBranchRules) GetRequiresLinearHistory() *plugin.TValue[bool] {
+	return &c.RequiresLinearHistory
+}
+
+func (c *mqlGithubBranchRules) GetBlocksForcePushes() *plugin.TValue[bool] {
+	return &c.BlocksForcePushes
+}
+
+func (c *mqlGithubBranchRules) GetBlocksDeletions() *plugin.TValue[bool] {
+	return &c.BlocksDeletions
+}
+
+func (c *mqlGithubBranchRules) GetRestrictsUpdates() *plugin.TValue[bool] {
+	return &c.RestrictsUpdates
+}
+
+func (c *mqlGithubBranchRules) GetRequiresDeployments() *plugin.TValue[bool] {
+	return &c.RequiresDeployments
+}
+
+func (c *mqlGithubBranchRules) GetRequiresCodeScanning() *plugin.TValue[bool] {
+	return &c.RequiresCodeScanning
+}
+
+func (c *mqlGithubBranchRules) GetRequiresMergeQueue() *plugin.TValue[bool] {
+	return &c.RequiresMergeQueue
+}
+
+func (c *mqlGithubBranchRules) GetRulesetIds() *plugin.TValue[[]any] {
+	return &c.RulesetIds
 }
 
 // mqlGithubBranchprotection for the github.branchprotection resource

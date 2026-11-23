@@ -151,6 +151,22 @@ func TestParseStsDirectives(t *testing.T) {
 		assert.Contains(t, maxAge.Error.Error(), "oops")
 	})
 
+	t.Run("accepts a quoted max-age value", func(t *testing.T) {
+		// RFC 6797 section 6.1.1: the max-age value may be a quoted-string
+		_, includeSubDomains, maxAge := parseStsDirectives([]any{`max-age="31536000"; includeSubDomains`})
+		assert.True(t, includeSubDomains)
+		require.NoError(t, maxAge.Error)
+		assert.Equal(t, llx.TimeData(llx.DurationToTime(31536000)), maxAge)
+	})
+
+	t.Run("allows whitespace around the equals sign", func(t *testing.T) {
+		// RFC 6797 section 6.1.1: maxAge = "max-age" *LWS "=" *LWS delta-seconds
+		preload, _, maxAge := parseStsDirectives([]any{"max-age = 31536000 ;preload"})
+		assert.True(t, preload)
+		require.NoError(t, maxAge.Error)
+		assert.Equal(t, llx.TimeData(llx.DurationToTime(31536000)), maxAge)
+	})
+
 	t.Run("leaves absent directives unset", func(t *testing.T) {
 		preload, includeSubDomains, maxAge := parseStsDirectives([]any{"max-age=600"})
 		assert.False(t, preload)

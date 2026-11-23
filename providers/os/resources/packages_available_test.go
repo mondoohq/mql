@@ -319,3 +319,25 @@ func TestPkgUpdatesWithoutCommands(t *testing.T) {
 	assert.Equal(t, "", lookupOK(t, u, "bash", "x86_64"))
 	assert.Equal(t, 0, pm.calls, "no manager is asked, and none warns about a check that cannot run")
 }
+
+// An Oracle home gets its Release Updates from My Oracle Support, which no
+// check on the host can ask, so available and outdated are unknown (null), not
+// "no newer version".
+func TestPackageUpdatesUnknownAreNull(t *testing.T) {
+	p := &mqlPackage{updates: &pkgUpdates{pm: &packages.OraclePkgManager{}}}
+
+	available := p.GetAvailable()
+	require.NoError(t, available.Error)
+	assert.True(t, available.IsNull())
+
+	outdated := p.GetOutdated()
+	require.NoError(t, outdated.Error)
+	assert.True(t, outdated.IsNull())
+
+	// a manager that can answer still reports no newer version as false
+	q := &mqlPackage{updates: &pkgUpdates{pm: &fakeUpdatesPkgManager{updates: map[string]packages.PackageUpdate{}}}}
+	outdated = q.GetOutdated()
+	require.NoError(t, outdated.Error)
+	assert.False(t, outdated.IsNull())
+	assert.False(t, outdated.Data)
+}

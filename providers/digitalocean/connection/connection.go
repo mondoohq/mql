@@ -36,6 +36,10 @@ type DigitaloceanConnection struct {
 
 	accountUUID     string
 	accountUUIDOnce sync.Once
+
+	databaseOptions     DatabaseOptions
+	databaseOptionsErr  error
+	databaseOptionsOnce sync.Once
 }
 
 // AccountUUID returns the owning account's UUID, fetching it once and
