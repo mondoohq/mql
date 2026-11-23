@@ -20777,6 +20777,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.rds.dbinstance.customIamInstanceProfile": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsRdsDbinstance).GetCustomIamInstanceProfile()).ToDataRes(types.String)
 	},
+	"aws.rds.dbinstance.parameterGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRdsDbinstance).GetParameterGroups()).ToDataRes(types.Array(types.Resource("aws.rds.parameterGroup")))
+	},
+	"aws.rds.dbinstance.transitEncryptionEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRdsDbinstance).GetTransitEncryptionEnabled()).ToDataRes(types.Bool)
+	},
 	"aws.rds.dbinstance.activityStreamMode": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsRdsDbinstance).GetActivityStreamMode()).ToDataRes(types.String)
 	},
@@ -63453,6 +63459,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.rds.dbinstance.customIamInstanceProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsRdsDbinstance).CustomIamInstanceProfile, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.rds.dbinstance.parameterGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRdsDbinstance).ParameterGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.rds.dbinstance.transitEncryptionEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRdsDbinstance).TransitEncryptionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"aws.rds.dbinstance.activityStreamMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -152454,6 +152468,8 @@ type mqlAwsRdsDbinstance struct {
 	CertificateAuthority               plugin.TValue[string]
 	IamDatabaseAuthentication          plugin.TValue[bool]
 	CustomIamInstanceProfile           plugin.TValue[string]
+	ParameterGroups                    plugin.TValue[[]any]
+	TransitEncryptionEnabled           plugin.TValue[bool]
 	ActivityStreamMode                 plugin.TValue[string]
 	ActivityStreamStatus               plugin.TValue[string]
 	PendingMaintenanceActions          plugin.TValue[[]any]
@@ -152767,6 +152783,28 @@ func (c *mqlAwsRdsDbinstance) GetIamDatabaseAuthentication() *plugin.TValue[bool
 
 func (c *mqlAwsRdsDbinstance) GetCustomIamInstanceProfile() *plugin.TValue[string] {
 	return &c.CustomIamInstanceProfile
+}
+
+func (c *mqlAwsRdsDbinstance) GetParameterGroups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ParameterGroups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.rds.dbinstance", c.__id, "parameterGroups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.parameterGroups()
+	})
+}
+
+func (c *mqlAwsRdsDbinstance) GetTransitEncryptionEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.TransitEncryptionEnabled, func() (bool, error) {
+		return c.transitEncryptionEnabled()
+	})
 }
 
 func (c *mqlAwsRdsDbinstance) GetActivityStreamMode() *plugin.TValue[string] {

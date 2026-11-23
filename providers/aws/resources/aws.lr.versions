@@ -9309,6 +9309,7 @@ aws.rds.dbinstance.multiTenant 13.14.2
 aws.rds.dbinstance.name 11.15.2
 aws.rds.dbinstance.networkType 11.15.2
 aws.rds.dbinstance.optionGroups 13.21.4
+aws.rds.dbinstance.parameterGroups 14.12.1
 aws.rds.dbinstance.pendingMaintenanceActions 11.15.2
 aws.rds.dbinstance.performanceInsightsEnabled 11.15.2
 aws.rds.dbinstance.performanceInsightsKmsKey 11.15.2
@@ -9339,6 +9340,7 @@ aws.rds.dbinstance.storageThroughput 11.15.2
 aws.rds.dbinstance.storageType 11.15.2
 aws.rds.dbinstance.subnets 11.15.2
 aws.rds.dbinstance.tags 11.15.2
+aws.rds.dbinstance.transitEncryptionEnabled 14.12.1
 aws.rds.eventSubscription 13.6.3
 aws.rds.eventSubscription.arn 13.6.3
 aws.rds.eventSubscription.customerAwsId 13.6.3
