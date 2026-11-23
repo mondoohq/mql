@@ -275,6 +275,10 @@ func TestGraphPageRejectsNonPages(t *testing.T) {
 	_, _, _, err = graphPage[models.Userable](models.NewUser())
 	assert.ErrorContains(t, err, "value property missing")
 
+	// a response whose accessor panics
+	_, _, _, err = graphPage[models.Userable](brokenPage{})
+	assert.ErrorContains(t, err, "reading a page of brokenPage: value is gone")
+
 	// a collection read with the wrong element type
 	users := models.NewUserCollectionResponse()
 	users.SetValue([]models.Userable{models.NewUser()})
@@ -306,3 +310,9 @@ func TestNewMqlUserRegistrationDetailsFromReportRow(t *testing.T) {
 	assert.Equal(t, []any{"microsoftAuthenticatorPush", "mobilePhone"}, res.MethodsRegistered.Data)
 	assert.Equal(t, "member", res.UserType.Data)
 }
+
+// brokenPage is a collection response whose GetValue panics.
+type brokenPage struct{}
+
+func (brokenPage) GetValue() []models.Userable { panic("value is gone") }
+func (brokenPage) GetOdataNextLink() *string   { return nil }

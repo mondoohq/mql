@@ -104,6 +104,15 @@ func iterateEach[T any](ctx context.Context, res any, adapter abstractions.Reque
 // entries, the number of null entries left out, and its @odata.nextLink (empty
 // on the last page).
 func graphPage[T any](res any) (items []T, nulls int, nextLink string, err error) {
+	// The page is read through reflection, as the SDK reads it. A response
+	// this cannot read is an error for the one list, never a panic that takes
+	// the provider down with it.
+	defer func() {
+		if r := recover(); r != nil {
+			items, nextLink = nil, ""
+			err = fmt.Errorf("reading a page of %s: %v", collectionName(res), r)
+		}
+	}()
 	rv := reflect.ValueOf(res)
 	if isNilValue(rv) {
 		return nil, 0, "", errors.New("response cannot be nil")
