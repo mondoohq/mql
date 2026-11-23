@@ -10000,7 +10000,8 @@ private oci.redis.user @defaults("name authenticationType status") {
   //
   // For example `~* +@all` grants every command on every key. Rules that
   // carry a password or a password hash (`>`, `<`, `#`, `!`) keep their
-  // prefix with the value masked as `***`.
+  // prefix with the value masked as `***`, and any token that is not a
+  // known rule is masked as `***`.
   aclString() string
   // Whether the user is switched on (ON or OFF)
   status string

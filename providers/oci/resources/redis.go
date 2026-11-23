@@ -408,21 +408,62 @@ func (o *mqlOciRedisUser) aclString() (string, error) {
 	return ociRedactRedisACL(stringValue(u.AclString)), nil
 }
 
-// ociRedactRedisACL masks the password rules of a Redis ACL. The ACL syntax
-// lets a rule carry a credential inline: `>password` and `<password` add and
-// remove a plaintext password, `#hash` and `!hash` a SHA-256 hash of one.
-// Nothing in the OCI Cache API documents that such rules are rejected or
-// redacted in aclString, so each one is kept with its prefix, which still
-// says that a password rule is present, and its value replaced. Every other
-// rule is returned as written. Rules are separated by whitespace, which is
-// how Redis tokenizes them.
+// ociRedisACLKeywords are the Redis ACL rules that are a bare keyword and
+// carry no value.
+var ociRedisACLKeywords = map[string]bool{
+	"on": true, "off": true, "nopass": true, "resetpass": true, "reset": true,
+	"resetkeys": true, "resetchannels": true, "allkeys": true, "allchannels": true,
+	"allcommands": true, "nocommands": true, "sanitize-payload": true,
+	"skip-sanitize-payload": true, "clearselectors": true,
+}
+
+// ociRedisACLRuleKnown reports whether a token is a Redis ACL rule that
+// carries no credential: a keyword, a key pattern (`~`, or `%R~`, `%W~`,
+// `%RW~` with permissions), a channel pattern (`&`), or a command or
+// category rule (`+`, `-`). Selector parentheses are stripped first, so the
+// rules inside `(~key* +get)` are judged one by one.
+func ociRedisACLRuleKnown(token string) bool {
+	core := strings.TrimSuffix(strings.TrimPrefix(token, "("), ")")
+	if core == "" {
+		return token != ""
+	}
+	if ociRedisACLKeywords[strings.ToLower(core)] {
+		return true
+	}
+	switch core[0] {
+	case '~', '%', '&', '+', '-':
+		return true
+	}
+	return false
+}
+
+// ociRedactRedisACL masks the credentials in a Redis ACL and fails closed.
+//
+// The ACL syntax lets a rule carry a credential inline: `>password` and
+// `<password` add and remove a plaintext password, `#hash` and `!hash` a
+// SHA-256 hash of one. Nothing in the OCI Cache API documents that such rules
+// are rejected or redacted in aclString. A password sent as a single argument
+// may contain spaces, so splitting on whitespace cannot tell where it ends.
+// Only rules known to carry no credential are therefore kept as written. A
+// password rule becomes its prefix followed by `***`, and the unrecognized
+// tokens after it, which may be the rest of the password, fold into that
+// mask. Any other unrecognized token becomes `***`.
 func ociRedactRedisACL(acl string) string {
-	rules := strings.Fields(acl)
-	for i, rule := range rules {
-		switch rule[0] {
-		case '>', '<', '#', '!':
-			rules[i] = rule[:1] + "***"
+	out := []string{}
+	inPassword := false
+	for _, token := range strings.Fields(acl) {
+		switch {
+		case strings.ContainsRune("><#!", rune(token[0])):
+			out = append(out, token[:1]+"***")
+			inPassword = true
+		case ociRedisACLRuleKnown(token):
+			out = append(out, token)
+			inPassword = false
+		case inPassword:
+			// Part of the password rule before it, already masked.
+		default:
+			out = append(out, "***")
 		}
 	}
-	return strings.Join(rules, " ")
+	return strings.Join(out, " ")
 }
