@@ -161,3 +161,22 @@ func TestOciListSecurityZonesAsksTheGivenCompartment(t *testing.T) {
 	assert.Contains(t, queries[0], "compartmentId=ocid1.compartment..child")
 	assert.NotContains(t, queries[0], "isRequiredSecurityZonesInSubtree")
 }
+
+func TestOciCloudGuardTargetCompartmentID(t *testing.T) {
+	// Measured: us-sanjose-1, 2026-11-23. Creating a security zone created a
+	// SECURITY_ZONE target whose targetResourceId was the zone's compartment
+	// OCID; its inheritedByCompartments held the compartment beneath it.
+	assert.Equal(t, "ocid1.compartment.oc1..zone",
+		ociCloudGuardTargetCompartmentID("SECURITY_ZONE", "ocid1.compartment.oc1..zone"))
+	// Measured: the same tenancy's COMPARTMENT target.
+	assert.Equal(t, "ocid1.compartment.oc1..infra",
+		ociCloudGuardTargetCompartmentID("COMPARTMENT", "ocid1.compartment.oc1..infra"))
+	// Synthetic: a target on the tenancy root.
+	assert.Equal(t, "ocid1.tenancy.oc1..root",
+		ociCloudGuardTargetCompartmentID("COMPARTMENT", "ocid1.tenancy.oc1..root"))
+	// Synthetic: a SECURITY_ZONE target naming the zone itself, and target
+	// types that do not monitor a compartment.
+	assert.Equal(t, "", ociCloudGuardTargetCompartmentID("SECURITY_ZONE", "ocid1.securityzone.oc1..z"))
+	assert.Equal(t, "", ociCloudGuardTargetCompartmentID("ERPCLOUD", "ocid1.compartment.oc1..x"))
+	assert.Equal(t, "", ociCloudGuardTargetCompartmentID("COMPARTMENT", ""))
+}

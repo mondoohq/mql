@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/oracle/oci-go-sdk/v65/cloudguard"
@@ -985,9 +986,30 @@ func (o *mqlOciCloudGuard) findingsRegion() (*mqlOciRegion, error) {
 // resource type is COMPARTMENT. Other target types monitor something that is
 // not a compartment, so they report null.
 func (o *mqlOciCloudGuardTarget) targetCompartment() (*mqlOciCompartment, error) {
-	if o.TargetResourceType.Data != "COMPARTMENT" {
+	id := ociCloudGuardTargetCompartmentID(o.TargetResourceType.Data, o.TargetResourceId.Data)
+	if id == "" {
 		o.TargetCompartment.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	return resolveOciCompartment(o.MqlRuntime, o.TargetResourceId.Data, &o.TargetCompartment)
+	return resolveOciCompartment(o.MqlRuntime, id, &o.TargetCompartment)
+}
+
+// ociCloudGuardTargetCompartmentID reports the compartment a Cloud Guard
+// target monitors, or "" when it monitors something else.
+//
+// A COMPARTMENT target names its compartment. So does the SECURITY_ZONE
+// target Cloud Guard creates with each security zone: its resource is the
+// zone's compartment, not the zone, and its detector recipes run on that
+// compartment and the ones beneath it. The OCID prefix is checked rather than
+// trusted, so a target type that names some other resource reads as none.
+func ociCloudGuardTargetCompartmentID(resourceType, resourceID string) string {
+	switch resourceType {
+	case "COMPARTMENT", "SECURITY_ZONE":
+	default:
+		return ""
+	}
+	if strings.HasPrefix(resourceID, "ocid1.compartment.") || strings.HasPrefix(resourceID, "ocid1.tenancy.") {
+		return resourceID
+	}
+	return ""
 }

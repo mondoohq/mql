@@ -168,15 +168,7 @@ func (o *mqlOciCompartment) cloudGuardTarget() (*mqlOciCloudGuardTarget, error) 
 	if err != nil {
 		return nil, err
 	}
-	byCompartment := map[string]any{}
-	for _, raw := range items {
-		t, ok := raw.(*mqlOciCloudGuardTarget)
-		if !ok || t.TargetResourceType.Data != "COMPARTMENT" || t.TargetResourceId.Data == "" {
-			continue
-		}
-		byCompartment[t.TargetResourceId.Data] = t
-	}
-	target, err := ociNearestByCompartment(o.Id.Data, byCompartment, o.compartmentParentOf())
+	target, err := ociNearestByCompartment(o.Id.Data, ociCloudGuardTargetsByCompartment(items), o.compartmentParentOf())
 	if err != nil {
 		return nil, err
 	}
@@ -221,4 +213,27 @@ func ociNearestByCompartment(start string, byCompartment map[string]any, parentO
 		id = parent
 	}
 	return nil, nil
+}
+
+// ociCloudGuardTargetsByCompartment indexes Cloud Guard targets by the
+// compartment they monitor. When a compartment carries both its own
+// COMPARTMENT target and the SECURITY_ZONE target of a zone on it, the
+// COMPARTMENT target is the one reported.
+func ociCloudGuardTargetsByCompartment(items []any) map[string]any {
+	res := map[string]any{}
+	for _, raw := range items {
+		t, ok := raw.(*mqlOciCloudGuardTarget)
+		if !ok {
+			continue
+		}
+		id := ociCloudGuardTargetCompartmentID(t.TargetResourceType.Data, t.TargetResourceId.Data)
+		if id == "" {
+			continue
+		}
+		if existing, ok := res[id].(*mqlOciCloudGuardTarget); ok && existing.TargetResourceType.Data == "COMPARTMENT" {
+			continue
+		}
+		res[id] = t
+	}
+	return res
 }

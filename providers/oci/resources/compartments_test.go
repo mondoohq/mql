@@ -275,3 +275,24 @@ func TestOciNearestByCompartment(t *testing.T) {
 	_, err = ociNearestByCompartment("a", map[string]any{}, func(string) (string, error) { return "", errors.New("tree unavailable") })
 	assert.Error(t, err)
 }
+
+func TestOciCloudGuardTargetsByCompartment(t *testing.T) {
+	target := func(typ, id string) *mqlOciCloudGuardTarget {
+		return &mqlOciCloudGuardTarget{
+			TargetResourceType: plugin.TValue[string]{Data: typ, State: plugin.StateIsSet},
+			TargetResourceId:   plugin.TValue[string]{Data: id, State: plugin.StateIsSet},
+		}
+	}
+	// Measured: a SECURITY_ZONE target keyed by the zone's compartment.
+	zone := target("SECURITY_ZONE", "ocid1.compartment.oc1..zone")
+	// Synthetic: the same compartment also carrying its own target, in both orders.
+	own := target("COMPARTMENT", "ocid1.compartment.oc1..zone")
+	other := target("ERPCLOUD", "ocid1.compartment.oc1..erp")
+
+	got := ociCloudGuardTargetsByCompartment([]any{zone, other})
+	assert.Same(t, zone, got["ocid1.compartment.oc1..zone"])
+	assert.NotContains(t, got, "ocid1.compartment.oc1..erp")
+
+	assert.Same(t, own, ociCloudGuardTargetsByCompartment([]any{zone, own})["ocid1.compartment.oc1..zone"])
+	assert.Same(t, own, ociCloudGuardTargetsByCompartment([]any{own, zone})["ocid1.compartment.oc1..zone"])
+}
