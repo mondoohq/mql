@@ -33,7 +33,7 @@ func iterate[T any](ctx context.Context, res any, adapter abstractions.RequestAd
 
 // iterateEach walks every page of a Microsoft Graph collection response and
 // passes each item to each as its page arrives. An error from each stops the
-// walk and is returned. Nothing is kept between pages,
+// walk and is returned. No item is kept between pages,
 // so a caller that reduces each item to what it needs holds only that. Use it
 // over iterate for collections that grow with the tenant, such as reports with
 // a row per user.
@@ -62,7 +62,7 @@ func iterateEach[T any](ctx context.Context, res any, adapter abstractions.Reque
 	}()
 
 	errorMappings, _ := msgraphgocore.GetErrorFactoryFromRegistry(msgraphgocore.PageIteratorErrorRegistryKey)
-	fetched := "" // the link the current page was read from; empty for the first page
+	fetched := map[string]struct{}{} // the next links followed so far
 	for {
 		items, nulls, nextLink, err := graphPage[T](res)
 		skipped += nulls
@@ -77,13 +77,14 @@ func iterateEach[T any](ctx context.Context, res any, adapter abstractions.Reque
 		if nextLink == "" {
 			return nil
 		}
-		if nextLink == fetched {
-			return fmt.Errorf("paging %s: the page at its next link names itself as the next page", collection)
+		if _, ok := fetched[nextLink]; ok {
+			return fmt.Errorf("paging %s: a page names an already fetched page as the next page", collection)
 		}
+		fetched[nextLink] = struct{}{}
 
 		link, err := url.Parse(nextLink)
 		if err != nil {
-			return errors.New("parsing nextLink url failed")
+			return fmt.Errorf("paging %s: parsing nextLink: %w", collection, err)
 		}
 		requestInfo := abstractions.NewRequestInformation()
 		requestInfo.Method = abstractions.GET
@@ -92,7 +93,7 @@ func iterateEach[T any](ctx context.Context, res any, adapter abstractions.Reque
 		if err != nil {
 			return transformError(err)
 		}
-		res, fetched = next, nextLink
+		res = next
 	}
 }
 

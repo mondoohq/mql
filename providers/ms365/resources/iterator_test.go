@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -185,19 +186,45 @@ func TestIterateEachNextPageError(t *testing.T) {
 	assert.Equal(t, []string{"u1"}, ids)
 }
 
-// Synthetic: a page whose next link is the link it was read from would be
-// fetched forever; the walk ends with an error. No target showed this.
+// Synthetic: a next link that leads back to a page already fetched would be
+// followed forever; the walk ends with an error once it sees the link a second
+// time. No target showed this.
 func TestIterateEachStuckNextLink(t *testing.T) {
-	ids, _, err := walkRegistrationDetails(t, map[string]fakeRoute{
+	page := func(next, id string) fakeRoute {
+		return fakeRoute{status: 200, body: `{
+			"@odata.nextLink": "{{base}}` + registrationDetailsPath + next + `",
+			"value": [{"id": "` + id + `"}]}`}
+	}
+	t.Run("page naming itself", func(t *testing.T) {
+		ids, _, err := walkRegistrationDetails(t, map[string]fakeRoute{
+			registrationDetailsPath:            page("/page2", "u1"),
+			registrationDetailsPath + "/page2": page("/page2", "u2"),
+		}, nil)
+		require.ErrorContains(t, err, "already fetched page")
+		assert.Equal(t, []string{"u1", "u2"}, ids)
+	})
+	t.Run("two pages naming each other", func(t *testing.T) {
+		ids, _, err := walkRegistrationDetails(t, map[string]fakeRoute{
+			registrationDetailsPath:            page("/page2", "u1"),
+			registrationDetailsPath + "/page2": page("/page3", "u2"),
+			registrationDetailsPath + "/page3": page("/page2", "u3"),
+		}, nil)
+		require.ErrorContains(t, err, "already fetched page")
+		assert.Equal(t, []string{"u1", "u2", "u3"}, ids)
+	})
+}
+
+// Synthetic: a next link that is not a URL ends the walk with an error that
+// names the collection and keeps the parse error. No target showed this.
+func TestIterateEachMalformedNextLink(t *testing.T) {
+	_, _, err := walkRegistrationDetails(t, map[string]fakeRoute{
 		registrationDetailsPath: {status: 200, body: `{
-			"@odata.nextLink": "{{base}}` + registrationDetailsPath + `/page2",
+			"@odata.nextLink": "http://[bad",
 			"value": [{"id": "u1"}]}`},
-		registrationDetailsPath + "/page2": {status: 200, body: `{
-			"@odata.nextLink": "{{base}}` + registrationDetailsPath + `/page2",
-			"value": [{"id": "u2"}]}`},
 	}, nil)
-	require.ErrorContains(t, err, "names itself as the next page")
-	assert.Equal(t, []string{"u1", "u2"}, ids)
+	require.ErrorContains(t, err, "paging UserRegistrationDetailsCollectionResponse: parsing nextLink")
+	var parseErr *url.Error
+	assert.ErrorAs(t, err, &parseErr)
 }
 
 // Synthetic: responses that are not a readable collection page are refused
