@@ -37,6 +37,36 @@ func extractCaPoolName(resourcePath string) string {
 	return ""
 }
 
+// getCaPoolByName resolves a CA pool resource name
+// (projects/{project}/locations/{location}/caPools/{pool}) against the pools
+// listed for its project. A project number in the name is listed under
+// defaultProject, the project of the resource holding the reference, since
+// the pool list is keyed by project ID. Returns nil when the name is empty,
+// malformed, or no listed pool matches.
+func getCaPoolByName(runtime *plugin.Runtime, name, defaultProject string) (*mqlGcpProjectCertificateAuthorityServiceCaPool, error) {
+	project := projectOfResourceName(name, "caPools", defaultProject)
+	if project == "" {
+		return nil, nil
+	}
+	obj, err := CreateResource(runtime, "gcp.project.certificateAuthorityService", map[string]*llx.RawData{
+		"projectId": llx.StringData(project),
+	})
+	if err != nil {
+		return nil, err
+	}
+	pools := obj.(*mqlGcpProjectCertificateAuthorityService).GetCaPools()
+	if pools.Error != nil {
+		return nil, pools.Error
+	}
+	for _, p := range pools.Data {
+		pool := p.(*mqlGcpProjectCertificateAuthorityServiceCaPool)
+		if sameLocationScopedName(pool.ResourcePath.Data, name) {
+			return pool, nil
+		}
+	}
+	return nil, nil
+}
+
 func (g *mqlGcpProject) certificateAuthority() (*mqlGcpProjectCertificateAuthorityService, error) {
 	if g.Id.Error != nil {
 		return nil, g.Id.Error

@@ -25,6 +25,7 @@ import (
 type mqlGcpProjectCloudFunctionV2BuildConfigInternal struct {
 	cacheDockerRepository string
 	cacheServiceAccount   string
+	cacheProjectId        string
 }
 
 func (g *mqlGcpProject) cloudFunctionsV2() ([]any, error) {
@@ -261,6 +262,7 @@ func fnV2BuildConfig(runtime *plugin.Runtime, parentName string, cfg *functionsp
 	mqlRef := res.(*mqlGcpProjectCloudFunctionV2BuildConfig)
 	mqlRef.cacheDockerRepository = cfg.DockerRepository
 	mqlRef.cacheServiceAccount = cfg.ServiceAccount
+	mqlRef.cacheProjectId = projectFromResourceName(parentName)
 	return res.(*mqlGcpProjectCloudFunctionV2BuildConfig), nil
 }
 
@@ -506,4 +508,19 @@ func (g *mqlGcpProjectCloudFunctionV2EventTrigger) topic() (*mqlGcpProjectPubsub
 		g.Topic.State = plugin.StateIsNull | plugin.StateIsSet
 	}
 	return ref, nil
+}
+
+func (g *mqlGcpProjectCloudFunctionV2BuildConfig) workerPool() (*mqlGcpProjectCloudBuildServiceWorkerPool, error) {
+	if g.BuildWorkerPool.Error != nil {
+		return nil, g.BuildWorkerPool.Error
+	}
+	pool, err := getCloudBuildWorkerPoolByName(g.MqlRuntime, g.BuildWorkerPool.Data, g.cacheProjectId)
+	if err != nil {
+		return nil, err
+	}
+	if pool == nil {
+		g.WorkerPool.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return pool, nil
 }

@@ -495,3 +495,18 @@ func initGcpProjectCloudFunction(runtime *plugin.Runtime, args map[string]*llx.R
 
 	return nil, nil, fmt.Errorf("cloud function %q not found", nameVal)
 }
+
+func (g *mqlGcpProjectCloudFunction) workerPool() (*mqlGcpProjectCloudBuildServiceWorkerPool, error) {
+	if g.BuildWorkerPool.Error != nil {
+		return nil, g.BuildWorkerPool.Error
+	}
+	pool, err := getCloudBuildWorkerPoolByName(g.MqlRuntime, g.BuildWorkerPool.Data, g.ProjectId.Data)
+	if err != nil {
+		return nil, err
+	}
+	if pool == nil {
+		g.WorkerPool.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return pool, nil
+}

@@ -1683,3 +1683,18 @@ func (g *mqlGcpProjectSqlServiceInstance) localRootEnabled() (bool, error) {
 func (g *mqlGcpProjectSqlService) isEnabled() (bool, error) {
 	return g.resolveEnabled(g.MqlRuntime, g.ProjectId, service_sqladmin)
 }
+
+func (g *mqlGcpProjectSqlServiceInstanceSettingsIpConfiguration) caPool() (*mqlGcpProjectCertificateAuthorityServiceCaPool, error) {
+	if g.ServerCaPool.Error != nil {
+		return nil, g.ServerCaPool.Error
+	}
+	pool, err := getCaPoolByName(g.MqlRuntime, g.ServerCaPool.Data, "")
+	if err != nil {
+		return nil, err
+	}
+	if pool == nil {
+		g.CaPool.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return pool, nil
+}
