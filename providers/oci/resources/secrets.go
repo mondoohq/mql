@@ -74,12 +74,18 @@ func (o *mqlOciVault) secrets() ([]any, error) {
 				}
 
 				replication := ociReadSecretReplication(s)
+				generation := ociReadSecretGeneration(s.SecretGenerationContext)
 
 				mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.vault.secret", stringValue(s.CompartmentId), map[string]*llx.RawData{
 					"id":                               llx.StringDataPtr(s.Id),
 					"name":                             llx.StringDataPtr(s.SecretName),
 					"description":                      llx.StringDataPtr(s.Description),
 					"state":                            llx.StringData(string(s.LifecycleState)),
+					"lifecycleDetails":                 llx.StringDataPtr(s.LifecycleDetails),
+					"timeOfDeletion":                   sdkTimeData(s.TimeOfDeletion),
+					"generationType":                   llx.StringData(generation.Type),
+					"generationTemplate":               llx.StringData(generation.Template),
+					"passphraseLength":                 llx.IntDataPtr(generation.PassphraseLength),
 					"rotationStatus":                   llx.StringData(string(s.RotationStatus)),
 					"lastRotationTime":                 llx.TimeDataPtr(lastRotation),
 					"nextRotationTime":                 llx.TimeDataPtr(nextRotation),
@@ -387,4 +393,46 @@ func (o *mqlOciVaultSecret) secretVersions() ([]any, error) {
 
 func (o *mqlOciVaultSecretVersion) id() (string, error) {
 	return "oci.vault.secretVersion/" + o.SecretId.Data + "/" + strconv.FormatInt(o.VersionNumber.Data, 10), nil
+}
+
+func (o *mqlOciVaultSecret) region() (*mqlOciRegion, error) {
+	return resolveOciRegionByKey(o.MqlRuntime, o.cacheRegion, &o.Region)
+}
+
+// ociSecretGeneration is what a secret's generation context says about how
+// the service generates its material.
+type ociSecretGeneration struct {
+	Type             string
+	Template         string
+	PassphraseLength *int64
+}
+
+// ociReadSecretGeneration reads the generation type, template and passphrase
+// length off a secret's generation context. The context is a polymorphic
+// union the SDK decodes into a value of the concrete type; a nil or unknown
+// context yields empty strings and a nil length.
+func ociReadSecretGeneration(ctx vault.SecretGenerationContext) ociSecretGeneration {
+	switch c := ctx.(type) {
+	case vault.PassphraseGenerationContext:
+		res := ociSecretGeneration{
+			Type:     string(vault.SecretGenerationContextGenerationTypePassphrase),
+			Template: string(c.GenerationTemplate),
+		}
+		if c.PassphraseLength != nil {
+			l := int64(*c.PassphraseLength)
+			res.PassphraseLength = &l
+		}
+		return res
+	case vault.SshKeyGenerationContext:
+		return ociSecretGeneration{
+			Type:     string(vault.SecretGenerationContextGenerationTypeSshKey),
+			Template: string(c.GenerationTemplate),
+		}
+	case vault.BytesGenerationContext:
+		return ociSecretGeneration{
+			Type:     string(vault.SecretGenerationContextGenerationTypeBytes),
+			Template: string(c.GenerationTemplate),
+		}
+	}
+	return ociSecretGeneration{}
 }

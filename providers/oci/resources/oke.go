@@ -654,3 +654,7 @@ func (o *mqlOciOkeNodePool) networkSecurityGroups() ([]any, error) {
 	}
 	return res, nil
 }
+
+func (o *mqlOciOkeCluster) region() (*mqlOciRegion, error) {
+	return resolveOciRegionByKey(o.MqlRuntime, o.cacheRegion, &o.Region)
+}

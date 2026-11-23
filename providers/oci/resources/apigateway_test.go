@@ -316,3 +316,17 @@ func TestHasDynamicAuthentication(t *testing.T) {
 		assert.True(t, hasDynamicAuthentication(rp))
 	})
 }
+
+func TestFlattenExecutionLogLevel(t *testing.T) {
+	// Synthetic: the spec shapes a GetDeployment response can carry.
+	assert.Equal(t, "", flattenExecutionLogLevel(nil))
+	assert.Equal(t, "", flattenExecutionLogLevel(&apigateway.ApiSpecification{}))
+	assert.Equal(t, "", flattenExecutionLogLevel(&apigateway.ApiSpecification{
+		LoggingPolicies: &apigateway.ApiSpecificationLoggingPolicies{},
+	}))
+	assert.Equal(t, "WARN", flattenExecutionLogLevel(&apigateway.ApiSpecification{
+		LoggingPolicies: &apigateway.ApiSpecificationLoggingPolicies{
+			ExecutionLog: &apigateway.ExecutionLogPolicy{LogLevel: apigateway.ExecutionLogPolicyLogLevelWarn},
+		},
+	}))
+}

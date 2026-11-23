@@ -96,6 +96,8 @@ func ociCompartmentArgs(compartment identity.Compartment) map[string]*llx.RawDat
 		"description": llx.StringDataPtr(compartment.Description),
 		"created":     llx.TimeDataPtr(created),
 		"state":       llx.StringData(string(compartment.LifecycleState)),
+		// Set only while the compartment is INACTIVE.
+		"inactiveStatus": llx.IntDataPtr(compartment.InactiveStatus),
 		// Absent means the record was never asked the question, which is the
 		// case for the tenancy root: it is read with GetCompartment rather
 		// than as part of the subtree listing. A default false there would
@@ -353,4 +355,14 @@ func (o *mqlOciTenancy) retentionPeriod() (*time.Time, error) {
 
 	ts := llx.DurationToTime(int64(days.Seconds()))
 	return &ts, nil
+}
+
+// homeRegion resolves the region the tenancy was created in.
+func (o *mqlOciTenancy) homeRegion() (*mqlOciRegion, error) {
+	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
+	tenancy, err := conn.Tenant(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	return resolveOciRegionByKey(o.MqlRuntime, stringValue(tenancy.HomeRegionKey), &o.HomeRegion)
 }

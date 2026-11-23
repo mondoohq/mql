@@ -141,6 +141,13 @@ func resolveOciKmsKey(runtime *plugin.Runtime, id string, field *plugin.TValue[*
 	return resolveRef(runtime, "oci.kms.key", id, field)
 }
 
+// resolveOciRegionByKey resolves a region from its short key, for example IAD,
+// which is the form listers receive the region in and the key oci.region is
+// built on.
+func resolveOciRegionByKey(runtime *plugin.Runtime, key string, field *plugin.TValue[*mqlOciRegion]) (*mqlOciRegion, error) {
+	return resolveRef(runtime, "oci.region", key, field)
+}
+
 // resolveOciRegionByName resolves a region from its full name, for example
 // us-phoenix-1.
 //

@@ -120,6 +120,8 @@ func (o *mqlOciIdentity) getUsers(conn *connection.OciConnection) []*jobpool.Job
 				"email":              llx.StringDataPtr(user.Email),
 				"emailVerified":      llx.BoolData(boolValue(user.EmailVerified)),
 				"externalIdentifier": llx.StringDataPtr(user.ExternalIdentifier),
+				"dbUserName":         llx.StringDataPtr(user.DbUserName),
+				"inactiveStatus":     llx.IntDataPtr(user.InactiveStatus),
 				"capabilities":       llx.MapData(capabilities, types.Bool),
 				"lastLogin":          llx.TimeDataPtr(lastLogin),
 				"previousLogin":      llx.TimeDataPtr(previousLogin),
@@ -544,15 +546,16 @@ func (o *mqlOciIdentity) policiesIn(ctx context.Context, conn *connection.OciCon
 			}
 
 			mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.identity.policy", stringValue(policy.CompartmentId), map[string]*llx.RawData{
-				"id":           llx.StringDataPtr(policy.Id),
-				"name":         llx.StringDataPtr(policy.Name),
-				"description":  llx.StringDataPtr(policy.Description),
-				"created":      llx.TimeDataPtr(created),
-				"state":        llx.StringData(string(policy.LifecycleState)),
-				"statements":   llx.ArrayData(convert.SliceAnyToInterface(policy.Statements), types.String),
-				"versionDate":  llx.TimeDataPtr(versionDate),
-				"freeformTags": llx.MapData(strMapToAny(policy.FreeformTags), types.String),
-				"definedTags":  llx.MapData(definedTagsToAny(policy.DefinedTags), types.Any),
+				"id":             llx.StringDataPtr(policy.Id),
+				"name":           llx.StringDataPtr(policy.Name),
+				"description":    llx.StringDataPtr(policy.Description),
+				"created":        llx.TimeDataPtr(created),
+				"state":          llx.StringData(string(policy.LifecycleState)),
+				"inactiveStatus": llx.IntDataPtr(policy.InactiveStatus),
+				"statements":     llx.ArrayData(convert.SliceAnyToInterface(policy.Statements), types.String),
+				"versionDate":    llx.TimeDataPtr(versionDate),
+				"freeformTags":   llx.MapData(strMapToAny(policy.FreeformTags), types.String),
+				"definedTags":    llx.MapData(definedTagsToAny(policy.DefinedTags), types.Any),
 			})
 			if err != nil {
 				return nil, err

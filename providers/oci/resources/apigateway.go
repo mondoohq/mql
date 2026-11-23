@@ -265,16 +265,17 @@ func (o *mqlOciApigateway) deployments() ([]any, error) {
 				}
 
 				mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.apigateway.deployment", stringValue(d.CompartmentId), map[string]*llx.RawData{
-					"id":           llx.StringDataPtr(d.Id),
-					"name":         llx.StringDataPtr(d.DisplayName),
-					"pathPrefix":   llx.StringDataPtr(d.PathPrefix),
-					"endpoint":     llx.StringDataPtr(d.Endpoint),
-					"state":        llx.StringData(string(d.LifecycleState)),
-					"created":      llx.TimeDataPtr(created),
-					"timeUpdated":  llx.TimeDataPtr(updated),
-					"freeformTags": llx.MapData(strMapToAny(d.FreeformTags), types.String),
-					"definedTags":  llx.MapData(definedTagsToAny(d.DefinedTags), types.Any),
-					"systemTags":   llx.MapData(definedTagsToAny(d.SystemTags), types.Dict),
+					"id":               llx.StringDataPtr(d.Id),
+					"name":             llx.StringDataPtr(d.DisplayName),
+					"pathPrefix":       llx.StringDataPtr(d.PathPrefix),
+					"endpoint":         llx.StringDataPtr(d.Endpoint),
+					"state":            llx.StringData(string(d.LifecycleState)),
+					"lifecycleDetails": llx.StringDataPtr(d.LifecycleDetails),
+					"created":          llx.TimeDataPtr(created),
+					"timeUpdated":      llx.TimeDataPtr(updated),
+					"freeformTags":     llx.MapData(strMapToAny(d.FreeformTags), types.String),
+					"definedTags":      llx.MapData(definedTagsToAny(d.DefinedTags), types.Any),
+					"systemTags":       llx.MapData(definedTagsToAny(d.SystemTags), types.Dict),
 				})
 				if err != nil {
 					return nil, err
@@ -721,4 +722,25 @@ func (o *mqlOciApigatewayCertificate) id() (string, error) {
 
 type mqlOciApigatewayCertificateInternal struct {
 	ociCompartmentRef
+}
+
+func (o *mqlOciApigatewayDeployment) region() (*mqlOciRegion, error) {
+	return resolveOciRegionByKey(o.MqlRuntime, o.cacheRegion, &o.Region)
+}
+
+func (o *mqlOciApigatewayDeployment) executionLogLevel() (string, error) {
+	spec, err := o.getSpec()
+	if err != nil {
+		return "", err
+	}
+	return flattenExecutionLogLevel(spec), nil
+}
+
+// flattenExecutionLogLevel reads the execution log level off a deployment
+// spec, or "" when the spec sets none. nil-safe.
+func flattenExecutionLogLevel(spec *apigateway.ApiSpecification) string {
+	if spec == nil || spec.LoggingPolicies == nil || spec.LoggingPolicies.ExecutionLog == nil {
+		return ""
+	}
+	return string(spec.LoggingPolicies.ExecutionLog.LogLevel)
 }
