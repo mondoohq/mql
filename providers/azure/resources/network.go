@@ -7260,8 +7260,16 @@ func (a *mqlAzureSubscriptionNetworkServiceApplicationGateway) requestRoutingRul
 	if pools.Error != nil {
 		return nil, pools.Error
 	}
-	listeners := resourcesByID[*mqlAzureSubscriptionNetworkServiceApplicationGatewayListener](a.Listeners.Data)
-	settings := resourcesByID[*mqlAzureSubscriptionNetworkServiceApplicationGatewayBackendHttpSettings](a.BackendHttpSettings.Data)
+	listenerList := a.GetListeners()
+	if listenerList.Error != nil {
+		return nil, listenerList.Error
+	}
+	settingsList := a.GetBackendHttpSettings()
+	if settingsList.Error != nil {
+		return nil, settingsList.Error
+	}
+	listeners := resourcesByID[*mqlAzureSubscriptionNetworkServiceApplicationGatewayListener](listenerList.Data)
+	settings := resourcesByID[*mqlAzureSubscriptionNetworkServiceApplicationGatewayBackendHttpSettings](settingsList.Data)
 	poolsByID := resourcesByID[*mqlAzureSubscriptionNetworkServiceApplicationGatewayBackendAddressPool](pools.Data)
 
 	res := []any{}
