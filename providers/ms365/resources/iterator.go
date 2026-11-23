@@ -5,7 +5,9 @@ package resources
 
 import (
 	"context"
+	"fmt"
 	"runtime"
+	"strings"
 
 	abstractions "github.com/microsoft/kiota-abstractions-go"
 	"github.com/microsoft/kiota-abstractions-go/serialization"
@@ -54,7 +56,8 @@ func iterateEach[T any](ctx context.Context, res any, adapter abstractions.Reque
 				panic(r) // not the known SDK nil-element panic; preserve normal panic semantics
 			}
 			log.Warn().
-				Interface("recover", r).
+				Str("collection", collectionName(res)).
+				Str("recover", fmt.Sprint(r)).
 				Int("collected", collected).
 				Msg("ms365> recovered from nil-element panic while paging Graph results; returning partial results")
 			err = nil
@@ -80,4 +83,11 @@ func iterateEach[T any](ctx context.Context, res any, adapter abstractions.Reque
 		return transformError(err)
 	}
 	return nil
+}
+
+// collectionName names the Graph collection a response holds, for log lines:
+// the response's type without its package, such as UserCollectionResponse.
+func collectionName(res any) string {
+	name := fmt.Sprintf("%T", res)
+	return name[strings.LastIndex(name, ".")+1:]
 }
