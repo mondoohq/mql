@@ -12,6 +12,13 @@ exclude_path = [
   ".git",
 ]
 
+# API endpoints named in docs as code, not pages: they answer 404/405 to a
+# plain GET.
+exclude = [
+  '^https://api\.zoom\.us/v2',
+  '^https://zoom\.us/oauth/token',
+]
+
 # Don't check localhost / private IPs used in examples
 exclude_loopback = true
 exclude_private = true
