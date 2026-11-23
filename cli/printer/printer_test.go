@@ -340,29 +340,23 @@ func TestPrinter_Assessment(t *testing.T) {
 			}, "\n"),
 		},
 		{
+			// The nested blocks list the fields the predicate read. They are
+			// data, so a false boolean prints as its value, like uid does.
 			"users.all( uid == 0 && enabled == true )\n",
 			strings.Join([]string{
 				"[failed] users.all()",
 				"  actual:   [",
 				"    0: user gid=0 name=\"root\" uid=0 {",
-				"      [failed] enabled",
-				"        expected: == true",
-				"        actual:   false",
+				"      enabled: false",
 				"    }",
 				"    1: user gid=1 name=\"bin\" uid=1 {",
-				"      [failed] enabled",
-				"        expected: == true",
-				"        actual:   false",
+				"      enabled: false",
 				"    }",
 				"    2: user gid=1000 name=\"chris\" uid=1000 {",
-				"      [failed] enabled",
-				"        expected: == true",
-				"        actual:   false",
+				"      enabled: false",
 				"    }",
 				"    3: user gid=1000 name=\"christopher\" uid=1001 {",
-				"      [failed] enabled",
-				"        expected: == true",
-				"        actual:   false",
+				"      enabled: false",
 				"    }",
 				"  ]",
 				"",
@@ -599,6 +593,35 @@ func TestPrinter_Blocks(t *testing.T) {
 					"    [failed] x == \"a\" || <ref>",
 					"  }",
 					"]",
+				}, "\n"),
+			},
+		},
+		{
+			// A bare boolean field is data, not an assertion: false prints as
+			// its value, the same way true does.
+			"package('doesnotexist') { name installed }",
+			"", // ignore
+			[]string{
+				strings.Join([]string{
+					"package: {",
+					"  installed: false",
+					"  name: \"doesnotexist\"",
+					"}",
+				}, "\n"),
+			},
+		},
+		{
+			// A comparison the author wrote still renders as a failed assertion.
+			"package('doesnotexist') { name installed == true }",
+			"", // ignore
+			[]string{
+				strings.Join([]string{
+					"package: {",
+					"  [failed] installed == true",
+					"    expected: == true",
+					"    actual:   false",
+					"  name: \"doesnotexist\"",
+					"}",
 				}, "\n"),
 			},
 		},

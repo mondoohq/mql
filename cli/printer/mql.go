@@ -240,6 +240,28 @@ func (print *Printer) defaultLabel(ref string, bundle *llx.CodeBundle) string {
 	return print.Primary(label) + "="
 }
 
+// isWrittenAssertion reports whether the entrypoint at ref is an assertion the
+// author wrote: an explicit assertion, a comparison, a `&&`/`||` combinator,
+// or one of `all`/`any`/`none`/`one`. A bare boolean field is not one, even
+// though scoring treats it as `== true`.
+func isWrittenAssertion(bundle *llx.CodeBundle, ref uint64) bool {
+	code := bundle.CodeV2
+	if _, ok := bundle.Assertions[code.Checksums[ref]]; ok {
+		return true
+	}
+
+	chunk := code.Chunk(ref)
+	if chunk == nil || chunk.Call != llx.Chunk_FUNCTION {
+		return false
+	}
+	switch chunk.Id {
+	case "$one", "$all", "$none", "$any":
+		return true
+	}
+	_, ok := llx.ComparableLabel(chunk.Id)
+	return ok
+}
+
 func isDefaultField(ref string, bundle *llx.CodeBundle, defaultFields []string) bool {
 	if bundle == nil {
 		return false
@@ -464,9 +486,11 @@ func (print *Printer) refMap(data map[string]any, checksum string, indent string
 				return &llx.RawResult{Data: raw, CodeID: s}, true
 			})
 			// Entrypoint2Assessment also returns items for plain fields. Only
-			// actual assertions are worth rendering as an assessment; anything
-			// else stays a regular field.
-			if assessment == nil || !assessment.IsAssertion {
+			// assertions the author wrote are worth rendering as an assessment;
+			// anything else stays a regular field. IsAssertion alone does not
+			// tell them apart: it is also set for a bare boolean field, which
+			// is scored as `== true` but is still just data here.
+			if assessment == nil || !assessment.IsAssertion || !isWrittenAssertion(cache.bundle, ref) {
 				continue
 			}
 
