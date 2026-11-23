@@ -77,24 +77,39 @@ func TestOciRedactRedisACL(t *testing.T) {
 	// Synthetic: rules in the Redis ACL SETUSER syntax; no target showed these.
 	t.Run("password with an embedded space", func(t *testing.T) {
 		got := ociRedactRedisACL("on >first-half second-half ~* +@all")
-		assert.Equal(t, "on >*** ~* +@all", got)
+		assert.Equal(t, "on >***", got)
 		assert.NotContains(t, got, "first-half")
 		assert.NotContains(t, got, "second-half")
 	})
 
-	t.Run("hash and removal rules", func(t *testing.T) {
-		assert.Equal(t, "on #*** <*** !*** ~cache:* +@read -@dangerous",
-			ociRedactRedisACL("on #5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8 <old-pass !6b86b273ff34fce19b6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b ~cache:* +@read -@dangerous"))
+	t.Run("password followed by tokens that look like rules", func(t *testing.T) {
+		got := ociRedactRedisACL(">secret on +@all")
+		assert.Equal(t, ">***", got)
+		assert.NotContains(t, got, "on +@all")
+		assert.Equal(t, "on #***", ociRedactRedisACL("on #5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8 <old ~b"))
+	})
+
+	t.Run("rules before the first credential survive", func(t *testing.T) {
+		assert.Equal(t, "on ~cache:* +@read -@dangerous !***",
+			ociRedactRedisACL("on ~cache:* +@read -@dangerous !6b86b273ff34fce19b6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b <x"))
+	})
+
+	t.Run("credential inside a selector masks to its closing parenthesis", func(t *testing.T) {
+		got := ociRedactRedisACL("on (~sel:* >pass word +get) ~after:* +@read")
+		assert.Equal(t, "on (~sel:* >***) ~after:* +@read", got)
+		assert.NotContains(t, got, "word")
+		assert.NotContains(t, got, "+get")
+		assert.Equal(t, "on (>***", ociRedactRedisACL("on (>pass never-closed +get"))
 	})
 
 	t.Run("unknown tokens are masked", func(t *testing.T) {
-		got := ociRedactRedisACL("on mystery-token ~* +get")
-		assert.Equal(t, "on *** ~* +get", got)
+		got := ociRedactRedisACL("on mystery-token %X~nope ~* +get")
+		assert.Equal(t, "on *** *** ~* +get", got)
 		assert.NotContains(t, got, "mystery-token")
 	})
 
 	t.Run("known rules survive unchanged", func(t *testing.T) {
-		acl := "off nopass resetpass reset resetkeys resetchannels allkeys allchannels allcommands nocommands sanitize-payload skip-sanitize-payload clearselectors ~key* %R~ro:* %RW~rw:* &chan* +@read -flushall (~sel:* +get)"
+		acl := "off nopass resetpass reset resetkeys resetchannels allkeys allchannels allcommands nocommands sanitize-payload skip-sanitize-payload clearselectors ~key* %R~ro:* %W~wo:* %RW~rw:* &chan* +@read -flushall (~sel:* +get)"
 		assert.Equal(t, acl, ociRedactRedisACL(acl))
 	})
 

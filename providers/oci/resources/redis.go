@@ -431,10 +431,22 @@ func ociRedisACLRuleKnown(token string) bool {
 		return true
 	}
 	switch core[0] {
-	case '~', '%', '&', '+', '-':
+	case '~', '&', '+', '-':
 		return true
 	}
+	for _, p := range []string{"%R~", "%W~", "%RW~"} {
+		if strings.HasPrefix(core, p) {
+			return true
+		}
+	}
 	return false
+}
+
+// ociRedisACLIsCredential reports whether a token is a password or password
+// hash rule, with or without the opening parenthesis of a selector.
+func ociRedisACLIsCredential(token string) bool {
+	core := strings.TrimPrefix(token, "(")
+	return core != "" && strings.ContainsRune("><#!", rune(core[0]))
 }
 
 // ociRedactRedisACL masks the credentials in a Redis ACL and fails closed.
@@ -443,25 +455,59 @@ func ociRedisACLRuleKnown(token string) bool {
 // `<password` add and remove a plaintext password, `#hash` and `!hash` a
 // SHA-256 hash of one. Nothing in the OCI Cache API documents that such rules
 // are rejected or redacted in aclString. A password sent as a single argument
-// may contain spaces, so splitting on whitespace cannot tell where it ends.
-// Only rules known to carry no credential are therefore kept as written. A
-// password rule becomes its prefix followed by `***`, and the unrecognized
-// tokens after it, which may be the rest of the password, fold into that
-// mask. Any other unrecognized token becomes `***`.
+// may contain spaces and may itself look like a rule, so nothing after a
+// credential can be trusted to be one. The first credential is kept as its
+// prefix followed by `***` and everything after it is dropped; inside a
+// `(...)` selector the mask ends at the selector's closing parenthesis, which
+// is kept. Before the first credential, a token is kept only when it is a rule
+// known to carry no credential; any other token becomes `***`.
 func ociRedactRedisACL(acl string) string {
 	out := []string{}
-	inPassword := false
-	for _, token := range strings.Fields(acl) {
-		switch {
-		case strings.ContainsRune("><#!", rune(token[0])):
-			out = append(out, token[:1]+"***")
-			inPassword = true
-		case ociRedisACLRuleKnown(token):
+	tokens := strings.Fields(acl)
+	inSelector := false
+	for i := 0; i < len(tokens); i++ {
+		token := tokens[i]
+		opens := strings.HasPrefix(token, "(")
+		if opens {
+			inSelector = true
+		}
+
+		if ociRedisACLIsCredential(token) {
+			prefix := ""
+			if opens {
+				prefix = "("
+			}
+			masked := prefix + strings.TrimPrefix(token, "(")[:1] + "***"
+			if !inSelector {
+				out = append(out, masked)
+				break
+			}
+			// Mask through the token that closes the selector, then keep its
+			// closing parenthesis. An unclosed selector masks to the end.
+			closed := false
+			for ; i < len(tokens); i++ {
+				if strings.HasSuffix(tokens[i], ")") {
+					closed = true
+					break
+				}
+			}
+			if closed {
+				masked += ")"
+			}
+			out = append(out, masked)
+			inSelector = false
+			if !closed {
+				break
+			}
+			continue
+		}
+
+		if strings.HasSuffix(token, ")") {
+			inSelector = false
+		}
+		if ociRedisACLRuleKnown(token) {
 			out = append(out, token)
-			inPassword = false
-		case inPassword:
-			// Part of the password rule before it, already masked.
-		default:
+		} else {
 			out = append(out, "***")
 		}
 	}
