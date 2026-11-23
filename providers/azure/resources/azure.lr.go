@@ -19166,6 +19166,42 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.functionsService.functionApp.diagnosticSettings": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).GetDiagnosticSettings()).ToDataRes(types.Array(types.Resource("azure.subscription.monitorService.diagnosticsetting")))
 	},
+	"azure.subscription.functionsService.functionApp.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.functionsService.functionApp.identityType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).GetIdentityType()).ToDataRes(types.String)
+	},
+	"azure.subscription.functionsService.functionApp.endToEndEncryptionEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).GetEndToEndEncryptionEnabled()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.functionsService.functionApp.appServicePlan": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).GetAppServicePlan()).ToDataRes(types.Resource("azure.subscription.webService.appServicePlan"))
+	},
+	"azure.subscription.functionsService.functionApp.hostingEnvironment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).GetHostingEnvironment()).ToDataRes(types.Resource("azure.subscription.webService.hostingEnvironment"))
+	},
+	"azure.subscription.functionsService.functionApp.privateEndpointConnections": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).GetPrivateEndpointConnections()).ToDataRes(types.Array(types.Resource("azure.subscription.privateEndpointConnection")))
+	},
+	"azure.subscription.functionsService.functionApp.ftp": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).GetFtp()).ToDataRes(types.Resource("azure.subscription.webService.appsite.basicPublishingCredentialsPolicies"))
+	},
+	"azure.subscription.functionsService.functionApp.scm": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).GetScm()).ToDataRes(types.Resource("azure.subscription.webService.appsite.basicPublishingCredentialsPolicies"))
+	},
+	"azure.subscription.functionsService.functionApp.authSettingsV2": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).GetAuthSettingsV2()).ToDataRes(types.Resource("azure.subscription.webService.appsiteauthsettingsv2"))
+	},
+	"azure.subscription.functionsService.functionApp.hostNameBindings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).GetHostNameBindings()).ToDataRes(types.Array(types.Resource("azure.subscription.webService.appsite.hostNameBinding")))
+	},
+	"azure.subscription.functionsService.functionApp.deploymentStorageAuthType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).GetDeploymentStorageAuthType()).ToDataRes(types.String)
+	},
+	"azure.subscription.functionsService.functionApp.deploymentStorageIdentity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).GetDeploymentStorageIdentity()).ToDataRes(types.Resource("azure.subscription.managedIdentity"))
+	},
 	"azure.subscription.functionsService.functionApp.appSetting.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionFunctionsServiceFunctionAppAppSetting).GetId()).ToDataRes(types.String)
 	},
@@ -48758,6 +48794,54 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.functionsService.functionApp.diagnosticSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).DiagnosticSettings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.functionsService.functionApp.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.functionsService.functionApp.identityType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).IdentityType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.functionsService.functionApp.endToEndEncryptionEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).EndToEndEncryptionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.functionsService.functionApp.appServicePlan": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).AppServicePlan, ok = plugin.RawToTValue[*mqlAzureSubscriptionWebServiceAppServicePlan](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.functionsService.functionApp.hostingEnvironment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).HostingEnvironment, ok = plugin.RawToTValue[*mqlAzureSubscriptionWebServiceHostingEnvironment](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.functionsService.functionApp.privateEndpointConnections": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).PrivateEndpointConnections, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.functionsService.functionApp.ftp": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).Ftp, ok = plugin.RawToTValue[*mqlAzureSubscriptionWebServiceAppsiteBasicPublishingCredentialsPolicies](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.functionsService.functionApp.scm": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).Scm, ok = plugin.RawToTValue[*mqlAzureSubscriptionWebServiceAppsiteBasicPublishingCredentialsPolicies](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.functionsService.functionApp.authSettingsV2": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).AuthSettingsV2, ok = plugin.RawToTValue[*mqlAzureSubscriptionWebServiceAppsiteauthsettingsv2](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.functionsService.functionApp.hostNameBindings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).HostNameBindings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.functionsService.functionApp.deploymentStorageAuthType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).DeploymentStorageAuthType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.functionsService.functionApp.deploymentStorageIdentity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionFunctionsServiceFunctionApp).DeploymentStorageIdentity, ok = plugin.RawToTValue[*mqlAzureSubscriptionManagedIdentity](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.functionsService.functionApp.appSetting.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -113817,30 +113901,42 @@ type mqlAzureSubscriptionFunctionsServiceFunctionApp struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAzureSubscriptionFunctionsServiceFunctionAppInternal
-	Id                        plugin.TValue[string]
-	Name                      plugin.TValue[string]
-	Location                  plugin.TValue[string]
-	Tags                      plugin.TValue[map[string]any]
-	Kind                      plugin.TValue[string]
-	State                     plugin.TValue[string]
-	DefaultHostName           plugin.TValue[string]
-	HttpsOnly                 plugin.TValue[bool]
-	ClientCertEnabled         plugin.TValue[bool]
-	ClientCertMode            plugin.TValue[string]
-	PrincipalId               plugin.TValue[string]
-	SystemAssignedIdentity    plugin.TValue[*mqlAzureSubscriptionManagedIdentity]
-	UserAssignedIdentities    plugin.TValue[[]any]
-	KeyVaultReferenceIdentity plugin.TValue[string]
-	PublicNetworkAccess       plugin.TValue[string]
-	VirtualNetworkSubnetId    plugin.TValue[string]
-	VirtualNetworkSubnet      plugin.TValue[*mqlAzureSubscriptionNetworkServiceSubnet]
-	Properties                plugin.TValue[any]
-	Configuration             plugin.TValue[*mqlAzureSubscriptionWebServiceAppsiteconfig]
-	Functions                 plugin.TValue[[]any]
-	AppSettings               plugin.TValue[[]any]
-	ConnectionStrings         plugin.TValue[[]any]
-	SystemMetadata            plugin.TValue[*mqlAzureSubscriptionSystemData]
-	DiagnosticSettings        plugin.TValue[[]any]
+	Id                         plugin.TValue[string]
+	Name                       plugin.TValue[string]
+	Location                   plugin.TValue[string]
+	Tags                       plugin.TValue[map[string]any]
+	Kind                       plugin.TValue[string]
+	State                      plugin.TValue[string]
+	DefaultHostName            plugin.TValue[string]
+	HttpsOnly                  plugin.TValue[bool]
+	ClientCertEnabled          plugin.TValue[bool]
+	ClientCertMode             plugin.TValue[string]
+	PrincipalId                plugin.TValue[string]
+	SystemAssignedIdentity     plugin.TValue[*mqlAzureSubscriptionManagedIdentity]
+	UserAssignedIdentities     plugin.TValue[[]any]
+	KeyVaultReferenceIdentity  plugin.TValue[string]
+	PublicNetworkAccess        plugin.TValue[string]
+	VirtualNetworkSubnetId     plugin.TValue[string]
+	VirtualNetworkSubnet       plugin.TValue[*mqlAzureSubscriptionNetworkServiceSubnet]
+	Properties                 plugin.TValue[any]
+	Configuration              plugin.TValue[*mqlAzureSubscriptionWebServiceAppsiteconfig]
+	Functions                  plugin.TValue[[]any]
+	AppSettings                plugin.TValue[[]any]
+	ConnectionStrings          plugin.TValue[[]any]
+	SystemMetadata             plugin.TValue[*mqlAzureSubscriptionSystemData]
+	DiagnosticSettings         plugin.TValue[[]any]
+	Enabled                    plugin.TValue[bool]
+	IdentityType               plugin.TValue[string]
+	EndToEndEncryptionEnabled  plugin.TValue[bool]
+	AppServicePlan             plugin.TValue[*mqlAzureSubscriptionWebServiceAppServicePlan]
+	HostingEnvironment         plugin.TValue[*mqlAzureSubscriptionWebServiceHostingEnvironment]
+	PrivateEndpointConnections plugin.TValue[[]any]
+	Ftp                        plugin.TValue[*mqlAzureSubscriptionWebServiceAppsiteBasicPublishingCredentialsPolicies]
+	Scm                        plugin.TValue[*mqlAzureSubscriptionWebServiceAppsiteBasicPublishingCredentialsPolicies]
+	AuthSettingsV2             plugin.TValue[*mqlAzureSubscriptionWebServiceAppsiteauthsettingsv2]
+	HostNameBindings           plugin.TValue[[]any]
+	DeploymentStorageAuthType  plugin.TValue[string]
+	DeploymentStorageIdentity  plugin.TValue[*mqlAzureSubscriptionManagedIdentity]
 }
 
 // createAzureSubscriptionFunctionsServiceFunctionApp creates a new instance of this resource
@@ -114071,6 +114167,150 @@ func (c *mqlAzureSubscriptionFunctionsServiceFunctionApp) GetDiagnosticSettings(
 		}
 
 		return c.diagnosticSettings()
+	})
+}
+
+func (c *mqlAzureSubscriptionFunctionsServiceFunctionApp) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlAzureSubscriptionFunctionsServiceFunctionApp) GetIdentityType() *plugin.TValue[string] {
+	return &c.IdentityType
+}
+
+func (c *mqlAzureSubscriptionFunctionsServiceFunctionApp) GetEndToEndEncryptionEnabled() *plugin.TValue[bool] {
+	return &c.EndToEndEncryptionEnabled
+}
+
+func (c *mqlAzureSubscriptionFunctionsServiceFunctionApp) GetAppServicePlan() *plugin.TValue[*mqlAzureSubscriptionWebServiceAppServicePlan] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionWebServiceAppServicePlan](&c.AppServicePlan, func() (*mqlAzureSubscriptionWebServiceAppServicePlan, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.functionsService.functionApp", c.__id, "appServicePlan")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionWebServiceAppServicePlan), nil
+			}
+		}
+
+		return c.appServicePlan()
+	})
+}
+
+func (c *mqlAzureSubscriptionFunctionsServiceFunctionApp) GetHostingEnvironment() *plugin.TValue[*mqlAzureSubscriptionWebServiceHostingEnvironment] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionWebServiceHostingEnvironment](&c.HostingEnvironment, func() (*mqlAzureSubscriptionWebServiceHostingEnvironment, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.functionsService.functionApp", c.__id, "hostingEnvironment")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionWebServiceHostingEnvironment), nil
+			}
+		}
+
+		return c.hostingEnvironment()
+	})
+}
+
+func (c *mqlAzureSubscriptionFunctionsServiceFunctionApp) GetPrivateEndpointConnections() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PrivateEndpointConnections, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.functionsService.functionApp", c.__id, "privateEndpointConnections")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.privateEndpointConnections()
+	})
+}
+
+func (c *mqlAzureSubscriptionFunctionsServiceFunctionApp) GetFtp() *plugin.TValue[*mqlAzureSubscriptionWebServiceAppsiteBasicPublishingCredentialsPolicies] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionWebServiceAppsiteBasicPublishingCredentialsPolicies](&c.Ftp, func() (*mqlAzureSubscriptionWebServiceAppsiteBasicPublishingCredentialsPolicies, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.functionsService.functionApp", c.__id, "ftp")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionWebServiceAppsiteBasicPublishingCredentialsPolicies), nil
+			}
+		}
+
+		return c.ftp()
+	})
+}
+
+func (c *mqlAzureSubscriptionFunctionsServiceFunctionApp) GetScm() *plugin.TValue[*mqlAzureSubscriptionWebServiceAppsiteBasicPublishingCredentialsPolicies] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionWebServiceAppsiteBasicPublishingCredentialsPolicies](&c.Scm, func() (*mqlAzureSubscriptionWebServiceAppsiteBasicPublishingCredentialsPolicies, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.functionsService.functionApp", c.__id, "scm")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionWebServiceAppsiteBasicPublishingCredentialsPolicies), nil
+			}
+		}
+
+		return c.scm()
+	})
+}
+
+func (c *mqlAzureSubscriptionFunctionsServiceFunctionApp) GetAuthSettingsV2() *plugin.TValue[*mqlAzureSubscriptionWebServiceAppsiteauthsettingsv2] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionWebServiceAppsiteauthsettingsv2](&c.AuthSettingsV2, func() (*mqlAzureSubscriptionWebServiceAppsiteauthsettingsv2, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.functionsService.functionApp", c.__id, "authSettingsV2")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionWebServiceAppsiteauthsettingsv2), nil
+			}
+		}
+
+		return c.authSettingsV2()
+	})
+}
+
+func (c *mqlAzureSubscriptionFunctionsServiceFunctionApp) GetHostNameBindings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.HostNameBindings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.functionsService.functionApp", c.__id, "hostNameBindings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.hostNameBindings()
+	})
+}
+
+func (c *mqlAzureSubscriptionFunctionsServiceFunctionApp) GetDeploymentStorageAuthType() *plugin.TValue[string] {
+	return &c.DeploymentStorageAuthType
+}
+
+func (c *mqlAzureSubscriptionFunctionsServiceFunctionApp) GetDeploymentStorageIdentity() *plugin.TValue[*mqlAzureSubscriptionManagedIdentity] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionManagedIdentity](&c.DeploymentStorageIdentity, func() (*mqlAzureSubscriptionManagedIdentity, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.functionsService.functionApp", c.__id, "deploymentStorageIdentity")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionManagedIdentity), nil
+			}
+		}
+
+		return c.deploymentStorageIdentity()
 	})
 }
 

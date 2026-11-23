@@ -16462,6 +16462,38 @@ azure.subscription.functionsService.functionApp @defaults("id name location") {
   systemMetadata() azure.subscription.systemData
   // Diagnostic settings configured on the function app (forwarding logs and metrics to Log Analytics, storage, or Event Hub)
   diagnosticSettings() []azure.subscription.monitorService.diagnosticsetting
+  // Whether the function app is enabled
+  enabled bool
+  // Managed identity type ("SystemAssigned", "UserAssigned", "SystemAssigned, UserAssigned", or "None")
+  identityType string
+  // Whether traffic from the front end to the workers is encrypted
+  endToEndEncryptionEnabled bool
+  // App Service plan the function app runs on
+  //
+  // A Consumption or Flex Consumption app reports its dynamic plan.
+  appServicePlan() azure.subscription.webService.appServicePlan
+  // App Service Environment the function app runs in, null outside an App Service Environment
+  hostingEnvironment() azure.subscription.webService.hostingEnvironment
+  // Private endpoint connections to the function app
+  privateEndpointConnections() []azure.subscription.privateEndpointConnection
+  // Basic authentication (publishing credentials) policy for FTP deployment
+  ftp() azure.subscription.webService.appsite.basicPublishingCredentialsPolicies
+  // Basic authentication (publishing credentials) policy for the SCM (Kudu) site
+  scm() azure.subscription.webService.appsite.basicPublishingCredentialsPolicies
+  // Authentication (Easy Auth) settings, version 2
+  authSettingsV2() azure.subscription.webService.appsiteauthsettingsv2
+  // Host name bindings, including custom domains and their TLS binding state
+  hostNameBindings() []azure.subscription.webService.appsite.hostNameBinding
+  // How a Flex Consumption app authenticates to its deployment storage
+  //
+  // One of "SystemAssignedIdentity", "UserAssignedIdentity", or
+  // "StorageAccountConnectionString". Null for an app on any other plan.
+  deploymentStorageAuthType string
+  // Managed identity a Flex Consumption app uses to reach its deployment storage
+  //
+  // Null when the app authenticates with a connection string or is not a
+  // Flex Consumption app.
+  deploymentStorageIdentity() azure.subscription.managedIdentity
 }
 
 // Azure Function App application setting
