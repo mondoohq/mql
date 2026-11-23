@@ -2259,10 +2259,9 @@ azure.subscription.batchService.account @defaults("id name location") {
   networkProfile dict
   // Private endpoint connections
   //
-  // One entry per private endpoint connection. Keys: `id`, `name`,
-  // `type`, `etag`, and `properties` (with `groupIds`, `privateEndpoint`,
-  // `privateLinkServiceConnectionState`, and `provisioningState`).
-  privateEndpointConnections []dict
+  // Deprecated in favor of privateLinkConnections, which carries the
+  // connections as typed resources.
+  privateEndpointConnections @maturity("deprecated") @replaced_by("azure.subscription.batchService.account.privateLinkConnections") []dict
   // Private endpoint connections to the account
   privateLinkConnections() []azure.subscription.privateEndpointConnection
   // Managed identity type ("SystemAssigned", "UserAssigned", "SystemAssigned,UserAssigned", or "None")
