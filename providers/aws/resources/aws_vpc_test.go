@@ -5,6 +5,7 @@ package resources
 
 import (
 	"fmt"
+	"github.com/aws/smithy-go"
 	"testing"
 	"time"
 
@@ -732,4 +733,12 @@ func TestNatgatewayAddressKeyIsSetAtCreation(t *testing.T) {
 		addr := newAddress("nat-0ccccccccccccccccc", "", "10.0.1.10")
 		assert.Equal(t, "/10.0.1.10", addr.MqlID())
 	})
+}
+
+func TestIsVpcEndpointNotFoundError(t *testing.T) {
+	// Synthetic: the two error codes DescribeVpcEndpoints uses for an id it cannot show.
+	assert.True(t, isVpcEndpointNotFoundError(&smithy.GenericAPIError{Code: "InvalidVpcEndpointId.NotFound"}))
+	assert.True(t, isVpcEndpointNotFoundError(fmt.Errorf("operation error EC2: DescribeVpcEndpoints, %w", &smithy.GenericAPIError{Code: "InvalidVpcEndpointId.Malformed"})))
+	assert.False(t, isVpcEndpointNotFoundError(&smithy.GenericAPIError{Code: "UnauthorizedOperation"}))
+	assert.False(t, isVpcEndpointNotFoundError(fmt.Errorf("dial tcp: connection refused")))
 }

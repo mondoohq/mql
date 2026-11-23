@@ -345,6 +345,35 @@ func (a *mqlAwsRoute53HostedZone) vpcs() ([]any, error) {
 	return vpcs, nil
 }
 
+func (a *mqlAwsRoute53HostedZone) associatedVpcs() ([]any, error) {
+	resp, err := a.getHostedZone()
+	if err != nil {
+		return nil, err
+	}
+	res := []any{}
+	if resp == nil {
+		return res, nil
+	}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	for _, v := range resp.VPCs {
+		id := convert.ToValue(v.VPCId)
+		region := string(v.VPCRegion)
+		if id == "" || region == "" {
+			continue
+		}
+		vpc, err := NewResource(a.MqlRuntime, ResourceAwsVpc,
+			map[string]*llx.RawData{"arn": llx.StringData(fmt.Sprintf(vpcArnPattern, region, conn.AccountId(), id))})
+		if err != nil {
+			// A zone can be associated with a VPC in another account, which this
+			// account cannot describe.
+			log.Debug().Err(err).Str("vpc", id).Str("region", region).Msg("cannot resolve vpc associated with hosted zone, skipping it")
+			continue
+		}
+		res = append(res, vpc)
+	}
+	return res, nil
+}
+
 func (a *mqlAwsRoute53HostedZone) nameServers() ([]any, error) {
 	resp, err := a.getHostedZone()
 	if err != nil {

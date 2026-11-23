@@ -12831,6 +12831,14 @@ private aws.cloudfront.distribution @defaults("domainName status") {
   minimumProtocolVersion string
   // SSL support method: "sni-only", "vip", or "static-ip"
   sslSupportMethod string
+  // ACM certificate the distribution presents to viewers
+  //
+  // Null when the distribution uses the default CloudFront certificate or a certificate stored in IAM.
+  certificate() aws.acm.certificate
+  // Source of the certificate the distribution presents to viewers
+  //
+  // One of `cloudfront` (the default *.cloudfront.net certificate), `acm`, or `iam`.
+  certificateSource string
   // ARN of the AWS WAF web ACL associated with the distribution (empty string if none)
   webAclId string
   // AWS WAF web ACL associated with the distribution
@@ -12843,6 +12851,10 @@ private aws.cloudfront.distribution @defaults("domainName status") {
   continuousDeploymentPolicyId() string
   // Type of geographic restriction applied to the distribution (none, whitelist, or blacklist)
   geoRestrictionType string
+  // Countries the geographic restriction allows or blocks
+  //
+  // ISO 3166-1 alpha-2 country codes. With `geoRestrictionType` set to whitelist these are the only countries served; with blacklist they are the countries refused. Empty when no restriction applies.
+  geoRestrictionLocations []string
   // When the distribution was last modified
   lastModifiedAt time
   // User-provided comment or description for the distribution
@@ -12913,6 +12925,14 @@ private aws.cloudfront.distribution.origin @defaults("id originPath") {
   originMtlsClientCertificate() aws.acm.certificate
   // Origin Access Control ID for the origin (empty when OAC is not configured)
   originAccessControlId string
+  // Origin access control CloudFront uses to sign requests to the origin (null when none is configured)
+  originAccessControl() aws.cloudfront.originAccessControl
+  // S3 bucket the origin points at
+  //
+  // Recognized from the origin domain name, for both the S3 REST endpoint
+  // (`<bucket>.s3.<region>.amazonaws.com`) and the S3 static website endpoint.
+  // Null for origins that are not S3 buckets.
+  s3Bucket() aws.s3.bucket
   // S3CanonicalUserId of the legacy Origin Access Identity for S3 origins
   //
   // Empty when OAI is not configured. Modern setups should prefer originAccessControlId.
@@ -17166,6 +17186,12 @@ private aws.route53.hostedZone @defaults("id name type isPrivate") {
   //
   // Each entry has `vpcId` (string) and `vpcRegion` (string).
   vpcs() []dict
+  // VPCs associated with a private hosted zone
+  //
+  // VPCs in other accounts, which a zone can be associated with through an
+  // authorization, do not resolve and are left out; `vpcs` lists every
+  // association.
+  associatedVpcs() []aws.vpc
   // ARN of the hosted zone
   arn string
   // Tags associated with the hosted zone
@@ -18586,6 +18612,23 @@ private aws.apigateway.restapi @defaults("name id") {
   securityPolicy string
   // Resource policy for the API (JSON string)
   policy string
+  // Parsed statements from the resource policy
+  policyStatements() []aws.iam.policyStatement
+  // Whether the API can be invoked from the internet without a resource policy restricting callers
+  //
+  // True when the API has an EDGE or REGIONAL endpoint, its default
+  // execute-api endpoint is enabled, and its resource policy is either absent
+  // or contains an Allow statement for a wildcard principal that no account,
+  // organization, VPC, or VPC endpoint condition narrows. A source IP
+  // condition does not count as narrowing. Authorizers on the methods are not
+  // considered; read `methods` for those. Custom domain names are not
+  // considered either, so an API reachable only through a custom domain reads
+  // false.
+  isPublic() bool
+  // VPC endpoints a PRIVATE REST API is associated with
+  //
+  // Only endpoints in this account and region resolve.
+  vpcEndpoints() []aws.vpc.endpoint
   // Resources (paths) of the REST API, each with the methods defined on it
   resources() []aws.apigateway.resource
   // Methods across every resource of the REST API
@@ -21408,6 +21451,10 @@ private aws.ec2.volume @defaults("id region volumeType size encrypted state") {
   fastRestored bool
   // Source volume this volume was copied from, when it is still present in this account
   sourceVolume() aws.ec2.volume
+  // Instances the volume is attached to
+  //
+  // Read from `attachments`. More than one only for Multi-Attach volumes.
+  instances() []aws.ec2.instance
 }
 
 // AWS Signer
@@ -23551,6 +23598,18 @@ private aws.neptune.cluster @defaults("arn name status") {
   //
   // Inferred from the provenance tags AWS injects on managed resources (for example cloudformation, elasticbeanstalk, eks). Empty when the cluster is unmanaged or managed by a tool that leaves no recognizable tag.
   managedBy() string
+  // DB instances that belong to the cluster, the writer and its readers
+  members() []aws.neptune.instance
+  // Whether tags are copied from the cluster to its snapshots
+  copyTagsToSnapshot bool
+  // Minimum capacity of Neptune Serverless instances, in Neptune capacity units (null for provisioned-only clusters)
+  serverlessV2MinCapacity float
+  // Maximum capacity of Neptune Serverless instances, in Neptune capacity units (null for provisioned-only clusters)
+  serverlessV2MaxCapacity float
+  // Clusters that replicate from this cluster
+  //
+  // Only replicas in this account resolve.
+  readReplicas() []aws.neptune.cluster
 }
 
 // Amazon Neptune instance
@@ -23580,6 +23639,8 @@ private aws.neptune.instance @defaults("arn name status"){
   name string
   // User-supplied DB cluster identifier
   clusterIdentifier string
+  // Cluster the instance belongs to
+  cluster() aws.neptune.cluster
   // Whether minor version patches are applied automatically
   autoMinorVersionUpgrade bool
   // Name of the availability zone
@@ -27087,6 +27148,32 @@ private aws.memorydb.cluster @defaults("name status nodeType region") {
   securityGroups() []aws.ec2.securitygroup
   // Security group ingress exposure breakdown (VPC-only service without a public endpoint, so it is not internet-reachable)
   exposure() aws.network.exposure
+  // Access control list that governs which users can connect to the cluster
+  //
+  // The built-in `open-access` ACL lets any client connect without authenticating.
+  acl() aws.memorydb.acl
+  // Subnet group the cluster's nodes are placed in
+  subnetGroup() aws.memorydb.subnetGroup
+  // SNS topic that receives cluster event notifications (null when none is configured)
+  snsTopic() aws.sns.topic
+  // Status of the SNS notification topic: active or inactive
+  snsTopicStatus string
+  // DNS address of the cluster configuration endpoint
+  endpointAddress string
+  // Port of the cluster configuration endpoint
+  endpointPort int
+  // Whether data tiering to local SSD is enabled
+  dataTiering bool
+  // IP protocol the cluster uses: ipv4, ipv6, or dual_stack
+  networkType string
+  // IP version the cluster's discovery API returns node addresses in: ipv4 or ipv6
+  ipDiscovery string
+  // Whether the cluster spans one or multiple Availability Zones: singleaz or multiaz
+  availabilityMode string
+  // Status of the parameter group: active, applying, or another transitional state
+  parameterGroupStatus string
+  // Name of the multi-Region cluster this cluster belongs to (empty when it is not part of one)
+  multiRegionClusterName string
 }
 
 // Amazon MemoryDB access control list
@@ -31451,6 +31538,39 @@ private aws.transfer.server @defaults("arn serverId endpointType protocols") {
   structuredLogDestinations() []string
   // Tags for the server
   tags() map[string]string
+  // VPC the server endpoint is placed in (null when the server does not report one)
+  vpc() aws.vpc
+  // Subnets the server endpoint is placed in (empty for PUBLIC endpoints)
+  subnets() []aws.vpc.subnet
+  // Security groups attached to the server endpoint (empty for PUBLIC endpoints)
+  securityGroups() []aws.ec2.securitygroup
+  // VPC endpoint the server is reached through (null for PUBLIC endpoints)
+  vpcEndpoint() aws.vpc.endpoint
+  // Lambda function that authenticates users when the identity provider type is AWS_LAMBDA (null otherwise)
+  identityProviderFunction() aws.lambda.function
+  // IAM role the server assumes to call the API_GATEWAY identity provider (null otherwise)
+  invocationRole() aws.iam.role
+  // Directory Service directory that authenticates users when the identity provider type is AWS_DIRECTORY_SERVICE (null otherwise)
+  directory() aws.directoryservice.directory
+  // URL of the API Gateway endpoint that authenticates users when the identity provider type is API_GATEWAY (empty otherwise)
+  identityProviderUrl() string
+  // Credentials SFTP users must present with a custom identity provider
+  //
+  // One of PASSWORD, PUBLIC_KEY, PUBLIC_KEY_OR_PASSWORD, or
+  // PUBLIC_KEY_AND_PASSWORD. Empty for service-managed and directory users.
+  sftpAuthenticationMethods() string
+  // RSA, ECDSA, or ED25519 key fingerprint of the server's host key
+  hostKeyFingerprint() string
+  // Banner shown to users before they authenticate
+  preAuthenticationLoginBanner() string
+  // Banner shown to users after they authenticate
+  postAuthenticationLoginBanner() string
+  // IP address FTP and FTPS clients are told to use for passive-mode connections (empty when not set)
+  passiveIp() string
+  // TLS session resumption policy for FTPS: DISABLED, ENABLED, or ENFORCED
+  tlsSessionResumptionMode() string
+  // Workflows that run when a file upload completes or is only partially uploaded
+  workflows() []aws.transfer.workflow
 }
 
 // AWS App Mesh

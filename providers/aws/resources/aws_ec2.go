@@ -2957,12 +2957,49 @@ func buildVolumeResource(runtime *plugin.Runtime, region, accountID string, vol 
 	v := mqlVol.(*mqlAwsEc2Volume)
 	v.cacheKmsKeyId = vol.KmsKeyId
 	v.cacheSourceVolumeId = vol.SourceVolumeId
+	v.cacheInstanceIds = volumeAttachedInstanceIds(vol.Attachments)
 	return v, nil
 }
 
 type mqlAwsEc2VolumeInternal struct {
 	cacheKmsKeyId       *string
 	cacheSourceVolumeId *string
+	cacheInstanceIds    []string
+}
+
+// volumeAttachedInstanceIds returns the ids of the instances a volume is
+// attached to, each once. A Multi-Attach volume lists one attachment per
+// instance; an attachment managed by an AWS service may carry no instance id.
+func volumeAttachedInstanceIds(attachments []ec2types.VolumeAttachment) []string {
+	ids := []string{}
+	seen := map[string]struct{}{}
+	for _, att := range attachments {
+		id := convert.ToValue(att.InstanceId)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func (a *mqlAwsEc2Volume) instances() ([]any, error) {
+	res := []any{}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	for _, id := range a.cacheInstanceIds {
+		inst, err := NewResource(a.MqlRuntime, ResourceAwsEc2Instance,
+			map[string]*llx.RawData{"arn": llx.StringData(fmt.Sprintf(ec2InstanceArnPattern, a.Region.Data, conn.AccountId(), id))})
+		if err != nil {
+			log.Warn().Err(err).Str("instance", id).Msg("cannot resolve instance attached to volume, skipping it")
+			continue
+		}
+		res = append(res, inst)
+	}
+	return res, nil
 }
 
 // snapshot resolves the source snapshot when it is still present in this

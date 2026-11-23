@@ -509,67 +509,111 @@ func (a *mqlAwsVpc) endpoints() ([]any, error) {
 		}
 
 		for _, endpoint := range endpointsRes.VpcEndpoints {
-			subnetIds := make([]any, 0, len(endpoint.SubnetIds))
-			for _, subnet := range endpoint.SubnetIds {
-				subnetIds = append(subnetIds, subnet)
-			}
-
-			dnsEntries := make([]any, 0, len(endpoint.DnsEntries))
-			for _, entry := range endpoint.DnsEntries {
-				dnsEntries = append(dnsEntries, map[string]any{
-					"dnsName":      convert.ToValue(entry.DnsName),
-					"hostedZoneId": convert.ToValue(entry.HostedZoneId),
-				})
-			}
-
-			mqlEndpoint, err := CreateResource(a.MqlRuntime, ResourceAwsVpcEndpoint,
-				map[string]*llx.RawData{
-					"id":                llx.StringData(fmt.Sprintf("%s/%s", a.Region.Data, *endpoint.VpcEndpointId)),
-					"policyDocument":    llx.StringDataPtr(endpoint.PolicyDocument),
-					"privateDnsEnabled": llx.BoolDataPtr(endpoint.PrivateDnsEnabled),
-					"region":            llx.StringData(a.Region.Data),
-					"serviceName":       llx.StringDataPtr(endpoint.ServiceName),
-					"state":             llx.StringData(string(endpoint.State)),
-					"subnets":           llx.ArrayData(subnetIds, types.String),
-					"type":              llx.StringData(string(endpoint.VpcEndpointType)),
-					"vpc":               llx.StringDataPtr(endpoint.VpcId),
-					"createdAt":         llx.TimeDataPtr(endpoint.CreationTimestamp),
-					"dnsEntries":        llx.ArrayData(dnsEntries, types.Any),
-					"tags":              llx.MapData(toInterfaceMap(ec2TagsToMap(endpoint.Tags)), types.String),
-					"ipAddressType":     llx.StringData(string(endpoint.IpAddressType)),
-					"ownerId":           llx.StringDataPtr(endpoint.OwnerId),
-					"requesterManaged":  llx.BoolDataPtr(endpoint.RequesterManaged),
-				},
-			)
+			mqlEndpoint, err := newMqlAwsVpcEndpoint(a.MqlRuntime, a.Region.Data, conn.AccountId(), endpoint)
 			if err != nil {
 				return nil, err
 			}
-
-			ep := mqlEndpoint.(*mqlAwsVpcEndpoint)
-			ep.region = a.Region.Data
-			ep.accountID = conn.AccountId()
-			ep.cacheEndpointId = convert.ToValue(endpoint.VpcEndpointId)
-			// Cached separately from the deprecated subnets field so subnetRefs
-			// does not depend on a field that is due for removal.
-			ep.cacheSubnetIds = endpoint.SubnetIds
-
-			// Cache security group ARNs
-			sgArns := make([]string, len(endpoint.Groups))
-			for i, sg := range endpoint.Groups {
-				sgArns[i] = fmt.Sprintf(securityGroupArnPattern, a.Region.Data, conn.AccountId(), convert.ToValue(sg.GroupId))
-			}
-			ep.setSecurityGroupArns(sgArns)
-
-			// Cache route table IDs
-			ep.cacheRouteTableIds = endpoint.RouteTableIds
-
-			// Cache network interface IDs
-			ep.cacheNetworkInterfaceIds = endpoint.NetworkInterfaceIds
-
 			endpoints = append(endpoints, mqlEndpoint)
 		}
 	}
 	return endpoints, nil
+}
+
+// newMqlAwsVpcEndpoint builds an aws.vpc.endpoint from an SDK VpcEndpoint.
+// Shared by the per-VPC list and by references that resolve endpoints by id,
+// so both produce the same resource under the same cache key.
+func newMqlAwsVpcEndpoint(runtime *plugin.Runtime, region, accountID string, endpoint vpctypes.VpcEndpoint) (*mqlAwsVpcEndpoint, error) {
+	subnetIds := make([]any, 0, len(endpoint.SubnetIds))
+	for _, subnet := range endpoint.SubnetIds {
+		subnetIds = append(subnetIds, subnet)
+	}
+
+	dnsEntries := make([]any, 0, len(endpoint.DnsEntries))
+	for _, entry := range endpoint.DnsEntries {
+		dnsEntries = append(dnsEntries, map[string]any{
+			"dnsName":      convert.ToValue(entry.DnsName),
+			"hostedZoneId": convert.ToValue(entry.HostedZoneId),
+		})
+	}
+
+	mqlEndpoint, err := CreateResource(runtime, ResourceAwsVpcEndpoint,
+		map[string]*llx.RawData{
+			"id":                llx.StringData(fmt.Sprintf("%s/%s", region, convert.ToValue(endpoint.VpcEndpointId))),
+			"policyDocument":    llx.StringDataPtr(endpoint.PolicyDocument),
+			"privateDnsEnabled": llx.BoolDataPtr(endpoint.PrivateDnsEnabled),
+			"region":            llx.StringData(region),
+			"serviceName":       llx.StringDataPtr(endpoint.ServiceName),
+			"state":             llx.StringData(string(endpoint.State)),
+			"subnets":           llx.ArrayData(subnetIds, types.String),
+			"type":              llx.StringData(string(endpoint.VpcEndpointType)),
+			"vpc":               llx.StringDataPtr(endpoint.VpcId),
+			"createdAt":         llx.TimeDataPtr(endpoint.CreationTimestamp),
+			"dnsEntries":        llx.ArrayData(dnsEntries, types.Any),
+			"tags":              llx.MapData(toInterfaceMap(ec2TagsToMap(endpoint.Tags)), types.String),
+			"ipAddressType":     llx.StringData(string(endpoint.IpAddressType)),
+			"ownerId":           llx.StringDataPtr(endpoint.OwnerId),
+			"requesterManaged":  llx.BoolDataPtr(endpoint.RequesterManaged),
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	ep := mqlEndpoint.(*mqlAwsVpcEndpoint)
+	ep.region = region
+	ep.accountID = accountID
+	ep.cacheEndpointId = convert.ToValue(endpoint.VpcEndpointId)
+	// Cached separately from the deprecated subnets field so subnetRefs
+	// does not depend on a field that is due for removal.
+	ep.cacheSubnetIds = endpoint.SubnetIds
+
+	sgArns := make([]string, len(endpoint.Groups))
+	for i, sg := range endpoint.Groups {
+		sgArns[i] = fmt.Sprintf(securityGroupArnPattern, region, accountID, convert.ToValue(sg.GroupId))
+	}
+	ep.setSecurityGroupArns(sgArns)
+	ep.cacheRouteTableIds = endpoint.RouteTableIds
+	ep.cacheNetworkInterfaceIds = endpoint.NetworkInterfaceIds
+	return ep, nil
+}
+
+// vpcEndpointsByIds resolves VPC endpoint ids in one region with a single
+// DescribeVpcEndpoints call. Ids that no longer exist, or that belong to
+// another account, are left out rather than failing the lookup.
+func vpcEndpointsByIds(runtime *plugin.Runtime, region string, ids []string) ([]any, error) {
+	res := []any{}
+	want := []string{}
+	for _, id := range ids {
+		if id != "" {
+			want = append(want, id)
+		}
+	}
+	if len(want) == 0 {
+		return res, nil
+	}
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.Ec2(region)
+	ctx := context.Background()
+	for _, id := range want {
+		// One id per call: an unknown id fails the whole request with
+		// InvalidVpcEndpointId.NotFound, which would hide the ids that exist.
+		resp, err := svc.DescribeVpcEndpoints(ctx, &ec2.DescribeVpcEndpointsInput{VpcEndpointIds: []string{id}})
+		if err != nil {
+			if isVpcEndpointNotFoundError(err) {
+				log.Debug().Str("vpcEndpoint", id).Str("region", region).Msg("vpc endpoint not found, skipping it")
+				continue
+			}
+			return nil, err
+		}
+		for _, endpoint := range resp.VpcEndpoints {
+			ep, err := newMqlAwsVpcEndpoint(runtime, region, conn.AccountId(), endpoint)
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, ep)
+		}
+	}
+	return res, nil
 }
 
 func (a *mqlAwsVpcServiceEndpoint) id() (string, error) {
@@ -1677,6 +1721,13 @@ func describeVpcInRegions(runtime *plugin.Runtime, vpcId string) (*mqlAwsVpc, er
 		}
 	}
 	return nil, nil
+}
+
+// isVpcEndpointNotFoundError reports whether DescribeVpcEndpoints rejected an
+// endpoint ID because the region has no such endpoint visible to this account.
+func isVpcEndpointNotFoundError(err error) bool {
+	var apiErr smithy.APIError
+	return errors.As(err, &apiErr) && strings.HasPrefix(apiErr.ErrorCode(), "InvalidVpcEndpointId.")
 }
 
 // isVpcNotFoundError reports whether DescribeVpcs rejected a VPC ID because
