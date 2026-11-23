@@ -4,10 +4,13 @@
 package resources
 
 import (
+	"bytes"
 	"context"
 	"testing"
 
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -15,8 +18,14 @@ import (
 // iterateEach hands over every item of every page, following
 // @odata.nextLink. A null element makes the SDK panic converting its page, so
 // that page is lost, but the walk ends with the earlier pages' items kept
-// rather than crashing the scan.
+// rather than crashing the scan. The warning names the collection that was
+// cut short and how far the walk got.
 func TestIterateEachPages(t *testing.T) {
+	var logged bytes.Buffer
+	prev := log.Logger
+	log.Logger = zerolog.New(&logged)
+	t.Cleanup(func() { log.Logger = prev })
+
 	f := newFakeGraph(t, map[string]fakeRoute{
 		"/reports/authenticationMethods/userRegistrationDetails": {status: 200, body: `{
 			"@odata.nextLink": "{{base}}/reports/authenticationMethods/userRegistrationDetails/page2",
@@ -41,6 +50,10 @@ func TestIterateEachPages(t *testing.T) {
 		})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"u1", "u2", "u3"}, ids)
+
+	assert.Contains(t, logged.String(), `"collection":"UserRegistrationDetailsCollectionResponse"`)
+	assert.Contains(t, logged.String(), `"collected":3`)
+	assert.Contains(t, logged.String(), "interface conversion", "the panic is logged as text, not as an empty object")
 }
 
 // The registration report is held for the whole scan as
