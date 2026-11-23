@@ -9998,9 +9998,11 @@ private oci.redis.user @defaults("name authenticationType status") {
   authenticationType string
   // Access control list in Redis ACL syntax, limiting the commands, keys and channels the user may use
   //
-  // For example `~* +@all` grants every command on every key. Rules that
-  // carry a password or a password hash (`>`, `<`, `#`, `!`) keep their
-  // prefix with the value masked as `***`.
+  // For example `~* +@all` grants every command on every key. A rule that
+  // carries a password or a password hash (`>`, `<`, `#`, `!`) keeps its
+  // prefix followed by `***`, and everything after it is masked: to the end
+  // of the ACL, or to the closing parenthesis of the selector it sits in.
+  // Before that, any token that is not a known rule is masked as `***`.
   aclString() string
   // Whether the user is switched on (ON or OFF)
   status string

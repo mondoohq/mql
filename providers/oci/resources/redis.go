@@ -408,21 +408,108 @@ func (o *mqlOciRedisUser) aclString() (string, error) {
 	return ociRedactRedisACL(stringValue(u.AclString)), nil
 }
 
-// ociRedactRedisACL masks the password rules of a Redis ACL. The ACL syntax
-// lets a rule carry a credential inline: `>password` and `<password` add and
-// remove a plaintext password, `#hash` and `!hash` a SHA-256 hash of one.
-// Nothing in the OCI Cache API documents that such rules are rejected or
-// redacted in aclString, so each one is kept with its prefix, which still
-// says that a password rule is present, and its value replaced. Every other
-// rule is returned as written. Rules are separated by whitespace, which is
-// how Redis tokenizes them.
-func ociRedactRedisACL(acl string) string {
-	rules := strings.Fields(acl)
-	for i, rule := range rules {
-		switch rule[0] {
-		case '>', '<', '#', '!':
-			rules[i] = rule[:1] + "***"
+// ociRedisACLKeywords are the Redis ACL rules that are a bare keyword and
+// carry no value.
+var ociRedisACLKeywords = map[string]bool{
+	"on": true, "off": true, "nopass": true, "resetpass": true, "reset": true,
+	"resetkeys": true, "resetchannels": true, "allkeys": true, "allchannels": true,
+	"allcommands": true, "nocommands": true, "sanitize-payload": true,
+	"skip-sanitize-payload": true, "clearselectors": true,
+}
+
+// ociRedisACLRuleKnown reports whether a token is a Redis ACL rule that
+// carries no credential: a keyword, a key pattern (`~`, or `%R~`, `%W~`,
+// `%RW~` with permissions), a channel pattern (`&`), or a command or
+// category rule (`+`, `-`). Selector parentheses are stripped first, so the
+// rules inside `(~key* +get)` are judged one by one.
+func ociRedisACLRuleKnown(token string) bool {
+	core := strings.TrimSuffix(strings.TrimPrefix(token, "("), ")")
+	if core == "" {
+		return token != ""
+	}
+	if ociRedisACLKeywords[strings.ToLower(core)] {
+		return true
+	}
+	switch core[0] {
+	case '~', '&', '+', '-':
+		return true
+	}
+	for _, p := range []string{"%R~", "%W~", "%RW~"} {
+		if strings.HasPrefix(core, p) {
+			return true
 		}
 	}
-	return strings.Join(rules, " ")
+	return false
+}
+
+// ociRedisACLIsCredential reports whether a token is a password or password
+// hash rule, with or without the opening parenthesis of a selector.
+func ociRedisACLIsCredential(token string) bool {
+	core := strings.TrimPrefix(token, "(")
+	return core != "" && strings.ContainsRune("><#!", rune(core[0]))
+}
+
+// ociRedactRedisACL masks the credentials in a Redis ACL and fails closed.
+//
+// The ACL syntax lets a rule carry a credential inline: `>password` and
+// `<password` add and remove a plaintext password, `#hash` and `!hash` a
+// SHA-256 hash of one. Nothing in the OCI Cache API documents that such rules
+// are rejected or redacted in aclString. A password sent as a single argument
+// may contain spaces and may itself look like a rule, so nothing after a
+// credential can be trusted to be one. The first credential is kept as its
+// prefix followed by `***` and everything after it is dropped; inside a
+// `(...)` selector the mask ends at the selector's closing parenthesis, which
+// is kept. Before the first credential, a token is kept only when it is a rule
+// known to carry no credential; any other token becomes `***`.
+func ociRedactRedisACL(acl string) string {
+	out := []string{}
+	tokens := strings.Fields(acl)
+	inSelector := false
+	for i := 0; i < len(tokens); i++ {
+		token := tokens[i]
+		opens := strings.HasPrefix(token, "(")
+		if opens {
+			inSelector = true
+		}
+
+		if ociRedisACLIsCredential(token) {
+			prefix := ""
+			if opens {
+				prefix = "("
+			}
+			masked := prefix + strings.TrimPrefix(token, "(")[:1] + "***"
+			if !inSelector {
+				out = append(out, masked)
+				break
+			}
+			// Mask through the token that closes the selector, then keep its
+			// closing parenthesis. An unclosed selector masks to the end.
+			closed := false
+			for ; i < len(tokens); i++ {
+				if strings.HasSuffix(tokens[i], ")") {
+					closed = true
+					break
+				}
+			}
+			if closed {
+				masked += ")"
+			}
+			out = append(out, masked)
+			inSelector = false
+			if !closed {
+				break
+			}
+			continue
+		}
+
+		if strings.HasSuffix(token, ")") {
+			inSelector = false
+		}
+		if ociRedisACLRuleKnown(token) {
+			out = append(out, token)
+		} else {
+			out = append(out, "***")
+		}
+	}
+	return strings.Join(out, " ")
 }
