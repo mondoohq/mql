@@ -368,8 +368,11 @@ func TestFetchUserSignInActivityListsLargeFetches(t *testing.T) {
 	var page1, page2 []string
 	for i, id := range ids {
 		row := `{"id": "` + id + `", "signInActivity": {"lastSignInDateTime": "2026-11-01T10:00:00Z"}}`
-		if i == 1 {
-			row = `{"id": "` + id + `"}` // never signed in
+		switch i {
+		case 1: // never signed in
+			row = `{"id": "` + id + `"}`
+		case 2: // never signed in, as the listing of a live tenant returns it
+			row = `{"id": "` + id + `", "signInActivity": {"lastSignInDateTime": null, "lastNonInteractiveSignInDateTime": null}}`
 		}
 		if i < 10 {
 			page1 = append(page1, row)
@@ -396,6 +399,8 @@ func TestFetchUserSignInActivityListsLargeFetches(t *testing.T) {
 	assert.Equal(t, "2026-11-01T10:00:00Z", first["lastSignInDateTime"])
 	assert.Contains(t, got, ids[1], "a user without sign-in activity is loaded")
 	assert.Nil(t, got[ids[1]], "and has none")
+	assert.Contains(t, got, ids[2])
+	assert.Nil(t, got[ids[2]], "an empty signInActivity reads as none, as a read by id does")
 	last, ok := got[ids[len(ids)-1]].(map[string]any)
 	require.True(t, ok, "the second page is followed")
 	assert.Equal(t, "2026-11-01T10:00:00Z", last["lastSignInDateTime"])

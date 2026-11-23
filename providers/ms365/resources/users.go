@@ -897,7 +897,7 @@ func listUserSignInActivity(ctx context.Context, graphClient *msgraphsdkgo.Graph
 			if _, ok := wanted[id]; !ok {
 				return nil
 			}
-			dict, err := convert.JsonToDict(newSignInActivity(u.GetSignInActivity()))
+			dict, err := userSignInActivityDict(u)
 			if err != nil {
 				return err
 			}
@@ -908,6 +908,17 @@ func listUserSignInActivity(ctx context.Context, graphClient *msgraphsdkgo.Graph
 		return nil, transformError(err)
 	}
 	return data, nil
+}
+
+// userSignInActivityDict converts a user's signInActivity, nil for a user
+// that never signed in. The user listing returns an empty signInActivity for
+// such a user where a read by id returns none; both read as nil.
+func userSignInActivityDict(u *models.User) (any, error) {
+	activity := newSignInActivity(u.GetSignInActivity())
+	if activity == nil || *activity == (SignInActivity{}) {
+		return nil, nil
+	}
+	return convert.JsonToDict(activity)
 }
 
 // batchUserSignInActivity reads the signInActivity of the given users with a
@@ -924,7 +935,7 @@ func batchUserSignInActivity(ctx context.Context, graphClient *msgraphsdkgo.Grap
 	data := make(map[string]any, len(ids))
 	errs, _, err := batchEach(ctx, graphClient.GetAdapter(), ids, build, models.CreateUserFromDiscriminatorValue,
 		func(id string, u *models.User) error {
-			dict, err := convert.JsonToDict(newSignInActivity(u.GetSignInActivity()))
+			dict, err := userSignInActivityDict(u)
 			if err != nil {
 				return err
 			}
