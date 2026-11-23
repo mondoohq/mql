@@ -138,12 +138,14 @@ ensure the credentials cannot be used in the future.
 // logoutSession revokes an interactive login session on the server (best
 // effort) and removes its credential from the config.
 func logoutSession(opts *config.Config, insecure bool) error {
-	mrn := opts.ServiceAccountMrn
-
-	issuer := opts.Authentication.Issuer
-	if issuer == "" {
-		issuer = opts.UpstreamApiEndpoint()
+	// The session is the user's own: name them, not a client.
+	who := opts.Authentication.UserEmail
+	if who == "" {
+		who = opts.ServiceAccountMrn
 	}
+
+	// Revocation goes to the login server the session came from.
+	issuer := sessionIssuer(opts)
 	httpClient, err := opts.GetHttpClient()
 	if err != nil {
 		log.Warn().Err(err).Msg("could not create http client, the session is only removed locally")
@@ -151,12 +153,12 @@ func logoutSession(opts *config.Config, insecure bool) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		// The revocation endpoint must use https, or http to a loopback
 		// server, unless --insecure is set.
-		err = revokeSession(insecure)(ctx, httpClient, issuer, opts.Authentication.AccessToken, opts.PrivateKey)
+		err = revokeSession(insecure)(ctx, httpClient, issuer, opts.Token)
 		cancel()
 		if err != nil {
 			log.Warn().Err(err).Msg("could not revoke the session on the server, it expires on its own")
 		} else {
-			log.Debug().Str("mrn", mrn).Msg("session revoked")
+			log.Debug().Str("user", who).Msg("session revoked")
 		}
 	}
 
@@ -174,6 +176,6 @@ func logoutSession(opts *config.Config, insecure bool) error {
 		}
 	}
 
-	log.Info().Msgf("Logged out. Session %s removed", mrn)
+	log.Info().Msgf("Logged out. The login session of %s is removed", who)
 	return nil
 }

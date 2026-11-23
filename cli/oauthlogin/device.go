@@ -6,7 +6,6 @@ package oauthlogin
 import (
 	"bufio"
 	"context"
-	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"io"
@@ -17,13 +16,9 @@ import (
 	"golang.org/x/term"
 )
 
-// proofSafetyMargin stops polling a little before the proof expires, so the
-// last request is not rejected for an expired proof.
-const proofSafetyMargin = 10 * time.Second
-
 // deviceFlow runs the RFC 8628 device authorization grant. offerBrowser shows
 // the "press Enter to open the browser" prompt on an interactive terminal.
-func deviceFlow(ctx context.Context, o *Options, cfg *oauth2.Config, key *ecdsa.PrivateKey, params []oauth2.AuthCodeOption, offerBrowser bool) (*oauth2.Token, error) {
+func deviceFlow(ctx context.Context, o *Options, cfg *oauth2.Config, params []oauth2.AuthCodeOption, offerBrowser bool) (*oauth2.Token, error) {
 	da, err := cfg.DeviceAuth(ctx, params...)
 	if err != nil {
 		return nil, tokenError(err)
@@ -52,13 +47,11 @@ func deviceFlow(ctx context.Context, o *Options, cfg *oauth2.Config, key *ecdsa.
 		pr.Println("Open %s in a browser and enter the code.", da.VerificationURI)
 	}
 
-	// One proof covers the whole poll window, so it must not outlive the
-	// server's limit; polling stops before it expires.
-	issuedAt := time.Now()
-	lifetime, pollDeadline := deviceProofWindow(issuedAt, da.Expiry)
-	proof, err := NewKeyProof(key, cfg.Endpoint.TokenURL, da.DeviceCode, issuedAt, lifetime)
-	if err != nil {
-		return nil, err
+	// Polling runs until the device code expires. A server that names no
+	// expiry gets maxDevicePoll.
+	pollDeadline := da.Expiry
+	if pollDeadline.IsZero() {
+		pollDeadline = time.Now().Add(maxDevicePoll)
 	}
 	pollCtx, cancel := context.WithDeadline(ctx, pollDeadline)
 	defer cancel()
@@ -76,7 +69,7 @@ func deviceFlow(ctx context.Context, o *Options, cfg *oauth2.Config, key *ecdsa.
 	if promptEnter {
 		go waitForEnter(o.In, func() { openVerificationURI(pr, o.OpenBrowser, da.VerificationURI) })
 	}
-	tok, err := cfg.DeviceAccessToken(pollCtx, da, oauth2.SetAuthURLParam("mondoo_key_proof", proof))
+	tok, err := cfg.DeviceAccessToken(pollCtx, da)
 	stop()
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
@@ -87,21 +80,9 @@ func deviceFlow(ctx context.Context, o *Options, cfg *oauth2.Config, key *ecdsa.
 	return tok, nil
 }
 
-// deviceProofWindow returns the key proof lifetime and the poll deadline for a
-// device code issued at now that expires at expiry (zero: unknown). Polling
-// runs until the device code expires, and the proof stays valid
-// proofSafetyMargin past the last poll. Both are bounded by
-// MaxKeyProofLifetime: the poll deadline is then the proof expiry minus
-// proofSafetyMargin.
-func deviceProofWindow(now, expiry time.Time) (time.Duration, time.Time) {
-	lifetime := MaxKeyProofLifetime
-	if !expiry.IsZero() {
-		if remaining := expiry.Sub(now) + proofSafetyMargin; remaining < lifetime {
-			lifetime = max(remaining, proofSafetyMargin)
-		}
-	}
-	return lifetime, now.Add(lifetime - proofSafetyMargin)
-}
+// maxDevicePoll bounds polling when the server names no expiry for the
+// device code.
+const maxDevicePoll = 15 * time.Minute
 
 // openVerificationURI opens uri in the browser after the user pressed Enter.
 func openVerificationURI(pr *progress, openBrowser func(string) error, uri string) {

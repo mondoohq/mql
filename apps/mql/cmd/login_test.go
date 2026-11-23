@@ -69,7 +69,7 @@ func TestLoginCmd_AllFlags(t *testing.T) {
 		{"timer", "", "0", "int"},
 		{"splay", "", "0", "int"},
 		{"no-browser", "", "false", "bool"},
-		{"space", "", "", "string"},
+		{"scope", "", "", "string"},
 		{"insecure", "", "false", "bool"},
 		{"force", "", "false", "bool"},
 	}

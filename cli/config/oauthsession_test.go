@@ -4,11 +4,6 @@
 package config_test
 
 import (
-	"crypto/rand"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/pem"
-	"math/big"
 	"path/filepath"
 	"testing"
 	"time"
@@ -22,35 +17,24 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/upstream"
 )
 
-func sessionResult(t *testing.T, notAfter time.Time) *oauthlogin.Result {
-	t.Helper()
-	key, err := oauthlogin.GenerateKey()
-	require.NoError(t, err)
-	caKey, err := oauthlogin.GenerateKey()
-	require.NoError(t, err)
-	tmpl := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: "session"},
-		NotBefore:    notAfter.Add(-time.Hour),
-		NotAfter:     notAfter,
-	}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, caKey)
-	require.NoError(t, err)
-	keyPEM, err := oauthlogin.EncodePrivateKeyPEM(key)
-	require.NoError(t, err)
+const (
+	sessionUser  = "//captain.api.mondoo.app/users/jane"
+	sessionSpace = "//captain.api.mondoo.app/spaces/s1"
+)
 
+// sessionResult is a completed login for a space that ends at validUntil.
+func sessionResult(validUntil time.Time) *oauthlogin.Result {
 	return &oauthlogin.Result{
-		ServiceAccount: oauthlogin.ServiceAccount{
-			Mrn:         "//agents.api.mondoo.app/spaces/s1/serviceaccounts/session1",
-			SpaceMrn:    "//captain.api.mondoo.app/spaces/s1",
-			ScopeMrn:    "//captain.api.mondoo.app/spaces/s1",
-			Certificate: string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})),
+		Credential: oauthlogin.Credential{
+			Mrn:         sessionUser,
+			SpaceMrn:    sessionSpace,
+			ScopeMrn:    sessionSpace,
+			Token:       "the-login-token",
 			ApiEndpoint: "https://api.example.com",
 		},
-		PrivateKeyPEM: keyPEM,
-		Issuer:        "https://api.example.com",
-		AccessToken:   "opaque-session-id",
-		ValidUntil:    notAfter,
+		Endpoint:   "https://api.example.com",
+		Issuer:     "https://login.example.com",
+		ValidUntil: validUntil,
 	}
 }
 
@@ -76,41 +60,71 @@ func writeAndLoad(t *testing.T, res *oauthlogin.Result) *subject.Config {
 	return &cfg
 }
 
-func TestOAuthSessionConfig_LoadsAsServiceAccount(t *testing.T) {
-	res := sessionResult(t, time.Now().Add(time.Hour))
+// A stored login session loads as a credential the existing client code
+// accepts: the user's MRN and a token that is sent as a bearer token. It holds
+// no key and no certificate, and is not a registered client.
+func TestOAuthSessionConfig_LoadsAsBearerToken(t *testing.T) {
+	res := sessionResult(time.Now().Add(time.Hour))
 	cfg := writeAndLoad(t, res)
 
 	assert.True(t, cfg.IsOAuthSession())
 	assert.True(t, cfg.HasCredentials())
 	assert.Empty(t, cfg.AgentMrn, "a session is not a registered client")
-	assert.Equal(t, res.Issuer, cfg.Authentication.Issuer)
-	assert.Equal(t, res.AccessToken, cfg.Authentication.AccessToken)
+	assert.Empty(t, cfg.PrivateKey)
+	assert.Empty(t, cfg.Certificate)
+	assert.Equal(t, "https://login.example.com", cfg.Authentication.Issuer, "where the session is revoked")
+	assert.Equal(t, "https://api.example.com", cfg.Authentication.Endpoint, "the server the session is for")
 
 	cred := cfg.GetServiceCredential()
 	require.NotNil(t, cred)
-	assert.Equal(t, res.ServiceAccount.Mrn, cred.Mrn)
-	assert.Equal(t, res.ServiceAccount.ScopeMrn, cred.ScopeMrn)
+	assert.Equal(t, sessionUser, cred.Mrn)
+	assert.Equal(t, sessionSpace, cred.ScopeMrn)
 	assert.Equal(t, "https://api.example.com", cred.ApiEndpoint)
-	assert.Equal(t, res.PrivateKeyPEM, cred.PrivateKey)
+	assert.Equal(t, "the-login-token", cred.Token)
+	assert.Empty(t, cred.PrivateKey)
 
-	// the existing certificate authentication accepts the stored key
+	// the existing client authentication takes the token
 	plugin, err := upstream.NewServiceAccountRangerPlugin(cred)
 	require.NoError(t, err)
 	assert.NotNil(t, plugin)
 
-	notAfter, ok := cfg.SessionExpiry()
+	validUntil, ok := cfg.SessionExpiry()
 	require.True(t, ok)
-	assert.WithinDuration(t, res.ValidUntil, notAfter, time.Second)
+	assert.WithinDuration(t, res.ValidUntil, validUntil, time.Second)
 }
 
 func TestOAuthSessionConfig_Expired(t *testing.T) {
-	cfg := writeAndLoad(t, sessionResult(t, time.Now().Add(-time.Minute)))
-	notAfter, ok := cfg.SessionExpiry()
+	cfg := writeAndLoad(t, sessionResult(time.Now().Add(-time.Minute)))
+	validUntil, ok := cfg.SessionExpiry()
 	require.True(t, ok)
-	assert.True(t, notAfter.Before(time.Now()))
+	assert.True(t, validUntil.Before(time.Now()))
 	// still returned, so the caller's request fails with the server's error
 	// after the expiry hint
 	assert.NotNil(t, cfg.GetServiceCredential())
+}
+
+// A session whose end the server did not name has no known expiry.
+func TestOAuthSessionConfig_NoExpiryRecorded(t *testing.T) {
+	cfg := writeAndLoad(t, sessionResult(time.Time{}))
+	_, ok := cfg.SessionExpiry()
+	assert.False(t, ok)
+	assert.NotNil(t, cfg.GetServiceCredential())
+}
+
+// A login to an organization stores the organization as its scope and no
+// space.
+func TestOAuthSessionConfig_ForAnOrganization(t *testing.T) {
+	const org = "//captain.api.mondoo.app/organizations/acme"
+	res := sessionResult(time.Now().Add(time.Hour))
+	res.Credential.SpaceMrn = ""
+	res.Credential.ScopeMrn = org
+	res.Scope = oauthlogin.LoginScope{Mrn: org, Name: "acme", Kind: oauthlogin.ScopeKindOrganization, OrgName: "acme"}
+	cfg := writeAndLoad(t, res)
+
+	assert.Equal(t, org, cfg.GetScopeMrn())
+	assert.Equal(t, org, cfg.GetServiceCredential().ScopeMrn)
+	assert.Equal(t, oauthlogin.ScopeKindOrganization, cfg.Authentication.ScopeKind)
+	assert.Equal(t, "acme", cfg.Authentication.ScopeName)
 }
 
 func TestHasCredentials(t *testing.T) {
@@ -124,15 +138,16 @@ func TestHasCredentials(t *testing.T) {
 }
 
 func TestOAuthSessionConfig_StoresNames(t *testing.T) {
-	res := sessionResult(t, time.Now().Add(time.Hour))
-	res.User = oauthlogin.User{Mrn: "//captain.api.mondoo.app/users/jane", Email: "jane@example.com", Name: "Jane"}
-	res.Space = oauthlogin.Space{Name: "prod", OrgName: "acme"}
+	res := sessionResult(time.Now().Add(time.Hour))
+	res.User = oauthlogin.User{Mrn: sessionUser, Email: "jane@example.com", Name: "Jane"}
+	res.Scope = oauthlogin.LoginScope{Name: "prod", Kind: "space", OrgName: "acme"}
 	cfg := writeAndLoad(t, res)
 
 	require.NotNil(t, cfg.Authentication)
 	assert.Equal(t, "jane@example.com", cfg.Authentication.UserEmail)
 	assert.Equal(t, "Jane", cfg.Authentication.UserName)
-	assert.Equal(t, "//captain.api.mondoo.app/users/jane", cfg.Authentication.UserMrn)
-	assert.Equal(t, "prod", cfg.Authentication.SpaceName)
+	assert.Equal(t, sessionUser, cfg.Authentication.UserMrn)
+	assert.Equal(t, "prod", cfg.Authentication.ScopeName)
+	assert.Equal(t, "space", cfg.Authentication.ScopeKind)
 	assert.Equal(t, "acme", cfg.Authentication.OrgName)
 }

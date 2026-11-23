@@ -62,7 +62,7 @@ func init() {
 	LoginCmd.Flags().Int("timer", 0, "Set the scan interval in minutes")
 	LoginCmd.Flags().Int("splay", 0, "Randomize the timer by up to this many minutes")
 	LoginCmd.Flags().Bool("no-browser", false, "Do not open a browser on this machine; log in with a one-time code instead")
-	LoginCmd.Flags().String("space", "", "Preselect this space MRN on the approval page")
+	LoginCmd.Flags().String("scope", "", "Preselect this space or organization MRN on the approval page")
 	LoginCmd.Flags().Bool("insecure", false, "Allow browser login over unencrypted http to a non-loopback server")
 	LoginCmd.Flags().Bool("force", false, "Log in again even if a valid login session exists")
 }
@@ -70,7 +70,7 @@ func init() {
 // oauthLoginFlags are the options of the interactive (browser or device) login.
 type oauthLoginFlags struct {
 	noBrowser  bool
-	spaceMrn   string
+	scopeMrn   string
 	insecure   bool
 	force      bool // log in again even if the config holds a valid session
 	binaryName string
@@ -87,9 +87,9 @@ var LoginCmd = &cobra.Command{
 Log in to Mondoo Platform.
 
 Without arguments, login opens your browser and asks you to approve the login
-and pick a space. The result is a short-lived credential for this machine; run
-login again when it expires. While the credential is valid, login only
-confirms it; use '--force' to log in again. If the browser does not open or
+and pick a space or an organization. You are then logged in as yourself for a
+limited time; run login again when the login ends. While it is valid, login
+only confirms it; use '--force' to log in again. If the browser does not open or
 runs on another machine, open the URL login shows in any browser and paste the
 code it displays. On a machine without a browser (for example over SSH), or
 with '--no-browser', login prints a one-time code to enter at a URL on any
@@ -119,7 +119,7 @@ until you explicitly log out using the 'logout' subcommand.
 		apiEndpointOverride, _ := cmd.Flags().GetString("api-endpoint")
 		var oauthFlags oauthLoginFlags
 		oauthFlags.noBrowser, _ = cmd.Flags().GetBool("no-browser")
-		oauthFlags.spaceMrn, _ = cmd.Flags().GetString("space")
+		oauthFlags.scopeMrn, _ = cmd.Flags().GetString("scope")
 		oauthFlags.insecure, _ = cmd.Flags().GetBool("insecure")
 		oauthFlags.force, _ = cmd.Flags().GetBool("force")
 		oauthFlags.binaryName = cmd.Root().Name()
@@ -389,8 +389,8 @@ func register(token string, annotations map[string]string, updatesURL string, ti
 		}
 	}
 
-	// StoreConfig writes a config holding a private key readable by its owner
-	// only, and refuses to write it when that cannot be ensured.
+	// StoreConfig writes a config holding a private key or a token readable
+	// by its owner only, and refuses to write it when that cannot be ensured.
 	err = config.StoreConfig()
 	if err != nil {
 		log.Error().Err(err).Msg("could not write mondoo configuration")
@@ -421,7 +421,7 @@ func register(token string, annotations map[string]string, updatesURL string, ti
 		fmt.Fprintln(os.Stderr, session.Summary(time.Now()))
 		// The new credential is saved; the replaced session is no longer
 		// needed and should not stay valid on the server.
-		revokeReplaced(context.Background(), replaced, session.AccessToken, httpClient, revokeSession(oauthFlags.insecure))
+		revokeReplaced(context.Background(), replaced, session.Credential.Token, httpClient, revokeSession(oauthFlags.insecure))
 		return nil
 	}
 	if replaced != nil {
@@ -487,7 +487,7 @@ func oauthLogin(apiEndpoint string, httpClient *http.Client, sysInfo *sysinfo.Sy
 		Endpoint:    apiEndpoint,
 		Insecure:    flags.insecure,
 		Mode:        mode,
-		SpaceMrn:    flags.spaceMrn,
+		ScopeMrn:    flags.scopeMrn,
 		DeviceName:  deviceName,
 		DeviceInfo:  fmt.Sprintf("%s %s %s/%s", binaryName, version, runtime.GOOS, runtime.GOARCH),
 		HTTPClient:  httpClient,
@@ -503,10 +503,11 @@ func oauthLogin(apiEndpoint string, httpClient *http.Client, sysInfo *sysinfo.Sy
 }
 
 // applySessionConfig stages an interactive login's credential in viper and
-// returns it. Fields that would take precedence over the new credential are
-// cleared.
+// returns it. What a registered client left in the config is removed: its
+// key and certificate must not stay next to the login's token, and its space
+// must not stand in for the login's scope.
 func applySessionConfig(res *oauthlogin.Result) *upstream.ServiceAccountCredentials {
-	stale := []string{"agent_mrn", "token", "parent_mrn"}
+	stale := []string{"agent_mrn", "parent_mrn", "space_mrn", "private_key", "certificate"}
 	for _, key := range stale {
 		if !viper.IsSet(key) {
 			continue
@@ -524,26 +525,30 @@ func applySessionConfig(res *oauthlogin.Result) *upstream.ServiceAccountCredenti
 	for key, value := range values {
 		viper.Set(key, value)
 	}
+	// The login is the user: Mrn is the user's MRN, and the token is sent as
+	// a bearer token. There is no key and no certificate.
 	return &upstream.ServiceAccountCredentials{
-		Mrn:         res.ServiceAccount.Mrn,
-		ParentMrn:   res.ServiceAccount.ScopeMrn,
-		ScopeMrn:    res.ServiceAccount.ScopeMrn,
-		PrivateKey:  res.PrivateKeyPEM,
-		Certificate: res.ServiceAccount.Certificate,
+		Mrn:         res.Credential.Mrn,
+		ParentMrn:   res.Credential.ScopeMrn,
+		ScopeMrn:    res.Credential.ScopeMrn,
+		Token:       res.Credential.Token,
 		ApiEndpoint: values["api_endpoint"].(string),
 	}
 }
 
 // applyRegistrationConfig stages a registered client's credential in viper.
-// What an interactive login session left in the config is removed: scope_mrn
-// would take precedence over the new space, and the auth block would make
-// logout revoke a session that no longer applies.
+// What an interactive login session left in the config is removed: its token
+// would be sent instead of the client's key, scope_mrn would take precedence
+// over the new space, and the auth block would make logout revoke a session
+// that no longer applies.
 func applyRegistrationConfig(agentMrn string, cred *upstream.ServiceAccountCredentials) {
-	if viper.IsSet("auth") || viper.IsSet("scope_mrn") {
-		if err := dropConfigKeys("auth", "scope_mrn"); err != nil {
+	if viper.IsSet("auth") || viper.IsSet("scope_mrn") || viper.IsSet("token") {
+		if err := dropConfigKeys("auth", "scope_mrn", "token"); err != nil {
 			log.Debug().Err(err).Msg("could not remove the login session from the config")
-			// At least keep the stale scope from overriding the new space.
+			// At least keep the stale scope and token from overriding the
+			// new client.
 			viper.Set("scope_mrn", cred.GetParentMrn())
+			viper.Set("token", "")
 		}
 	}
 	viper.Set("agent_mrn", agentMrn)

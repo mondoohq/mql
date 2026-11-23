@@ -12,17 +12,27 @@ import (
 // AuthMethod marks a config whose credential came from this login flow.
 const AuthMethod = "oauth"
 
-// ConfigValues returns the config keys to persist for this login. agent_mrn is
-// deliberately absent: a session credential is not a registered client.
+// ConfigValues returns the config keys to persist for this login.
+//
+// The token is stored under "token", the key the client already sends as a
+// bearer token. agent_mrn, private_key and certificate are deliberately
+// absent: a login is not a registered client and holds no key. "mrn" is the
+// user's MRN.
 func (r *Result) ConfigValues() map[string]any {
-	apiEndpoint := r.ServiceAccount.ApiEndpoint
+	// The API endpoint is the one the user logged in to, unless the server
+	// names another. The issuer is never used for it: the login server may
+	// be a different host than the API.
+	apiEndpoint := r.Credential.ApiEndpoint
 	if apiEndpoint == "" {
-		apiEndpoint = r.Issuer
+		apiEndpoint = r.Endpoint
 	}
 	auth := map[string]any{
-		"method":       AuthMethod,
-		"issuer":       r.Issuer,
-		"access_token": r.AccessToken,
+		"method":   AuthMethod,
+		"issuer":   r.Issuer,
+		"endpoint": r.Endpoint,
+	}
+	if !r.ValidUntil.IsZero() {
+		auth["valid_until"] = r.ValidUntil.UTC().Format(time.RFC3339)
 	}
 	// Names shown when login finds this session still valid. Absent ones are
 	// left out, and the confirmation falls back to MRNs.
@@ -30,19 +40,18 @@ func (r *Result) ConfigValues() map[string]any {
 		"user_email": r.User.Email,
 		"user_name":  r.User.Name,
 		"user_mrn":   r.User.Mrn,
-		"space_name": r.Space.Name,
-		"org_name":   r.Space.OrgName,
+		"scope_name": r.Scope.Name,
+		"scope_kind": r.Scope.Kind,
+		"org_name":   r.Scope.OrgName,
 	} {
 		if value != "" {
 			auth[key] = value
 		}
 	}
 	return map[string]any{
-		"mrn":          r.ServiceAccount.Mrn,
-		"space_mrn":    r.ServiceAccount.SpaceMrn,
-		"scope_mrn":    r.ServiceAccount.ScopeMrn,
-		"certificate":  r.ServiceAccount.Certificate,
-		"private_key":  r.PrivateKeyPEM,
+		"mrn":          r.Credential.Mrn,
+		"scope_mrn":    r.Credential.ScopeMrn,
+		"token":        r.Credential.Token,
 		"api_endpoint": apiEndpoint,
 		"auth":         auth,
 	}
@@ -54,9 +63,10 @@ func (r *Result) Info() SessionInfo {
 		UserEmail:  r.User.Email,
 		UserName:   r.User.Name,
 		UserMrn:    r.User.Mrn,
-		SpaceName:  r.Space.Name,
-		OrgName:    r.Space.OrgName,
-		SpaceMrn:   r.ServiceAccount.SpaceMrn,
+		ScopeName:  r.Scope.Name,
+		ScopeKind:  r.Scope.Kind,
+		OrgName:    r.Scope.OrgName,
+		ScopeMrn:   r.Credential.ScopeMrn,
 		ValidUntil: r.ValidUntil,
 	}
 }
@@ -69,21 +79,26 @@ func (r *Result) Summary(now time.Time) string {
 // SessionInfo describes a login session for the confirmation line. Names
 // that are not known fall back to MRNs.
 type SessionInfo struct {
-	UserEmail  string
-	UserName   string
-	UserMrn    string
-	SpaceName  string
+	UserEmail string
+	UserName  string
+	UserMrn   string
+	// ScopeName, ScopeKind and ScopeMrn describe what the login is for: a
+	// space or an organization.
+	ScopeName string
+	ScopeKind string
+	ScopeMrn  string
+	// OrgName is the space's organization, or the organization itself.
 	OrgName    string
-	SpaceMrn   string
 	ValidUntil time.Time
 }
 
 // Summary formats the session as one line that starts with headline, for
 // example "✓ Logged in as jane@example.com · space acme/prod · valid until
-// 2026-10-06 13:00 CEST (1h)".
+// 2026-10-06 13:00 CEST (1h)". A login to an organization reads
+// "organization acme".
 func (s SessionInfo) Summary(headline string, now time.Time) string {
 	// The names come from the server.
-	for _, f := range []*string{&s.UserEmail, &s.UserName, &s.UserMrn, &s.SpaceName, &s.OrgName, &s.SpaceMrn} {
+	for _, f := range []*string{&s.UserEmail, &s.UserName, &s.UserMrn, &s.ScopeName, &s.OrgName, &s.ScopeMrn} {
 		*f = DisplayText(*f)
 	}
 	who := s.UserEmail
@@ -98,15 +113,18 @@ func (s SessionInfo) Summary(headline string, now time.Time) string {
 		parts[0] += " as " + who
 	}
 
-	space := s.SpaceName
-	if space == "" {
-		space = s.SpaceMrn
+	kind := "space"
+	scope := s.ScopeName
+	if s.ScopeKind == ScopeKindOrganization {
+		kind = "organization"
+	} else if s.OrgName != "" && s.ScopeName != "" {
+		scope = s.OrgName + "/" + s.ScopeName
 	}
-	if s.OrgName != "" && s.SpaceName != "" {
-		space = s.OrgName + "/" + s.SpaceName
+	if scope == "" {
+		scope = s.ScopeMrn
 	}
-	if space != "" {
-		parts = append(parts, "space "+space)
+	if scope != "" {
+		parts = append(parts, kind+" "+scope)
 	}
 	if !s.ValidUntil.IsZero() {
 		parts = append(parts, fmt.Sprintf("valid until %s (%s)",

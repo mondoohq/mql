@@ -34,13 +34,13 @@ const sessionCheckTimeout = 30 * time.Second
 // so it must not hold up a login that already succeeded for long.
 const sessionRevokeTimeout = 10 * time.Second
 
-// sessionPinger verifies a session credential against the server.
+// sessionPinger verifies a login session against the server.
 type sessionPinger func(ctx context.Context, apiEndpoint string, httpClient *http.Client, cred *upstream.ServiceAccountCredentials) error
 
-// sessionRevoker revokes a session credential on the server.
-type sessionRevoker func(ctx context.Context, httpClient *http.Client, issuer, accessToken, privateKeyPEM string) error
+// sessionRevoker revokes a login session on its login server.
+type sessionRevoker func(ctx context.Context, httpClient *http.Client, issuer, token string) error
 
-// pingSession runs the authenticated PingPong with the session's certificate.
+// pingSession runs the authenticated PingPong with the session's token.
 func pingSession(ctx context.Context, apiEndpoint string, httpClient *http.Client, cred *upstream.ServiceAccountCredentials) error {
 	plugins := []ranger.ClientPlugin{}
 	plugins = append(plugins, rangerUtils.DefaultRangerPlugins(mql.DefaultFeatures, nil)...)
@@ -57,12 +57,12 @@ func pingSession(ctx context.Context, apiEndpoint string, httpClient *http.Clien
 	return err
 }
 
-// revokeSession returns a revoker for session credentials. The revocation
+// revokeSession returns a revoker for login sessions. The revocation
 // endpoint must use https, or http to a loopback server; insecure (the
 // --insecure flag) also allows http to other servers.
 func revokeSession(insecure bool) sessionRevoker {
-	return func(ctx context.Context, httpClient *http.Client, issuer, accessToken, privateKeyPEM string) error {
-		return oauthlogin.Revoke(ctx, httpClient, issuer, accessToken, privateKeyPEM, insecure)
+	return func(ctx context.Context, httpClient *http.Client, issuer, token string) error {
+		return oauthlogin.Revoke(ctx, httpClient, issuer, token, insecure)
 	}
 }
 
@@ -82,16 +82,17 @@ func existingSession(ctx context.Context, opts *config.Config, apiEndpointOverri
 		log.Debug().Msg("--force: starting a new login")
 		return false, nil
 	}
-	// --api-endpoint also replaces api_endpoint in opts, so the issuer is
-	// what still names the session's server.
-	if apiEndpointOverride != "" && !sameServer(apiEndpointOverride, opts.Authentication.Issuer) {
-		log.Debug().Str("api_endpoint", apiEndpointOverride).Str("session_issuer", opts.Authentication.Issuer).
+	// --api-endpoint also replaces api_endpoint in opts, so the endpoint
+	// recorded at login is what still names the session's server. The issuer
+	// does not: the login server may be another host than the API.
+	if apiEndpointOverride != "" && !sameServer(apiEndpointOverride, sessionEndpoint(opts)) {
+		log.Debug().Str("api_endpoint", apiEndpointOverride).Str("session_endpoint", sessionEndpoint(opts)).
 			Msg("the login session is for a different server, starting a new login")
 		return false, nil
 	}
 	notAfter, ok := opts.SessionExpiry()
 	if !ok {
-		log.Debug().Msg("the login session's certificate cannot be read, starting a new login")
+		log.Debug().Msg("the login session does not say when it ends, starting a new login")
 		return false, nil
 	}
 	if remaining := notAfter.Sub(now); remaining <= sessionMinRemaining {
@@ -124,12 +125,13 @@ func alreadyLoggedInMessage(opts *config.Config, binaryName string, now time.Tim
 	if binaryName == "" {
 		binaryName = "mql"
 	}
-	info := oauthlogin.SessionInfo{SpaceMrn: opts.GetScopeMrn()}
+	info := oauthlogin.SessionInfo{ScopeMrn: opts.GetScopeMrn()}
 	if a := opts.Authentication; a != nil {
 		info.UserEmail = a.UserEmail
 		info.UserName = a.UserName
 		info.UserMrn = a.UserMrn
-		info.SpaceName = a.SpaceName
+		info.ScopeName = a.ScopeName
+		info.ScopeKind = a.ScopeKind
 		info.OrgName = a.OrgName
 	}
 	info.ValidUntil, _ = opts.SessionExpiry()
@@ -137,42 +139,51 @@ func alreadyLoggedInMessage(opts *config.Config, binaryName string, now time.Tim
 		fmt.Sprintf("Run %q first, or %q to log in again.", binaryName+" logout", binaryName+" login --force")
 }
 
+// sessionEndpoint is the API endpoint an interactive login session was made
+// against.
+func sessionEndpoint(opts *config.Config) string {
+	if a := opts.Authentication; a != nil && a.Endpoint != "" {
+		return a.Endpoint
+	}
+	return ""
+}
+
+// sessionIssuer is the login server an interactive login session came from,
+// where it is revoked.
+func sessionIssuer(opts *config.Config) string {
+	if a := opts.Authentication; a != nil && a.Issuer != "" {
+		return a.Issuer
+	}
+	return opts.UpstreamApiEndpoint()
+}
+
 // replacedSession is an interactive login session that a new login replaces.
 type replacedSession struct {
-	issuer        string
-	accessToken   string
-	privateKeyPEM string
+	issuer string
+	token  string
 }
 
 // sessionToReplace returns the session in opts that a new login would leave
 // behind on the server, or nil when there is nothing to revoke.
 func sessionToReplace(opts *config.Config, now time.Time) *replacedSession {
-	if opts == nil || !opts.IsOAuthSession() || opts.Authentication.AccessToken == "" || opts.PrivateKey == "" {
+	if opts == nil || !opts.IsOAuthSession() || opts.Token == "" {
 		return nil
 	}
 	if notAfter, ok := opts.SessionExpiry(); ok && !now.Before(notAfter) {
 		return nil
 	}
-	issuer := opts.Authentication.Issuer
-	if issuer == "" {
-		issuer = opts.UpstreamApiEndpoint()
-	}
-	return &replacedSession{
-		issuer:        issuer,
-		accessToken:   opts.Authentication.AccessToken,
-		privateKeyPEM: opts.PrivateKey,
-	}
+	return &replacedSession{issuer: sessionIssuer(opts), token: opts.Token}
 }
 
 // revokeReplaced revokes the session a new login replaced, so it does not
 // stay valid on the server. Best effort: a failure is only logged.
-func revokeReplaced(ctx context.Context, old *replacedSession, newAccessToken string, httpClient *http.Client, revoke sessionRevoker) {
-	if old == nil || old.accessToken == newAccessToken {
+func revokeReplaced(ctx context.Context, old *replacedSession, newToken string, httpClient *http.Client, revoke sessionRevoker) {
+	if old == nil || old.token == newToken {
 		return
 	}
 	ctx, cancel := context.WithTimeout(ctx, sessionRevokeTimeout)
 	defer cancel()
-	if err := revoke(ctx, httpClient, old.issuer, old.accessToken, old.privateKeyPEM); err != nil {
+	if err := revoke(ctx, httpClient, old.issuer, old.token); err != nil {
 		log.Debug().Err(err).Msg("could not revoke the previous login session, it expires on its own")
 		return
 	}

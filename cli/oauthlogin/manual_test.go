@@ -122,7 +122,7 @@ func TestManualLogin_LoopbackWins(t *testing.T) {
 	auto := opened.Query()
 	assert.Equal(t, testManualRedirect, manual.Get("redirect_uri"))
 	assert.True(t, strings.HasPrefix(auto.Get("redirect_uri"), "http://127.0.0.1:"))
-	for _, k := range []string{"state", "code_challenge", "code_challenge_method", "mondoo_public_key", "client_id", "scope", "mondoo_space_mrn"} {
+	for _, k := range []string{"state", "code_challenge", "code_challenge_method", "client_id", "scope", "mondoo_scope_mrn"} {
 		assert.Equal(t, auto.Get(k), manual.Get(k), k)
 	}
 	assert.NotContains(t, got, "%2Fcallback", "the loopback URL is never shown")

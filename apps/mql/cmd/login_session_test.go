@@ -5,12 +5,7 @@ package cmd
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/pem"
 	"errors"
-	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -29,37 +24,29 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/upstream"
 )
 
-// sessionConfig returns a config holding an interactive login session whose
-// certificate expires at notAfter.
-func sessionConfig(t *testing.T, notAfter time.Time) *config.Config {
-	t.Helper()
-	key, err := oauthlogin.GenerateKey()
-	require.NoError(t, err)
-	tmpl := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: "session"},
-		NotBefore:    notAfter.Add(-2 * time.Hour),
-		NotAfter:     notAfter,
-	}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
-	require.NoError(t, err)
-	keyPEM, err := oauthlogin.EncodePrivateKeyPEM(key)
-	require.NoError(t, err)
+const (
+	testSessionUser  = "//captain.api.mondoo.app/users/jane"
+	testSessionSpace = "//captain.api.mondoo.app/spaces/s1"
+)
 
+// sessionConfig returns a config holding an interactive login session that
+// ends at validUntil: the user's MRN, a bearer token, and no key.
+func sessionConfig(t *testing.T, validUntil time.Time) *config.Config {
+	t.Helper()
 	return &config.Config{CommonOpts: config.CommonOpts{
-		ServiceAccountMrn: "//agents.api.mondoo.app/spaces/s1/serviceaccounts/session1",
-		SpaceMrn:          "//captain.api.mondoo.app/spaces/s1",
-		ScopeMrn:          "//captain.api.mondoo.app/spaces/s1",
-		PrivateKey:        keyPEM,
-		Certificate:       string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})),
+		ServiceAccountMrn: testSessionUser,
+		ScopeMrn:          testSessionSpace,
+		Token:             "old-session-token",
 		APIEndpoint:       "http://localhost:8989",
 		Authentication: &config.CliConfigAuthentication{
-			Method:      config.AUTH_METHOD_OAUTH,
-			Issuer:      "http://127.0.0.1:8989",
-			AccessToken: "old-session",
-			UserEmail:   "jane@example.com",
-			SpaceName:   "prod",
-			OrgName:     "acme",
+			Method:     config.AUTH_METHOD_OAUTH,
+			Issuer:     "http://127.0.0.1:8989",
+			Endpoint:   "http://127.0.0.1:8989",
+			ValidUntil: validUntil.UTC().Format(time.RFC3339),
+			UserEmail:  "jane@example.com",
+			ScopeName:  "prod",
+			ScopeKind:  "space",
+			OrgName:    "acme",
 		},
 	}}
 }
@@ -108,11 +95,11 @@ func TestAlreadyLoggedInMessage_FallsBackToMrns(t *testing.T) {
 	now := time.Now()
 	opts := sessionConfig(t, now.Add(time.Hour))
 	opts.Authentication.UserEmail = ""
-	opts.Authentication.SpaceName = ""
+	opts.Authentication.ScopeName = ""
 	opts.Authentication.OrgName = ""
 
 	msg := alreadyLoggedInMessage(opts, "", now)
-	assert.True(t, strings.HasPrefix(msg, "✓ Already logged in · space //captain.api.mondoo.app/spaces/s1 · valid until "), msg)
+	assert.True(t, strings.HasPrefix(msg, "✓ Already logged in · space "+testSessionSpace+" · valid until "), msg)
 	assert.Contains(t, msg, `"mql login --force"`)
 }
 
@@ -149,6 +136,45 @@ func TestExistingSession_NewLogin(t *testing.T) {
 	}
 }
 
+// The login server may be another host than the API. The session then still
+// belongs to its API endpoint: --api-endpoint naming that endpoint keeps it,
+// and naming the login server does not.
+func TestExistingSession_LoginServerOnAnotherHost(t *testing.T) {
+	now := time.Now()
+	opts := sessionConfig(t, now.Add(time.Hour))
+	opts.APIEndpoint = "https://us.api.mondoo.com"
+	opts.Authentication.Endpoint = "https://us.api.mondoo.com"
+	opts.Authentication.Issuer = "https://login.example.com"
+	p := &fakePing{}
+
+	keep, err := existingSession(context.Background(), opts, "https://us.api.mondoo.com", false, now, nil, p.ping)
+	require.NoError(t, err)
+	assert.True(t, keep)
+	assert.Equal(t, []string{"https://us.api.mondoo.com"}, p.endpoints, "verified against the API, not the login server")
+
+	keep, err = existingSession(context.Background(), opts, "https://login.example.com", false, now, nil, p.ping)
+	require.NoError(t, err)
+	assert.False(t, keep, "the login server is not the session's API endpoint")
+
+	// the replaced session is revoked at the login server
+	old := sessionToReplace(opts, now)
+	require.NotNil(t, old)
+	assert.Equal(t, "https://login.example.com", old.issuer)
+}
+
+// A session that does not say when it ends is not kept: there is nothing to
+// tell the user about how long it lasts.
+func TestExistingSession_NoRecordedEnd(t *testing.T) {
+	now := time.Now()
+	opts := sessionConfig(t, now.Add(time.Hour))
+	opts.Authentication.ValidUntil = ""
+	p := &fakePing{}
+	keep, err := existingSession(context.Background(), opts, "", false, now, nil, p.ping)
+	require.NoError(t, err)
+	assert.False(t, keep)
+	assert.Zero(t, p.calls)
+}
+
 func TestExistingSession_ServerUnreachable(t *testing.T) {
 	now := time.Now()
 	netErr := &url.Error{Op: "Post", URL: "http://localhost:8989", Err: &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")}}
@@ -181,18 +207,22 @@ func TestForceRevokesReplacedSession(t *testing.T) {
 	old := sessionToReplace(opts, now)
 	require.NotNil(t, old)
 
-	type revokeCall struct{ issuer, token, key string }
+	type revokeCall struct{ issuer, token string }
 	var calls []revokeCall
-	revoke := func(_ context.Context, _ *http.Client, issuer, token, key string) error {
-		calls = append(calls, revokeCall{issuer, token, key})
+	revoke := func(_ context.Context, _ *http.Client, issuer, token string) error {
+		calls = append(calls, revokeCall{issuer, token})
 		return nil
 	}
-	revokeReplaced(context.Background(), old, "new-session", nil, revoke)
+	revokeReplaced(context.Background(), old, "new-session-token", nil, revoke)
 	require.Len(t, calls, 1)
-	assert.Equal(t, revokeCall{"http://127.0.0.1:8989", "old-session", opts.PrivateKey}, calls[0])
+	assert.Equal(t, revokeCall{"http://127.0.0.1:8989", "old-session-token"}, calls[0])
+
+	// logging in again and getting the same token back revokes nothing
+	revokeReplaced(context.Background(), old, "old-session-token", nil, revoke)
+	require.Len(t, calls, 1)
 
 	// a failed revocation does not fail the login
-	revokeReplaced(context.Background(), old, "new-session", nil, func(context.Context, *http.Client, string, string, string) error {
+	revokeReplaced(context.Background(), old, "new-session-token", nil, func(context.Context, *http.Client, string, string) error {
 		return errors.New("unreachable")
 	})
 }
@@ -203,7 +233,7 @@ func TestSessionToReplace(t *testing.T) {
 	assert.Nil(t, sessionToReplace(&config.Config{}, now))
 
 	noToken := sessionConfig(t, now.Add(time.Hour))
-	noToken.Authentication.AccessToken = ""
+	noToken.Token = ""
 	assert.Nil(t, sessionToReplace(noToken, now))
 }
 
@@ -219,14 +249,13 @@ func TestSameServer(t *testing.T) {
 // Revoking a session needs https, or http to a loopback server, unless
 // --insecure is set.
 func TestRevokeSession_Transport(t *testing.T) {
-	opts := sessionConfig(t, time.Now().Add(time.Hour))
 	ctx := context.Background()
 
-	err := revokeSession(false)(ctx, http.DefaultClient, "http://mondoo.invalid", "old-session", opts.PrivateKey)
+	err := revokeSession(false)(ctx, http.DefaultClient, "http://mondoo.invalid", "old-session-token")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unencrypted http")
 
-	err = revokeSession(true)(ctx, http.DefaultClient, "http://mondoo.invalid", "old-session", opts.PrivateKey)
+	err = revokeSession(true)(ctx, http.DefaultClient, "http://mondoo.invalid", "old-session-token")
 	require.Error(t, err, "nothing answers at mondoo.invalid")
 	assert.NotContains(t, err.Error(), "unencrypted http", "--insecure allows http")
 
@@ -240,7 +269,7 @@ func TestRevokeSession_Transport(t *testing.T) {
 		_, _ = w.Write([]byte(`{"issuer":"` + srv + `","token_endpoint":"` + srv + `/oauth/token","revocation_endpoint":"` + srv + `/oauth/revoke"}`))
 	})
 	mux.HandleFunc("/oauth/revoke", func(w http.ResponseWriter, r *http.Request) { revoked = true })
-	require.NoError(t, revokeSession(false)(ctx, http.DefaultClient, srv, "old-session", opts.PrivateKey))
+	require.NoError(t, revokeSession(false)(ctx, http.DefaultClient, srv, "old-session-token"))
 	assert.True(t, revoked)
 
 	// A remote server must not list an http revocation endpoint.
@@ -251,7 +280,7 @@ func TestRevokeSession_Transport(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"issuer":"` + srv2 + `","token_endpoint":"` + srv2 + `/oauth/token","revocation_endpoint":"http://revoke.example.com/oauth/revoke"}`))
 	})
-	err = revokeSession(false)(ctx, http.DefaultClient, srv2, "old-session", opts.PrivateKey)
+	err = revokeSession(false)(ctx, http.DefaultClient, srv2, "old-session-token")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unencrypted http")
 }
@@ -265,11 +294,11 @@ func TestRegistrationRevokesReplacedSession(t *testing.T) {
 	require.NotNil(t, old)
 
 	var tokens []string
-	revokeReplaced(context.Background(), old, "", nil, func(_ context.Context, _ *http.Client, _, token, _ string) error {
+	revokeReplaced(context.Background(), old, "", nil, func(_ context.Context, _ *http.Client, _, token string) error {
 		tokens = append(tokens, token)
 		return nil
 	})
-	assert.Equal(t, []string{"old-session"}, tokens)
+	assert.Equal(t, []string{"old-session-token"}, tokens)
 }
 
 func httptestServer(t *testing.T, h http.Handler) string {

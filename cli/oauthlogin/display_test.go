@@ -93,7 +93,7 @@ func TestSummary_StripsControlCharacters(t *testing.T) {
 	now := time.Now()
 	s := SessionInfo{
 		UserEmail: "jane@example.com\x1b]0;title\x07",
-		SpaceName: "prod\r\n",
+		ScopeName: "prod\r\n",
 		OrgName:   "ac\x1b[2Jme",
 	}.Summary("✓ Logged in", now)
 	assert.Equal(t, "✓ Logged in as jane@example.com]0;title · space ac[2Jme/prod", s)

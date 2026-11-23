@@ -11,40 +11,30 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
-
-	"go.mondoo.com/ranger-rpc/plugins/rangerguard/crypto"
 )
 
-// Revoke asks the server to revoke a session credential (RFC 7009). The
-// request is proven with the credential's private key and bound to the token.
-func Revoke(ctx context.Context, client *http.Client, issuer, accessToken, privateKeyPEM string, insecure bool) error {
-	if accessToken == "" {
-		return errors.New("no session token to revoke")
+// Revoke asks the login server to end a login (RFC 7009). The client is
+// public and has no secret: holding the token is what allows revoking it.
+// issuer is the login server the token came from.
+func Revoke(ctx context.Context, client *http.Client, issuer, token string, insecure bool) error {
+	if token == "" {
+		return errors.New("no login token to revoke")
 	}
 	if client == nil {
 		client = http.DefaultClient
 	}
-	md, err := Discover(ctx, client, issuer, insecure)
+	md, err := DiscoverIssuer(ctx, client, issuer, insecure)
 	if err != nil {
 		return err
 	}
 	if md.RevocationEndpoint == "" {
 		return errors.New("the server does not support revocation")
 	}
-	key, err := crypto.PrivateKeyFromBytes([]byte(privateKeyPEM))
-	if err != nil {
-		return fmt.Errorf("could not load the session key: %w", err)
-	}
-	proof, err := NewKeyProof(key, md.RevocationEndpoint, accessToken, time.Now(), 5*time.Minute)
-	if err != nil {
-		return err
-	}
 
 	form := url.Values{
-		"token":            {accessToken},
-		"client_id":        {ClientID},
-		"mondoo_key_proof": {proof},
+		"token":           {token},
+		"token_type_hint": {"access_token"},
+		"client_id":       {ClientID},
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, md.RevocationEndpoint, strings.NewReader(form.Encode()))
 	if err != nil {

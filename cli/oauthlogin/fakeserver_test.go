@@ -5,16 +5,10 @@ package oauthlogin
 
 import (
 	"cmp"
-	"crypto/ecdsa"
-	"crypto/rand"
 	"crypto/sha256"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
-	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -22,13 +16,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 )
 
-// fakeAS is a minimal authorization server implementing the endpoints the
-// client talks to. It verifies what a real server must verify (PKCE, key
-// proof, redirect URI) and records what it saw.
+// fakeAS is a minimal login server implementing the endpoints the client
+// talks to. It verifies what a real server must verify (PKCE, redirect URI,
+// the device code) and records what it saw.
+//
+// It is also the API endpoint, as a real server is today. By default it
+// publishes no protected resource metadata, so the client takes the endpoint
+// itself as the login server. See pointer.
 type fakeAS struct {
 	t   *testing.T
 	srv *httptest.Server
@@ -41,27 +38,38 @@ type fakeAS struct {
 	manualRedirectURI string // advertised as mondoo_manual_redirect_uri when set
 	verificationURI   string // overrides verification_uri in the device authorization response
 	apiEndpoint       string // overrides api_endpoint in the token response
+	orgLogin          bool   // the user approves the login for an organization
+	noAPIEndpoint     bool   // the token response carries no api_endpoint
+	// pointer answers the protected resource metadata request. Nil answers
+	// 404.
+	pointer http.HandlerFunc
 
-	mu             sync.Mutex
-	pubKey         *ecdsa.PublicKey
-	authForm       url.Values // device authorization or authorize query
-	codeChallenge  string
-	redirectURI    string
-	issuedCode     string
-	deviceCode     string
-	tokenCalls     int
-	pollTimes      []time.Time
-	tokenForms     []url.Values
-	revokeForms    []url.Values
-	revokeStatus   int    // 0: 200
-	revokeBody     string // written with revokeStatus
-	lastProofClaim jwt.MapClaims
+	mu            sync.Mutex
+	token_        string     // the login token issued last
+	authForm      url.Values // device authorization or authorize query
+	codeChallenge string
+	redirectURI   string
+	issuedCode    string
+	deviceCode    string
+	tokenCalls    int
+	pollTimes     []time.Time
+	tokenForms    []url.Values
+	revokeForms   []url.Values
+	revokeStatus  int    // 0: 200
+	revokeBody    string // written with revokeStatus
 }
 
 func newFakeAS(t *testing.T) *fakeAS {
 	f := &fakeAS{t: t}
 	mux := http.NewServeMux()
 	mux.HandleFunc(WellKnownPath, f.metadata)
+	mux.HandleFunc(ProtectedResourcePath, func(w http.ResponseWriter, r *http.Request) {
+		if f.pointer == nil {
+			http.NotFound(w, r)
+			return
+		}
+		f.pointer(w, r)
+	})
 	mux.HandleFunc("/oauth/device_authorization", f.deviceAuthorization)
 	mux.HandleFunc("/oauth/token", f.token)
 	mux.HandleFunc("/oauth/revoke", f.revoke)
@@ -118,19 +126,10 @@ func (f *fakeAS) consoleAuthorize(authURL string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.authForm = q
-	f.setPublicKey(q.Get("mondoo_public_key"))
 	f.codeChallenge = q.Get("code_challenge")
 	f.redirectURI = q.Get("redirect_uri")
 	f.issuedCode = "code-" + randomString(16)
 	return f.issuedCode + "#" + q.Get("state"), nil
-}
-
-func (f *fakeAS) setPublicKey(enc string) {
-	der, err := base64.RawURLEncoding.DecodeString(enc)
-	require.NoError(f.t, err)
-	pub, err := x509.ParsePKIXPublicKey(der)
-	require.NoError(f.t, err)
-	f.pubKey = pub.(*ecdsa.PublicKey)
 }
 
 func (f *fakeAS) deviceAuthorization(w http.ResponseWriter, r *http.Request) {
@@ -138,7 +137,6 @@ func (f *fakeAS) deviceAuthorization(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.authForm = r.PostForm
-	f.setPublicKey(r.PostForm.Get("mondoo_public_key"))
 	f.deviceCode = "device-" + randomString(32)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"device_code":      f.deviceCode,
@@ -159,7 +157,6 @@ func (f *fakeAS) authorize(authURL string, tamper func(q url.Values)) error {
 	q := u.Query()
 	f.mu.Lock()
 	f.authForm = q
-	f.setPublicKey(q.Get("mondoo_public_key"))
 	f.codeChallenge = q.Get("code_challenge")
 	f.redirectURI = q.Get("redirect_uri")
 	f.issuedCode = "code-" + randomString(16)
@@ -178,35 +175,6 @@ func (f *fakeAS) authorize(authURL string, tamper func(q url.Values)) error {
 			resp.Body.Close()
 		}
 	}()
-	return nil
-}
-
-func (f *fakeAS) verifyProof(form url.Values, aud, bound string) error {
-	tok, err := jwt.Parse(form.Get("mondoo_key_proof"), func(t *jwt.Token) (any, error) {
-		return f.pubKey, nil
-	}, jwt.WithValidMethods([]string{"ES384"}), jwt.WithAudience(aud), jwt.WithIssuer(ClientID), jwt.WithIssuedAt())
-	if err != nil {
-		return err
-	}
-	if tok.Header["typ"] != KeyProofType {
-		return fmt.Errorf("bad typ %v", tok.Header["typ"])
-	}
-	claims := tok.Claims.(jwt.MapClaims)
-	if claims["code_hash"] != HashValue(bound) {
-		return fmt.Errorf("code_hash mismatch")
-	}
-	if claims["jti"] == "" {
-		return fmt.Errorf("missing jti")
-	}
-	iat, _ := claims.GetIssuedAt()
-	exp, _ := claims.GetExpirationTime()
-	if exp.Sub(iat.Time) > MaxKeyProofLifetime {
-		return fmt.Errorf("proof lifetime %s exceeds %s", exp.Sub(iat.Time), MaxKeyProofLifetime)
-	}
-	if _, isString := claims["aud"].(string); !isString {
-		return fmt.Errorf("aud must be a single string")
-	}
-	f.lastProofClaim = claims
 	return nil
 }
 
@@ -233,20 +201,10 @@ func (f *fakeAS) token(w http.ResponseWriter, r *http.Request) {
 			oauthError(w, "invalid_grant")
 			return
 		}
-		if err := f.verifyProof(form, f.tokenURL(), form.Get("code")); err != nil {
-			f.t.Logf("proof rejected: %v", err)
-			oauthError(w, "invalid_request")
-			return
-		}
 	case "urn:ietf:params:oauth:grant-type:device_code":
 		f.pollTimes = append(f.pollTimes, time.Now())
 		if form.Get("device_code") != f.deviceCode {
 			oauthError(w, "invalid_grant")
-			return
-		}
-		if err := f.verifyProof(form, f.tokenURL(), form.Get("device_code")); err != nil {
-			f.t.Logf("proof rejected: %v", err)
-			oauthError(w, "invalid_request")
 			return
 		}
 		if len(f.devicePollReplies) > 0 {
@@ -263,32 +221,58 @@ func (f *fakeAS) token(w http.ResponseWriter, r *http.Request) {
 	f.writeTokenResponse(w)
 }
 
+const (
+	testUserMrn  = "//captain.api.mondoo.app/users/u1"
+	testSpaceMrn = "//captain.api.mondoo.app/spaces/test-space"
+	testOrgMrn   = "//captain.api.mondoo.app/organizations/acme"
+)
+
+// writeTokenResponse answers as the real server does: a bearer token whose
+// holder is the user. A login to a space names the space twice (space_mrn and
+// scope_mrn); a login to an organization has no space_mrn.
 func (f *fakeAS) writeTokenResponse(w http.ResponseWriter) {
 	validUntil := time.Now().Add(time.Hour).Truncate(time.Second)
-	sa := map[string]any{
-		"mrn":          "//agents.api.mondoo.app/spaces/test-space/serviceaccounts/session1",
-		"space_mrn":    "//captain.api.mondoo.app/spaces/test-space",
-		"scope_mrn":    "//captain.api.mondoo.app/spaces/test-space",
-		"certificate":  issueCert(f.t, f.pubKey, validUntil),
+	f.token_ = "login-token-" + randomString(24)
+	cred := map[string]any{
+		"mrn":          testUserMrn,
+		"space_mrn":    testSpaceMrn,
+		"scope_mrn":    testSpaceMrn,
+		"token":        f.token_,
 		"api_endpoint": cmp.Or(f.apiEndpoint, f.issuer()),
 		"valid_until":  validUntil.UTC().Format(time.RFC3339),
 	}
-	raw, _ := json.Marshal(sa)
+	scope := map[string]any{"mrn": testSpaceMrn, "name": "prod", "kind": "space", "org_mrn": testOrgMrn, "org_name": "acme"}
+	if f.noAPIEndpoint {
+		delete(cred, "api_endpoint")
+	}
+	if f.orgLogin {
+		delete(cred, "space_mrn")
+		cred["scope_mrn"] = testOrgMrn
+		scope = map[string]any{"mrn": testOrgMrn, "name": "acme", "kind": ScopeKindOrganization, "org_mrn": testOrgMrn, "org_name": "acme"}
+	}
 	iss := f.issuer()
 	if f.tokenIssuer != "" {
 		iss = f.tokenIssuer
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, map[string]any{
-		"access_token":           base64.RawURLEncoding.EncodeToString(raw),
-		"token_type":             "N_A",
+		"access_token":           f.token_,
+		"token_type":             "Bearer",
 		"expires_in":             3600,
 		"scope":                  Scope,
 		"iss":                    iss,
-		"mondoo_service_account": sa,
-		"mondoo_user":            map[string]any{"mrn": "//captain.api.mondoo.app/users/u1", "email": "jane@example.com", "name": "Jane"},
-		"mondoo_space":           map[string]any{"mrn": sa["space_mrn"], "name": "prod", "org_mrn": "//captain.api.mondoo.app/organizations/acme", "org_name": "acme"},
+		"mondoo_service_account": cred,
+		"mondoo_user":            map[string]any{"mrn": testUserMrn, "email": "jane@example.com", "name": "Jane"},
+		"mondoo_scope":           scope,
 	})
+}
+
+// pointTo makes the server publish protected resource metadata that names
+// loginServer as the login server of this API endpoint.
+func (f *fakeAS) pointTo(loginServers ...string) {
+	f.pointer = func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"resource": f.issuer(), "authorization_servers": loginServers})
+	}
 }
 
 func (f *fakeAS) revoke(w http.ResponseWriter, r *http.Request) {
@@ -312,19 +296,4 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
-}
-
-// issueCert issues a certificate for pub, signed by a throwaway CA.
-func issueCert(t *testing.T, pub *ecdsa.PublicKey, notAfter time.Time) string {
-	caKey, err := GenerateKey()
-	require.NoError(t, err)
-	tmpl := &x509.Certificate{
-		SerialNumber: big.NewInt(time.Now().UnixNano()),
-		Subject:      pkix.Name{CommonName: "session"},
-		NotBefore:    time.Now().Add(-time.Minute),
-		NotAfter:     notAfter,
-	}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, pub, caKey)
-	require.NoError(t, err)
-	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
 }

@@ -5,9 +5,7 @@ package config
 
 import (
 	"bytes"
-	"crypto/x509"
 	"encoding/base64"
-	"encoding/pem"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,9 +45,10 @@ const (
 
 	AUTH_METHOD_SSH = "ssh"
 	AUTH_METHOD_WIF = "wif"
-	// AUTH_METHOD_OAUTH marks a short-lived session credential issued by an
-	// interactive login. The credential itself is used like any other service
-	// account; the marker only drives renewal, expiry hints and revocation.
+	// AUTH_METHOD_OAUTH marks the credential of an interactive login: a
+	// token that is the user who logged in, for a limited time. It is sent
+	// as a bearer token, like any other token credential. The marker drives
+	// the expiry hints, reuse and revocation of the session.
 	AUTH_METHOD_OAUTH = oauthlogin.AuthMethod
 )
 
@@ -555,17 +554,26 @@ type WIF struct {
 
 type CliConfigAuthentication struct {
 	Method string `json:"method,omitempty" mapstructure:"method"`
-	// Issuer is the authorization server of an interactive login session.
+	// Issuer is the login server of an interactive login session: where the
+	// session's token came from and where it is revoked. It is the API
+	// endpoint unless the API names another login server.
 	Issuer string `json:"issuer,omitempty" mapstructure:"issuer"`
-	// AccessToken identifies an interactive login session for revocation. It
-	// carries no secret: using it requires the session's private key.
-	AccessToken string `json:"access_token,omitempty" mapstructure:"access_token"`
-	// Names of an interactive login session's user and space, recorded at
-	// login so a later login can say who is logged in. Display only.
+	// Endpoint is the API endpoint an interactive login session was made
+	// against. It names the session's server; the issuer may be another host.
+	Endpoint string `json:"endpoint,omitempty" mapstructure:"endpoint"`
+	// ValidUntil is when an interactive login session ends (RFC 3339), as
+	// the server said at login. The session's token is the top-level
+	// "token"; it is opaque to the client and not read for this.
+	ValidUntil string `json:"valid_until,omitempty" mapstructure:"valid_until"`
+	// Names of an interactive login session's user and of what it is for (a
+	// space or an organization), recorded at login so a later login can say
+	// who is logged in. Display only.
 	UserEmail string `json:"user_email,omitempty" mapstructure:"user_email"`
 	UserName  string `json:"user_name,omitempty" mapstructure:"user_name"`
 	UserMrn   string `json:"user_mrn,omitempty" mapstructure:"user_mrn"`
-	SpaceName string `json:"space_name,omitempty" mapstructure:"space_name"`
+	ScopeName string `json:"scope_name,omitempty" mapstructure:"scope_name"`
+	// ScopeKind is "space" or "organization".
+	ScopeKind string `json:"scope_kind,omitempty" mapstructure:"scope_kind"`
 	OrgName   string `json:"org_name,omitempty" mapstructure:"org_name"`
 }
 
@@ -596,21 +604,18 @@ func (c *CommonOpts) HasCredentials() bool {
 	return c.ServiceAccountMrn != "" || c.PrivateKey != "" || c.Certificate != "" || c.Token != ""
 }
 
-// SessionExpiry returns when an interactive login session's certificate
-// expires. ok is false for other credentials or an unreadable certificate.
+// SessionExpiry returns when an interactive login session ends, as recorded
+// at login. ok is false for other credentials, and for a session whose end
+// was not recorded.
 func (c *CommonOpts) SessionExpiry() (time.Time, bool) {
-	if !c.IsOAuthSession() || c.Certificate == "" {
+	if !c.IsOAuthSession() || c.Authentication.ValidUntil == "" {
 		return time.Time{}, false
 	}
-	block, _ := pem.Decode([]byte(c.Certificate))
-	if block == nil {
-		return time.Time{}, false
-	}
-	cert, err := x509.ParseCertificate(block.Bytes)
+	t, err := time.Parse(time.RFC3339, c.Authentication.ValidUntil)
 	if err != nil {
 		return time.Time{}, false
 	}
-	return cert.NotAfter, true
+	return t, true
 }
 
 // GetStrict reports the configured default for strict mode. Unset means
@@ -674,8 +679,8 @@ func (c *CommonOpts) GetServiceCredential() *upstream.ServiceAccountCredentials 
 		}
 	}
 
-	// return nil when no service account is defined
-	if c.ServiceAccountMrn == "" && c.PrivateKey == "" && c.Certificate == "" {
+	// return nil when no credential is defined
+	if c.ServiceAccountMrn == "" && c.PrivateKey == "" && c.Certificate == "" && c.Token == "" {
 		return nil
 	}
 

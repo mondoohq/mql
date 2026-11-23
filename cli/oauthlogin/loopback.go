@@ -6,7 +6,6 @@ package oauthlogin
 import (
 	"bufio"
 	"context"
-	"crypto/ecdsa"
 	"crypto/subtle"
 	"errors"
 	"fmt"
@@ -34,7 +33,7 @@ type callbackResult struct {
 
 // loopbackFlow runs the authorization code grant with PKCE and an RFC 8252
 // loopback redirect on 127.0.0.1.
-func loopbackFlow(ctx context.Context, o *Options, md *Metadata, cfg *oauth2.Config, key *ecdsa.PrivateKey, params []oauth2.AuthCodeOption) (*oauth2.Token, error) {
+func loopbackFlow(ctx context.Context, o *Options, md *Metadata, cfg *oauth2.Config, params []oauth2.AuthCodeOption) (*oauth2.Token, error) {
 	// The redirect URI uses the 127.0.0.1 literal rather than localhost, as
 	// recommended by RFC 8252 section 7.3.
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -139,14 +138,7 @@ func loopbackFlow(ctx context.Context, o *Options, md *Metadata, cfg *oauth2.Con
 		return nil, err
 	}
 
-	proof, err := NewKeyProof(key, cfg.Endpoint.TokenURL, code, time.Now(), 5*time.Minute)
-	if err != nil {
-		return nil, err
-	}
-	tok, err := exchangeCfg.Exchange(ctx, code,
-		oauth2.VerifierOption(verifier),
-		oauth2.SetAuthURLParam("mondoo_key_proof", proof),
-	)
+	tok, err := exchangeCfg.Exchange(ctx, code, oauth2.VerifierOption(verifier))
 	if err != nil {
 		return nil, tokenError(err)
 	}

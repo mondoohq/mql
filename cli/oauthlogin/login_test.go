@@ -6,10 +6,6 @@ package oauthlogin
 import (
 	"bytes"
 	"context"
-	"crypto/ecdsa"
-	"crypto/x509"
-	"encoding/base64"
-	"encoding/pem"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -18,10 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/ranger-rpc/plugins/rangerguard/crypto"
 )
 
 func noEnv(string) string { return "" }
@@ -30,7 +24,7 @@ func testOptions(f *fakeAS, mode Mode) Options {
 	return Options{
 		Endpoint:        f.issuer(),
 		Mode:            mode,
-		SpaceMrn:        "//captain.api.mondoo.app/spaces/test-space",
+		ScopeMrn:        testSpaceMrn,
 		DeviceName:      "build-host",
 		DeviceInfo:      "cnspec 13.0.0 linux/amd64",
 		HTTPClient:      f.srv.Client(),
@@ -125,50 +119,6 @@ func TestDetectMode(t *testing.T) {
 	assert.Equal(t, ModeDevice, DetectMode(env(map[string]string{"SSH_TTY": "/dev/pts/0", "DISPLAY": ":0"}), "linux"))
 }
 
-func TestKeyProof_VerifiesWithPublicKey(t *testing.T) {
-	key, err := GenerateKey()
-	require.NoError(t, err)
-	enc, err := EncodePublicKey(&key.PublicKey)
-	require.NoError(t, err)
-	der, err := base64.RawURLEncoding.DecodeString(enc)
-	require.NoError(t, err)
-	pub, err := x509.ParsePKIXPublicKey(der)
-	require.NoError(t, err)
-
-	now := time.Now()
-	proof, err := NewKeyProof(key, "https://sts.example.com/oauth/token", "the-code", now, time.Hour)
-	require.NoError(t, err)
-
-	tok, err := jwt.Parse(proof, func(*jwt.Token) (any, error) { return pub, nil },
-		jwt.WithValidMethods([]string{"ES384"}), jwt.WithAudience("https://sts.example.com/oauth/token"), jwt.WithIssuer(ClientID))
-	require.NoError(t, err)
-	assert.Equal(t, KeyProofType, tok.Header["typ"])
-	assert.Equal(t, "ES384", tok.Header["alg"])
-	claims := tok.Claims.(jwt.MapClaims)
-	assert.Equal(t, HashValue("the-code"), claims["code_hash"])
-	assert.Equal(t, "https://sts.example.com/oauth/token", claims["aud"])
-	assert.NotEmpty(t, claims["jti"])
-	iat, _ := claims.GetIssuedAt()
-	exp, _ := claims.GetExpirationTime()
-	assert.Equal(t, MaxKeyProofLifetime, exp.Sub(iat.Time), "lifetime is capped at the server maximum")
-
-	// a different key must not verify it
-	other, err := GenerateKey()
-	require.NoError(t, err)
-	_, err = jwt.Parse(proof, func(*jwt.Token) (any, error) { return &other.PublicKey, nil }, jwt.WithValidMethods([]string{"ES384"}))
-	assert.Error(t, err)
-}
-
-func TestPrivateKeyPEM_RoundTrip(t *testing.T) {
-	key, err := GenerateKey()
-	require.NoError(t, err)
-	pemStr, err := EncodePrivateKeyPEM(key)
-	require.NoError(t, err)
-	got, err := crypto.PrivateKeyFromBytes([]byte(pemStr))
-	require.NoError(t, err)
-	assert.True(t, got.Equal(key))
-}
-
 func TestDeviceFlow(t *testing.T) {
 	f := newFakeAS(t)
 	f.devicePollReplies = []string{"authorization_pending", "slow_down"}
@@ -187,15 +137,18 @@ func TestDeviceFlow(t *testing.T) {
 	// request parameters
 	assert.Equal(t, ClientID, f.authForm.Get("client_id"))
 	assert.Equal(t, Scope, f.authForm.Get("scope"))
-	assert.Equal(t, "//captain.api.mondoo.app/spaces/test-space", f.authForm.Get("mondoo_space_mrn"))
+	assert.Equal(t, testSpaceMrn, f.authForm.Get("mondoo_scope_mrn"))
 	assert.Equal(t, "build-host", f.authForm.Get("mondoo_device_name"))
 	assert.Equal(t, "cnspec 13.0.0 linux/amd64", f.authForm.Get("mondoo_device_info"))
 
 	// polling: pending, slow_down, success; slow_down adds 5s to the interval
 	require.Len(t, f.pollTimes, 3)
 	assert.GreaterOrEqual(t, f.pollTimes[2].Sub(f.pollTimes[1]), 5*time.Second)
-	// one proof for the whole poll window
-	assert.Equal(t, f.tokenForms[0].Get("mondoo_key_proof"), f.tokenForms[2].Get("mondoo_key_proof"))
+	// plain RFC 8628: the device code is the only proof, and no key is sent
+	for _, form := range append([]url.Values{f.authForm}, f.tokenForms...) {
+		assert.Empty(t, form.Get("mondoo_public_key"))
+		assert.Empty(t, form.Get("mondoo_key_proof"))
+	}
 
 	assertResult(t, f, res)
 }
@@ -225,7 +178,7 @@ func TestLoopbackFlow(t *testing.T) {
 	assert.Equal(t, f.issuer()+"/oauth/authorize", u.Scheme+"://"+u.Host+u.Path)
 	assert.True(t, strings.HasPrefix(f.redirectURI, "http://127.0.0.1:"), f.redirectURI)
 	assert.True(t, strings.HasSuffix(f.redirectURI, "/callback"), f.redirectURI)
-	assert.Equal(t, "//captain.api.mondoo.app/spaces/test-space", f.authForm.Get("mondoo_space_mrn"))
+	assert.Equal(t, testSpaceMrn, f.authForm.Get("mondoo_scope_mrn"))
 	assert.Equal(t, 1, f.tokenCalls)
 	assert.NotEmpty(t, f.tokenForms[0].Get("code_verifier"))
 
@@ -283,7 +236,6 @@ func TestLoopbackFlow_BrowserOpenFailsUsesDeviceFlow(t *testing.T) {
 	assert.NotContains(t, got, "Opening your browser")
 	assert.NotContains(t, got, "/oauth/authorize")
 	assert.NotContains(t, got, "127.0.0.1")
-	assert.NotEmpty(t, f.authForm.Get("mondoo_public_key"), "the device flow sent the login's key")
 
 	// The loopback listener is shut down.
 	require.NotEmpty(t, redirectURI)
@@ -394,79 +346,95 @@ func TestLoopbackFlow_TokenIssuerMismatch(t *testing.T) {
 
 func TestRevoke(t *testing.T) {
 	f := newFakeAS(t)
-	key, err := GenerateKey()
-	require.NoError(t, err)
-	f.pubKey = &key.PublicKey
-	pemStr, err := EncodePrivateKeyPEM(key)
-	require.NoError(t, err)
-
-	require.NoError(t, Revoke(context.Background(), f.srv.Client(), f.issuer(), "the-token", pemStr, false))
+	require.NoError(t, Revoke(context.Background(), f.srv.Client(), f.issuer(), "the-token", false))
 	require.Len(t, f.revokeForms, 1)
 	form := f.revokeForms[0]
+	// RFC 7009 for a public client: the token and the client id, no proof.
 	assert.Equal(t, "the-token", form.Get("token"))
-	require.NoError(t, f.verifyProof(form, f.issuer()+"/oauth/revoke", "the-token"))
+	assert.Equal(t, ClientID, form.Get("client_id"))
+	assert.Empty(t, form.Get("mondoo_key_proof"))
+}
+
+// Revocation starts from the issuer stored with the session. It reads the
+// login server's metadata there and does not ask for a pointer: a login
+// server that shares a host with an API answers that request with the API's
+// document.
+func TestRevoke_DoesNotFollowAPointer(t *testing.T) {
+	f := newFakeAS(t)
+	f.pointTo("https://elsewhere.example.com")
+	require.NoError(t, Revoke(context.Background(), f.srv.Client(), f.issuer(), "the-token", false))
+	require.Len(t, f.revokeForms, 1)
 }
 
 func TestSummary(t *testing.T) {
 	now := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
 	r := &Result{
 		User:       User{Email: "jane@example.com"},
-		Space:      Space{Name: "prod", OrgName: "acme"},
+		Scope:      LoginScope{Name: "prod", Kind: "space", OrgName: "acme"},
 		ValidUntil: now.Add(time.Hour),
 	}
 	s := r.Summary(now)
 	assert.True(t, strings.HasPrefix(s, "✓ Logged in as jane@example.com · space acme/prod · valid until "), s)
 	assert.True(t, strings.HasSuffix(s, "(1h)"), s)
+
+	// a login to an organization
+	r.Scope = LoginScope{Name: "acme", Kind: ScopeKindOrganization, OrgName: "acme"}
+	assert.True(t, strings.HasPrefix(r.Summary(now), "✓ Logged in as jane@example.com · organization acme · valid until "), r.Summary(now))
+
+	// names the server did not send fall back to the MRN
+	r.Scope = LoginScope{}
+	r.Credential.ScopeMrn = testSpaceMrn
+	assert.Contains(t, r.Summary(now), "space "+testSpaceMrn)
 }
 
 func assertResult(t *testing.T, f *fakeAS, res *Result) {
 	t.Helper()
-	assert.Equal(t, "//agents.api.mondoo.app/spaces/test-space/serviceaccounts/session1", res.ServiceAccount.Mrn)
-	assert.Equal(t, "//captain.api.mondoo.app/spaces/test-space", res.ServiceAccount.ScopeMrn)
+	// the login is the user: the user's MRN and a bearer token, no key
+	assert.Equal(t, testUserMrn, res.Credential.Mrn)
+	assert.Equal(t, testSpaceMrn, res.Credential.ScopeMrn)
+	assert.Equal(t, testSpaceMrn, res.Credential.SpaceMrn)
+	assert.Equal(t, f.token_, res.Credential.Token)
+	assert.NotEmpty(t, res.Credential.Token)
 	assert.Equal(t, "jane@example.com", res.User.Email)
-	assert.Equal(t, "acme", res.Space.OrgName)
+	assert.Equal(t, "prod", res.Scope.Name)
+	assert.Equal(t, "space", res.Scope.Kind)
+	assert.Equal(t, "acme", res.Scope.OrgName)
 	assert.Equal(t, f.issuer(), res.Issuer)
-	assert.NotEmpty(t, res.AccessToken)
+	assert.Equal(t, f.issuer(), res.Endpoint)
 	assert.WithinDuration(t, time.Now().Add(time.Hour), res.ValidUntil, time.Minute)
 
-	// the stored key loads with the existing loader and matches the certificate
-	key, err := crypto.PrivateKeyFromBytes([]byte(res.PrivateKeyPEM))
-	require.NoError(t, err)
-	block, _ := pem.Decode([]byte(res.ServiceAccount.Certificate))
-	require.NotNil(t, block)
-	cert, err := x509.ParseCertificate(block.Bytes)
-	require.NoError(t, err)
-	assert.True(t, cert.PublicKey.(*ecdsa.PublicKey).Equal(&key.PublicKey))
-	assert.True(t, f.pubKey.Equal(&key.PublicKey), "the server saw this login's public key")
+	// what is written to the config: the token under the key the client
+	// already sends as a bearer token, and nothing of a registered client
+	cfg := res.ConfigValues()
+	assert.Equal(t, f.token_, cfg["token"])
+	assert.Equal(t, testUserMrn, cfg["mrn"])
+	assert.Equal(t, testSpaceMrn, cfg["scope_mrn"])
+	for _, absent := range []string{"private_key", "certificate", "agent_mrn", "space_mrn"} {
+		assert.NotContains(t, cfg, absent)
+	}
+	auth := cfg["auth"].(map[string]any)
+	assert.Equal(t, AuthMethod, auth["method"])
+	assert.Equal(t, f.issuer(), auth["issuer"])
+	assert.Equal(t, f.issuer(), auth["endpoint"])
+	assert.Equal(t, res.ValidUntil.UTC().Format(time.RFC3339), auth["valid_until"])
+	assert.NotContains(t, auth, "access_token", "the token is stored once, as the credential")
 }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
-func revokeTestKey(t *testing.T, f *fakeAS) string {
-	t.Helper()
-	key, err := GenerateKey()
-	require.NoError(t, err)
-	f.pubKey = &key.PublicKey
-	pemStr, err := EncodePrivateKeyPEM(key)
-	require.NoError(t, err)
-	return pemStr
-}
-
 func TestRevoke_NoContent(t *testing.T) {
 	f := newFakeAS(t)
 	f.revokeStatus = http.StatusNoContent
-	pemStr := revokeTestKey(t, f)
-	require.NoError(t, Revoke(context.Background(), f.srv.Client(), f.issuer(), "the-token", pemStr, false))
+	require.NoError(t, Revoke(context.Background(), f.srv.Client(), f.issuer(), "the-token", false))
 }
 
 func TestRevoke_ErrorIncludesBodySnippet(t *testing.T) {
 	f := newFakeAS(t)
 	f.revokeStatus = http.StatusBadRequest
 	f.revokeBody = "{\"error\":\"unsupported_token_type\"}\n" + strings.Repeat("x", 1000)
-	pemStr := revokeTestKey(t, f)
-	err := Revoke(context.Background(), f.srv.Client(), f.issuer(), "the-token", pemStr, false)
+	err := Revoke(context.Background(), f.srv.Client(), f.issuer(), "the-token", false)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "400")
 	assert.Contains(t, err.Error(), "unsupported_token_type")
@@ -511,32 +479,4 @@ func TestTruncateUTF8(t *testing.T) {
 	// A U+FFFD already in the input is kept.
 	assert.Equal(t, "a�", truncateUTF8("a�bc", 4))
 	assert.Equal(t, "", truncateUTF8("€", 1))
-}
-
-func TestDeviceProofWindow(t *testing.T) {
-	now := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
-
-	// The device code outlives the longest proof: the proof is capped and
-	// polling stops a margin before it expires.
-	lifetime, deadline := deviceProofWindow(now, now.Add(30*time.Minute))
-	assert.Equal(t, MaxKeyProofLifetime, lifetime)
-	assert.Equal(t, now.Add(MaxKeyProofLifetime-proofSafetyMargin), deadline)
-
-	// The device code expires first: polling runs until it expires and the
-	// proof stays valid a margin past that.
-	expiry := now.Add(10 * time.Minute)
-	lifetime, deadline = deviceProofWindow(now, expiry)
-	assert.Equal(t, 10*time.Minute+proofSafetyMargin, lifetime)
-	assert.Equal(t, expiry, deadline)
-	assert.True(t, now.Add(lifetime).After(deadline))
-
-	// Unknown expiry: the longest proof.
-	lifetime, deadline = deviceProofWindow(now, time.Time{})
-	assert.Equal(t, MaxKeyProofLifetime, lifetime)
-	assert.Equal(t, now.Add(MaxKeyProofLifetime-proofSafetyMargin), deadline)
-
-	// Already expired: a positive lifetime and no polling time left.
-	lifetime, deadline = deviceProofWindow(now, now.Add(-time.Minute))
-	assert.Equal(t, proofSafetyMargin, lifetime)
-	assert.Equal(t, now, deadline)
 }

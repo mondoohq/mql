@@ -43,8 +43,8 @@ type Metadata struct {
 }
 
 // NormalizeEndpoint canonicalizes a server URL: scheme and host are lowercased,
-// a trailing slash is dropped, and query or fragment are rejected. The result is
-// what the server's issuer identifier must equal.
+// a trailing slash is dropped, and query or fragment are rejected. Two URLs
+// name the same server when their normalized forms are equal.
 func NormalizeEndpoint(endpoint string) (string, error) {
 	endpoint = strings.TrimSpace(endpoint)
 	if endpoint == "" {
@@ -105,8 +105,21 @@ func checkTransport(raw string, insecure bool, warn bool) error {
 	}
 }
 
-// Discover fetches the authorization server metadata for endpoint and checks
-// that the server identifies itself with exactly that endpoint (RFC 8414 §3.3).
+// ProtectedResourcePath is the RFC 9728 protected resource metadata location.
+// The API endpoint may publish there which login server protects it.
+const ProtectedResourcePath = "/.well-known/oauth-protected-resource"
+
+// protectedResource is the subset of RFC 9728 metadata the client reads.
+type protectedResource struct {
+	Resource             string   `json:"resource"`
+	AuthorizationServers []string `json:"authorization_servers"`
+}
+
+// Discover finds the login server for an API endpoint and reads its metadata.
+//
+// The API endpoint is asked first which login server protects it (RFC 9728).
+// When it names one, the metadata is read from that server. When it publishes
+// no such document, the API endpoint is the login server itself.
 func Discover(ctx context.Context, client *http.Client, endpoint string, insecure bool) (*Metadata, error) {
 	base, err := NormalizeEndpoint(endpoint)
 	if err != nil {
@@ -118,7 +131,83 @@ func Discover(ctx context.Context, client *http.Client, endpoint string, insecur
 	if client == nil {
 		client = http.DefaultClient
 	}
+	issuer, err := loginServer(ctx, client, base, insecure)
+	if err != nil {
+		return nil, err
+	}
+	return readMetadata(ctx, client, issuer, insecure)
+}
 
+// DiscoverIssuer reads the metadata of a login server that is already known,
+// for example the issuer stored with a login session. It does not ask for a
+// pointer: that document belongs to an API endpoint, and a login server that
+// shares a host with an API would answer with the API's.
+func DiscoverIssuer(ctx context.Context, client *http.Client, issuer string, insecure bool) (*Metadata, error) {
+	base, err := NormalizeEndpoint(issuer)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkTransport(base, insecure, true); err != nil {
+		return nil, err
+	}
+	if client == nil {
+		client = http.DefaultClient
+	}
+	return readMetadata(ctx, client, base, insecure)
+}
+
+// loginServer returns the login server the API endpoint base names, or base
+// itself when the endpoint publishes no protected resource metadata.
+//
+// "Publishes none" is a 404, or a 401 or 403: a server that guards every
+// path it does not know answers an anonymous request for this one that way.
+// Falling back is safe, because the fallback is the endpoint the user
+// configured. Any other failure stops the login.
+func loginServer(ctx context.Context, client *http.Client, base string, insecure bool) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+ProtectedResourcePath, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("could not reach %s: %w", base, err)
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+	case http.StatusNotFound, http.StatusUnauthorized, http.StatusForbidden:
+		return base, nil
+	default:
+		return "", fmt.Errorf("protected resource metadata request failed: %s", resp.Status)
+	}
+
+	var pr protectedResource
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&pr); err != nil {
+		return "", fmt.Errorf("could not parse protected resource metadata: %w", err)
+	}
+	// RFC 9728 section 3.3: the document must be about the endpoint asked.
+	if resource, err := NormalizeEndpoint(pr.Resource); err != nil || resource != base {
+		return "", fmt.Errorf("protected resource %q does not match the requested endpoint %q", pr.Resource, base)
+	}
+	if len(pr.AuthorizationServers) != 1 {
+		return "", fmt.Errorf("the server names %d login servers, expected exactly one", len(pr.AuthorizationServers))
+	}
+	issuer, err := NormalizeEndpoint(pr.AuthorizationServers[0])
+	if err != nil {
+		return "", fmt.Errorf("the server names an unusable login server: %w", err)
+	}
+	if err := checkTransport(issuer, insecure, true); err != nil {
+		return "", err
+	}
+	return issuer, nil
+}
+
+// readMetadata fetches the authorization server metadata of issuer and checks
+// that the server identifies itself with exactly that issuer (RFC 8414
+// section 3.3). issuer is normalized and its transport is checked.
+func readMetadata(ctx context.Context, client *http.Client, base string, insecure bool) (*Metadata, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+WellKnownPath, nil)
 	if err != nil {
 		return nil, err
@@ -144,7 +233,7 @@ func Discover(ctx context.Context, client *http.Client, endpoint string, insecur
 
 	issuer, err := NormalizeEndpoint(md.Issuer)
 	if err != nil || issuer != base {
-		return nil, fmt.Errorf("authorization server issuer %q does not match the requested endpoint %q", md.Issuer, base)
+		return nil, fmt.Errorf("authorization server issuer %q does not match the login server %q", md.Issuer, base)
 	}
 	md.Issuer = issuer
 
