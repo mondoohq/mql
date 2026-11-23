@@ -21392,7 +21392,12 @@ private azure.subscription.cognitiveServicesService.account.raiPolicy @defaults(
   // Custom blocklist references. Each entry has {blocklistName, source, blocking}.
   customBlocklists []dict
   // Custom RAI topic references attached to the policy
-  customTopics []azure.subscription.cognitiveServicesService.account.raiPolicy.topicRef
+  //
+  // Deprecated, please use raiTopics on the account. Azure stops reporting the
+  // topics a policy applies from api-version 2026-11-01 on, so this list cannot
+  // be read once the provider moves to that version. The account's raiTopics
+  // lists every custom topic but not which policy applies it.
+  customTopics @maturity("deprecated") []azure.subscription.cognitiveServicesService.account.raiPolicy.topicRef
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
 }
