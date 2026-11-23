@@ -779,6 +779,7 @@ func (o *mqlOciApigatewayDeployment) routes() ([]any, error) {
 			"methods":             llx.ArrayData(convert.SliceAnyToInterface(r.Methods), types.String),
 			"backendType":         llx.StringData(r.BackendType),
 			"backendUrl":          llx.StringData(r.BackendURL),
+			"backendUrls":         llx.ArrayData(convert.SliceAnyToInterface(r.BackendURLs), types.String),
 			"isSslVerifyDisabled": llx.BoolDataPtr(r.IsSslVerifyDisabled),
 			"authorizationType":   llx.StringData(r.AuthorizationType),
 			"allowedScopes":       llx.ArrayData(convert.SliceAnyToInterface(r.AllowedScopes), types.String),
@@ -798,6 +799,7 @@ type ociApiRoute struct {
 	Methods             []string
 	BackendType         string
 	BackendURL          string
+	BackendURLs         []string
 	IsSslVerifyDisabled *bool
 	AuthorizationType   string
 	AllowedScopes       []string
@@ -810,6 +812,7 @@ func flattenApiRoute(route apigateway.ApiSpecificationRoute) ociApiRoute {
 	res := ociApiRoute{
 		Path:          stringValue(route.Path),
 		Methods:       make([]string, 0, len(route.Methods)),
+		BackendURLs:   []string{},
 		AllowedScopes: []string{},
 	}
 	for _, m := range route.Methods {
@@ -820,9 +823,17 @@ func flattenApiRoute(route apigateway.ApiSpecificationRoute) ociApiRoute {
 	case apigateway.HttpBackend:
 		res.BackendType = "HTTP_BACKEND"
 		res.BackendURL = stringValue(b.Url)
-		// Absent means the default, which verifies the certificate.
-		disabled := boolValue(b.IsSslVerifyDisabled)
-		res.IsSslVerifyDisabled = &disabled
+		res.addHTTPBackend(b)
+	case apigateway.DynamicRoutingBackend:
+		res.BackendType = "DYNAMIC_ROUTING_BACKEND"
+		// A dynamic backend picks one of its routing backends per request, so
+		// one that skips certificate verification is enough to make the
+		// route's traffic unverified.
+		for _, rb := range b.RoutingBackends {
+			if h, ok := rb.Backend.(apigateway.HttpBackend); ok {
+				res.addHTTPBackend(h)
+			}
+		}
 	case apigateway.OracleFunctionBackend:
 		res.BackendType = "ORACLE_FUNCTIONS_BACKEND"
 	case apigateway.StockResponseBackend:
@@ -831,8 +842,6 @@ func flattenApiRoute(route apigateway.ApiSpecificationRoute) ociApiRoute {
 		res.BackendType = "OAUTH2_LOGIN_BACKEND"
 	case apigateway.OAuth2LogoutBackend:
 		res.BackendType = "OAUTH2_LOGOUT_BACKEND"
-	case apigateway.DynamicRoutingBackend:
-		res.BackendType = "DYNAMIC_ROUTING_BACKEND"
 	}
 
 	if route.RequestPolicies != nil {
@@ -856,4 +865,22 @@ func ociApiRouteID(deploymentID string, r ociApiRoute) string {
 	methods := append([]string{}, r.Methods...)
 	sort.Strings(methods)
 	return "oci.apigateway.deployment.route/" + deploymentID + "/" + strings.Join(methods, ",") + " " + r.Path
+}
+
+// addHTTPBackend records one HTTP backend the route can reach. The route's
+// verification flag becomes true once any of its HTTP backends disables
+// verification, and is false while all of them verify. An absent flag is the
+// default, which verifies the certificate.
+func (r *ociApiRoute) addHTTPBackend(b apigateway.HttpBackend) {
+	if u := stringValue(b.Url); u != "" {
+		r.BackendURLs = append(r.BackendURLs, u)
+	}
+	disabled := boolValue(b.IsSslVerifyDisabled)
+	if r.IsSslVerifyDisabled == nil {
+		r.IsSslVerifyDisabled = &disabled
+		return
+	}
+	if disabled {
+		*r.IsSslVerifyDisabled = true
+	}
 }

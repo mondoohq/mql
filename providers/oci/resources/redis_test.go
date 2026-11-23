@@ -72,3 +72,14 @@ func TestOciRedisClusterSubnet(t *testing.T) {
 		assert.Error(t, err)
 	})
 }
+
+func TestOciRedactRedisACL(t *testing.T) {
+	// Synthetic: ACL rules in the Redis ACL SETUSER syntax.
+	assert.Equal(t, "on >*** ~* +@all", ociRedactRedisACL("on >s3cret ~* +@all"))
+	assert.Equal(t, "on #*** <*** !*** ~cache:* +@read -@dangerous",
+		ociRedactRedisACL("on #5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8 <old-pass !6b86b273ff34fce19b6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b ~cache:* +@read -@dangerous"))
+	// Rules without a credential survive unchanged.
+	assert.Equal(t, "off nopass resetkeys ~key* &chan* +@read -flushall", ociRedactRedisACL("off nopass resetkeys ~key* &chan* +@read -flushall"))
+	assert.Equal(t, "", ociRedactRedisACL(""))
+	assert.NotContains(t, ociRedactRedisACL("on >hunter2 +@all"), "hunter2")
+}

@@ -391,3 +391,42 @@ func TestOciApiRouteID(t *testing.T) {
 		ociApiRouteID("dep", ociApiRoute{Path: "/a", Methods: []string{"GET", "POST"}}))
 	assert.NotEqual(t, get, ociApiRouteID("other", ociApiRoute{Path: "/a", Methods: []string{"GET"}}))
 }
+
+func TestFlattenApiRouteDynamicBackend(t *testing.T) {
+	// Synthetic: dynamic routing backend shape from the deployment specification reference.
+	routes := decodeApiRoutes(t, `{"routes":[
+		{"path":"/mixed","backend":{"type":"DYNAMIC_ROUTING_BACKEND",
+			"selectionSource":{"type":"SINGLE","selector":"request.headers[tier]"},
+			"routingBackends":[
+				{"key":{"type":"ANY_OF","values":["gold"],"name":"gold"},"backend":{"type":"HTTP_BACKEND","url":"https://gold.example.com"}},
+				{"key":{"type":"ANY_OF","values":["silver"],"name":"silver"},"backend":{"type":"HTTP_BACKEND","url":"https://silver.example.com","isSslVerifyDisabled":true}},
+				{"key":{"type":"ANY_OF","values":["stock"],"name":"stock","isDefault":true},"backend":{"type":"STOCK_RESPONSE_BACKEND","status":404}}
+			]}},
+		{"path":"/verified","backend":{"type":"DYNAMIC_ROUTING_BACKEND",
+			"selectionSource":{"type":"SINGLE","selector":"request.headers[tier]"},
+			"routingBackends":[
+				{"key":{"type":"ANY_OF","values":["gold"],"name":"gold"},"backend":{"type":"HTTP_BACKEND","url":"https://gold.example.com","isSslVerifyDisabled":false}}
+			]}},
+		{"path":"/stock-only","backend":{"type":"DYNAMIC_ROUTING_BACKEND",
+			"selectionSource":{"type":"SINGLE","selector":"request.headers[tier]"},
+			"routingBackends":[
+				{"key":{"type":"ANY_OF","values":["x"],"name":"x"},"backend":{"type":"STOCK_RESPONSE_BACKEND","status":200}}
+			]}}
+	]}`)
+	require.Len(t, routes, 3)
+
+	mixed := flattenApiRoute(routes[0])
+	assert.Equal(t, "DYNAMIC_ROUTING_BACKEND", mixed.BackendType)
+	assert.Empty(t, mixed.BackendURL)
+	assert.Equal(t, []string{"https://gold.example.com", "https://silver.example.com"}, mixed.BackendURLs)
+	require.NotNil(t, mixed.IsSslVerifyDisabled)
+	assert.True(t, *mixed.IsSslVerifyDisabled)
+
+	verified := flattenApiRoute(routes[1])
+	require.NotNil(t, verified.IsSslVerifyDisabled)
+	assert.False(t, *verified.IsSslVerifyDisabled)
+
+	stockOnly := flattenApiRoute(routes[2])
+	assert.Nil(t, stockOnly.IsSslVerifyDisabled)
+	assert.Empty(t, stockOnly.BackendURLs)
+}

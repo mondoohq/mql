@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/oracle/oci-go-sdk/v65/redis"
@@ -398,5 +399,24 @@ func (o *mqlOciRedisUser) aclString() (string, error) {
 	if err != nil || u == nil {
 		return "", err
 	}
-	return stringValue(u.AclString), nil
+	return ociRedactRedisACL(stringValue(u.AclString)), nil
+}
+
+// ociRedactRedisACL masks the password rules of a Redis ACL. The ACL syntax
+// lets a rule carry a credential inline: `>password` and `<password` add and
+// remove a plaintext password, `#hash` and `!hash` a SHA-256 hash of one.
+// Nothing in the OCI Cache API documents that such rules are rejected or
+// redacted in aclString, so each one is kept with its prefix, which still
+// says that a password rule is present, and its value replaced. Every other
+// rule is returned as written. Rules are separated by whitespace, which is
+// how Redis tokenizes them.
+func ociRedactRedisACL(acl string) string {
+	rules := strings.Fields(acl)
+	for i, rule := range rules {
+		switch rule[0] {
+		case '>', '<', '#', '!':
+			rules[i] = rule[:1] + "***"
+		}
+	}
+	return strings.Join(rules, " ")
 }

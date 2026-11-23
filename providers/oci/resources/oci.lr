@@ -9688,11 +9688,18 @@ private oci.apigateway.deployment.route @defaults("path methods backendType") {
   backendType string
   // URL of the HTTP backend
   //
-  // Empty unless backendType is HTTP_BACKEND.
+  // Empty unless backendType is HTTP_BACKEND. A dynamic routing backend's
+  // HTTP backends are listed in backendUrls.
   backendUrl string
-  // Whether TLS certificate verification of the HTTP backend is disabled
+  // URLs of every HTTP backend the route can send a request to
   //
-  // Null unless backendType is HTTP_BACKEND.
+  // The HTTP backend itself, or each HTTP backend a dynamic routing backend
+  // selects between.
+  backendUrls []string
+  // Whether TLS certificate verification is disabled on an HTTP backend of the route
+  //
+  // For a dynamic routing backend, true when any HTTP backend it selects
+  // between disables verification. Null when the route has no HTTP backend.
   isSslVerifyDisabled bool
   // Authorization the route requires (ANONYMOUS, ANY_OF, or AUTHENTICATION_ONLY)
   //
@@ -9991,7 +9998,9 @@ private oci.redis.user @defaults("name authenticationType status") {
   authenticationType string
   // Access control list in Redis ACL syntax, limiting the commands, keys and channels the user may use
   //
-  // For example `~* +@all` grants every command on every key.
+  // For example `~* +@all` grants every command on every key. Rules that
+  // carry a password or a password hash (`>`, `<`, `#`, `!`) keep their
+  // prefix with the value masked as `***`.
   aclString() string
   // Whether the user is switched on (ON or OFF)
   status string

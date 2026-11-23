@@ -663,6 +663,7 @@ oci.apigateway.deployment.route.allowedScopes 14.7.2
 oci.apigateway.deployment.route.authorizationType 14.7.2
 oci.apigateway.deployment.route.backendType 14.7.2
 oci.apigateway.deployment.route.backendUrl 14.7.2
+oci.apigateway.deployment.route.backendUrls 14.7.2
 oci.apigateway.deployment.route.isSslVerifyDisabled 14.7.2
 oci.apigateway.deployment.route.methods 14.7.2
 oci.apigateway.deployment.route.path 14.7.2

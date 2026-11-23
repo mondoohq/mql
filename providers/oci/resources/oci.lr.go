@@ -9946,6 +9946,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"oci.apigateway.deployment.route.backendUrl": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciApigatewayDeploymentRoute).GetBackendUrl()).ToDataRes(types.String)
 	},
+	"oci.apigateway.deployment.route.backendUrls": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciApigatewayDeploymentRoute).GetBackendUrls()).ToDataRes(types.Array(types.String))
+	},
 	"oci.apigateway.deployment.route.isSslVerifyDisabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciApigatewayDeploymentRoute).GetIsSslVerifyDisabled()).ToDataRes(types.Bool)
 	},
@@ -26424,6 +26427,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"oci.apigateway.deployment.route.backendUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciApigatewayDeploymentRoute).BackendUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.apigateway.deployment.route.backendUrls": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciApigatewayDeploymentRoute).BackendUrls, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"oci.apigateway.deployment.route.isSslVerifyDisabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -63582,6 +63589,7 @@ type mqlOciApigatewayDeploymentRoute struct {
 	Methods             plugin.TValue[[]any]
 	BackendType         plugin.TValue[string]
 	BackendUrl          plugin.TValue[string]
+	BackendUrls         plugin.TValue[[]any]
 	IsSslVerifyDisabled plugin.TValue[bool]
 	AuthorizationType   plugin.TValue[string]
 	AllowedScopes       plugin.TValue[[]any]
@@ -63633,6 +63641,10 @@ func (c *mqlOciApigatewayDeploymentRoute) GetBackendType() *plugin.TValue[string
 
 func (c *mqlOciApigatewayDeploymentRoute) GetBackendUrl() *plugin.TValue[string] {
 	return &c.BackendUrl
+}
+
+func (c *mqlOciApigatewayDeploymentRoute) GetBackendUrls() *plugin.TValue[[]any] {
+	return &c.BackendUrls
 }
 
 func (c *mqlOciApigatewayDeploymentRoute) GetIsSslVerifyDisabled() *plugin.TValue[bool] {
