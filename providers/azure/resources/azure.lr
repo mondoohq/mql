@@ -15504,6 +15504,70 @@ azure.subscription.synapseService.workspace @defaults("name location") {
   sqlPools() []azure.subscription.synapseService.workspace.sqlPool
   // Diagnostic settings configured on the Synapse workspace (forwarding logs and metrics to Log Analytics, storage, or Event Hub)
   diagnosticSettings() []azure.subscription.monitorService.diagnosticsetting
+  // Login name of the Microsoft Entra administrator of the workspace's SQL endpoints
+  //
+  // Null when no Entra administrator is set, which leaves only SQL
+  // authentication with sqlAdministratorLogin.
+  sqlEntraAdminLogin() string
+  // Object ID of the Microsoft Entra administrator of the workspace's SQL endpoints, null when none is set
+  sqlEntraAdminObjectId() string
+  // Threat detection state of the workspace's SQL endpoints ("Enabled", "Disabled", or "New")
+  //
+  // "New" means threat detection was never configured.
+  sqlThreatDetectionState() string
+  // Auditing state of the workspace's SQL endpoints ("Enabled" or "Disabled")
+  sqlAuditingState() string
+  // Days SQL audit records are retained, or 0 for unlimited retention
+  sqlAuditingRetentionDays() int
+  // Minimum TLS version dedicated SQL pools accept (for example "1.2")
+  sqlMinimalTlsVersion() string
+  // Whether recurring SQL vulnerability assessment scans are enabled
+  //
+  // Null when no vulnerability assessment is configured on the workspace.
+  sqlVulnerabilityAssessmentRecurringScansEnabled() bool
+  // Apache Spark pools in the workspace
+  bigDataPools() []azure.subscription.synapseService.workspace.bigDataPool
+}
+
+// Synapse Apache Spark pool
+//
+// An Apache Spark pool in a Synapse workspace, selected by `name`. Carries
+// the Spark runtime version, node sizing and scaling, auto-pause, and the
+// isolation and package settings that decide what code a session can load.
+private azure.subscription.synapseService.workspace.bigDataPool @defaults("name sparkVersion nodeSize") {
+  // Full resource ID of the pool
+  id string
+  // Pool name
+  name string
+  // Apache Spark version (for example "3.4")
+  sparkVersion string
+  // Node size ("Small", "Medium", "Large", "XLarge", "XXLarge", or "XXXLarge")
+  nodeSize string
+  // Node size family ("MemoryOptimized", "HardwareAcceleratedFPGA", or "HardwareAcceleratedGPU")
+  nodeSizeFamily string
+  // Number of nodes when autoscale is off
+  nodeCount int
+  // Whether the pool scales its node count automatically
+  autoScaleEnabled bool
+  // Minimum node count when autoscaling
+  autoScaleMinNodeCount int
+  // Maximum node count when autoscaling
+  autoScaleMaxNodeCount int
+  // Whether the pool pauses after a period of inactivity
+  autoPauseEnabled bool
+  // Idle minutes before the pool pauses
+  autoPauseDelayInMinutes int
+  // Whether the pool runs on hardware isolated to a single customer
+  computeIsolationEnabled bool
+  // Whether notebooks can install packages for their own session
+  //
+  // When true, session code can pull packages from public feeds at run
+  // time, outside any pool-level library review.
+  sessionLevelPackagesEnabled bool
+  // Whether Spark adds and removes executors with the workload
+  dynamicExecutorAllocationEnabled bool
+  // Provisioning state of the pool
+  provisioningState string
 }
 
 // Synapse workspace IP firewall rule

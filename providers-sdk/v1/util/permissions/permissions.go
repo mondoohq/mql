@@ -1837,6 +1837,9 @@ var azurePathOperationOverrides = map[string]string{
 	// config at backupconfig/vaultconfig.
 	"microsoft.insights/eventtypes/management/values/read":            "Microsoft.Insights/eventtypes/values/Read",
 	"microsoft.recoveryservices/vaults/backupconfig/vaultconfig/read": "Microsoft.RecoveryServices/Vaults/backupconfig/read",
+	// The workspace Entra admin is read at administrators/activeDirectory;
+	// Synapse registers the operation without the activeDirectory segment.
+	"microsoft.synapse/workspaces/administrators/activedirectory/read": "Microsoft.Synapse/workspaces/administrators/read",
 }
 
 // azureUnregisteredOperations lists, lower-cased, the operations the provider
