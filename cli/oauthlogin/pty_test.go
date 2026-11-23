@@ -28,15 +28,15 @@ func newTestTerminal(t *testing.T, icrnl bool) (ptmx, tty *os.File, orig unix.Te
 	t.Cleanup(func() { ptmx.Close(); tty.Close() })
 
 	fd := int(tty.Fd())
-	tio, err := unix.IoctlGetTermios(fd, ioctlReadTermios)
+	termios, err := unix.IoctlGetTermios(fd, ioctlReadTermios)
 	require.NoError(t, err)
-	tio.Lflag |= unix.ICANON | unix.ECHO | unix.ISIG
+	termios.Lflag |= unix.ICANON | unix.ECHO | unix.ISIG
 	if icrnl {
-		tio.Iflag |= unix.ICRNL
+		termios.Iflag |= unix.ICRNL
 	} else {
-		tio.Iflag &^= unix.ICRNL
+		termios.Iflag &^= unix.ICRNL
 	}
-	require.NoError(t, unix.IoctlSetTermios(fd, ioctlWriteTermios, tio))
+	require.NoError(t, unix.IoctlSetTermios(fd, ioctlWriteTermios, termios))
 	got, err := unix.IoctlGetTermios(fd, ioctlReadTermios)
 	require.NoError(t, err)
 	return ptmx, tty, *got
@@ -44,9 +44,9 @@ func newTestTerminal(t *testing.T, icrnl bool) (ptmx, tty *os.File, orig unix.Te
 
 func termiosOf(t *testing.T, f *os.File) unix.Termios {
 	t.Helper()
-	tio, err := unix.IoctlGetTermios(int(f.Fd()), ioctlReadTermios)
+	termios, err := unix.IoctlGetTermios(int(f.Fd()), ioctlReadTermios)
 	require.NoError(t, err)
-	return *tio
+	return *termios
 }
 
 func TestWaitForEnter_Terminal(t *testing.T) {
@@ -109,8 +109,8 @@ func TestDeviceFlow_TerminalEnter(t *testing.T) {
 	go func() {
 		deadline := time.Now().Add(5 * time.Second)
 		for time.Now().Before(deadline) {
-			tio, err := unix.IoctlGetTermios(int(tty.Fd()), ioctlReadTermios)
-			if err == nil && tio.Lflag&unix.ICANON == 0 {
+			termios, err := unix.IoctlGetTermios(int(tty.Fd()), ioctlReadTermios)
+			if err == nil && termios.Lflag&unix.ICANON == 0 {
 				_, _ = ptmx.Write([]byte("\r"))
 				return
 			}

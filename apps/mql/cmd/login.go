@@ -529,7 +529,6 @@ func applySessionConfig(res *oauthlogin.Result) *upstream.ServiceAccountCredenti
 	// a bearer token. There is no key and no certificate.
 	return &upstream.ServiceAccountCredentials{
 		Mrn:         res.Credential.Mrn,
-		ParentMrn:   res.Credential.ScopeMrn,
 		ScopeMrn:    res.Credential.ScopeMrn,
 		Token:       res.Credential.Token,
 		ApiEndpoint: values["api_endpoint"].(string),

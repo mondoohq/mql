@@ -50,7 +50,7 @@ func TestApplyRegistrationConfig_ReplacesSession(t *testing.T) {
 	const newSpace = "//captain.api.mondoo.app/spaces/new-space"
 	applyRegistrationConfig("//agents.api.mondoo.app/spaces/new-space/agents/a1", &upstream.ServiceAccountCredentials{
 		Mrn:         "//agents.api.mondoo.app/spaces/new-space/serviceaccounts/sa1",
-		ParentMrn:   newSpace,
+		ParentMrn:   newSpace, //nolint:staticcheck // a registration answers with parent_mrn
 		PrivateKey:  "new-key",
 		Certificate: "new-cert",
 		ApiEndpoint: "https://us.api.mondoo.com",

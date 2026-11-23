@@ -5,6 +5,7 @@ package cmd
 
 import (
 	"context"
+	"crypto/subtle"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -178,7 +179,9 @@ func sessionToReplace(opts *config.Config, now time.Time) *replacedSession {
 // revokeReplaced revokes the session a new login replaced, so it does not
 // stay valid on the server. Best effort: a failure is only logged.
 func revokeReplaced(ctx context.Context, old *replacedSession, newToken string, httpClient *http.Client, revoke sessionRevoker) {
-	if old == nil || old.token == newToken {
+	// Logging in again can return the session that is already stored; that
+	// one must not be revoked.
+	if old == nil || subtle.ConstantTimeCompare([]byte(old.token), []byte(newToken)) == 1 {
 		return
 	}
 	ctx, cancel := context.WithTimeout(ctx, sessionRevokeTimeout)

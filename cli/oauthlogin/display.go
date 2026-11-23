@@ -30,11 +30,11 @@ func DisplayText(s string) string {
 // follows it.
 func isBidiControl(r rune) bool {
 	switch {
-	case r == '؜', r == '‎', r == '‏':
+	case r == '\u061c', r == '\u200e', r == '\u200f':
 		return true
-	case r >= '‪' && r <= '‮':
+	case r >= '\u202a' && r <= '\u202e':
 		return true
-	case r >= '⁦' && r <= '⁩':
+	case r >= '\u2066' && r <= '\u2069':
 		return true
 	}
 	return false

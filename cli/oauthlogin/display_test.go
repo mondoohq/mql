@@ -22,7 +22,7 @@ func TestDisplayText(t *testing.T) {
 	assert.Equal(t, "Jäne 🐱", DisplayText("Jäne 🐱"))
 	assert.Equal(t, "Jane[31mred[0m", DisplayText("Jane\x1b[31mred\x1b[0m"))
 	assert.Equal(t, "line1line2", DisplayText("line1\r\nline2"))
-	assert.Equal(t, "abcdef", DisplayText("abc‮def⁦"))
+	assert.Equal(t, "abcdef", DisplayText("abc\u202edef\u2066"))
 	assert.Equal(t, "", DisplayText(" \t\n"))
 	assert.Len(t, DisplayText(strings.Repeat("a", 2*maxDisplayLen)), maxDisplayLen)
 }
@@ -44,7 +44,7 @@ func TestCheckServerURL(t *testing.T) {
 		"/activate",
 		"https://user:pass@console.example.com/activate",
 		"https://console.example.com/activate\x1b[2J",
-		"https://console.example.com/‮etavitca",
+		"https://console.example.com/\u202eetavitca",
 		"",
 	} {
 		assert.Error(t, CheckServerURL(bad, false), bad)
