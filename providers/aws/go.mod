@@ -19,7 +19,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/applicationautoscaling v1.51.12
 	github.com/aws/aws-sdk-go-v2/service/appmesh v1.44.12
 	github.com/aws/aws-sdk-go-v2/service/apprunner v1.48.12
-	// pin v1.63.0
 	github.com/aws/aws-sdk-go-v2/service/appstream v1.76.0
 	github.com/aws/aws-sdk-go-v2/service/appsync v1.62.12
 	github.com/aws/aws-sdk-go-v2/service/athena v1.68.0
