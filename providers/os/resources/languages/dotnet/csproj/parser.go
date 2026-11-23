@@ -12,6 +12,8 @@ type project struct {
 
 	// evidence is a list of file paths where the project file was found.
 	evidence []string `xml:"-"`
+	// central maps a lower-cased package id to its centrally managed version.
+	central map[string]string `xml:"-"`
 }
 
 // itemGroup contains PackageReference elements.
@@ -30,6 +32,10 @@ type packageReference struct {
 	VersionElem       string `xml:"Version"`
 	PrivateAssetsAttr string `xml:"PrivateAssets,attr"`
 	PrivateAssetsElem string `xml:"PrivateAssets"`
+	// VersionOverride replaces the centrally managed version for one project
+	// under Central Package Management.
+	VersionOverrideAttr string `xml:"VersionOverride,attr"`
+	VersionOverrideElem string `xml:"VersionOverride"`
 }
 
 // version returns the package version, preferring the attribute form.
@@ -38,6 +44,14 @@ func (p *packageReference) version() string {
 		return p.VersionAttr
 	}
 	return p.VersionElem
+}
+
+// versionOverride returns the VersionOverride value, preferring the attribute form.
+func (p *packageReference) versionOverride() string {
+	if p.VersionOverrideAttr != "" {
+		return p.VersionOverrideAttr
+	}
+	return p.VersionOverrideElem
 }
 
 // privateAssets returns the PrivateAssets value, preferring the attribute form.
