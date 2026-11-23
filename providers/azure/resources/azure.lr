@@ -2999,7 +2999,11 @@ azure.subscription.networkService.firewall @defaults("id name location") {
   zones []string
   // Virtual hub the firewall is deployed into, null for a firewall in a virtual network
   virtualHub() azure.subscription.networkService.virtualHub
-  // IP groups referenced by the firewall's rules
+  // IP groups referenced by the firewall's classic rules
+  //
+  // Azure lists only the IP groups that classic rule collections on the
+  // firewall itself reference. A firewall managed by a firewall policy
+  // reports none here, even when the policy's rules use IP groups.
   ipGroups() []azure.subscription.networkService.ipGroup
   // Public IP addresses of a firewall deployed into a virtual hub
   //
@@ -4627,7 +4631,8 @@ private azure.subscription.networkService.securityGroup @defaults("id name locat
   // Whether rule changes are applied to existing flows
   //
   // When false, a connection already allowed keeps flowing after a rule
-  // that would now deny it is added, until the connection ends.
+  // that would now deny it is added, until the connection ends. Null when
+  // the setting was never configured, which behaves as false.
   flushConnection bool
   // Network Watcher flow log that targets this security group
   //
