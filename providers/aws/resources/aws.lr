@@ -2844,7 +2844,9 @@ private aws.iam.user @defaults("arn name createdAt") {
   // List of managed policies attached to the user
   attachedPolicies() []aws.iam.policy
   // Names of the groups the user belongs to
-  groups() []string
+  //
+  // Deprecated in favor of groupDetails.
+  groups() @maturity("deprecated") @replaced_by("aws.iam.user.groupDetails") []string
   // Groups the user belongs to
   groupDetails() []aws.iam.group
   // Access keys associated with the user, including last-used data
@@ -15652,9 +15654,13 @@ aws.rds.dbcluster @defaults("id region engine engineVersion") {
   // Whether the HTTP API endpoint is enabled
   httpEndpointEnabled bool
   // Container for engine configuration values
-  parameterGroupName string
+  //
+  // Deprecated in favor of dbClusterParameterGroup.
+  parameterGroupName @maturity("deprecated") @replaced_by("aws.rds.dbcluster.dbClusterParameterGroup") string
   // Global cluster identifier if the cluster is a global cluster member
-  globalClusterIdentifier string
+  //
+  // Deprecated in favor of globalCluster.
+  globalClusterIdentifier @maturity("deprecated") @replaced_by("aws.rds.dbcluster.globalCluster") string
   // Global cluster the DB cluster is a member of, or null when it isn't part of one
   globalCluster() aws.rds.globalCluster
   // CloudWatch Database Insights mode. Possible values are `standard` and `advanced`
@@ -15932,7 +15938,9 @@ aws.rds.dbinstance @defaults("id region engine engineVersion") {
   // Region-unique immutable identifier for the DB instance
   dbiResourceId string
   // Cluster identifier if the instance belongs to a DB cluster
-  dbClusterIdentifier string
+  //
+  // Deprecated in favor of dbCluster.
+  dbClusterIdentifier @maturity("deprecated") @replaced_by("aws.rds.dbinstance.dbCluster") string
   // DB cluster the instance belongs to, when present in this account
   dbCluster() aws.rds.dbcluster
   // Identifier of the source DB instance if this instance is a read replica
@@ -16334,7 +16342,9 @@ private aws.elasticache.cluster @defaults("cacheClusterId region nodeType engine
   // A list of cache security group elements, composed of name and status sub-elements
   cacheSecurityGroups []string
   // Name of the cache subnet group associated with the cluster
-  cacheSubnetGroupName string
+  //
+  // Deprecated in favor of subnetGroup.
+  cacheSubnetGroupName @maturity("deprecated") @replaced_by("aws.elasticache.cluster.subnetGroup") string
   // Cache subnet group the cluster is deployed in
   subnetGroup() aws.elasticache.subnetGroup
   // URL of the web page where you can download the latest ElastiCache client library
@@ -16390,11 +16400,15 @@ private aws.elasticache.cluster @defaults("cacheClusterId region nodeType engine
   // Whether log delivery is enabled for the replication group
   replicationGroupLogDeliveryEnabled bool
   // Identifier of the replication group the cluster belongs to, when part of one
-  replicationGroupId string
+  //
+  // Deprecated in favor of replicationGroup.
+  replicationGroupId @maturity("deprecated") @replaced_by("aws.elasticache.cluster.replicationGroup") string
   // Replication group the cluster belongs to, when part of one
   replicationGroup() aws.elasticache.replicationGroup
   // Name of the cache parameter group applied to the cluster
-  cacheParameterGroupName string
+  //
+  // Deprecated in favor of parameterGroup.
+  cacheParameterGroupName @maturity("deprecated") @replaced_by("aws.elasticache.cluster.parameterGroup") string
   // Cache parameter group applied to the cluster
   parameterGroup() aws.elasticache.parameterGroup
   // Address of the cluster configuration endpoint (Memcached clusters)
@@ -23691,7 +23705,9 @@ private aws.neptune.instance @defaults("arn name status"){
   // Name of the instance
   name string
   // User-supplied DB cluster identifier
-  clusterIdentifier string
+  //
+  // Deprecated in favor of cluster.
+  clusterIdentifier @maturity("deprecated") @replaced_by("aws.neptune.instance.cluster") string
   // Cluster the instance belongs to
   cluster() aws.neptune.cluster
   // Whether minor version patches are applied automatically
@@ -27180,11 +27196,15 @@ private aws.memorydb.cluster @defaults("name status nodeType region") {
   // KMS key used for encryption at rest
   kmsKey() aws.kms.key
   // Name of the Access Control List associated with the cluster
-  aclName string
+  //
+  // Deprecated in favor of acl.
+  aclName @maturity("deprecated") @replaced_by("aws.memorydb.cluster.acl") string
   // Name of the parameter group used by the cluster
   parameterGroupName string
   // Name of the subnet group used by the cluster
-  subnetGroupName string
+  //
+  // Deprecated in favor of subnetGroup.
+  subnetGroupName @maturity("deprecated") @replaced_by("aws.memorydb.cluster.subnetGroup") string
   // Number of days for which MemoryDB retains automatic snapshots
   snapshotRetentionLimit int
   // Daily time range during which MemoryDB takes automatic snapshots
