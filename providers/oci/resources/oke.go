@@ -658,3 +658,30 @@ func (o *mqlOciOkeNodePool) networkSecurityGroups() ([]any, error) {
 func (o *mqlOciOkeCluster) region() (*mqlOciRegion, error) {
 	return resolveOciRegionByKey(o.MqlRuntime, o.cacheRegion, &o.Region)
 }
+
+// exposure breaks down whether the cluster's Kubernetes API endpoint is
+// reachable from the internet: a public IP on the endpoint, a subnet that
+// permits internet ingress and routes to an internet gateway, and an ingress
+// rule in the endpoint's network security groups or the subnet's security
+// lists that admits any address.
+func (o *mqlOciOkeCluster) exposure() (*mqlOciNetworkExposure, error) {
+	public := o.GetIsPublicEndpointEnabled()
+	if public.Error != nil {
+		return nil, public.Error
+	}
+	subnet := o.GetEndpointSubnet()
+	if subnet.Error != nil {
+		return nil, subnet.Error
+	}
+	nsgs := o.GetEndpointSecurityGroups()
+	if nsgs.Error != nil {
+		return nil, nsgs.Error
+	}
+	var attributes map[string]any
+	if sa := o.GetSecurityAttributes(); sa.Error == nil {
+		attributes = sa.Data
+	}
+	return ociSubnetEndpointExposure(o.MqlRuntime,
+		"oci.oke.cluster/"+o.Id.Data+"/exposure",
+		public.Data, subnet.Data, nsgs.Data, attributes)
+}

@@ -6,6 +6,8 @@ package resources
 import (
 	"context"
 	"errors"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/oracle/oci-go-sdk/v65/apigateway"
@@ -757,4 +759,128 @@ func (o *mqlOciApigatewayGateway) certificateAuthorities() ([]any, error) {
 		return nil, err
 	}
 	return resolveOciCertRefsByType(o.MqlRuntime, o.CaBundleIds.Data, "certificateauthority", "oci.certificates.certificateAuthority")
+}
+
+func (o *mqlOciApigatewayDeployment) routes() ([]any, error) {
+	spec, err := o.getSpec()
+	if err != nil {
+		return nil, err
+	}
+	if spec == nil {
+		return []any{}, nil
+	}
+
+	res := make([]any, 0, len(spec.Routes))
+	for _, route := range spec.Routes {
+		r := flattenApiRoute(route)
+		mqlRoute, err := CreateResource(o.MqlRuntime, "oci.apigateway.deployment.route", map[string]*llx.RawData{
+			"__id":                llx.StringData(ociApiRouteID(o.Id.Data, r)),
+			"path":                llx.StringData(r.Path),
+			"methods":             llx.ArrayData(convert.SliceAnyToInterface(r.Methods), types.String),
+			"backendType":         llx.StringData(r.BackendType),
+			"backendUrl":          llx.StringData(r.BackendURL),
+			"backendUrls":         llx.ArrayData(convert.SliceAnyToInterface(r.BackendURLs), types.String),
+			"isSslVerifyDisabled": llx.BoolDataPtr(r.IsSslVerifyDisabled),
+			"authorizationType":   llx.StringData(r.AuthorizationType),
+			"allowedScopes":       llx.ArrayData(convert.SliceAnyToInterface(r.AllowedScopes), types.String),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlRoute)
+	}
+	return res, nil
+}
+
+// ociApiRoute is one deployment route reduced to the facts the route
+// resource reports.
+type ociApiRoute struct {
+	Path                string
+	Methods             []string
+	BackendType         string
+	BackendURL          string
+	BackendURLs         []string
+	IsSslVerifyDisabled *bool
+	AuthorizationType   string
+	AllowedScopes       []string
+}
+
+// flattenApiRoute reads a route's path, methods, backend and authorization.
+// The backend and the authorization policy are polymorphic unions the SDK
+// decodes into values of the concrete type.
+func flattenApiRoute(route apigateway.ApiSpecificationRoute) ociApiRoute {
+	res := ociApiRoute{
+		Path:          stringValue(route.Path),
+		Methods:       make([]string, 0, len(route.Methods)),
+		BackendURLs:   []string{},
+		AllowedScopes: []string{},
+	}
+	for _, m := range route.Methods {
+		res.Methods = append(res.Methods, string(m))
+	}
+
+	switch b := route.Backend.(type) {
+	case apigateway.HttpBackend:
+		res.BackendType = "HTTP_BACKEND"
+		res.BackendURL = stringValue(b.Url)
+		res.addHTTPBackend(b)
+	case apigateway.DynamicRoutingBackend:
+		res.BackendType = "DYNAMIC_ROUTING_BACKEND"
+		// A dynamic backend picks one of its routing backends per request, so
+		// one that skips certificate verification is enough to make the
+		// route's traffic unverified.
+		for _, rb := range b.RoutingBackends {
+			if h, ok := rb.Backend.(apigateway.HttpBackend); ok {
+				res.addHTTPBackend(h)
+			}
+		}
+	case apigateway.OracleFunctionBackend:
+		res.BackendType = "ORACLE_FUNCTIONS_BACKEND"
+	case apigateway.StockResponseBackend:
+		res.BackendType = "STOCK_RESPONSE_BACKEND"
+	case apigateway.OAuth2LoginBackend:
+		res.BackendType = "OAUTH2_LOGIN_BACKEND"
+	case apigateway.OAuth2LogoutBackend:
+		res.BackendType = "OAUTH2_LOGOUT_BACKEND"
+	}
+
+	if route.RequestPolicies != nil {
+		switch a := route.RequestPolicies.Authorization.(type) {
+		case apigateway.AnonymousRouteAuthorizationPolicy:
+			res.AuthorizationType = "ANONYMOUS"
+		case apigateway.AuthenticationOnlyRouteAuthorizationPolicy:
+			res.AuthorizationType = "AUTHENTICATION_ONLY"
+		case apigateway.AnyOfRouteAuthorizationPolicy:
+			res.AuthorizationType = "ANY_OF"
+			res.AllowedScopes = append(res.AllowedScopes, a.AllowedScope...)
+		}
+	}
+	return res
+}
+
+// ociApiRouteID keys a route by its deployment, methods and path. The API
+// rejects two routes with the same path and an overlapping method, so the
+// three together are unique within a deployment.
+func ociApiRouteID(deploymentID string, r ociApiRoute) string {
+	methods := append([]string{}, r.Methods...)
+	sort.Strings(methods)
+	return "oci.apigateway.deployment.route/" + deploymentID + "/" + strings.Join(methods, ",") + " " + r.Path
+}
+
+// addHTTPBackend records one HTTP backend the route can reach. The route's
+// verification flag becomes true once any of its HTTP backends disables
+// verification, and is false while all of them verify. An absent flag is the
+// default, which verifies the certificate.
+func (r *ociApiRoute) addHTTPBackend(b apigateway.HttpBackend) {
+	if u := stringValue(b.Url); u != "" {
+		r.BackendURLs = append(r.BackendURLs, u)
+	}
+	disabled := boolValue(b.IsSslVerifyDisabled)
+	if r.IsSslVerifyDisabled == nil {
+		r.IsSslVerifyDisabled = &disabled
+		return
+	}
+	if disabled {
+		*r.IsSslVerifyDisabled = true
+	}
 }

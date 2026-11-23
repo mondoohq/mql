@@ -4175,8 +4175,15 @@ private oci.events.rule @defaults("name") {
 oci.cloudGuard {
   // Whether Cloud Guard is enabled
   status() bool
-  // Region where Cloud Guard reports findings
-  reportingRegion() string
+  // Name of the region where Cloud Guard reports findings
+  //
+  // Deprecated in favor of findingsRegion, which resolves the region.
+  reportingRegion() @maturity("deprecated") string
+  // Region where Cloud Guard reports findings, resolved
+  //
+  // Null when Cloud Guard is not configured or the region is not among the
+  // tenancy's subscriptions.
+  findingsRegion() oci.region
   // Whether Cloud Guard resources are self-managed
   selfManageResources() bool
   // Cloud Guard targets (monitored compartments/resources)
@@ -4211,6 +4218,10 @@ private oci.cloudGuard.target @defaults("name") {
   targetResourceId string
   // Type of resource being monitored (e.g., COMPARTMENT, ERPCLOUD, HCMCLOUD, SECURITY_ZONE)
   targetResourceType string
+  // Compartment the target monitors
+  //
+  // Null unless targetResourceType is COMPARTMENT.
+  targetCompartment() oci.compartment
   // Target lifecycle state (e.g., CREATING, UPDATING, ACTIVE, INACTIVE, DELETING, DELETED, FAILED)
   state string
   // Number of detector recipes attached to the target
@@ -5326,6 +5337,24 @@ private oci.vault.secret @defaults("name") {
   isScheduledRotationEnabled() bool
   // Expiry time of the current secret version
   timeOfCurrentVersionExpiry() time
+  // Version number of the secret's current version
+  currentVersionNumber() int
+  // Interval after which each secret version expires, in ISO 8601 duration format (e.g., P30D)
+  //
+  // Empty when the secret has no expiry rule or the rule sets no interval.
+  expiryInterval() string
+  // Fixed time at which the secret's content expires
+  //
+  // Null when the secret has no expiry rule or the rule sets no absolute expiry.
+  timeOfAbsoluteExpiry() time
+  // Whether retrieving the content of an expired secret version is blocked
+  //
+  // Null when the secret has no expiry rule.
+  isContentRetrievalBlockedOnExpiry() bool
+  // Whether content of deleted secret versions may not be reused
+  //
+  // Null when the secret has no reuse rule.
+  isReuseBlockedOnDeletedVersions() bool
   // Secret versions
   secretVersions() []oci.vault.secretVersion
   // Creation time
@@ -7961,6 +7990,11 @@ private oci.oke.cluster @defaults("name") {
   // Empty when no group is attached, in which case the endpoint is governed
   // only by its subnet's security lists.
   endpointSecurityGroups() []oci.network.networkSecurityGroup
+  // Internet-exposure breakdown for the Kubernetes API endpoint
+  //
+  // A public IP on the endpoint, combined with the endpoint subnet's routing
+  // and ingress rules and the endpoint's network security groups.
+  exposure() oci.network.exposure
   // Whether the API server accepts OpenID Connect tokens
   //
   // When enabled, an external identity provider can mint tokens the cluster
@@ -9615,6 +9649,11 @@ private oci.apigateway.deployment @defaults("name pathPrefix") {
   rateLimitKey() string
   // Whether dynamic authentication (multiple auth options selected by request) is configured
   hasDynamicAuthentication() bool
+  // Routes the deployment serves
+  //
+  // Each route pairs a path and its methods with the backend that answers it
+  // and the authorization it requires.
+  routes() []oci.apigateway.deployment.route
   // Creation time
   created time
   // Last update time
@@ -9629,6 +9668,47 @@ private oci.apigateway.deployment @defaults("name pathPrefix") {
   // `Oracle-Tags` namespace records the creating principal in `CreatedBy`
   // and the creation time in `CreatedOn`.
   systemTags map[string]dict
+}
+
+// Route of an Oracle Cloud Infrastructure (OCI) API gateway deployment
+//
+// One route of a deployment: the `path` and `methods` it matches, the
+// backend that answers it, and the authorization it requires. Flags HTTP
+// backends that skip TLS certificate verification with
+// `isSslVerifyDisabled`, and routes open to unauthenticated callers with
+// `authorizationType == "ANONYMOUS"`.
+private oci.apigateway.deployment.route @defaults("path methods backendType") {
+  // Path the route matches, relative to the deployment's pathPrefix
+  path string
+  // HTTP methods the route accepts
+  //
+  // Empty when the route accepts every method.
+  methods []string
+  // Backend type (HTTP_BACKEND, ORACLE_FUNCTIONS_BACKEND, STOCK_RESPONSE_BACKEND, OAUTH2_LOGIN_BACKEND, OAUTH2_LOGOUT_BACKEND, or DYNAMIC_ROUTING_BACKEND)
+  backendType string
+  // URL of the HTTP backend
+  //
+  // Empty unless backendType is HTTP_BACKEND. A dynamic routing backend's
+  // HTTP backends are listed in backendUrls.
+  backendUrl string
+  // URLs of every HTTP backend the route can send a request to
+  //
+  // The HTTP backend itself, or each HTTP backend a dynamic routing backend
+  // selects between.
+  backendUrls []string
+  // Whether TLS certificate verification is disabled on an HTTP backend of the route
+  //
+  // For a dynamic routing backend, true when any HTTP backend it selects
+  // between disables verification. Null when the route has no HTTP backend.
+  isSslVerifyDisabled bool
+  // Authorization the route requires (ANONYMOUS, ANY_OF, or AUTHENTICATION_ONLY)
+  //
+  // Empty when the route sets no authorization policy. The gateway then
+  // requires an authenticated caller when the deployment configures
+  // authentication, and admits every caller when it does not.
+  authorizationType string
+  // Scopes of which a caller must hold one, when authorizationType is ANY_OF
+  allowedScopes []string
 }
 
 // Oracle Cloud Infrastructure (OCI) API gateway TLS certificate (distinct from oci.certificates.certificate; managed by the apigateway service)
@@ -9802,6 +9882,8 @@ private oci.certificates.caBundle @defaults("name") {
 oci.redis {
   // OCI Cache clusters
   clusters() []oci.redis.cluster
+  // OCI Cache users
+  users() []oci.redis.user
 }
 
 // Oracle Cloud Infrastructure (OCI) Cache cluster (Redis or Valkey)
@@ -9849,6 +9931,19 @@ private oci.redis.cluster @defaults("name softwareVersion state") {
   subnet() oci.network.subnet
   // Network security groups attached to the cluster
   networkSecurityGroups() []oci.network.networkSecurityGroup
+  // Internet-exposure breakdown (the subnet's routing and ingress rules and the network security groups)
+  //
+  // OCI Cache endpoints carry only private addresses, so internetReachable is
+  // false; the breakdown reports which rules would admit traffic from any
+  // address. Null for a DELETED cluster.
+  exposure() oci.network.exposure
+  // Security attributes applied to this cluster, resolved
+  //
+  // Each labelling as a row carrying its namespace, its definition and whether
+  // that namespace enforces or only audits.
+  appliedSecurityAttributes() []oci.securityAttributes.applied
+  // Cache users attached to the cluster
+  users() []oci.redis.user
   // FQDN of the primary node API endpoint
   primaryFqdn string
   // Private IP of the primary node API endpoint
@@ -9869,6 +9964,50 @@ private oci.redis.cluster @defaults("name softwareVersion state") {
   created time
   // Last update time
   timeUpdated time
+  // Free-form tags for resource management
+  freeformTags map[string]string
+  // Defined tags for governance and cost tracking
+  definedTags map[string]map[string]string
+  // System tags
+  //
+  // Tags applied automatically by Oracle, keyed by namespace. The
+  // `Oracle-Tags` namespace records the creating principal in `CreatedBy`
+  // and the creation time in `CreatedOn`.
+  systemTags map[string]dict
+}
+
+// Oracle Cloud Infrastructure (OCI) Cache user
+//
+// A user that clients authenticate as against OCI Cache clusters, selected
+// by its OCID with `oci.redis.user(id: "ocid1.ocicacheuser.oc1...")`.
+// Reports how the user authenticates (`authenticationType` of IAM or
+// PASSWORD), the access control list that limits its commands and keys
+// (`aclString`), and whether it is switched on. Password hashes are not
+// exposed.
+private oci.redis.user @defaults("name authenticationType status") {
+  init(id? string)
+  // Cache user OCID
+  id string
+  // User name clients authenticate as
+  name string
+  // Compartment containing the user
+  compartment() oci.compartment
+  // User description
+  description string
+  // How the user authenticates (IAM or PASSWORD)
+  authenticationType string
+  // Access control list in Redis ACL syntax, limiting the commands, keys and channels the user may use
+  //
+  // For example `~* +@all` grants every command on every key. Rules that
+  // carry a password or a password hash (`>`, `<`, `#`, `!`) keep their
+  // prefix with the value masked as `***`.
+  aclString() string
+  // Whether the user is switched on (ON or OFF)
+  status string
+  // Lifecycle state (CREATING, UPDATING, ACTIVE, DELETING, DELETED, FAILED)
+  state string
+  // Creation time
+  created time
   // Free-form tags for resource management
   freeformTags map[string]string
   // Defined tags for governance and cost tracking

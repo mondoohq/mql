@@ -158,6 +158,9 @@ func ociReadSecretReplication(s vault.SecretSummary) ociSecretReplication {
 
 type mqlOciVaultSecretInternal struct {
 	ociCompartmentRef
+	// detail is the GetSecret response, which carries the secret rules and
+	// the current version number that the list summary leaves out.
+	detail       ociRetryLazy[*vault.Secret]
 	cacheKeyID   string
 	cacheVaultID string
 	cacheRegion  string
@@ -435,4 +438,124 @@ func ociReadSecretGeneration(ctx vault.SecretGenerationContext) ociSecretGenerat
 		}
 	}
 	return ociSecretGeneration{}
+}
+
+// getDetail calls GetSecret once for the rules and the current version.
+func (o *mqlOciVaultSecret) getDetail() (*vault.Secret, error) {
+	return o.detail.get(func() (*vault.Secret, error) {
+		conn := o.MqlRuntime.Connection.(*connection.OciConnection)
+		svc, err := conn.VaultsClient(o.cacheRegion)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := svc.GetSecret(context.Background(), vault.GetSecretRequest{
+			SecretId: new(o.Id.Data),
+		})
+		if err != nil {
+			return nil, err
+		}
+		return &resp.Secret, nil
+	})
+}
+
+func (o *mqlOciVaultSecret) currentVersionNumber() (int64, error) {
+	s, err := o.getDetail()
+	if err != nil {
+		return 0, err
+	}
+	if s == nil || s.CurrentVersionNumber == nil {
+		o.CurrentVersionNumber.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return *s.CurrentVersionNumber, nil
+}
+
+func (o *mqlOciVaultSecret) expiryInterval() (string, error) {
+	s, err := o.getDetail()
+	if err != nil || s == nil {
+		return "", err
+	}
+	return stringValue(ociReadSecretRules(s.SecretRules).ExpiryInterval), nil
+}
+
+func (o *mqlOciVaultSecret) timeOfAbsoluteExpiry() (*time.Time, error) {
+	s, err := o.getDetail()
+	if err != nil {
+		return nil, err
+	}
+	var t *time.Time
+	if s != nil {
+		t = ociReadSecretRules(s.SecretRules).TimeOfAbsoluteExpiry
+	}
+	if t == nil {
+		o.TimeOfAbsoluteExpiry.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return t, nil
+}
+
+func (o *mqlOciVaultSecret) isContentRetrievalBlockedOnExpiry() (bool, error) {
+	s, err := o.getDetail()
+	if err != nil {
+		return false, err
+	}
+	var v *bool
+	if s != nil {
+		v = ociReadSecretRules(s.SecretRules).ContentRetrievalBlockedOnExpiry
+	}
+	if v == nil {
+		o.IsContentRetrievalBlockedOnExpiry.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return *v, nil
+}
+
+func (o *mqlOciVaultSecret) isReuseBlockedOnDeletedVersions() (bool, error) {
+	s, err := o.getDetail()
+	if err != nil {
+		return false, err
+	}
+	var v *bool
+	if s != nil {
+		v = ociReadSecretRules(s.SecretRules).ReuseBlockedOnDeletedVersions
+	}
+	if v == nil {
+		o.IsReuseBlockedOnDeletedVersions.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return *v, nil
+}
+
+// ociSecretRules is what a secret's rules say about expiry and reuse. Every
+// field is nil when the rule that would carry it is absent.
+type ociSecretRules struct {
+	ExpiryInterval                  *string
+	TimeOfAbsoluteExpiry            *time.Time
+	ContentRetrievalBlockedOnExpiry *bool
+	ReuseBlockedOnDeletedVersions   *bool
+}
+
+// ociReadSecretRules reads the expiry and reuse rules off a secret. The rules
+// are a polymorphic union the SDK decodes into values of the concrete type.
+//
+// A reuse rule that is present but leaves its flag unset is reported as
+// false, which is the service default; an expiry rule's retrieval flag is
+// treated the same way. Only an absent rule reads as null.
+func ociReadSecretRules(rules []vault.SecretRule) ociSecretRules {
+	res := ociSecretRules{}
+	for _, rule := range rules {
+		switch r := rule.(type) {
+		case vault.SecretExpiryRule:
+			res.ExpiryInterval = r.SecretVersionExpiryInterval
+			if r.TimeOfAbsoluteExpiry != nil {
+				t := r.TimeOfAbsoluteExpiry.Time
+				res.TimeOfAbsoluteExpiry = &t
+			}
+			blocked := boolValue(r.IsSecretContentRetrievalBlockedOnExpiry)
+			res.ContentRetrievalBlockedOnExpiry = &blocked
+		case vault.SecretReuseRule:
+			enforced := boolValue(r.IsEnforcedOnDeletedSecretVersions)
+			res.ReuseBlockedOnDeletedVersions = &enforced
+		}
+	}
+	return res
 }
