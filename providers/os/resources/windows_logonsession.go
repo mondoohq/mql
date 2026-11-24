@@ -57,14 +57,14 @@ func (w *mqlWindows) logonSessions() ([]any, error) {
 		res, err := CreateResource(w.MqlRuntime, "windows.logonSession", map[string]*llx.RawData{
 			"logonId":               llx.StringData(s.LogonId),
 			"logonType":             llx.IntData(s.LogonType),
-			"logonTypeName":         llx.StringData(windows.LogonTypeName(s.LogonType)),
+			"logonTypeName":         stringOrNil(windows.LogonTypeName(s.LogonType)),
 			"authenticationPackage": llx.StringData(s.AuthenticationPackage),
 			// TimeDataPtr preserves a missing start time as null. A zero
 			// time.Time would report the session as having started in year 1.
 			"startTime":     llx.TimeDataPtr(s.StartTime),
 			"accountName":   llx.StringData(s.AccountName),
 			"accountDomain": llx.StringData(s.AccountDomain),
-			"sid":           llx.StringData(s.Sid),
+			"sid":           stringOrNil(s.Sid),
 		})
 		if err != nil {
 			return nil, err
@@ -121,4 +121,13 @@ func (r *mqlWindowsLogonSession) user() (*mqlUser, error) {
 	// know the field resolved and may re-fetch it.
 	r.User.State = plugin.StateIsSet | plugin.StateIsNull
 	return nil, nil
+}
+
+// stringOrNil reports an empty string as null: the script leaves a value it
+// could not determine empty, and an empty string would read as a value.
+func stringOrNil(s string) *llx.RawData {
+	if s == "" {
+		return llx.NilData
+	}
+	return llx.StringData(s)
 }
