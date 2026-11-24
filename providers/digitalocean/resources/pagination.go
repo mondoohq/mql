@@ -98,3 +98,51 @@ func paginateToken[T any](ctx context.Context, list tokenListFunc[T]) ([]T, erro
 		token = next
 	}
 }
+
+// offsetListFunc fetches one page (1-based) of a page/per_page list endpoint
+// that reports its size in the body rather than in links. It returns the
+// page's items and the total the endpoint reported, or a negative total when
+// it reported none.
+type offsetListFunc[T any] func(ctx context.Context, page int) ([]T, int, error)
+
+// paginateOffset walks a page/per_page list endpoint to completion and
+// returns every item. It stops on an empty page, once the reported total is
+// reached, or, when no total is reported, on a page shorter than perPage.
+//
+// key identifies an item. A page that adds no item not already seen means
+// the endpoint ignores the page parameter, which would otherwise loop
+// forever, so it is reported as an error rather than returning a truncated
+// list as complete.
+func paginateOffset[T any](ctx context.Context, perPage int, key func(T) string, list offsetListFunc[T]) ([]T, error) {
+	var all []T
+	seen := map[string]struct{}{}
+	for page := 1; ; page++ {
+		items, total, err := list(ctx, page)
+		if err != nil {
+			return nil, err
+		}
+		if len(items) == 0 {
+			return all, nil
+		}
+		added := 0
+		for _, it := range items {
+			k := key(it)
+			if _, ok := seen[k]; ok {
+				continue
+			}
+			seen[k] = struct{}{}
+			all = append(all, it)
+			added++
+		}
+		if added == 0 {
+			return nil, fmt.Errorf("pagination page %d repeated earlier items, so the endpoint is repeating a page", page)
+		}
+		if total > 0 {
+			if len(all) >= total {
+				return all, nil
+			}
+		} else if len(items) < perPage {
+			return all, nil
+		}
+	}
+}

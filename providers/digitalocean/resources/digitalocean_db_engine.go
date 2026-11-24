@@ -49,13 +49,80 @@ type engineConfig struct {
 	mongo      *godo.MongoDBConfig
 	opensearch *godo.OpensearchConfig
 	kafka      *godo.KafkaConfig
+	// Advanced Edition clusters report their configuration as a list of
+	// engine parameters rather than a struct of typed settings.
+	advancedPg    *godo.AdvancedPostgresConfig
+	advancedMysql *godo.AdvancedMySQLConfig
 }
 
-// value returns the configuration struct that is set, or nil.
+// advancedParams maps an Advanced Edition parameter list to the setting
+// names the other engines are keyed by. Values stay the strings the engine
+// reports: the API gives no type for a parameter, and guessing one would
+// turn "1" into a number on one parameter and a flag on the next. An entry
+// without a name cannot be addressed and is skipped.
+func advancedParams(params []godo.AdvancedMySQLParameter) map[string]string {
+	out := make(map[string]string, len(params))
+	for _, p := range params {
+		if p.Name == "" {
+			continue
+		}
+		out[p.Name] = p.Value
+	}
+	return out
+}
+
+// advancedPgParams is advancedParams for a PostgreSQL Advanced Edition
+// cluster, whose parameters carry the same fields.
+func advancedPgParams(params []godo.AdvancedPostgresPGParameter) map[string]string {
+	conv := make([]godo.AdvancedMySQLParameter, len(params))
+	for i, p := range params {
+		conv[i] = godo.AdvancedMySQLParameter(p)
+	}
+	return advancedParams(conv)
+}
+
+// advancedParamBool reads an Advanced Edition parameter as a boolean. MySQL
+// and PostgreSQL print a boolean variable as ON/OFF, 1/0, or true/false;
+// any other value, and a parameter that is not reported, is nil rather than
+// a guess.
+func advancedParamBool(params map[string]string, name string) *bool {
+	v, ok := params[name]
+	if !ok {
+		return nil
+	}
+	var b bool
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "on", "1", "true":
+		b = true
+	case "off", "0", "false":
+		b = false
+	default:
+		return nil
+	}
+	return &b
+}
+
+// mysqlBool picks a MySQL boolean setting from either the managed MySQL
+// struct or the Advanced Edition parameter of the same name.
+func mysqlBool(c *engineConfig, fromStruct func(*godo.MySQLConfig) *bool, param string) *bool {
+	switch {
+	case c.mysql != nil:
+		return fromStruct(c.mysql)
+	case c.advancedMysql != nil:
+		return advancedParamBool(advancedParams(c.advancedMysql.MySQLParameters), param)
+	}
+	return nil
+}
+
+// value returns the configuration that is set, or nil.
 func (c *engineConfig) value() any {
 	switch {
 	case c == nil:
 		return nil
+	case c.advancedPg != nil:
+		return advancedPgParams(c.advancedPg.PGParameters)
+	case c.advancedMysql != nil:
+		return advancedParams(c.advancedMysql.MySQLParameters)
 	case c.pg != nil:
 		return c.pg
 	case c.mysql != nil:
@@ -103,6 +170,10 @@ func (r *mqlDigitaloceanDatabase) fetchEngineConfig() (*engineConfig, error) {
 			cfg.opensearch, _, err = dbs.GetOpensearchConfig(ctx, id)
 		case "kafka":
 			cfg.kafka, _, err = dbs.GetKafkaConfig(ctx, id)
+		case "advanced_pg":
+			cfg.advancedPg, _, err = dbs.GetAdvancedPostgresSQLConfig(ctx, id)
+		case "advanced_mysql":
+			cfg.advancedMysql, _, err = dbs.GetAdvancedMySQLConfig(ctx, id)
 		default:
 			return
 		}
@@ -300,19 +371,13 @@ func (r *mqlDigitaloceanDatabase) autoCreateTopicsEnabled() (bool, error) {
 
 func (r *mqlDigitaloceanDatabase) slowQueryLogEnabled() (bool, error) {
 	return r.engineBool(&r.SlowQueryLogEnabled, func(c *engineConfig) *bool {
-		if c.mysql == nil {
-			return nil
-		}
-		return c.mysql.SlowQueryLog
+		return mysqlBool(c, func(m *godo.MySQLConfig) *bool { return m.SlowQueryLog }, "slow_query_log")
 	})
 }
 
 func (r *mqlDigitaloceanDatabase) requirePrimaryKey() (bool, error) {
 	return r.engineBool(&r.RequirePrimaryKey, func(c *engineConfig) *bool {
-		if c.mysql == nil {
-			return nil
-		}
-		return c.mysql.SQLRequirePrimaryKey
+		return mysqlBool(c, func(m *godo.MySQLConfig) *bool { return m.SQLRequirePrimaryKey }, "sql_require_primary_key")
 	})
 }
 

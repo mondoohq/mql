@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/digitalocean/godo"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/digitalocean/connection"
@@ -100,6 +101,44 @@ type mqlDigitaloceanInternal struct {
 	databaseByNameIndexOnce sync.Once
 	databaseByNameIndex     map[string]*mqlDigitaloceanDatabase
 	databaseByNameIndexErr  error
+
+	// subnetIndex maps subnet id to subnet across every VPC, so a droplet,
+	// load balancer, or cluster resolves its subnet from the VPCs' subnet
+	// lists instead of one lookup per resource.
+	subnetIndexOnce sync.Once
+	subnetIndex     map[string]*mqlDigitaloceanVpcSubnet
+	subnetIndexErr  error
+
+	// signalsConsents is the team's Signals consent listing, read once and
+	// shared by every hosted agent config and the team-level inference
+	// consent.
+	signalsConsentsOnce sync.Once
+	signalsConsents     *godo.SignalsListConsentsResponse
+	signalsConsentsErr  error
+
+	// actionGatewayCredentialIndex maps provider credential id to credential,
+	// so a connection resolves its credential from the listing.
+	actionGatewayCredentialIndexOnce sync.Once
+	actionGatewayCredentialIndex     map[string]*mqlDigitaloceanActionGatewayProviderCredential
+	actionGatewayCredentialIndexErr  error
+
+	// insightsChannelIndex maps notification channel id to channel, so an
+	// alert rule resolves its channels from the listing.
+	insightsChannelIndexOnce sync.Once
+	insightsChannelIndex     map[string]*mqlDigitaloceanInsightsNotificationChannel
+	insightsChannelIndexErr  error
+
+	// agentDataRegions is the set of regions Agent Data Services is offered
+	// in, read once and shared by the workspace and token listings.
+	agentDataRegionsOnce sync.Once
+	agentDataRegions     []string
+	agentDataRegionsErr  error
+
+	// agentDataWorkspaceIndex maps workspace uuid to workspace, so a token
+	// resolves the workspaces it is bound to from the listing.
+	agentDataWorkspaceIndexOnce sync.Once
+	agentDataWorkspaceIndex     map[string]*mqlDigitaloceanAgentDataWorkspace
+	agentDataWorkspaceIndexErr  error
 }
 
 // partnerAttachmentByID resolves a partner attachment by its ID from the

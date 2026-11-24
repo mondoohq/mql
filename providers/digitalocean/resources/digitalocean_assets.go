@@ -419,6 +419,7 @@ func newMqlLoadBalancer(runtime *plugin.Runtime, lb *godo.LoadBalancer) (*mqlDig
 	}
 	mqlLB := res.(*mqlDigitaloceanLoadBalancer)
 	mqlLB.cacheVPCUUID = lb.VPCUUID
+	mqlLB.cacheSubnetUUID = lb.VPCSubnetUUID
 	mqlLB.cacheDropletIDs = toIntSlice(lb.DropletIDs)
 	mqlLB.cacheTargetLoadBalancerIDs = lb.TargetLoadBalancerIDs
 	mqlLB.cacheForwardingRules = lb.ForwardingRules
