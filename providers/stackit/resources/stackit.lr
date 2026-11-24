@@ -2224,9 +2224,9 @@ private stackit.postgresFlex.instance @defaults("id name version status") {
   // Whether the instance accepts connections from any address
   //
   // True only when the connection ACL explicitly admits a default route
-  // (0.0.0.0/0 or ::/0). An empty ACL is not flagged: the Flex API exposes no
-  // public-endpoint indicator, so an unpopulated ACL cannot be assumed to be
-  // internet-reachable.
+  // (0.0.0.0/0 or ::/0) and the access scope is PUBLIC or unreported. An
+  // instance scoped to a STACKIT Network Area (SNA) has no public endpoint and
+  // reads false whatever its ACL. An empty ACL is not flagged.
   internetReachable() bool
   // Database users defined on the instance
   users() []stackit.postgresFlex.instance.user
@@ -2544,9 +2544,9 @@ private stackit.sqlServerFlex.instance @defaults("id name version status") {
   // Whether the instance accepts connections from any address
   //
   // True only when the connection ACL explicitly admits a default route
-  // (0.0.0.0/0 or ::/0). An empty ACL is not flagged: the Flex API exposes no
-  // public-endpoint indicator, so an unpopulated ACL cannot be assumed to be
-  // internet-reachable.
+  // (0.0.0.0/0 or ::/0) and the access scope is PUBLIC or unreported. An
+  // instance scoped to a STACKIT Network Area (SNA) has no public endpoint and
+  // reads false whatever its ACL. An empty ACL is not flagged.
   internetReachable() bool
   // Database users defined on the instance
   users() []stackit.sqlServerFlex.instance.user
