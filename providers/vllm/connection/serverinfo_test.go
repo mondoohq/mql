@@ -299,6 +299,112 @@ func TestServerInfoAbsentRouteIsNotAnError(t *testing.T) {
 	}
 }
 
+// Synthetic: model_config and load_config keys taken from vLLM's ModelConfig
+// and LoadConfig field names; no live server was checked.
+const serverInfoMediaAndLoadJSON = `{
+  "vllm_config": {
+    "model_config": {
+      "model": "org/model",
+      "trust_remote_code": true,
+      "allowed_local_media_path": "/srv/media",
+      "allowed_media_domains": ["upload.example.com", "cdn.example.com"],
+      "revision": "main",
+      "code_revision": "3f1c2a9",
+      "tokenizer_revision": "v1.2"
+    },
+    "load_config": {
+      "load_format": "pt",
+      "download_dir": "/models/cache"
+    }
+  }
+}`
+
+func TestParseServerInfoMediaRevisionAndLoad(t *testing.T) {
+	info, err := ParseServerInfo([]byte(serverInfoMediaAndLoadJSON))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := derefString(info.AllowedLocalMediaPath); got != "/srv/media" {
+		t.Fatalf("allowedLocalMediaPath got %q", got)
+	}
+	if len(info.AllowedMediaDomains) != 2 || info.AllowedMediaDomains[0] != "upload.example.com" || info.AllowedMediaDomains[1] != "cdn.example.com" {
+		t.Fatalf("allowedMediaDomains got %v", info.AllowedMediaDomains)
+	}
+	if got := derefString(info.Revision); got != "main" {
+		t.Fatalf("revision got %q", got)
+	}
+	if got := derefString(info.CodeRevision); got != "3f1c2a9" {
+		t.Fatalf("codeRevision got %q", got)
+	}
+	if got := derefString(info.TokenizerRevision); got != "v1.2" {
+		t.Fatalf("tokenizerRevision got %q", got)
+	}
+	if got := derefString(info.LoadFormat); got != "pt" {
+		t.Fatalf("loadFormat got %q", got)
+	}
+	if got := derefString(info.DownloadDir); got != "/models/cache" {
+		t.Fatalf("downloadDir got %q", got)
+	}
+}
+
+// Synthetic: vLLM's defaults rendered as JSON (empty media path, null domain
+// list and revisions, null download dir); no live server was checked.
+func TestParseServerInfoMediaRevisionAndLoadDefaults(t *testing.T) {
+	body := `{"vllm_config":{"model_config":{"allowed_local_media_path":"","allowed_media_domains":null,"revision":null,"code_revision":null,"tokenizer_revision":null},"load_config":{"load_format":"auto","download_dir":null}}}`
+	info, err := ParseServerInfo([]byte(body))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// The empty string is decoded as reported; the resource layer renders it
+	// as null.
+	if got := info.AllowedLocalMediaPath; got == nil || *got != "" {
+		t.Fatalf("allowedLocalMediaPath got %v want empty string", got)
+	}
+	if info.AllowedMediaDomains != nil {
+		t.Fatalf("allowedMediaDomains got %v want nil", info.AllowedMediaDomains)
+	}
+	if info.Revision != nil || info.CodeRevision != nil || info.TokenizerRevision != nil {
+		t.Fatalf("revisions got %v %v %v want null", info.Revision, info.CodeRevision, info.TokenizerRevision)
+	}
+	if got := derefString(info.LoadFormat); got != "auto" {
+		t.Fatalf("loadFormat got %q", got)
+	}
+	if info.DownloadDir != nil {
+		t.Fatalf("downloadDir got %q want null", *info.DownloadDir)
+	}
+}
+
+// An empty domain list is unrestricted in vLLM, the same as an unset one, so
+// it must not read as a configured allow-list.
+func TestParseServerInfoEmptyMediaDomainsIsNull(t *testing.T) {
+	// Synthetic: allowed_media_domains rendered as an empty list; no live server was checked.
+	info, err := ParseServerInfo([]byte(`{"vllm_config":{"model_config":{"allowed_media_domains":[]}}}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info.AllowedMediaDomains != nil {
+		t.Fatalf("allowedMediaDomains got %v want nil", info.AllowedMediaDomains)
+	}
+}
+
+// Blocks the server did not report leave every new field null.
+func TestParseServerInfoAbsentMediaRevisionAndLoadBlocks(t *testing.T) {
+	// Synthetic: model_config without the keys and no load_config block; no live server was checked.
+	info, err := ParseServerInfo([]byte(`{"vllm_config":{"model_config":{"model":"m"}}}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info.AllowedLocalMediaPath != nil || info.AllowedMediaDomains != nil {
+		t.Fatalf("media fields got %v %v want null", info.AllowedLocalMediaPath, info.AllowedMediaDomains)
+	}
+	if info.Revision != nil || info.CodeRevision != nil || info.TokenizerRevision != nil {
+		t.Fatal("revision fields must stay null when absent")
+	}
+	if info.LoadFormat != nil || info.DownloadDir != nil {
+		t.Fatalf("load fields got %v %v want null", info.LoadFormat, info.DownloadDir)
+	}
+}
+
 //go:fix inline
 func boolPtr(v bool) *bool { return new(v) }
 
