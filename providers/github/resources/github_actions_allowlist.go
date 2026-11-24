@@ -29,6 +29,10 @@ type mqlGithubRepositoryActionsSettingsInternal struct {
 	allowlistOnce sync.Once
 	allowlist     *github.ActionsAllowed
 	allowlistErr  error
+
+	contributorApprovalSetting actionsSetting[github.ContributorApprovalPermissions]
+	forkPrWorkflowsSetting     actionsSetting[github.WorkflowsPermissions]
+	retentionSetting           actionsSetting[github.ArtifactPeriod]
 }
 
 type mqlGithubOrganizationActionsSettingsInternal struct {
@@ -37,6 +41,11 @@ type mqlGithubOrganizationActionsSettingsInternal struct {
 	allowlistOnce sync.Once
 	allowlist     *github.ActionsAllowed
 	allowlistErr  error
+
+	contributorApprovalSetting actionsSetting[github.ContributorApprovalPermissions]
+	forkPrWorkflowsSetting     actionsSetting[github.WorkflowsPermissions]
+	retentionSetting           actionsSetting[github.ArtifactPeriod]
+	selfHostedRunnersSetting   actionsSetting[github.SelfHostedRunnersSettingsOrganization]
 }
 
 // classifyAllowlistErr maps a refused or inapplicable allowlist read to "no

@@ -120,6 +120,10 @@ func initGithubOrganization(runtime *plugin.Runtime, args map[string]*llx.RawDat
 	args["membersCanCreateTeams"] = llx.BoolData(convert.ToValue(org.MembersCanCreateTeams))
 	args["membersCanViewDependencyInsights"] = llx.BoolData(convert.ToValue(org.MembersCanViewDependencyInsights))
 	args["defaultRepositoryBranch"] = llx.StringDataPtr(org.DefaultRepositoryBranch)
+	args["deployKeysEnabledForRepositories"] = llx.BoolDataPtr(org.DeployKeysEnabledForRepositories)
+	args["secretScanningPushProtectionCustomLinkEnabled"] = llx.BoolDataPtr(org.SecretScanningPushProtectionCustomLinkEnabled)
+	args["secretScanningPushProtectionCustomLink"] = llx.StringDataPtr(org.SecretScanningPushProtectionCustomLink)
+	args["archivedAt"] = llx.TimeDataPtr(githubTimestamp(org.ArchivedAt))
 
 	return args, nil, nil
 }
@@ -353,16 +357,7 @@ func (g *mqlGithubOrganization) teams() ([]any, error) {
 	res := []any{}
 	for i := range allTeams {
 		team := allTeams[i]
-		r, err := CreateResource(g.MqlRuntime, "github.team", map[string]*llx.RawData{
-			"id":                llx.IntDataPtr(team.ID),
-			"name":              llx.StringDataPtr(team.Name),
-			"description":       llx.StringDataPtr(team.Description),
-			"slug":              llx.StringDataPtr(team.Slug),
-			"privacy":           llx.StringDataPtr(team.Privacy),
-			"defaultPermission": llx.StringDataPtr(team.Permission),
-			"type":              llx.StringDataPtr(team.Type),
-			"organization":      llx.ResourceData(g, g.MqlName()),
-		})
+		r, err := newMqlGithubTeam(g.MqlRuntime, team, llx.ResourceData(g, g.MqlName()), true)
 		if err != nil {
 			return nil, err
 		}
@@ -639,7 +634,7 @@ func (g *mqlGithubPackage) repository() (*mqlGithubRepository, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newMqlGithubRepository(g.MqlRuntime, repo)
+	return newMqlGithubRepositoryFromGet(g.MqlRuntime, repo)
 }
 
 func (g *mqlGithubOrganization) installations() ([]any, error) {

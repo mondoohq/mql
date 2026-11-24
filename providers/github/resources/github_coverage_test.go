@@ -17,6 +17,8 @@ import (
 	"github.com/google/go-github/v93/github"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
@@ -455,4 +457,81 @@ func TestAllowlistBool(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, got)
 	assert.Zero(t, off.State, "a reported false is a real answer, not an unread one")
+}
+
+// Synthetic: the code security configurations listing hands out `after`
+// cursors in its Link header, as GitHub documents; no target showed this.
+func TestCollectCursorPagesFollowsAfterCursor(t *testing.T) {
+	var cursors []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		after := r.URL.Query().Get("after")
+		cursors = append(cursors, after)
+		w.Header().Set("Content-Type", "application/json")
+		switch after {
+		case "":
+			w.Header().Set("Link", fmt.Sprintf(`<%s/api/v3/orgs/o/code-security/configurations?per_page=100&after=C2>; rel="next"`, serverURL(r)))
+			fmt.Fprint(w, `[{"id": 1, "name": "a"}, {"id": 2, "name": "b"}]`)
+		case "C2":
+			fmt.Fprint(w, `[{"id": 3, "name": "c"}]`)
+		default:
+			t.Fatalf("unexpected cursor %q", after)
+		}
+	}))
+	defer server.Close()
+
+	client := newTestGithubClient(t, server)
+	configs, err := collectCursorPages(func(after string) ([]*github.CodeSecurityConfiguration, *github.Response, error) {
+		return client.Organizations.ListCodeSecurityConfigurations(context.Background(), "o",
+			&github.ListOrgCodeSecurityConfigurationOptions{PerPage: paginationPerPage, After: after})
+	})
+	require.NoError(t, err)
+	require.Len(t, configs, 3, "every page must be collected, not just the first")
+	assert.Equal(t, []string{"", "C2"}, cursors)
+}
+
+// Synthetic: a server that keeps handing back the same cursor; no target
+// showed this.
+func TestCollectCursorPagesStopsOnRepeatedCursor(t *testing.T) {
+	calls := 0
+	items, err := collectCursorPages(func(after string) ([]int, *github.Response, error) {
+		calls++
+		if calls > 10 {
+			t.Fatal("cursor walk did not stop")
+		}
+		return []int{calls}, &github.Response{After: "SAME"}, nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []int{1, 2}, items)
+}
+
+// Synthetic: a failure on a later page fails the walk rather than returning
+// the pages read so far as the whole list.
+func TestCollectCursorPagesReturnsError(t *testing.T) {
+	_, err := collectCursorPages(func(after string) ([]int, *github.Response, error) {
+		if after == "" {
+			return []int{1}, &github.Response{After: "N"}, nil
+		}
+		return nil, nil, errors.New("connection reset")
+	})
+	assert.Error(t, err)
+}
+
+// Synthetic: the status codes GitHub documents for plan- and scope-gated
+// endpoints; no target showed these.
+func TestClassifyReadErr(t *testing.T) {
+	for _, status := range []int{403, 404, 409, 422} {
+		assert.NoError(t, classifyReadErr(ghErrorResponse(status), "x", "org"),
+			"status %d reports an unknown value", status)
+	}
+	assert.Error(t, classifyReadErr(ghErrorResponse(500), "x", "org"))
+	assert.Error(t, classifyReadErr(errors.New("connection reset"), "x", "org"),
+		"a transport failure must not turn into a null value")
+
+	plugin.ReadFeatures([]byte(mql.Features{byte(mql.StructuredErrors)}))
+	t.Cleanup(func() { plugin.ReadFeatures([]byte(mql.Features{byte(mql.ResourceContext)})) })
+	assert.ErrorIs(t, classifyReadErr(ghErrorResponse(403), "x", "org"), llx.ErrForbidden)
+	for _, status := range []int{404, 409, 422} {
+		assert.NoError(t, classifyReadErr(ghErrorResponse(status), "x", "org"),
+			"status %d reports an unknown value", status)
+	}
 }

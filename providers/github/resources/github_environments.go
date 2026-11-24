@@ -344,3 +344,122 @@ func (g *mqlGithubDeployment) latestStatus() (*mqlGithubDeploymentStatus, error)
 
 	return statusRes.(*mqlGithubDeploymentStatus), nil
 }
+
+func (g *mqlGithubEnvironmentBranchPolicy) id() (string, error) {
+	return g.__id, nil
+}
+
+func (g *mqlGithubEnvironmentCustomProtectionRule) id() (string, error) {
+	return g.__id, nil
+}
+
+// environmentChildID keys a policy or rule by its environment. The ids are
+// GitHub-assigned, but scoping them to the environment keeps an id-less entry
+// from aliasing one in another environment.
+func environmentChildID(kind, owner, repo, env string, id *int64, idx int) string {
+	key := "position/" + strconv.Itoa(idx)
+	if id != nil {
+		key = strconv.FormatInt(*id, 10)
+	}
+	return kind + "/" + owner + "/" + repo + "/" + env + "/" + key
+}
+
+// deploymentBranchPolicies lists the branch and tag name patterns allowed to
+// deploy to the environment.
+func (g *mqlGithubEnvironment) deploymentBranchPolicies() ([]any, error) {
+	if g.Name.Error != nil {
+		return nil, g.Name.Error
+	}
+	envName := g.Name.Data
+	conn := g.MqlRuntime.Connection.(*connection.GithubConnection)
+
+	listOpts := &github.ListOptions{PerPage: paginationPerPage}
+	var all []*github.DeploymentBranchPolicy
+	for {
+		page, resp, err := conn.Client().Repositories.ListDeploymentBranchPolicies(conn.Context(), g.ownerLogin, g.repoName, envName, listOpts)
+		if err != nil {
+			if isAccessDeniedOrNotFound(err) {
+				log.Debug().Err(err).Str("owner", g.ownerLogin).Str("repo", g.repoName).Str("environment", envName).
+					Msg("deployment branch policies are not accessible")
+				g.DeploymentBranchPolicies.State = plugin.StateIsSet | plugin.StateIsNull
+				return nil, nil
+			}
+			return nil, err
+		}
+		if page != nil {
+			all = append(all, page.BranchPolicies...)
+		}
+		next := nextPage(listOpts.Page, resp)
+		if next == 0 {
+			break
+		}
+		listOpts.Page = next
+	}
+
+	res := make([]any, 0, len(all))
+	for idx, policy := range all {
+		if policy == nil {
+			continue
+		}
+		r, err := CreateResource(g.MqlRuntime, "github.environmentBranchPolicy", map[string]*llx.RawData{
+			"__id": llx.StringData(environmentChildID("github.environmentBranchPolicy", g.ownerLogin, g.repoName, envName, policy.ID, idx)),
+			"id":   llx.IntDataPtr(policy.ID),
+			"name": llx.StringDataPtr(policy.Name),
+			"type": llx.StringDataPtr(policy.Type),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, r)
+	}
+	return res, nil
+}
+
+// customProtectionRules lists the GitHub App deployment protection rules on
+// the environment.
+func (g *mqlGithubEnvironment) customProtectionRules() ([]any, error) {
+	if g.Name.Error != nil {
+		return nil, g.Name.Error
+	}
+	envName := g.Name.Data
+	conn := g.MqlRuntime.Connection.(*connection.GithubConnection)
+
+	list, _, err := conn.Client().Repositories.GetAllDeploymentProtectionRules(conn.Context(), g.ownerLogin, g.repoName, envName)
+	if err != nil {
+		if isAccessDeniedOrNotFound(err) {
+			log.Debug().Err(err).Str("owner", g.ownerLogin).Str("repo", g.repoName).Str("environment", envName).
+				Msg("custom deployment protection rules are not accessible")
+			g.CustomProtectionRules.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	res := []any{}
+	if list == nil {
+		return res, nil
+	}
+	for idx, rule := range list.ProtectionRules {
+		if rule == nil {
+			continue
+		}
+		appID := llx.NilData
+		appSlug := llx.NilData
+		if rule.App != nil {
+			appID = llx.IntDataPtr(rule.App.ID)
+			appSlug = llx.StringDataPtr(rule.App.Slug)
+		}
+		r, err := CreateResource(g.MqlRuntime, "github.environmentCustomProtectionRule", map[string]*llx.RawData{
+			"__id":    llx.StringData(environmentChildID("github.environmentCustomProtectionRule", g.ownerLogin, g.repoName, envName, rule.ID, idx)),
+			"id":      llx.IntDataPtr(rule.ID),
+			"enabled": llx.BoolDataPtr(rule.Enabled),
+			"appId":   appID,
+			"appSlug": appSlug,
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, r)
+	}
+	return res, nil
+}

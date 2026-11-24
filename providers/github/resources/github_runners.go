@@ -20,14 +20,23 @@ import (
 // ghRunnerExt mirrors the Runner JSON returned by GitHub plus architecture,
 // which go-github does not expose on its Runner struct.
 type ghRunnerExt struct {
-	ID           *int64                 `json:"id,omitempty"`
-	Name         *string                `json:"name,omitempty"`
-	OS           *string                `json:"os,omitempty"`
-	Status       *string                `json:"status,omitempty"`
-	Busy         *bool                  `json:"busy,omitempty"`
-	Ephemeral    *bool                  `json:"ephemeral,omitempty"`
-	Architecture *string                `json:"architecture,omitempty"`
-	Labels       []*github.RunnerLabels `json:"labels,omitempty"`
+	ID            *int64                 `json:"id,omitempty"`
+	Name          *string                `json:"name,omitempty"`
+	OS            *string                `json:"os,omitempty"`
+	Status        *string                `json:"status,omitempty"`
+	Busy          *bool                  `json:"busy,omitempty"`
+	Ephemeral     *bool                  `json:"ephemeral,omitempty"`
+	Architecture  *string                `json:"architecture,omitempty"`
+	Version       *string                `json:"version,omitempty"`
+	RunnerGroupID *int64                 `json:"runner_group_id,omitempty"`
+	Labels        []*github.RunnerLabels `json:"labels,omitempty"`
+}
+
+type mqlGithubRunnerInternal struct {
+	// cacheScope is the API path prefix the runner was listed from, such as
+	// "orgs/<org>" or "repos/<owner>/<repo>".
+	cacheScope         string
+	cacheRunnerGroupID *int64
 }
 
 // idValue returns the runner id, or 0 when the API omitted it.
@@ -187,13 +196,65 @@ func runnersToMql(runtime *plugin.Runtime, scope string, runners []*ghRunnerExt)
 			"busy":         llx.BoolDataPtr(runner.Busy),
 			"ephemeral":    llx.BoolDataPtr(runner.Ephemeral),
 			"architecture": llx.StringDataPtr(runner.Architecture),
+			"version":      llx.StringDataPtr(runner.Version),
 			"labels":       llx.ArrayData(labels, types.Resource("github.runnerLabel")),
 		})
 		if err != nil {
 			return nil, err
 		}
+		mqlRunner := r.(*mqlGithubRunner)
+		if mqlRunner.cacheScope == "" {
+			mqlRunner.cacheScope = scope
+			mqlRunner.cacheRunnerGroupID = runner.RunnerGroupID
+		}
 		res = append(res, r)
 	}
 
 	return res, nil
+}
+
+// runnerScopeOwner returns the account a runner listing scope belongs to: the
+// organization for "orgs/<org>", the repository owner for
+// "repos/<owner>/<repo>", and "" for anything else.
+func runnerScopeOwner(scope string) string {
+	parts := strings.Split(scope, "/")
+	switch {
+	case len(parts) == 2 && parts[0] == "orgs":
+		return parts[1]
+	case len(parts) == 3 && parts[0] == "repos":
+		return parts[1]
+	}
+	return ""
+}
+
+// runnerGroup resolves the runner's group from the owning organization's
+// runner groups, which are listed once per organization and shared by every
+// runner in it.
+func (g *mqlGithubRunner) runnerGroup() (*mqlGithubOrganizationRunnerGroup, error) {
+	groupID := g.cacheRunnerGroupID
+	login := runnerScopeOwner(g.cacheScope)
+	if groupID == nil || login == "" {
+		g.RunnerGroup.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	orgData := organizationResource(g.MqlRuntime, login)
+	org, ok := orgData.Value.(*mqlGithubOrganization)
+	if !ok || org == nil || org.Login.Data != login {
+		g.RunnerGroup.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	groups := org.GetRunnerGroups()
+	if groups.Error != nil {
+		return nil, groups.Error
+	}
+	for _, x := range groups.Data {
+		group, ok := x.(*mqlGithubOrganizationRunnerGroup)
+		if ok && group.Id.Data == *groupID {
+			return group, nil
+		}
+	}
+	g.RunnerGroup.State = plugin.StateIsSet | plugin.StateIsNull
+	return nil, nil
 }

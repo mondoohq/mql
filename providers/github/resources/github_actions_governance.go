@@ -23,6 +23,7 @@ import (
 // too late for the cache key: see runnerGroupID.
 type mqlGithubOrganizationRunnerGroupInternal struct {
 	cacheOrgLogin string
+	cacheOrg      *mqlGithubOrganization
 }
 
 // runnerGroupID keys a runner group by the organization that defines it.
@@ -85,6 +86,7 @@ func (g *mqlGithubOrganization) runnerGroups() ([]any, error) {
 			return nil, err
 		}
 		r.(*mqlGithubOrganizationRunnerGroup).cacheOrgLogin = orgLogin
+		r.(*mqlGithubOrganizationRunnerGroup).cacheOrg = g
 		res = append(res, r)
 	}
 
