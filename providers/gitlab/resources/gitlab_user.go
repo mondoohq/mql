@@ -561,6 +561,55 @@ func (u *mqlGitlabUser) personalAccessTokens() ([]any, error) {
 	return out, nil
 }
 
+// impersonationTokens lists the tokens an administrator created to act as the
+// user. Only administrators may list them. The token value is never modeled.
+func (u *mqlGitlabUser) impersonationTokens() ([]any, error) {
+	conn := u.MqlRuntime.Connection.(*connection.GitLabConnection)
+	userID := u.Id.Data
+
+	all, err := collectPages(func(page int64) ([]*gitlab.ImpersonationToken, *gitlab.Response, error) {
+		return conn.Client().Users.GetAllImpersonationTokens(userID, &gitlab.GetAllImpersonationTokensOptions{
+			ListOptions: gitlab.ListOptions{Page: page, PerPage: gitlabPerPage},
+		})
+	})
+	if err != nil {
+		if err = gatedError(err); err != nil {
+			return nil, err
+		}
+		return []any{}, nil
+	}
+
+	out := make([]any, 0, len(all))
+	for _, t := range all {
+		if t == nil {
+			continue
+		}
+		granularScopes, err := granularScopesData(u.MqlRuntime, t.ID, t.GranularScopes)
+		if err != nil {
+			return nil, err
+		}
+		// Token is intentionally omitted: GitLab can return the live secret here.
+		res, err := CreateResource(u.MqlRuntime, "gitlab.user.impersonationToken", map[string]*llx.RawData{
+			"__id":           llx.StringData(userScopedID("gitlab.user.impersonationToken", userID, strconv.FormatInt(t.ID, 10))),
+			"id":             llx.IntData(t.ID),
+			"name":           llx.StringData(t.Name),
+			"description":    llx.StringData(t.Description),
+			"active":         llx.BoolData(t.Active),
+			"revoked":        llx.BoolData(t.Revoked),
+			"scopes":         llx.ArrayData(convert.SliceAnyToInterface(t.Scopes), types.String),
+			"granularScopes": granularScopes,
+			"createdAt":      llx.TimeDataPtr(t.CreatedAt),
+			"expiresAt":      llx.TimeDataPtr(isoTimePtr(t.ExpiresAt)),
+			"lastUsedAt":     llx.TimeDataPtr(t.LastUsedAt),
+		})
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, res)
+	}
+	return out, nil
+}
+
 func (e *mqlGitlabUserEmailAddress) id() (string, error) {
 	return "gitlab.user.emailAddress/" + strconv.FormatInt(e.Id.Data, 10), nil
 }

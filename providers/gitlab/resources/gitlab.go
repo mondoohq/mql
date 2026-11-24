@@ -42,6 +42,48 @@ func nextPage(resp *gitlab.Response, current int64) int64 {
 	return resp.NextPage
 }
 
+// collectPages walks an offset-paginated GitLab collection, calling fetch with
+// each page number until the server reports no further page or repeats one.
+func collectPages[T any](fetch func(page int64) ([]T, *gitlab.Response, error)) ([]T, error) {
+	var all []T
+	page := int64(1)
+	for {
+		items, resp, err := fetch(page)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, items...)
+
+		page = nextPage(resp, page)
+		if page == 0 {
+			return all, nil
+		}
+	}
+}
+
+// gatedError classifies the failure of a call to an endpoint GitLab gates by
+// license tier, role, or feature. A 404 means the data does not apply here
+// (the tier does not include the feature, or the project never set it up), so
+// it returns nil and the caller reports an empty list or null. A 403 is a
+// refusal and comes back as llx.Forbidden; without structured errors it reads
+// as no data too, as every other gated call in this provider does. Any other
+// failure is returned unchanged.
+func gatedError(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case isGitlabStatus(err, 404):
+		return nil
+	case isGitlabStatus(err, 403):
+		if !plugin.StructuredErrors() {
+			return nil
+		}
+		return llx.Forbidden(err)
+	default:
+		return err
+	}
+}
+
 // listRawPages walks an offset-paginated GitLab collection through the SDK
 // client and returns the raw JSON elements from every page, for callers that
 // decode each element more than once.

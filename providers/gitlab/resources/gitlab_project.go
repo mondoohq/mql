@@ -987,31 +987,72 @@ func (p *mqlGitlabProject) integrations() ([]any, error) {
 		if s == nil {
 			continue
 		}
-		res, err := CreateResource(p.MqlRuntime, "gitlab.project.integration", map[string]*llx.RawData{
-			"id":                       llx.IntData(s.ID),
-			"title":                    llx.StringData(s.Title),
-			"slug":                     llx.StringData(s.Slug),
-			"active":                   llx.BoolData(s.Active),
-			"inherited":                llx.BoolData(s.Inherited),
-			"createdAt":                llx.TimeDataPtr(s.CreatedAt),
-			"updatedAt":                llx.TimeDataPtr(s.UpdatedAt),
-			"commentOnEventEnabled":    llx.BoolData(s.CommentOnEventEnabled),
-			"pushEvents":               llx.BoolData(s.PushEvents),
-			"issuesEvents":             llx.BoolData(s.IssuesEvents),
-			"confidentialIssuesEvents": llx.BoolData(s.ConfidentialIssuesEvents),
-			"mergeRequestsEvents":      llx.BoolData(s.MergeRequestsEvents),
-			"noteEvents":               llx.BoolData(s.NoteEvents),
-			"confidentialNoteEvents":   llx.BoolData(s.ConfidentialNoteEvents),
-			"pipelineEvents":           llx.BoolData(s.PipelineEvents),
-			"tagPushEvents":            llx.BoolData(s.TagPushEvents),
-			"jobEvents":                llx.BoolData(s.JobEvents),
-			"deploymentEvents":         llx.BoolData(s.DeploymentEvents),
-			"wikiPageEvents":           llx.BoolData(s.WikiPageEvents),
-			"commitEvents":             llx.BoolData(s.CommitEvents),
-			"alertEvents":              llx.BoolData(s.AlertEvents),
-			"incidentEvents":           llx.BoolData(s.IncidentEvents),
-			"vulnerabilityEvents":      llx.BoolData(s.VulnerabilityEvents),
+		res, err := CreateResource(p.MqlRuntime, "gitlab.project.integration", integrationArgs(s))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, res)
+	}
+	return out, nil
+}
+
+// integrationArgs maps an active integration to the fields project and group
+// integrations share.
+func integrationArgs(i *gitlab.Integration) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"id":                       llx.IntData(i.ID),
+		"title":                    llx.StringData(i.Title),
+		"slug":                     llx.StringData(i.Slug),
+		"active":                   llx.BoolData(i.Active),
+		"inherited":                llx.BoolData(i.Inherited),
+		"createdAt":                llx.TimeDataPtr(i.CreatedAt),
+		"updatedAt":                llx.TimeDataPtr(i.UpdatedAt),
+		"commentOnEventEnabled":    llx.BoolData(i.CommentOnEventEnabled),
+		"pushEvents":               llx.BoolData(i.PushEvents),
+		"issuesEvents":             llx.BoolData(i.IssuesEvents),
+		"confidentialIssuesEvents": llx.BoolData(i.ConfidentialIssuesEvents),
+		"mergeRequestsEvents":      llx.BoolData(i.MergeRequestsEvents),
+		"noteEvents":               llx.BoolData(i.NoteEvents),
+		"confidentialNoteEvents":   llx.BoolData(i.ConfidentialNoteEvents),
+		"pipelineEvents":           llx.BoolData(i.PipelineEvents),
+		"tagPushEvents":            llx.BoolData(i.TagPushEvents),
+		"jobEvents":                llx.BoolData(i.JobEvents),
+		"deploymentEvents":         llx.BoolData(i.DeploymentEvents),
+		"wikiPageEvents":           llx.BoolData(i.WikiPageEvents),
+		"commitEvents":             llx.BoolData(i.CommitEvents),
+		"alertEvents":              llx.BoolData(i.AlertEvents),
+		"incidentEvents":           llx.BoolData(i.IncidentEvents),
+		"vulnerabilityEvents":      llx.BoolData(i.VulnerabilityEvents),
+	}
+}
+
+// integrations lists the integrations active at group scope, which projects in
+// the group inherit unless they override them. The listing is the same shape
+// as a project's, so it reuses gitlab.project.integration.
+func (g *mqlGitlabGroup) integrations() ([]any, error) {
+	conn := g.MqlRuntime.Connection.(*connection.GitLabConnection)
+	groupID := g.Id.Data
+
+	all, err := collectPages(func(page int64) ([]*gitlab.Integration, *gitlab.Response, error) {
+		return conn.Client().Integrations.ListActiveGroupIntegrations(groupID, &gitlab.ListActiveIntegrationsOptions{
+			ListOptions: gitlab.ListOptions{Page: page, PerPage: gitlabPerPage},
 		})
+	})
+	if err != nil {
+		if err = gatedError(err); err != nil {
+			return nil, err
+		}
+		return []any{}, nil
+	}
+
+	out := make([]any, 0, len(all))
+	for _, i := range all {
+		if i == nil {
+			continue
+		}
+		args := integrationArgs(i)
+		args["__id"] = llx.StringData(groupScopedID("gitlab.project.integration/group", groupID, strconv.FormatInt(i.ID, 10)))
+		res, err := CreateResource(g.MqlRuntime, "gitlab.project.integration", args)
 		if err != nil {
 			return nil, err
 		}
@@ -2475,19 +2516,7 @@ func (p *mqlGitlabProject) runners() ([]any, error) {
 
 	var mqlRunners []any
 	for _, runner := range allRunners {
-		runnerInfo := map[string]*llx.RawData{
-			"id":             llx.IntData(runner.ID),
-			"description":    llx.StringData(runner.Description),
-			"name":           llx.StringData(runner.Name),
-			"runnerType":     llx.StringData(runner.RunnerType),
-			"paused":         llx.BoolData(runner.Paused),
-			"isShared":       llx.BoolData(runner.IsShared),
-			"online":         llx.BoolData(runner.Online),
-			"status":         llx.StringData(runner.Status),
-			"tokenExpiresAt": llx.TimeDataPtr(runner.TokenExpiresAt),
-		}
-
-		mqlRunner, err := CreateResource(p.MqlRuntime, "gitlab.project.runner", runnerInfo)
+		mqlRunner, err := CreateResource(p.MqlRuntime, "gitlab.project.runner", runnerArgs(runner))
 		if err != nil {
 			return nil, err
 		}
@@ -2496,6 +2525,55 @@ func (p *mqlGitlabProject) runners() ([]any, error) {
 	}
 
 	return mqlRunners, nil
+}
+
+// runnerArgs maps a runner listing entry to gitlab.project.runner. Runner ids
+// are unique across the instance and a runner's data is the same whichever
+// project or group lists it, so the runner id alone keys the resource.
+func runnerArgs(runner *gitlab.Runner) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"id":             llx.IntData(runner.ID),
+		"description":    llx.StringData(runner.Description),
+		"name":           llx.StringData(runner.Name),
+		"runnerType":     llx.StringData(runner.RunnerType),
+		"paused":         llx.BoolData(runner.Paused),
+		"isShared":       llx.BoolData(runner.IsShared),
+		"online":         llx.BoolData(runner.Online),
+		"status":         llx.StringData(runner.Status),
+		"tokenExpiresAt": llx.TimeDataPtr(runner.TokenExpiresAt),
+	}
+}
+
+// runners lists the runners available to the group, including runners
+// inherited from its parent groups.
+func (g *mqlGitlabGroup) runners() ([]any, error) {
+	conn := g.MqlRuntime.Connection.(*connection.GitLabConnection)
+	groupID := g.Id.Data
+
+	all, err := collectPages(func(page int64) ([]*gitlab.Runner, *gitlab.Response, error) {
+		return conn.Client().Runners.ListGroupsRunners(groupID, &gitlab.ListGroupsRunnersOptions{
+			ListOptions: gitlab.ListOptions{Page: page, PerPage: gitlabPerPage},
+		})
+	})
+	if err != nil {
+		if err = gatedError(err); err != nil {
+			return nil, err
+		}
+		return []any{}, nil
+	}
+
+	out := make([]any, 0, len(all))
+	for _, runner := range all {
+		if runner == nil {
+			continue
+		}
+		res, err := CreateResource(g.MqlRuntime, "gitlab.project.runner", runnerArgs(runner))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, res)
+	}
+	return out, nil
 }
 
 // id function for gitlab.project.pushRule

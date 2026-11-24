@@ -470,26 +470,7 @@ func (s *mqlGitlabSettings) applications() ([]any, error) {
 			continue
 		}
 
-		// GitLab has not always returned scopes when listing applications, and
-		// an empty scope set is not a thing an OAuth application can have. Null
-		// says the instance did not tell us; a list says these are the scopes.
-		scopes := llx.NilData
-		if app.Scopes != nil {
-			entries := make([]any, 0, len(app.Scopes))
-			for _, scope := range app.Scopes {
-				entries = append(entries, scope)
-			}
-			scopes = llx.ArrayData(entries, types.String)
-		}
-
-		mqlApp, err := CreateResource(s.MqlRuntime, "gitlab.settings.application", map[string]*llx.RawData{
-			"id":           llx.IntData(app.ID),
-			"clientId":     llx.StringData(app.ApplicationID),
-			"name":         llx.StringData(app.ApplicationName),
-			"confidential": llx.BoolData(app.Confidential),
-			"redirectUris": llx.ArrayData(splitRedirectURIs(app.CallbackURL), types.String),
-			"scopes":       scopes,
-		})
+		mqlApp, err := CreateResource(s.MqlRuntime, "gitlab.settings.application", applicationArgs(app))
 		if err != nil {
 			return nil, err
 		}
@@ -497,6 +478,131 @@ func (s *mqlGitlabSettings) applications() ([]any, error) {
 	}
 
 	return mqlApps, nil
+}
+
+// applicationArgs maps an OAuth application to the fields instance and group
+// applications share. The client secret is never included.
+func applicationArgs(app *gitlab.Application) map[string]*llx.RawData {
+	// GitLab has not always returned scopes when listing applications, and
+	// an empty scope set is not a thing an OAuth application can have. Null
+	// says the instance did not tell us; a list says these are the scopes.
+	scopes := llx.NilData
+	if app.Scopes != nil {
+		entries := make([]any, 0, len(app.Scopes))
+		for _, scope := range app.Scopes {
+			entries = append(entries, scope)
+		}
+		scopes = llx.ArrayData(entries, types.String)
+	}
+
+	return map[string]*llx.RawData{
+		"id":           llx.IntData(app.ID),
+		"clientId":     llx.StringData(app.ApplicationID),
+		"name":         llx.StringData(app.ApplicationName),
+		"confidential": llx.BoolData(app.Confidential),
+		"redirectUris": llx.ArrayData(splitRedirectURIs(app.CallbackURL), types.String),
+		"scopes":       scopes,
+	}
+}
+
+// applications lists the OAuth applications registered on the group. Like the
+// instance applications, the client secret is not modeled.
+func (g *mqlGitlabGroup) applications() ([]any, error) {
+	conn := g.MqlRuntime.Connection.(*connection.GitLabConnection)
+	groupID := g.Id.Data
+
+	all, err := collectPages(func(page int64) ([]*gitlab.Application, *gitlab.Response, error) {
+		return conn.Client().GroupApplications.ListGroupApplications(groupID, &gitlab.ListGroupApplicationsOptions{
+			ListOptions: gitlab.ListOptions{Page: page, PerPage: gitlabPerPage},
+		})
+	})
+	if err != nil {
+		if err = gatedError(err); err != nil {
+			return nil, err
+		}
+		return []any{}, nil
+	}
+
+	res := make([]any, 0, len(all))
+	for _, app := range all {
+		if app == nil {
+			continue
+		}
+		args := applicationArgs(app)
+		args["__id"] = llx.StringData(groupScopedID("gitlab.group.application", groupID, strconv.FormatInt(app.ID, 10)))
+		mqlApp, err := CreateResource(g.MqlRuntime, "gitlab.group.application", args)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlApp)
+	}
+	return res, nil
+}
+
+//
+// Compliance policy group and license
+//
+
+// compliancePolicyGroup reads which group holds the instance-wide security
+// policies. Its namespace id is the group's id, since every group is a
+// namespace with the same id.
+func (s *mqlGitlabSettings) compliancePolicyGroup() (*mqlGitlabGroup, error) {
+	conn := s.MqlRuntime.Connection.(*connection.GitLabConnection)
+
+	settings, _, err := conn.Client().AdminCompliancePolicySettings.GetCompliancePolicySettings()
+	if err != nil {
+		if err = gatedError(err); err != nil {
+			return nil, err
+		}
+		settings = nil
+	}
+	if settings == nil || settings.CSPNamespaceID == nil || *settings.CSPNamespaceID <= 0 {
+		s.CompliancePolicyGroup.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	res, err := NewResource(s.MqlRuntime, "gitlab.group", map[string]*llx.RawData{
+		"id": llx.IntData(*settings.CSPNamespaceID),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGitlabGroup), nil
+}
+
+// license reads the subscription license installed on the instance. Only the
+// plan, validity, and seat counts are modeled; the licensee's contact details
+// are left out and the API never returns the license key.
+func (s *mqlGitlabSettings) license() (*mqlGitlabLicense, error) {
+	conn := s.MqlRuntime.Connection.(*connection.GitLabConnection)
+
+	license, _, err := conn.Client().License.GetLicense()
+	if err != nil {
+		if err = gatedError(err); err != nil {
+			return nil, err
+		}
+		license = nil
+	}
+	if license == nil || license.ID <= 0 {
+		s.License.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	res, err := CreateResource(s.MqlRuntime, "gitlab.license", map[string]*llx.RawData{
+		"__id":        llx.StringData("gitlab.license"),
+		"id":          llx.IntData(license.ID),
+		"plan":        llx.StringData(license.Plan),
+		"startsAt":    llx.TimeDataPtr(isoTimePtr(license.StartsAt)),
+		"expiresAt":   llx.TimeDataPtr(isoTimePtr(license.ExpiresAt)),
+		"expired":     llx.BoolData(license.Expired),
+		"userLimit":   llx.IntData(license.UserLimit),
+		"activeUsers": llx.IntData(license.ActiveUsers),
+		"overage":     llx.IntData(license.Overage),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGitlabLicense), nil
 }
 
 //
