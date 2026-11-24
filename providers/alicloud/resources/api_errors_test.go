@@ -13,9 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"go.mondoo.com/mql"
 	"go.mondoo.com/mql/llx"
-	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // teaErr builds the error shape the Darabonba clients return for a service
@@ -139,22 +137,4 @@ func TestPageDone(t *testing.T) {
 	assert.False(t, casPageDone(100, 1, 100, &casTotal))
 	assert.True(t, casPageDone(50, 2, 100, &casTotal))
 	assert.True(t, casPageDone(0, 1, 100, nil))
-}
-
-func TestAlicloudLegacyRefusal(t *testing.T) {
-	// Synthetic: error shapes as the Darabonba clients return them; no target showed these.
-	denied := teaErr(403, "Forbidden.RAM")
-	serverErr := teaErr(503, "ServiceUnavailable")
-	transport := errors.New("dial tcp: connection refused")
-
-	assert.True(t, alicloudLegacyRefusal(denied), "a 403 keeps the null while structured errors are off")
-	assert.True(t, alicloudLegacyRefusal(fmt.Errorf("wrapped: %w", denied)))
-	assert.False(t, alicloudLegacyRefusal(serverErr))
-	assert.False(t, alicloudLegacyRefusal(transport))
-
-	plugin.ReadFeatures([]byte(mql.Features{byte(mql.StructuredErrors)}))
-	t.Cleanup(func() { plugin.ReadFeatures([]byte(mql.Features{byte(mql.ResourceContext)})) })
-
-	assert.False(t, alicloudLegacyRefusal(denied), "with structured errors on a 403 is classified")
-	assert.ErrorIs(t, classifyAlicloudError(denied, "dds:DescribeAccounts"), llx.ErrForbidden)
 }

@@ -521,10 +521,6 @@ func (r *mqlAlicloudVpcVswitch) ipv6Only() (bool, error) {
 		VSwitchId: new(r.VSwitchId.Data),
 	})
 	if err != nil {
-		if alicloudLegacyRefusal(err) {
-			r.Ipv6Only.State = plugin.StateIsSet | plugin.StateIsNull
-			return false, nil
-		}
 		return false, classifyAlicloudError(err, "vpc:DescribeVSwitchAttributes")
 	}
 	if resp == nil || resp.Body == nil || resp.Body.Ipv6Only == nil {

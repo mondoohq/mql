@@ -573,10 +573,6 @@ func (r *mqlAlicloudRedisAiGateway) parameters() (map[string]any, error) {
 		RegionId:   new(r.cacheRegion),
 	})
 	if err != nil {
-		if alicloudLegacyRefusal(err) {
-			r.Parameters.State = plugin.StateIsSet | plugin.StateIsNull
-			return nil, nil
-		}
 		return nil, classifyAlicloudError(err, "kvstore:DescribeTairAIGatewayParameters")
 	}
 	var items []*rkvclient.DescribeTairAIGatewayParametersResponseBodyParametersParameters
@@ -606,10 +602,6 @@ func (r *mqlAlicloudRedisAiGateway) pluginSwitches() (map[string]any, error) {
 		RegionId:   new(r.cacheRegion),
 	})
 	if err != nil {
-		if alicloudLegacyRefusal(err) {
-			r.PluginSwitches.State = plugin.StateIsSet | plugin.StateIsNull
-			return nil, nil
-		}
 		return nil, classifyAlicloudError(err, "kvstore:DescribeTairAIGatewayPluginSwitch")
 	}
 	var items []*rkvclient.DescribeTairAIGatewayPluginSwitchResponseBodyParametersParameters

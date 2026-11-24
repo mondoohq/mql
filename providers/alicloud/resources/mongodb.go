@@ -550,10 +550,6 @@ func (r *mqlAlicloudMongodbInstance) accounts() ([]any, error) {
 		DBInstanceId: new(r.instanceId),
 	})
 	if err != nil {
-		if alicloudLegacyRefusal(err) {
-			r.Accounts.State = plugin.StateIsSet | plugin.StateIsNull
-			return nil, nil
-		}
 		return nil, classifyAlicloudError(err, "dds:DescribeAccounts")
 	}
 	if resp == nil || resp.Body == nil || resp.Body.Accounts == nil {
@@ -613,10 +609,6 @@ func (r *mqlAlicloudMongodbInstance) roles() ([]any, error) {
 		DBInstanceId: new(r.instanceId),
 	})
 	if err != nil {
-		if alicloudLegacyRefusal(err) {
-			r.Roles.State = plugin.StateIsSet | plugin.StateIsNull
-			return nil, nil
-		}
 		return nil, classifyAlicloudError(err, "dds:DescribeAccountRoles")
 	}
 	if resp == nil || resp.Body == nil || resp.Body.Roles == nil {
@@ -649,10 +641,6 @@ func (r *mqlAlicloudMongodbInstance) databases() ([]any, error) {
 		DBInstanceId: new(r.instanceId),
 	})
 	if err != nil {
-		if alicloudLegacyRefusal(err) {
-			r.Databases.State = plugin.StateIsSet | plugin.StateIsNull
-			return nil, nil
-		}
 		return nil, classifyAlicloudError(err, "dds:DescribeDatabases")
 	}
 	if resp == nil || resp.Body == nil || resp.Body.Databases == nil {
