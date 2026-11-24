@@ -5,20 +5,25 @@ package provider
 
 import (
 	"errors"
+	"net/url"
 	"path/filepath"
 	"strings"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 )
 
 // gitIdentity is the repository a scanned path belongs to, read from the
-// checkout the path sits in: the origin remote, and where inside the
-// repository the path is.
+// checkout the path sits in: the origin remote, the branch that is checked
+// out, and where inside the repository the path is.
 type gitIdentity struct {
 	Domain string
 	Org    string
 	Repo   string
+	// Branch is the branch HEAD points at. Empty when HEAD is detached: a
+	// commit checked out by its hash belongs to no branch.
+	Branch string
 	// RelPath is the scanned path relative to the repository root, with
 	// forward slashes. Empty for the root itself.
 	RelPath string
@@ -26,23 +31,33 @@ type gitIdentity struct {
 
 // platformID is the repository identity the git-integration path already
 // derives for a whole checkout (the ssh-url branch of detect), with the
-// scanned sub-folder appended so that two roots of one repository, or its
-// prod/ and dev/ folders, stay two assets. The id is an opaque key: nothing
-// parses the path back out of it, so RelPath is spliced in as it is, and a
-// folder that is itself called "path" is as unambiguous as any other key.
+// branch and the scanned sub-folder appended so that two branches of one
+// repository, or its prod/ and dev/ folders, stay separate assets. Without
+// the branch, a scan of one branch replaced the results of the other on every
+// run. The id is an opaque key: nothing parses the path back out of it, so
+// RelPath is spliced in as it is, and a folder that is itself called "path"
+// is as unambiguous as any other key. The branch is path-escaped, so that
+// its slashes (feature/x) cannot run into the path segment after it.
 func (g gitIdentity) platformID() string {
 	id := "//platformid.api.mondoo.app/runtime/terraform/domain/" + g.Domain + "/org/" + g.Org + "/repo/" + g.Repo
+	if g.Branch != "" {
+		id += "/branch/" + url.PathEscape(g.Branch)
+	}
 	if g.RelPath != "" {
 		id += "/path/" + g.RelPath
 	}
 	return id
 }
 
-// name is the asset name's variable part: org/repo, plus the sub-folder.
+// name is the asset name's variable part: org/repo, plus the sub-folder and
+// the branch.
 func (g gitIdentity) name() string {
 	n := g.Org + "/" + g.Repo
 	if g.RelPath != "" {
 		n += "/" + g.RelPath
+	}
+	if g.Branch != "" {
+		n += "@" + g.Branch
 	}
 	return n
 }
@@ -82,6 +97,12 @@ func detectGitIdentity(absPath string) (gitIdentity, bool) {
 	if err != nil {
 		return gitIdentity{}, false
 	}
+	// go-git reports the worktree root with symlinks resolved. The scanned
+	// path must be resolved the same way, or a checkout reached through a
+	// symlink reads as lying outside its own repository.
+	if resolved, err := filepath.EvalSymlinks(absPath); err == nil {
+		absPath = resolved
+	}
 	rel, err := filepath.Rel(wt.Filesystem.Root(), absPath)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return gitIdentity{}, false
@@ -89,7 +110,18 @@ func detectGitIdentity(absPath string) (gitIdentity, bool) {
 	if rel == "." {
 		rel = ""
 	}
-	return gitIdentity{Domain: domain, Org: org, Repo: name, RelPath: filepath.ToSlash(rel)}, true
+	return gitIdentity{Domain: domain, Org: org, Repo: name, Branch: checkedOutBranch(repo), RelPath: filepath.ToSlash(rel)}, true
+}
+
+// checkedOutBranch is the branch HEAD points at, or "" when HEAD is detached.
+// HEAD is read as stored and not resolved, so the branch of a checkout that
+// has no commit yet is still reported.
+func checkedOutBranch(repo *git.Repository) string {
+	head, err := repo.Storer.Reference(plumbing.HEAD)
+	if err != nil || head.Type() != plumbing.SymbolicReference || !head.Target().IsBranch() {
+		return ""
+	}
+	return head.Target().Short()
 }
 
 var errMalformedGitRemote = errors.New("malformed git remote URL")
