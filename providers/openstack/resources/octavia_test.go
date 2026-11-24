@@ -4,12 +4,15 @@
 package resources
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/gophercloud/gophercloud/v2/openstack/loadbalancer/v2/listeners"
 	"github.com/gophercloud/gophercloud/v2/openstack/loadbalancer/v2/loadbalancers"
 	"github.com/gophercloud/gophercloud/v2/openstack/loadbalancer/v2/pools"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func TestBarbicanRefIsContainer(t *testing.T) {
@@ -140,5 +143,37 @@ func TestPersistenceToDict(t *testing.T) {
 	t.Run("type and cookie name", func(t *testing.T) {
 		got := persistenceToDict(pools.SessionPersistence{Type: "APP_COOKIE", CookieName: "JSESSIONID"})
 		assert.Equal(t, map[string]any{"type": "APP_COOKIE", "cookie_name": "JSESSIONID"}, got)
+	})
+}
+
+func TestLoadBalancerVipSecurityGroups(t *testing.T) {
+	decode := func(t *testing.T, body string) *mqlOpenstackOctaviaLoadBalancer {
+		t.Helper()
+		var lb loadbalancers.LoadBalancer
+		require.NoError(t, json.Unmarshal([]byte(body), &lb))
+		return &mqlOpenstackOctaviaLoadBalancer{
+			mqlOpenstackOctaviaLoadBalancerInternal: mqlOpenstackOctaviaLoadBalancerInternal{
+				cacheVipSecurityGroupIDs: lb.VipSecGroupIDs,
+			},
+		}
+	}
+
+	// Synthetic: Octavia before API 2.29 omits vip_sg_ids; no target showed this.
+	t.Run("absent field is null", func(t *testing.T) {
+		r := decode(t, `{"id":"lb-1"}`)
+		got, err := r.vipSecurityGroups()
+		require.NoError(t, err)
+		assert.Nil(t, got)
+		assert.Equal(t, plugin.StateIsSet|plugin.StateIsNull, r.VipSecurityGroups.State)
+	})
+
+	// Synthetic: Octavia 2.29+ with no custom VIP security groups; no target showed this.
+	t.Run("empty list is empty, not null", func(t *testing.T) {
+		r := decode(t, `{"id":"lb-1","vip_sg_ids":[]}`)
+		got, err := r.vipSecurityGroups()
+		require.NoError(t, err)
+		assert.NotNil(t, got)
+		assert.Empty(t, got)
+		assert.NotEqual(t, plugin.StateIsSet|plugin.StateIsNull, r.VipSecurityGroups.State)
 	})
 }

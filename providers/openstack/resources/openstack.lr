@@ -1354,6 +1354,10 @@ private openstack.octavia.loadBalancer @defaults("id name provisioningStatus ope
   enforcesTls() bool
   // Internet-exposure summary for this load balancer (public reachability plus the listeners open to the world)
   exposure() openstack.octavia.loadBalancer.exposure
+  // Security groups applied to the VIP port
+  //
+  // Neutron security groups Octavia applies to the VIP instead of its default group, which restrict the clients that can reach the listeners. Empty when no custom groups are set. Null on Octavia releases before API version 2.29 (OpenStack 2025.1), which do not report them.
+  vipSecurityGroups() []openstack.securityGroup
 }
 
 // OpenStack Octavia load balancer internet exposure
@@ -1889,6 +1893,10 @@ private openstack.firewall.group @defaults("id name status adminStateUp") {
   status string
   // Whether the group is shared across projects
   shared bool
+  // Creation timestamp; null when the service does not report it
+  createdAt time
+  // Last update timestamp; null when the service does not report it
+  updatedAt time
   // Project that owns this firewall group
   project() openstack.project
   // Ports protected by this firewall group
@@ -1917,6 +1925,10 @@ private openstack.firewall.policy @defaults("id name audited shared") {
   audited bool
   // Whether the policy is shared across projects
   shared bool
+  // Creation timestamp; null when the service does not report it
+  createdAt time
+  // Last update timestamp; null when the service does not report it
+  updatedAt time
   // Project that owns this firewall policy
   project() openstack.project
   // Rules in this policy in evaluation order
@@ -1957,6 +1969,10 @@ private openstack.firewall.rule @defaults("id name action protocol enabled") {
   shared bool
   // Whether the rule is currently evaluated (disabled rules are skipped)
   enabled bool
+  // Creation timestamp; null when the service does not report it
+  createdAt time
+  // Last update timestamp; null when the service does not report it
+  updatedAt time
   // Project that owns this firewall rule
   project() openstack.project
   // Policies that reference this rule
