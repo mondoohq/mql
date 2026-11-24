@@ -16,6 +16,7 @@ alias os.base.file = file
 alias os.base.packages = packages
 alias os.base.service = service
 alias os.base.services = services
+alias os.unix.ssh = ssh
 alias os.unix.sshd = sshd
 alias os.base.agentinstructions = agentinstructions
 alias os.base.agentskills = agentskills
@@ -189,6 +190,7 @@ alias os.any.selinux = selinux
 alias os.any.shadow = shadow
 alias os.any.snmpd = snmpd
 alias os.any.sriov = sriov
+alias os.any.ssh = ssh
 alias os.any.sshd = sshd
 alias os.any.sudo = sudo
 alias os.any.sudoers = sudoers
@@ -2095,6 +2097,83 @@ private sshd.config.matchBlock @defaults("criteria") @context("file.context") {
   hostkeyalgorithms(params) []string
   // PermitRootLogin setting in SSH server
   permitRootLogin(params) []string
+}
+
+// OpenSSH client namespace
+//
+// Namespace hosting `ssh.config` and `ssh.knownHosts`, the OpenSSH client's
+// configuration and the host keys it trusts.
+ssh {}
+
+// OpenSSH client configuration
+//
+// Host and Match blocks of an OpenSSH client configuration (ssh_config),
+// with the files it includes. The default file is /etc/ssh/ssh_config; pass a
+// path for a user's configuration, for example
+// `ssh.config("/home/alice/.ssh/config")`. Relative Include paths resolve
+// against the configuration's directory, as ssh resolves them. `blocks` lists
+// the Host and Match blocks in the order ssh reads them, where the first value
+// set for a setting wins, so settings such as `StrictHostKeyChecking`,
+// `ForwardAgent` or `ProxyCommand` can be checked per host. `hosts` lists the
+// host names the Host blocks name.
+ssh.config @defaults("file.path hosts") {
+  init(path? string)
+  // File of this SSH client configuration
+  file() file
+  // Files making up this configuration: the file and the ones it includes
+  files(file) []file
+  // Settings outside any Host or Match block, keyed by lowercase keyword
+  params(file) map[string]string
+  // Host and Match blocks, in the order ssh reads them
+  blocks(file) []ssh.config.block
+  // Host names the Host blocks name, without wildcard or negated patterns
+  hosts(file) []string
+}
+
+// Host or Match block of an SSH client configuration
+private ssh.config.block @defaults("kind criteria") @context("file.context") {
+  // Block keyword: Host or Match
+  kind string
+  // The block's criteria as written (e.g., "bastion *.internal", "host prod exec true")
+  criteria string
+  // Host patterns of a Host block (e.g., "bastion", "*.internal", "!jump")
+  patterns []string
+  // Settings in this block, keyed by lowercase keyword; ssh uses the first value it reads
+  params map[string]string
+}
+
+// Known SSH hosts
+//
+// Host keys an OpenSSH client trusts, read from a known_hosts file. The
+// default file is /etc/ssh/ssh_known_hosts; pass a user's file, for example
+// `ssh.knownHosts("/home/alice/.ssh/known_hosts")`. Each entry lists the
+// hosts it applies to (empty when they are hashed), the key type and key, and
+// whether it marks a certificate authority or a revoked key. Lines that are
+// not entries are skipped and counted in `unreadableLines`.
+ssh.knownHosts @defaults("file.path") {
+  init(path? string)
+  // File of this known hosts list
+  file() file
+  // Entries in file order
+  entries(file) []ssh.knownHosts.entry
+  // Number of lines that could not be read as entries
+  unreadableLines(file) int
+}
+
+// Entry of a known_hosts file
+private ssh.knownHosts.entry @defaults("hosts keyType") @context("file.context") {
+  // Hosts as written: names, addresses, patterns, or `[host]:port`; empty when hashed
+  hosts []string
+  // Whether the host names are hashed (HashKnownHosts) and can't be read back
+  hashed bool
+  // Marker of the entry: cert-authority, revoked, or empty
+  marker string
+  // Key type (e.g., ssh-ed25519, ecdsa-sha2-nistp256, ssh-rsa)
+  keyType string
+  // Public key, base64 encoded
+  key string
+  // Comment after the key
+  comment string
 }
 
 // inetd super-server namespace

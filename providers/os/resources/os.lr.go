@@ -83,6 +83,11 @@ const (
 	ResourceSshd                                           string = "sshd"
 	ResourceSshdConfig                                     string = "sshd.config"
 	ResourceSshdConfigMatchBlock                           string = "sshd.config.matchBlock"
+	ResourceSsh                                            string = "ssh"
+	ResourceSshConfig                                      string = "ssh.config"
+	ResourceSshConfigBlock                                 string = "ssh.config.block"
+	ResourceSshKnownHosts                                  string = "ssh.knownHosts"
+	ResourceSshKnownHostsEntry                             string = "ssh.knownHosts.entry"
 	ResourceInetd                                          string = "inetd"
 	ResourceInetdConfig                                    string = "inetd.config"
 	ResourceInetdConfigEntry                               string = "inetd.config.entry"
@@ -1123,6 +1128,26 @@ func init() {
 		"sshd.config.matchBlock": {
 			// to override args, implement: initSshdConfigMatchBlock(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createSshdConfigMatchBlock,
+		},
+		"ssh": {
+			// to override args, implement: initSsh(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createSsh,
+		},
+		"ssh.config": {
+			Init:   initSshConfig,
+			Create: createSshConfig,
+		},
+		"ssh.config.block": {
+			// to override args, implement: initSshConfigBlock(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createSshConfigBlock,
+		},
+		"ssh.knownHosts": {
+			Init:   initSshKnownHosts,
+			Create: createSshKnownHosts,
+		},
+		"ssh.knownHosts.entry": {
+			// to override args, implement: initSshKnownHostsEntry(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createSshKnownHostsEntry,
 		},
 		"inetd": {
 			// to override args, implement: initInetd(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -5309,6 +5334,66 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"sshd.config.matchBlock.context": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSshdConfigMatchBlock).GetContext()).ToDataRes(types.Resource("file.context"))
+	},
+	"ssh.config.file": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSshConfig).GetFile()).ToDataRes(types.Resource("file"))
+	},
+	"ssh.config.files": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSshConfig).GetFiles()).ToDataRes(types.Array(types.Resource("file")))
+	},
+	"ssh.config.params": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSshConfig).GetParams()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"ssh.config.blocks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSshConfig).GetBlocks()).ToDataRes(types.Array(types.Resource("ssh.config.block")))
+	},
+	"ssh.config.hosts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSshConfig).GetHosts()).ToDataRes(types.Array(types.String))
+	},
+	"ssh.config.block.kind": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSshConfigBlock).GetKind()).ToDataRes(types.String)
+	},
+	"ssh.config.block.criteria": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSshConfigBlock).GetCriteria()).ToDataRes(types.String)
+	},
+	"ssh.config.block.patterns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSshConfigBlock).GetPatterns()).ToDataRes(types.Array(types.String))
+	},
+	"ssh.config.block.params": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSshConfigBlock).GetParams()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"ssh.config.block.context": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSshConfigBlock).GetContext()).ToDataRes(types.Resource("file.context"))
+	},
+	"ssh.knownHosts.file": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSshKnownHosts).GetFile()).ToDataRes(types.Resource("file"))
+	},
+	"ssh.knownHosts.entries": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSshKnownHosts).GetEntries()).ToDataRes(types.Array(types.Resource("ssh.knownHosts.entry")))
+	},
+	"ssh.knownHosts.unreadableLines": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSshKnownHosts).GetUnreadableLines()).ToDataRes(types.Int)
+	},
+	"ssh.knownHosts.entry.hosts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSshKnownHostsEntry).GetHosts()).ToDataRes(types.Array(types.String))
+	},
+	"ssh.knownHosts.entry.hashed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSshKnownHostsEntry).GetHashed()).ToDataRes(types.Bool)
+	},
+	"ssh.knownHosts.entry.marker": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSshKnownHostsEntry).GetMarker()).ToDataRes(types.String)
+	},
+	"ssh.knownHosts.entry.keyType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSshKnownHostsEntry).GetKeyType()).ToDataRes(types.String)
+	},
+	"ssh.knownHosts.entry.key": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSshKnownHostsEntry).GetKey()).ToDataRes(types.String)
+	},
+	"ssh.knownHosts.entry.comment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSshKnownHostsEntry).GetComment()).ToDataRes(types.String)
+	},
+	"ssh.knownHosts.entry.context": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSshKnownHostsEntry).GetContext()).ToDataRes(types.Resource("file.context"))
 	},
 	"inetd.config.file": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlInetdConfig).GetFile()).ToDataRes(types.Resource("file"))
@@ -26526,6 +26611,106 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"sshd.config.matchBlock.context": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlSshdConfigMatchBlock).Context, ok = plugin.RawToTValue[*mqlFileContext](v.Value, v.Error)
+		return
+	},
+	"ssh.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSsh).__id, ok = v.Value.(string)
+		return
+	},
+	"ssh.config.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSshConfig).__id, ok = v.Value.(string)
+		return
+	},
+	"ssh.config.file": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSshConfig).File, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"ssh.config.files": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSshConfig).Files, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ssh.config.params": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSshConfig).Params, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"ssh.config.blocks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSshConfig).Blocks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ssh.config.hosts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSshConfig).Hosts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ssh.config.block.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSshConfigBlock).__id, ok = v.Value.(string)
+		return
+	},
+	"ssh.config.block.kind": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSshConfigBlock).Kind, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ssh.config.block.criteria": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSshConfigBlock).Criteria, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ssh.config.block.patterns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSshConfigBlock).Patterns, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ssh.config.block.params": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSshConfigBlock).Params, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"ssh.config.block.context": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSshConfigBlock).Context, ok = plugin.RawToTValue[*mqlFileContext](v.Value, v.Error)
+		return
+	},
+	"ssh.knownHosts.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSshKnownHosts).__id, ok = v.Value.(string)
+		return
+	},
+	"ssh.knownHosts.file": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSshKnownHosts).File, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"ssh.knownHosts.entries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSshKnownHosts).Entries, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ssh.knownHosts.unreadableLines": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSshKnownHosts).UnreadableLines, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ssh.knownHosts.entry.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSshKnownHostsEntry).__id, ok = v.Value.(string)
+		return
+	},
+	"ssh.knownHosts.entry.hosts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSshKnownHostsEntry).Hosts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ssh.knownHosts.entry.hashed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSshKnownHostsEntry).Hashed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ssh.knownHosts.entry.marker": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSshKnownHostsEntry).Marker, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ssh.knownHosts.entry.keyType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSshKnownHostsEntry).KeyType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ssh.knownHosts.entry.key": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSshKnownHostsEntry).Key, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ssh.knownHosts.entry.comment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSshKnownHostsEntry).Comment, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ssh.knownHosts.entry.context": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSshKnownHostsEntry).Context, ok = plugin.RawToTValue[*mqlFileContext](v.Value, v.Error)
 		return
 	},
 	"inetd.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -61551,6 +61736,431 @@ func (c *mqlSshdConfigMatchBlock) GetContext() *plugin.TValue[*mqlFileContext] {
 	return plugin.GetOrCompute[*mqlFileContext](&c.Context, func() (*mqlFileContext, error) {
 		if c.MqlRuntime.HasRecording {
 			d, err := c.MqlRuntime.FieldResourceFromRecording("sshd.config.matchBlock", c.__id, "context")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFileContext), nil
+			}
+		}
+
+		return c.context()
+	})
+}
+
+// mqlSsh for the ssh resource
+type mqlSsh struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlSshInternal it will be used here
+}
+
+// createSsh creates a new instance of this resource
+func createSsh(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlSsh{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ssh", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlSsh) MqlName() string {
+	return "ssh"
+}
+
+func (c *mqlSsh) MqlID() string {
+	return c.__id
+}
+
+// mqlSshConfig for the ssh.config resource
+type mqlSshConfig struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlSshConfigInternal
+	File   plugin.TValue[*mqlFile]
+	Files  plugin.TValue[[]any]
+	Params plugin.TValue[map[string]any]
+	Blocks plugin.TValue[[]any]
+	Hosts  plugin.TValue[[]any]
+}
+
+// createSshConfig creates a new instance of this resource
+func createSshConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlSshConfig{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ssh.config", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlSshConfig) MqlName() string {
+	return "ssh.config"
+}
+
+func (c *mqlSshConfig) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlSshConfig) GetFile() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.File, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ssh.config", c.__id, "file")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.file()
+	})
+}
+
+func (c *mqlSshConfig) GetFiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Files, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ssh.config", c.__id, "files")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		vargFile := c.GetFile()
+		if vargFile.Error != nil {
+			return nil, vargFile.Error
+		}
+
+		return c.files(vargFile.Data)
+	})
+}
+
+func (c *mqlSshConfig) GetParams() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Params, func() (map[string]any, error) {
+		vargFile := c.GetFile()
+		if vargFile.Error != nil {
+			return nil, vargFile.Error
+		}
+
+		return c.params(vargFile.Data)
+	})
+}
+
+func (c *mqlSshConfig) GetBlocks() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Blocks, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ssh.config", c.__id, "blocks")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		vargFile := c.GetFile()
+		if vargFile.Error != nil {
+			return nil, vargFile.Error
+		}
+
+		return c.blocks(vargFile.Data)
+	})
+}
+
+func (c *mqlSshConfig) GetHosts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Hosts, func() ([]any, error) {
+		vargFile := c.GetFile()
+		if vargFile.Error != nil {
+			return nil, vargFile.Error
+		}
+
+		return c.hosts(vargFile.Data)
+	})
+}
+
+// mqlSshConfigBlock for the ssh.config.block resource
+type mqlSshConfigBlock struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlSshConfigBlockInternal it will be used here
+	Kind     plugin.TValue[string]
+	Criteria plugin.TValue[string]
+	Patterns plugin.TValue[[]any]
+	Params   plugin.TValue[map[string]any]
+	Context  plugin.TValue[*mqlFileContext]
+}
+
+// createSshConfigBlock creates a new instance of this resource
+func createSshConfigBlock(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlSshConfigBlock{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ssh.config.block", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlSshConfigBlock) MqlName() string {
+	return "ssh.config.block"
+}
+
+func (c *mqlSshConfigBlock) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlSshConfigBlock) GetKind() *plugin.TValue[string] {
+	return &c.Kind
+}
+
+func (c *mqlSshConfigBlock) GetCriteria() *plugin.TValue[string] {
+	return &c.Criteria
+}
+
+func (c *mqlSshConfigBlock) GetPatterns() *plugin.TValue[[]any] {
+	return &c.Patterns
+}
+
+func (c *mqlSshConfigBlock) GetParams() *plugin.TValue[map[string]any] {
+	return &c.Params
+}
+
+func (c *mqlSshConfigBlock) GetContext() *plugin.TValue[*mqlFileContext] {
+	return plugin.GetOrCompute[*mqlFileContext](&c.Context, func() (*mqlFileContext, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ssh.config.block", c.__id, "context")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFileContext), nil
+			}
+		}
+
+		return c.context()
+	})
+}
+
+// mqlSshKnownHosts for the ssh.knownHosts resource
+type mqlSshKnownHosts struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlSshKnownHostsInternal
+	File            plugin.TValue[*mqlFile]
+	Entries         plugin.TValue[[]any]
+	UnreadableLines plugin.TValue[int64]
+}
+
+// createSshKnownHosts creates a new instance of this resource
+func createSshKnownHosts(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlSshKnownHosts{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ssh.knownHosts", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlSshKnownHosts) MqlName() string {
+	return "ssh.knownHosts"
+}
+
+func (c *mqlSshKnownHosts) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlSshKnownHosts) GetFile() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.File, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ssh.knownHosts", c.__id, "file")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.file()
+	})
+}
+
+func (c *mqlSshKnownHosts) GetEntries() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Entries, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ssh.knownHosts", c.__id, "entries")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		vargFile := c.GetFile()
+		if vargFile.Error != nil {
+			return nil, vargFile.Error
+		}
+
+		return c.entries(vargFile.Data)
+	})
+}
+
+func (c *mqlSshKnownHosts) GetUnreadableLines() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.UnreadableLines, func() (int64, error) {
+		vargFile := c.GetFile()
+		if vargFile.Error != nil {
+			return 0, vargFile.Error
+		}
+
+		return c.unreadableLines(vargFile.Data)
+	})
+}
+
+// mqlSshKnownHostsEntry for the ssh.knownHosts.entry resource
+type mqlSshKnownHostsEntry struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlSshKnownHostsEntryInternal it will be used here
+	Hosts   plugin.TValue[[]any]
+	Hashed  plugin.TValue[bool]
+	Marker  plugin.TValue[string]
+	KeyType plugin.TValue[string]
+	Key     plugin.TValue[string]
+	Comment plugin.TValue[string]
+	Context plugin.TValue[*mqlFileContext]
+}
+
+// createSshKnownHostsEntry creates a new instance of this resource
+func createSshKnownHostsEntry(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlSshKnownHostsEntry{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ssh.knownHosts.entry", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlSshKnownHostsEntry) MqlName() string {
+	return "ssh.knownHosts.entry"
+}
+
+func (c *mqlSshKnownHostsEntry) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlSshKnownHostsEntry) GetHosts() *plugin.TValue[[]any] {
+	return &c.Hosts
+}
+
+func (c *mqlSshKnownHostsEntry) GetHashed() *plugin.TValue[bool] {
+	return &c.Hashed
+}
+
+func (c *mqlSshKnownHostsEntry) GetMarker() *plugin.TValue[string] {
+	return &c.Marker
+}
+
+func (c *mqlSshKnownHostsEntry) GetKeyType() *plugin.TValue[string] {
+	return &c.KeyType
+}
+
+func (c *mqlSshKnownHostsEntry) GetKey() *plugin.TValue[string] {
+	return &c.Key
+}
+
+func (c *mqlSshKnownHostsEntry) GetComment() *plugin.TValue[string] {
+	return &c.Comment
+}
+
+func (c *mqlSshKnownHostsEntry) GetContext() *plugin.TValue[*mqlFileContext] {
+	return plugin.GetOrCompute[*mqlFileContext](&c.Context, func() (*mqlFileContext, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ssh.knownHosts.entry", c.__id, "context")
 			if err != nil {
 				return nil, err
 			}
