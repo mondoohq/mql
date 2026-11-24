@@ -12,6 +12,7 @@ import (
 	"github.com/openai/openai-go/v3"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 func (r *mqlOpenai) users() ([]any, error) {
@@ -71,6 +72,7 @@ func (r *mqlOpenai) invites() ([]any, error) {
 	var res []any
 	for iter.Next() {
 		inv := iter.Current()
+		projectIDs := inviteProjectGrants(inv.Projects)
 		mqlInvite, err := CreateResource(r.MqlRuntime, "openai.invite", map[string]*llx.RawData{
 			"__id":       llx.StringData(inv.ID),
 			"id":         llx.StringData(inv.ID),
@@ -80,10 +82,13 @@ func (r *mqlOpenai) invites() ([]any, error) {
 			"createdAt":  llx.TimeDataPtr(unixToNullableTime(inv.CreatedAt)),
 			"acceptedAt": llx.TimeDataPtr(unixToNullableTime(inv.AcceptedAt)),
 			"expiresAt":  llx.TimeDataPtr(unixToNullableTime(inv.ExpiresAt)),
+
+			"projectRoles": llx.MapData(projectIDs.roles, types.String),
 		})
 		if err != nil {
 			return nil, err
 		}
+		mqlInvite.(*mqlOpenaiInvite).cacheProjectIds = projectIDs.ids
 		res = append(res, mqlInvite)
 	}
 	if err := iter.Err(); err != nil {
@@ -93,6 +98,41 @@ func (r *mqlOpenai) invites() ([]any, error) {
 		return nil, fmt.Errorf("failed to list invites: %w", err)
 	}
 	return res, nil
+}
+
+type mqlOpenaiInviteInternal struct {
+	cacheProjectIds []string
+}
+
+// inviteGrants holds the project memberships an invite grants on acceptance.
+type inviteGrants struct {
+	ids   []string
+	roles map[string]any
+}
+
+// inviteProjectGrants reads the projects an invite grants, in the order the
+// API lists them, with each project's role keyed by project ID.
+func inviteProjectGrants(projects []openai.InviteProject) inviteGrants {
+	g := inviteGrants{roles: make(map[string]any, len(projects))}
+	for _, p := range projects {
+		if p.ID == "" {
+			continue
+		}
+		g.ids = append(g.ids, p.ID)
+		g.roles[p.ID] = p.Role
+	}
+	return g
+}
+
+func (r *mqlOpenaiInvite) projects() ([]any, error) {
+	if len(r.cacheProjectIds) == 0 {
+		return []any{}, nil
+	}
+	all, err := openaiProjectList(r.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	return projectsWithIds(all, r.cacheProjectIds), nil
 }
 
 // auditLogActor derives the actor type and a human-readable actor identifier
