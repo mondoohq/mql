@@ -61,7 +61,7 @@ func init() {
 	LoginCmd.Flags().String("api-endpoint", "", "Set the Mondoo API endpoint")
 	LoginCmd.Flags().Int("timer", 0, "Set the scan interval in minutes")
 	LoginCmd.Flags().Int("splay", 0, "Randomize the timer by up to this many minutes")
-	LoginCmd.Flags().Bool("no-browser", false, "Do not open a browser on this machine; log in with a one-time code instead")
+	LoginCmd.Flags().Bool("no-browser", false, "Do not open a browser by itself; log in with a one-time code that you can enter on any device")
 	LoginCmd.Flags().String("scope", "", "Preselect this space or organization MRN on the approval page")
 	LoginCmd.Flags().Bool("insecure", false, "Allow browser login over unencrypted http to a non-loopback server")
 	LoginCmd.Flags().Bool("force", false, "Log in again even if a valid login session exists")
