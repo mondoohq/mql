@@ -17,7 +17,6 @@ import (
 
 	"github.com/weaviate/weaviate-go-client/v5/weaviate"
 	"github.com/weaviate/weaviate-go-client/v5/weaviate/auth"
-	"github.com/weaviate/weaviate-go-client/v5/weaviate/rbac"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/vault"
@@ -48,8 +47,8 @@ type WeaviateConnection struct {
 	clientErr  error
 
 	rolesOnce   sync.Once
-	roles       []rbac.Role
-	rolesByName map[string]*rbac.Role
+	roles       []*Role
+	rolesByName map[string]*Role
 	rolesErr    error
 }
 
@@ -196,7 +195,10 @@ func probeAnonymousAccess(ctx context.Context, client *http.Client, endpoint str
 // arrive first would otherwise decide the deadline and cancellation for every
 // later caller, which is a hard failure to attribute once any caller starts
 // passing a context that can be cancelled.
-func (c *WeaviateConnection) Roles() ([]rbac.Role, error) {
+//
+// The list is read from the server's own response rather than through the Go
+// client, which drops qualifiers on the way (see Role).
+func (c *WeaviateConnection) Roles() ([]*Role, error) {
 	c.loadRoles()
 	return c.roles, c.rolesErr
 }
@@ -208,7 +210,7 @@ func (c *WeaviateConnection) Roles() ([]rbac.Role, error) {
 // Only the server's own role list feeds this map, and nothing writes to it
 // afterwards, so a name-only role reference can never displace a populated role
 // here.
-func (c *WeaviateConnection) RoleByName(name string) (*rbac.Role, bool) {
+func (c *WeaviateConnection) RoleByName(name string) (*Role, bool) {
 	c.loadRoles()
 	if c.rolesErr != nil {
 		return nil, false
@@ -219,18 +221,19 @@ func (c *WeaviateConnection) RoleByName(name string) (*rbac.Role, bool) {
 
 func (c *WeaviateConnection) loadRoles() {
 	c.rolesOnce.Do(func() {
-		client, err := c.Client()
-		if err != nil {
+		var roles []*Role
+		if err := c.getJSON(context.Background(), "/v1/authz/roles", &roles); err != nil {
 			c.rolesErr = err
 			return
 		}
-		c.roles, c.rolesErr = client.Roles().AllGetter().Do(context.Background())
-		if c.rolesErr != nil {
-			return
-		}
-		c.rolesByName = make(map[string]*rbac.Role, len(c.roles))
-		for i := range c.roles {
-			c.rolesByName[c.roles[i].Name] = &c.roles[i]
+		c.roles = make([]*Role, 0, len(roles))
+		c.rolesByName = make(map[string]*Role, len(roles))
+		for _, role := range roles {
+			if role == nil {
+				continue
+			}
+			c.roles = append(c.roles, role)
+			c.rolesByName[role.Name] = role
 		}
 	})
 }

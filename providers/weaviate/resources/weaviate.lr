@@ -111,8 +111,9 @@ weaviate.role @defaults("name isBuiltin") {
 // Weaviate role permission
 //
 // A single action a role is allowed, the permission domain it belongs to, and
-// the qualifiers that domain carries: the collection, alias, shard, group, or
-// role the action is limited to, and the scope of a role-management grant. A
+// the qualifiers that domain carries: the collection, tenant, object, alias,
+// shard, group, user, namespace, or role the action is limited to, and the
+// scope of a role-management grant. A
 // qualifier the domain does not carry reads as null, so
 // permissions.where(scope == "all") selects only role-management grants that
 // can hand out permissions the role does not itself hold.
@@ -121,15 +122,16 @@ weaviate.role.permission @defaults("domain action collection") {
   action string
   // Permission domain the action belongs to
   //
-  // One of alias, backups, cluster, collections, data, groups, mcp, nodes,
-  // replicate, roles, tenants, or users. Selects a class of grants without
-  // matching on action names, for example
+  // One of alias, backups, cluster, collections, data, groups, mcp,
+  // namespaces, nodes, replicate, roles, tenants, or users. A domain added to
+  // the server later is reported by the name the server gives it. Selects a
+  // class of grants without matching on action names, for example
   // permissions.where(domain == "backups").
   domain string
   // Collection the action is scoped to, "*" for all, or empty when not applicable
   //
-  // Carried by the alias, backups, collections, data, nodes, and replicate
-  // domains. An exact collection name or a regular expression.
+  // Carried by the alias, backups, collections, data, nodes, replicate, and
+  // tenants domains. An exact collection name or a regular expression.
   collection string
   // Scope of a role-management grant
   //
@@ -165,6 +167,25 @@ weaviate.role.permission @defaults("domain action collection") {
   // "verbose" returns shard and statistics data, "minimal" does not. Null
   // outside the nodes domain.
   verbosity string
+  // Tenant the action applies to, "*" for all
+  //
+  // An exact tenant name or a regular expression, within the collection the
+  // grant names. A grant scoped to one tenant reaches only that tenant's data.
+  // Null outside the data and tenants domains.
+  tenant string
+  // Object the action applies to, "*" for all
+  //
+  // An exact object ID or a regular expression. Null outside the data domain.
+  object string
+  // User the action applies to, "*" for all
+  //
+  // An exact user name or a regular expression. Null outside the users domain.
+  targetUser string
+  // Namespace the action applies to, "*" for all
+  //
+  // An exact namespace name or a regular expression. Null outside the
+  // namespaces domain.
+  namespace string
 }
 
 // Weaviate user
