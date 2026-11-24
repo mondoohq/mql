@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	alb "github.com/stackitcloud/stackit-sdk-go/services/alb/v2api"
-	albwaf "github.com/stackitcloud/stackit-sdk-go/services/albwaf/v1betaapi"
+	albwaf "github.com/stackitcloud/stackit-sdk-go/services/albwaf/v1api"
 	loadbalancer "github.com/stackitcloud/stackit-sdk-go/services/loadbalancer/v2api"
 )
 
