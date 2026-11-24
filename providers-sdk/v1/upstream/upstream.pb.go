@@ -24,6 +24,59 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// ExchangeExternalTokenResponseFormat selects what ExchangeExternalToken
+// returns inside base64_credential. The value names are the server's, which
+// is how they are spelled in a JSON request.
+type ExchangeExternalTokenResponseFormat int32
+
+const (
+	// protolint:disable ENUM_FIELD_NAMES_PREFIX
+	// Certificate-based credentials of a temporary service account.
+	// protolint:disable:next ENUM_FIELD_NAMES_ZERO_VALUE_END_WITH
+	ExchangeExternalTokenResponseFormat_CREDENTIAL ExchangeExternalTokenResponseFormat = 0
+	// A short-lived bearer token for the service account of the WIF binding.
+	ExchangeExternalTokenResponseFormat_TOKEN ExchangeExternalTokenResponseFormat = 1 // protolint:enable ENUM_FIELD_NAMES_PREFIX
+)
+
+// Enum value maps for ExchangeExternalTokenResponseFormat.
+var (
+	ExchangeExternalTokenResponseFormat_name = map[int32]string{
+		0: "CREDENTIAL",
+		1: "TOKEN",
+	}
+	ExchangeExternalTokenResponseFormat_value = map[string]int32{
+		"CREDENTIAL": 0,
+		"TOKEN":      1,
+	}
+)
+
+func (x ExchangeExternalTokenResponseFormat) Enum() *ExchangeExternalTokenResponseFormat {
+	p := new(ExchangeExternalTokenResponseFormat)
+	*p = x
+	return p
+}
+
+func (x ExchangeExternalTokenResponseFormat) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ExchangeExternalTokenResponseFormat) Descriptor() protoreflect.EnumDescriptor {
+	return file_upstream_proto_enumTypes[0].Descriptor()
+}
+
+func (ExchangeExternalTokenResponseFormat) Type() protoreflect.EnumType {
+	return &file_upstream_proto_enumTypes[0]
+}
+
+func (x ExchangeExternalTokenResponseFormat) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ExchangeExternalTokenResponseFormat.Descriptor instead.
+func (ExchangeExternalTokenResponseFormat) EnumDescriptor() ([]byte, []int) {
+	return file_upstream_proto_rawDescGZIP(), []int{0}
+}
+
 type UpstreamConfig struct {
 	state         protoimpl.MessageState     `protogen:"open.v1"`
 	AssetMrn      string                     `protobuf:"bytes,1,opt,name=asset_mrn,json=assetMrn,proto3" json:"asset_mrn,omitempty"`
@@ -899,11 +952,11 @@ type ExchangeExternalTokenRequest struct {
 	Audience string `protobuf:"bytes,2,opt,name=audience,proto3" json:"audience,omitempty"`
 	// Token provided by the external identity provider to exchange
 	JwtToken string `protobuf:"bytes,3,opt,name=jwt_token,json=jwtToken,proto3" json:"jwt_token,omitempty"`
-	// Optional. When set to "TOKEN", the server returns a short-lived bearer
-	// token inside base64_credential instead of service-account credentials.
-	ResponseType  string `protobuf:"bytes,4,opt,name=response_type,json=responseType,proto3" json:"response_type,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// Optional. The server reads this field as an enum: it ignores any other
+	// type on field 4 and answers with CREDENTIAL.
+	ResponseFormat ExchangeExternalTokenResponseFormat `protobuf:"varint,4,opt,name=response_format,json=responseFormat,proto3,enum=mondoo.mql.upstream.v1.ExchangeExternalTokenResponseFormat" json:"response_format,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ExchangeExternalTokenRequest) Reset() {
@@ -957,11 +1010,11 @@ func (x *ExchangeExternalTokenRequest) GetJwtToken() string {
 	return ""
 }
 
-func (x *ExchangeExternalTokenRequest) GetResponseType() string {
+func (x *ExchangeExternalTokenRequest) GetResponseFormat() ExchangeExternalTokenResponseFormat {
 	if x != nil {
-		return x.ResponseType
+		return x.ResponseFormat
 	}
-	return ""
+	return ExchangeExternalTokenResponseFormat_CREDENTIAL
 }
 
 type ExchangeExternalTokenResponse struct {
@@ -1085,15 +1138,19 @@ const file_upstream_proto_rawDesc = "" +
 	"\fSshSignature\x12\x10\n" +
 	"\x03alg\x18\x01 \x01(\tR\x03alg\x12\x10\n" +
 	"\x03kid\x18\x02 \x01(\tR\x03kid\x12\x10\n" +
-	"\x03sig\x18\x03 \x01(\tR\x03sig\"\x9b\x01\n" +
+	"\x03sig\x18\x03 \x01(\tR\x03sig\"\xdc\x01\n" +
 	"\x1cExchangeExternalTokenRequest\x12\x1d\n" +
 	"\n" +
 	"issuer_uri\x18\x01 \x01(\tR\tissuerUri\x12\x1a\n" +
 	"\baudience\x18\x02 \x01(\tR\baudience\x12\x1b\n" +
-	"\tjwt_token\x18\x03 \x01(\tR\bjwtToken\x12#\n" +
-	"\rresponse_type\x18\x04 \x01(\tR\fresponseType\"L\n" +
+	"\tjwt_token\x18\x03 \x01(\tR\bjwtToken\x12d\n" +
+	"\x0fresponse_format\x18\x04 \x01(\x0e2;.mondoo.mql.upstream.v1.ExchangeExternalTokenResponseFormatR\x0eresponseFormat\"L\n" +
 	"\x1dExchangeExternalTokenResponse\x12+\n" +
-	"\x11base64_credential\x18\x01 \x01(\tR\x10base64Credential2\x86\x03\n" +
+	"\x11base64_credential\x18\x01 \x01(\tR\x10base64Credential*@\n" +
+	"#ExchangeExternalTokenResponseFormat\x12\x0e\n" +
+	"\n" +
+	"CREDENTIAL\x10\x00\x12\t\n" +
+	"\x05TOKEN\x10\x012\x86\x03\n" +
 	"\fAgentManager\x12x\n" +
 	"\rRegisterAgent\x120.mondoo.mql.upstream.v1.AgentRegistrationRequest\x1a5.mondoo.mql.upstream.v1.AgentRegistrationConfirmation\x12T\n" +
 	"\x0fUnRegisterAgent\x12\x1b.mondoo.mql.upstream.v1.Mrn\x1a$.mondoo.mql.upstream.v1.Confirmation\x12F\n" +
@@ -1115,50 +1172,53 @@ func file_upstream_proto_rawDescGZIP() []byte {
 	return file_upstream_proto_rawDescData
 }
 
+var file_upstream_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_upstream_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_upstream_proto_goTypes = []any{
-	(*UpstreamConfig)(nil),                // 0: mondoo.mql.upstream.v1.UpstreamConfig
-	(*ServiceAccountCredentials)(nil),     // 1: mondoo.mql.upstream.v1.ServiceAccountCredentials
-	(*Ping)(nil),                          // 2: mondoo.mql.upstream.v1.Ping
-	(*Pong)(nil),                          // 3: mondoo.mql.upstream.v1.Pong
-	(*AgentCheckinResponse)(nil),          // 4: mondoo.mql.upstream.v1.AgentCheckinResponse
-	(*AgentRegistrationRequest)(nil),      // 5: mondoo.mql.upstream.v1.AgentRegistrationRequest
-	(*AgentInfo)(nil),                     // 6: mondoo.mql.upstream.v1.AgentInfo
-	(*AgentRegistrationConfirmation)(nil), // 7: mondoo.mql.upstream.v1.AgentRegistrationConfirmation
-	(*Mrn)(nil),                           // 8: mondoo.mql.upstream.v1.Mrn
-	(*Confirmation)(nil),                  // 9: mondoo.mql.upstream.v1.Confirmation
-	(*ExchangeSSHKeyRequest)(nil),         // 10: mondoo.mql.upstream.v1.ExchangeSSHKeyRequest
-	(*ExchangeSSHKeyResponse)(nil),        // 11: mondoo.mql.upstream.v1.ExchangeSSHKeyResponse
-	(*Claims)(nil),                        // 12: mondoo.mql.upstream.v1.Claims
-	(*SshSignature)(nil),                  // 13: mondoo.mql.upstream.v1.SshSignature
-	(*ExchangeExternalTokenRequest)(nil),  // 14: mondoo.mql.upstream.v1.ExchangeExternalTokenRequest
-	(*ExchangeExternalTokenResponse)(nil), // 15: mondoo.mql.upstream.v1.ExchangeExternalTokenResponse
-	nil,                                   // 16: mondoo.mql.upstream.v1.AgentInfo.LabelsEntry
+	(ExchangeExternalTokenResponseFormat)(0), // 0: mondoo.mql.upstream.v1.ExchangeExternalTokenResponseFormat
+	(*UpstreamConfig)(nil),                   // 1: mondoo.mql.upstream.v1.UpstreamConfig
+	(*ServiceAccountCredentials)(nil),        // 2: mondoo.mql.upstream.v1.ServiceAccountCredentials
+	(*Ping)(nil),                             // 3: mondoo.mql.upstream.v1.Ping
+	(*Pong)(nil),                             // 4: mondoo.mql.upstream.v1.Pong
+	(*AgentCheckinResponse)(nil),             // 5: mondoo.mql.upstream.v1.AgentCheckinResponse
+	(*AgentRegistrationRequest)(nil),         // 6: mondoo.mql.upstream.v1.AgentRegistrationRequest
+	(*AgentInfo)(nil),                        // 7: mondoo.mql.upstream.v1.AgentInfo
+	(*AgentRegistrationConfirmation)(nil),    // 8: mondoo.mql.upstream.v1.AgentRegistrationConfirmation
+	(*Mrn)(nil),                              // 9: mondoo.mql.upstream.v1.Mrn
+	(*Confirmation)(nil),                     // 10: mondoo.mql.upstream.v1.Confirmation
+	(*ExchangeSSHKeyRequest)(nil),            // 11: mondoo.mql.upstream.v1.ExchangeSSHKeyRequest
+	(*ExchangeSSHKeyResponse)(nil),           // 12: mondoo.mql.upstream.v1.ExchangeSSHKeyResponse
+	(*Claims)(nil),                           // 13: mondoo.mql.upstream.v1.Claims
+	(*SshSignature)(nil),                     // 14: mondoo.mql.upstream.v1.SshSignature
+	(*ExchangeExternalTokenRequest)(nil),     // 15: mondoo.mql.upstream.v1.ExchangeExternalTokenRequest
+	(*ExchangeExternalTokenResponse)(nil),    // 16: mondoo.mql.upstream.v1.ExchangeExternalTokenResponse
+	nil,                                      // 17: mondoo.mql.upstream.v1.AgentInfo.LabelsEntry
 }
 var file_upstream_proto_depIdxs = []int32{
-	1,  // 0: mondoo.mql.upstream.v1.UpstreamConfig.creds:type_name -> mondoo.mql.upstream.v1.ServiceAccountCredentials
-	6,  // 1: mondoo.mql.upstream.v1.AgentRegistrationRequest.agent_info:type_name -> mondoo.mql.upstream.v1.AgentInfo
-	16, // 2: mondoo.mql.upstream.v1.AgentInfo.labels:type_name -> mondoo.mql.upstream.v1.AgentInfo.LabelsEntry
-	1,  // 3: mondoo.mql.upstream.v1.AgentRegistrationConfirmation.credential:type_name -> mondoo.mql.upstream.v1.ServiceAccountCredentials
-	12, // 4: mondoo.mql.upstream.v1.ExchangeSSHKeyRequest.claims:type_name -> mondoo.mql.upstream.v1.Claims
-	13, // 5: mondoo.mql.upstream.v1.ExchangeSSHKeyRequest.signatures:type_name -> mondoo.mql.upstream.v1.SshSignature
-	5,  // 6: mondoo.mql.upstream.v1.AgentManager.RegisterAgent:input_type -> mondoo.mql.upstream.v1.AgentRegistrationRequest
-	8,  // 7: mondoo.mql.upstream.v1.AgentManager.UnRegisterAgent:input_type -> mondoo.mql.upstream.v1.Mrn
-	2,  // 8: mondoo.mql.upstream.v1.AgentManager.PingPong:input_type -> mondoo.mql.upstream.v1.Ping
-	6,  // 9: mondoo.mql.upstream.v1.AgentManager.HealthCheck:input_type -> mondoo.mql.upstream.v1.AgentInfo
-	10, // 10: mondoo.mql.upstream.v1.SecureTokenService.ExchangeSSH:input_type -> mondoo.mql.upstream.v1.ExchangeSSHKeyRequest
-	14, // 11: mondoo.mql.upstream.v1.SecureTokenService.ExchangeExternalToken:input_type -> mondoo.mql.upstream.v1.ExchangeExternalTokenRequest
-	7,  // 12: mondoo.mql.upstream.v1.AgentManager.RegisterAgent:output_type -> mondoo.mql.upstream.v1.AgentRegistrationConfirmation
-	9,  // 13: mondoo.mql.upstream.v1.AgentManager.UnRegisterAgent:output_type -> mondoo.mql.upstream.v1.Confirmation
-	3,  // 14: mondoo.mql.upstream.v1.AgentManager.PingPong:output_type -> mondoo.mql.upstream.v1.Pong
-	4,  // 15: mondoo.mql.upstream.v1.AgentManager.HealthCheck:output_type -> mondoo.mql.upstream.v1.AgentCheckinResponse
-	11, // 16: mondoo.mql.upstream.v1.SecureTokenService.ExchangeSSH:output_type -> mondoo.mql.upstream.v1.ExchangeSSHKeyResponse
-	15, // 17: mondoo.mql.upstream.v1.SecureTokenService.ExchangeExternalToken:output_type -> mondoo.mql.upstream.v1.ExchangeExternalTokenResponse
-	12, // [12:18] is the sub-list for method output_type
-	6,  // [6:12] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	2,  // 0: mondoo.mql.upstream.v1.UpstreamConfig.creds:type_name -> mondoo.mql.upstream.v1.ServiceAccountCredentials
+	7,  // 1: mondoo.mql.upstream.v1.AgentRegistrationRequest.agent_info:type_name -> mondoo.mql.upstream.v1.AgentInfo
+	17, // 2: mondoo.mql.upstream.v1.AgentInfo.labels:type_name -> mondoo.mql.upstream.v1.AgentInfo.LabelsEntry
+	2,  // 3: mondoo.mql.upstream.v1.AgentRegistrationConfirmation.credential:type_name -> mondoo.mql.upstream.v1.ServiceAccountCredentials
+	13, // 4: mondoo.mql.upstream.v1.ExchangeSSHKeyRequest.claims:type_name -> mondoo.mql.upstream.v1.Claims
+	14, // 5: mondoo.mql.upstream.v1.ExchangeSSHKeyRequest.signatures:type_name -> mondoo.mql.upstream.v1.SshSignature
+	0,  // 6: mondoo.mql.upstream.v1.ExchangeExternalTokenRequest.response_format:type_name -> mondoo.mql.upstream.v1.ExchangeExternalTokenResponseFormat
+	6,  // 7: mondoo.mql.upstream.v1.AgentManager.RegisterAgent:input_type -> mondoo.mql.upstream.v1.AgentRegistrationRequest
+	9,  // 8: mondoo.mql.upstream.v1.AgentManager.UnRegisterAgent:input_type -> mondoo.mql.upstream.v1.Mrn
+	3,  // 9: mondoo.mql.upstream.v1.AgentManager.PingPong:input_type -> mondoo.mql.upstream.v1.Ping
+	7,  // 10: mondoo.mql.upstream.v1.AgentManager.HealthCheck:input_type -> mondoo.mql.upstream.v1.AgentInfo
+	11, // 11: mondoo.mql.upstream.v1.SecureTokenService.ExchangeSSH:input_type -> mondoo.mql.upstream.v1.ExchangeSSHKeyRequest
+	15, // 12: mondoo.mql.upstream.v1.SecureTokenService.ExchangeExternalToken:input_type -> mondoo.mql.upstream.v1.ExchangeExternalTokenRequest
+	8,  // 13: mondoo.mql.upstream.v1.AgentManager.RegisterAgent:output_type -> mondoo.mql.upstream.v1.AgentRegistrationConfirmation
+	10, // 14: mondoo.mql.upstream.v1.AgentManager.UnRegisterAgent:output_type -> mondoo.mql.upstream.v1.Confirmation
+	4,  // 15: mondoo.mql.upstream.v1.AgentManager.PingPong:output_type -> mondoo.mql.upstream.v1.Pong
+	5,  // 16: mondoo.mql.upstream.v1.AgentManager.HealthCheck:output_type -> mondoo.mql.upstream.v1.AgentCheckinResponse
+	12, // 17: mondoo.mql.upstream.v1.SecureTokenService.ExchangeSSH:output_type -> mondoo.mql.upstream.v1.ExchangeSSHKeyResponse
+	16, // 18: mondoo.mql.upstream.v1.SecureTokenService.ExchangeExternalToken:output_type -> mondoo.mql.upstream.v1.ExchangeExternalTokenResponse
+	13, // [13:19] is the sub-list for method output_type
+	7,  // [7:13] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_upstream_proto_init() }
@@ -1171,13 +1231,14 @@ func file_upstream_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_upstream_proto_rawDesc), len(file_upstream_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   2,
 		},
 		GoTypes:           file_upstream_proto_goTypes,
 		DependencyIndexes: file_upstream_proto_depIdxs,
+		EnumInfos:         file_upstream_proto_enumTypes,
 		MessageInfos:      file_upstream_proto_msgTypes,
 	}.Build()
 	File_upstream_proto = out.File
