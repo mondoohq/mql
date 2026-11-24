@@ -64,6 +64,90 @@ func (c *mqlCloudflareZoneOwner) id() (string, error) {
 	return c.Id.Data, nil
 }
 
+// normalizeZoneName folds a zone or domain name to the form zone names are
+// compared in: lower case, without surrounding space or a trailing root dot.
+func normalizeZoneName(name string) string {
+	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(name)), ".")
+}
+
+// indexZonesByName keys a zone list by normalized zone name.
+func indexZonesByName(list []any) map[string]*mqlCloudflareZone {
+	byName := make(map[string]*mqlCloudflareZone, len(list))
+	for _, entry := range list {
+		zone, ok := entry.(*mqlCloudflareZone)
+		if !ok {
+			continue
+		}
+		byName[normalizeZoneName(zone.Name.Data)] = zone
+	}
+	return byName
+}
+
+// listedZones returns the zones the connection can list, reusing the root zone
+// list so resolving many names costs one list call in total.
+func listedZones(runtime *plugin.Runtime) ([]any, error) {
+	cf, err := CreateResource(runtime, "cloudflare", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	list := cf.(*mqlCloudflare).GetZones()
+	if list.Error != nil {
+		return nil, list.Error
+	}
+	return list.Data, nil
+}
+
+// listedZonesByName indexes the zones the connection can list by name.
+func listedZonesByName(runtime *plugin.Runtime) (map[string]*mqlCloudflareZone, error) {
+	list, err := listedZones(runtime)
+	if err != nil {
+		return nil, err
+	}
+	return indexZonesByName(list), nil
+}
+
+// zoneNamed finds the zone with the given name in a zone list. The same name
+// can be added to more than one account, so a zone owned by accountID wins over
+// one owned by another account. It returns nil when no zone has the name.
+func zoneNamed(list []any, name, accountID string) *mqlCloudflareZone {
+	key := normalizeZoneName(name)
+	if key == "" {
+		return nil
+	}
+	var fallback *mqlCloudflareZone
+	for _, entry := range list {
+		zone, ok := entry.(*mqlCloudflareZone)
+		if !ok || normalizeZoneName(zone.Name.Data) != key {
+			continue
+		}
+		if acc := zone.Account.Data; acc != nil && acc.Id.Data == accountID {
+			return zone
+		}
+		if fallback == nil {
+			fallback = zone
+		}
+	}
+	return fallback
+}
+
+// zonesNamed resolves zone names against an index, in the order given,
+// skipping duplicates and names with no zone in the index.
+func zonesNamed(names []string, byName map[string]*mqlCloudflareZone) []any {
+	out := make([]any, 0, len(names))
+	seen := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		key := normalizeZoneName(name)
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		if zone, ok := byName[key]; ok {
+			out = append(out, zone)
+		}
+	}
+	return out
+}
+
 // zoneActivatedOn returns the zone's activation time, or null for a zone that
 // has not been activated yet (the API reports activated_on as null).
 func zoneActivatedOn(zone zones.Zone) *llx.RawData {

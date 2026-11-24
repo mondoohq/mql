@@ -47,6 +47,33 @@ type (
 		UpdatedAt               *time.Time        `json:"updated_at"`
 		CorsHeaders             *accessCorsHeader `json:"cors_headers"`
 		Policies                []accessPolicy    `json:"policies"`
+
+		AllowAuthenticateViaWarp    *bool                  `json:"allow_authenticate_via_warp"`
+		AllowIframe                 *bool                  `json:"allow_iframe"`
+		ReadServiceTokensFromHeader *string                `json:"read_service_tokens_from_header"`
+		PathCookieAttribute         *bool                  `json:"path_cookie_attribute"`
+		MfaConfig                   *accessMfaConfig       `json:"mfa_config"`
+		Destinations                []accessAppDestination `json:"destinations"`
+	}
+
+	// accessMfaConfig is the MFA configuration carried by an organization, an
+	// application or a policy. A nil pointer means the record has none.
+	accessMfaConfig struct {
+		AllowedAuthenticators []string `json:"allowed_authenticators"`
+		MfaDisabled           *bool    `json:"mfa_disabled"`
+		SessionDuration       *string  `json:"session_duration"`
+	}
+
+	// accessAppDestination is one destination an Access application protects.
+	// Which fields are set depends on the destination type.
+	accessAppDestination struct {
+		Type       *string `json:"type"`
+		URI        *string `json:"uri"`
+		Hostname   *string `json:"hostname"`
+		CIDR       *string `json:"cidr"`
+		PortRange  *string `json:"port_range"`
+		L4Protocol *string `json:"l4_protocol"`
+		VnetID     *string `json:"vnet_id"`
 	}
 
 	accessCorsHeader struct {
@@ -70,6 +97,15 @@ type (
 		Include    []any      `json:"include"`
 		Require    []any      `json:"require"`
 		Exclude    []any      `json:"exclude"`
+
+		ApprovalRequired             *bool            `json:"approval_required"`
+		IsolationRequired            *bool            `json:"isolation_required"`
+		PurposeJustificationRequired *bool            `json:"purpose_justification_required"`
+		SessionDuration              *string          `json:"session_duration"`
+		MfaConfig                    *accessMfaConfig `json:"mfa_config"`
+		// AppCount is only reported for reusable account-level policies; a
+		// policy embedded in an application record omits it.
+		AppCount *int64 `json:"app_count"`
 	}
 
 	accessGroup struct {
@@ -77,6 +113,9 @@ type (
 		Name      string     `json:"name"`
 		CreatedAt *time.Time `json:"created_at"`
 		UpdatedAt *time.Time `json:"updated_at"`
+		Include   []any      `json:"include"`
+		Require   []any      `json:"require"`
+		Exclude   []any      `json:"exclude"`
 	}
 
 	accessServiceToken struct {
@@ -88,22 +127,34 @@ type (
 		LastSeenAt *time.Time `json:"last_seen_at"`
 		CreatedAt  *time.Time `json:"created_at"`
 		UpdatedAt  *time.Time `json:"updated_at"`
+		Enabled    *bool      `json:"enabled"`
+		// The leak fields are omitted unless a secret scanning partner
+		// reported the token's client secret.
+		LeakReportedAt *time.Time `json:"leak_reported_at"`
+		LeakReporter   *string    `json:"leak_reporter"`
+		LeakReportURL  *string    `json:"leak_report_url"`
 	}
 
 	accessOrganization struct {
-		Name                           string     `json:"name"`
-		AuthDomain                     string     `json:"auth_domain"`
-		IsUIReadOnly                   *bool      `json:"is_ui_read_only"`
-		UserSeatExpirationInactiveTime string     `json:"user_seat_expiration_inactive_time"`
-		AutoRedirectToIdentity         *bool      `json:"auto_redirect_to_identity"`
-		SessionDuration                *string    `json:"session_duration"`
-		WarpAuthSessionDuration        *string    `json:"warp_auth_session_duration"`
-		AllowAuthenticateViaWarp       *bool      `json:"allow_authenticate_via_warp"`
-		WarpAuthNonBrowser401          *bool      `json:"warp_auth_non_browser_401"`
-		StrictServiceTokenAuth         *bool      `json:"strict_service_token_auth"`
-		DisableEndUserAppCreation      *bool      `json:"disable_end_user_app_creation"`
-		CreatedAt                      *time.Time `json:"created_at"`
-		UpdatedAt                      *time.Time `json:"updated_at"`
+		Name                           string  `json:"name"`
+		AuthDomain                     string  `json:"auth_domain"`
+		IsUIReadOnly                   *bool   `json:"is_ui_read_only"`
+		UserSeatExpirationInactiveTime string  `json:"user_seat_expiration_inactive_time"`
+		AutoRedirectToIdentity         *bool   `json:"auto_redirect_to_identity"`
+		SessionDuration                *string `json:"session_duration"`
+		WarpAuthSessionDuration        *string `json:"warp_auth_session_duration"`
+		AllowAuthenticateViaWarp       *bool   `json:"allow_authenticate_via_warp"`
+		WarpAuthNonBrowser401          *bool   `json:"warp_auth_non_browser_401"`
+		StrictServiceTokenAuth         *bool   `json:"strict_service_token_auth"`
+		DisableEndUserAppCreation      *bool   `json:"disable_end_user_app_creation"`
+		DenyUnmatchedRequests          *bool   `json:"deny_unmatched_requests"`
+		// DenyUnmatchedRequestsExemptedZoneNames is nil when the organization
+		// does not report the list.
+		DenyUnmatchedRequestsExemptedZoneNames []string         `json:"deny_unmatched_requests_exempted_zone_names"`
+		MfaRequiredForAllApps                  *bool            `json:"mfa_required_for_all_apps"`
+		MfaConfig                              *accessMfaConfig `json:"mfa_config"`
+		CreatedAt                              *time.Time       `json:"created_at"`
+		UpdatedAt                              *time.Time       `json:"updated_at"`
 		// ServiceTokenInactivity is nil when the organization does not report
 		// the setting, so its fields read as null rather than as disabled.
 		ServiceTokenInactivity *accessServiceTokenInactivity `json:"service_token_inactivity"`
@@ -115,6 +166,9 @@ type (
 		InactivityThresholdDays *int64  `json:"inactivity_threshold_days"`
 	}
 
+	// accessIdp decodes only the identity provider settings the schema
+	// exposes. The OAuth client secret and the SCIM secret are deliberately
+	// not decoded.
 	accessIdp struct {
 		ID     string `json:"id"`
 		Name   string `json:"name"`
@@ -126,9 +180,16 @@ type (
 			IdpPublicCert      string   `json:"idp_public_cert"`
 			EmailAttributeName string   `json:"email_attribute_name"`
 			Attributes         []string `json:"attributes"`
+			// These are type dependent: nil when the provider type does
+			// not report them.
+			PkceEnabled              *bool `json:"pkce_enabled"`
+			ConditionalAccessEnabled *bool `json:"conditional_access_enabled"`
 		} `json:"config"`
 		ScimConfig struct {
-			Enabled bool `json:"enabled"`
+			Enabled                bool    `json:"enabled"`
+			UserDeprovision        *bool   `json:"user_deprovision"`
+			SeatDeprovision        *bool   `json:"seat_deprovision"`
+			IdentityUpdateBehavior *string `json:"identity_update_behavior"`
 		} `json:"scim_config"`
 	}
 )
@@ -205,6 +266,71 @@ func accessRules(in []any) []any {
 	return in
 }
 
+// stringPtrOrNil returns null for an absent, null or empty string, and the
+// string otherwise.
+func stringPtrOrNil(s *string) *llx.RawData {
+	if s == nil || *s == "" {
+		return llx.NilData
+	}
+	return llx.StringData(*s)
+}
+
+// mfaDisabled reports whether MFA is turned off, or null when the record has no
+// MFA configuration or the configuration does not carry the flag.
+func (m *accessMfaConfig) mfaDisabled() *llx.RawData {
+	if m == nil {
+		return llx.NilData
+	}
+	return llx.BoolDataPtr(m.MfaDisabled)
+}
+
+// allowedAuthenticators lists the permitted MFA methods, or null when the
+// record has no MFA configuration or the configuration does not list them.
+func (m *accessMfaConfig) allowedAuthenticators() *llx.RawData {
+	if m == nil {
+		return llx.NilData
+	}
+	return stringSliceOrNil(m.AllowedAuthenticators)
+}
+
+// sessionDuration returns the MFA session duration, or null when the record
+// has no MFA configuration or sets none.
+func (m *accessMfaConfig) sessionDuration() *llx.RawData {
+	if m == nil {
+		return llx.NilData
+	}
+	return stringPtrOrNil(m.SessionDuration)
+}
+
+// accessAppDestinationDicts converts an application's destinations into dicts,
+// keeping only the keys the API returned for each destination. A nil slice
+// (destinations not reported) reads as null.
+func accessAppDestinationDicts(in []accessAppDestination) *llx.RawData {
+	if in == nil {
+		return llx.NilData
+	}
+	out := make([]any, 0, len(in))
+	for i := range in {
+		d := in[i]
+		m := map[string]any{}
+		for key, v := range map[string]*string{
+			"type":       d.Type,
+			"uri":        d.URI,
+			"hostname":   d.Hostname,
+			"cidr":       d.CIDR,
+			"portRange":  d.PortRange,
+			"l4Protocol": d.L4Protocol,
+			"vnetId":     d.VnetID,
+		} {
+			if v != nil {
+				m[key] = *v
+			}
+		}
+		out = append(out, m)
+	}
+	return llx.ArrayData(out, types.Dict)
+}
+
 // newAccessPolicyResource builds an access policy resource, including its
 // include/require/exclude condition rules. Shared by the account accessPolicies()
 // listing and the per-application policies() accessor. fallbackKey supplies a
@@ -231,6 +357,14 @@ func newAccessPolicyResource(runtime *plugin.Runtime, fallbackKey string, p acce
 		"include":    llx.ArrayData(accessRules(p.Include), types.Dict),
 		"require":    llx.ArrayData(accessRules(p.Require), types.Dict),
 		"exclude":    llx.ArrayData(accessRules(p.Exclude), types.Dict),
+
+		"approvalRequired":             llx.BoolDataPtr(p.ApprovalRequired),
+		"isolationRequired":            llx.BoolDataPtr(p.IsolationRequired),
+		"purposeJustificationRequired": llx.BoolDataPtr(p.PurposeJustificationRequired),
+		"sessionDuration":              stringPtrOrNil(p.SessionDuration),
+		"mfaDisabled":                  p.MfaConfig.mfaDisabled(),
+		"mfaAllowedAuthenticators":     p.MfaConfig.allowedAuthenticators(),
+		"appCount":                     llx.IntDataPtr(p.AppCount),
 	})
 }
 
@@ -294,6 +428,14 @@ func (c *mqlCloudflareOne) apps() ([]any, error) {
 			"updatedAt": llx.TimeDataPtr(rec.UpdatedAt),
 
 			"corsHeaders": llx.NilData,
+
+			"allowAuthenticateViaWarp":    llx.BoolDataPtr(rec.AllowAuthenticateViaWarp),
+			"allowIframe":                 llx.BoolDataPtr(rec.AllowIframe),
+			"readServiceTokensFromHeader": stringPtrOrNil(rec.ReadServiceTokensFromHeader),
+			"pathCookieAttribute":         llx.BoolDataPtr(rec.PathCookieAttribute),
+			"mfaDisabled":                 rec.MfaConfig.mfaDisabled(),
+			"mfaAllowedAuthenticators":    rec.MfaConfig.allowedAuthenticators(),
+			"destinations":                accessAppDestinationDicts(rec.Destinations),
 		}
 
 		if rec.CorsHeaders != nil {
@@ -378,6 +520,9 @@ func (c *mqlCloudflareOne) accessGroups() ([]any, error) {
 			"name":      llx.StringData(rec.Name),
 			"createdAt": llx.TimeDataPtr(rec.CreatedAt),
 			"updatedAt": llx.TimeDataPtr(rec.UpdatedAt),
+			"include":   llx.ArrayData(accessRules(rec.Include), types.Dict),
+			"require":   llx.ArrayData(accessRules(rec.Require), types.Dict),
+			"exclude":   llx.ArrayData(accessRules(rec.Exclude), types.Dict),
 		})
 		if err != nil {
 			return nil, err
@@ -417,6 +562,11 @@ func (c *mqlCloudflareOne) serviceTokens() ([]any, error) {
 			"lastSeenAt": llx.TimeDataPtr(rec.LastSeenAt),
 			"createdAt":  llx.TimeDataPtr(rec.CreatedAt),
 			"updatedAt":  llx.TimeDataPtr(rec.UpdatedAt),
+
+			"enabled":        llx.BoolDataPtr(rec.Enabled),
+			"leakReportedAt": llx.TimeDataPtr(rec.LeakReportedAt),
+			"leakReporter":   stringPtrOrNil(rec.LeakReporter),
+			"leakReportUrl":  stringPtrOrNil(rec.LeakReportURL),
 		})
 		if err != nil {
 			return nil, err
@@ -472,6 +622,10 @@ func (c *mqlCloudflareOne) organization() (*mqlCloudflareOneOrganization, error)
 		"serviceTokenInactivityThresholdDays": llx.IntDataPtr(inactivity.InactivityThresholdDays),
 		"strictServiceTokenAuth":              llx.BoolDataPtr(org.StrictServiceTokenAuth),
 		"disableEndUserAppCreation":           llx.BoolDataPtr(org.DisableEndUserAppCreation),
+		"denyUnmatchedRequests":               llx.BoolDataPtr(org.DenyUnmatchedRequests),
+		"mfaRequiredForAllApps":               llx.BoolDataPtr(org.MfaRequiredForAllApps),
+		"mfaAllowedAuthenticators":            org.MfaConfig.allowedAuthenticators(),
+		"mfaSessionDuration":                  org.MfaConfig.sessionDuration(),
 	})
 	if err != nil {
 		return nil, err
@@ -479,7 +633,25 @@ func (c *mqlCloudflareOne) organization() (*mqlCloudflareOneOrganization, error)
 
 	o := res.(*mqlCloudflareOneOrganization)
 	o.accountID = c.AccountID
+	o.cacheExemptedZoneNames = org.DenyUnmatchedRequestsExemptedZoneNames
 	return o, nil
+}
+
+// denyUnmatchedRequestsExemptedZones resolves the exempted zone names against
+// the zones the connection can list. Names with no listed zone are left out.
+func (o *mqlCloudflareOneOrganization) denyUnmatchedRequestsExemptedZones() ([]any, error) {
+	if o.cacheExemptedZoneNames == nil {
+		o.DenyUnmatchedRequestsExemptedZones.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	if len(o.cacheExemptedZoneNames) == 0 {
+		return []any{}, nil
+	}
+	byName, err := listedZonesByName(o.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	return zonesNamed(o.cacheExemptedZoneNames, byName), nil
 }
 
 func (c *mqlCloudflareOneIdp) id() (string, error) {
@@ -513,6 +685,12 @@ func (c *mqlCloudflareOne) identityProviders() ([]any, error) {
 			"emailAttributeName": llx.StringData(rec.Config.EmailAttributeName),
 			"attributes":         llx.ArrayData(convert.SliceAnyToInterface(rec.Config.Attributes), types.String),
 			"scimEnabled":        llx.BoolData(rec.ScimConfig.Enabled),
+
+			"scimUserDeprovision":        llx.BoolDataPtr(rec.ScimConfig.UserDeprovision),
+			"scimSeatDeprovision":        llx.BoolDataPtr(rec.ScimConfig.SeatDeprovision),
+			"scimIdentityUpdateBehavior": stringPtrOrNil(rec.ScimConfig.IdentityUpdateBehavior),
+			"pkceEnabled":                llx.BoolDataPtr(rec.Config.PkceEnabled),
+			"conditionalAccessEnabled":   llx.BoolDataPtr(rec.Config.ConditionalAccessEnabled),
 		})
 		if err != nil {
 			return nil, err

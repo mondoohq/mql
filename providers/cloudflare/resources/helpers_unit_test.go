@@ -207,3 +207,27 @@ func TestCfTimeString(t *testing.T) {
 	require.True(t, ok, "parsed value must carry a *time.Time")
 	assert.Equal(t, 2033, gotTime.Year())
 }
+
+func TestRawJSONDict(t *testing.T) {
+	// Synthetic: absent, null, malformed, empty and populated raw values; no
+	// live account was checked.
+	assert.Nil(t, rawJSONDict("").Value, "absent is null")
+	assert.Nil(t, rawJSONDict(" null ").Value, "an explicit JSON null is null")
+	assert.Nil(t, rawJSONDict("{not json").Value, "a value that does not parse is null")
+	assert.Equal(t, map[string]any{}, rawJSONDict("{}").Value, "an empty object stays an empty dict")
+	assert.Equal(t, map[string]any{"a": map[string]any{"b": true}}, rawJSONDict(`{"a":{"b":true}}`).Value)
+}
+
+func TestStringSliceOrNil(t *testing.T) {
+	// Synthetic: nil, empty and populated slices; no live account was checked.
+	assert.Nil(t, stringSliceOrNil(nil).Value)
+	assert.Equal(t, []any{}, stringSliceOrNil([]string{}).Value)
+	assert.Equal(t, []any{"a"}, stringSliceOrNil([]string{"a"}).Value)
+}
+
+func TestBoolOrNil(t *testing.T) {
+	// Synthetic: an absent value and an explicit false; no live account was
+	// checked.
+	assert.Nil(t, boolOrNil(false, true).Value)
+	assert.Equal(t, false, boolOrNil(false, false).Value)
+}

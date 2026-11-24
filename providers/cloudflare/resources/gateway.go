@@ -137,10 +137,13 @@ func (c *mqlCloudflareOne) gatewayRules() ([]any, error) {
 			"version":       llx.IntData(rec.Version),
 			"createdAt":     timeOrNil(rec.CreatedAt),
 			"updatedAt":     timeOrNil(rec.UpdatedAt),
+			"ruleSettings":  rawJSONDict(rec.JSON.RuleSettings.Raw()),
+			"warningStatus": tokenStringOrNil(rec.WarningStatus, rec.JSON.WarningStatus.IsNull()),
 		})
 		if err != nil {
 			return nil, err
 		}
+		res.(*mqlCloudflareOneGatewayRule).cacheSourceAccount = rec.SourceAccount
 
 		result = append(result, res)
 	}
@@ -149,6 +152,30 @@ func (c *mqlCloudflareOne) gatewayRules() ([]any, error) {
 	}
 
 	return result, nil
+}
+
+type mqlCloudflareOneGatewayRuleInternal struct {
+	// cacheSourceAccount is the tag of the account that created the rule,
+	// empty when the rule does not name one.
+	cacheSourceAccount string
+}
+
+// sourceAccount resolves the account that created the rule against the
+// accounts the connection can list.
+func (c *mqlCloudflareOneGatewayRule) sourceAccount() (*mqlCloudflareAccount, error) {
+	if c.cacheSourceAccount == "" {
+		c.SourceAccount.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	byID, err := listedAccountsByID(c.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	acc, err := accountOrStub(c.MqlRuntime, byID, c.cacheSourceAccount)
+	if err != nil {
+		return nil, err
+	}
+	return acc.(*mqlCloudflareAccount), nil
 }
 
 func (c *mqlCloudflareOneList) id() (string, error) {
@@ -211,6 +238,82 @@ type gatewayLocation struct {
 	DNS64Enabled          *bool     `json:"dns64_enabled"`
 	CreatedAt             time.Time `json:"created_at"`
 	UpdatedAt             time.Time `json:"updated_at"`
+	// Endpoints is nil when the location does not report its resolver
+	// endpoints.
+	Endpoints *gatewayLocationEndpoints `json:"endpoints"`
+}
+
+// gatewayLocationEndpoints are the DNS resolver endpoints of a Gateway
+// location. Each block is nil when the location omits it.
+type gatewayLocationEndpoints struct {
+	DOH *struct {
+		Enabled      *bool                    `json:"enabled"`
+		RequireToken *bool                    `json:"require_token"`
+		Networks     []gatewayLocationNetwork `json:"networks"`
+	} `json:"doh"`
+	DOT *struct {
+		Enabled  *bool                    `json:"enabled"`
+		Networks []gatewayLocationNetwork `json:"networks"`
+	} `json:"dot"`
+	IPv4 *struct {
+		Enabled *bool `json:"enabled"`
+	} `json:"ipv4"`
+	IPv6 *struct {
+		Enabled  *bool                    `json:"enabled"`
+		Networks []gatewayLocationNetwork `json:"networks"`
+	} `json:"ipv6"`
+}
+
+type gatewayLocationNetwork struct {
+	Network string `json:"network"`
+}
+
+// gatewayLocationNetworks lists an endpoint's allowed source networks, or null
+// when the endpoint does not report them.
+func gatewayLocationNetworks(in []gatewayLocationNetwork) *llx.RawData {
+	if in == nil {
+		return llx.NilData
+	}
+	out := make([]any, 0, len(in))
+	for _, n := range in {
+		out = append(out, n.Network)
+	}
+	return llx.ArrayData(out, types.String)
+}
+
+// endpointArgs maps a location's resolver endpoints onto resource fields.
+// Every field of an endpoint the location does not report reads as null.
+func (e *gatewayLocationEndpoints) endpointArgs() map[string]*llx.RawData {
+	args := map[string]*llx.RawData{
+		"dohEnabled":      llx.NilData,
+		"dohRequireToken": llx.NilData,
+		"dohNetworks":     llx.NilData,
+		"dotEnabled":      llx.NilData,
+		"dotNetworks":     llx.NilData,
+		"ipv4Enabled":     llx.NilData,
+		"ipv6Enabled":     llx.NilData,
+		"ipv6Networks":    llx.NilData,
+	}
+	if e == nil {
+		return args
+	}
+	if e.DOH != nil {
+		args["dohEnabled"] = llx.BoolDataPtr(e.DOH.Enabled)
+		args["dohRequireToken"] = llx.BoolDataPtr(e.DOH.RequireToken)
+		args["dohNetworks"] = gatewayLocationNetworks(e.DOH.Networks)
+	}
+	if e.DOT != nil {
+		args["dotEnabled"] = llx.BoolDataPtr(e.DOT.Enabled)
+		args["dotNetworks"] = gatewayLocationNetworks(e.DOT.Networks)
+	}
+	if e.IPv4 != nil {
+		args["ipv4Enabled"] = llx.BoolDataPtr(e.IPv4.Enabled)
+	}
+	if e.IPv6 != nil {
+		args["ipv6Enabled"] = llx.BoolDataPtr(e.IPv6.Enabled)
+		args["ipv6Networks"] = gatewayLocationNetworks(e.IPv6.Networks)
+	}
+	return args
 }
 
 func (c *mqlCloudflareOne) locations() ([]any, error) {
@@ -225,18 +328,19 @@ func (c *mqlCloudflareOne) locations() ([]any, error) {
 	for i := range records {
 		rec := records[i]
 
-		res, err := NewResource(c.MqlRuntime, "cloudflare.one.location", map[string]*llx.RawData{
-			"id":                    llx.StringData(rec.ID),
-			"name":                  llx.StringData(rec.Name),
-			"dohSubdomain":          llx.StringData(rec.DOHSubdomain),
-			"ip":                    llx.StringData(rec.IP),
-			"anonymizedLogsEnabled": llx.BoolData(rec.AnonymizedLogsEnabled),
-			"clientDefault":         llx.BoolData(rec.ClientDefault),
-			"ecsSupport":            llx.BoolData(rec.ECSSupport),
-			"dns64Enabled":          llx.BoolDataPtr(rec.DNS64Enabled),
-			"createdAt":             timeOrNil(rec.CreatedAt),
-			"updatedAt":             timeOrNil(rec.UpdatedAt),
-		})
+		args := rec.Endpoints.endpointArgs()
+		args["id"] = llx.StringData(rec.ID)
+		args["name"] = llx.StringData(rec.Name)
+		args["dohSubdomain"] = llx.StringData(rec.DOHSubdomain)
+		args["ip"] = llx.StringData(rec.IP)
+		args["anonymizedLogsEnabled"] = llx.BoolData(rec.AnonymizedLogsEnabled)
+		args["clientDefault"] = llx.BoolData(rec.ClientDefault)
+		args["ecsSupport"] = llx.BoolData(rec.ECSSupport)
+		args["dns64Enabled"] = llx.BoolDataPtr(rec.DNS64Enabled)
+		args["createdAt"] = timeOrNil(rec.CreatedAt)
+		args["updatedAt"] = timeOrNil(rec.UpdatedAt)
+
+		res, err := NewResource(c.MqlRuntime, "cloudflare.one.location", args)
 		if err != nil {
 			return nil, err
 		}

@@ -167,6 +167,7 @@ func (c *mqlCloudflareZone) settings() (*mqlCloudflareZoneSettings, error) {
 		"developmentMode":   llx.StringData(extractSettingStr(settings, "development_mode")),
 		"nelEnabled":        llx.BoolDataPtr(extractSettingNestedBool(settings, "nel", "enabled")),
 		"replaceInsecureJs": llx.StringData(extractSettingStr(settings, "replace_insecure_js")),
+		"sha1Support":       llx.StringData(extractSettingStr(settings, "sha1_support")),
 	})
 	if err != nil {
 		return nil, err

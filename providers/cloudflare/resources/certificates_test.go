@@ -108,6 +108,53 @@ func TestCertificatePacks(t *testing.T) {
 	assert.Equal(t, "google", p2.CertificateAuthority.Data)
 }
 
+// Synthetic: an active pack whose primary certificate is listed, a pending
+// pack whose primary certificate is not among its certificates and that
+// reports validation errors, and a pack naming no primary certificate; no
+// live account was checked.
+func TestCertificatePackExpiryAndValidationErrors(t *testing.T) {
+	env := setupTestEnv(t)
+	zone := createTestZone(t, env)
+
+	env.Mux.HandleFunc(fmt.Sprintf("/zones/%s/ssl/certificate_packs", testZoneID), func(w http.ResponseWriter, r *http.Request) {
+		jsonResponse(w, `{"success":true,"result":[
+			{"id":"pack-a","type":"advanced","status":"active","primary_certificate":"cert-2",
+			 "certificates":[
+			   {"id":"cert-1","expires_on":"2027-01-01T00:00:00Z"},
+			   {"id":"cert-2","expires_on":"2027-06-30T12:00:00Z"}]},
+			{"id":"pack-b","type":"advanced","status":"pending_validation","primary_certificate":"cert-9",
+			 "certificates":[{"id":"cert-3","expires_on":"2027-01-01T00:00:00Z"}],
+			 "validation_errors":[{"message":"CAA record prevents issuance"},{"message":"TXT record not found"}]},
+			{"id":"pack-c","type":"universal","status":"initializing","certificates":[]}
+		],"result_info":{"page":1,"total_pages":1}}`)
+	})
+
+	result, err := zone.certificatePacks()
+	require.NoError(t, err)
+	require.Len(t, result, 3)
+
+	a := result[0].(*mqlCloudflareZoneCertificatePack)
+	require.False(t, a.ExpiresOn.IsNull())
+	assert.Equal(t, time.Date(2027, 6, 30, 12, 0, 0, 0, time.UTC), a.ExpiresOn.Data.UTC(), "expiry comes from the primary certificate, not the first")
+	assert.Equal(t, []any{}, a.ValidationErrors.Data)
+
+	b := result[1].(*mqlCloudflareZoneCertificatePack)
+	assert.True(t, b.ExpiresOn.IsNull(), "a primary certificate missing from the list reads null")
+	assert.Equal(t, []any{"CAA record prevents issuance", "TXT record not found"}, b.ValidationErrors.Data)
+
+	c := result[2].(*mqlCloudflareZoneCertificatePack)
+	assert.True(t, c.ExpiresOn.IsNull())
+}
+
+func TestRawID(t *testing.T) {
+	// Synthetic: string, numeric, null and absent ids; no live account was
+	// checked.
+	assert.Equal(t, "cert-1", rawID([]byte(`"cert-1"`)))
+	assert.Equal(t, "12345", rawID([]byte(`12345`)))
+	assert.Equal(t, "", rawID([]byte(`null`)))
+	assert.Equal(t, "", rawID(nil))
+}
+
 func TestMtlsCertificates(t *testing.T) {
 	env := setupTestEnv(t)
 	zone := createTestZone(t, env)
