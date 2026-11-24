@@ -638,7 +638,9 @@ func (c *mqlCloudflareOne) organization() (*mqlCloudflareOneOrganization, error)
 }
 
 // denyUnmatchedRequestsExemptedZones resolves the exempted zone names against
-// the zones the connection can list. Names with no listed zone are left out.
+// the organization's own account's listed zones. Another account's zone of the
+// same name is not this organization's exemption, and names with no listed zone
+// in the account are left out.
 func (o *mqlCloudflareOneOrganization) denyUnmatchedRequestsExemptedZones() ([]any, error) {
 	if o.cacheExemptedZoneNames == nil {
 		o.DenyUnmatchedRequestsExemptedZones.State = plugin.StateIsSet | plugin.StateIsNull
@@ -647,11 +649,11 @@ func (o *mqlCloudflareOneOrganization) denyUnmatchedRequestsExemptedZones() ([]a
 	if len(o.cacheExemptedZoneNames) == 0 {
 		return []any{}, nil
 	}
-	byName, err := listedZonesByName(o.MqlRuntime)
+	list, err := listedZones(o.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
-	return zonesNamed(o.cacheExemptedZoneNames, byName), nil
+	return zonesNamed(o.cacheExemptedZoneNames, list, o.accountID), nil
 }
 
 func (c *mqlCloudflareOneIdp) id() (string, error) {

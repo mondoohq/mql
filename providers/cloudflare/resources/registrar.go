@@ -13,8 +13,9 @@ import (
 )
 
 type mqlCloudflareAccountRegistrarDomainInternal struct {
-	// accountID is the account that owns the registration, used to prefer
-	// that account's zone when the domain is added to more than one account.
+	// accountID is the account that owns the registration. Only that
+	// account's zone of the same name serves the domain; another account can
+	// hold a zone with the same name.
 	accountID string
 }
 

@@ -1192,9 +1192,9 @@ private cloudflare.workers.page @defaults("shortId") {
 	// to a Git repository.
 	previewBranchExcludes []string
 
-  // Time the deployment was created
+	// Time the deployment was created
 	createdOn time
-  // Time the deployment was last modified
+	// Time the deployment was last modified
 	modifiedOn time
 }
 
@@ -1839,7 +1839,8 @@ private cloudflare.one.organization @defaults("name authDomain") {
 	// Zones exempted from denyUnmatchedRequests
 	//
 	// Requests to a hostname in one of these zones are allowed without an
-	// Access application. Zones the scan's token cannot list are left out.
+	// Access application. Each name resolves to the organization's own
+	// account's zone. Zones the scan's token cannot list are left out.
 	denyUnmatchedRequestsExemptedZones() []cloudflare.zone
 	// Whether the organization's MFA settings apply to every application by default
 	//
