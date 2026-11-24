@@ -5,7 +5,6 @@ package resources
 
 import (
 	"errors"
-	pathpkg "path"
 	"strconv"
 	"strings"
 	"sync"
@@ -77,6 +76,9 @@ func fileContext(runtime *plugin.Runtime, path string, r llx.Range) (plugin.Reso
 
 type mqlSshConfigInternal struct {
 	lock sync.Mutex
+	// Parsed once: every field comes from the same read.
+	parsed   bool
+	parseErr error
 }
 
 func initSshConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -95,19 +97,18 @@ func (s *mqlSshConfig) file() (*mqlFile, error) {
 	return sshDefaultFile(s.MqlRuntime, defaultSshClientConfig, windowsDefaultSshClientConfig)
 }
 
-// sshHomeOf returns the home directory a user's ~/.ssh/config lives in, so an
-// Include of ~/... resolves; empty for any other configuration.
-func sshHomeOf(path string) string {
-	dir := pathpkg.Dir(path)
-	if pathpkg.Base(dir) == ".ssh" {
-		return pathpkg.Dir(dir)
-	}
-	return ""
-}
-
 func (s *mqlSshConfig) parse(file *mqlFile) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
+	if s.parsed {
+		return s.parseErr
+	}
+	s.parsed = true
+	s.parseErr = s.parseLocked(file)
+	return s.parseErr
+}
+
+func (s *mqlSshConfig) parseLocked(file *mqlFile) error {
 	if file == nil {
 		return errors.New("no ssh client config file to read")
 	}
@@ -136,14 +137,19 @@ func (s *mqlSshConfig) parse(file *mqlFile) error {
 		if !ok {
 			return []string{pattern}, nil
 		}
-		paths, err := expandSshdGlob(&afero.Afero{Fs: conn.FileSystem()}, pattern)
+		afs := &afero.Afero{Fs: conn.FileSystem()}
+		expand := expandSshdGlob
+		if sshclient.IsWindowsPath(pattern) {
+			expand = expandWindowsSshdGlob
+		}
+		paths, err := expand(afs, pattern)
 		if err != nil {
 			return nil, sshdIncludeReadError(pattern, err)
 		}
 		return paths, nil
 	}
 
-	cfg, err := sshclient.Parse(file.Path.Data, sshHomeOf(file.Path.Data), content, glob)
+	cfg, err := sshclient.Parse(file.Path.Data, sshclient.HomeOf(file.Path.Data), content, glob)
 	if err != nil {
 		s.Files = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
 		s.Params = plugin.TValue[map[string]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
@@ -217,7 +223,9 @@ func (s *mqlSshConfig) hosts(file *mqlFile) ([]any, error) {
 }
 
 type mqlSshKnownHostsInternal struct {
-	lock sync.Mutex
+	lock     sync.Mutex
+	parsed   bool
+	parseErr error
 }
 
 func initSshKnownHosts(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -239,6 +247,15 @@ func (s *mqlSshKnownHosts) file() (*mqlFile, error) {
 func (s *mqlSshKnownHosts) parse(file *mqlFile) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
+	if s.parsed {
+		return s.parseErr
+	}
+	s.parsed = true
+	s.parseErr = s.parseLocked(file)
+	return s.parseErr
+}
+
+func (s *mqlSshKnownHosts) parseLocked(file *mqlFile) error {
 	if file == nil {
 		return errors.New("no known_hosts file to read")
 	}

@@ -55,7 +55,8 @@ const maxIncludeDepth = 16
 // leading ~/ resolves against home, when known.
 func Parse(root string, home string, content ContentFunc, glob GlobFunc) (*Config, error) {
 	cfg := &Config{}
-	p := &parser{cfg: cfg, base: path.Dir(root), home: home, content: content, glob: glob, seen: map[string]bool{}}
+	win := IsWindowsPath(root)
+	p := &parser{cfg: cfg, base: dirOf(root, win), home: home, win: win, content: content, glob: glob, seen: map[string]bool{}}
 	p.cur = &Block{Params: map[string]string{}, Path: root, Line: 1, Range: llx.NewRange()}
 	cfg.Blocks = append(cfg.Blocks, p.cur)
 	if err := p.file(root, 0); err != nil {
@@ -65,10 +66,12 @@ func Parse(root string, home string, content ContentFunc, glob GlobFunc) (*Confi
 }
 
 type parser struct {
-	cfg     *Config
-	cur     *Block
-	base    string
-	home    string
+	cfg  *Config
+	cur  *Block
+	base string
+	home string
+	// The configuration is on a Windows target: paths use backslashes and drive letters.
+	win     bool
 	content ContentFunc
 	glob    GlobFunc
 	seen    map[string]bool
@@ -141,12 +144,56 @@ func (p *parser) file(file string, depth int) error {
 func (p *parser) resolve(pattern string) string {
 	switch {
 	case strings.HasPrefix(pattern, "~/") && p.home != "":
-		return path.Join(p.home, pattern[2:])
-	case path.IsAbs(pattern):
+		return joinPath(p.win, p.home, pattern[2:])
+	case p.win && IsWindowsPath(pattern), !p.win && path.IsAbs(pattern):
 		return pattern
 	default:
-		return path.Join(p.base, pattern)
+		return joinPath(p.win, p.base, pattern)
 	}
+}
+
+// IsWindowsPath reports whether p is a Windows path: a drive letter (C:\, C:/)
+// or a UNC path. The target's paths decide this, not the scanner's OS: a
+// Windows host scanned from Linux still has Windows paths.
+func IsWindowsPath(p string) bool {
+	if len(p) >= 3 && p[1] == ':' && (p[2] == '\\' || p[2] == '/') {
+		c := p[0] | 0x20
+		return c >= 'a' && c <= 'z'
+	}
+	return strings.HasPrefix(p, `\\`)
+}
+
+func dirOf(p string, win bool) string {
+	if !win {
+		return path.Dir(p)
+	}
+	if i := strings.LastIndexAny(p, `\/`); i >= 0 {
+		return p[:i]
+	}
+	return p
+}
+
+func joinPath(win bool, base, rel string) string {
+	if !win {
+		return path.Join(base, rel)
+	}
+	return strings.TrimRight(base, `\/`) + `\` + strings.ReplaceAll(strings.TrimLeft(rel, `\/`), "/", `\`)
+}
+
+// HomeOf returns the home directory of a user's configuration in <home>/.ssh,
+// so an Include of ~/... resolves; empty for any other configuration, such as
+// the system-wide one.
+func HomeOf(configPath string) string {
+	win := IsWindowsPath(configPath)
+	dir := dirOf(configPath, win)
+	base := dir
+	if i := strings.LastIndexAny(dir, `\/`); i >= 0 {
+		base = dir[i+1:]
+	}
+	if base != ".ssh" {
+		return ""
+	}
+	return dirOf(dir, win)
 }
 
 // LiteralHosts returns the host names Host blocks name without wildcards or

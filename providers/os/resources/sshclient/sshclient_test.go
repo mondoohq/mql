@@ -82,3 +82,24 @@ func TestParseKnownHosts(t *testing.T) {
 	assert.Equal(t, "revoked", res.Entries[4].Marker)
 	assert.Equal(t, 5, res.Entries[4].Line)
 }
+
+func TestWindowsPaths(t *testing.T) {
+	files := map[string]string{
+		`C:\Users\alice\.ssh\config`: "Include extra\nInclude ~/.ssh/more\nInclude C:\\ProgramData\\ssh\\shared\nHost one\n",
+		`C:\Users\alice\.ssh\extra`:  "Host two\n",
+		`C:\Users\alice\.ssh\more`:   "Host three\n",
+		`C:\ProgramData\ssh\shared`:  "Host four\n",
+	}
+	content := func(p string) (string, error) { return files[p], nil }
+	glob := func(p string) ([]string, error) { return []string{p}, nil }
+	root := `C:\Users\alice\.ssh\config`
+	cfg, err := Parse(root, HomeOf(root), content, glob)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"two", "three", "four", "one"}, cfg.LiteralHosts())
+	assert.Equal(t, `C:\Users\alice`, HomeOf(root))
+	assert.Equal(t, "", HomeOf(`C:\ProgramData\ssh\ssh_config`))
+	assert.Equal(t, "/home/a", HomeOf("/home/a/.ssh/config"))
+	assert.True(t, IsWindowsPath(`C:\x`))
+	assert.True(t, IsWindowsPath(`\\server\share`))
+	assert.False(t, IsWindowsPath("/etc/ssh/ssh_config"))
+}
