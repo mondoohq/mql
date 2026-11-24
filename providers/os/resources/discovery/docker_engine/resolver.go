@@ -95,7 +95,7 @@ func (r *Resolver) Resolve(ctx context.Context, root *inventory.Asset, conf *inv
 
 	// check if we should do a discovery
 	if conf.Host == "" {
-		return DiscoverDockerEngineAssets(conf)
+		return DiscoverDockerEngineAssets(conf, nil)
 	}
 
 	// if we are here, the user has not specified the direct target, we need to search for it
@@ -194,7 +194,11 @@ func (k *Resolver) images(ctx context.Context, root *inventory.Asset, conf *inve
 	return rr.Resolve(ctx, root, conf, credsResolver)
 }
 
-func DiscoverDockerEngineAssets(conf *inventory.Config) ([]*inventory.Asset, error) {
+// DiscoverDockerEngineAssets lists the containers and images conf asks for.
+// host is the asset whose scan found them; the containers name it as their
+// host when the daemon runs on it. Pass nil when the scan is not of the
+// machine the daemon runs on.
+func DiscoverDockerEngineAssets(conf *inventory.Config, host *inventory.Asset) ([]*inventory.Asset, error) {
 	log.Debug().Msg("start discovery for docker engine")
 	// we use generic `container` and `container-images` options to avoid the requirement for the user to know if
 	// the system is using docker or podman locally
@@ -211,7 +215,7 @@ func DiscoverDockerEngineAssets(conf *inventory.Config) ([]*inventory.Asset, err
 			return nil, err
 		}
 
-		containerAssets, err := ded.ListContainer()
+		containerAssets, err := ded.ListContainer(host)
 		if err != nil {
 			return nil, err
 		}
