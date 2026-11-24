@@ -91,6 +91,7 @@ func (g *mqlGitlabGroup) enterpriseAccessTokens() ([]any, error) {
 	res := make([]any, 0, len(all))
 	for _, token := range all {
 		mqlToken, err := CreateResource(g.MqlRuntime, "gitlab.group.enterpriseAccessToken", map[string]*llx.RawData{
+			"__id":        llx.StringData(groupScopedID("gitlab.group.enterpriseAccessToken", g.Id.Data, strconv.FormatInt(token.ID, 10))),
 			"id":          llx.IntData(token.ID),
 			"name":        llx.StringData(token.Name),
 			"description": llx.StringData(token.Description),
@@ -161,6 +162,7 @@ func (g *mqlGitlabGroup) enterpriseSshKeys() ([]any, error) {
 	res := make([]any, 0, len(all))
 	for _, key := range all {
 		mqlKey, err := CreateResource(g.MqlRuntime, "gitlab.group.enterpriseSshKey", map[string]*llx.RawData{
+			"__id":       llx.StringData(groupScopedID("gitlab.group.enterpriseSshKey", g.Id.Data, strconv.FormatInt(key.ID, 10))),
 			"id":         llx.IntData(key.ID),
 			"title":      llx.StringData(key.Title),
 			"createdAt":  llx.TimeDataPtr(key.CreatedAt),
@@ -225,6 +227,7 @@ func (a *mqlGitlabGroupServiceAccount) accessTokens() ([]any, error) {
 	for _, token := range all {
 		// Token is intentionally omitted: it carries a live credential.
 		mqlToken, err := CreateResource(a.MqlRuntime, "gitlab.group.enterpriseAccessToken", map[string]*llx.RawData{
+			"__id":        llx.StringData(groupScopedID("gitlab.group.enterpriseAccessToken", a.groupID, strconv.FormatInt(token.ID, 10))),
 			"id":          llx.IntData(token.ID),
 			"name":        llx.StringData(token.Name),
 			"description": llx.StringData(token.Description),
@@ -278,6 +281,7 @@ func (g *mqlGitlabGroup) serviceAccounts() ([]any, error) {
 	res := make([]any, 0, len(all))
 	for _, account := range all {
 		mqlAccount, err := CreateResource(g.MqlRuntime, "gitlab.group.serviceAccount", map[string]*llx.RawData{
+			"__id":     llx.StringData(groupScopedID("gitlab.group.serviceAccount", g.Id.Data, strconv.FormatInt(account.ID, 10))),
 			"id":       llx.IntData(account.ID),
 			"name":     llx.StringData(account.Name),
 			"username": llx.StringData(account.UserName),
@@ -336,6 +340,7 @@ func (g *mqlGitlabGroup) sshCertificates() ([]any, error) {
 	res := make([]any, 0, len(all))
 	for _, certificate := range all {
 		mqlCertificate, err := CreateResource(g.MqlRuntime, "gitlab.group.sshCertificate", map[string]*llx.RawData{
+			"__id":      llx.StringData(groupScopedID("gitlab.group.sshCertificate", g.Id.Data, strconv.FormatInt(certificate.ID, 10))),
 			"id":        llx.IntData(certificate.ID),
 			"title":     llx.StringData(certificate.Title),
 			"key":       llx.StringData(certificate.Key),
@@ -398,6 +403,8 @@ func (g *mqlGitlabGroup) scimIdentities() ([]any, error) {
 	res := make([]any, 0, len(identities))
 	for _, identity := range identities {
 		mqlIdentity, err := CreateResource(g.MqlRuntime, "gitlab.group.scimIdentity", map[string]*llx.RawData{
+			"__id": llx.StringData(groupScopedID("gitlab.group.scimIdentity", g.Id.Data,
+				strconv.FormatInt(identity.UserID, 10), identity.ExternalUID)),
 			"externalUid": llx.StringData(identity.ExternalUID),
 			"active":      llx.BoolData(identity.Active),
 		})
@@ -450,7 +457,9 @@ func (g *mqlGitlabGroup) accessRequests() ([]any, error) {
 
 	res := make([]any, 0, len(requests))
 	for _, request := range requests {
-		mqlRequest, err := CreateResource(g.MqlRuntime, "gitlab.group.accessRequest", accessRequestFields(request))
+		fields := accessRequestFields(request)
+		fields["__id"] = llx.StringData(groupScopedID("gitlab.group.accessRequest", g.Id.Data, strconv.FormatInt(request.ID, 10)))
+		mqlRequest, err := CreateResource(g.MqlRuntime, "gitlab.group.accessRequest", fields)
 		if err != nil {
 			return nil, err
 		}
@@ -492,7 +501,9 @@ func (p *mqlGitlabProject) accessRequests() ([]any, error) {
 
 	res := make([]any, 0, len(requests))
 	for _, request := range requests {
-		mqlRequest, err := CreateResource(p.MqlRuntime, "gitlab.project.accessRequest", accessRequestFields(request))
+		fields := accessRequestFields(request)
+		fields["__id"] = llx.StringData(projectScopedID("gitlab.project.accessRequest", p.Id.Data, strconv.FormatInt(request.ID, 10)))
+		mqlRequest, err := CreateResource(p.MqlRuntime, "gitlab.project.accessRequest", fields)
 		if err != nil {
 			return nil, err
 		}
