@@ -26,6 +26,14 @@ import (
 // (version, flavor, ACL, replicas, storage, backup schedule, options) lives
 // behind GetInstance(projectId, region, instanceId). We model that detail as
 // computed methods that share a single cached fetch per instance.
+//
+// These calls stay on the deprecated v2 API on purpose. The v3 record has no
+// replicas count and no options map, carries only a flavor id instead of the
+// flavor object, and reports state as an upper-case enum (READY, PENDING,
+// TERMINATING, ...) where v2 reports status as "Ready", "Progressing",
+// "Failure". Moving list or detail to v3 would change the shipped status,
+// replicas, options and flavor values. The v3-only fields read a separate v3
+// record (dbaas_flex_v3.go).
 
 type mqlStackitPostgresFlexInstanceInternal struct {
 	fetched atomic.Bool
@@ -972,6 +980,11 @@ func (r *mqlStackitObservabilityInstance) grafanaGenericOauthAllowAssignAdmin() 
 // postgresflex is (projectId, region, instanceId[, userId]) while mongodbflex
 // and sqlserverflex are (projectId, instanceId[, userId], region). Swapping
 // them still compiles.
+//
+// Postgres and SQLServer Flex users stay on the deprecated v2 API: v3 keys
+// users by an int64 id where v2 uses a string id (the shipped `id` field and
+// the GetUser key), the Postgres v3 user record has no host or port, and the
+// v3 list pages at 10 users by default.
 
 type mqlStackitPostgresFlexInstanceUserInternal struct {
 	cacheInstanceId string
@@ -1679,6 +1692,12 @@ func initStackitLogMeInstance(runtime *plugin.Runtime, args map[string]*llx.RawD
 // Flex shape, identical to Postgres/MongoDB Flex: the list returns
 // id/name/status only; version/flavor/acl/replicas/storage/backupSchedule/
 // options are lazy-loaded once per instance via GetInstance.
+//
+// As for Postgres Flex, these calls stay on the deprecated v2 API: the v3
+// record has no options map (the source of options, edition and
+// backupRetentionDays), carries only a flavor id, spells the edition
+// differently ("Standard", "EnterpriseCore"), and reports state as an
+// upper-case enum where v2 reports "Ready", "Progressing", "Failed".
 
 type mqlStackitSqlServerFlexInstanceInternal struct {
 	fetched atomic.Bool

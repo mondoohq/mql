@@ -17,7 +17,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/stackitcloud/stackit-sdk-go/core/config"
 	alb "github.com/stackitcloud/stackit-sdk-go/services/alb/v2api"
-	albwaf "github.com/stackitcloud/stackit-sdk-go/services/albwaf/v1betaapi"
+	albwaf "github.com/stackitcloud/stackit-sdk-go/services/albwaf/v1api"
 	authorization "github.com/stackitcloud/stackit-sdk-go/services/authorization/v2api"
 	cdn "github.com/stackitcloud/stackit-sdk-go/services/cdn/v1api"
 	certificates "github.com/stackitcloud/stackit-sdk-go/services/certificates/v2api"
