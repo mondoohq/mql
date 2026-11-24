@@ -68,6 +68,157 @@ huggingface.organization @defaults("name") {
   // Authenticated user's role in this organization
   roleInOrg string
   isEnterprise bool
+  // Subscription plan of the organization
+  //
+  // One of team, enterprise, plus, or academia. Null when the Hub reports no
+  // plan, as on a free organization.
+  plan string
+  // Security restrictions on the credential in use for this organization
+  //
+  // Restrictions the organization applies to the current credential when it
+  // reads the organization's data. Entries are mfa (two-factor
+  // authentication), sso (single sign-on), ip (address allowlist),
+  // token-policy (token approval policy), and token-revoked (an administrator
+  // withdrew the token's access). Null when the Hub did not report the list.
+  securityRestrictions []string
+  // Members of the organization
+  //
+  // Includes external collaborators when the credential belongs to an
+  // organization administrator.
+  members() []huggingface.organization.member
+  // Network security settings of the organization
+  networkSecurity() huggingface.organization.networkSecuritySettings
+  // Access tokens held by members of the organization
+  memberTokens() []huggingface.organization.memberToken
+}
+
+// Member of a Hugging Face organization
+//
+// One account in the organization with its organization role, whether it has
+// two-factor authentication enabled, whether it is an external collaborator,
+// and the resource groups it belongs to. Use it to find members without
+// two-factor authentication, or administrators who should not be.
+private huggingface.organization.member @defaults("name role") {
+  // Hub user ID of the member
+  id string
+  // Username of the member
+  name string
+  fullname string
+  // Role in the organization
+  //
+  // One of admin, write, contributor, read, or no_access.
+  role string
+  // Whether the member has two-factor authentication enabled
+  //
+  // Null when the Hub did not report it, which is not the same as disabled.
+  twoFaEnabled bool
+  // Whether the member is an external collaborator rather than a full member
+  //
+  // Null when the Hub did not report it.
+  isExternalCollaborator bool
+  // Email address the member verified through the organization's single sign-on
+  //
+  // Reported on Team and Enterprise organizations to organization
+  // administrators. Null otherwise.
+  verifiedEmail string
+  // Resource groups the member belongs to
+  resourceGroups []huggingface.organization.member.resourceGroup
+}
+
+// Resource group membership of a Hugging Face organization member
+//
+// One resource group a member belongs to, with the role the member holds in it
+// and the role assigned to the member there.
+private huggingface.organization.member.resourceGroup @defaults("name role") {
+  // Resource group ID
+  id string
+  // Resource group name
+  name string
+  // Role the member holds in the resource group
+  //
+  // One of admin, write, contributor, read, or no_access.
+  role string
+  // Role assigned to the member in the resource group
+  //
+  // One of admin, write, contributor, read, no_access, or inherit.
+  assignedRole string
+}
+
+// Network security settings of a Hugging Face organization
+//
+// Organization-wide network controls: whether authentication is enforced,
+// whether access is limited to the CIDR ranges in ipRanges, and the content
+// rules that block or allow kinds of repositories. Available on Team and
+// Enterprise organizations. The field reads null when the plan lacks the
+// feature or the credential cannot read the settings.
+private huggingface.organization.networkSecuritySettings @defaults("enforceAuth enforceIpRestriction") {
+  // Whether the organization enforces authentication
+  enforceAuth bool
+  // Whether access is limited to the ranges in ipRanges
+  enforceIpRestriction bool
+  // CIDR ranges declared for the organization
+  ipRanges []string
+  // Whether ipRanges match the CIDR ranges an administrator validated
+  areCidrRangesApproved bool
+  // Content rules that block kinds of repositories
+  blockedContents []huggingface.organization.contentRule
+  // Content rules that allow kinds of repositories
+  allowedContents []huggingface.organization.contentRule
+}
+
+// Content rule in Hugging Face organization network security settings
+//
+// One rule naming a kind of repository and the scope it matches.
+private huggingface.organization.contentRule @defaults("resource scope") {
+  // Kind of repository the rule applies to
+  //
+  // One of dataset, model, space, bucket, kernel, container, or * for every
+  // kind.
+  resource string
+  // Scope the rule matches
+  scope string
+}
+
+// Access token of a Hugging Face organization member
+//
+// One access token held by a member of the organization: its role, when it
+// was created and last used, the member who owns it, its status in the
+// organization's token approval flow, and the permissions a fineGrained token
+// holds on the organization and its repositories. Token values are never
+// exposed. Available on Team and Enterprise organizations; revoked tokens are
+// not listed.
+private huggingface.organization.memberToken @defaults("displayName role") {
+  // Token ID
+  id string
+  // Name the owner gave the token
+  //
+  // Reported by organizations that require administrator approval of member
+  // tokens. Null otherwise.
+  displayName string
+  // Token role
+  //
+  // One of read, write, or fineGrained. A read or write token reaches
+  // everything its owner can reach.
+  role string
+  // When the token was created or last rotated
+  createdAt time
+  // When the token last authenticated a request
+  //
+  // Null on a token that has never been used.
+  lastUsedAt time
+  // Member who owns the token
+  //
+  // Null when the owner is not among the organization's listed members.
+  owner() huggingface.organization.member
+  // Status of the token in the organization's approval flow
+  //
+  // One of pending, approved, denied, or revoked. Null when the organization
+  // does not require approval and the token's access was never revoked.
+  authorizationStatus string
+  // Permissions a fineGrained token holds on the organization and its repositories
+  //
+  // Null on read and write tokens, whose access is not a permission list.
+  scopedPermissions []huggingface.accessToken.scope
 }
 
 // Hugging Face access token
@@ -85,6 +236,10 @@ huggingface.accessToken @defaults("displayName role") {
   // One of read, write, or fineGrained.
   role string
   createdAt time
+  // When the token expires
+  //
+  // Null on a token that never expires.
+  expiresAt time
   // Whether the token can download from gated (access-restricted) repositories
   canReadGatedRepos bool
   // Global permissions granted to the token
@@ -161,6 +316,15 @@ huggingface.model @defaults("id author") {
   siblings() []dict
   // Malware and unsafe-serialization scan of the model files
   securityStatus() huggingface.repositoryScan
+  // Trusted publishers allowed to act on the model
+  //
+  // Empty when the credential cannot read the repository settings.
+  trustedPublishers() []huggingface.trustedPublisher
+  // Pending and accepted requests for access to the model
+  //
+  // Empty on a model that is not gated, and when the credential cannot read
+  // the requests.
+  accessRequests() []huggingface.accessRequest
 }
 
 // Hugging Face dataset repository
@@ -199,6 +363,15 @@ huggingface.dataset @defaults("id") {
   sha string
   // Malware and unsafe-serialization scan of the dataset files
   securityStatus() huggingface.repositoryScan
+  // Trusted publishers allowed to act on the dataset
+  //
+  // Empty when the credential cannot read the repository settings.
+  trustedPublishers() []huggingface.trustedPublisher
+  // Pending and accepted requests for access to the dataset
+  //
+  // Empty on a dataset that is not gated, and when the credential cannot read
+  // the requests.
+  accessRequests() []huggingface.accessRequest
 }
 
 // Hugging Face Space application
@@ -238,6 +411,72 @@ huggingface.space @defaults("id") {
   runtime() huggingface.space.runtimeStatus
   // Malware and unsafe-serialization scan of the Space files
   securityStatus() huggingface.repositoryScan
+  // Trusted publishers allowed to act on the Space
+  //
+  // Empty when the credential cannot read the repository settings.
+  trustedPublishers() []huggingface.trustedPublisher
+}
+
+// Trusted publisher of a Hugging Face repository
+//
+// External identity, such as a CI workflow, that may exchange an identity
+// token from its issuer for access to a repository without a stored Hub
+// token. The issuerUrl names the identity provider, claims lists what the
+// identity token must carry, and permissions lists what a matching identity
+// may do. A prefix rule on a claim admits every identity whose claim starts
+// with that value, so a short prefix can admit more workflows than intended.
+private huggingface.trustedPublisher @defaults("issuerUrl") {
+  // Trusted publisher ID
+  id string
+  // URL of the identity token issuer
+  issuerUrl string
+  // Claims an identity token must carry
+  //
+  // Keyed by claim name. Each value has a `kind` of eq (the claim must equal
+  // `value`) or prefix (the claim must start with `value`).
+  claims dict
+  // Permissions granted on the repository
+  //
+  // For example repo.content.read or repo.content.write.
+  permissions []string
+  // Further capabilities granted
+  //
+  // For example inference-api or request-gated-repos.
+  capabilities []string
+  // Name of the account that configured the trusted publisher
+  configuredBy string
+  createdAt time
+  // When the trusted publisher was last used
+  //
+  // Null when it has never been used.
+  lastUsedAt time
+}
+
+// Access request on a gated Hugging Face repository
+//
+// One request by an account to reach a gated model or dataset: who asked, the
+// status of the request, who granted it, and when it was made and reviewed.
+private huggingface.accessRequest @defaults("user status") {
+  // Access request ID
+  id string
+  // Username of the requester
+  //
+  // Null when the requester does not share their profile.
+  user string
+  // Request status
+  //
+  // One of pending or accepted.
+  status string
+  // Username of the account that granted access
+  //
+  // Null on a pending request and when the Hub reports no grantor.
+  grantedBy string
+  // When access was requested
+  requestedAt time
+  // When the request was reviewed
+  //
+  // Null on a request nobody has reviewed.
+  reviewedAt time
 }
 
 // Runtime state of a Hugging Face Space
@@ -368,6 +607,25 @@ huggingface.webhook @defaults("id webhookUrl") {
   // "org", or "user") and a `name` (the repository ID or namespace,
   // for example "openai/whisper").
   watched []dict
+  // Whether a secret is configured for the webhook
+  //
+  // The receiver can check the secret to confirm a delivery came from the
+  // Hub. The secret value is never exposed. Null when the Hub did not report
+  // the setting.
+  hasSecret bool
+  // When the webhook last fired
+  //
+  // Null on a webhook that has never fired.
+  lastTriggerAt time
+  // Docker image of the job the webhook launches
+  //
+  // Null when the webhook launches no job, or launches one from a Space.
+  jobDockerImage string
+  // Space the job launched by the webhook runs from
+  //
+  // Null when the webhook launches no job, the job runs a Docker image, or the
+  // Space is not among the Spaces listed for the account.
+  jobSpace() huggingface.space
 }
 
 // Hugging Face inference endpoint
@@ -394,4 +652,49 @@ huggingface.inferenceEndpoint @defaults("name status") {
   endpointUrl string
   createdAt time
   updatedAt time
+  // Who can reach the endpoint
+  //
+  // One of public (reachable from the internet without authentication),
+  // authenticated (reachable from the internet with a Hugging Face token), or
+  // private (reachable only over a private network connection).
+  type string
+  // Model deployed on the endpoint
+  //
+  // Null when the deployed repository is not a model the credential can read.
+  deployedModel() huggingface.model
+  // Revision of the deployed model
+  //
+  // Git commit SHA or branch name. Null when the endpoint follows the default
+  // branch.
+  revision string
+  // Cloud vendor hosting the endpoint
+  //
+  // For example aws, azure, or gcp.
+  vendor string
+  // Cloud region hosting the endpoint
+  //
+  // For example us-east-1.
+  region string
+  // Compute instance type of each replica
+  //
+  // For example intel-spr or nvidia-a10g.
+  instanceType string
+  // Minimum number of replicas
+  //
+  // Zero lets the endpoint scale to zero when idle.
+  minReplica int
+  // Maximum number of replicas
+  maxReplica int
+  // When the endpoint last served a request or started running
+  //
+  // Null on an endpoint that has never been active.
+  lastUsedAt time
+  // Name of the account that created the endpoint
+  createdBy string
+  // Name of the account that last updated the endpoint
+  updatedBy string
+  // Names of the secret environment variables set on the endpoint
+  //
+  // Secret values are never exposed.
+  secretNames []string
 }

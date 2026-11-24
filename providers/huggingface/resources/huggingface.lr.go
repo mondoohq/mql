@@ -16,20 +16,27 @@ import (
 
 // The MQL type names exposed as public consts for ease of reference.
 const (
-	ResourceHuggingface                   string = "huggingface"
-	ResourceHuggingfaceUser               string = "huggingface.user"
-	ResourceHuggingfaceOrganization       string = "huggingface.organization"
-	ResourceHuggingfaceAccessToken        string = "huggingface.accessToken"
-	ResourceHuggingfaceAccessTokenScope   string = "huggingface.accessToken.scope"
-	ResourceHuggingfaceModel              string = "huggingface.model"
-	ResourceHuggingfaceDataset            string = "huggingface.dataset"
-	ResourceHuggingfaceSpace              string = "huggingface.space"
-	ResourceHuggingfaceSpaceRuntimeStatus string = "huggingface.space.runtimeStatus"
-	ResourceHuggingfaceSpaceDomain        string = "huggingface.space.domain"
-	ResourceHuggingfaceRepositoryScan     string = "huggingface.repositoryScan"
-	ResourceHuggingfaceRepositoryScanFile string = "huggingface.repositoryScan.file"
-	ResourceHuggingfaceWebhook            string = "huggingface.webhook"
-	ResourceHuggingfaceInferenceEndpoint  string = "huggingface.inferenceEndpoint"
+	ResourceHuggingface                                    string = "huggingface"
+	ResourceHuggingfaceUser                                string = "huggingface.user"
+	ResourceHuggingfaceOrganization                        string = "huggingface.organization"
+	ResourceHuggingfaceOrganizationMember                  string = "huggingface.organization.member"
+	ResourceHuggingfaceOrganizationMemberResourceGroup     string = "huggingface.organization.member.resourceGroup"
+	ResourceHuggingfaceOrganizationNetworkSecuritySettings string = "huggingface.organization.networkSecuritySettings"
+	ResourceHuggingfaceOrganizationContentRule             string = "huggingface.organization.contentRule"
+	ResourceHuggingfaceOrganizationMemberToken             string = "huggingface.organization.memberToken"
+	ResourceHuggingfaceAccessToken                         string = "huggingface.accessToken"
+	ResourceHuggingfaceAccessTokenScope                    string = "huggingface.accessToken.scope"
+	ResourceHuggingfaceModel                               string = "huggingface.model"
+	ResourceHuggingfaceDataset                             string = "huggingface.dataset"
+	ResourceHuggingfaceSpace                               string = "huggingface.space"
+	ResourceHuggingfaceTrustedPublisher                    string = "huggingface.trustedPublisher"
+	ResourceHuggingfaceAccessRequest                       string = "huggingface.accessRequest"
+	ResourceHuggingfaceSpaceRuntimeStatus                  string = "huggingface.space.runtimeStatus"
+	ResourceHuggingfaceSpaceDomain                         string = "huggingface.space.domain"
+	ResourceHuggingfaceRepositoryScan                      string = "huggingface.repositoryScan"
+	ResourceHuggingfaceRepositoryScanFile                  string = "huggingface.repositoryScan.file"
+	ResourceHuggingfaceWebhook                             string = "huggingface.webhook"
+	ResourceHuggingfaceInferenceEndpoint                   string = "huggingface.inferenceEndpoint"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -47,6 +54,26 @@ func init() {
 		"huggingface.organization": {
 			// to override args, implement: initHuggingfaceOrganization(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createHuggingfaceOrganization,
+		},
+		"huggingface.organization.member": {
+			// to override args, implement: initHuggingfaceOrganizationMember(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createHuggingfaceOrganizationMember,
+		},
+		"huggingface.organization.member.resourceGroup": {
+			// to override args, implement: initHuggingfaceOrganizationMemberResourceGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createHuggingfaceOrganizationMemberResourceGroup,
+		},
+		"huggingface.organization.networkSecuritySettings": {
+			// to override args, implement: initHuggingfaceOrganizationNetworkSecuritySettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createHuggingfaceOrganizationNetworkSecuritySettings,
+		},
+		"huggingface.organization.contentRule": {
+			// to override args, implement: initHuggingfaceOrganizationContentRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createHuggingfaceOrganizationContentRule,
+		},
+		"huggingface.organization.memberToken": {
+			// to override args, implement: initHuggingfaceOrganizationMemberToken(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createHuggingfaceOrganizationMemberToken,
 		},
 		"huggingface.accessToken": {
 			// to override args, implement: initHuggingfaceAccessToken(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -67,6 +94,14 @@ func init() {
 		"huggingface.space": {
 			// to override args, implement: initHuggingfaceSpace(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createHuggingfaceSpace,
+		},
+		"huggingface.trustedPublisher": {
+			// to override args, implement: initHuggingfaceTrustedPublisher(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createHuggingfaceTrustedPublisher,
+		},
+		"huggingface.accessRequest": {
+			// to override args, implement: initHuggingfaceAccessRequest(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createHuggingfaceAccessRequest,
 		},
 		"huggingface.space.runtimeStatus": {
 			// to override args, implement: initHuggingfaceSpaceRuntimeStatus(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -229,6 +264,105 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"huggingface.organization.isEnterprise": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlHuggingfaceOrganization).GetIsEnterprise()).ToDataRes(types.Bool)
 	},
+	"huggingface.organization.plan": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganization).GetPlan()).ToDataRes(types.String)
+	},
+	"huggingface.organization.securityRestrictions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganization).GetSecurityRestrictions()).ToDataRes(types.Array(types.String))
+	},
+	"huggingface.organization.members": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganization).GetMembers()).ToDataRes(types.Array(types.Resource("huggingface.organization.member")))
+	},
+	"huggingface.organization.networkSecurity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganization).GetNetworkSecurity()).ToDataRes(types.Resource("huggingface.organization.networkSecuritySettings"))
+	},
+	"huggingface.organization.memberTokens": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganization).GetMemberTokens()).ToDataRes(types.Array(types.Resource("huggingface.organization.memberToken")))
+	},
+	"huggingface.organization.member.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationMember).GetId()).ToDataRes(types.String)
+	},
+	"huggingface.organization.member.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationMember).GetName()).ToDataRes(types.String)
+	},
+	"huggingface.organization.member.fullname": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationMember).GetFullname()).ToDataRes(types.String)
+	},
+	"huggingface.organization.member.role": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationMember).GetRole()).ToDataRes(types.String)
+	},
+	"huggingface.organization.member.twoFaEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationMember).GetTwoFaEnabled()).ToDataRes(types.Bool)
+	},
+	"huggingface.organization.member.isExternalCollaborator": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationMember).GetIsExternalCollaborator()).ToDataRes(types.Bool)
+	},
+	"huggingface.organization.member.verifiedEmail": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationMember).GetVerifiedEmail()).ToDataRes(types.String)
+	},
+	"huggingface.organization.member.resourceGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationMember).GetResourceGroups()).ToDataRes(types.Array(types.Resource("huggingface.organization.member.resourceGroup")))
+	},
+	"huggingface.organization.member.resourceGroup.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationMemberResourceGroup).GetId()).ToDataRes(types.String)
+	},
+	"huggingface.organization.member.resourceGroup.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationMemberResourceGroup).GetName()).ToDataRes(types.String)
+	},
+	"huggingface.organization.member.resourceGroup.role": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationMemberResourceGroup).GetRole()).ToDataRes(types.String)
+	},
+	"huggingface.organization.member.resourceGroup.assignedRole": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationMemberResourceGroup).GetAssignedRole()).ToDataRes(types.String)
+	},
+	"huggingface.organization.networkSecuritySettings.enforceAuth": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationNetworkSecuritySettings).GetEnforceAuth()).ToDataRes(types.Bool)
+	},
+	"huggingface.organization.networkSecuritySettings.enforceIpRestriction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationNetworkSecuritySettings).GetEnforceIpRestriction()).ToDataRes(types.Bool)
+	},
+	"huggingface.organization.networkSecuritySettings.ipRanges": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationNetworkSecuritySettings).GetIpRanges()).ToDataRes(types.Array(types.String))
+	},
+	"huggingface.organization.networkSecuritySettings.areCidrRangesApproved": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationNetworkSecuritySettings).GetAreCidrRangesApproved()).ToDataRes(types.Bool)
+	},
+	"huggingface.organization.networkSecuritySettings.blockedContents": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationNetworkSecuritySettings).GetBlockedContents()).ToDataRes(types.Array(types.Resource("huggingface.organization.contentRule")))
+	},
+	"huggingface.organization.networkSecuritySettings.allowedContents": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationNetworkSecuritySettings).GetAllowedContents()).ToDataRes(types.Array(types.Resource("huggingface.organization.contentRule")))
+	},
+	"huggingface.organization.contentRule.resource": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationContentRule).GetResource()).ToDataRes(types.String)
+	},
+	"huggingface.organization.contentRule.scope": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationContentRule).GetScope()).ToDataRes(types.String)
+	},
+	"huggingface.organization.memberToken.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationMemberToken).GetId()).ToDataRes(types.String)
+	},
+	"huggingface.organization.memberToken.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationMemberToken).GetDisplayName()).ToDataRes(types.String)
+	},
+	"huggingface.organization.memberToken.role": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationMemberToken).GetRole()).ToDataRes(types.String)
+	},
+	"huggingface.organization.memberToken.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationMemberToken).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"huggingface.organization.memberToken.lastUsedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationMemberToken).GetLastUsedAt()).ToDataRes(types.Time)
+	},
+	"huggingface.organization.memberToken.owner": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationMemberToken).GetOwner()).ToDataRes(types.Resource("huggingface.organization.member"))
+	},
+	"huggingface.organization.memberToken.authorizationStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationMemberToken).GetAuthorizationStatus()).ToDataRes(types.String)
+	},
+	"huggingface.organization.memberToken.scopedPermissions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceOrganizationMemberToken).GetScopedPermissions()).ToDataRes(types.Array(types.Resource("huggingface.accessToken.scope")))
+	},
 	"huggingface.accessToken.displayName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlHuggingfaceAccessToken).GetDisplayName()).ToDataRes(types.String)
 	},
@@ -237,6 +371,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"huggingface.accessToken.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlHuggingfaceAccessToken).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"huggingface.accessToken.expiresAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceAccessToken).GetExpiresAt()).ToDataRes(types.Time)
 	},
 	"huggingface.accessToken.canReadGatedRepos": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlHuggingfaceAccessToken).GetCanReadGatedRepos()).ToDataRes(types.Bool)
@@ -322,6 +459,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"huggingface.model.securityStatus": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlHuggingfaceModel).GetSecurityStatus()).ToDataRes(types.Resource("huggingface.repositoryScan"))
 	},
+	"huggingface.model.trustedPublishers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceModel).GetTrustedPublishers()).ToDataRes(types.Array(types.Resource("huggingface.trustedPublisher")))
+	},
+	"huggingface.model.accessRequests": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceModel).GetAccessRequests()).ToDataRes(types.Array(types.Resource("huggingface.accessRequest")))
+	},
 	"huggingface.dataset.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlHuggingfaceDataset).GetId()).ToDataRes(types.String)
 	},
@@ -370,6 +513,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"huggingface.dataset.securityStatus": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlHuggingfaceDataset).GetSecurityStatus()).ToDataRes(types.Resource("huggingface.repositoryScan"))
 	},
+	"huggingface.dataset.trustedPublishers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceDataset).GetTrustedPublishers()).ToDataRes(types.Array(types.Resource("huggingface.trustedPublisher")))
+	},
+	"huggingface.dataset.accessRequests": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceDataset).GetAccessRequests()).ToDataRes(types.Array(types.Resource("huggingface.accessRequest")))
+	},
 	"huggingface.space.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlHuggingfaceSpace).GetId()).ToDataRes(types.String)
 	},
@@ -417,6 +566,51 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"huggingface.space.securityStatus": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlHuggingfaceSpace).GetSecurityStatus()).ToDataRes(types.Resource("huggingface.repositoryScan"))
+	},
+	"huggingface.space.trustedPublishers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceSpace).GetTrustedPublishers()).ToDataRes(types.Array(types.Resource("huggingface.trustedPublisher")))
+	},
+	"huggingface.trustedPublisher.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceTrustedPublisher).GetId()).ToDataRes(types.String)
+	},
+	"huggingface.trustedPublisher.issuerUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceTrustedPublisher).GetIssuerUrl()).ToDataRes(types.String)
+	},
+	"huggingface.trustedPublisher.claims": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceTrustedPublisher).GetClaims()).ToDataRes(types.Dict)
+	},
+	"huggingface.trustedPublisher.permissions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceTrustedPublisher).GetPermissions()).ToDataRes(types.Array(types.String))
+	},
+	"huggingface.trustedPublisher.capabilities": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceTrustedPublisher).GetCapabilities()).ToDataRes(types.Array(types.String))
+	},
+	"huggingface.trustedPublisher.configuredBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceTrustedPublisher).GetConfiguredBy()).ToDataRes(types.String)
+	},
+	"huggingface.trustedPublisher.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceTrustedPublisher).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"huggingface.trustedPublisher.lastUsedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceTrustedPublisher).GetLastUsedAt()).ToDataRes(types.Time)
+	},
+	"huggingface.accessRequest.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceAccessRequest).GetId()).ToDataRes(types.String)
+	},
+	"huggingface.accessRequest.user": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceAccessRequest).GetUser()).ToDataRes(types.String)
+	},
+	"huggingface.accessRequest.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceAccessRequest).GetStatus()).ToDataRes(types.String)
+	},
+	"huggingface.accessRequest.grantedBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceAccessRequest).GetGrantedBy()).ToDataRes(types.String)
+	},
+	"huggingface.accessRequest.requestedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceAccessRequest).GetRequestedAt()).ToDataRes(types.Time)
+	},
+	"huggingface.accessRequest.reviewedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceAccessRequest).GetReviewedAt()).ToDataRes(types.Time)
 	},
 	"huggingface.space.runtimeStatus.stage": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlHuggingfaceSpaceRuntimeStatus).GetStage()).ToDataRes(types.String)
@@ -478,6 +672,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"huggingface.webhook.watched": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlHuggingfaceWebhook).GetWatched()).ToDataRes(types.Array(types.Dict))
 	},
+	"huggingface.webhook.hasSecret": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceWebhook).GetHasSecret()).ToDataRes(types.Bool)
+	},
+	"huggingface.webhook.lastTriggerAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceWebhook).GetLastTriggerAt()).ToDataRes(types.Time)
+	},
+	"huggingface.webhook.jobDockerImage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceWebhook).GetJobDockerImage()).ToDataRes(types.String)
+	},
+	"huggingface.webhook.jobSpace": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceWebhook).GetJobSpace()).ToDataRes(types.Resource("huggingface.space"))
+	},
 	"huggingface.inferenceEndpoint.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlHuggingfaceInferenceEndpoint).GetId()).ToDataRes(types.String)
 	},
@@ -501,6 +707,42 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"huggingface.inferenceEndpoint.updatedAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlHuggingfaceInferenceEndpoint).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"huggingface.inferenceEndpoint.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceInferenceEndpoint).GetType()).ToDataRes(types.String)
+	},
+	"huggingface.inferenceEndpoint.deployedModel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceInferenceEndpoint).GetDeployedModel()).ToDataRes(types.Resource("huggingface.model"))
+	},
+	"huggingface.inferenceEndpoint.revision": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceInferenceEndpoint).GetRevision()).ToDataRes(types.String)
+	},
+	"huggingface.inferenceEndpoint.vendor": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceInferenceEndpoint).GetVendor()).ToDataRes(types.String)
+	},
+	"huggingface.inferenceEndpoint.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceInferenceEndpoint).GetRegion()).ToDataRes(types.String)
+	},
+	"huggingface.inferenceEndpoint.instanceType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceInferenceEndpoint).GetInstanceType()).ToDataRes(types.String)
+	},
+	"huggingface.inferenceEndpoint.minReplica": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceInferenceEndpoint).GetMinReplica()).ToDataRes(types.Int)
+	},
+	"huggingface.inferenceEndpoint.maxReplica": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceInferenceEndpoint).GetMaxReplica()).ToDataRes(types.Int)
+	},
+	"huggingface.inferenceEndpoint.lastUsedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceInferenceEndpoint).GetLastUsedAt()).ToDataRes(types.Time)
+	},
+	"huggingface.inferenceEndpoint.createdBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceInferenceEndpoint).GetCreatedBy()).ToDataRes(types.String)
+	},
+	"huggingface.inferenceEndpoint.updatedBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceInferenceEndpoint).GetUpdatedBy()).ToDataRes(types.String)
+	},
+	"huggingface.inferenceEndpoint.secretNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceInferenceEndpoint).GetSecretNames()).ToDataRes(types.Array(types.String))
 	},
 }
 
@@ -614,6 +856,158 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlHuggingfaceOrganization).IsEnterprise, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"huggingface.organization.plan": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganization).Plan, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.securityRestrictions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganization).SecurityRestrictions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.members": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganization).Members, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.networkSecurity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganization).NetworkSecurity, ok = plugin.RawToTValue[*mqlHuggingfaceOrganizationNetworkSecuritySettings](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.memberTokens": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganization).MemberTokens, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.member.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationMember).__id, ok = v.Value.(string)
+		return
+	},
+	"huggingface.organization.member.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationMember).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.member.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationMember).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.member.fullname": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationMember).Fullname, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.member.role": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationMember).Role, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.member.twoFaEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationMember).TwoFaEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.member.isExternalCollaborator": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationMember).IsExternalCollaborator, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.member.verifiedEmail": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationMember).VerifiedEmail, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.member.resourceGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationMember).ResourceGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.member.resourceGroup.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationMemberResourceGroup).__id, ok = v.Value.(string)
+		return
+	},
+	"huggingface.organization.member.resourceGroup.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationMemberResourceGroup).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.member.resourceGroup.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationMemberResourceGroup).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.member.resourceGroup.role": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationMemberResourceGroup).Role, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.member.resourceGroup.assignedRole": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationMemberResourceGroup).AssignedRole, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.networkSecuritySettings.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationNetworkSecuritySettings).__id, ok = v.Value.(string)
+		return
+	},
+	"huggingface.organization.networkSecuritySettings.enforceAuth": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationNetworkSecuritySettings).EnforceAuth, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.networkSecuritySettings.enforceIpRestriction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationNetworkSecuritySettings).EnforceIpRestriction, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.networkSecuritySettings.ipRanges": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationNetworkSecuritySettings).IpRanges, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.networkSecuritySettings.areCidrRangesApproved": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationNetworkSecuritySettings).AreCidrRangesApproved, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.networkSecuritySettings.blockedContents": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationNetworkSecuritySettings).BlockedContents, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.networkSecuritySettings.allowedContents": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationNetworkSecuritySettings).AllowedContents, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.contentRule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationContentRule).__id, ok = v.Value.(string)
+		return
+	},
+	"huggingface.organization.contentRule.resource": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationContentRule).Resource, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.contentRule.scope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationContentRule).Scope, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.memberToken.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationMemberToken).__id, ok = v.Value.(string)
+		return
+	},
+	"huggingface.organization.memberToken.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationMemberToken).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.memberToken.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationMemberToken).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.memberToken.role": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationMemberToken).Role, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.memberToken.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationMemberToken).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.memberToken.lastUsedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationMemberToken).LastUsedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.memberToken.owner": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationMemberToken).Owner, ok = plugin.RawToTValue[*mqlHuggingfaceOrganizationMember](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.memberToken.authorizationStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationMemberToken).AuthorizationStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.organization.memberToken.scopedPermissions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceOrganizationMemberToken).ScopedPermissions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"huggingface.accessToken.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlHuggingfaceAccessToken).__id, ok = v.Value.(string)
 		return
@@ -628,6 +1022,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"huggingface.accessToken.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlHuggingfaceAccessToken).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"huggingface.accessToken.expiresAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceAccessToken).ExpiresAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"huggingface.accessToken.canReadGatedRepos": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -750,6 +1148,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlHuggingfaceModel).SecurityStatus, ok = plugin.RawToTValue[*mqlHuggingfaceRepositoryScan](v.Value, v.Error)
 		return
 	},
+	"huggingface.model.trustedPublishers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceModel).TrustedPublishers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"huggingface.model.accessRequests": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceModel).AccessRequests, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"huggingface.dataset.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlHuggingfaceDataset).__id, ok = v.Value.(string)
 		return
@@ -818,6 +1224,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlHuggingfaceDataset).SecurityStatus, ok = plugin.RawToTValue[*mqlHuggingfaceRepositoryScan](v.Value, v.Error)
 		return
 	},
+	"huggingface.dataset.trustedPublishers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceDataset).TrustedPublishers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"huggingface.dataset.accessRequests": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceDataset).AccessRequests, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"huggingface.space.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlHuggingfaceSpace).__id, ok = v.Value.(string)
 		return
@@ -884,6 +1298,74 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"huggingface.space.securityStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlHuggingfaceSpace).SecurityStatus, ok = plugin.RawToTValue[*mqlHuggingfaceRepositoryScan](v.Value, v.Error)
+		return
+	},
+	"huggingface.space.trustedPublishers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceSpace).TrustedPublishers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"huggingface.trustedPublisher.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceTrustedPublisher).__id, ok = v.Value.(string)
+		return
+	},
+	"huggingface.trustedPublisher.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceTrustedPublisher).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.trustedPublisher.issuerUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceTrustedPublisher).IssuerUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.trustedPublisher.claims": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceTrustedPublisher).Claims, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"huggingface.trustedPublisher.permissions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceTrustedPublisher).Permissions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"huggingface.trustedPublisher.capabilities": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceTrustedPublisher).Capabilities, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"huggingface.trustedPublisher.configuredBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceTrustedPublisher).ConfiguredBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.trustedPublisher.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceTrustedPublisher).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"huggingface.trustedPublisher.lastUsedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceTrustedPublisher).LastUsedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"huggingface.accessRequest.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceAccessRequest).__id, ok = v.Value.(string)
+		return
+	},
+	"huggingface.accessRequest.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceAccessRequest).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.accessRequest.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceAccessRequest).User, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.accessRequest.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceAccessRequest).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.accessRequest.grantedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceAccessRequest).GrantedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.accessRequest.requestedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceAccessRequest).RequestedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"huggingface.accessRequest.reviewedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceAccessRequest).ReviewedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"huggingface.space.runtimeStatus.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -986,6 +1468,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlHuggingfaceWebhook).Watched, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"huggingface.webhook.hasSecret": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceWebhook).HasSecret, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"huggingface.webhook.lastTriggerAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceWebhook).LastTriggerAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"huggingface.webhook.jobDockerImage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceWebhook).JobDockerImage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.webhook.jobSpace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceWebhook).JobSpace, ok = plugin.RawToTValue[*mqlHuggingfaceSpace](v.Value, v.Error)
+		return
+	},
 	"huggingface.inferenceEndpoint.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlHuggingfaceInferenceEndpoint).__id, ok = v.Value.(string)
 		return
@@ -1020,6 +1518,54 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"huggingface.inferenceEndpoint.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlHuggingfaceInferenceEndpoint).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"huggingface.inferenceEndpoint.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceInferenceEndpoint).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.inferenceEndpoint.deployedModel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceInferenceEndpoint).DeployedModel, ok = plugin.RawToTValue[*mqlHuggingfaceModel](v.Value, v.Error)
+		return
+	},
+	"huggingface.inferenceEndpoint.revision": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceInferenceEndpoint).Revision, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.inferenceEndpoint.vendor": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceInferenceEndpoint).Vendor, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.inferenceEndpoint.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceInferenceEndpoint).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.inferenceEndpoint.instanceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceInferenceEndpoint).InstanceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.inferenceEndpoint.minReplica": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceInferenceEndpoint).MinReplica, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"huggingface.inferenceEndpoint.maxReplica": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceInferenceEndpoint).MaxReplica, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"huggingface.inferenceEndpoint.lastUsedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceInferenceEndpoint).LastUsedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"huggingface.inferenceEndpoint.createdBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceInferenceEndpoint).CreatedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.inferenceEndpoint.updatedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceInferenceEndpoint).UpdatedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.inferenceEndpoint.secretNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceInferenceEndpoint).SecretNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 }
@@ -1305,14 +1851,19 @@ type mqlHuggingfaceOrganization struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlHuggingfaceOrganizationInternal it will be used here
-	Id           plugin.TValue[string]
-	Name         plugin.TValue[string]
-	Fullname     plugin.TValue[string]
-	Email        plugin.TValue[string]
-	CanPay       plugin.TValue[bool]
-	AvatarUrl    plugin.TValue[string]
-	RoleInOrg    plugin.TValue[string]
-	IsEnterprise plugin.TValue[bool]
+	Id                   plugin.TValue[string]
+	Name                 plugin.TValue[string]
+	Fullname             plugin.TValue[string]
+	Email                plugin.TValue[string]
+	CanPay               plugin.TValue[bool]
+	AvatarUrl            plugin.TValue[string]
+	RoleInOrg            plugin.TValue[string]
+	IsEnterprise         plugin.TValue[bool]
+	Plan                 plugin.TValue[string]
+	SecurityRestrictions plugin.TValue[[]any]
+	Members              plugin.TValue[[]any]
+	NetworkSecurity      plugin.TValue[*mqlHuggingfaceOrganizationNetworkSecuritySettings]
+	MemberTokens         plugin.TValue[[]any]
 }
 
 // createHuggingfaceOrganization creates a new instance of this resource
@@ -1384,6 +1935,434 @@ func (c *mqlHuggingfaceOrganization) GetIsEnterprise() *plugin.TValue[bool] {
 	return &c.IsEnterprise
 }
 
+func (c *mqlHuggingfaceOrganization) GetPlan() *plugin.TValue[string] {
+	return &c.Plan
+}
+
+func (c *mqlHuggingfaceOrganization) GetSecurityRestrictions() *plugin.TValue[[]any] {
+	return &c.SecurityRestrictions
+}
+
+func (c *mqlHuggingfaceOrganization) GetMembers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Members, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("huggingface.organization", c.__id, "members")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.members()
+	})
+}
+
+func (c *mqlHuggingfaceOrganization) GetNetworkSecurity() *plugin.TValue[*mqlHuggingfaceOrganizationNetworkSecuritySettings] {
+	return plugin.GetOrCompute[*mqlHuggingfaceOrganizationNetworkSecuritySettings](&c.NetworkSecurity, func() (*mqlHuggingfaceOrganizationNetworkSecuritySettings, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("huggingface.organization", c.__id, "networkSecurity")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlHuggingfaceOrganizationNetworkSecuritySettings), nil
+			}
+		}
+
+		return c.networkSecurity()
+	})
+}
+
+func (c *mqlHuggingfaceOrganization) GetMemberTokens() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MemberTokens, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("huggingface.organization", c.__id, "memberTokens")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.memberTokens()
+	})
+}
+
+// mqlHuggingfaceOrganizationMember for the huggingface.organization.member resource
+type mqlHuggingfaceOrganizationMember struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlHuggingfaceOrganizationMemberInternal it will be used here
+	Id                     plugin.TValue[string]
+	Name                   plugin.TValue[string]
+	Fullname               plugin.TValue[string]
+	Role                   plugin.TValue[string]
+	TwoFaEnabled           plugin.TValue[bool]
+	IsExternalCollaborator plugin.TValue[bool]
+	VerifiedEmail          plugin.TValue[string]
+	ResourceGroups         plugin.TValue[[]any]
+}
+
+// createHuggingfaceOrganizationMember creates a new instance of this resource
+func createHuggingfaceOrganizationMember(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlHuggingfaceOrganizationMember{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("huggingface.organization.member", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlHuggingfaceOrganizationMember) MqlName() string {
+	return "huggingface.organization.member"
+}
+
+func (c *mqlHuggingfaceOrganizationMember) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlHuggingfaceOrganizationMember) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlHuggingfaceOrganizationMember) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlHuggingfaceOrganizationMember) GetFullname() *plugin.TValue[string] {
+	return &c.Fullname
+}
+
+func (c *mqlHuggingfaceOrganizationMember) GetRole() *plugin.TValue[string] {
+	return &c.Role
+}
+
+func (c *mqlHuggingfaceOrganizationMember) GetTwoFaEnabled() *plugin.TValue[bool] {
+	return &c.TwoFaEnabled
+}
+
+func (c *mqlHuggingfaceOrganizationMember) GetIsExternalCollaborator() *plugin.TValue[bool] {
+	return &c.IsExternalCollaborator
+}
+
+func (c *mqlHuggingfaceOrganizationMember) GetVerifiedEmail() *plugin.TValue[string] {
+	return &c.VerifiedEmail
+}
+
+func (c *mqlHuggingfaceOrganizationMember) GetResourceGroups() *plugin.TValue[[]any] {
+	return &c.ResourceGroups
+}
+
+// mqlHuggingfaceOrganizationMemberResourceGroup for the huggingface.organization.member.resourceGroup resource
+type mqlHuggingfaceOrganizationMemberResourceGroup struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlHuggingfaceOrganizationMemberResourceGroupInternal it will be used here
+	Id           plugin.TValue[string]
+	Name         plugin.TValue[string]
+	Role         plugin.TValue[string]
+	AssignedRole plugin.TValue[string]
+}
+
+// createHuggingfaceOrganizationMemberResourceGroup creates a new instance of this resource
+func createHuggingfaceOrganizationMemberResourceGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlHuggingfaceOrganizationMemberResourceGroup{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("huggingface.organization.member.resourceGroup", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlHuggingfaceOrganizationMemberResourceGroup) MqlName() string {
+	return "huggingface.organization.member.resourceGroup"
+}
+
+func (c *mqlHuggingfaceOrganizationMemberResourceGroup) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlHuggingfaceOrganizationMemberResourceGroup) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlHuggingfaceOrganizationMemberResourceGroup) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlHuggingfaceOrganizationMemberResourceGroup) GetRole() *plugin.TValue[string] {
+	return &c.Role
+}
+
+func (c *mqlHuggingfaceOrganizationMemberResourceGroup) GetAssignedRole() *plugin.TValue[string] {
+	return &c.AssignedRole
+}
+
+// mqlHuggingfaceOrganizationNetworkSecuritySettings for the huggingface.organization.networkSecuritySettings resource
+type mqlHuggingfaceOrganizationNetworkSecuritySettings struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlHuggingfaceOrganizationNetworkSecuritySettingsInternal it will be used here
+	EnforceAuth           plugin.TValue[bool]
+	EnforceIpRestriction  plugin.TValue[bool]
+	IpRanges              plugin.TValue[[]any]
+	AreCidrRangesApproved plugin.TValue[bool]
+	BlockedContents       plugin.TValue[[]any]
+	AllowedContents       plugin.TValue[[]any]
+}
+
+// createHuggingfaceOrganizationNetworkSecuritySettings creates a new instance of this resource
+func createHuggingfaceOrganizationNetworkSecuritySettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlHuggingfaceOrganizationNetworkSecuritySettings{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("huggingface.organization.networkSecuritySettings", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlHuggingfaceOrganizationNetworkSecuritySettings) MqlName() string {
+	return "huggingface.organization.networkSecuritySettings"
+}
+
+func (c *mqlHuggingfaceOrganizationNetworkSecuritySettings) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlHuggingfaceOrganizationNetworkSecuritySettings) GetEnforceAuth() *plugin.TValue[bool] {
+	return &c.EnforceAuth
+}
+
+func (c *mqlHuggingfaceOrganizationNetworkSecuritySettings) GetEnforceIpRestriction() *plugin.TValue[bool] {
+	return &c.EnforceIpRestriction
+}
+
+func (c *mqlHuggingfaceOrganizationNetworkSecuritySettings) GetIpRanges() *plugin.TValue[[]any] {
+	return &c.IpRanges
+}
+
+func (c *mqlHuggingfaceOrganizationNetworkSecuritySettings) GetAreCidrRangesApproved() *plugin.TValue[bool] {
+	return &c.AreCidrRangesApproved
+}
+
+func (c *mqlHuggingfaceOrganizationNetworkSecuritySettings) GetBlockedContents() *plugin.TValue[[]any] {
+	return &c.BlockedContents
+}
+
+func (c *mqlHuggingfaceOrganizationNetworkSecuritySettings) GetAllowedContents() *plugin.TValue[[]any] {
+	return &c.AllowedContents
+}
+
+// mqlHuggingfaceOrganizationContentRule for the huggingface.organization.contentRule resource
+type mqlHuggingfaceOrganizationContentRule struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlHuggingfaceOrganizationContentRuleInternal it will be used here
+	Resource plugin.TValue[string]
+	Scope    plugin.TValue[string]
+}
+
+// createHuggingfaceOrganizationContentRule creates a new instance of this resource
+func createHuggingfaceOrganizationContentRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlHuggingfaceOrganizationContentRule{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("huggingface.organization.contentRule", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlHuggingfaceOrganizationContentRule) MqlName() string {
+	return "huggingface.organization.contentRule"
+}
+
+func (c *mqlHuggingfaceOrganizationContentRule) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlHuggingfaceOrganizationContentRule) GetResource() *plugin.TValue[string] {
+	return &c.Resource
+}
+
+func (c *mqlHuggingfaceOrganizationContentRule) GetScope() *plugin.TValue[string] {
+	return &c.Scope
+}
+
+// mqlHuggingfaceOrganizationMemberToken for the huggingface.organization.memberToken resource
+type mqlHuggingfaceOrganizationMemberToken struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlHuggingfaceOrganizationMemberTokenInternal
+	Id                  plugin.TValue[string]
+	DisplayName         plugin.TValue[string]
+	Role                plugin.TValue[string]
+	CreatedAt           plugin.TValue[*time.Time]
+	LastUsedAt          plugin.TValue[*time.Time]
+	Owner               plugin.TValue[*mqlHuggingfaceOrganizationMember]
+	AuthorizationStatus plugin.TValue[string]
+	ScopedPermissions   plugin.TValue[[]any]
+}
+
+// createHuggingfaceOrganizationMemberToken creates a new instance of this resource
+func createHuggingfaceOrganizationMemberToken(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlHuggingfaceOrganizationMemberToken{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("huggingface.organization.memberToken", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlHuggingfaceOrganizationMemberToken) MqlName() string {
+	return "huggingface.organization.memberToken"
+}
+
+func (c *mqlHuggingfaceOrganizationMemberToken) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlHuggingfaceOrganizationMemberToken) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlHuggingfaceOrganizationMemberToken) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlHuggingfaceOrganizationMemberToken) GetRole() *plugin.TValue[string] {
+	return &c.Role
+}
+
+func (c *mqlHuggingfaceOrganizationMemberToken) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlHuggingfaceOrganizationMemberToken) GetLastUsedAt() *plugin.TValue[*time.Time] {
+	return &c.LastUsedAt
+}
+
+func (c *mqlHuggingfaceOrganizationMemberToken) GetOwner() *plugin.TValue[*mqlHuggingfaceOrganizationMember] {
+	return plugin.GetOrCompute[*mqlHuggingfaceOrganizationMember](&c.Owner, func() (*mqlHuggingfaceOrganizationMember, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("huggingface.organization.memberToken", c.__id, "owner")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlHuggingfaceOrganizationMember), nil
+			}
+		}
+
+		return c.owner()
+	})
+}
+
+func (c *mqlHuggingfaceOrganizationMemberToken) GetAuthorizationStatus() *plugin.TValue[string] {
+	return &c.AuthorizationStatus
+}
+
+func (c *mqlHuggingfaceOrganizationMemberToken) GetScopedPermissions() *plugin.TValue[[]any] {
+	return &c.ScopedPermissions
+}
+
 // mqlHuggingfaceAccessToken for the huggingface.accessToken resource
 type mqlHuggingfaceAccessToken struct {
 	MqlRuntime *plugin.Runtime
@@ -1392,6 +2371,7 @@ type mqlHuggingfaceAccessToken struct {
 	DisplayName       plugin.TValue[string]
 	Role              plugin.TValue[string]
 	CreatedAt         plugin.TValue[*time.Time]
+	ExpiresAt         plugin.TValue[*time.Time]
 	CanReadGatedRepos plugin.TValue[bool]
 	GlobalPermissions plugin.TValue[[]any]
 	ScopedPermissions plugin.TValue[[]any]
@@ -1444,6 +2424,10 @@ func (c *mqlHuggingfaceAccessToken) GetRole() *plugin.TValue[string] {
 
 func (c *mqlHuggingfaceAccessToken) GetCreatedAt() *plugin.TValue[*time.Time] {
 	return &c.CreatedAt
+}
+
+func (c *mqlHuggingfaceAccessToken) GetExpiresAt() *plugin.TValue[*time.Time] {
+	return &c.ExpiresAt
 }
 
 func (c *mqlHuggingfaceAccessToken) GetCanReadGatedRepos() *plugin.TValue[bool] {
@@ -1527,27 +2511,29 @@ type mqlHuggingfaceModel struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlHuggingfaceModelInternal
-	Id             plugin.TValue[string]
-	ModelId        plugin.TValue[string]
-	Author         plugin.TValue[string]
-	Private        plugin.TValue[bool]
-	PipelineTag    plugin.TValue[string]
-	LibraryName    plugin.TValue[string]
-	Tags           plugin.TValue[[]any]
-	Downloads      plugin.TValue[int64]
-	Likes          plugin.TValue[int64]
-	Sha            plugin.TValue[string]
-	CreatedAt      plugin.TValue[*time.Time]
-	LastModified   plugin.TValue[*time.Time]
-	Gated          plugin.TValue[bool]
-	GatedMode      plugin.TValue[string]
-	Disabled       plugin.TValue[bool]
-	License        plugin.TValue[string]
-	CardData       plugin.TValue[any]
-	ModelCard      plugin.TValue[string]
-	Config         plugin.TValue[any]
-	Siblings       plugin.TValue[[]any]
-	SecurityStatus plugin.TValue[*mqlHuggingfaceRepositoryScan]
+	Id                plugin.TValue[string]
+	ModelId           plugin.TValue[string]
+	Author            plugin.TValue[string]
+	Private           plugin.TValue[bool]
+	PipelineTag       plugin.TValue[string]
+	LibraryName       plugin.TValue[string]
+	Tags              plugin.TValue[[]any]
+	Downloads         plugin.TValue[int64]
+	Likes             plugin.TValue[int64]
+	Sha               plugin.TValue[string]
+	CreatedAt         plugin.TValue[*time.Time]
+	LastModified      plugin.TValue[*time.Time]
+	Gated             plugin.TValue[bool]
+	GatedMode         plugin.TValue[string]
+	Disabled          plugin.TValue[bool]
+	License           plugin.TValue[string]
+	CardData          plugin.TValue[any]
+	ModelCard         plugin.TValue[string]
+	Config            plugin.TValue[any]
+	Siblings          plugin.TValue[[]any]
+	SecurityStatus    plugin.TValue[*mqlHuggingfaceRepositoryScan]
+	TrustedPublishers plugin.TValue[[]any]
+	AccessRequests    plugin.TValue[[]any]
 }
 
 // createHuggingfaceModel creates a new instance of this resource
@@ -1699,27 +2685,61 @@ func (c *mqlHuggingfaceModel) GetSecurityStatus() *plugin.TValue[*mqlHuggingface
 	})
 }
 
+func (c *mqlHuggingfaceModel) GetTrustedPublishers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TrustedPublishers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("huggingface.model", c.__id, "trustedPublishers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.trustedPublishers()
+	})
+}
+
+func (c *mqlHuggingfaceModel) GetAccessRequests() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessRequests, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("huggingface.model", c.__id, "accessRequests")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.accessRequests()
+	})
+}
+
 // mqlHuggingfaceDataset for the huggingface.dataset resource
 type mqlHuggingfaceDataset struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlHuggingfaceDatasetInternal
-	Id               plugin.TValue[string]
-	Name             plugin.TValue[string]
-	Description      plugin.TValue[string]
-	Tags             plugin.TValue[[]any]
-	Author           plugin.TValue[string]
-	Downloads        plugin.TValue[int64]
-	DownloadsAllTime plugin.TValue[int64]
-	Likes            plugin.TValue[int64]
-	Private          plugin.TValue[bool]
-	Gated            plugin.TValue[bool]
-	GatedMode        plugin.TValue[string]
-	Disabled         plugin.TValue[bool]
-	CreatedAt        plugin.TValue[*time.Time]
-	LastModified     plugin.TValue[*time.Time]
-	Sha              plugin.TValue[string]
-	SecurityStatus   plugin.TValue[*mqlHuggingfaceRepositoryScan]
+	Id                plugin.TValue[string]
+	Name              plugin.TValue[string]
+	Description       plugin.TValue[string]
+	Tags              plugin.TValue[[]any]
+	Author            plugin.TValue[string]
+	Downloads         plugin.TValue[int64]
+	DownloadsAllTime  plugin.TValue[int64]
+	Likes             plugin.TValue[int64]
+	Private           plugin.TValue[bool]
+	Gated             plugin.TValue[bool]
+	GatedMode         plugin.TValue[string]
+	Disabled          plugin.TValue[bool]
+	CreatedAt         plugin.TValue[*time.Time]
+	LastModified      plugin.TValue[*time.Time]
+	Sha               plugin.TValue[string]
+	SecurityStatus    plugin.TValue[*mqlHuggingfaceRepositoryScan]
+	TrustedPublishers plugin.TValue[[]any]
+	AccessRequests    plugin.TValue[[]any]
 }
 
 // createHuggingfaceDataset creates a new instance of this resource
@@ -1835,27 +2855,60 @@ func (c *mqlHuggingfaceDataset) GetSecurityStatus() *plugin.TValue[*mqlHuggingfa
 	})
 }
 
+func (c *mqlHuggingfaceDataset) GetTrustedPublishers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TrustedPublishers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("huggingface.dataset", c.__id, "trustedPublishers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.trustedPublishers()
+	})
+}
+
+func (c *mqlHuggingfaceDataset) GetAccessRequests() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessRequests, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("huggingface.dataset", c.__id, "accessRequests")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.accessRequests()
+	})
+}
+
 // mqlHuggingfaceSpace for the huggingface.space resource
 type mqlHuggingfaceSpace struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlHuggingfaceSpaceInternal
-	Id             plugin.TValue[string]
-	Name           plugin.TValue[string]
-	Description    plugin.TValue[string]
-	Tags           plugin.TValue[[]any]
-	Author         plugin.TValue[string]
-	Likes          plugin.TValue[int64]
-	Private        plugin.TValue[bool]
-	Sdk            plugin.TValue[string]
-	Region         plugin.TValue[string]
-	Subdomain      plugin.TValue[string]
-	Disabled       plugin.TValue[bool]
-	CreatedAt      plugin.TValue[*time.Time]
-	LastModified   plugin.TValue[*time.Time]
-	Sha            plugin.TValue[string]
-	Runtime        plugin.TValue[*mqlHuggingfaceSpaceRuntimeStatus]
-	SecurityStatus plugin.TValue[*mqlHuggingfaceRepositoryScan]
+	Id                plugin.TValue[string]
+	Name              plugin.TValue[string]
+	Description       plugin.TValue[string]
+	Tags              plugin.TValue[[]any]
+	Author            plugin.TValue[string]
+	Likes             plugin.TValue[int64]
+	Private           plugin.TValue[bool]
+	Sdk               plugin.TValue[string]
+	Region            plugin.TValue[string]
+	Subdomain         plugin.TValue[string]
+	Disabled          plugin.TValue[bool]
+	CreatedAt         plugin.TValue[*time.Time]
+	LastModified      plugin.TValue[*time.Time]
+	Sha               plugin.TValue[string]
+	Runtime           plugin.TValue[*mqlHuggingfaceSpaceRuntimeStatus]
+	SecurityStatus    plugin.TValue[*mqlHuggingfaceRepositoryScan]
+	TrustedPublishers plugin.TValue[[]any]
 }
 
 // createHuggingfaceSpace creates a new instance of this resource
@@ -1981,6 +3034,180 @@ func (c *mqlHuggingfaceSpace) GetSecurityStatus() *plugin.TValue[*mqlHuggingface
 
 		return c.securityStatus()
 	})
+}
+
+func (c *mqlHuggingfaceSpace) GetTrustedPublishers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TrustedPublishers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("huggingface.space", c.__id, "trustedPublishers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.trustedPublishers()
+	})
+}
+
+// mqlHuggingfaceTrustedPublisher for the huggingface.trustedPublisher resource
+type mqlHuggingfaceTrustedPublisher struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlHuggingfaceTrustedPublisherInternal it will be used here
+	Id           plugin.TValue[string]
+	IssuerUrl    plugin.TValue[string]
+	Claims       plugin.TValue[any]
+	Permissions  plugin.TValue[[]any]
+	Capabilities plugin.TValue[[]any]
+	ConfiguredBy plugin.TValue[string]
+	CreatedAt    plugin.TValue[*time.Time]
+	LastUsedAt   plugin.TValue[*time.Time]
+}
+
+// createHuggingfaceTrustedPublisher creates a new instance of this resource
+func createHuggingfaceTrustedPublisher(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlHuggingfaceTrustedPublisher{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("huggingface.trustedPublisher", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlHuggingfaceTrustedPublisher) MqlName() string {
+	return "huggingface.trustedPublisher"
+}
+
+func (c *mqlHuggingfaceTrustedPublisher) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlHuggingfaceTrustedPublisher) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlHuggingfaceTrustedPublisher) GetIssuerUrl() *plugin.TValue[string] {
+	return &c.IssuerUrl
+}
+
+func (c *mqlHuggingfaceTrustedPublisher) GetClaims() *plugin.TValue[any] {
+	return &c.Claims
+}
+
+func (c *mqlHuggingfaceTrustedPublisher) GetPermissions() *plugin.TValue[[]any] {
+	return &c.Permissions
+}
+
+func (c *mqlHuggingfaceTrustedPublisher) GetCapabilities() *plugin.TValue[[]any] {
+	return &c.Capabilities
+}
+
+func (c *mqlHuggingfaceTrustedPublisher) GetConfiguredBy() *plugin.TValue[string] {
+	return &c.ConfiguredBy
+}
+
+func (c *mqlHuggingfaceTrustedPublisher) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlHuggingfaceTrustedPublisher) GetLastUsedAt() *plugin.TValue[*time.Time] {
+	return &c.LastUsedAt
+}
+
+// mqlHuggingfaceAccessRequest for the huggingface.accessRequest resource
+type mqlHuggingfaceAccessRequest struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlHuggingfaceAccessRequestInternal it will be used here
+	Id          plugin.TValue[string]
+	User        plugin.TValue[string]
+	Status      plugin.TValue[string]
+	GrantedBy   plugin.TValue[string]
+	RequestedAt plugin.TValue[*time.Time]
+	ReviewedAt  plugin.TValue[*time.Time]
+}
+
+// createHuggingfaceAccessRequest creates a new instance of this resource
+func createHuggingfaceAccessRequest(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlHuggingfaceAccessRequest{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("huggingface.accessRequest", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlHuggingfaceAccessRequest) MqlName() string {
+	return "huggingface.accessRequest"
+}
+
+func (c *mqlHuggingfaceAccessRequest) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlHuggingfaceAccessRequest) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlHuggingfaceAccessRequest) GetUser() *plugin.TValue[string] {
+	return &c.User
+}
+
+func (c *mqlHuggingfaceAccessRequest) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlHuggingfaceAccessRequest) GetGrantedBy() *plugin.TValue[string] {
+	return &c.GrantedBy
+}
+
+func (c *mqlHuggingfaceAccessRequest) GetRequestedAt() *plugin.TValue[*time.Time] {
+	return &c.RequestedAt
+}
+
+func (c *mqlHuggingfaceAccessRequest) GetReviewedAt() *plugin.TValue[*time.Time] {
+	return &c.ReviewedAt
 }
 
 // mqlHuggingfaceSpaceRuntimeStatus for the huggingface.space.runtimeStatus resource
@@ -2238,12 +3465,16 @@ func (c *mqlHuggingfaceRepositoryScanFile) GetLevel() *plugin.TValue[string] {
 type mqlHuggingfaceWebhook struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlHuggingfaceWebhookInternal it will be used here
-	Id         plugin.TValue[string]
-	WebhookUrl plugin.TValue[string]
-	Domains    plugin.TValue[[]any]
-	Disabled   plugin.TValue[bool]
-	Watched    plugin.TValue[[]any]
+	mqlHuggingfaceWebhookInternal
+	Id             plugin.TValue[string]
+	WebhookUrl     plugin.TValue[string]
+	Domains        plugin.TValue[[]any]
+	Disabled       plugin.TValue[bool]
+	Watched        plugin.TValue[[]any]
+	HasSecret      plugin.TValue[bool]
+	LastTriggerAt  plugin.TValue[*time.Time]
+	JobDockerImage plugin.TValue[string]
+	JobSpace       plugin.TValue[*mqlHuggingfaceSpace]
 }
 
 // createHuggingfaceWebhook creates a new instance of this resource
@@ -2303,19 +3534,59 @@ func (c *mqlHuggingfaceWebhook) GetWatched() *plugin.TValue[[]any] {
 	return &c.Watched
 }
 
+func (c *mqlHuggingfaceWebhook) GetHasSecret() *plugin.TValue[bool] {
+	return &c.HasSecret
+}
+
+func (c *mqlHuggingfaceWebhook) GetLastTriggerAt() *plugin.TValue[*time.Time] {
+	return &c.LastTriggerAt
+}
+
+func (c *mqlHuggingfaceWebhook) GetJobDockerImage() *plugin.TValue[string] {
+	return &c.JobDockerImage
+}
+
+func (c *mqlHuggingfaceWebhook) GetJobSpace() *plugin.TValue[*mqlHuggingfaceSpace] {
+	return plugin.GetOrCompute[*mqlHuggingfaceSpace](&c.JobSpace, func() (*mqlHuggingfaceSpace, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("huggingface.webhook", c.__id, "jobSpace")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlHuggingfaceSpace), nil
+			}
+		}
+
+		return c.jobSpace()
+	})
+}
+
 // mqlHuggingfaceInferenceEndpoint for the huggingface.inferenceEndpoint resource
 type mqlHuggingfaceInferenceEndpoint struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlHuggingfaceInferenceEndpointInternal it will be used here
-	Id          plugin.TValue[string]
-	Name        plugin.TValue[string]
-	Model       plugin.TValue[string]
-	Framework   plugin.TValue[string]
-	Status      plugin.TValue[string]
-	EndpointUrl plugin.TValue[string]
-	CreatedAt   plugin.TValue[*time.Time]
-	UpdatedAt   plugin.TValue[*time.Time]
+	Id            plugin.TValue[string]
+	Name          plugin.TValue[string]
+	Model         plugin.TValue[string]
+	Framework     plugin.TValue[string]
+	Status        plugin.TValue[string]
+	EndpointUrl   plugin.TValue[string]
+	CreatedAt     plugin.TValue[*time.Time]
+	UpdatedAt     plugin.TValue[*time.Time]
+	Type          plugin.TValue[string]
+	DeployedModel plugin.TValue[*mqlHuggingfaceModel]
+	Revision      plugin.TValue[string]
+	Vendor        plugin.TValue[string]
+	Region        plugin.TValue[string]
+	InstanceType  plugin.TValue[string]
+	MinReplica    plugin.TValue[int64]
+	MaxReplica    plugin.TValue[int64]
+	LastUsedAt    plugin.TValue[*time.Time]
+	CreatedBy     plugin.TValue[string]
+	UpdatedBy     plugin.TValue[string]
+	SecretNames   plugin.TValue[[]any]
 }
 
 // createHuggingfaceInferenceEndpoint creates a new instance of this resource
@@ -2385,4 +3656,64 @@ func (c *mqlHuggingfaceInferenceEndpoint) GetCreatedAt() *plugin.TValue[*time.Ti
 
 func (c *mqlHuggingfaceInferenceEndpoint) GetUpdatedAt() *plugin.TValue[*time.Time] {
 	return &c.UpdatedAt
+}
+
+func (c *mqlHuggingfaceInferenceEndpoint) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlHuggingfaceInferenceEndpoint) GetDeployedModel() *plugin.TValue[*mqlHuggingfaceModel] {
+	return plugin.GetOrCompute[*mqlHuggingfaceModel](&c.DeployedModel, func() (*mqlHuggingfaceModel, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("huggingface.inferenceEndpoint", c.__id, "deployedModel")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlHuggingfaceModel), nil
+			}
+		}
+
+		return c.deployedModel()
+	})
+}
+
+func (c *mqlHuggingfaceInferenceEndpoint) GetRevision() *plugin.TValue[string] {
+	return &c.Revision
+}
+
+func (c *mqlHuggingfaceInferenceEndpoint) GetVendor() *plugin.TValue[string] {
+	return &c.Vendor
+}
+
+func (c *mqlHuggingfaceInferenceEndpoint) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlHuggingfaceInferenceEndpoint) GetInstanceType() *plugin.TValue[string] {
+	return &c.InstanceType
+}
+
+func (c *mqlHuggingfaceInferenceEndpoint) GetMinReplica() *plugin.TValue[int64] {
+	return &c.MinReplica
+}
+
+func (c *mqlHuggingfaceInferenceEndpoint) GetMaxReplica() *plugin.TValue[int64] {
+	return &c.MaxReplica
+}
+
+func (c *mqlHuggingfaceInferenceEndpoint) GetLastUsedAt() *plugin.TValue[*time.Time] {
+	return &c.LastUsedAt
+}
+
+func (c *mqlHuggingfaceInferenceEndpoint) GetCreatedBy() *plugin.TValue[string] {
+	return &c.CreatedBy
+}
+
+func (c *mqlHuggingfaceInferenceEndpoint) GetUpdatedBy() *plugin.TValue[string] {
+	return &c.UpdatedBy
+}
+
+func (c *mqlHuggingfaceInferenceEndpoint) GetSecretNames() *plugin.TValue[[]any] {
+	return &c.SecretNames
 }

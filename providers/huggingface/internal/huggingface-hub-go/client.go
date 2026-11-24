@@ -92,6 +92,26 @@ func (c *Client) ListWebhooks(ctx context.Context, opts *models.WebhookListOptio
 	return c.api.ListWebhooks(ctx, opts)
 }
 
+func (c *Client) ListOrgMembers(ctx context.Context, org string) ([]models.OrgMember, error) {
+	return c.api.ListOrgMembers(ctx, org)
+}
+
+func (c *Client) GetOrgNetworkSecurity(ctx context.Context, org string) (*models.OrgNetworkSecurity, error) {
+	return c.api.GetOrgNetworkSecurity(ctx, org)
+}
+
+func (c *Client) ListOrgMemberTokens(ctx context.Context, org string) ([]models.OrgMemberToken, error) {
+	return c.api.ListOrgMemberTokens(ctx, org)
+}
+
+func (c *Client) ListTrustedPublishers(ctx context.Context, repoType models.RepoType, repoID string) ([]models.TrustedPublisher, error) {
+	return c.api.ListTrustedPublishers(ctx, repoType, repoID)
+}
+
+func (c *Client) ListAccessRequests(ctx context.Context, repoType models.RepoType, repoID string, status models.AccessRequestStatus) ([]models.AccessRequest, error) {
+	return c.api.ListAccessRequests(ctx, repoType, repoID, status)
+}
+
 func (c *Client) WhoAmI(ctx context.Context) (*models.User, error) {
 	return c.api.WhoAmI(ctx)
 }

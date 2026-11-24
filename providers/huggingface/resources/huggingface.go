@@ -82,6 +82,10 @@ func (r *mqlHuggingface) organizations() ([]any, error) {
 			"avatarUrl":    llx.StringData(org.AvatarURL),
 			"roleInOrg":    llx.StringData(org.RoleInOrg),
 			"isEnterprise": llx.BoolData(org.IsEnterprise),
+			// A free organization reports no plan; it stays null rather than
+			// reading as an empty plan name.
+			"plan":                 optionalString(org.Plan),
+			"securityRestrictions": stringListPtrOrNull(org.SecurityRestrictions),
 		})
 		if err != nil {
 			return nil, err
@@ -285,21 +289,73 @@ func (r *mqlHuggingface) webhooks() ([]any, error) {
 			})
 		}
 
-		res, err := CreateResource(r.MqlRuntime, "huggingface.webhook", map[string]*llx.RawData{
-			"__id":       llx.StringData("huggingface.webhook/" + w.ID),
-			"id":         llx.StringData(w.ID),
-			"webhookUrl": llx.StringData(w.URL),
-			"domains":    llx.ArrayData(stringsToInterface(w.Domains), types.String),
-			"disabled":   llx.BoolData(w.Disabled),
-			"watched":    llx.ArrayData(watched, types.Dict),
-		})
+		res, err := CreateResource(r.MqlRuntime, "huggingface.webhook", webhookArgs(w, watched))
 		if err != nil {
 			return nil, err
+		}
+		if w.Job != nil {
+			res.(*mqlHuggingfaceWebhook).jobSpaceID = w.Job.SpaceID
 		}
 		webhooks = append(webhooks, res)
 	}
 
 	return webhooks, nil
+}
+
+// webhookArgs maps a webhook onto resource arguments. The secret is reported
+// by presence only; the Hub never returns its value.
+func webhookArgs(w hfmodels.Webhook, watched []any) map[string]*llx.RawData {
+	var jobImage *string
+	if w.Job != nil && w.Job.DockerImage != "" {
+		jobImage = &w.Job.DockerImage
+	}
+	return map[string]*llx.RawData{
+		"__id":           llx.StringData("huggingface.webhook/" + w.ID),
+		"id":             llx.StringData(w.ID),
+		"webhookUrl":     llx.StringData(w.URL),
+		"domains":        llx.ArrayData(stringsToInterface(w.Domains), types.String),
+		"disabled":       llx.BoolData(bool(w.Disabled)),
+		"watched":        llx.ArrayData(watched, types.Dict),
+		"hasSecret":      llx.BoolDataPtr(w.HasSecret),
+		"lastTriggerAt":  llx.TimeDataPtr(parseHFTime(w.LastTriggerAt)),
+		"jobDockerImage": llx.StringDataPtr(jobImage),
+	}
+}
+
+type mqlHuggingfaceWebhookInternal struct {
+	jobSpaceID string
+}
+
+// jobSpace resolves the Space a webhook's job runs from against the Spaces
+// already listed for the account, so it costs no request per webhook.
+func (r *mqlHuggingfaceWebhook) jobSpace() (*mqlHuggingfaceSpace, error) {
+	if r.jobSpaceID == "" {
+		r.JobSpace.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	root, err := hfRoot(r.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	spaces := root.GetSpaces()
+	if spaces.Error != nil {
+		return nil, spaces.Error
+	}
+	for _, s := range spaces.Data {
+		if sp, ok := s.(*mqlHuggingfaceSpace); ok && sp.Id.Data == r.jobSpaceID {
+			return sp, nil
+		}
+	}
+	r.JobSpace.State = plugin.StateIsSet | plugin.StateIsNull
+	return nil, nil
+}
+
+func hfRoot(runtime *plugin.Runtime) (*mqlHuggingface, error) {
+	hf, err := CreateResource(runtime, "huggingface", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	return hf.(*mqlHuggingface), nil
 }
 
 func isAccessDenied(err error) bool {
@@ -358,7 +414,55 @@ func inferenceEndpointArgs(namespace string, ep hfmodels.InferenceEndpoint) map[
 		"endpointUrl": llx.StringData(ep.Status.URL),
 		"createdAt":   llx.TimeDataPtr(parseHFTime(ep.Status.CreatedAt)),
 		"updatedAt":   llx.TimeDataPtr(parseHFTime(ep.Status.UpdatedAt)),
+		"type":        optionalString(ep.Type),
+		"revision":    llx.StringDataPtr(ep.Model.Revision),
+		"vendor":      optionalString(ep.Provider.Vendor),
+		"region":      optionalString(ep.Provider.Region),
+		// The replica bounds stay null when unreported: a zero minimum would
+		// claim the endpoint scales to zero.
+		"instanceType": optionalString(ep.Compute.InstanceType),
+		"minReplica":   llx.IntDataPtr(ep.Compute.Scaling.MinReplica),
+		"maxReplica":   llx.IntDataPtr(ep.Compute.Scaling.MaxReplica),
+		"lastUsedAt":   llx.TimeDataPtr(parseHFTimePtr(ep.Status.LastUsedAt)),
+		"createdBy":    optionalString(ep.Status.CreatedBy.Name),
+		"updatedBy":    optionalString(ep.Status.UpdatedBy.Name),
+		// Only the names of the secrets are decoded; their values never are.
+		// An absent secrets map stays null; an empty one is an empty list.
+		"secretNames": stringListOrNull(ep.Model.Secrets),
 	}
+}
+
+// deployedModel resolves the endpoint's repository to a model. A model already
+// listed for the account is reused; any other is looked up once by id. A
+// repository the credential cannot read, or that is not a model, reads null.
+func (r *mqlHuggingfaceInferenceEndpoint) deployedModel() (*mqlHuggingfaceModel, error) {
+	repo := r.Model.Data
+	if repo == "" {
+		r.DeployedModel.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	root, err := hfRoot(r.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	if models := root.GetModels(); models.Error == nil {
+		for _, m := range models.Data {
+			if model, ok := m.(*mqlHuggingfaceModel); ok && model.Id.Data == repo {
+				return model, nil
+			}
+		}
+	}
+	res, err := NewResource(r.MqlRuntime, "huggingface.model", map[string]*llx.RawData{
+		"id": llx.StringData(repo),
+	})
+	if isAccessDenied(err) || isNotFound(err) {
+		r.DeployedModel.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlHuggingfaceModel), nil
 }
 
 // --- huggingface.user ---
@@ -438,6 +542,7 @@ func (r *mqlHuggingfaceUser) accessToken() (*mqlHuggingfaceAccessToken, error) {
 		"displayName":       llx.StringData(auth.DisplayName),
 		"role":              llx.StringData(auth.Role),
 		"createdAt":         llx.TimeDataPtr(parseHFTime(auth.CreatedAt)),
+		"expiresAt":         llx.TimeDataPtr(parseHFTime(user.Auth.ExpiresAt)),
 		"canReadGatedRepos": llx.BoolData(auth.FineGrained.CanReadGatedRepos),
 		"globalPermissions": llx.ArrayData(globalPerms, types.String),
 		"scopedPermissions": llx.ArrayData(scopedPerms, types.Resource("huggingface.accessToken.scope")),
@@ -858,6 +963,37 @@ func gatedModeValue(g hfmodels.GatedValue) *string {
 		return nil
 	}
 	return &g.Mode
+}
+
+// optionalString reads an empty string as null: the Hub leaves optional string
+// fields out rather than sending them empty.
+func optionalString(s string) *llx.RawData {
+	if s == "" {
+		return llx.NilData
+	}
+	return llx.StringData(s)
+}
+
+// stringListOrNull keeps a list the Hub did not send apart from an empty one.
+func stringListOrNull(s []string) *llx.RawData {
+	if s == nil {
+		return llx.NilData
+	}
+	return llx.ArrayData(stringsToInterface(s), types.String)
+}
+
+func stringListPtrOrNull(s *[]string) *llx.RawData {
+	if s == nil {
+		return llx.NilData
+	}
+	return llx.ArrayData(stringsToInterface(*s), types.String)
+}
+
+func parseHFTimePtr(s *string) *time.Time {
+	if s == nil {
+		return nil
+	}
+	return parseHFTime(*s)
 }
 
 func stringsToInterface(s []string) []any {
