@@ -13,6 +13,7 @@ import (
 
 type mqlHetznerServerTypeInternal struct {
 	cacheLocations []hcloud.ServerTypeLocation
+	cachePricings  []hcloud.ServerTypeLocationPricing
 }
 
 func (r *mqlHetznerServerType) id() (string, error) {
@@ -68,13 +69,14 @@ func newMqlHetznerServerType(runtime *plugin.Runtime, t *hcloud.ServerType) (*mq
 	}
 	m := res.(*mqlHetznerServerType)
 	m.cacheLocations = t.Locations
+	m.cachePricings = t.Pricings
 	return m, nil
 }
 
 func (m *mqlHetznerServerType) locations() ([]any, error) {
 	out := make([]any, 0, len(m.cacheLocations))
 	for _, loc := range m.cacheLocations {
-		res, err := newMqlHetznerServerTypeLocation(m.MqlRuntime, m.Id.Data, loc)
+		res, err := newMqlHetznerServerTypeLocation(m.MqlRuntime, m.Id.Data, loc, m.cachePricings)
 		if err != nil {
 			return nil, err
 		}
@@ -97,17 +99,35 @@ func (r *mqlHetznerServerTypeLocation) id() (string, error) {
 	return fmt.Sprintf("hetzner.serverType.location/%d/%d", r.cacheServerTypeID, r.cacheLocationID), nil
 }
 
-func newMqlHetznerServerTypeLocation(runtime *plugin.Runtime, serverTypeID int64, stl hcloud.ServerTypeLocation) (*mqlHetznerServerTypeLocation, error) {
+// serverTypeLocationIncludedTraffic returns the monthly traffic allowance in
+// bytes that the server type's pricing lists for a location, or nil when no
+// pricing entry covers it. Pricing entries name their location only by name
+// (hcloud leaves the location ID unset), so the join is on the name.
+func serverTypeLocationIncludedTraffic(pricings []hcloud.ServerTypeLocationPricing, loc *hcloud.Location) *int64 {
+	if loc == nil || loc.Name == "" {
+		return nil
+	}
+	for _, p := range pricings {
+		if p.Location != nil && p.Location.Name == loc.Name {
+			v := int64(p.IncludedTraffic)
+			return &v
+		}
+	}
+	return nil
+}
+
+func newMqlHetznerServerTypeLocation(runtime *plugin.Runtime, serverTypeID int64, stl hcloud.ServerTypeLocation, pricings []hcloud.ServerTypeLocationPricing) (*mqlHetznerServerTypeLocation, error) {
 	var locationID int64
 	if stl.Location != nil {
 		locationID = stl.Location.ID
 	}
 	dep := deprecationDict(stl.Deprecation)
 	res, err := CreateResource(runtime, "hetzner.serverType.location", map[string]*llx.RawData{
-		"__id":        llx.StringData(fmt.Sprintf("hetzner.serverType.location/%d/%d", serverTypeID, locationID)),
-		"available":   llx.BoolData(stl.Available),
-		"recommended": llx.BoolData(stl.Recommended),
-		"deprecation": llx.DictData(dep),
+		"__id":            llx.StringData(fmt.Sprintf("hetzner.serverType.location/%d/%d", serverTypeID, locationID)),
+		"available":       llx.BoolData(stl.Available),
+		"recommended":     llx.BoolData(stl.Recommended),
+		"deprecation":     llx.DictData(dep),
+		"includedTraffic": llx.IntDataPtr(serverTypeLocationIncludedTraffic(pricings, stl.Location)),
 	})
 	if err != nil {
 		return nil, err

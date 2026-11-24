@@ -130,12 +130,16 @@ hetzner.loadBalancer.loadBalancerType 13.0.1
 hetzner.loadBalancer.location 13.0.1
 hetzner.loadBalancer.name 13.0.1
 hetzner.loadBalancer.outgoingTraffic 13.0.1
+hetzner.loadBalancer.primaryIpv4 14.2.14
+hetzner.loadBalancer.primaryIpv6 14.2.14
 hetzner.loadBalancer.privateNet 13.0.1
 hetzner.loadBalancer.privateNet.ip 13.0.1
 hetzner.loadBalancer.privateNet.loadBalancer 13.7.6
 hetzner.loadBalancer.privateNet.network 13.0.1
 hetzner.loadBalancer.protection 13.0.1
+hetzner.loadBalancer.publicIpv4Blocked 14.2.14
 hetzner.loadBalancer.publicIpv4DnsPtr 13.7.8
+hetzner.loadBalancer.publicIpv6Blocked 14.2.14
 hetzner.loadBalancer.publicIpv6DnsPtr 13.7.8
 hetzner.loadBalancer.publicNet 13.0.1
 hetzner.loadBalancer.servers 13.5.2
@@ -240,6 +244,7 @@ hetzner.primaryIp.dnsPtr 13.0.1
 hetzner.primaryIp.id 13.0.1
 hetzner.primaryIp.ip 13.0.1
 hetzner.primaryIp.labels 13.0.1
+hetzner.primaryIp.loadBalancer 14.2.14
 hetzner.primaryIp.location 13.1.2
 hetzner.primaryIp.name 13.0.1
 hetzner.primaryIp.protection 13.0.1
@@ -306,6 +311,7 @@ hetzner.serverType.includedTraffic 13.7.8
 hetzner.serverType.location 13.0.1
 hetzner.serverType.location.available 13.0.1
 hetzner.serverType.location.deprecation 13.0.1
+hetzner.serverType.location.includedTraffic 14.2.14
 hetzner.serverType.location.location 13.0.1
 hetzner.serverType.location.recommended 13.0.1
 hetzner.serverType.location.serverType 13.7.6
