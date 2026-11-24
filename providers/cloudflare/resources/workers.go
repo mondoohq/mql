@@ -176,17 +176,18 @@ func (c *mqlCloudflareWorkers) pages() ([]any, error) {
 			// No production deployment yet — nothing to describe for this project.
 			continue
 		}
-		res, err := CreateResource(c.MqlRuntime, "cloudflare.workers.page", map[string]*llx.RawData{
-			"__id":             llx.StringData("cloudflare.workers.page@" + c.AccountID + "/" + p.Name + "/" + d.ID),
-			"id":               llx.StringData(d.ID),
-			"shortId":          llx.StringData(d.ShortID),
-			"projectId":        llx.StringData(d.ProjectID),
-			"projectName":      llx.StringData(p.Name),
-			"environment":      llx.StringData(d.Environment),
-			"url":              llx.StringData(d.URL),
-			"aliases":          llx.ArrayData(convert.SliceAnyToInterface(d.Aliases), types.String),
-			"productionBranch": llx.StringData(p.ProductionBranch),
-		})
+		args := p.sourceConfigArgs()
+		args["__id"] = llx.StringData("cloudflare.workers.page@" + c.AccountID + "/" + p.Name + "/" + d.ID)
+		args["id"] = llx.StringData(d.ID)
+		args["shortId"] = llx.StringData(d.ShortID)
+		args["projectId"] = llx.StringData(d.ProjectID)
+		args["projectName"] = llx.StringData(p.Name)
+		args["environment"] = llx.StringData(d.Environment)
+		args["url"] = llx.StringData(d.URL)
+		args["aliases"] = llx.ArrayData(convert.SliceAnyToInterface(d.Aliases), types.String)
+		args["productionBranch"] = llx.StringData(p.ProductionBranch)
+
+		res, err := CreateResource(c.MqlRuntime, "cloudflare.workers.page", args)
 		if err != nil {
 			return nil, err
 		}
@@ -283,6 +284,40 @@ type pagesProject struct {
 		Preview    pagesDeployConfig `json:"preview"`
 		Production pagesDeployConfig `json:"production"`
 	} `json:"deployment_configs"`
+	// Source is nil for a project not connected to a Git repository, such as
+	// a direct-upload project.
+	Source *struct {
+		Config *pagesSourceConfig `json:"config"`
+	} `json:"source"`
+}
+
+// pagesSourceConfig holds the Git build settings of a Pages project the schema
+// exposes. Each value is nil when the project does not report it.
+type pagesSourceConfig struct {
+	PreviewDeploymentSetting     *string  `json:"preview_deployment_setting"`
+	ProductionDeploymentsEnabled *bool    `json:"production_deployments_enabled"`
+	PreviewBranchIncludes        []string `json:"preview_branch_includes"`
+	PreviewBranchExcludes        []string `json:"preview_branch_excludes"`
+}
+
+// sourceConfigArgs maps a project's Git build settings onto page fields, all
+// null when the project has no source configuration.
+func (p pagesProject) sourceConfigArgs() map[string]*llx.RawData {
+	if p.Source == nil || p.Source.Config == nil {
+		return map[string]*llx.RawData{
+			"previewDeploymentSetting":     llx.NilData,
+			"productionDeploymentsEnabled": llx.NilData,
+			"previewBranchIncludes":        llx.NilData,
+			"previewBranchExcludes":        llx.NilData,
+		}
+	}
+	cfg := p.Source.Config
+	return map[string]*llx.RawData{
+		"previewDeploymentSetting":     stringPtrOrNil(cfg.PreviewDeploymentSetting),
+		"productionDeploymentsEnabled": llx.BoolDataPtr(cfg.ProductionDeploymentsEnabled),
+		"previewBranchIncludes":        stringSliceOrNil(cfg.PreviewBranchIncludes),
+		"previewBranchExcludes":        stringSliceOrNil(cfg.PreviewBranchExcludes),
+	}
 }
 
 // pageEnvVars enumerates environment variable bindings across every Pages

@@ -3,6 +3,7 @@
 package resources
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"go.mondoo.com/mql/llx"
@@ -23,10 +24,60 @@ type accountMember struct {
 		TwoFactorAuthenticationEnabled bool   `json:"two_factor_authentication_enabled"`
 	} `json:"user"`
 	Roles []struct {
-		ID          string `json:"id"`
-		Name        string `json:"name"`
-		Description string `json:"description"`
+		ID          string          `json:"id"`
+		Name        string          `json:"name"`
+		Description string          `json:"description"`
+		Permissions json.RawMessage `json:"permissions"`
 	} `json:"roles"`
+	Policies []accountMemberPolicy `json:"policies"`
+}
+
+// accountMemberPolicy is a domain-scoped grant assigned to a member.
+type accountMemberPolicy struct {
+	ID               string `json:"id"`
+	Access           string `json:"access"`
+	PermissionGroups []struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	} `json:"permission_groups"`
+	ResourceGroups []struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+		// Scope is kept in its raw decoded form: `{key, objects: [{key}]}`.
+		Scope any `json:"scope"`
+	} `json:"resource_groups"`
+}
+
+// memberPolicyDicts converts a member's domain-scoped grants into dicts. Each
+// entry carries the policy id, whether it allows or denies, the permission
+// groups it grants and the resource groups it applies to.
+func memberPolicyDicts(policies []accountMemberPolicy) []any {
+	out := make([]any, 0, len(policies))
+	for i := range policies {
+		p := policies[i]
+		pgs := make([]any, 0, len(p.PermissionGroups))
+		for j := range p.PermissionGroups {
+			pgs = append(pgs, map[string]any{
+				"id":   p.PermissionGroups[j].ID,
+				"name": p.PermissionGroups[j].Name,
+			})
+		}
+		rgs := make([]any, 0, len(p.ResourceGroups))
+		for j := range p.ResourceGroups {
+			rgs = append(rgs, map[string]any{
+				"id":    p.ResourceGroups[j].ID,
+				"name":  p.ResourceGroups[j].Name,
+				"scope": p.ResourceGroups[j].Scope,
+			})
+		}
+		out = append(out, map[string]any{
+			"id":               p.ID,
+			"access":           p.Access,
+			"permissionGroups": pgs,
+			"resourceGroups":   rgs,
+		})
+	}
+	return out
 }
 
 func (c *mqlCloudflareAccountMember) id() (string, error) {
@@ -55,6 +106,7 @@ func (c *mqlCloudflareAccount) members() ([]any, error) {
 				"id":          llx.StringData(r.ID),
 				"name":        llx.StringData(r.Name),
 				"description": llx.StringData(r.Description),
+				"permissions": rawJSONDict(string(r.Permissions)),
 			})
 			if err != nil {
 				return nil, err
@@ -71,6 +123,7 @@ func (c *mqlCloudflareAccount) members() ([]any, error) {
 			"lastName":                       llx.StringData(m.User.LastName),
 			"twoFactorAuthenticationEnabled": llx.BoolData(m.User.TwoFactorAuthenticationEnabled),
 			"roles":                          llx.ArrayData(roles, types.Resource("cloudflare.account.role")),
+			"policies":                       llx.ArrayData(memberPolicyDicts(m.Policies), types.Dict),
 		})
 		if err != nil {
 			return nil, err

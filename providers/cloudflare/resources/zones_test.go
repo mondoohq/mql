@@ -66,3 +66,60 @@ func TestUniversalSslEnabled(t *testing.T) {
 		assert.Contains(t, e.Permissions, sslReadPermission)
 	})
 }
+
+// newNamedTestZone creates a zone with the given id and name, owned by the
+// given account.
+func newNamedTestZone(t *testing.T, env *testEnv, id, name, accountID string) *mqlCloudflareZone {
+	t.Helper()
+	acc, err := CreateResource(env.Runtime, "cloudflare.zone.account", map[string]*llx.RawData{
+		"id":   llx.StringData(accountID),
+		"name": llx.StringData("account " + accountID),
+	})
+	require.NoError(t, err)
+	zone, err := CreateResource(env.Runtime, "cloudflare.zone", map[string]*llx.RawData{
+		"id":      llx.StringData(id),
+		"name":    llx.StringData(name),
+		"account": llx.ResourceData(acc, acc.MqlName()),
+	})
+	require.NoError(t, err)
+	return zone.(*mqlCloudflareZone)
+}
+
+func TestNormalizeZoneName(t *testing.T) {
+	// Synthetic: case, surrounding space and a trailing root dot; no live
+	// account was checked.
+	assert.Equal(t, "example.com", normalizeZoneName(" Example.COM. "))
+	assert.Equal(t, "", normalizeZoneName(""))
+}
+
+func TestZonesNamed(t *testing.T) {
+	// Synthetic: two listed zones of the account, a duplicate name, a name no
+	// listed zone has, and a name only another account's zone has; no live
+	// account was checked.
+	env := setupTestEnv(t)
+	a := newNamedTestZone(t, env, "zone-a", "a.example", testAccountID)
+	b := newNamedTestZone(t, env, "zone-b", "b.example", testAccountID)
+	foreign := newNamedTestZone(t, env, "zone-c", "c.example", "other-account")
+	list := []any{a, b, foreign}
+
+	got := zonesNamed([]string{"B.example", "missing.example", "a.example.", "b.example", "c.example"}, list, testAccountID)
+	assert.Equal(t, []any{b, a}, got)
+	assert.Empty(t, zonesNamed([]string{"missing.example"}, list, testAccountID))
+}
+
+func TestZoneNamed(t *testing.T) {
+	// Synthetic: the same zone name added to two accounts; no live account
+	// was checked. The zone owned by the requested account wins regardless of
+	// list order, another account's zone of the same name is never returned,
+	// and an unknown name resolves to nothing.
+	env := setupTestEnv(t)
+	other := newNamedTestZone(t, env, "zone-other", "example.org", "other-account")
+	own := newNamedTestZone(t, env, "zone-own", "example.org", testAccountID)
+	list := []any{other, own}
+
+	assert.Same(t, own, zoneNamed(list, "Example.org", testAccountID))
+	assert.Nil(t, zoneNamed(list, "example.org", "third-account"))
+	assert.Nil(t, zoneNamed(list, "example.net", testAccountID))
+	assert.Nil(t, zoneNamed(list, "", testAccountID))
+	assert.Nil(t, zoneNamed(list, "example.org", ""))
+}

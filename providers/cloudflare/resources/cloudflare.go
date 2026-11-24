@@ -74,6 +74,7 @@ func (c *mqlCloudflare) zones() ([]any, error) {
 			"activatedOn":       zoneActivatedOn(zone),
 			"plan":              llx.StringData(zone.Plan.Name),
 			"vanityNameServers": llx.ArrayData(convert.SliceAnyToInterface(zone.VanityNameServers), types.String),
+			"phishingDetected":  boolOrNil(zone.Meta.PhishingDetected, zone.Meta.JSON.PhishingDetected.IsNull()),
 		})
 		if err != nil {
 			return nil, err

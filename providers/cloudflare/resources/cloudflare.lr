@@ -67,6 +67,10 @@ private cloudflare.zone @defaults("name account.name") @root {
 	plan string
 	// Custom nameservers assigned to the zone in place of Cloudflare's defaults
 	vanityNameServers []string
+	// Whether Cloudflare has flagged the zone for phishing
+	//
+	// Null when the zone does not report the flag.
+	phishingDetected bool
 	// Whether Universal SSL is enabled for the zone
 	//
 	// When Universal SSL is disabled, Cloudflare stops issuing its free edge
@@ -279,6 +283,9 @@ private cloudflare.zone.settings {
 	// https://, so a page served over HTTPS does not pull scripts over plain
 	// HTTP. Off leaves mixed active content to the browser to block or not.
 	replaceInsecureJs string
+
+	// SHA-1 support (on, off)
+	sha1Support string
 }
 
 // Cloudflare custom SSL certificate (user-uploaded)
@@ -321,6 +328,16 @@ private cloudflare.zone.certificatePack @defaults("id status") {
 	validityDays int
 	// Certificate authority used
 	certificateAuthority string
+	// Time the pack's primary certificate expires
+	//
+	// Null when the pack names no primary certificate, or the primary
+	// certificate is not among the pack's certificates, for example while the
+	// pack is still pending issuance.
+	expiresOn time
+	// Domain validation errors reported for the pack
+	//
+	// The error messages. Empty when validation reported no errors.
+	validationErrors []string
 }
 
 // Cloudflare DNS namespace
@@ -533,6 +550,52 @@ private cloudflare.account @defaults("name") @root {
 	// (`promptGuardrails`, `responseGuardrails`) applied to traffic, rate and
 	// spend limits, and the provider keys it stores (`providerConfigs`).
 	aiGateways() []cloudflare.account.aiGateway
+
+	// Domains registered through Cloudflare Registrar
+	//
+	// Each domain reports whether it is locked against transfer (`locked`),
+	// whether it renews automatically (`autoRenew`), its WHOIS privacy mode
+	// (`privacyMode`), its registration `status` and when it expires
+	// (`expiresAt`). Empty for an account that registers no domains with
+	// Cloudflare.
+	registrarDomains() []cloudflare.account.registrarDomain
+}
+
+// Domain registered through Cloudflare Registrar
+//
+// A domain the account registered or transferred to Cloudflare Registrar,
+// selected by `name`, for example
+// `cloudflare.account.registrarDomains.where(name == "example.com")`.
+// Reports whether the domain is locked against transfer, whether it renews
+// automatically, its WHOIS privacy mode, its registration status and its
+// expiry, which together show whether a domain can be hijacked through an
+// unauthorized transfer or lost by lapsing. `zone` resolves the Cloudflare
+// zone serving the domain.
+private cloudflare.account.registrarDomain @defaults("name status expiresAt") {
+	// Fully qualified domain name, for example `example.com`
+	name string
+	// Whether the domain is locked against transfer to another registrar
+	locked bool
+	// Whether the registration renews automatically before it expires
+	autoRenew bool
+	// WHOIS privacy mode (off, redaction)
+	privacyMode string
+	// Registration status
+	//
+	// One of `active`, `registration_pending`, `transfer_pending`, `expired`,
+	// `suspended`, `redemption_period` or `pending_delete`.
+	status string
+	// Time the registration expires
+	//
+	// Null while the registration or a transfer is still pending.
+	expiresAt time
+	// Time the domain was registered
+	createdAt time
+	// Zone serving the domain
+	//
+	// Null when the account has no zone for the domain, or the scan's token
+	// cannot list it.
+	zone() cloudflare.zone
 }
 
 // AI Gateway
@@ -1105,9 +1168,33 @@ private cloudflare.workers.page @defaults("shortId") {
 	// Branch from which production deployments are built
 	productionBranch string
 
-  // Time the deployment was created
+	// Which branches of the project build preview deployments
+	//
+	// One of `all`, `none` or `custom`; `custom` uses previewBranchIncludes and
+	// previewBranchExcludes. A setting of the Pages project, shared by all its
+	// deployments. Null when the project is not connected to a Git repository.
+	previewDeploymentSetting string
+	// Whether pushes to the production branch build production deployments
+	//
+	// A setting of the Pages project, shared by all its deployments. Null when
+	// the project is not connected to a Git repository.
+	productionDeploymentsEnabled bool
+	// Branches that build preview deployments when previewDeploymentSetting is `custom`
+	//
+	// Branch name patterns, with wildcards. A setting of the Pages project,
+	// shared by all its deployments. Null when the project is not connected
+	// to a Git repository.
+	previewBranchIncludes []string
+	// Branches excluded from preview deployments when previewDeploymentSetting is `custom`
+	//
+	// Branch name patterns, with wildcards. A setting of the Pages project,
+	// shared by all its deployments. Null when the project is not connected
+	// to a Git repository.
+	previewBranchExcludes []string
+
+	// Time the deployment was created
 	createdOn time
-  // Time the deployment was last modified
+	// Time the deployment was last modified
 	modifiedOn time
 }
 
@@ -1440,6 +1527,44 @@ private cloudflare.one.app @defaults("name id") {
 
 	// Access policies governing the application
 	policies() []cloudflare.one.accessPolicy
+
+	// Whether users with a WARP session in the organization skip the identity provider login
+	//
+	// Null when the application does not report the setting.
+	allowAuthenticateViaWarp bool
+	// Whether the application may be embedded in an iframe
+	//
+	// Null when the application does not report the setting.
+	allowIframe bool
+	// Request header from which Access reads a service token
+	//
+	// When set, Access accepts a service token sent as a single header with
+	// this name, for example `Authorization`, in place of the
+	// `CF-Access-Client-Id` and `CF-Access-Client-Secret` header pair. Null
+	// when the application does not set one.
+	readServiceTokensFromHeader string
+	// Whether the Path cookie attribute is set on the application's Access cookie
+	//
+	// Scopes the cookie to the application's path. Null when the application
+	// does not report the setting.
+	pathCookieAttribute bool
+	// Whether multi-factor authentication is turned off for this application
+	//
+	// Null when the application has no MFA configuration.
+	mfaDisabled bool
+	// MFA methods a user may authenticate with for this application
+	//
+	// For example `totp`, `biometrics` or `security_key`. Null when the
+	// application has no MFA configuration.
+	mfaAllowedAuthenticators []string
+	// Destinations the application protects
+	//
+	// Each dict carries `type` (`public` or `private`) and, depending on the
+	// type, `uri` for a public destination, or `hostname`, `cidr`,
+	// `portRange`, `l4Protocol` and `vnetId` for a private one. Keys the API
+	// does not return for a destination are left out. Null when the
+	// application does not report destinations.
+	destinations []dict
 }
 
 // CORS headers
@@ -1493,6 +1618,31 @@ private cloudflare.one.idp @defaults("name") {
 	attributes []string
 	// Whether SCIM provisioning is enabled for this IdP
 	scimEnabled bool
+	// Whether a user deprovisioned in the identity provider has their Access and Gateway sessions revoked
+	//
+	// Null when the identity provider has no SCIM configuration.
+	scimUserDeprovision bool
+	// Whether a user deprovisioned in the identity provider has their Zero Trust seat removed
+	//
+	// Null when the identity provider has no SCIM configuration.
+	scimSeatDeprovision bool
+	// How a SCIM update to a user's identity is applied
+	//
+	// One of `automatic` (the identity used for policy evaluation is updated
+	// with the SCIM user's fields), `reauth` (the user must authenticate again
+	// before the update applies) or `no_action`. Null when the identity
+	// provider has no SCIM configuration.
+	scimIdentityUpdateBehavior string
+	// Whether the OIDC login flow uses PKCE
+	//
+	// Null for identity provider types that do not report the setting.
+	pkceEnabled bool
+	// Whether Cloudflare loads authentication contexts from the Microsoft Entra ID tenant
+	//
+	// When true, Access policies can require an Entra ID conditional access
+	// authentication context. Null for identity provider types that do not
+	// report the setting.
+	conditionalAccessEnabled bool
 }
 
 // Cloudflare One access policy
@@ -1517,6 +1667,38 @@ private cloudflare.one.accessPolicy @defaults("name decision") {
 	require []dict
 	// Rules that deny access when satisfied (NOT); same dict shape as include
 	exclude []dict
+	// Whether a user must be approved by an approver before access is granted
+	//
+	// Null when the policy does not report the setting.
+	approvalRequired bool
+	// Whether matching traffic is served through Browser Isolation
+	//
+	// Null when the policy does not report the setting.
+	isolationRequired bool
+	// Whether a user must enter a justification before access is granted
+	//
+	// Null when the policy does not report the setting.
+	purposeJustificationRequired bool
+	// Amount of time tokens issued for applications using this policy stay valid
+	//
+	// For example `24h` or `30m`. Overrides the application's session
+	// duration. Null when the policy does not set one.
+	sessionDuration string
+	// Whether multi-factor authentication is turned off for this policy
+	//
+	// Null when the policy has no MFA configuration.
+	mfaDisabled bool
+	// MFA methods a user may authenticate with under this policy
+	//
+	// For example `totp`, `biometrics` or `security_key`. Null when the policy
+	// has no MFA configuration.
+	mfaAllowedAuthenticators []string
+	// Number of Access applications that use this policy
+	//
+	// Null for a policy embedded in a single application, which does not
+	// report a count. A reusable policy with a count of 0 is attached to
+	// nothing.
+	appCount int
 }
 
 // Cloudflare One access group
@@ -1529,6 +1711,15 @@ private cloudflare.one.accessGroup @defaults("name") {
 	createdAt time
 	// Time the group was last updated
 	updatedAt time
+	// Rules that make a user a member of the group; the user must satisfy at least one (OR)
+	//
+	// Same dict shape as the include rules of `cloudflare.one.accessPolicy`:
+	// each dict is one condition keyed by its rule type.
+	include []dict
+	// Rules a member must all satisfy (AND); same dict shape as include
+	require []dict
+	// Rules that exclude a user from the group when satisfied (NOT); same dict shape as include
+	exclude []dict
 }
 
 // Cloudflare One access service token
@@ -1549,6 +1740,26 @@ private cloudflare.one.serviceToken @defaults("name id") {
 	createdAt time
 	// Time the token was last updated
 	updatedAt time
+	// Whether the token can authenticate
+	//
+	// A disabled token is kept but neither its current nor its previous client
+	// secret is accepted. A token reported as leaked is disabled automatically.
+	// Null when the token does not report the setting.
+	enabled bool
+	// Time a secret scanning partner reported the token's client secret as leaked
+	//
+	// Null when the token has not been reported as leaked. Cleared once the
+	// secret is rotated.
+	leakReportedAt time
+	// Secret scanning partner that reported the leak
+	//
+	// Null when the token has not been reported as leaked.
+	leakReporter string
+	// URL where the leaked client secret was found
+	//
+	// Null when the token has not been reported as leaked, or the reporter did
+	// not provide a location.
+	leakReportUrl string
 }
 
 // Cloudflare One organization configuration
@@ -1618,6 +1829,33 @@ private cloudflare.one.organization @defaults("name authDomain") {
 	// outside the review of an administrator. Null when the organization does
 	// not report the setting.
 	disableEndUserAppCreation bool
+	// Whether requests to Cloudflare-protected hostnames without an Access application are denied
+	//
+	// When true, traffic to any hostname in the account's zones is blocked
+	// unless an Access application and policy explicitly allow it, apart from
+	// the zones in denyUnmatchedRequestsExemptedZones. Null when the
+	// organization does not report the setting.
+	denyUnmatchedRequests bool
+	// Zones exempted from denyUnmatchedRequests
+	//
+	// Requests to a hostname in one of these zones are allowed without an
+	// Access application. Each name resolves to the organization's own
+	// account's zone. Zones the scan's token cannot list are left out.
+	denyUnmatchedRequestsExemptedZones() []cloudflare.zone
+	// Whether the organization's MFA settings apply to every application by default
+	//
+	// Null when the organization does not report the setting.
+	mfaRequiredForAllApps bool
+	// MFA methods users may authenticate with across the organization
+	//
+	// For example `totp`, `biometrics` or `security_key`. Null when the
+	// organization has no MFA configuration.
+	mfaAllowedAuthenticators []string
+	// Duration of an MFA session across the organization
+	//
+	// For example `24h` or `30m`. Null when the organization has no MFA
+	// configuration.
+	mfaSessionDuration string
 	// Whether every account in the Cloudflare organization is trusted
 	//
 	// When true, every account in the same Cloudflare organization may use this
@@ -1813,6 +2051,23 @@ private cloudflare.one.gatewayRule @defaults("name action") {
 	createdAt time
 	// Time the rule was last updated
 	updatedAt time
+	// Additional settings that modify the rule's action
+	//
+	// The settings object as the API returns it, for example `block_page`,
+	// `check_session`, `biso_admin_controls`, `l4override` or
+	// `untrusted_cert`; which keys appear depends on the action. Null when the
+	// rule reports no settings.
+	ruleSettings dict
+	// Warning for a misconfigured rule
+	//
+	// Null when the rule has no warning.
+	warningStatus string
+	// Account that created the rule
+	//
+	// Set for a rule shared through a Cloudflare organization. Null when the
+	// rule does not name a source account. An account the scan's token cannot
+	// read reports its `id`, with its other fields null.
+	sourceAccount() cloudflare.account
 }
 
 // Cloudflare One Gateway list
@@ -1859,6 +2114,41 @@ private cloudflare.one.location @defaults("name") {
 	createdAt time
 	// Time the location was last updated
 	updatedAt time
+	// Whether the DNS over HTTPS endpoint is enabled
+	//
+	// Null when the location does not report its endpoints.
+	dohEnabled bool
+	// Whether the DNS over HTTPS endpoint only accepts requests carrying a user token
+	//
+	// Null when the location does not report its endpoints.
+	dohRequireToken bool
+	// Source networks allowed to use the DNS over HTTPS endpoint
+	//
+	// CIDR ranges. Empty means any source may use the endpoint. Null when the
+	// location does not report the endpoint's networks.
+	dohNetworks []string
+	// Whether the DNS over TLS endpoint is enabled
+	//
+	// Null when the location does not report its endpoints.
+	dotEnabled bool
+	// Source networks allowed to use the DNS over TLS endpoint
+	//
+	// CIDR ranges. Empty means any source may use the endpoint. Null when the
+	// location does not report the endpoint's networks.
+	dotNetworks []string
+	// Whether the IPv4 DNS endpoint is enabled
+	//
+	// Null when the location does not report its endpoints.
+	ipv4Enabled bool
+	// Whether the IPv6 DNS endpoint is enabled
+	//
+	// Null when the location does not report its endpoints.
+	ipv6Enabled bool
+	// Source networks allowed to use the IPv6 DNS endpoint
+	//
+	// CIDR ranges. Empty means any source may use the endpoint. Null when the
+	// location does not report the endpoint's networks.
+	ipv6Networks []string
 }
 
 // Cloudflare One DLP profile
@@ -1933,6 +2223,22 @@ private cloudflare.one.devicePostureRule @defaults("name type") {
 	schedule string
 	// Rule expiration
 	expiration string
+	// Whether the posture check is enabled
+	//
+	// A disabled check is not evaluated. Null when the rule does not report
+	// the setting.
+	enabled bool
+	// Conditions the posture check evaluates
+	//
+	// The input object as the API returns it; its keys depend on the rule
+	// type, for example `path` and `sha256` for a file check, or `version` and
+	// `operator` for an OS version check. Null when the rule reports no input.
+	input dict
+	// Operating systems the posture check applies to
+	//
+	// For example `windows`, `mac`, `linux`, `android`, `ios` or `chromeos`.
+	// Null when the rule reports no platform match.
+	platforms []string
 }
 
 // Cloudflare One device posture integration
@@ -2357,6 +2663,37 @@ private cloudflare.zone.customHostname @defaults("hostname status") {
 	sslType string
 	// Time the custom hostname was created
 	createdAt time
+	// Minimum TLS version visitors must negotiate with the custom hostname
+	//
+	// One of `1.0`, `1.1`, `1.2` or `1.3`. Null when the hostname does not set
+	// one and the zone's setting applies.
+	sslMinTlsVersion string
+	// Cipher suites the custom hostname accepts, by BoringSSL name
+	//
+	// Null when the hostname does not set an allowlist and the default set
+	// applies.
+	sslCiphers []string
+	// TLS 1.3 support for the custom hostname (on, off)
+	//
+	// Null when the hostname does not set it.
+	sslTls13 string
+	// Time the custom hostname's certificate expires
+	//
+	// Null before a certificate is issued.
+	sslExpiresOn time
+	// Issuer of the custom hostname's certificate
+	//
+	// Null before a certificate is issued.
+	sslIssuer string
+	// Certificate authority that issues the custom hostname's certificate
+	//
+	// For example `google`, `lets_encrypt` or `ssl_com`. Null when the
+	// hostname does not report one.
+	sslCertificateAuthority string
+	// Whether the custom hostname's certificate covers subdomains with a wildcard
+	//
+	// Null when the hostname does not report the setting.
+	sslWildcard bool
 }
 
 // Cloudflare zone logpush job
@@ -2387,6 +2724,26 @@ private cloudflare.zone.logpushJob @defaults("name dataset") {
 	// `network_analytics_logs` datasets. Null when the job does not report the
 	// setting.
 	filterAttackTraffic bool
+	// Kind of the job
+	//
+	// `edge` for an Instant Logs job, empty for a regular Logpush job. Null
+	// when the job does not report it.
+	kind string
+	// Fraction of log entries the job exports
+	//
+	// Between 0 and 1, where 1 exports every entry. Null when the job has no
+	// output options or does not set a sample rate.
+	sampleRate float
+	// Log fields the job exports
+	//
+	// Null when the job has no output options or does not list fields.
+	fieldNames []string
+	// Whether exported values are scrubbed of Log4j (CVE-2021-44228) exploit patterns
+	//
+	// When true, strings that match the Log4Shell JNDI lookup pattern are
+	// replaced before the logs reach the destination. Null when the job has no
+	// output options or does not report the setting.
+	redactsLog4jPatterns bool
 }
 
 // Cloudflare Log Explorer dataset
@@ -2465,6 +2822,12 @@ private cloudflare.account.role @defaults("name") {
 	name string
 	// Role description
 	description string
+	// Access the role grants per permission area
+	//
+	// Keyed by area, for example `analytics`, `billing`, `dns`, `ssl`, `waf`
+	// or `zones`, each mapping to `{read, write}` booleans. Null when the
+	// role does not report its permissions.
+	permissions dict
 }
 
 // Cloudflare account member
@@ -2491,6 +2854,14 @@ private cloudflare.account.member @defaults("email status twoFactorAuthenticatio
 	twoFactorAuthenticationEnabled bool
 	// Roles assigned to this member
 	roles []cloudflare.account.role
+	// Domain-scoped grants assigned to this member
+	//
+	// Grants given in addition to, or in place of, roles. Each entry has `id`
+	// (policy identifier), `access` (`allow` or `deny`), `permissionGroups`
+	// (a list of objects with `id` and `name`) and `resourceGroups` (a list of
+	// objects with `id`, `name` and `scope`, where `scope` names the account
+	// or zones the grant applies to, decoded from the raw API shape).
+	policies []dict
 }
 
 // Cloudflare audit log entry

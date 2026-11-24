@@ -49,6 +49,42 @@ func initCloudflareAccount(runtime *plugin.Runtime, args map[string]*llx.RawData
 	return nil, nil, errors.New("account not found or asset not set")
 }
 
+// listedAccountsByID indexes the accounts the connection can list by id,
+// reusing the root account list.
+func listedAccountsByID(runtime *plugin.Runtime) (map[string]any, error) {
+	root, err := CreateResource(runtime, "cloudflare", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	known := root.(*mqlCloudflare).GetAccounts()
+	if known.Error != nil {
+		return nil, known.Error
+	}
+	byID := make(map[string]any, len(known.Data))
+	for _, a := range known.Data {
+		if acc, ok := a.(*mqlCloudflareAccount); ok {
+			byID[acc.Id.Data] = acc
+		}
+	}
+	return byID, nil
+}
+
+// accountOrStub returns the listed account with the given id. An account
+// outside the token's reach keeps its id, with every field the accounts list
+// would have supplied set to null.
+func accountOrStub(runtime *plugin.Runtime, byID map[string]any, id string) (plugin.Resource, error) {
+	if acc, ok := byID[id]; ok {
+		return acc.(plugin.Resource), nil
+	}
+	return CreateResource(runtime, "cloudflare.account", map[string]*llx.RawData{
+		"id":        llx.StringData(id),
+		"name":      llx.NilData,
+		"type":      llx.NilData,
+		"settings":  llx.NilData,
+		"createdOn": llx.NilData,
+	})
+}
+
 func (c *mqlCloudflareAccountRole) id() (string, error) {
 	if c.Id.Error != nil {
 		return "", c.Id.Error
@@ -70,6 +106,7 @@ func (c *mqlCloudflareAccount) roles() ([]any, error) {
 			"id":          llx.StringData(rec.ID),
 			"name":        llx.StringData(rec.Name),
 			"description": llx.StringData(rec.Description),
+			"permissions": rawJSONDict(rec.JSON.Permissions.Raw()),
 		})
 		if err != nil {
 			return nil, err
