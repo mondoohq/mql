@@ -62,7 +62,7 @@ func (c *mqlPowershell) execute() error {
 
 	stderr, err := io.ReadAll(x.Stderr)
 	if err != nil {
-		c.Stdout = plugin.TValue[string]{Error: err, State: plugin.StateIsSet}
+		c.Stderr = plugin.TValue[string]{Error: err, State: plugin.StateIsSet}
 	} else {
 		serr, err := convertToUtf8Encoding(stderr)
 		c.Stderr = plugin.TValue[string]{Data: string(serr), Error: err, State: plugin.StateIsSet}
