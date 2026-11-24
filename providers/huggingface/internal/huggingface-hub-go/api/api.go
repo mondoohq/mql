@@ -22,17 +22,23 @@ const (
 	maxErrorBodySize    = 64 << 10 // 64 KB
 )
 
+// defaultInferenceEndpointsBaseURL is the Inference Endpoints API, which is
+// served from its own host rather than the Hub's.
+const defaultInferenceEndpointsBaseURL = "https://api.endpoints.huggingface.cloud"
+
 type API struct {
-	baseURL    string
-	httpClient *http.Client
-	token      string
+	baseURL          string
+	endpointsBaseURL string
+	httpClient       *http.Client
+	token            string
 }
 
 func NewAPI(baseURL string, httpClient *http.Client, token string) *API {
 	return &API{
-		baseURL:    baseURL,
-		httpClient: httpClient,
-		token:      token,
+		baseURL:          baseURL,
+		endpointsBaseURL: defaultInferenceEndpointsBaseURL,
+		httpClient:       httpClient,
+		token:            token,
 	}
 }
 
@@ -400,16 +406,14 @@ func (a *API) ListSpaces(ctx context.Context, opts *models.SpaceListOptions) (*m
 	return &spaceList, nil
 }
 
-// inferenceEndpointsBaseURL is the Inference Endpoints API, which is served
-// from its own host rather than the Hub's.
-var inferenceEndpointsBaseURL = "https://api.endpoints.huggingface.cloud"
-
 // ListInferenceEndpoints returns every inference endpoint in the namespace.
-// The list paginates with a nextCursor in the body; a cursor seen twice stops
-// the walk with an error instead of looping.
+// The list paginates with a nextCursor in the body, which alone decides
+// whether another page follows: an empty page can still carry one. A cursor
+// seen twice, or more pages than any namespace holds, stops the walk with an
+// error instead of returning a partial list.
 func (a *API) ListInferenceEndpoints(ctx context.Context, namespace string) (*models.InferenceEndpointList, error) {
 	const maxPages = 1000
-	base := fmt.Sprintf("%s/v2/endpoint/%s", inferenceEndpointsBaseURL, url.PathEscape(namespace))
+	base := fmt.Sprintf("%s/v2/endpoint/%s", a.endpointsBaseURL, url.PathEscape(namespace))
 
 	all := &models.InferenceEndpointList{}
 	seen := map[string]bool{}
@@ -424,7 +428,7 @@ func (a *API) ListInferenceEndpoints(ctx context.Context, namespace string) (*mo
 			return nil, err
 		}
 		all.Endpoints = append(all.Endpoints, page.Endpoints...)
-		if page.NextCursor == nil || *page.NextCursor == "" || len(page.Endpoints) == 0 {
+		if page.NextCursor == nil || *page.NextCursor == "" {
 			return all, nil
 		}
 		cursor = *page.NextCursor
@@ -433,7 +437,7 @@ func (a *API) ListInferenceEndpoints(ctx context.Context, namespace string) (*mo
 		}
 		seen[cursor] = true
 	}
-	return all, nil
+	return nil, fmt.Errorf("inference endpoint list exceeded %d pages", maxPages)
 }
 
 func (a *API) getInferenceEndpointPage(ctx context.Context, u string) (*models.InferenceEndpointList, error) {

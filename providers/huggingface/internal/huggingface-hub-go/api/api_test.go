@@ -183,11 +183,8 @@ func TestListInferenceEndpointsPagination(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	orig := inferenceEndpointsBaseURL
-	inferenceEndpointsBaseURL = srv.URL
-	defer func() { inferenceEndpointsBaseURL = orig }()
-
 	a := NewAPI(srv.URL, srv.Client(), "")
+	a.endpointsBaseURL = srv.URL
 	list, err := a.ListInferenceEndpoints(context.Background(), "acme")
 	require.NoError(t, err)
 	require.Len(t, list.Endpoints, 2)
@@ -208,11 +205,32 @@ func TestListInferenceEndpointsStopsOnRepeatedCursor(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	orig := inferenceEndpointsBaseURL
-	inferenceEndpointsBaseURL = srv.URL
-	defer func() { inferenceEndpointsBaseURL = orig }()
-
 	a := NewAPI(srv.URL, srv.Client(), "")
+	a.endpointsBaseURL = srv.URL
 	_, err := a.ListInferenceEndpoints(context.Background(), "acme")
 	require.Error(t, err)
+}
+
+// Synthetic: a first page with no items that still names a next page; no live
+// account showed this. The cursor alone decides whether to continue, so the
+// endpoint on the second page must not be dropped.
+func TestListInferenceEndpointsFollowsCursorPastEmptyPage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get("cursor") {
+		case "":
+			_, _ = w.Write([]byte(`{"items":[],"nextCursor":"page2","totalItems":1}`))
+		case "page2":
+			_, _ = w.Write([]byte(`{"items":[{"name":"late"}],"nextCursor":null,"totalItems":1}`))
+		default:
+			t.Fatalf("unexpected cursor %q", r.URL.Query().Get("cursor"))
+		}
+	}))
+	defer srv.Close()
+
+	a := NewAPI(srv.URL, srv.Client(), "")
+	a.endpointsBaseURL = srv.URL
+	list, err := a.ListInferenceEndpoints(context.Background(), "acme")
+	require.NoError(t, err)
+	require.Len(t, list.Endpoints, 1)
+	assert.Equal(t, "late", list.Endpoints[0].Name)
 }
