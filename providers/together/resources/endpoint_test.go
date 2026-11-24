@@ -137,3 +137,89 @@ func TestEndpointDeploymentArgs(t *testing.T) {
 	assert.Equal(t, llx.NilData, args["placementRegions"])
 	assert.Nil(t, args["hipaaRequired"].Value)
 }
+
+func TestEndpointDeploymentArgsRuntime(t *testing.T) {
+	// Synthetic: a deployment with speculative decoding, a concurrency limit and autoscaling bounds; no live account was checked.
+	d := decodeDeployment(t, `{
+	  "id": "dep-2",
+	  "autoscaling": {"minReplicas": 1, "maxReplicas": 4},
+	  "maxConcurrentRequestsPerReplica": "16",
+	  "speculator": "projects/proj-x/models/m-draft/revisions/r-2"
+	}`)
+
+	args := endpointDeploymentArgs(d)
+	assert.Equal(t, int64(1), args["autoscalingMinReplicas"].Value)
+	assert.Equal(t, int64(4), args["autoscalingMaxReplicas"].Value)
+	assert.Equal(t, int64(16), args["maxConcurrentRequestsPerReplica"].Value)
+	assert.Equal(t, "projects/proj-x/models/m-draft/revisions/r-2", args["speculator"].Value)
+}
+
+func TestEndpointDeploymentArgsRuntimeAbsent(t *testing.T) {
+	// Synthetic: a stopped deployment without speculative decoding or a concurrency limit; no live account was checked.
+	args := endpointDeploymentArgs(decodeDeployment(t, `{"id": "dep-3", "autoscaling": {}}`))
+
+	assert.Equal(t, int64(0), args["autoscalingMinReplicas"].Value)
+	assert.Equal(t, int64(0), args["autoscalingMaxReplicas"].Value)
+	assert.Nil(t, args["maxConcurrentRequestsPerReplica"].Value, "an unset limit leaves the platform default, which is not zero")
+	assert.Nil(t, args["speculator"].Value)
+}
+
+func TestParseConcurrencyLimit(t *testing.T) {
+	// Synthetic: the decimal-string encoding the API documents, plus malformed input; no live account was checked.
+	zero := parseConcurrencyLimit("0")
+	require.NotNil(t, zero)
+	assert.Equal(t, int64(0), *zero, "zero means unlimited and must not read as unset")
+
+	eight := parseConcurrencyLimit(" 8 ")
+	require.NotNil(t, eight)
+	assert.Equal(t, int64(8), *eight)
+
+	for _, in := range []string{"", "eight", "-1", "1.5"} {
+		assert.Nil(t, parseConcurrencyLimit(in), in)
+	}
+}
+
+func TestEndpointTrafficSplitResolvesDeployments(t *testing.T) {
+	// Synthetic: an endpoint splitting traffic between a listed deployment and one the deployment list does not carry; no live account was checked.
+	r := newRoutedTogether(t, map[string]string{
+		"/v3/whoami": whoamiFixture,
+		"/v2/projects/proj-2222222222222222/endpoints": `{"data": [{
+		  "id": "endpoint-0000",
+		  "name": "example-project/example-endpoint",
+		  "projectId": "proj-2222222222222222",
+		  "endpointType": "ENDPOINT_TYPE_DEDICATED",
+		  "visibility": "VISIBILITY_PRIVATE",
+		  "deployments": [],
+		  "etag": "e1",
+		  "trafficSplit": [
+		    {"deploymentId": "dep-blue", "weight": 3},
+		    {"deploymentId": "dep-gone", "weight": 0.5}
+		  ]
+		}]}`,
+		"/v2/projects/proj-2222222222222222/endpoints/endpoint-0000/deployments": `{"data": [
+		  {"id": "dep-green", "name": "example-project/example-endpoint/green"},
+		  {"id": "dep-blue", "name": "example-project/example-endpoint/blue"}
+		]}`,
+	})
+
+	endpoints, err := r.endpoints()
+	require.NoError(t, err)
+	require.Len(t, endpoints, 1)
+	split, err := endpoints[0].(*mqlTogetherEndpoint).trafficSplit()
+	require.NoError(t, err)
+	require.Len(t, split, 2)
+
+	blue := split[0].(*mqlTogetherEndpointTrafficSplitEntry)
+	assert.Equal(t, 3.0, blue.Weight.Data)
+	deployment, err := blue.deployment()
+	require.NoError(t, err)
+	require.NotNil(t, deployment)
+	assert.Equal(t, "example-project/example-endpoint/blue", deployment.Name.Data)
+
+	gone := split[1].(*mqlTogetherEndpointTrafficSplitEntry)
+	assert.Equal(t, 0.5, gone.Weight.Data)
+	deployment, err = gone.deployment()
+	require.NoError(t, err)
+	assert.Nil(t, deployment)
+	assertNull(t, gone.Deployment, "deployment")
+}
