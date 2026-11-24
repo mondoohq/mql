@@ -183,10 +183,7 @@ const mockupHostInterface = `{
 func TestHostInterfaceArgsMockup(t *testing.T) {
 	// Measured: DMTF Redfish-Mockup-Server public-rackmount1, fetched
 	// 2026-11-23.
-	hi, err := parseHostInterface([]byte(mockupHostInterface))
-	if err != nil {
-		t.Fatal(err)
-	}
+	hi := parseHostInterface([]byte(mockupHostInterface), "")
 	args := hostInterfaceArgs("/redfish/v1/Managers/BMC/HostInterfaces/1", hi)
 
 	wantValues := map[string]any{
@@ -227,15 +224,12 @@ func TestHostInterfaceArgsMockup(t *testing.T) {
 func TestHostInterfaceArgsExpirationWindow(t *testing.T) {
 	// Synthetic: HostInterface v1.4 with an expiration window and no
 	// AuthenticationModes property; no target showed this.
-	hi, err := parseHostInterface([]byte(`{
+	hi := parseHostInterface([]byte(`{
   "InterfaceEnabled": false,
   "AuthNoneRoleId": "ReadOnly",
   "KernelAuthEnabled": false,
   "CredentialBootstrapping": {"Enabled": false, "ExpirationWindowEnabled": true, "ExpirationWindowMinutes": 0}
-}`))
-	if err != nil {
-		t.Fatal(err)
-	}
+}`), "")
 	args := hostInterfaceArgs("hi", hi)
 
 	wantValues := map[string]any{
@@ -261,10 +255,7 @@ func TestHostInterfaceArgsExpirationWindow(t *testing.T) {
 func TestHostInterfaceArgsNoBootstrapping(t *testing.T) {
 	// Synthetic: a HostInterface v1.0 document that predates credential
 	// bootstrapping and lists no authentication mode; no target showed this.
-	hi, err := parseHostInterface([]byte(`{"InterfaceEnabled": true, "AuthenticationModes": []}`))
-	if err != nil {
-		t.Fatal(err)
-	}
+	hi := parseHostInterface([]byte(`{"InterfaceEnabled": true, "AuthenticationModes": []}`), "")
 	args := hostInterfaceArgs("hi", hi)
 	for _, field := range []string{
 		"credentialBootstrappingEnabled", "credentialBootstrappingEnableAfterReset", "credentialBootstrappingRoleId",
@@ -282,8 +273,18 @@ func TestHostInterfaceArgsNoBootstrapping(t *testing.T) {
 }
 
 func TestParseHostInterfaceMalformed(t *testing.T) {
-	if _, err := parseHostInterface([]byte(`{"InterfaceEnabled": "on"}`)); err == nil {
-		t.Error("parseHostInterface(malformed) returned no error")
+	// Synthetic: a document that does not decode still reports the interface,
+	// by name, with every property null, so it is neither dropped from the list
+	// nor read as an interface with authentication switched off.
+	hi := parseHostInterface([]byte(`{"InterfaceEnabled": "on", "AuthenticationModes": ["AuthNone"]}`), "Host Interface")
+	args := hostInterfaceArgs("hi", hi)
+	if got := args["name"]; got == nil || got.Value != "Host Interface" {
+		t.Errorf("name = %v, want Host Interface", got)
+	}
+	for _, field := range []string{"interfaceEnabled", "authenticationModes", "credentialBootstrappingEnabled"} {
+		if got := args[field]; got != llx.NilData {
+			t.Errorf("%s = %v, want null", field, got)
+		}
 	}
 }
 

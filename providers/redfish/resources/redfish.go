@@ -656,13 +656,17 @@ type hostInterfaceJSON struct {
 	} `json:"CredentialBootstrapping"`
 }
 
-// parseHostInterface decodes a HostInterface document.
-func parseHostInterface(raw []byte) (*hostInterfaceJSON, error) {
+// parseHostInterface decodes a HostInterface document. A document that does not
+// decode still yields the interface, under the name gofish read, with every
+// other property unreported: dropping it would hide an interface that may
+// accept AuthNone, and failing would hide every other interface with it.
+func parseHostInterface(raw []byte, name string) *hostInterfaceJSON {
 	var hi hostInterfaceJSON
 	if err := json.Unmarshal(raw, &hi); err != nil {
-		return nil, err
+		log.Debug().Err(err).Str("name", name).Msg("redfish: could not decode a host interface, reporting its properties as null")
+		return &hostInterfaceJSON{Name: name}
 	}
-	return &hi, nil
+	return &hi
 }
 
 // hostInterfaceArgs maps a decoded host interface onto the resource fields. A
@@ -718,10 +722,7 @@ func (r *mqlRedfishManager) hostInterfaces() ([]any, error) {
 
 	res := make([]any, 0, len(interfaces))
 	for _, h := range interfaces {
-		hi, err := parseHostInterface(h.RawData)
-		if err != nil {
-			return nil, err
-		}
+		hi := parseHostInterface(h.RawData, h.Name)
 		o, err := CreateResource(r.MqlRuntime, "redfish.hostInterface", hostInterfaceArgs(h.ODataID, hi))
 		if err != nil {
 			return nil, err
