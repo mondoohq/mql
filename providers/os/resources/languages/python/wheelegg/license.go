@@ -68,10 +68,11 @@ func metadataLicense(h textproto.MIMEHeader) string {
 }
 
 // licenseValue trims a header value and drops it when it is longer than a value
-// of its kind can legitimately be.
+// of its kind can legitimately be, or when it is setuptools' UNKNOWN
+// placeholder, so the classifiers can answer instead.
 func licenseValue(v string, maxBytes int) string {
 	v = strings.TrimSpace(v)
-	if len(v) > maxBytes {
+	if v == metadataUnknown || len(v) > maxBytes {
 		return ""
 	}
 	return v
