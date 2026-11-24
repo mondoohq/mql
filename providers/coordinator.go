@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/hashicorp/go-hclog"
@@ -703,10 +704,14 @@ func (c *coordinator) Shutdown() {
 	defer c.mutex.Unlock()
 
 	for _, provider := range c.runningByID {
+		start := time.Now()
 		if err := provider.Shutdown(); err != nil {
 			log.Warn().Err(err).Str("provider", provider.Name).Msg("failed to shut down provider")
 		}
+		// Kill unconditionally: a provider that failed or timed out on
+		// Shutdown is still running.
 		provider.KillClient()
+		log.Debug().Str("provider", provider.Name).Dur("took", time.Since(start)).Msg("provider shut down")
 	}
 	c.runningByID = map[string]*RunningProvider{}
 	c.runtimes = map[string]*Runtime{}

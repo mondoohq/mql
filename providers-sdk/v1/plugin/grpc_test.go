@@ -126,3 +126,33 @@ func TestRecoverPanic(t *testing.T) {
 		assert.NoError(t, err)
 	})
 }
+
+type stuckShutdownClient struct {
+	ProviderPluginClient
+}
+
+func (stuckShutdownClient) Shutdown(ctx context.Context, _ *ShutdownReq, _ ...grpc.CallOption) (*ShutdownRes, error) {
+	<-ctx.Done()
+	return nil, status.FromContextError(ctx.Err()).Err()
+}
+
+// A provider that never answers Shutdown must not block the caller: the call
+// carries a deadline, so the parent gets control back and can kill it.
+func TestGRPCClientShutdownIsBounded(t *testing.T) {
+	prev := shutdownTimeout
+	shutdownTimeout = 50 * time.Millisecond
+	t.Cleanup(func() { shutdownTimeout = prev })
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := (&GRPCClient{client: stuckShutdownClient{}}).Shutdown(&ShutdownReq{})
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		assert.Equal(t, codes.DeadlineExceeded, status.Code(err))
+	case <-time.After(5 * time.Second):
+		t.Fatal("Shutdown did not return after its deadline")
+	}
+}
