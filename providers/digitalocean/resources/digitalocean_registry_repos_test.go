@@ -91,7 +91,10 @@ func TestRegistryRepositoriesNoRegistryIsEmpty(t *testing.T) {
 
 func TestDatabaseEngineHasPools(t *testing.T) {
 	assert.True(t, databaseEngineHasPools("pg"))
-	for _, engine := range []string{"mysql", "redis", "valkey", "mongodb", "kafka", "opensearch", ""} {
+	// PostgreSQL Advanced Edition clusters take connection pools too
+	// (docs.digitalocean.com, PostgreSQL "How to Manage Connection Pools").
+	assert.True(t, databaseEngineHasPools("advanced_pg"))
+	for _, engine := range []string{"mysql", "advanced_mysql", "redis", "valkey", "mongodb", "kafka", "opensearch", ""} {
 		assert.False(t, databaseEngineHasPools(engine), engine)
 	}
 }

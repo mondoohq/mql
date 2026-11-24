@@ -159,3 +159,68 @@ func TestPaginate_StuckCursorIsReported(t *testing.T) {
 	assert.Contains(t, err.Error(), "repeating a page")
 	assert.Less(t, calls, 50)
 }
+
+// offsetPages serves fixed pages of string ids by 1-based page number, with
+// the given total (negative for none).
+func offsetPages(pages [][]string, total int, calls *[]int) offsetListFunc[string] {
+	return func(_ context.Context, page int) ([]string, int, error) {
+		*calls = append(*calls, page)
+		if page > len(pages) {
+			return nil, total, nil
+		}
+		return pages[page-1], total, nil
+	}
+}
+
+func identity(s string) string { return s }
+
+// Synthetic: a reported total ends the walk without asking for an empty page; no live account was checked.
+func TestPaginateOffsetStopsAtTotal(t *testing.T) {
+	var calls []int
+	got, err := paginateOffset(context.Background(), 2, identity, offsetPages([][]string{{"a", "b"}, {"c"}}, 3, &calls))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"a", "b", "c"}, got)
+	assert.Equal(t, []int{1, 2}, calls)
+}
+
+// Synthetic: without a total, a full page means more may follow and a short page ends the walk; no live account was checked.
+func TestPaginateOffsetWithoutTotalFollowsFullPages(t *testing.T) {
+	var calls []int
+	got, err := paginateOffset(context.Background(), 2, identity, offsetPages([][]string{{"a", "b"}, {"c", "d"}, {"e"}}, -1, &calls))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"a", "b", "c", "d", "e"}, got)
+	assert.Equal(t, []int{1, 2, 3}, calls)
+}
+
+// Synthetic: a full last page without a total ends on the empty page after it; no live account was checked.
+func TestPaginateOffsetEmptyPageEnds(t *testing.T) {
+	var calls []int
+	got, err := paginateOffset(context.Background(), 2, identity, offsetPages([][]string{{"a", "b"}}, -1, &calls))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"a", "b"}, got)
+	assert.Equal(t, []int{1, 2}, calls)
+}
+
+// Synthetic: an endpoint that ignores the page parameter is reported rather than looped on; no live account was checked.
+func TestPaginateOffsetRepeatedPageFails(t *testing.T) {
+	calls := 0
+	_, err := paginateOffset(context.Background(), 2, identity, func(_ context.Context, _ int) ([]string, int, error) {
+		calls++
+		return []string{"a", "b"}, 10, nil
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "repeating a page")
+	assert.Equal(t, 2, calls)
+}
+
+// Synthetic: a failed page fails the walk instead of returning the pages read so far; no live account was checked.
+func TestPaginateOffsetErrorPropagates(t *testing.T) {
+	boom := errors.New("boom")
+	_, err := paginateOffset(context.Background(), 2, identity, func(_ context.Context, page int) ([]string, int, error) {
+		if page == 2 {
+			return nil, 0, boom
+		}
+		return []string{"a", "b"}, -1, nil
+	})
+	assert.ErrorIs(t, err, boom)
+}

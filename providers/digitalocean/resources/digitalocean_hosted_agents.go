@@ -11,6 +11,7 @@ import (
 	"github.com/digitalocean/godo"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/digitalocean/connection"
 	"go.mondoo.com/mql/types"
 )
@@ -105,7 +106,108 @@ func (r *mqlDigitaloceanHostedAgentConfig) credentials() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A 200 without a config body decodes to nil alongside a nil error.
+	if cfg == nil {
+		r.Credentials.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
 	return hostedAgentCredentialDicts(cfg.Credentials), nil
+}
+
+// ----- Signals consent -----
+
+// signalsConsentList reads the team's Signals consent records once per scan.
+// The listing covers every source (per-agent and inference), so one call
+// answers every config and the team-level inference consent.
+func (r *mqlDigitalocean) signalsConsentList() (*godo.SignalsListConsentsResponse, error) {
+	r.signalsConsentsOnce.Do(func() {
+		conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
+		resp, _, err := conn.Client().Signals.ListConsents(context.Background())
+		if err != nil {
+			// A 404 means the team has no consent records to report, which
+			// leaves every consent field null. Refusals propagate, so a
+			// denied read is never reported as "no consent".
+			if isDoNotFound(err) {
+				return
+			}
+			r.signalsConsentsErr = classifyDoError(err)
+			return
+		}
+		r.signalsConsents = resp
+	})
+	return r.signalsConsents, r.signalsConsentsErr
+}
+
+// agentSignalsConsent returns the consent of one hosted agent config, or nil
+// when the team has no record for it. A config is a Signals environment, and
+// a record names it by environment_id; agent_id is the deprecated alias older
+// records carry instead.
+func agentSignalsConsent(list *godo.SignalsListConsentsResponse, configID string) *bool {
+	if list == nil || configID == "" {
+		return nil
+	}
+	for i := range list.Consents {
+		c := &list.Consents[i]
+		if c.Source != "" && c.Source != godo.SignalsConsentSourceAgent {
+			continue
+		}
+		envID := c.EnvironmentID
+		if envID == "" {
+			envID = c.AgentID
+		}
+		if envID == configID {
+			enabled := c.Enabled
+			return &enabled
+		}
+	}
+	return nil
+}
+
+// inferenceSignalsConsent returns the team-wide serverless inference
+// consent, or nil when the team has no record for it. The inference record
+// is the one of source inference that names no agent.
+func inferenceSignalsConsent(list *godo.SignalsListConsentsResponse) *bool {
+	if list == nil {
+		return nil
+	}
+	for i := range list.Consents {
+		c := &list.Consents[i]
+		if c.Source == godo.SignalsConsentSourceInference && c.AgentID == "" && c.EnvironmentID == "" {
+			enabled := c.Enabled
+			return &enabled
+		}
+	}
+	return nil
+}
+
+func (r *mqlDigitaloceanHostedAgentConfig) signalsConsentEnabled() (bool, error) {
+	parent, err := parentDigitalocean(r.MqlRuntime)
+	if err != nil {
+		return false, err
+	}
+	list, err := parent.signalsConsentList()
+	if err != nil {
+		return false, err
+	}
+	v := agentSignalsConsent(list, r.Id.Data)
+	if v == nil {
+		r.SignalsConsentEnabled.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return *v, nil
+}
+
+func (r *mqlDigitalocean) inferenceSignalsConsentEnabled() (bool, error) {
+	list, err := r.signalsConsentList()
+	if err != nil {
+		return false, err
+	}
+	v := inferenceSignalsConsent(list)
+	if v == nil {
+		r.InferenceSignalsConsentEnabled.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return *v, nil
 }
 
 // hostedAgentCredentialDicts converts credential slots to dicts. The slots

@@ -224,3 +224,44 @@ func TestMicroVMEgressRules_AbsentPolicy(t *testing.T) {
 	assert.Equal(t, []any{}, microVMEgressRules(nil))
 	assert.Equal(t, []any{}, microVMEgressRules(&godo.MicroVMEgressPolicy{DefaultAction: godo.MicroVMEgressActionDeny}))
 }
+
+// Synthetic: the access token list in the shape godo's own test serves; no live account was checked.
+func TestMicroDropletAccessTokens(t *testing.T) {
+	rt := statusRuntime(t, map[string]route{
+		"/v2/microvms/aaa-111/access_tokens": {200, `{"access_tokens":[
+			{"id":"tok-1","micro_vm_id":"aaa-111","name":"alice","created_at":"2026-10-21T14:02:11Z"},
+			{"id":"tok-2","micro_vm_id":"aaa-111","name":"bob","created_at":"2026-10-22T14:02:11Z","expires_at":"2026-11-21T14:02:11Z"}
+		]}`},
+	})
+	md := &mqlDigitaloceanMicroDroplet{MqlRuntime: rt, Id: strVal("aaa-111")}
+	out, err := md.accessTokens()
+	require.NoError(t, err)
+	require.Len(t, out, 2)
+
+	alice := out[0].(*mqlDigitaloceanMicroDropletAccessToken)
+	assert.Equal(t, "alice", alice.Name.Data)
+	require.NotNil(t, alice.CreatedAt.Data)
+	assert.Nil(t, alice.ExpiresAt.Data, "a token without an expiry never expires and reads null")
+
+	bob := out[1].(*mqlDigitaloceanMicroDropletAccessToken)
+	require.NotNil(t, bob.ExpiresAt.Data)
+	assert.Equal(t, "2026-11-21T14:02:11Z", bob.ExpiresAt.Data.UTC().Format("2006-01-02T15:04:05Z"))
+
+	// Token ids are scoped to their instance, so the key carries both.
+	assert.NotEqual(t, alice.__id, bob.__id)
+	assert.Contains(t, alice.__id, "aaa-111")
+}
+
+// Synthetic: an instance deleted since it was listed has no tokens; a refusal is an error; no live account was checked.
+func TestMicroDropletAccessTokensNotFoundAndForbidden(t *testing.T) {
+	rt := statusRuntime(t, map[string]route{})
+	out, err := (&mqlDigitaloceanMicroDroplet{MqlRuntime: rt, Id: strVal("gone")}).accessTokens()
+	require.NoError(t, err)
+	assert.Equal(t, []any{}, out)
+
+	rt = statusRuntime(t, map[string]route{
+		"/v2/microvms/aaa-111/access_tokens": {403, `{"id":"forbidden","message":"denied"}`},
+	})
+	_, err = (&mqlDigitaloceanMicroDroplet{MqlRuntime: rt, Id: strVal("aaa-111")}).accessTokens()
+	require.Error(t, err)
+}
