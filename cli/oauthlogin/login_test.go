@@ -130,7 +130,7 @@ func TestDeviceFlow(t *testing.T) {
 
 	assert.Contains(t, out.String(), "! First copy your one-time code: WDJB-MJHT")
 	assert.Contains(t, out.String(), "https://console.example.com/activate")
-	assert.NotContains(t, out.String(), "Press Enter", "no prompt when not interactive")
+	assert.NotContains(t, out.String(), "press Enter", "no prompt when not interactive")
 	assert.Contains(t, out.String(), "Open https://console.example.com/activate in a browser and enter the code.\nWaiting for authorization...\n")
 	assert.NotContains(t, out.String(), "\r", "no spinner when not interactive")
 
@@ -232,7 +232,7 @@ func TestLoopbackFlow_BrowserOpenFailsUsesDeviceFlow(t *testing.T) {
 	got := out.String()
 	assert.Contains(t, got, "! First copy your one-time code: WDJB-MJHT")
 	assert.Contains(t, got, "Open https://console.example.com/activate in a browser and enter the code.")
-	assert.NotContains(t, got, "Press Enter", "a browser could not be opened, so none is offered")
+	assert.NotContains(t, got, "press Enter", "a browser could not be opened, so none is offered")
 	assert.NotContains(t, got, "Opening your browser")
 	assert.NotContains(t, got, "/oauth/authorize")
 	assert.NotContains(t, got, "127.0.0.1")

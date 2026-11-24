@@ -17,7 +17,8 @@ import (
 )
 
 // deviceFlow runs the RFC 8628 device authorization grant. offerBrowser shows
-// the "press Enter to open the browser" prompt on an interactive terminal.
+// the "or press Enter to open it on this machine" offer on an interactive
+// terminal.
 func deviceFlow(ctx context.Context, o *Options, cfg *oauth2.Config, params []oauth2.AuthCodeOption, offerBrowser bool) (*oauth2.Token, error) {
 	da, err := cfg.DeviceAuth(ctx, params...)
 	if err != nil {
@@ -40,11 +41,13 @@ func deviceFlow(ctx context.Context, o *Options, cfg *oauth2.Config, params []oa
 
 	pr := newProgress(o.Out, o.Interactive)
 	pr.Println("! First copy your one-time code: %s", userCode)
+	// The code can be entered on any device, so that comes first. Opening
+	// the browser on this machine is an offer, never a step: the device flow
+	// is also what --no-browser asks for.
+	pr.Println("Open %s in a browser and enter the code.", da.VerificationURI)
 	promptEnter := o.Interactive && offerBrowser
 	if promptEnter {
-		pr.Println("Press Enter to open %s in your browser...", da.VerificationURI)
-	} else {
-		pr.Println("Open %s in a browser and enter the code.", da.VerificationURI)
+		pr.Println("Or press Enter to open it in the browser on this machine...")
 	}
 
 	// Polling runs until the device code expires. A server that names no

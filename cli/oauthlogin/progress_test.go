@@ -64,7 +64,7 @@ func TestProgress_NotInteractive(t *testing.T) {
 func TestProgress_SpinnerNeverOverwritesPrompt(t *testing.T) {
 	var out syncBuffer
 	p := newProgress(&out, true)
-	p.Println("Press Enter to open %s in your browser...", "https://example.com/activate")
+	p.Println("Or press Enter to open %s in the browser on this machine...", "https://example.com/activate")
 	stop := p.Spin("Waiting for authorization...")
 	time.Sleep(3 * spinnerInterval)
 	p.AfterEnter("✓ Opened %s", "https://example.com/activate")
@@ -73,8 +73,8 @@ func TestProgress_SpinnerNeverOverwritesPrompt(t *testing.T) {
 	p.AfterEnter("ignored after the wait")
 	got := out.String()
 
-	assert.True(t, strings.HasPrefix(got, "Press Enter to open https://example.com/activate in your browser...\n"), got)
-	prompt := lineContaining(t, got, "Press Enter")
+	assert.True(t, strings.HasPrefix(got, "Or press Enter to open https://example.com/activate in the browser on this machine...\n"), got)
+	prompt := lineContaining(t, got, "press Enter")
 	assert.NotContains(t, prompt, "\r", "nothing may be drawn over the prompt")
 
 	// the spinner is drawn below the prompt; the Enter line replaces the
@@ -117,7 +117,9 @@ func TestDeviceFlow_Interactive(t *testing.T) {
 		t.Fatal("Enter should open the browser")
 	}
 	got := out.String()
-	prompt := lineContaining(t, got, "Press Enter to open https://console.example.com/activate in your browser...")
+	assert.Contains(t, got, "Open https://console.example.com/activate in a browser and enter the code.\nOr press Enter to open it in the browser on this machine...\n",
+		"entering the code on any device comes first, opening a browser here is an offer")
+	prompt := lineContaining(t, got, "Or press Enter to open it in the browser on this machine...")
 	assert.NotContains(t, prompt, "\r", "nothing may be drawn over the prompt")
 	assert.Contains(t, got, "✓ Opened https://console.example.com/activate")
 	assert.Contains(t, got, "Waiting for authorization...")
