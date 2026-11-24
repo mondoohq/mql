@@ -29,6 +29,7 @@ type mqlGitlabProjectInternal struct {
 	detailsOnce       sync.Once
 	details           *gitlab.Project
 	detailsCI         *projectCIPolicy
+	detailsSettings   *projectSettingsPolicy
 	detailsErr        error
 	detailsStatusCode int
 }
@@ -41,6 +42,62 @@ type mqlGitlabProjectInternal struct {
 type projectCIPolicy struct {
 	IDTokenSubClaimComponents       []string `json:"ci_id_token_sub_claim_components"`
 	AllowForkPipelinesToRunInParent *bool    `json:"ci_allow_fork_pipelines_to_run_in_parent_project"`
+
+	PipelineVariablesMinimumOverrideRole  *string          `json:"ci_pipeline_variables_minimum_override_role"`
+	PushRepositoryForJobTokenAllowed      *bool            `json:"ci_push_repository_for_job_token_allowed"`
+	SeparatedCaches                       *bool            `json:"ci_separated_caches"`
+	AllowPipelineTriggerApproveDeployment *bool            `json:"allow_pipeline_trigger_approve_deployment"`
+	ProtectMergeRequestPipelines          *bool            `json:"protect_merge_request_pipelines"`
+	ForwardDeploymentEnabled              *bool            `json:"ci_forward_deployment_enabled"`
+	ForwardDeploymentRollbackAllowed      *bool            `json:"ci_forward_deployment_rollback_allowed"`
+	RestrictPipelineCancellationRole      *string          `json:"ci_restrict_pipeline_cancellation_role"`
+	DisplayPipelineVariables              *bool            `json:"ci_display_pipeline_variables"`
+	ConfigPath                            reported[string] `json:"ci_config_path"`
+	KeepLatestArtifact                    *bool            `json:"keep_latest_artifact"`
+	DeletePipelinesInSeconds              reported[int64]  `json:"ci_delete_pipelines_in_seconds"`
+	BuildTimeout                          *int64           `json:"build_timeout"`
+}
+
+// ciConfigPath reads the CI/CD configuration path. GitLab sends null or an
+// empty string for the default .gitlab-ci.yml, which reads as "", and omits
+// the attribute for a token that cannot see the setting, which reads as nil.
+func (c *projectCIPolicy) ciConfigPath() *string {
+	if !c.ConfigPath.Set {
+		return nil
+	}
+	if c.ConfigPath.Value == nil {
+		empty := ""
+		return &empty
+	}
+	return c.ConfigPath.Value
+}
+
+// ciDeletePipelinesInSeconds reads the pipeline retention period. GitLab sends
+// null when pipelines are kept indefinitely, which reads as 0, and omits the
+// attribute for a token that cannot see the setting, which reads as nil.
+func (c *projectCIPolicy) ciDeletePipelinesInSeconds() *int64 {
+	if !c.DeletePipelinesInSeconds.Set {
+		return nil
+	}
+	if c.DeletePipelinesInSeconds.Value == nil {
+		var never int64
+		return &never
+	}
+	return c.DeletePipelinesInSeconds.Value
+}
+
+// projectSettingsPolicy is the pointer-typed view of the project settings that
+// GitLab only returns to a token allowed to administer the project, or only on
+// a tier whose license includes the feature. Decoded through pointers for the
+// same reason as projectCIPolicy.
+type projectSettingsPolicy struct {
+	EnforceAuthChecksOnUploads               *bool   `json:"enforce_auth_checks_on_uploads"`
+	OnlyAllowMergeIfAllStatusChecksPassed    *bool   `json:"only_allow_merge_if_all_status_checks_passed"`
+	MergeTrainsSkipTrainAllowed              *bool   `json:"merge_trains_skip_train_allowed"`
+	MergeTrainEnforcement                    *string `json:"merge_train_enforcement"`
+	ExternalAuthorizationClassificationLabel *string `json:"external_authorization_classification_label"`
+	MirrorUserID                             *int64  `json:"mirror_user_id"`
+	MirrorOverwritesDivergedBranches         *bool   `json:"mirror_overwrites_diverged_branches"`
 }
 
 // projectDetails returns the full *gitlab.Project payload, fetching it on
@@ -71,9 +128,15 @@ func (p *mqlGitlabProject) projectDetails(conn *connection.GitLabConnection) (*g
 			p.detailsErr = err
 			return
 		}
+		settings := &projectSettingsPolicy{}
+		if err := json.Unmarshal(raw, settings); err != nil {
+			p.detailsErr = err
+			return
+		}
 
 		p.details = project
 		p.detailsCI = ci
+		p.detailsSettings = settings
 	})
 	return p.details, p.detailsErr
 }
@@ -132,6 +195,17 @@ func getGitlabProjectArgs(prj *gitlab.Project) map[string]*llx.RawData {
 		"duoSecretDetectionFalsePositiveDetectionEnabled": llx.BoolData(prj.DuoSecretDetectionFPEnabled),
 		"modelExperimentsAccessLevel":                     llx.StringData(string(prj.ModelExperimentsAccessLevel)),
 		"modelRegistryAccessLevel":                        llx.StringData(string(prj.ModelRegistryAccessLevel)),
+		"releasesAccessLevel":                             llx.StringData(string(prj.ReleasesAccessLevel)),
+		"pagesAccessLevel":                                llx.StringData(string(prj.PagesAccessLevel)),
+		"environmentsAccessLevel":                         llx.StringData(string(prj.EnvironmentsAccessLevel)),
+		"packageRegistryAccessLevel":                      llx.StringData(string(prj.PackageRegistryAccessLevel)),
+		"featureFlagsAccessLevel":                         llx.StringData(string(prj.FeatureFlagsAccessLevel)),
+		"infrastructureAccessLevel":                       llx.StringData(string(prj.InfrastructureAccessLevel)),
+		"monitorAccessLevel":                              llx.StringData(string(prj.MonitorAccessLevel)),
+		"analyticsAccessLevel":                            llx.StringData(string(prj.AnalyticsAccessLevel)),
+		"requirementsAccessLevel":                         llx.StringData(string(prj.RequirementsAccessLevel)),
+		"markedForDeletionOn":                             llx.TimeDataPtr(isoTimePtr(prj.MarkedForDeletionOn)),
+		"topics":                                          llx.ArrayData(convert.SliceAnyToInterface(prj.Topics), types.String),
 	}
 }
 
@@ -538,6 +612,139 @@ func (p *mqlGitlabProject) ciAllowForkPipelinesToRunInParentProject() (bool, err
 	}
 
 	return *p.detailsCI.AllowForkPipelinesToRunInParent, nil
+}
+
+// projectPolicies returns the pointer-typed views of the shared project
+// payload. Both are nil when the token cannot read the project (403/404), so
+// every field read from them is null.
+func (p *mqlGitlabProject) projectPolicies() (*projectCIPolicy, *projectSettingsPolicy, error) {
+	conn := p.MqlRuntime.Connection.(*connection.GitLabConnection)
+	if _, err := p.projectDetails(conn); err != nil {
+		if p.detailsStatusCode == 403 || p.detailsStatusCode == 404 {
+			return nil, nil, nil
+		}
+		return nil, nil, err
+	}
+	return p.detailsCI, p.detailsSettings, nil
+}
+
+// ciField reads one attribute of the CI/CD overlay, null when the overlay or
+// the attribute is missing.
+func ciField[T any](p *mqlGitlabProject, field *plugin.TValue[T], get func(*projectCIPolicy) *T) (T, error) {
+	ci, _, err := p.projectPolicies()
+	if err != nil {
+		var zero T
+		return zero, err
+	}
+	var v *T
+	if ci != nil {
+		v = get(ci)
+	}
+	return valueOrNull(field, v), nil
+}
+
+// settingsField is ciField for the project settings overlay.
+func settingsField[T any](p *mqlGitlabProject, field *plugin.TValue[T], get func(*projectSettingsPolicy) *T) (T, error) {
+	_, settings, err := p.projectPolicies()
+	if err != nil {
+		var zero T
+		return zero, err
+	}
+	var v *T
+	if settings != nil {
+		v = get(settings)
+	}
+	return valueOrNull(field, v), nil
+}
+
+func (p *mqlGitlabProject) ciPipelineVariablesMinimumOverrideRole() (string, error) {
+	return ciField(p, &p.CiPipelineVariablesMinimumOverrideRole, func(c *projectCIPolicy) *string { return c.PipelineVariablesMinimumOverrideRole })
+}
+
+func (p *mqlGitlabProject) ciPushRepositoryForJobTokenAllowed() (bool, error) {
+	return ciField(p, &p.CiPushRepositoryForJobTokenAllowed, func(c *projectCIPolicy) *bool { return c.PushRepositoryForJobTokenAllowed })
+}
+
+func (p *mqlGitlabProject) ciSeparatedCaches() (bool, error) {
+	return ciField(p, &p.CiSeparatedCaches, func(c *projectCIPolicy) *bool { return c.SeparatedCaches })
+}
+
+func (p *mqlGitlabProject) allowPipelineTriggerApproveDeployment() (bool, error) {
+	return ciField(p, &p.AllowPipelineTriggerApproveDeployment, func(c *projectCIPolicy) *bool { return c.AllowPipelineTriggerApproveDeployment })
+}
+
+func (p *mqlGitlabProject) protectMergeRequestPipelines() (bool, error) {
+	return ciField(p, &p.ProtectMergeRequestPipelines, func(c *projectCIPolicy) *bool { return c.ProtectMergeRequestPipelines })
+}
+
+func (p *mqlGitlabProject) ciForwardDeploymentEnabled() (bool, error) {
+	return ciField(p, &p.CiForwardDeploymentEnabled, func(c *projectCIPolicy) *bool { return c.ForwardDeploymentEnabled })
+}
+
+func (p *mqlGitlabProject) ciForwardDeploymentRollbackAllowed() (bool, error) {
+	return ciField(p, &p.CiForwardDeploymentRollbackAllowed, func(c *projectCIPolicy) *bool { return c.ForwardDeploymentRollbackAllowed })
+}
+
+func (p *mqlGitlabProject) ciRestrictPipelineCancellationRole() (string, error) {
+	return ciField(p, &p.CiRestrictPipelineCancellationRole, func(c *projectCIPolicy) *string { return c.RestrictPipelineCancellationRole })
+}
+
+func (p *mqlGitlabProject) ciDisplayPipelineVariables() (bool, error) {
+	return ciField(p, &p.CiDisplayPipelineVariables, func(c *projectCIPolicy) *bool { return c.DisplayPipelineVariables })
+}
+
+func (p *mqlGitlabProject) ciConfigPath() (string, error) {
+	return ciField(p, &p.CiConfigPath, (*projectCIPolicy).ciConfigPath)
+}
+
+func (p *mqlGitlabProject) keepLatestArtifact() (bool, error) {
+	return ciField(p, &p.KeepLatestArtifact, func(c *projectCIPolicy) *bool { return c.KeepLatestArtifact })
+}
+
+func (p *mqlGitlabProject) ciDeletePipelinesInSeconds() (int64, error) {
+	return ciField(p, &p.CiDeletePipelinesInSeconds, (*projectCIPolicy).ciDeletePipelinesInSeconds)
+}
+
+func (p *mqlGitlabProject) buildTimeout() (int64, error) {
+	return ciField(p, &p.BuildTimeout, func(c *projectCIPolicy) *int64 { return c.BuildTimeout })
+}
+
+func (p *mqlGitlabProject) enforceAuthChecksOnUploads() (bool, error) {
+	return settingsField(p, &p.EnforceAuthChecksOnUploads, func(s *projectSettingsPolicy) *bool { return s.EnforceAuthChecksOnUploads })
+}
+
+func (p *mqlGitlabProject) onlyAllowMergeIfAllStatusChecksPassed() (bool, error) {
+	return settingsField(p, &p.OnlyAllowMergeIfAllStatusChecksPassed, func(s *projectSettingsPolicy) *bool { return s.OnlyAllowMergeIfAllStatusChecksPassed })
+}
+
+func (p *mqlGitlabProject) mergeTrainsSkipTrainAllowed() (bool, error) {
+	return settingsField(p, &p.MergeTrainsSkipTrainAllowed, func(s *projectSettingsPolicy) *bool { return s.MergeTrainsSkipTrainAllowed })
+}
+
+func (p *mqlGitlabProject) mergeTrainEnforcement() (string, error) {
+	return settingsField(p, &p.MergeTrainEnforcement, func(s *projectSettingsPolicy) *string { return s.MergeTrainEnforcement })
+}
+
+func (p *mqlGitlabProject) externalAuthorizationClassificationLabel() (string, error) {
+	return settingsField(p, &p.ExternalAuthorizationClassificationLabel, func(s *projectSettingsPolicy) *string { return s.ExternalAuthorizationClassificationLabel })
+}
+
+func (p *mqlGitlabProject) mirrorOverwritesDivergedBranches() (bool, error) {
+	return settingsField(p, &p.MirrorOverwritesDivergedBranches, func(s *projectSettingsPolicy) *bool { return s.MirrorOverwritesDivergedBranches })
+}
+
+// mirrorUser resolves the account pull mirroring runs as. GitLab reports no
+// mirror user, or 0, for a project that is not a pull mirror.
+func (p *mqlGitlabProject) mirrorUser() (*mqlGitlabUser, error) {
+	_, settings, err := p.projectPolicies()
+	if err != nil {
+		return nil, err
+	}
+	if settings == nil || settings.MirrorUserID == nil || *settings.MirrorUserID <= 0 {
+		p.MirrorUser.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return gitlabUserRef(p.MqlRuntime, *settings.MirrorUserID)
 }
 
 // protectedBranches fetches protected branch settings
@@ -1089,6 +1296,8 @@ func (p *mqlGitlabProject) projectMembers() ([]any, error) {
 			"expiresAt":   llx.TimeDataPtr(expiresAt),
 			"createdAt":   llx.TimeDataPtr(member.CreatedAt),
 			"isUsingSeat": llx.BoolData(member.IsUsingSeat),
+			// The project members payload carries no SAML identity.
+			"samlIdentity": llx.NilData,
 		}
 
 		mqlMember, err := CreateResource(p.MqlRuntime, "gitlab.member", memberInfo)
@@ -1292,6 +1501,8 @@ func (p *mqlGitlabProject) webhooks() ([]any, error) {
 			"emojiEvents":               llx.BoolData(hook.EmojiEvents),
 			"repositoryUpdateEvents":    llx.BoolData(hook.RepositoryUpdateEvents),
 			"tokenPresent":              llx.BoolDataPtr(presence[i].TokenPresent),
+			"signingTokenPresent":       llx.BoolDataPtr(presence[i].SigningTokenPresent),
+			"resourceDeployTokenEvents": llx.BoolDataPtr(presence[i].ResourceDeployTokenEvents),
 			"branchFilterStrategy":      llx.StringData(hook.BranchFilterStrategy),
 			"customWebhookTemplate":     llx.StringData(hook.CustomWebhookTemplate),
 			"customHeaders":             llx.MapData(customHeaders, types.String),

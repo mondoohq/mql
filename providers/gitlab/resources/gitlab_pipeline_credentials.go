@@ -550,6 +550,8 @@ func (p *mqlGitlabProject) remoteMirrors() ([]any, error) {
 			"lastError":              llx.StringData(mirror.LastError),
 			"lastUpdateAt":           llx.TimeDataPtr(mirror.LastUpdateAt),
 			"lastSuccessfulUpdateAt": llx.TimeDataPtr(mirror.LastSuccessfulUpdateAt),
+			"lastUpdateStartedAt":    llx.TimeDataPtr(mirror.LastUpdateStartedAt),
+			"hostKeys":               stringsOrNull(mirrorHostKeyFingerprints(mirror.HostKeys)),
 		})
 		if err != nil {
 			return nil, err
@@ -560,4 +562,19 @@ func (p *mqlGitlabProject) remoteMirrors() ([]any, error) {
 	}
 
 	return res, nil
+}
+
+// mirrorHostKeyFingerprints returns the SHA256 fingerprints of a push mirror's
+// pinned SSH host keys, or nil when the mirror reports none.
+func mirrorHostKeyFingerprints(keys *[]gitlab.HostKey) []string {
+	if keys == nil || len(*keys) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(*keys))
+	for _, k := range *keys {
+		if k.FingerprintSHA256 != "" {
+			out = append(out, k.FingerprintSHA256)
+		}
+	}
+	return out
 }

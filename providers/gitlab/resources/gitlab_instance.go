@@ -104,6 +104,48 @@ type instanceSettingsPolicy struct {
 	RawBlobRequestLimit                             *int64 `json:"raw_blob_request_limit"`
 	RawBlobRequestLimitUnauthenticated              *int64 `json:"raw_blob_request_limit_unauthenticated"`
 	AuditEventsAPILimit                             *int64 `json:"audit_events_api_limit"`
+
+	// visibility, sign-up, and account lifecycle
+	RestrictedVisibilityLevels      []string `json:"restricted_visibility_levels"`
+	DisablePersonalAccessTokens     *bool    `json:"disable_personal_access_tokens"`
+	MaxSSHKeyLifetime               *int64   `json:"max_ssh_key_lifetime"`
+	EmailConfirmationSetting        *string  `json:"email_confirmation_setting"`
+	UserDefaultExternal             *bool    `json:"user_default_external"`
+	DeleteUnconfirmedUsers          *bool    `json:"delete_unconfirmed_users"`
+	UnconfirmedUsersDeleteAfterDays *int64   `json:"unconfirmed_users_delete_after_days"`
+	EnforceTerms                    *bool    `json:"enforce_terms"`
+	DisableFeedToken                *bool    `json:"disable_feed_token"`
+
+	// merge request approval rules
+	PreventMergeRequestsAuthorApproval     *bool `json:"prevent_merge_requests_author_approval"`
+	PreventMergeRequestsCommittersApproval *bool `json:"prevent_merge_requests_committers_approval"`
+
+	// directory-driven membership
+	LockMembershipsToLDAP        *bool `json:"lock_memberships_to_ldap"`
+	LockMembershipsToSAML        *bool `json:"lock_memberships_to_saml"`
+	AllowGroupOwnersToManageLDAP *bool `json:"allow_group_owners_to_manage_ldap"`
+
+	// runners, outbound requests, and integrations
+	ValidRunnerRegistrars          []string `json:"valid_runner_registrars"`
+	DNSRebindingProtectionEnabled  *bool    `json:"dns_rebinding_protection_enabled"`
+	OutboundLocalRequestsAllowlist []string `json:"outbound_local_requests_whitelist"`
+	GloballyAllowedIPs             *string  `json:"globally_allowed_ips"`
+	AllowAllIntegrations           *bool    `json:"allow_all_integrations"`
+	AllowedIntegrations            []string `json:"allowed_integrations"`
+
+	// OAuth applications and resource access tokens
+	DisableAdminOAuthScopes                     *bool  `json:"disable_admin_oauth_scopes"`
+	UserOAuthApplications                       *bool  `json:"user_oauth_applications"`
+	InactiveResourceAccessTokensDeleteAfterDays *int64 `json:"inactive_resource_access_tokens_delete_after_days"`
+
+	// project creation, deletion, export, and import
+	DefaultProjectDeletionProtection     *bool                            `json:"default_project_deletion_protection"`
+	AllowProjectCreationForGuestAndBelow *bool                            `json:"allow_project_creation_for_guest_and_below"`
+	ProjectExportEnabled                 *bool                            `json:"project_export_enabled"`
+	BulkImportEnabled                    *bool                            `json:"bulk_import_enabled"`
+	SilentAdminExportsEnabled            *bool                            `json:"silent_admin_exports_enabled"`
+	SecretPushProtectionAvailable        *bool                            `json:"secret_push_protection_available"`
+	DefaultBranchProtectionDefaults      *gitlab.BranchProtectionDefaults `json:"default_branch_protection_defaults"`
 }
 
 // getInstanceSettings fetches GET /application/settings once and returns both
@@ -191,6 +233,50 @@ func setInstanceSettingsPolicyArgs(args map[string]*llx.RawData, p *instanceSett
 	args["rawBlobRequestLimit"] = llx.IntDataPtr(p.RawBlobRequestLimit)
 	args["rawBlobRequestLimitUnauthenticated"] = llx.IntDataPtr(p.RawBlobRequestLimitUnauthenticated)
 	args["auditEventsApiLimit"] = llx.IntDataPtr(p.AuditEventsAPILimit)
+
+	args["restrictedVisibilityLevels"] = stringsOrNull(p.RestrictedVisibilityLevels)
+	args["disablePersonalAccessTokens"] = llx.BoolDataPtr(p.DisablePersonalAccessTokens)
+	args["maxSshKeyLifetime"] = llx.IntDataPtr(p.MaxSSHKeyLifetime)
+	args["emailConfirmationSetting"] = llx.StringDataPtr(p.EmailConfirmationSetting)
+	args["userDefaultExternal"] = llx.BoolDataPtr(p.UserDefaultExternal)
+	args["deleteUnconfirmedUsers"] = llx.BoolDataPtr(p.DeleteUnconfirmedUsers)
+	args["unconfirmedUsersDeleteAfterDays"] = llx.IntDataPtr(p.UnconfirmedUsersDeleteAfterDays)
+	args["enforceTerms"] = llx.BoolDataPtr(p.EnforceTerms)
+	args["disableFeedToken"] = llx.BoolDataPtr(p.DisableFeedToken)
+
+	args["preventMergeRequestsAuthorApproval"] = llx.BoolDataPtr(p.PreventMergeRequestsAuthorApproval)
+	args["preventMergeRequestsCommittersApproval"] = llx.BoolDataPtr(p.PreventMergeRequestsCommittersApproval)
+
+	args["lockMembershipsToLdap"] = llx.BoolDataPtr(p.LockMembershipsToLDAP)
+	args["lockMembershipsToSaml"] = llx.BoolDataPtr(p.LockMembershipsToSAML)
+	args["allowGroupOwnersToManageLdap"] = llx.BoolDataPtr(p.AllowGroupOwnersToManageLDAP)
+
+	args["validRunnerRegistrars"] = stringsOrNull(p.ValidRunnerRegistrars)
+	args["dnsRebindingProtectionEnabled"] = llx.BoolDataPtr(p.DNSRebindingProtectionEnabled)
+	args["outboundLocalRequestsAllowlist"] = stringsOrNull(p.OutboundLocalRequestsAllowlist)
+	if p.GloballyAllowedIPs == nil {
+		args["globallyAllowedIps"] = llx.NilData
+	} else {
+		args["globallyAllowedIps"] = stringsOrNull(splitCommaList(*p.GloballyAllowedIPs))
+	}
+	args["allowAllIntegrations"] = llx.BoolDataPtr(p.AllowAllIntegrations)
+	args["allowedIntegrations"] = stringsOrNull(p.AllowedIntegrations)
+
+	args["disableAdminOauthScopes"] = llx.BoolDataPtr(p.DisableAdminOAuthScopes)
+	args["userOauthApplications"] = llx.BoolDataPtr(p.UserOAuthApplications)
+	args["inactiveResourceAccessTokensDeleteAfterDays"] = llx.IntDataPtr(p.InactiveResourceAccessTokensDeleteAfterDays)
+
+	args["defaultProjectDeletionProtection"] = llx.BoolDataPtr(p.DefaultProjectDeletionProtection)
+	args["allowProjectCreationForGuestAndBelow"] = llx.BoolDataPtr(p.AllowProjectCreationForGuestAndBelow)
+	args["projectExportEnabled"] = llx.BoolDataPtr(p.ProjectExportEnabled)
+	args["bulkImportEnabled"] = llx.BoolDataPtr(p.BulkImportEnabled)
+	args["silentAdminExportsEnabled"] = llx.BoolDataPtr(p.SilentAdminExportsEnabled)
+	args["secretPushProtectionAvailable"] = llx.BoolDataPtr(p.SecretPushProtectionAvailable)
+	if p.DefaultBranchProtectionDefaults == nil {
+		args["defaultBranchProtection"] = llx.NilData
+	} else {
+		args["defaultBranchProtection"] = llx.DictData(branchProtectionDefaultsToDict(p.DefaultBranchProtectionDefaults))
+	}
 }
 
 //

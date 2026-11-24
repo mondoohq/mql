@@ -4,12 +4,14 @@
 package resources
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func TestGroupsToDicts(t *testing.T) {
@@ -103,4 +105,58 @@ func TestNamespaceArgs(t *testing.T) {
 		assert.Equal(t, int64(120), args["maxSeatsUsed"].Value)
 		assert.Equal(t, int64(98), args["seatsInUse"].Value)
 	})
+}
+
+func TestValueOrNull(t *testing.T) {
+	// Synthetic: an attribute GitLab omitted, and one it reported as false.
+	var field plugin.TValue[bool]
+	assert.False(t, valueOrNull(&field, nil))
+	assert.Equal(t, plugin.StateIsSet|plugin.StateIsNull, field.State, "an omitted attribute must read null, not false")
+
+	var reportedFalse plugin.TValue[bool]
+	f := false
+	assert.False(t, valueOrNull(&reportedFalse, &f))
+	assert.Equal(t, plugin.State(0), reportedFalse.State&plugin.StateIsNull, "a reported false must not be marked null")
+
+	var str plugin.TValue[string]
+	v := "maintainer"
+	assert.Equal(t, "maintainer", valueOrNull(&str, &v))
+}
+
+func TestReportedDistinguishesNullFromAbsent(t *testing.T) {
+	// Synthetic: the three shapes GitLab can send for a nullable attribute.
+	var out struct {
+		Value reported[string] `json:"value"`
+	}
+
+	require.NoError(t, json.Unmarshal([]byte(`{}`), &out))
+	assert.False(t, out.Value.Set, "an absent attribute is not set")
+	assert.Nil(t, out.Value.Value)
+
+	out.Value = reported[string]{}
+	require.NoError(t, json.Unmarshal([]byte(`{"value": null}`), &out))
+	assert.True(t, out.Value.Set, "an explicit null is set")
+	assert.Nil(t, out.Value.Value)
+
+	out.Value = reported[string]{}
+	require.NoError(t, json.Unmarshal([]byte(`{"value": "ci/main.yml"}`), &out))
+	assert.True(t, out.Value.Set)
+	require.NotNil(t, out.Value.Value)
+	assert.Equal(t, "ci/main.yml", *out.Value.Value)
+
+	assert.Error(t, json.Unmarshal([]byte(`{"value": 5}`), &out), "a value of the wrong type must not decode silently")
+}
+
+func TestStringsOrNull(t *testing.T) {
+	// Synthetic: an unreported list, an empty list, and a populated one.
+	assert.Nil(t, stringsOrNull(nil).Value, "an unreported list must read null")
+	assert.Equal(t, []any{}, stringsOrNull([]string{}).Value, "an empty list must stay an empty list")
+	assert.Equal(t, []any{"group", "project"}, stringsOrNull([]string{"group", "project"}).Value)
+}
+
+func TestSplitCommaList(t *testing.T) {
+	// Synthetic: globally_allowed_ips is a comma-separated string.
+	assert.Equal(t, []string{}, splitCommaList(""))
+	assert.Equal(t, []string{"10.0.0.0/8"}, splitCommaList("10.0.0.0/8"))
+	assert.Equal(t, []string{"10.0.0.0/8", "192.168.1.1", "2001:db8::/32"}, splitCommaList(" 10.0.0.0/8, 192.168.1.1 ,,2001:db8::/32,"))
 }

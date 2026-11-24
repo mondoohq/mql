@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"encoding/json"
 	"errors"
 	"slices"
 	"strconv"
@@ -240,38 +241,124 @@ func populateGroupDetailArgs(args map[string]*llx.RawData, grp *gitlab.Group) {
 }
 
 type mqlGitlabGroupInternal struct {
-	detailLock sync.Mutex
-	detail     *gitlab.Group
+	detailLock   sync.Mutex
+	detail       *gitlab.Group
+	detailPolicy *groupPolicy
+}
+
+// groupPolicy is the pointer-typed view of the group settings GitLab returns
+// only for some groups: top-level groups for the sharing restriction, and
+// Premium or Ultimate tiers for the rest. The SDK types them as a plain bool,
+// string, or int, so an omitted attribute would otherwise read as off.
+type groupPolicy struct {
+	PreventSharingGroupsOutsideHierarchy *bool   `json:"prevent_sharing_groups_outside_hierarchy"`
+	EnabledGitAccessProtocol             *string `json:"enabled_git_access_protocol"`
+	DuoAvailability                      *string `json:"duo_availability"`
+	ExperimentFeaturesEnabled            *bool   `json:"experiment_features_enabled"`
+	FileTemplateProjectID                *int64  `json:"file_template_project_id"`
 }
 
 // groupDetail fetches the group from the single-group endpoint once and
 // caches it, so one call feeds every field that only that endpoint returns.
 func (g *mqlGitlabGroup) groupDetail() (*gitlab.Group, error) {
+	grp, _, err := g.groupDetailWithPolicy()
+	return grp, err
+}
+
+func (g *mqlGitlabGroup) groupDetailWithPolicy() (*gitlab.Group, *groupPolicy, error) {
 	g.detailLock.Lock()
 	defer g.detailLock.Unlock()
 	if g.detail != nil {
-		return g.detail, nil
+		return g.detail, g.detailPolicy, nil
 	}
 	conn := g.MqlRuntime.Connection.(*connection.GitLabConnection)
-	grp, err := getGroupDetail(conn.Client(), g.Id.Data)
+	grp, policy, err := getGroupDetailWithPolicy(conn.Client(), g.Id.Data)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	g.detail = grp
-	return grp, nil
+	g.detailPolicy = policy
+	return grp, policy, nil
 }
 
 // getGroupDetail reads a group from GET /groups/:id. A 403 is a refusal and
 // comes back as llx.Forbidden.
 func getGroupDetail(client *gitlab.Client, id int64) (*gitlab.Group, error) {
-	grp, _, err := client.Groups.GetGroup(int(id), nil)
-	if err != nil {
+	grp, _, err := getGroupDetailWithPolicy(client, id)
+	return grp, err
+}
+
+// getGroupDetailWithPolicy reads GET /groups/:id once and decodes it into both
+// the SDK type and the pointer-typed groupPolicy.
+func getGroupDetailWithPolicy(client *gitlab.Client, id int64) (*gitlab.Group, *groupPolicy, error) {
+	var raw json.RawMessage
+	if _, err := getRawJSON(client, "groups/"+strconv.FormatInt(id, 10), nil, &raw); err != nil {
 		if isGitlabStatus(err, 403) {
-			return nil, llx.Forbidden(err)
+			return nil, nil, llx.Forbidden(err)
 		}
+		return nil, nil, err
+	}
+	grp := &gitlab.Group{}
+	if err := json.Unmarshal(raw, grp); err != nil {
+		return nil, nil, err
+	}
+	policy := &groupPolicy{}
+	if err := json.Unmarshal(raw, policy); err != nil {
+		return nil, nil, err
+	}
+	return grp, policy, nil
+}
+
+func (g *mqlGitlabGroup) preventSharingGroupsOutsideHierarchy() (bool, error) {
+	_, policy, err := g.groupDetailWithPolicy()
+	if err != nil {
+		return false, err
+	}
+	return valueOrNull(&g.PreventSharingGroupsOutsideHierarchy, policy.PreventSharingGroupsOutsideHierarchy), nil
+}
+
+func (g *mqlGitlabGroup) enabledGitAccessProtocol() (string, error) {
+	_, policy, err := g.groupDetailWithPolicy()
+	if err != nil {
+		return "", err
+	}
+	return valueOrNull(&g.EnabledGitAccessProtocol, policy.EnabledGitAccessProtocol), nil
+}
+
+func (g *mqlGitlabGroup) duoAvailability() (string, error) {
+	_, policy, err := g.groupDetailWithPolicy()
+	if err != nil {
+		return "", err
+	}
+	return valueOrNull(&g.DuoAvailability, policy.DuoAvailability), nil
+}
+
+func (g *mqlGitlabGroup) experimentFeaturesEnabled() (bool, error) {
+	_, policy, err := g.groupDetailWithPolicy()
+	if err != nil {
+		return false, err
+	}
+	return valueOrNull(&g.ExperimentFeaturesEnabled, policy.ExperimentFeaturesEnabled), nil
+}
+
+// fileTemplateProject resolves the project supplying the group's custom file
+// templates. GitLab reports null or 0 when none is configured.
+func (g *mqlGitlabGroup) fileTemplateProject() (*mqlGitlabProject, error) {
+	_, policy, err := g.groupDetailWithPolicy()
+	if err != nil {
 		return nil, err
 	}
-	return grp, nil
+	if policy.FileTemplateProjectID == nil || *policy.FileTemplateProjectID <= 0 {
+		g.FileTemplateProject.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(g.MqlRuntime, "gitlab.project", map[string]*llx.RawData{
+		"id": llx.IntData(*policy.FileTemplateProjectID),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGitlabProject), nil
 }
 
 func (g *mqlGitlabGroup) requireShaForMerge() (bool, error) {
@@ -530,15 +617,16 @@ func (g *mqlGitlabGroup) members() ([]any, error) {
 			// and a subgroup membership for the same user land in the same
 			// runtime — keying on the user id alone made the second one
 			// resolve to the first, hiding a deliberately narrowed role.
-			"__id":        llx.StringData(groupScopedID("gitlab.member/group", g.Id.Data, strconv.FormatInt(member.ID, 10))),
-			"id":          llx.IntData(member.ID),
-			"user":        llx.ResourceData(mqlUser, "gitlab.user"),
-			"role":        llx.StringData(role),
-			"accessLevel": llx.IntData(int64(member.AccessLevel)),
-			"state":       llx.StringData(member.State),
-			"expiresAt":   llx.TimeDataPtr(expiresAt),
-			"createdAt":   llx.TimeDataPtr(member.CreatedAt),
-			"isUsingSeat": llx.BoolData(member.IsUsingSeat),
+			"__id":         llx.StringData(groupScopedID("gitlab.member/group", g.Id.Data, strconv.FormatInt(member.ID, 10))),
+			"id":           llx.IntData(member.ID),
+			"user":         llx.ResourceData(mqlUser, "gitlab.user"),
+			"role":         llx.StringData(role),
+			"accessLevel":  llx.IntData(int64(member.AccessLevel)),
+			"state":        llx.StringData(member.State),
+			"expiresAt":    llx.TimeDataPtr(expiresAt),
+			"createdAt":    llx.TimeDataPtr(member.CreatedAt),
+			"isUsingSeat":  llx.BoolData(member.IsUsingSeat),
+			"samlIdentity": samlIdentityData(member.GroupSAMLIdentity),
 		}
 
 		mqlMember, err := CreateResource(g.MqlRuntime, "gitlab.member", memberInfo)
@@ -1302,6 +1390,9 @@ func (g *mqlGitlabGroup) webhooks() ([]any, error) {
 			// false this used to report claimed the trigger was switched off.
 			"repositoryUpdateEvents": llx.BoolDataPtr(nil),
 			"tokenPresent":           llx.BoolDataPtr(presence[i].TokenPresent),
+			"signingTokenPresent":    llx.BoolDataPtr(presence[i].SigningTokenPresent),
+			"disabledUntil":          llx.TimeDataPtr(hook.DisabledUntil),
+			"urlVariables":           llx.ArrayData(hookURLVariableNames(hook.URLVariables), types.String),
 			"subGroupEvents":         llx.BoolData(hook.SubGroupEvents),
 			"memberEvents":           llx.BoolData(hook.MemberEvents),
 			"projectEvents":          llx.BoolData(hook.ProjectEvents),
@@ -1322,4 +1413,29 @@ func (g *mqlGitlabGroup) webhooks() ([]any, error) {
 	}
 
 	return mqlWebhooks, nil
+}
+
+// hookURLVariableNames returns the names of a hook's URL variables. The values
+// can hold credentials embedded in the URL, so they are never reported.
+func hookURLVariableNames(vars []gitlab.HookURLVariable) []any {
+	names := make([]any, 0, len(vars))
+	for _, v := range vars {
+		if v.Key == "" {
+			continue
+		}
+		names = append(names, v.Key)
+	}
+	return names
+}
+
+// samlIdentityData reports a group member's SAML identity as a dict, or null
+// when the member has none.
+func samlIdentityData(identity *gitlab.GroupMemberSAMLIdentity) *llx.RawData {
+	if identity == nil {
+		return llx.NilData
+	}
+	return llx.DictData(map[string]any{
+		"externUid": identity.ExternUID,
+		"provider":  identity.Provider,
+	})
 }

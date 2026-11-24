@@ -11,6 +11,9 @@ import (
 	"time"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 // getRawJSON issues a GET through the SDK client and decodes the body into out.
@@ -69,11 +72,13 @@ func listRawPages(c *gitlab.Client, path string, perPage int64) ([]json.RawMessa
 // unauthenticated. repositoryUpdateEvents is here for the same reason: the group
 // webhook field of that name shipped as a permanent false because the API never
 // sent the attribute. It applies to instance, group, and project hooks alike,
-// though not every tier answers with every attribute.
+// though not every tier answers with every attribute. resourceDeployTokenEvents
+// is a project hook trigger newer releases added.
 type hookPosture struct {
-	TokenPresent           *bool `json:"token_present"`
-	SigningTokenPresent    *bool `json:"signing_token_present"`
-	RepositoryUpdateEvents *bool `json:"repository_update_events"`
+	TokenPresent              *bool `json:"token_present"`
+	SigningTokenPresent       *bool `json:"signing_token_present"`
+	RepositoryUpdateEvents    *bool `json:"repository_update_events"`
+	ResourceDeployTokenEvents *bool `json:"resource_deploy_token_events"`
 }
 
 // decodeHooks decodes one page of hooks into the SDK type and the posture
@@ -177,4 +182,64 @@ func labelPriority(priority gitlab.Nullable[int64]) int64 {
 		return 0
 	}
 	return value
+}
+
+// valueOrNull returns *v, or marks the field null and returns the zero value
+// when v is nil. Computed accessors use it for attributes GitLab omits for a
+// token below the role that may read them, or on a tier or release that lacks
+// the setting, so the omission reads as null instead of as false, 0, or "".
+func valueOrNull[T any](field *plugin.TValue[T], v *T) T {
+	if v == nil {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		var zero T
+		return zero
+	}
+	return *v
+}
+
+// reported decodes an attribute whose explicit null carries meaning (GitLab's
+// "not configured, use the default"), keeping it apart from an attribute the
+// payload did not include at all. Set is true whenever the key was present.
+type reported[T any] struct {
+	Set   bool
+	Value *T
+}
+
+func (r *reported[T]) UnmarshalJSON(b []byte) error {
+	r.Set = true
+	if string(b) == "null" {
+		r.Value = nil
+		return nil
+	}
+	v := new(T)
+	if err := json.Unmarshal(b, v); err != nil {
+		return err
+	}
+	r.Value = v
+	return nil
+}
+
+// stringsOrNull converts a decoded string list to MQL, keeping nil (attribute
+// not reported) as null and an empty list as an empty list.
+func stringsOrNull(values []string) *llx.RawData {
+	if values == nil {
+		return llx.NilData
+	}
+	out := make([]any, 0, len(values))
+	for _, v := range values {
+		out = append(out, v)
+	}
+	return llx.ArrayData(out, types.String)
+}
+
+// splitCommaList splits a comma-separated setting into its trimmed entries,
+// dropping empty ones.
+func splitCommaList(value string) []string {
+	out := []string{}
+	for _, part := range strings.Split(value, ",") {
+		if entry := strings.TrimSpace(part); entry != "" {
+			out = append(out, entry)
+		}
+	}
+	return out
 }

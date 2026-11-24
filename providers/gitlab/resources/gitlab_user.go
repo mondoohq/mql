@@ -302,6 +302,54 @@ func (u *mqlGitlabUser) sharedRunnersMinutesLimit() (int64, error) {
 	return user.SharedRunnersMinutesLimit, nil
 }
 
+// commitEmail is null rather than empty when the token cannot read it: GitLab
+// returns commit_email only to administrators and to the user themselves, and
+// fills it with the primary address when no other is chosen.
+func (u *mqlGitlabUser) commitEmail() (string, error) {
+	user, err := u.fetchUser()
+	if err != nil {
+		return "", err
+	}
+	if user == nil || user.CommitEmail == "" {
+		u.CommitEmail.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return user.CommitEmail, nil
+}
+
+// scimIdentities lists the group SCIM identities linked to the user. They are
+// the same resources gitlab.group.scimIdentities returns, keyed the same way.
+func (u *mqlGitlabUser) scimIdentities() ([]any, error) {
+	user, err := u.fetchUser()
+	if err != nil {
+		return nil, err
+	}
+	if user == nil || user.SCIMIdentities == nil {
+		u.ScimIdentities.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	out := make([]any, 0, len(user.SCIMIdentities))
+	for _, identity := range user.SCIMIdentities {
+		if identity == nil {
+			continue
+		}
+		res, err := CreateResource(u.MqlRuntime, "gitlab.group.scimIdentity", map[string]*llx.RawData{
+			"__id":        llx.StringData(groupScopedID("gitlab.group.scimIdentity", identity.GroupID, strconv.FormatInt(u.Id.Data, 10), identity.ExternUID)),
+			"externalUid": llx.StringData(identity.ExternUID),
+			"active":      llx.BoolData(identity.Active),
+		})
+		if err != nil {
+			return nil, err
+		}
+		mqlIdentity := res.(*mqlGitlabGroupScimIdentity)
+		mqlIdentity.groupID = identity.GroupID
+		mqlIdentity.cacheUserID = u.Id.Data
+		out = append(out, mqlIdentity)
+	}
+	return out, nil
+}
+
 // mqlGitlabUserExternalIdentityInternal carries the parent user ID so the
 // `user()` accessor can resolve back to the typed gitlab.user resource.
 type mqlGitlabUserExternalIdentityInternal struct {
@@ -489,16 +537,21 @@ func (u *mqlGitlabUser) personalAccessTokens() ([]any, error) {
 			e := time.Time(*t.ExpiresAt)
 			expiresAt = &e
 		}
+		granularScopes, err := granularScopesData(u.MqlRuntime, t.ID, t.GranularScopes)
+		if err != nil {
+			return nil, err
+		}
 		res, err := CreateResource(u.MqlRuntime, "gitlab.user.personalAccessToken", map[string]*llx.RawData{
-			"id":          llx.IntData(t.ID),
-			"name":        llx.StringData(t.Name),
-			"description": llx.StringData(t.Description),
-			"active":      llx.BoolData(t.Active),
-			"revoked":     llx.BoolData(t.Revoked),
-			"scopes":      llx.ArrayData(convert.SliceAnyToInterface(t.Scopes), types.String),
-			"createdAt":   llx.TimeDataPtr(t.CreatedAt),
-			"expiresAt":   llx.TimeDataPtr(expiresAt),
-			"lastUsedAt":  llx.TimeDataPtr(t.LastUsedAt),
+			"granularScopes": granularScopes,
+			"id":             llx.IntData(t.ID),
+			"name":           llx.StringData(t.Name),
+			"description":    llx.StringData(t.Description),
+			"active":         llx.BoolData(t.Active),
+			"revoked":        llx.BoolData(t.Revoked),
+			"scopes":         llx.ArrayData(convert.SliceAnyToInterface(t.Scopes), types.String),
+			"createdAt":      llx.TimeDataPtr(t.CreatedAt),
+			"expiresAt":      llx.TimeDataPtr(expiresAt),
+			"lastUsedAt":     llx.TimeDataPtr(t.LastUsedAt),
 		})
 		if err != nil {
 			return nil, err
@@ -551,4 +604,94 @@ func (u *mqlGitlabUser) emails() ([]any, error) {
 		out = append(out, res)
 	}
 	return out, nil
+}
+
+//
+// Fine-grained token scopes
+//
+
+// mqlGitlabGranularScopeInternal holds the project or group a scope is
+// limited to, resolved lazily by the typed accessors.
+type mqlGitlabGranularScopeInternal struct {
+	cacheProjectID int64
+	cacheGroupID   int64
+}
+
+func (g *mqlGitlabGranularScope) project() (*mqlGitlabProject, error) {
+	if g.cacheProjectID <= 0 {
+		g.Project.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(g.MqlRuntime, "gitlab.project", map[string]*llx.RawData{
+		"id": llx.IntData(g.cacheProjectID),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGitlabProject), nil
+}
+
+func (g *mqlGitlabGranularScope) group() (*mqlGitlabGroup, error) {
+	if g.cacheGroupID <= 0 {
+		g.Group.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(g.MqlRuntime, "gitlab.group", map[string]*llx.RawData{
+		"id": llx.IntData(g.cacheGroupID),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGitlabGroup), nil
+}
+
+// granularScopeID keys a scope on its token and position. Personal access
+// token ids are unique across the instance, and a scope has no id of its own.
+func granularScopeID(tokenID int64, index int) string {
+	return "gitlab.granularScope/" + strconv.FormatInt(tokenID, 10) + "/" + strconv.Itoa(index)
+}
+
+// newGranularScopes builds the gitlab.granularScope resources of one token.
+// It returns nil for a token without granular scopes, which GitLab reports by
+// omitting the attribute.
+func newGranularScopes(runtime *plugin.Runtime, tokenID int64, scopes []*gitlab.GranularScope) ([]any, error) {
+	if scopes == nil {
+		return nil, nil
+	}
+	out := make([]any, 0, len(scopes))
+	for i, scope := range scopes {
+		if scope == nil {
+			continue
+		}
+		res, err := CreateResource(runtime, "gitlab.granularScope", map[string]*llx.RawData{
+			"__id":        llx.StringData(granularScopeID(tokenID, i)),
+			"access":      llx.StringData(string(scope.Access)),
+			"permissions": llx.ArrayData(convert.SliceAnyToInterface(scope.Permissions), types.String),
+		})
+		if err != nil {
+			return nil, err
+		}
+		mqlScope := res.(*mqlGitlabGranularScope)
+		if scope.ProjectID != nil {
+			mqlScope.cacheProjectID = *scope.ProjectID
+		}
+		if scope.GroupID != nil {
+			mqlScope.cacheGroupID = *scope.GroupID
+		}
+		out = append(out, mqlScope)
+	}
+	return out, nil
+}
+
+// granularScopesData builds a token's granularScopes field, null when the
+// token has none.
+func granularScopesData(runtime *plugin.Runtime, tokenID int64, scopes []*gitlab.GranularScope) (*llx.RawData, error) {
+	out, err := newGranularScopes(runtime, tokenID, scopes)
+	if err != nil {
+		return nil, err
+	}
+	if out == nil {
+		return llx.NilData, nil
+	}
+	return llx.ArrayData(out, types.Resource("gitlab.granularScope")), nil
 }

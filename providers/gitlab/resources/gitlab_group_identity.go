@@ -91,16 +91,18 @@ func (g *mqlGitlabGroup) enterpriseAccessTokens() ([]any, error) {
 	res := make([]any, 0, len(all))
 	for _, token := range all {
 		mqlToken, err := CreateResource(g.MqlRuntime, "gitlab.group.enterpriseAccessToken", map[string]*llx.RawData{
-			"__id":        llx.StringData(groupScopedID("gitlab.group.enterpriseAccessToken", g.Id.Data, strconv.FormatInt(token.ID, 10))),
-			"id":          llx.IntData(token.ID),
-			"name":        llx.StringData(token.Name),
-			"description": llx.StringData(token.Description),
-			"scopes":      llx.ArrayData(convert.SliceAnyToInterface(token.Scopes), types.String),
-			"active":      llx.BoolData(token.Active),
-			"revoked":     llx.BoolData(token.Revoked),
-			"createdAt":   llx.TimeDataPtr(token.CreatedAt),
-			"expiresAt":   llx.TimeDataPtr(isoTimePtr(token.ExpiresAt)),
-			"lastUsedAt":  llx.TimeDataPtr(token.LastUsedAt),
+			"__id": llx.StringData(groupScopedID("gitlab.group.enterpriseAccessToken", g.Id.Data, strconv.FormatInt(token.ID, 10))),
+			// The enterprise user token listing does not report granular scopes.
+			"granularScopes": llx.NilData,
+			"id":             llx.IntData(token.ID),
+			"name":           llx.StringData(token.Name),
+			"description":    llx.StringData(token.Description),
+			"scopes":         llx.ArrayData(convert.SliceAnyToInterface(token.Scopes), types.String),
+			"active":         llx.BoolData(token.Active),
+			"revoked":        llx.BoolData(token.Revoked),
+			"createdAt":      llx.TimeDataPtr(token.CreatedAt),
+			"expiresAt":      llx.TimeDataPtr(isoTimePtr(token.ExpiresAt)),
+			"lastUsedAt":     llx.TimeDataPtr(token.LastUsedAt),
 		})
 		if err != nil {
 			return nil, err
@@ -225,18 +227,23 @@ func (a *mqlGitlabGroupServiceAccount) accessTokens() ([]any, error) {
 
 	res := make([]any, 0, len(all))
 	for _, token := range all {
+		granularScopes, err := granularScopesData(a.MqlRuntime, token.ID, token.GranularScopes)
+		if err != nil {
+			return nil, err
+		}
 		// Token is intentionally omitted: it carries a live credential.
 		mqlToken, err := CreateResource(a.MqlRuntime, "gitlab.group.enterpriseAccessToken", map[string]*llx.RawData{
-			"__id":        llx.StringData(groupScopedID("gitlab.group.enterpriseAccessToken", a.groupID, strconv.FormatInt(token.ID, 10))),
-			"id":          llx.IntData(token.ID),
-			"name":        llx.StringData(token.Name),
-			"description": llx.StringData(token.Description),
-			"scopes":      llx.ArrayData(convert.SliceAnyToInterface(token.Scopes), types.String),
-			"active":      llx.BoolData(token.Active),
-			"revoked":     llx.BoolData(token.Revoked),
-			"createdAt":   llx.TimeDataPtr(token.CreatedAt),
-			"expiresAt":   llx.TimeDataPtr(isoTimePtr(token.ExpiresAt)),
-			"lastUsedAt":  llx.TimeDataPtr(token.LastUsedAt),
+			"__id":           llx.StringData(groupScopedID("gitlab.group.enterpriseAccessToken", a.groupID, strconv.FormatInt(token.ID, 10))),
+			"granularScopes": granularScopes,
+			"id":             llx.IntData(token.ID),
+			"name":           llx.StringData(token.Name),
+			"description":    llx.StringData(token.Description),
+			"scopes":         llx.ArrayData(convert.SliceAnyToInterface(token.Scopes), types.String),
+			"active":         llx.BoolData(token.Active),
+			"revoked":        llx.BoolData(token.Revoked),
+			"createdAt":      llx.TimeDataPtr(token.CreatedAt),
+			"expiresAt":      llx.TimeDataPtr(isoTimePtr(token.ExpiresAt)),
+			"lastUsedAt":     llx.TimeDataPtr(token.LastUsedAt),
 		})
 		if err != nil {
 			return nil, err
@@ -371,6 +378,20 @@ func (i *mqlGitlabGroupScimIdentity) id() (string, error) {
 type mqlGitlabGroupScimIdentityInternal struct {
 	groupID     int64
 	cacheUserID int64
+}
+
+func (i *mqlGitlabGroupScimIdentity) group() (*mqlGitlabGroup, error) {
+	if i.groupID <= 0 {
+		i.Group.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(i.MqlRuntime, "gitlab.group", map[string]*llx.RawData{
+		"id": llx.IntData(i.groupID),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGitlabGroup), nil
 }
 
 func (i *mqlGitlabGroupScimIdentity) user() (*mqlGitlabUser, error) {

@@ -359,6 +359,139 @@ gitlab.settings @defaults("requireTwoFactorAuthentication") {
   //
   // Null on instances that do not report the setting.
   auditEventsApiLimit int
+  // Visibility levels that only administrators may assign to groups, projects, and snippets
+  //
+  // One or more of private, internal, or public. Null on instances that do not
+  // report the setting.
+  restrictedVisibilityLevels []string
+  // Whether personal access tokens are switched off for the whole instance
+  //
+  // Null on instances that do not report the setting.
+  disablePersonalAccessTokens bool
+  // Maximum lifetime, in days, allowed for an SSH key
+  //
+  // Null when the instance sets no ceiling on SSH key lifetime, and on
+  // instances that do not report the setting.
+  maxSshKeyLifetime int
+  // Whether the author of a merge request is barred from approving it
+  //
+  // Null on instances that do not report the setting.
+  preventMergeRequestsAuthorApproval bool
+  // Whether users who committed to a merge request are barred from approving it
+  //
+  // Null on instances that do not report the setting.
+  preventMergeRequestsCommittersApproval bool
+  // Whether new accounts must confirm their email address before signing in
+  //
+  // One of off, soft (sign-in allowed for a grace period), or hard (sign-in
+  // blocked until confirmed). Null on instances that do not report the setting.
+  emailConfirmationSetting string
+  // Whether new accounts are created as external users
+  //
+  // Null on instances that do not report the setting.
+  userDefaultExternal bool
+  // Whether accounts that never confirm their email address are deleted automatically
+  //
+  // Null on instances that do not report the setting.
+  deleteUnconfirmedUsers bool
+  // Days an unconfirmed account is kept before it is deleted
+  //
+  // Takes effect only while deleteUnconfirmedUsers is true. Null on instances
+  // that do not report the setting.
+  unconfirmedUsersDeleteAfterDays int
+  // Whether group membership can only be changed through LDAP synchronization
+  //
+  // Null on instances that do not report the setting.
+  lockMembershipsToLdap bool
+  // Whether group membership can only be changed through SAML group synchronization
+  //
+  // Null on instances that do not report the setting.
+  lockMembershipsToSaml bool
+  // Whether group owners may manage the LDAP group links of their groups
+  //
+  // Null on instances that do not report the setting.
+  allowGroupOwnersToManageLdap bool
+  // Scopes at which users may register runners
+  //
+  // One or more of group and project. An empty list leaves runner registration
+  // to administrators. Null on instances that do not report the setting.
+  validRunnerRegistrars []string
+  // Whether DNS rebinding protection is applied to outbound requests
+  //
+  // False leaves webhooks and integrations open to a hostname that resolves to
+  // a public address when checked and a local one when used. Null on instances
+  // that do not report the setting.
+  dnsRebindingProtectionEnabled bool
+  // Hosts and address ranges that webhooks and integrations may reach on the local network
+  //
+  // Entries here are exempt from the local-network block even while
+  // allowLocalRequestsFromWebHooksAndServices is false. Null on instances that
+  // do not report the setting.
+  outboundLocalRequestsAllowlist []string
+  // Whether users must accept the terms of service before using the instance
+  //
+  // Null on instances that do not report the setting.
+  enforceTerms bool
+  // Whether OAuth applications are refused the api scope for administrator accounts
+  //
+  // Null on instances that do not report the setting.
+  disableAdminOauthScopes bool
+  // Whether users may register their own OAuth applications
+  //
+  // Null on instances that do not report the setting.
+  userOauthApplications bool
+  // Days after which an inactive project or group access token is deleted
+  //
+  // Null on instances that do not report the setting.
+  inactiveResourceAccessTokensDeleteAfterDays int
+  // Whether new projects are protected from deletion by default
+  //
+  // Null on instances that do not report the setting.
+  defaultProjectDeletionProtection bool
+  // Whether users with the Guest role or below may create projects
+  //
+  // Null on instances that do not report the setting.
+  allowProjectCreationForGuestAndBelow bool
+  // Whether project export is enabled
+  //
+  // Null on instances that do not report the setting.
+  projectExportEnabled bool
+  // Whether migrating groups and projects by direct transfer is enabled
+  //
+  // Null on instances that do not report the setting.
+  bulkImportEnabled bool
+  // Whether exports run by an administrator are left out of the audit log
+  //
+  // Null on instances that do not report the setting.
+  silentAdminExportsEnabled bool
+  // Whether secret push protection can be turned on for projects
+  //
+  // Null on instances that do not report the setting.
+  secretPushProtectionAvailable bool
+  // Whether feed tokens are switched off for the whole instance
+  //
+  // Null on instances that do not report the setting.
+  disableFeedToken bool
+  // IP addresses and ranges exempt from the group IP address restrictions
+  //
+  // Null on instances that do not report the setting.
+  globallyAllowedIps []string
+  // Whether every integration may be configured on projects and groups
+  //
+  // When false, only the integrations in allowedIntegrations may be configured.
+  // Null on instances that do not report the setting.
+  allowAllIntegrations bool
+  // Integrations that may be configured while allowAllIntegrations is false
+  //
+  // Null on instances that do not report the setting.
+  allowedIntegrations []string
+  // Default branch-protection policy for new groups and projects
+  //
+  // A dict with allowForcePush, developerCanInitialPush,
+  // codeOwnerApprovalRequired, allowedToPush, and allowedToMerge keys, the same
+  // shape as the group field of the same name. Null on instances that do not
+  // report the setting.
+  defaultBranchProtection dict
 
   // CI/CD variables defined at instance scope
   variables() []gitlab.settings.variable
@@ -460,6 +593,14 @@ gitlab.user @defaults("username name state") {
   personalAccessTokens() []gitlab.user.personalAccessToken
   // Email addresses registered to this user (requires admin or self-access)
   emails() []gitlab.user.emailAddress
+  // Email address recorded on commits made through the web interface
+  //
+  // Null when the token cannot read the user's private profile details.
+  commitEmail() string
+  // Group SCIM identities linked to the user
+  //
+  // Null when the token cannot read the user's private profile details.
+  scimIdentities() []gitlab.group.scimIdentity
 }
 
 // GitLab personal access token
@@ -487,6 +628,29 @@ private gitlab.user.personalAccessToken @defaults("name active expiresAt") {
   expiresAt time
   // When the token was last used
   lastUsedAt time
+  // Permissions of a fine-grained token, one entry per scope
+  //
+  // Null for a token created with scopes rather than granular scopes.
+  granularScopes []gitlab.granularScope
+}
+
+// Scope of a fine-grained access token
+//
+// One scope of a fine-grained personal access token: the resources it reaches
+// (`access`), the `permissions` it grants there, and, when the scope targets
+// selected memberships, the `project` or `group` it is limited to.
+private gitlab.granularScope @defaults("access permissions") {
+  // Resources the scope reaches
+  //
+  // One of personal_projects, all_memberships, selected_memberships, user, or
+  // instance.
+  access string
+  // Permissions the scope grants
+  permissions []string
+  // Project the scope is limited to, or null when it does not target one project
+  project() gitlab.project
+  // Group the scope is limited to, or null when it does not target one group
+  group() gitlab.group
 }
 
 // External SSO identity linked to a GitLab user (SAML, LDAP, OAuth provider, etc.)
@@ -568,6 +732,11 @@ private gitlab.member @defaults("user role") {
   createdAt time
   // Whether this member consumes a billable seat
   isUsingSeat bool
+  // SAML identity linking the member to the group's identity provider
+  //
+  // A dict with externUid and provider keys. Null for project members and for
+  // group members with no SAML identity.
+  samlIdentity dict
   // User who granted this membership, or null when GitLab does not report it
   createdBy() gitlab.user
   // Custom role assigned to this member, or null when the member holds only a standard role
@@ -828,6 +997,27 @@ gitlab.group @defaults("name visibility webURL") @root {
   webhooks() []gitlab.group.webhook
   // CI/CD variables defined at the group level (inherited by every project in the group)
   variables() []gitlab.group.variable
+  // Whether the group may only be shared with groups inside its own hierarchy
+  //
+  // Null for subgroups and on instances that do not report the setting.
+  preventSharingGroupsOutsideHierarchy() bool
+  // Git access protocols allowed for the group
+  //
+  // One of all, ssh, or http. Null on instances that do not report the setting.
+  enabledGitAccessProtocol() string
+  // Availability of GitLab Duo features in the group
+  //
+  // One of default_on, default_off, or never_on. Null on instances that do not
+  // report the setting.
+  duoAvailability() string
+  // Whether experiment and beta GitLab Duo features are enabled for the group
+  //
+  // Null on instances that do not report the setting.
+  experimentFeaturesEnabled() bool
+  // Project that supplies custom file templates to the group
+  //
+  // Null when the group has none or the instance does not report the setting.
+  fileTemplateProject() gitlab.project
 }
 
 // GitLab SAML group link
@@ -1186,6 +1376,140 @@ gitlab.project @defaults("fullName visibility webURL") @root {
   remoteMirrors() []gitlab.project.remoteMirror
   // Requests to join the project
   accessRequests() []gitlab.project.accessRequest
+  // Visibility of the releases feature (disabled, private, enabled)
+  //
+  // Empty on instances that do not report it.
+  releasesAccessLevel string
+  // Visibility of GitLab Pages (disabled, private, enabled, public)
+  //
+  // Empty on instances that do not report it.
+  pagesAccessLevel string
+  // Visibility of the environments feature (disabled, private, enabled)
+  //
+  // Empty on instances that do not report it.
+  environmentsAccessLevel string
+  // Visibility of the package registry (disabled, private, enabled, public)
+  //
+  // Empty on instances that do not report it.
+  packageRegistryAccessLevel string
+  // Visibility of the feature flags feature (disabled, private, enabled)
+  //
+  // Empty on instances that do not report it.
+  featureFlagsAccessLevel string
+  // Visibility of the infrastructure feature (disabled, private, enabled)
+  //
+  // Empty on instances that do not report it.
+  infrastructureAccessLevel string
+  // Visibility of the monitor feature (disabled, private, enabled)
+  //
+  // Empty on instances that do not report it.
+  monitorAccessLevel string
+  // Visibility of the analytics feature (disabled, private, enabled)
+  //
+  // Empty on instances that do not report it.
+  analyticsAccessLevel string
+  // Visibility of the requirements feature (disabled, private, enabled)
+  //
+  // Empty on instances that do not report it.
+  requirementsAccessLevel string
+  // Date the project is scheduled for deletion, or null when it is not
+  markedForDeletionOn time
+  // Topics assigned to the project
+  topics []string
+  // Minimum role allowed to override pipeline variables when running a pipeline
+  //
+  // One of no_one_allowed, developer, maintainer, or owner. Null when the token
+  // cannot read the project's CI/CD settings.
+  ciPipelineVariablesMinimumOverrideRole() string
+  // Whether a job token may push to this project's repository
+  //
+  // Null when the token cannot read the project's CI/CD settings.
+  ciPushRepositoryForJobTokenAllowed() bool
+  // Whether jobs on protected branches use caches separate from jobs on unprotected branches
+  //
+  // False lets a job on an unprotected branch write a cache that a protected
+  // branch then restores. Null when the token cannot read the project's CI/CD
+  // settings.
+  ciSeparatedCaches() bool
+  // Whether a pipeline trigger token may approve deployments
+  //
+  // Null when the token cannot read the project's CI/CD settings.
+  allowPipelineTriggerApproveDeployment() bool
+  // Whether merge request pipelines for protected branches are restricted to members who can merge
+  //
+  // Null when the token cannot read the project's CI/CD settings.
+  protectMergeRequestPipelines() bool
+  // Whether deployment jobs older than the latest successful one are prevented from running
+  //
+  // Null when the token cannot read the project's CI/CD settings.
+  ciForwardDeploymentEnabled() bool
+  // Whether a rollback to an earlier deployment is allowed while ciForwardDeploymentEnabled is true
+  //
+  // Null when the token cannot read the project's CI/CD settings.
+  ciForwardDeploymentRollbackAllowed() bool
+  // Minimum role allowed to cancel a pipeline or job
+  //
+  // One of developer, maintainer, or no_one. Null when the token cannot read
+  // the project's CI/CD settings.
+  ciRestrictPipelineCancellationRole() string
+  // Whether pipeline variables are shown in the pipeline details
+  //
+  // Null when the token cannot read the project's CI/CD settings.
+  ciDisplayPipelineVariables() bool
+  // Path of the CI/CD configuration file
+  //
+  // Empty when the project uses the default `.gitlab-ci.yml`. A path pointing
+  // outside the repository lets whoever controls that location change what
+  // the project's pipelines run. Null when the token cannot read the project's
+  // CI/CD settings.
+  ciConfigPath() string
+  // Whether artifacts of the latest successful pipeline are kept regardless of expiry
+  //
+  // Null when the token cannot read the project's CI/CD settings.
+  keepLatestArtifact() bool
+  // Age, in seconds, after which pipelines are deleted automatically
+  //
+  // Zero when pipelines are never deleted automatically. Null when the token
+  // cannot read the project's CI/CD settings.
+  ciDeletePipelinesInSeconds() int
+  // Maximum time, in seconds, a job may run
+  //
+  // Null when the token cannot read the project's CI/CD settings.
+  buildTimeout() int
+  // Whether uploads attached to issues and merge requests require authentication to view
+  //
+  // Null when the token cannot read the project's settings.
+  enforceAuthChecksOnUploads() bool
+  // Whether merging requires every external status check to pass
+  //
+  // Null when the token cannot read the project's settings or the license does
+  // not include status checks.
+  onlyAllowMergeIfAllStatusChecksPassed() bool
+  // Whether a merge request may be merged without waiting in the merge train
+  //
+  // Null when the token cannot read the project's settings or the license does
+  // not include merge trains.
+  mergeTrainsSkipTrainAllowed() bool
+  // How strictly merges must go through the merge train
+  //
+  // Null when the token cannot read the project's settings or the license does
+  // not include merge trains.
+  mergeTrainEnforcement() string
+  // Classification label sent to the external authorization service for this project
+  //
+  // Null when the token cannot read the project's settings or the instance
+  // does not use external authorization.
+  externalAuthorizationClassificationLabel() string
+  // User whose permissions pull mirroring runs with
+  //
+  // Null when the project is not a pull mirror or the token cannot read the
+  // project's settings.
+  mirrorUser() gitlab.user
+  // Whether pull mirroring overwrites local branches that have diverged
+  //
+  // Null when the project is not a pull mirror or the token cannot read the
+  // project's settings.
+  mirrorOverwritesDivergedBranches() bool
 }
 
 // GitLab project integration
@@ -1606,6 +1930,17 @@ private gitlab.project.webhook @defaults("url sslVerification") {
   // receiver treats as genuine. The token value is write-only and is never
   // returned. Null on instances that do not report token presence.
   tokenPresent bool
+  // Whether a signing token is configured on the webhook
+  //
+  // With a signing token, GitLab signs each payload so the receiver can verify
+  // both its origin and that it was not altered in transit. The token value is
+  // write-only and is never returned. Null on instances that do not report
+  // signing token presence.
+  signingTokenPresent bool
+  // Whether deploy token events trigger the webhook
+  //
+  // Null on instances that do not report the attribute.
+  resourceDeployTokenEvents bool
   // The project this webhook is registered against
   project() gitlab.project
 }
@@ -2016,6 +2351,19 @@ private gitlab.group.webhook @defaults("url sslVerification") {
   // receiver treats as genuine. The token value is write-only and is never
   // returned. Null on instances that do not report token presence.
   tokenPresent bool
+  // Whether a signing token is configured on the webhook
+  //
+  // With a signing token, GitLab signs each payload so the receiver can verify
+  // both its origin and that it was not altered in transit. The token value is
+  // write-only and is never returned. Null on instances that do not report
+  // signing token presence.
+  signingTokenPresent bool
+  // Time until which the webhook is disabled (set by GitLab when too many failures occur)
+  disabledUntil time
+  // Names of the URL variables interpolated into the webhook URL
+  //
+  // Only the names are reported. The values are never returned.
+  urlVariables []string
   // The group this webhook is registered against
   group() gitlab.group
 }
@@ -2952,6 +3300,13 @@ private gitlab.project.remoteMirror @defaults("url enabled updateStatus") {
   lastUpdateAt time
   // Time replication last completed successfully
   lastSuccessfulUpdateAt time
+  // Time the most recent replication attempt started
+  lastUpdateStartedAt time
+  // SHA256 fingerprints of the SSH host keys trusted for the destination
+  //
+  // Null when the mirror does not pin host keys or the instance does not report
+  // them.
+  hostKeys []string
 }
 
 // GitLab enterprise user access token
@@ -2994,6 +3349,11 @@ private gitlab.group.enterpriseAccessToken @defaults("name active expiresAt last
   lastUsedAt time
   // User the token authenticates as
   user() gitlab.user
+  // Permissions of a fine-grained token, one entry per scope
+  //
+  // Null for a token created with scopes rather than granular scopes, and for
+  // enterprise user tokens, whose listing does not report them.
+  granularScopes []gitlab.granularScope
 }
 
 // GitLab enterprise user SSH key
@@ -3077,6 +3437,8 @@ private gitlab.group.scimIdentity @defaults("externalUid active") {
   active bool
   // Group member the identity is linked to
   user() gitlab.user
+  // Group the identity was provisioned in
+  group() gitlab.group
 }
 
 // GitLab group access request
