@@ -4,6 +4,7 @@
 package shared
 
 import (
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -127,6 +128,43 @@ func (c Capabilities) String() []string {
 
 type FileSearch interface {
 	Find(from string, r *regexp.Regexp, typ string, perm *uint32, depth *int) ([]string, error)
+}
+
+// FindTypes maps the file types files.find accepts to find's one-letter
+// -type. The one-letter types themselves are accepted, and so are symlink,
+// regular and dir, which the Windows search already took.
+var FindTypes = map[string]string{
+	"file":      "f",
+	"regular":   "f",
+	"directory": "d",
+	"dir":       "d",
+	"link":      "l",
+	"symlink":   "l",
+	"character": "c",
+	"block":     "b",
+	"socket":    "s",
+	"fifo":      "p",
+	"f":         "f",
+	"d":         "d",
+	"l":         "l",
+	"c":         "c",
+	"b":         "b",
+	"s":         "s",
+	"p":         "p",
+}
+
+// ParseFindType returns find's one-letter type for a files.find type, ""
+// for an empty one. An unknown type is an error: the search used to ignore
+// it, so a typo matched every file on one connection and none on another.
+func ParseFindType(typ string) (string, error) {
+	typ = strings.TrimSpace(typ)
+	if typ == "" {
+		return "", nil
+	}
+	if t, ok := FindTypes[typ]; ok {
+		return t, nil
+	}
+	return "", fmt.Errorf("unknown file type %q, use one of file, directory, link, character, block, socket or fifo", typ)
 }
 
 type PerfStats struct {

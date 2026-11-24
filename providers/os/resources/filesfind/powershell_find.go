@@ -62,13 +62,14 @@ func BuildPowershellCmd(from string, xdev bool, fileType string, regex string, p
 	var filters []string
 
 	// Type filter
+	// fileType is a find type letter, as shared.ParseFindType returns it.
 	if fileType != "" {
 		switch fileType {
-		case "file", "regular":
+		case "f":
 			filters = append(filters, "!$_.PSIsContainer")
-		case "directory", "dir":
+		case "d":
 			filters = append(filters, "$_.PSIsContainer")
-		case "symlink", "link":
+		case "l":
 			filters = append(filters, "$_.LinkType -ne $null")
 			// Note: socket, block, char, fifo don't exist in Windows
 		}

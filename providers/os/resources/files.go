@@ -61,7 +61,6 @@ func (l *mqlFilesFind) id() (string, error) {
 }
 
 func (l *mqlFilesFind) list() ([]any, error) {
-	var err error
 	var foundFiles []string
 	conn := l.MqlRuntime.Connection.(shared.Connection)
 	pf := conn.Asset().Platform
@@ -69,18 +68,24 @@ func (l *mqlFilesFind) list() ([]any, error) {
 		return nil, errors.New("missing platform information")
 	}
 
+	// every search below takes find's one-letter type
+	typ, err := shared.ParseFindType(l.Type.Data)
+	if err != nil {
+		return nil, err
+	}
+
 	if conn.Capabilities().Has(shared.Capability_FindFile) {
-		foundFiles, err = l.fsFilesFind(conn)
+		foundFiles, err = l.fsFilesFind(conn, typ)
 		if err != nil {
 			return nil, err
 		}
 	} else if conn.Capabilities().Has(shared.Capability_RunCommand) && pf.IsFamily("unix") {
-		foundFiles, err = l.unixFilesFindCmd(conn)
+		foundFiles, err = l.unixFilesFindCmd(conn, typ)
 		if err != nil {
 			return nil, err
 		}
 	} else if conn.Capabilities().Has(shared.Capability_RunCommand) && pf.IsFamily("windows") {
-		foundFiles, err = l.windowsPowershellCmd()
+		foundFiles, err = l.windowsPowershellCmd(typ)
 		if err != nil {
 			return nil, err
 		}
@@ -104,7 +109,7 @@ func (l *mqlFilesFind) list() ([]any, error) {
 	return files, nil
 }
 
-func (l *mqlFilesFind) fsFilesFind(conn shared.Connection) ([]string, error) {
+func (l *mqlFilesFind) fsFilesFind(conn shared.Connection, typ string) ([]string, error) {
 	log.Debug().Msgf("use native files find approach")
 	fs := conn.FileSystem()
 	fsSearch, ok := fs.(interface {
@@ -140,7 +145,7 @@ func (l *mqlFilesFind) fsFilesFind(conn shared.Connection) ([]string, error) {
 		return nil, err
 	}
 
-	found, err := fsSearch.FindWithOptions(l.From.Data, compiledRegexp, l.Type.Data, perm, depth, fsutil.FindOptions{CrossFileSystems: l.Xdev.Data})
+	found, err := fsSearch.FindWithOptions(l.From.Data, compiledRegexp, typ, perm, depth, fsutil.FindOptions{CrossFileSystems: l.Xdev.Data})
 	if err != nil || matchesName == nil {
 		return found, err
 	}
@@ -183,13 +188,13 @@ func (w walkFileSearch) FindWithOptions(from string, r *regexp.Regexp, typ strin
 	return fsutil.FindFilesWithOptions(afero.NewIOFS(w.fs), from, r, typ, perm, depth, options)
 }
 
-func (l *mqlFilesFind) unixFilesFindCmd(conn shared.Connection) ([]string, error) {
+func (l *mqlFilesFind) unixFilesFindCmd(conn shared.Connection, typ string) ([]string, error) {
 	var depth *int64
 	if l.Depth.IsSet() {
 		depth = &l.Depth.Data
 	}
 
-	callCmd := filesfind.BuildFilesFindCmd(l.From.Data, l.Xdev.Data, l.Type.Data, l.Regex.Data, l.Permissions.Data, l.Name.Data, depth, filesfind.FindFlavor{GNU: l.hasGNUFind(), NoMaxDepth: l.findLacksMaxDepth()})
+	callCmd := filesfind.BuildFilesFindCmd(l.From.Data, l.Xdev.Data, typ, l.Regex.Data, l.Permissions.Data, l.Name.Data, depth, filesfind.FindFlavor{GNU: l.hasGNUFind(), NoMaxDepth: l.findLacksMaxDepth()})
 	rawCmd, err := CreateResource(l.MqlRuntime, "command", map[string]*llx.RawData{
 		"command": llx.StringData(callCmd),
 	})
@@ -207,7 +212,7 @@ func (l *mqlFilesFind) unixFilesFindCmd(conn shared.Connection) ([]string, error
 	// the file system itself.
 	if exit := cmd.GetExitcode(); exit.Error == nil && isCommandNotFound(exit.Data, cmd.GetStderr().Data) {
 		log.Debug().Str("from", l.From.Data).Msg("files.find> find is not installed, walking the file system instead")
-		return l.fsFilesFind(conn)
+		return l.fsFilesFind(conn, typ)
 	}
 
 	var foundFiles []string
@@ -250,13 +255,13 @@ func (l *mqlFilesFind) findLacksMaxDepth() bool {
 	return false
 }
 
-func (l *mqlFilesFind) windowsPowershellCmd() ([]string, error) {
+func (l *mqlFilesFind) windowsPowershellCmd(typ string) ([]string, error) {
 	var depth *int64
 	if l.Depth.IsSet() {
 		depth = &l.Depth.Data
 	}
 
-	pwshScript := filesfind.BuildPowershellCmd(l.From.Data, l.Xdev.Data, l.Type.Data, l.Regex.Data, l.Permissions.Data, l.Name.Data, depth)
+	pwshScript := filesfind.BuildPowershellCmd(l.From.Data, l.Xdev.Data, typ, l.Regex.Data, l.Permissions.Data, l.Name.Data, depth)
 	rawCmd, err := CreateResource(l.MqlRuntime, "powershell", map[string]*llx.RawData{
 		"script": llx.StringData(pwshScript),
 	})
