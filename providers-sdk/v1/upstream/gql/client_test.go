@@ -59,3 +59,41 @@ func TestNewClientSendsUserAgent(t *testing.T) {
 		t.Fatalf("request never reached the server: %v", qErr)
 	}
 }
+
+// A login session holds a token and no key. The client sends the token as a
+// bearer token. It used to try to sign with a key the session does not have,
+// so every command that talks GraphQL failed for a logged-in user with
+// "AuthKey must be a valid .p8 PEM file".
+func TestNewClientSendsALoginToken(t *testing.T) {
+	got := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case got <- r.Header.Get("Authorization"):
+		default:
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{}}`))
+	}))
+	defer srv.Close()
+
+	cfg := &upstream.UpstreamConfig{
+		ApiEndpoint: srv.URL,
+		Creds: &upstream.ServiceAccountCredentials{
+			Mrn:   "//captain.api.mondoo.app/users/example",
+			Token: "example-login-token",
+		},
+	}
+	c, err := NewClient(cfg, upstream.DefaultHttpClient())
+	require.NoError(t, err)
+
+	var q struct {
+		Foo string
+	}
+	qErr := c.Query(context.Background(), &q, nil)
+	select {
+	case auth := <-got:
+		assert.Equal(t, "Bearer example-login-token", auth)
+	default:
+		t.Fatalf("request never reached the server: %v", qErr)
+	}
+}

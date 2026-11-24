@@ -7,8 +7,10 @@ import (
 	"bytes"
 	"encoding/base64"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/go-viper/mapstructure/v2"
@@ -17,6 +19,7 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"go.mondoo.com/mql"
+	"go.mondoo.com/mql/cli/oauthlogin"
 	"go.mondoo.com/mql/logger"
 	"go.mondoo.com/mql/providers-sdk/v1/upstream"
 )
@@ -42,6 +45,11 @@ const (
 
 	AUTH_METHOD_SSH = "ssh"
 	AUTH_METHOD_WIF = "wif"
+	// AUTH_METHOD_OAUTH marks the credential of an interactive login: a
+	// token that is the user who logged in, for a limited time. It is sent
+	// as a bearer token, like any other token credential. The marker drives
+	// the expiry hints, reuse and revocation of the session.
+	AUTH_METHOD_OAUTH = oauthlogin.AuthMethod
 )
 
 // Init initializes and loads the mondoo config
@@ -183,9 +191,24 @@ func InitViperConfig() {
 }
 
 func DisplayUsedConfig() {
+	displayUsedConfig(false)
+}
+
+// DisplayUsedConfigForLogin is DisplayUsedConfig for commands that create the
+// configuration file, such as login. A --config file that does not exist yet is
+// the normal case there, so it is only logged at debug level.
+func DisplayUsedConfigForLogin() {
+	displayUsedConfig(true)
+}
+
+func displayUsedConfig(missingFileOK bool) {
 	// print config file
 	if !LoadedConfig && len(UserProvidedPath) > 0 {
-		log.Warn().Msg("could not load configuration file " + UserProvidedPath)
+		if missingFileOK {
+			log.Debug().Msg("configuration file " + UserProvidedPath + " does not exist yet, it will be created")
+		} else {
+			log.Warn().Msg("could not load configuration file " + UserProvidedPath)
+		}
 	} else if LoadedConfig {
 		log.Info().Msg("loaded configuration from " + viper.ConfigFileUsed() + " using source " + Source)
 	} else if Source == configSourceBase64 {
@@ -297,6 +320,20 @@ var runningVersion atomic.Value // string
 // before anything resolves a channel.
 func SetRunningVersion(version string) {
 	runningVersion.Store(version)
+}
+
+// RunningVersion returns the version recorded with SetRunningVersion, or "".
+func RunningVersion() string {
+	return getRunningVersion()
+}
+
+// binaryName is the name the user invoked this program as.
+func binaryName() string {
+	name := strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe")
+	if name == "" || name == "." {
+		return "mql"
+	}
+	return name
 }
 
 // getRunningVersion returns the recorded version, or "" if none was set.
@@ -517,6 +554,68 @@ type WIF struct {
 
 type CliConfigAuthentication struct {
 	Method string `json:"method,omitempty" mapstructure:"method"`
+	// Issuer is the login server of an interactive login session: where the
+	// session's token came from and where it is revoked. It is the API
+	// endpoint unless the API names another login server.
+	Issuer string `json:"issuer,omitempty" mapstructure:"issuer"`
+	// Endpoint is the API endpoint an interactive login session was made
+	// against. It names the session's server; the issuer may be another host.
+	Endpoint string `json:"endpoint,omitempty" mapstructure:"endpoint"`
+	// ValidUntil is when an interactive login session ends (RFC 3339), as
+	// the server said at login. The session's token is the top-level
+	// "token"; it is opaque to the client and not read for this.
+	ValidUntil string `json:"valid_until,omitempty" mapstructure:"valid_until"`
+	// Names of an interactive login session's user and of what it is for (a
+	// space or an organization), recorded at login so a later login can say
+	// who is logged in. Display only.
+	UserEmail string `json:"user_email,omitempty" mapstructure:"user_email"`
+	UserName  string `json:"user_name,omitempty" mapstructure:"user_name"`
+	UserMrn   string `json:"user_mrn,omitempty" mapstructure:"user_mrn"`
+	ScopeName string `json:"scope_name,omitempty" mapstructure:"scope_name"`
+	// ScopeKind is "space" or "organization".
+	ScopeKind string `json:"scope_kind,omitempty" mapstructure:"scope_kind"`
+	OrgName   string `json:"org_name,omitempty" mapstructure:"org_name"`
+}
+
+// IsOAuthSession reports whether the credential came from an interactive login.
+func (c *CommonOpts) IsOAuthSession() bool {
+	return c.Authentication != nil && c.Authentication.Method == AUTH_METHOD_OAUTH
+}
+
+// ClearCredentials drops every credential field, keeping unrelated settings.
+func (c *CommonOpts) ClearCredentials() {
+	c.AgentMrn = ""
+	c.ServiceAccountMrn = ""
+	c.PrivateKey = ""
+	c.Certificate = ""
+	c.Token = ""
+	c.SpaceMrn = ""
+	c.ScopeMrn = ""
+	c.ParentMrn = ""
+	c.Authentication = nil
+}
+
+// HasCredentials reports whether the config holds anything to authenticate
+// with, without performing any credential exchange.
+func (c *CommonOpts) HasCredentials() bool {
+	if c.Authentication != nil && (c.Authentication.Method == AUTH_METHOD_SSH || c.Authentication.Method == AUTH_METHOD_WIF) {
+		return true
+	}
+	return c.ServiceAccountMrn != "" || c.PrivateKey != "" || c.Certificate != "" || c.Token != ""
+}
+
+// SessionExpiry returns when an interactive login session ends, as recorded
+// at login. ok is false for other credentials, and for a session whose end
+// was not recorded.
+func (c *CommonOpts) SessionExpiry() (time.Time, bool) {
+	if !c.IsOAuthSession() || c.Authentication.ValidUntil == "" {
+		return time.Time{}, false
+	}
+	t, err := time.Parse(time.RFC3339, c.Authentication.ValidUntil)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t, true
 }
 
 // GetStrict reports the configured default for strict mode. Unset means
@@ -580,9 +679,13 @@ func (c *CommonOpts) GetServiceCredential() *upstream.ServiceAccountCredentials 
 		}
 	}
 
-	// return nil when no service account is defined
-	if c.ServiceAccountMrn == "" && c.PrivateKey == "" && c.Certificate == "" {
+	// return nil when no credential is defined
+	if c.ServiceAccountMrn == "" && c.PrivateKey == "" && c.Certificate == "" && c.Token == "" {
 		return nil
+	}
+
+	if notAfter, ok := c.SessionExpiry(); ok && time.Now().After(notAfter) {
+		log.Warn().Msgf("session expired — run `%s login`", binaryName())
 	}
 
 	return &upstream.ServiceAccountCredentials{

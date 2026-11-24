@@ -37,7 +37,7 @@ func NewClient(cfg *upstream.UpstreamConfig, httpClient *http.Client, opts ...Cl
 		o(&settings)
 	}
 	gqlEndpoint := cfg.ApiEndpoint + "/query"
-	creds, err := json.Marshal(cfg.Creds)
+	auth, err := authOption(cfg.Creds)
 	if err != nil {
 		return nil, err
 	}
@@ -45,7 +45,7 @@ func NewClient(cfg *upstream.UpstreamConfig, httpClient *http.Client, opts ...Cl
 	mondooClient, err := mondoogql.NewClient(
 		option.WithEndpoint(gqlEndpoint),
 		option.WithHTTPClient(httpClient),
-		option.WithServiceAccount(creds),
+		auth,
 		option.WithUserAgent(upstream.UserAgent(settings.provider)),
 	)
 	if err != nil {
@@ -53,4 +53,19 @@ func NewClient(cfg *upstream.UpstreamConfig, httpClient *http.Client, opts ...Cl
 	}
 
 	return &MondooClient{mondooClient}, nil
+}
+
+// authOption picks how the client authenticates. A login session holds a
+// token and no key, and the token is sent as a bearer token, the way the
+// rest of the client sends it. Everything else signs with the service
+// account's key.
+func authOption(creds *upstream.ServiceAccountCredentials) (option.ClientOption, error) {
+	if creds != nil && creds.Token != "" {
+		return option.WithAPIToken(creds.Token), nil
+	}
+	raw, err := json.Marshal(creds)
+	if err != nil {
+		return nil, err
+	}
+	return option.WithServiceAccount(raw), nil
 }

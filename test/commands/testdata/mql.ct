@@ -15,7 +15,7 @@ Available Commands:
   discover      Discover assets
   help          Help about any command
   inventory     Work with inventory files
-  login         Register with Mondoo Platform
+  login         Log in to Mondoo Platform
   logout        Log out from Mondoo Platform
   providers     Providers add connectivity to all assets
   run           Run an MQL query
