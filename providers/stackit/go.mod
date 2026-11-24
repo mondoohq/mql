@@ -40,6 +40,7 @@ require (
 	github.com/stackitcloud/stackit-sdk-go/services/sqlserverflex v1.20.0
 	github.com/stackitcloud/stackit-sdk-go/services/telemetrylink v0.6.0
 	github.com/stackitcloud/stackit-sdk-go/services/telemetryrouter v0.6.1
+	github.com/stackitcloud/stackit-sdk-go/services/ufw v0.3.0
 	github.com/stackitcloud/stackit-sdk-go/services/valkey v0.4.0
 	github.com/stackitcloud/stackit-sdk-go/services/vpn v0.16.0
 	github.com/stretchr/testify v1.12.1

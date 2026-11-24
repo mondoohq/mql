@@ -57,3 +57,38 @@ func TestServiceAccountKeyEntry(t *testing.T) {
 
 	assertDictSerializable(t, []any{entry})
 }
+
+func TestServiceAccountKeyArgs(t *testing.T) {
+	// Synthetic: a key without expiry and one with; no live account was checked.
+	created := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	k := &serviceaccount.ServiceAccountKeyListResponse{}
+	k.SetId("key-1")
+	k.SetActive(false)
+	k.SetKeyType(serviceaccount.SERVICEACCOUNTKEYLISTRESPONSEKEYTYPE_USER_MANAGED)
+	k.SetKeyOrigin(serviceaccount.SERVICEACCOUNTKEYLISTRESPONSEKEYORIGIN_GENERATED)
+	k.SetKeyAlgorithm(serviceaccount.SERVICEACCOUNTKEYLISTRESPONSEKEYALGORITHM_RSA_4096)
+	k.SetCreatedAt(created)
+
+	args := serviceAccountKeyArgs("a@sa.stackit.cloud", k)
+	if args["validUntil"].Value != nil {
+		t.Fatalf("validUntil = %v, want null for a key without expiry", args["validUntil"].Value)
+	}
+	if got := args["createdAt"].Value.(*time.Time); !got.Equal(created) {
+		t.Fatalf("createdAt = %v, want %v", got, created)
+	}
+	if args["active"].Value != false || args["keyOrigin"].Value != "GENERATED" || args["keyAlgorithm"].Value != "RSA_4096" {
+		t.Fatalf("active/keyOrigin/keyAlgorithm = %v/%v/%v", args["active"].Value, args["keyOrigin"].Value, args["keyAlgorithm"].Value)
+	}
+
+	expiry := created.AddDate(1, 0, 0)
+	k.SetValidUntil(expiry)
+	args = serviceAccountKeyArgs("a@sa.stackit.cloud", k)
+	if got := args["validUntil"].Value.(*time.Time); !got.Equal(expiry) {
+		t.Fatalf("validUntil = %v, want %v", got, expiry)
+	}
+
+	other := serviceAccountKeyArgs("b@sa.stackit.cloud", k)
+	if other["__id"].Value == args["__id"].Value {
+		t.Fatalf("keys with one id on two accounts share the cache key %v", args["__id"].Value)
+	}
+}

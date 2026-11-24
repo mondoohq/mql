@@ -6,6 +6,7 @@ package resources
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	iaas "github.com/stackitcloud/stackit-sdk-go/services/iaas/v2api"
 )
@@ -132,6 +133,42 @@ func TestSecurityGroupRuleArgs(t *testing.T) {
 			t.Fatalf("icmpCode = %v (%T), want 0 (a real code, not null)", got, got)
 		}
 	})
+
+	// Synthetic: a rule edited after creation, and one never edited; no live account was checked.
+	t.Run("updatedAt is read, and null when absent", func(t *testing.T) {
+		args := securityGroupRuleArgs("sg-1", decode(`{"id": "rule-4", "direction": "ingress",
+			"createdAt": "2026-01-01T00:00:00Z", "updatedAt": "2026-03-01T12:00:00Z"}`))
+		got, ok := args["updatedAt"].Value.(*time.Time)
+		if !ok || got == nil || !got.Equal(time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)) {
+			t.Fatalf("updatedAt = %v, want 2026-03-01T12:00:00Z", args["updatedAt"].Value)
+		}
+		args = securityGroupRuleArgs("sg-1", decode(`{"id": "rule-5", "direction": "ingress", "createdAt": "2026-01-01T00:00:00Z"}`))
+		if args["updatedAt"].Value != nil {
+			t.Fatalf("updatedAt = %v, want null when the rule reports none", args["updatedAt"].Value)
+		}
+	})
+}
+
+func TestImageConfigBootFlags(t *testing.T) {
+	decode := func(payload string) *iaas.ImageConfig {
+		var c iaas.ImageConfig
+		if err := json.Unmarshal([]byte(payload), &c); err != nil {
+			t.Fatalf("decoding image config: %v", err)
+		}
+		return &c
+	}
+	// Synthetic: image configurations after the SDK's ImageConfig model; no live account was checked.
+	secureBoot, uefi := imageConfigBootFlags(decode(`{"secureBoot": true, "uefi": false}`), true)
+	assertBoolPtr(t, "secureBoot", secureBoot, new(true))
+	assertBoolPtr(t, "uefi", uefi, new(false))
+
+	secureBoot, uefi = imageConfigBootFlags(decode(`{"uefi": true}`), true)
+	assertBoolPtr(t, "secureBoot", secureBoot, nil)
+	assertBoolPtr(t, "uefi", uefi, new(true))
+
+	secureBoot, uefi = imageConfigBootFlags(nil, false)
+	assertBoolPtr(t, "secureBoot", secureBoot, nil)
+	assertBoolPtr(t, "uefi", uefi, nil)
 }
 
 // TestVolumeEncryptionOf pins the key-encryption-key reference read off a

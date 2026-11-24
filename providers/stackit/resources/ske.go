@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"strconv"
 	"time"
 
 	ske "github.com/stackitcloud/stackit-sdk-go/services/ske/v2api"
@@ -48,6 +49,54 @@ type mqlStackitSkeClusterInternal struct {
 	cacheNetworkId               string
 	cacheObservabilityInstanceId string
 	nodepoolExpiration           map[string]ske.ExpirationStatusNodepool
+	rawErrors                    []ske.ClusterError
+}
+
+// skeMaintenanceWindow reads the start and end of the cluster's maintenance
+// window, returning nil for both when the cluster carries no window.
+func skeMaintenanceWindow(cluster *ske.Cluster) (start, end *time.Time) {
+	if cluster == nil {
+		return nil, nil
+	}
+	maintenance, ok := cluster.GetMaintenanceOk()
+	if !ok || maintenance == nil {
+		return nil, nil
+	}
+	window, ok := maintenance.GetTimeWindowOk()
+	if !ok || window == nil {
+		return nil, nil
+	}
+	return timeOrNil(window.GetStartOk()), timeOrNil(window.GetEndOk())
+}
+
+// skeHibernated reports the hibernated flag of the cluster status, or nil
+// when the status does not carry it.
+func skeHibernated(cluster *ske.Cluster) *bool {
+	if cluster == nil {
+		return nil
+	}
+	status, ok := cluster.GetStatusOk()
+	if !ok || status == nil {
+		return nil
+	}
+	return optBool(status.GetHibernatedOk())
+}
+
+func (r *mqlStackitSkeCluster) errors() ([]any, error) {
+	out := make([]any, 0, len(r.rawErrors))
+	for i := range r.rawErrors {
+		e := &r.rawErrors[i]
+		res, err := CreateResource(r.MqlRuntime, "stackit.ske.cluster.statusError", map[string]*llx.RawData{
+			"__id":    llx.StringData(qualifiedId("stackit.ske.cluster.statusError", r.Name.Data, strconv.Itoa(i))),
+			"code":    llx.StringData(e.GetCode()),
+			"message": llx.StringData(e.GetMessage()),
+		})
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, res)
+	}
+	return out, nil
 }
 
 // skeAutoUpdate reads the two automatic-patching flags out of the cluster's
@@ -63,7 +112,7 @@ func skeAutoUpdate(cluster *ske.Cluster) (kubernetes *bool, machineImage *bool) 
 		return nil, nil
 	}
 	maintenance, ok := cluster.GetMaintenanceOk()
-	if !ok || maintenance == nil {
+	if !ok || maintenance == nil || maintenance.AutoUpdate == nil {
 		return nil, nil
 	}
 	return maintenance.AutoUpdate.KubernetesVersion, maintenance.AutoUpdate.MachineImageVersion
@@ -170,6 +219,7 @@ func buildSkeCluster(runtime *plugin.Runtime, cluster *ske.Cluster) (plugin.Reso
 	}
 
 	autoUpdateKubernetes, autoUpdateMachineImage := skeAutoUpdate(cluster)
+	windowStart, windowEnd := skeMaintenanceWindow(cluster)
 
 	args := map[string]*llx.RawData{
 		"name":                             llx.StringData(cluster.GetName()),
@@ -202,6 +252,9 @@ func buildSkeCluster(runtime *plugin.Runtime, cluster *ske.Cluster) (plugin.Reso
 		"labels":                           stringMapData(cluster.GetLabels()),
 		"controlPlaneAccessScope":          llx.StringData(controlPlaneScope),
 		"kubernetesExpirationDate":         llx.TimeDataPtr(k8sExpiration),
+		"hibernated":                       llx.BoolDataPtr(skeHibernated(cluster)),
+		"maintenanceWindowStart":           llx.TimeDataPtr(windowStart),
+		"maintenanceWindowEnd":             llx.TimeDataPtr(windowEnd),
 	}
 	res, err := CreateResource(runtime, "stackit.ske.cluster", args)
 	if err != nil {
@@ -212,6 +265,7 @@ func buildSkeCluster(runtime *plugin.Runtime, cluster *ske.Cluster) (plugin.Reso
 		mc.cacheNetworkId = networkId
 		mc.cacheObservabilityInstanceId = obsInstanceId
 		mc.nodepoolExpiration = npExpiration
+		mc.rawErrors = cluster.GetStatus().Errors
 	}
 	return res, nil
 }

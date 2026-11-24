@@ -107,6 +107,54 @@ func (r *mqlStackitPostgresFlexInstance) fetchDetail() (*postgresflex.Instance, 
 	return r.detail, nil
 }
 
+// parameters lists the instance's PostgreSQL server settings. Only the v2 API
+// serves them.
+func (r *mqlStackitPostgresFlexInstance) parameters() ([]any, error) {
+	c := conn(r.MqlRuntime)
+	client, err := c.PostgresFlex()
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.DefaultAPI.ListDatabaseParameters(bgctx(), c.ProjectID(), c.Region(), r.Id.Data).Execute()
+	if err != nil {
+		if isAccessDenied(err) {
+			return deniedList(err)
+		}
+		return nil, err
+	}
+	params := resp.GetParameter()
+	out := make([]any, 0, len(params))
+	for i := range params {
+		if params[i].GetName() == "" {
+			continue
+		}
+		res, err := CreateResource(r.MqlRuntime, "stackit.postgresFlex.instance.parameter", postgresParameterArgs(r.Id.Data, &params[i]))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, res)
+	}
+	return out, nil
+}
+
+func postgresParameterArgs(instanceID string, p *postgresflex.PostgresDatabaseParameter) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":           llx.StringData(qualifiedId("stackit.postgresFlex.instance.parameter", instanceID, p.GetName())),
+		"name":           llx.StringData(p.GetName()),
+		"value":          llx.StringDataPtr(strOrNil(p.GetValueOk())),
+		"defaultValue":   llx.StringDataPtr(strOrNil(p.GetDefaultValueOk())),
+		"resetValue":     llx.StringDataPtr(strOrNil(p.GetResetValueOk())),
+		"pendingRestart": llx.BoolDataPtr(optBool(p.GetPendingRestartOk())),
+		"context":        llx.StringData(p.GetContext()),
+		"dataType":       llx.StringData(p.GetDataType()),
+		"unit":           llx.StringData(p.GetUnit()),
+		"editable":       llx.BoolDataPtr(optBool(p.GetEditOk())),
+		"minValue":       llx.StringData(p.GetMinValue()),
+		"maxValue":       llx.StringData(p.GetMaxValue()),
+		"description":    llx.StringData(p.GetDescription()),
+	}
+}
+
 func (r *mqlStackitPostgresFlexInstance) version() (string, error) {
 	d, err := r.fetchDetail()
 	if err != nil || d == nil {
@@ -739,6 +787,13 @@ type mqlStackitObservabilityInstanceInternal struct {
 	retentionFetched atomic.Bool
 	retention        *observability.GetMetricsStorageRetentionResponse
 	retentionLock    sync.Mutex
+
+	// The alert group and rule counts share one ListAlertgroups call, whose
+	// groups carry their rules inline (observability_alerting.go).
+	alertGroupsFetched atomic.Bool
+	alertGroups        []observability.AlertGroup
+	alertGroupsRead    bool
+	alertGroupsLock    sync.Mutex
 }
 
 func (r *mqlStackitObservability) instances() ([]any, error) {
