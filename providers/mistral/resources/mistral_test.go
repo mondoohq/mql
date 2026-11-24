@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/mistral/internal/mistralai"
 	"go.mondoo.com/mql/types"
 )
@@ -148,4 +149,47 @@ func TestFloatDataPtr(t *testing.T) {
 	v = 0.7
 	got = floatDataPtr(&v)
 	assert.Equal(t, 0.7, got.Value)
+}
+
+func testModel(id string, aliases ...string) *mqlMistralModel {
+	a := make([]any, 0, len(aliases))
+	for _, s := range aliases {
+		a = append(a, s)
+	}
+	return &mqlMistralModel{
+		Id:      plugin.TValue[string]{Data: id, State: plugin.StateIsSet},
+		Aliases: plugin.TValue[[]any]{Data: a, State: plugin.StateIsSet},
+	}
+}
+
+// Synthetic: model list where one name is both an id and another model's alias; no live account was checked.
+func TestFindModel(t *testing.T) {
+	latest := testModel("mistral-large-latest", "mistral-large-2411")
+	dated := testModel("mistral-large-2411", "mistral-large-latest")
+	small := testModel("mistral-small-2503", "mistral-small-latest")
+	list := []any{latest, dated, small}
+
+	assert.Same(t, dated, findModel(list, "mistral-large-2411"),
+		"an exact id wins over an earlier model listing the name as an alias")
+	assert.Same(t, small, findModel(list, "mistral-small-latest"), "an alias resolves when no id matches")
+	assert.Nil(t, findModel(list, "open-mistral-7b"), "a retired model the list no longer carries is null")
+	assert.Nil(t, findModel(list, ""), "an empty name is null, not the first model")
+}
+
+// Synthetic: id list with a missing id and a list holding a foreign type; no live account was checked.
+func TestPickByID(t *testing.T) {
+	a := &mqlMistralFile{Id: plugin.TValue[string]{Data: "f-a"}}
+	b := &mqlMistralFile{Id: plugin.TValue[string]{Data: "f-b"}}
+	list := []any{a, b, "not a file"}
+	idOf := func(f *mqlMistralFile) string { return f.Id.Data }
+
+	got := pickByID(list, []string{"f-b", "f-gone", "f-a"}, idOf)
+	assert.Equal(t, []any{b, a}, got, "ids keep their order and a deleted file is skipped")
+	assert.Empty(t, pickByID(list, nil, idOf))
+}
+
+// Synthetic: raw id lists as the runtime stores them; no live account was checked.
+func TestAnyToStrings(t *testing.T) {
+	assert.Equal(t, []string{"a", "b"}, anyToStrings([]any{"a", "", 3, "b"}))
+	assert.Empty(t, anyToStrings(nil))
 }

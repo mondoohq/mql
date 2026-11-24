@@ -36,6 +36,11 @@ type mqlMistralModelInternal struct {
 	replacementModelID string
 }
 
+// mqlMistralBatchJobInternal carries the id of the agent a batch ran through.
+type mqlMistralBatchJobInternal struct {
+	agentID string
+}
+
 func (r *mqlMistral) id() (string, error) {
 	return "mistral", nil
 }
@@ -169,11 +174,16 @@ func (r *mqlMistral) connectors() ([]any, error) {
 			"__id":                 llx.StringData(c.ID),
 			"id":                   llx.StringData(c.ID),
 			"name":                 llx.StringData(c.Name),
+			"title":                llx.StringDataPtr(c.Title),
 			"description":          llx.StringData(c.Description),
 			"server":               llx.StringDataPtr(c.Server),
 			"protocol":             llx.StringData(c.Protocol),
 			"visibility":           llx.StringData(c.Visibility),
 			"ownerType":            llx.StringData(c.OwnerType),
+			"ownerId":              llx.StringDataPtr(c.OwnerID),
+			"creatorId":            llx.StringDataPtr(c.CreatorID),
+			"httpProxyEnabled":     llx.BoolDataPtr(c.HTTPProxyEnabled()),
+			"blockedBy":            llx.ArrayData(stringsToAny(c.BlockedBy), types.String),
 			"supportedAuthMethods": llx.ArrayData(authMethods, types.String),
 			"privateToolExecution": llx.BoolData(c.PrivateToolExecution),
 			"createdAt":            llx.TimeDataPtr(c.CreatedAt),
@@ -348,6 +358,8 @@ func (r *mqlMistral) files() ([]any, error) {
 			"source":     llx.StringData(f.Source),
 			"numLines":   llx.IntDataPtr(f.NumLines),
 			"mimeType":   llx.StringData(mimeType),
+			"visibility": llx.StringDataPtr(f.Visibility),
+			"expiresAt":  llx.TimeDataPtr(timeFromUnixPtr(f.ExpiresAt)),
 		})
 		if err != nil {
 			return nil, err
@@ -434,7 +446,11 @@ func (r *mqlMistral) batchJobs() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
-		res = append(res, mqlBatch)
+		batch := mqlBatch.(*mqlMistralBatchJob)
+		if b.AgentID != nil {
+			batch.agentID = *b.AgentID
+		}
+		res = append(res, batch)
 	}
 
 	return res, nil
@@ -653,4 +669,222 @@ func timeFromUnixPtr(ts *int64) *time.Time {
 	}
 	t := time.Unix(*ts, 0)
 	return &t
+}
+
+// rootResource returns the cached workspace root, whose collections the typed
+// accessors below resolve ids against. Resolving through the cached lists keeps
+// a query across every item to one list call per collection.
+func rootResource(runtime *plugin.Runtime) (*mqlMistral, error) {
+	res, err := CreateResource(runtime, "mistral", map[string]*llx.RawData{
+		"__id": llx.StringData("mistral"),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlMistral), nil
+}
+
+// pickByID returns the resources from list whose id is in ids, in the order of
+// ids. An id the list does not carry is skipped: the item was deleted or the
+// key cannot see it, and a stub with only an id would answer every other field
+// with null.
+func pickByID[T any](list []any, ids []string, idOf func(T) string) []any {
+	byID := make(map[string]T, len(list))
+	for _, x := range list {
+		if v, ok := x.(T); ok {
+			byID[idOf(v)] = v
+		}
+	}
+	res := make([]any, 0, len(ids))
+	for _, id := range ids {
+		if v, ok := byID[id]; ok {
+			res = append(res, v)
+		}
+	}
+	return res
+}
+
+// findModel picks the model a name refers to: the model with that id, or
+// failing that the model that lists the name as an alias.
+func findModel(list []any, name string) *mqlMistralModel {
+	if name == "" {
+		return nil
+	}
+	var byAlias *mqlMistralModel
+	for _, x := range list {
+		m, ok := x.(*mqlMistralModel)
+		if !ok {
+			continue
+		}
+		if m.Id.Data == name {
+			return m
+		}
+		if byAlias != nil {
+			continue
+		}
+		for _, a := range m.Aliases.Data {
+			if s, ok := a.(string); ok && s == name {
+				byAlias = m
+				break
+			}
+		}
+	}
+	return byAlias
+}
+
+// listedModel resolves a model name against the workspace model list. It
+// returns nil, nil when the list does not carry the model.
+func listedModel(runtime *plugin.Runtime, name string) (*mqlMistralModel, error) {
+	if name == "" {
+		return nil, nil
+	}
+	root, err := rootResource(runtime)
+	if err != nil {
+		return nil, err
+	}
+	list := root.GetModels()
+	if list.Error != nil {
+		return nil, list.Error
+	}
+	return findModel(list.Data, name), nil
+}
+
+// listedFiles resolves file ids against the workspace file list.
+func listedFiles(runtime *plugin.Runtime, ids []string) ([]any, error) {
+	if len(ids) == 0 {
+		return []any{}, nil
+	}
+	root, err := rootResource(runtime)
+	if err != nil {
+		return nil, err
+	}
+	list := root.GetFiles()
+	if list.Error != nil {
+		return nil, list.Error
+	}
+	return pickByID(list.Data, ids, func(f *mqlMistralFile) string { return f.Id.Data }), nil
+}
+
+// listedFile resolves one file id against the workspace file list. It returns
+// nil, nil when the id is empty or the list does not carry it.
+func listedFile(runtime *plugin.Runtime, id string) (*mqlMistralFile, error) {
+	if id == "" {
+		return nil, nil
+	}
+	found, err := listedFiles(runtime, []string{id})
+	if err != nil || len(found) == 0 {
+		return nil, err
+	}
+	return found[0].(*mqlMistralFile), nil
+}
+
+func stringsToAny(in []string) []any {
+	res := make([]any, 0, len(in))
+	for _, s := range in {
+		res = append(res, s)
+	}
+	return res
+}
+
+func anyToStrings(in []any) []string {
+	res := make([]string, 0, len(in))
+	for _, v := range in {
+		if s, ok := v.(string); ok && s != "" {
+			res = append(res, s)
+		}
+	}
+	return res
+}
+
+func (r *mqlMistralModel) fineTuningJob() (*mqlMistralFineTuningJob, error) {
+	if r.Job.Data == "" {
+		r.FineTuningJob.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	root, err := rootResource(r.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	list := root.GetFineTuningJobs()
+	if list.Error != nil {
+		return nil, list.Error
+	}
+	found := pickByID(list.Data, []string{r.Job.Data}, func(j *mqlMistralFineTuningJob) string { return j.Id.Data })
+	if len(found) == 0 {
+		r.FineTuningJob.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return found[0].(*mqlMistralFineTuningJob), nil
+}
+
+func (r *mqlMistralModel) baseModel() (*mqlMistralModel, error) {
+	m, err := listedModel(r.MqlRuntime, r.Root.Data)
+	if err != nil {
+		return nil, err
+	}
+	if m == nil {
+		r.BaseModel.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return m, nil
+}
+
+func (r *mqlMistralFineTuningJob) outputModel() (*mqlMistralModel, error) {
+	m, err := listedModel(r.MqlRuntime, r.FineTunedModel.Data)
+	if err != nil {
+		return nil, err
+	}
+	if m == nil {
+		r.OutputModel.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return m, nil
+}
+
+func (r *mqlMistralFineTuningJob) trainingData() ([]any, error) {
+	return listedFiles(r.MqlRuntime, anyToStrings(r.TrainingFiles.Data))
+}
+
+func (r *mqlMistralFineTuningJob) validationData() ([]any, error) {
+	return listedFiles(r.MqlRuntime, anyToStrings(r.ValidationFiles.Data))
+}
+
+func (r *mqlMistralBatchJob) agent() (*mqlMistralAgent, error) {
+	a, err := listedAgent(r.MqlRuntime, r.agentID)
+	if err != nil {
+		return nil, err
+	}
+	if a == nil {
+		r.Agent.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return a, nil
+}
+
+func (r *mqlMistralBatchJob) inputs() ([]any, error) {
+	return listedFiles(r.MqlRuntime, anyToStrings(r.InputFiles.Data))
+}
+
+func (r *mqlMistralBatchJob) results() (*mqlMistralFile, error) {
+	f, err := listedFile(r.MqlRuntime, r.OutputFile.Data)
+	if err != nil {
+		return nil, err
+	}
+	if f == nil {
+		r.Results.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return f, nil
+}
+
+func (r *mqlMistralBatchJob) errorDetails() (*mqlMistralFile, error) {
+	f, err := listedFile(r.MqlRuntime, r.ErrorFile.Data)
+	if err != nil {
+		return nil, err
+	}
+	if f == nil {
+		r.ErrorDetails.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return f, nil
 }

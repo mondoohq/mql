@@ -104,6 +104,8 @@ type File struct {
 	Source     string  `json:"source"`
 	NumLines   *int64  `json:"num_lines"`
 	MimeType   *string `json:"mimetype"`
+	Visibility *string `json:"visibility"`
+	ExpiresAt  *int64  `json:"expires_at"`
 }
 
 type BatchJob struct {
@@ -112,6 +114,7 @@ type BatchJob struct {
 	InputFiles        []string          `json:"input_files"`
 	Endpoint          string            `json:"endpoint"`
 	Model             *string           `json:"model"`
+	AgentID           *string           `json:"agent_id"`
 	OutputFile        *string           `json:"output_file"`
 	ErrorFile         *string           `json:"error_file"`
 	Errors            []BatchError      `json:"errors"`
@@ -140,17 +143,49 @@ type BatchError struct {
 // plaintext that the API redacts only on serialization), so nothing beyond the
 // authentication method name is decoded here.
 type Connector struct {
-	ID                   string                `json:"id"`
-	Name                 string                `json:"name"`
-	Description          string                `json:"description"`
-	Server               *string               `json:"server"`
-	Protocol             string                `json:"protocol"`
-	Visibility           string                `json:"visibility"`
-	OwnerType            string                `json:"owner_type"`
-	PrivateToolExecution bool                  `json:"private_tool_execution"`
-	SupportedAuthMethods []ConnectorAuthMethod `json:"supported_auth_methods"`
-	CreatedAt            *time.Time            `json:"created_at"`
-	ModifiedAt           *time.Time            `json:"modified_at"`
+	ID                    string                 `json:"id"`
+	Name                  string                 `json:"name"`
+	Title                 *string                `json:"title"`
+	Description           string                 `json:"description"`
+	Server                *string                `json:"server"`
+	Protocol              string                 `json:"protocol"`
+	Visibility            string                 `json:"visibility"`
+	OwnerType             string                 `json:"owner_type"`
+	OwnerID               *string                `json:"owner_id"`
+	CreatorID             *string                `json:"creator_id"`
+	BlockedBy             []string               `json:"blocked_by"`
+	ConnectionPreferences []ConnectionPreference `json:"connection_preferences"`
+	PrivateToolExecution  bool                   `json:"private_tool_execution"`
+	SupportedAuthMethods  []ConnectorAuthMethod  `json:"supported_auth_methods"`
+	CreatedAt             *time.Time             `json:"created_at"`
+	ModifiedAt            *time.Time             `json:"modified_at"`
+}
+
+// ConnectionPreference is one level's preference on a connector. Only the
+// raw-HTTP switch is decoded; the tool configuration is left undecoded.
+type ConnectionPreference struct {
+	ConsumerType     *string `json:"consumer_type"`
+	HTTPProxyEnabled *bool   `json:"http_proxy_enabled"`
+}
+
+// HTTPProxyEnabled folds the per-level raw-HTTP switches into one answer. A
+// false at any level switches raw HTTP calls off, so any false wins; otherwise
+// any true allows them. Nil means no level states an opinion, which is always
+// the case for connectors that do not speak http.
+func (c Connector) HTTPProxyEnabled() *bool {
+	var res *bool
+	for _, p := range c.ConnectionPreferences {
+		if p.HTTPProxyEnabled == nil {
+			continue
+		}
+		if !*p.HTTPProxyEnabled {
+			off := false
+			return &off
+		}
+		on := true
+		res = &on
+	}
+	return res
 }
 
 // ConnectorAuthMethod decodes only the name of an authentication method a
@@ -219,6 +254,143 @@ type LibraryAccess struct {
 type libraryAccessList struct {
 	Data []LibraryAccess `json:"data"`
 }
+
+// Agent is an agent configured in the workspace, as GET /v1/agents/pages
+// reports it.
+type Agent struct {
+	ID           string            `json:"id"`
+	Name         string            `json:"name"`
+	Description  *string           `json:"description"`
+	Version      int64             `json:"version"`
+	Model        string            `json:"model"`
+	Instructions *string           `json:"instructions"`
+	Tools        []AgentTool       `json:"tools"`
+	Guardrails   []GuardrailConfig `json:"guardrails"`
+	Handoffs     []string          `json:"handoffs"`
+	CreatedAt    *time.Time        `json:"created_at"`
+	UpdatedAt    *time.Time        `json:"updated_at"`
+}
+
+// AgentTool is one entry of an agent's tool list. The API returns a union
+// discriminated by type; the fields of every member that matter are decoded
+// side by side. A connector tool's per-request authorization block carries
+// credentials and is deliberately left undecoded.
+type AgentTool struct {
+	Type              string             `json:"type"`
+	Function          *AgentFunction     `json:"function"`
+	LibraryIDs        []string           `json:"library_ids"`
+	ConnectorID       *string            `json:"connector_id"`
+	ToolConfiguration *ToolConfiguration `json:"tool_configuration"`
+}
+
+// AgentFunction decodes only the name of a function tool. The parameter schema
+// is left undecoded.
+type AgentFunction struct {
+	Name string `json:"name"`
+}
+
+type ToolConfiguration struct {
+	Include              []string `json:"include"`
+	Exclude              []string `json:"exclude"`
+	RequiresConfirmation []string `json:"requires_confirmation"`
+}
+
+// GuardrailConfig decodes only whether a guardrail blocks the request when it
+// fails on a server-side error.
+type GuardrailConfig struct {
+	BlockOnError bool `json:"block_on_error"`
+}
+
+// GuardrailsBlockOnError reports whether every guardrail on the agent blocks a
+// request on a server-side error. Nil means the agent has no guardrails.
+func (a Agent) GuardrailsBlockOnError() *bool {
+	if len(a.Guardrails) == 0 {
+		return nil
+	}
+	all := true
+	for _, g := range a.Guardrails {
+		if !g.BlockOnError {
+			all = false
+			break
+		}
+	}
+	return &all
+}
+
+// LibraryIDs returns the ids of every document library the agent's tools
+// search, in tool order, without duplicates.
+func (a Agent) LibraryIDs() []string {
+	var ids []string
+	seen := map[string]bool{}
+	for _, t := range a.Tools {
+		for _, id := range t.LibraryIDs {
+			if id == "" || seen[id] {
+				continue
+			}
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// ConnectorIDs returns the ids of every connector the agent's tools call, in
+// tool order, without duplicates.
+func (a Agent) ConnectorIDs() []string {
+	var ids []string
+	seen := map[string]bool{}
+	for _, t := range a.Tools {
+		if t.ConnectorID == nil || *t.ConnectorID == "" || seen[*t.ConnectorID] {
+			continue
+		}
+		seen[*t.ConnectorID] = true
+		ids = append(ids, *t.ConnectorID)
+	}
+	return ids
+}
+
+// agentPage is the envelope GET /v1/agents/pages returns.
+type agentPage struct {
+	Data          []Agent `json:"data"`
+	NextPageToken *string `json:"next_page_token"`
+}
+
+// Webhook is an endpoint that receives events from a third-party service. The
+// API payload also carries url_verification_token, the token the provider
+// echoes back during URL verification; it is deliberately left undecoded.
+type Webhook struct {
+	ID                     string     `json:"id"`
+	Name                   string     `json:"name"`
+	Provider               string     `json:"provider"`
+	URL                    string     `json:"url"`
+	URLVerified            *bool      `json:"url_verified"`
+	SignatureHashAlgorithm *string    `json:"signature_hash_algorithm"`
+	ValidityPeriodSecond   *int64     `json:"validity_period_second"`
+	OwnerType              string     `json:"owner_type"`
+	ExpiresAt              *time.Time `json:"expires_at"`
+	CreatedAt              *time.Time `json:"created_at"`
+	UpdatedAt              *time.Time `json:"updated_at"`
+}
+
+// Trigger starts a workflow, agent, or app when its webhook receives an event.
+type Trigger struct {
+	ID          string        `json:"id"`
+	Title       string        `json:"title"`
+	OwnerType   string        `json:"owner_type"`
+	EventSource *Webhook      `json:"event_source"`
+	Handler     string        `json:"handler"`
+	Action      TriggerAction `json:"action"`
+	Filters     *string       `json:"filters"`
+}
+
+type TriggerAction struct {
+	PrimitiveID string `json:"primitive_id"`
+	Type        string `json:"type"`
+}
+
+// TriggerActionStartAgentSession is the action type whose primitive id names an
+// agent.
+const TriggerActionStartAgentSession = "start_agent_session"
 
 type APIError struct {
 	Message string `json:"message"`
