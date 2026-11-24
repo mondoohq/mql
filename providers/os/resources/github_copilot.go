@@ -56,7 +56,7 @@ func (r *mqlGithubCopilot) accounts() ([]any, error) {
 	var result []any
 	for key, app := range apps {
 		res, err := NewResource(r.MqlRuntime, "github.copilot.account", map[string]*llx.RawData{
-			"__id":        llx.StringData("github.copilot.account/" + key),
+			"__id":        llx.StringData(aiChildID("github.copilot.account", configDir, key)),
 			"user":        llx.StringData(app.User),
 			"githubAppId": llx.StringData(app.GitHubAppID),
 		})
