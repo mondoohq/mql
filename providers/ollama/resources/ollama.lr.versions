@@ -9,6 +9,7 @@ ollama.account.name 13.0.13
 ollama.account.plan 13.0.13
 ollama.authenticationRequired 13.0.13
 ollama.cloudAccount 13.0.13
+ollama.cloudDisabledSource 14.0.15
 ollama.cloudEnabled 13.0.13
 ollama.corsAllowsAnyOrigin 14.0.0
 ollama.dnsRebindingProtected 14.0.0
@@ -44,6 +45,10 @@ ollama.model.info.tags 13.0.0
 ollama.model.info.tokenizerModel 13.0.0
 ollama.model.info.vocabSize 13.0.0
 ollama.model.license 13.0.0
+ollama.model.message 14.0.15
+ollama.model.message.content 14.0.15
+ollama.model.message.role 14.0.15
+ollama.model.messages 14.0.15
 ollama.model.model 13.0.0
 ollama.model.modelfile 13.0.0
 ollama.model.modifiedAt 13.0.0
@@ -59,6 +64,7 @@ ollama.model.remoteHost 13.0.13
 ollama.model.remoteModel 13.0.13
 ollama.model.renderer 13.1.4
 ollama.model.repository 13.0.13
+ollama.model.requires 14.0.15
 ollama.model.size 13.0.0
 ollama.model.system 13.0.0
 ollama.model.tag 13.0.13
@@ -70,6 +76,8 @@ ollama.runningModel.digest 13.0.13
 ollama.runningModel.expiresAt 13.0.0
 ollama.runningModel.model 13.0.0
 ollama.runningModel.name 13.0.0
+ollama.runningModel.runner 14.0.15
+ollama.runningModel.size 14.0.15
 ollama.runningModel.sizeVram 13.0.0
 ollama.runningModels 13.0.0
 ollama.tls 13.0.13

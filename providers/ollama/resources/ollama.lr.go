@@ -19,6 +19,7 @@ const (
 	ResourceOllama             string = "ollama"
 	ResourceOllamaAccount      string = "ollama.account"
 	ResourceOllamaModel        string = "ollama.model"
+	ResourceOllamaModelMessage string = "ollama.model.message"
 	ResourceOllamaModelInfo    string = "ollama.model.info"
 	ResourceOllamaRunningModel string = "ollama.runningModel"
 )
@@ -38,6 +39,10 @@ func init() {
 		"ollama.model": {
 			Init:   initOllamaModel,
 			Create: createOllamaModel,
+		},
+		"ollama.model.message": {
+			// to override args, implement: initOllamaModelMessage(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createOllamaModelMessage,
 		},
 		"ollama.model.info": {
 			// to override args, implement: initOllamaModelInfo(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -145,6 +150,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"ollama.cloudEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOllama).GetCloudEnabled()).ToDataRes(types.Bool)
 	},
+	"ollama.cloudDisabledSource": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllama).GetCloudDisabledSource()).ToDataRes(types.String)
+	},
 	"ollama.cloudAccount": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOllama).GetCloudAccount()).ToDataRes(types.Resource("ollama.account"))
 	},
@@ -244,8 +252,20 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"ollama.model.parser": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOllamaModel).GetParser()).ToDataRes(types.String)
 	},
+	"ollama.model.requires": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaModel).GetRequires()).ToDataRes(types.String)
+	},
+	"ollama.model.messages": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaModel).GetMessages()).ToDataRes(types.Array(types.Resource("ollama.model.message")))
+	},
 	"ollama.model.info": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOllamaModel).GetInfo()).ToDataRes(types.Resource("ollama.model.info"))
+	},
+	"ollama.model.message.role": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaModelMessage).GetRole()).ToDataRes(types.String)
+	},
+	"ollama.model.message.content": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaModelMessage).GetContent()).ToDataRes(types.String)
 	},
 	"ollama.model.info.architecture": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOllamaModelInfo).GetArchitecture()).ToDataRes(types.String)
@@ -325,6 +345,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"ollama.runningModel.sizeVram": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOllamaRunningModel).GetSizeVram()).ToDataRes(types.Int)
 	},
+	"ollama.runningModel.size": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaRunningModel).GetSize()).ToDataRes(types.Int)
+	},
+	"ollama.runningModel.runner": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaRunningModel).GetRunner()).ToDataRes(types.String)
+	},
 	"ollama.runningModel.contextLength": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOllamaRunningModel).GetContextLength()).ToDataRes(types.Int)
 	},
@@ -378,6 +404,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"ollama.cloudEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOllama).CloudEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ollama.cloudDisabledSource": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllama).CloudDisabledSource, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"ollama.cloudAccount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -520,8 +550,28 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOllamaModel).Parser, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"ollama.model.requires": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaModel).Requires, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ollama.model.messages": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaModel).Messages, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"ollama.model.info": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOllamaModel).Info, ok = plugin.RawToTValue[*mqlOllamaModelInfo](v.Value, v.Error)
+		return
+	},
+	"ollama.model.message.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaModelMessage).__id, ok = v.Value.(string)
+		return
+	},
+	"ollama.model.message.role": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaModelMessage).Role, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ollama.model.message.content": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaModelMessage).Content, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"ollama.model.info.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -636,6 +686,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOllamaRunningModel).SizeVram, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
+	"ollama.runningModel.size": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaRunningModel).Size, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ollama.runningModel.runner": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaRunningModel).Runner, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"ollama.runningModel.contextLength": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOllamaRunningModel).ContextLength, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
@@ -668,7 +726,7 @@ func SetAllData(resource plugin.Resource, args map[string]*llx.RawData) error {
 type mqlOllama struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlOllamaInternal it will be used here
+	mqlOllamaInternal
 	Host                        plugin.TValue[string]
 	Version                     plugin.TValue[string]
 	Tls                         plugin.TValue[bool]
@@ -678,6 +736,7 @@ type mqlOllama struct {
 	CorsAllowsAnyOrigin         plugin.TValue[bool]
 	DnsRebindingProtected       plugin.TValue[bool]
 	CloudEnabled                plugin.TValue[bool]
+	CloudDisabledSource         plugin.TValue[string]
 	CloudAccount                plugin.TValue[*mqlOllamaAccount]
 	Models                      plugin.TValue[[]any]
 	RunningModels               plugin.TValue[[]any]
@@ -771,6 +830,12 @@ func (c *mqlOllama) GetDnsRebindingProtected() *plugin.TValue[bool] {
 func (c *mqlOllama) GetCloudEnabled() *plugin.TValue[bool] {
 	return plugin.GetOrCompute[bool](&c.CloudEnabled, func() (bool, error) {
 		return c.cloudEnabled()
+	})
+}
+
+func (c *mqlOllama) GetCloudDisabledSource() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.CloudDisabledSource, func() (string, error) {
+		return c.cloudDisabledSource()
 	})
 }
 
@@ -912,6 +977,8 @@ type mqlOllamaModel struct {
 	Parameters        plugin.TValue[string]
 	Renderer          plugin.TValue[string]
 	Parser            plugin.TValue[string]
+	Requires          plugin.TValue[string]
+	Messages          plugin.TValue[[]any]
 	Info              plugin.TValue[*mqlOllamaModelInfo]
 }
 
@@ -1074,6 +1141,28 @@ func (c *mqlOllamaModel) GetParser() *plugin.TValue[string] {
 	})
 }
 
+func (c *mqlOllamaModel) GetRequires() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Requires, func() (string, error) {
+		return c.requires()
+	})
+}
+
+func (c *mqlOllamaModel) GetMessages() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Messages, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ollama.model", c.__id, "messages")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.messages()
+	})
+}
+
 func (c *mqlOllamaModel) GetInfo() *plugin.TValue[*mqlOllamaModelInfo] {
 	return plugin.GetOrCompute[*mqlOllamaModelInfo](&c.Info, func() (*mqlOllamaModelInfo, error) {
 		if c.MqlRuntime.HasRecording {
@@ -1088,6 +1177,55 @@ func (c *mqlOllamaModel) GetInfo() *plugin.TValue[*mqlOllamaModelInfo] {
 
 		return c.info()
 	})
+}
+
+// mqlOllamaModelMessage for the ollama.model.message resource
+type mqlOllamaModelMessage struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlOllamaModelMessageInternal it will be used here
+	Role    plugin.TValue[string]
+	Content plugin.TValue[string]
+}
+
+// createOllamaModelMessage creates a new instance of this resource
+func createOllamaModelMessage(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlOllamaModelMessage{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ollama.model.message", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlOllamaModelMessage) MqlName() string {
+	return "ollama.model.message"
+}
+
+func (c *mqlOllamaModelMessage) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlOllamaModelMessage) GetRole() *plugin.TValue[string] {
+	return &c.Role
+}
+
+func (c *mqlOllamaModelMessage) GetContent() *plugin.TValue[string] {
+	return &c.Content
 }
 
 // mqlOllamaModelInfo for the ollama.model.info resource
@@ -1249,6 +1387,8 @@ type mqlOllamaRunningModel struct {
 	Digest        plugin.TValue[string]
 	ExpiresAt     plugin.TValue[*time.Time]
 	SizeVram      plugin.TValue[int64]
+	Size          plugin.TValue[int64]
+	Runner        plugin.TValue[string]
 	ContextLength plugin.TValue[int64]
 }
 
@@ -1319,6 +1459,14 @@ func (c *mqlOllamaRunningModel) GetExpiresAt() *plugin.TValue[*time.Time] {
 
 func (c *mqlOllamaRunningModel) GetSizeVram() *plugin.TValue[int64] {
 	return &c.SizeVram
+}
+
+func (c *mqlOllamaRunningModel) GetSize() *plugin.TValue[int64] {
+	return &c.Size
+}
+
+func (c *mqlOllamaRunningModel) GetRunner() *plugin.TValue[string] {
+	return &c.Runner
 }
 
 func (c *mqlOllamaRunningModel) GetContextLength() *plugin.TValue[int64] {
