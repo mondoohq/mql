@@ -242,22 +242,7 @@ func (r *mqlTogether) fineTunes() ([]any, error) {
 
 	res := make([]any, 0, len(resp.Data))
 	for _, j := range resp.Data {
-		mqlJob, err := CreateResource(r.MqlRuntime, "together.fineTune", map[string]*llx.RawData{
-			"__id":            llx.StringData(j.ID),
-			"id":              llx.StringData(j.ID),
-			"status":          llx.StringData(j.Status),
-			"model":           llx.StringData(j.Model),
-			"modelOutputName": llx.StringData(j.ModelOutputName),
-			"trainingFile":    llx.StringData(j.TrainingFile),
-			"validationFile":  llx.StringData(j.ValidationFile),
-			"createdAt":       llx.TimeData(j.CreatedAt),
-			"updatedAt":       llx.TimeData(j.UpdatedAt),
-			"totalPrice":      llx.IntData(j.TotalPrice),
-			"tokenCount":      llx.IntData(j.TokenCount),
-			"epochs":          llx.IntData(j.NEpochs),
-			"learningRate":    llx.FloatData(j.LearningRate),
-			"suffix":          llx.StringData(j.Suffix),
-		})
+		mqlJob, err := CreateResource(r.MqlRuntime, "together.fineTune", fineTuneArgs(j))
 		if err != nil {
 			return nil, err
 		}
@@ -265,6 +250,137 @@ func (r *mqlTogether) fineTunes() ([]any, error) {
 	}
 
 	return res, nil
+}
+
+// fineTuneArgs maps a fine-tuning job onto together.fineTune. Provenance the
+// job does not report (no Hugging Face source, no checkpoint, no Weights &
+// Biases project) is null rather than an empty string. The Weights & Biases
+// API key is never part of the list response and never reaches the schema.
+func fineTuneArgs(j together.FineTuningListResponseData) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":             llx.StringData(j.ID),
+		"id":               llx.StringData(j.ID),
+		"status":           llx.StringData(j.Status),
+		"model":            llx.StringData(j.Model),
+		"modelOutputName":  llx.StringData(j.ModelOutputName),
+		"trainingFile":     llx.StringData(j.TrainingFile),
+		"validationFile":   llx.StringData(j.ValidationFile),
+		"fromHfModel":      llx.StringDataPtr(nonEmpty(j.FromHfModel)),
+		"hfModelRevision":  llx.StringDataPtr(nonEmpty(j.HfModelRevision)),
+		"fromCheckpoint":   llx.StringDataPtr(nonEmpty(j.FromCheckpoint)),
+		"trainingMethod":   llx.StringDataPtr(nonEmpty(j.TrainingMethod.Method)),
+		"trainingType":     llx.StringDataPtr(nonEmpty(j.TrainingType.Type)),
+		"wandbProjectName": llx.StringDataPtr(nonEmpty(j.WandbProjectName)),
+		"ownerAddress":     llx.StringDataPtr(nonEmpty(j.OwnerAddress)),
+		"userId":           llx.StringData(j.UserID),
+		"startedAt":        llx.TimeDataPtr(timeOrNil(j.StartedAt)),
+		"createdAt":        llx.TimeData(j.CreatedAt),
+		"updatedAt":        llx.TimeData(j.UpdatedAt),
+		"totalPrice":       llx.IntData(j.TotalPrice),
+		"tokenCount":       llx.IntData(j.TokenCount),
+		"epochs":           llx.IntData(j.NEpochs),
+		"learningRate":     llx.FloatData(j.LearningRate),
+		"suffix":           llx.StringData(j.Suffix),
+	}
+}
+
+func (r *mqlTogetherFineTune) trainingDataset() (*mqlTogetherFile, error) {
+	f, err := listedFile(r.MqlRuntime, r.TrainingFile.Data)
+	if err != nil {
+		return nil, err
+	}
+	if f == nil {
+		r.TrainingDataset.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return f, nil
+}
+
+func (r *mqlTogetherFineTune) validationDataset() (*mqlTogetherFile, error) {
+	f, err := listedFile(r.MqlRuntime, r.ValidationFile.Data)
+	if err != nil {
+		return nil, err
+	}
+	if f == nil {
+		r.ValidationDataset.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return f, nil
+}
+
+// togetherRoot returns the account resource, whose lists back every typed
+// reference: resolving through them costs one list call per scan instead of
+// one lookup per reference.
+func togetherRoot(runtime *plugin.Runtime) (*mqlTogether, error) {
+	obj, err := CreateResource(runtime, "together", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	return obj.(*mqlTogether), nil
+}
+
+// listedFile returns the file with the given ID from the account's file list,
+// or nil when the ID is empty or not listed.
+func listedFile(runtime *plugin.Runtime, id string) (*mqlTogetherFile, error) {
+	if id == "" {
+		return nil, nil
+	}
+	root, err := togetherRoot(runtime)
+	if err != nil {
+		return nil, err
+	}
+	files := root.GetFiles()
+	if files.Error != nil {
+		return nil, files.Error
+	}
+	for _, raw := range files.Data {
+		if f, ok := raw.(*mqlTogetherFile); ok && f.Id.Data == id {
+			return f, nil
+		}
+	}
+	return nil, nil
+}
+
+// listedProject returns the project with the given ID from the list of
+// projects the API key can access, or nil when it is empty or not listed.
+func listedProject(runtime *plugin.Runtime, id string) (*mqlTogetherProject, error) {
+	if id == "" {
+		return nil, nil
+	}
+	root, err := togetherRoot(runtime)
+	if err != nil {
+		return nil, err
+	}
+	projects := root.GetProjects()
+	if projects.Error != nil {
+		return nil, projects.Error
+	}
+	for _, raw := range projects.Data {
+		if p, ok := raw.(*mqlTogetherProject); ok && p.Id.Data == id {
+			return p, nil
+		}
+	}
+	return nil, nil
+}
+
+// listedModel returns the catalog model with the given name, or nil when it
+// is empty or not in the catalog.
+func listedModel(runtime *plugin.Runtime, id string) (*mqlTogetherModel, error) {
+	if id == "" {
+		return nil, nil
+	}
+	root, err := togetherRoot(runtime)
+	if err != nil {
+		return nil, err
+	}
+	models := root.GetModels()
+	if models.Error != nil {
+		return nil, models.Error
+	}
+	for _, raw := range models.Data {
+		if m, ok := raw.(*mqlTogetherModel); ok && m.Id.Data == id {
+			return m, nil
+		}
+	}
+	return nil, nil
 }
 
 func (r *mqlTogether) endpoints() ([]any, error) {
@@ -297,6 +413,7 @@ func (r *mqlTogether) endpoints() ([]any, error) {
 		}
 		ep := mqlEndpoint.(*mqlTogetherEndpoint)
 		ep.cacheProjectID = e.ProjectID
+		ep.cacheTrafficSplit = e.TrafficSplit
 		if ep.cacheProjectID == "" {
 			ep.cacheProjectID = project
 		}
@@ -385,6 +502,7 @@ func (r *mqlTogether) clusters() ([]any, error) {
 
 		cfg := c.ClusterConfig
 		oidc := c.OidcConfig
+		addOns := clusterAddOnsOf(c)
 
 		mqlCluster, err := CreateResource(r.MqlRuntime, "together.cluster", map[string]*llx.RawData{
 			"__id":                       llx.StringData(c.ClusterID),
@@ -411,6 +529,11 @@ func (r *mqlTogether) clusters() ([]any, error) {
 			"sshCaEnabled":               llx.BoolDataPtr(reportedBool(cfg.SSHCaEnabled, cfg.JSON.SSHCaEnabled)),
 			"loadBalancer":               llx.StringDataPtr(reportedString(cfg.LoadBalancer, cfg.JSON.LoadBalancer)),
 			"ingressEnabled":             llx.BoolDataPtr(reportedBool(cfg.Ingress.Enabled, cfg.Ingress.JSON.Enabled)),
+			"headlampEnabled":            llx.BoolDataPtr(addOns.headlamp),
+			"slurmWebEnabled":            llx.BoolDataPtr(addOns.slurmWeb),
+			"torchpassEnabled":           llx.BoolDataPtr(addOns.torchpass),
+			"installTraefik":             llx.BoolDataPtr(reportedBool(c.InstallTraefik, c.JSON.InstallTraefik)),
+			"osImage":                    llx.StringDataPtr(reportedString(c.OsImage, c.JSON.OsImage)),
 			"nodes":                      llx.ArrayData(nodes, types.Resource("together.cluster.node")),
 			"createdAt":                  llx.TimeDataPtr(timeOrNil(c.CreatedAt)),
 			"reservationStartTime":       llx.TimeDataPtr(timeOrNil(c.ReservationStartTime)),
@@ -423,6 +546,41 @@ func (r *mqlTogether) clusters() ([]any, error) {
 	}
 
 	return res, nil
+}
+
+// clusterAddOns reports which of the cluster's optional add-ons are enabled.
+type clusterAddOns struct {
+	headlamp  *bool
+	slurmWeb  *bool
+	torchpass *bool
+}
+
+// clusterAddOnsOf reads the cluster's add-on list. The API returns only the
+// add-ons whose configuration enables them, so an add-on missing from a
+// reported list is a measured false. A cluster that reports no list at all
+// has not said, which is null.
+func clusterAddOnsOf(c together.Cluster) clusterAddOns {
+	if !c.JSON.AddOns.Valid() {
+		return clusterAddOns{}
+	}
+	var headlamp, slurmWeb, torchpass bool
+	for _, a := range c.AddOns {
+		headlamp = headlamp || a.Config.Headlamp.Enabled
+		slurmWeb = slurmWeb || a.Config.SlurmWeb.Enabled
+		torchpass = torchpass || a.Config.Torchpass.Enabled
+	}
+	return clusterAddOns{headlamp: &headlamp, slurmWeb: &slurmWeb, torchpass: &torchpass}
+}
+
+func (r *mqlTogetherCluster) project() (*mqlTogetherProject, error) {
+	p, err := listedProject(r.MqlRuntime, r.ProjectId.Data)
+	if err != nil {
+		return nil, err
+	}
+	if p == nil {
+		r.Project.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return p, nil
 }
 
 // reportedBool carries a boolean through to the schema only when the API
@@ -702,33 +860,7 @@ func (r *mqlTogether) deployments() ([]any, error) {
 
 	res := make([]any, 0, len(resp.Data))
 	for _, d := range resp.Data {
-		envVarNames := make([]any, 0, len(d.EnvironmentVariables))
-		for _, ev := range d.EnvironmentVariables {
-			envVarNames = append(envVarNames, ev.Name)
-		}
-
-		mqlDeploy, err := CreateResource(r.MqlRuntime, "together.deployment", map[string]*llx.RawData{
-			"__id":                     llx.StringData(d.ID),
-			"id":                       llx.StringData(d.ID),
-			"name":                     llx.StringData(d.Name),
-			"description":              llx.StringData(d.Description),
-			"image":                    llx.StringData(d.Image),
-			"status":                   llx.StringData(string(d.Status)),
-			"gpuType":                  llx.StringData(string(d.GPUType)),
-			"gpuCount":                 llx.IntData(d.GPUCount),
-			"cpu":                      llx.FloatData(d.CPU),
-			"memory":                   llx.FloatData(d.Memory),
-			"storage":                  llx.IntData(d.Storage),
-			"port":                     llx.IntData(d.Port),
-			"healthCheckPath":          llx.StringData(d.HealthCheckPath),
-			"desiredReplicas":          llx.IntData(d.DesiredReplicas),
-			"readyReplicas":            llx.IntData(d.ReadyReplicas),
-			"minReplicas":              llx.IntData(d.MinReplicas),
-			"maxReplicas":              llx.IntData(d.MaxReplicas),
-			"environmentVariableNames": llx.ArrayData(envVarNames, types.String),
-			"createdAt":                llx.TimeDataPtr(timeOrNil(d.CreatedAt)),
-			"updatedAt":                llx.TimeDataPtr(timeOrNil(d.UpdatedAt)),
-		})
+		mqlDeploy, err := newDeployment(r.MqlRuntime, d)
 		if err != nil {
 			return nil, err
 		}
@@ -778,6 +910,50 @@ func (r *mqlTogether) batches() ([]any, error) {
 	}
 
 	return res, nil
+}
+
+func (r *mqlTogetherBatch) model() (*mqlTogetherModel, error) {
+	m, err := listedModel(r.MqlRuntime, r.ModelId.Data)
+	if err != nil {
+		return nil, err
+	}
+	if m == nil {
+		r.Model.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return m, nil
+}
+
+func (r *mqlTogetherBatch) inputFile() (*mqlTogetherFile, error) {
+	f, err := listedFile(r.MqlRuntime, r.InputFileId.Data)
+	if err != nil {
+		return nil, err
+	}
+	if f == nil {
+		r.InputFile.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return f, nil
+}
+
+func (r *mqlTogetherBatch) outputFile() (*mqlTogetherFile, error) {
+	f, err := listedFile(r.MqlRuntime, r.OutputFileId.Data)
+	if err != nil {
+		return nil, err
+	}
+	if f == nil {
+		r.OutputFile.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return f, nil
+}
+
+func (r *mqlTogetherBatch) errorFile() (*mqlTogetherFile, error) {
+	f, err := listedFile(r.MqlRuntime, r.ErrorFileId.Data)
+	if err != nil {
+		return nil, err
+	}
+	if f == nil {
+		r.ErrorFile.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return f, nil
 }
 
 func (r *mqlTogether) evals() ([]any, error) {

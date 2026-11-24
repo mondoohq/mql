@@ -6,13 +6,18 @@ package resources
 import (
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	together "github.com/togethercomputer/together-go"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/together/connection"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 func newTestModel(id, displayName string) *mqlTogetherModel {
@@ -238,4 +243,179 @@ func TestFileProcessed(t *testing.T) {
 	}
 
 	assert.Nil(t, fileProcessed(decode(`{"id": "file-1"}`)), "a file without a status has no answer")
+}
+
+// newRoutedTogether builds a together resource whose client talks to a stub
+// that serves each body at the exact API path it is keyed by, and answers 404
+// for anything else.
+func newRoutedTogether(t *testing.T, routes map[string]string) *mqlTogether {
+	t.Helper()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, ok := routes[r.URL.Path]
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+
+	conn, err := connection.NewTogetherConnection(1, &inventory.Asset{}, &inventory.Config{
+		Options: map[string]string{
+			connection.OptionToken:   "not-a-real-key",
+			connection.OptionBaseURL: srv.URL,
+		},
+	})
+	require.NoError(t, err)
+
+	return &mqlTogether{MqlRuntime: &plugin.Runtime{
+		Connection: conn,
+		Resources:  &syncx.Map[plugin.Resource]{},
+	}}
+}
+
+// wandbKeyMarker stands in for a Weights & Biases API key. No field of the
+// schema may carry it, even if the API were to echo one back.
+const wandbKeyMarker = "WANDB-KEY-MUST-NOT-LEAK"
+
+func decodeFineTune(t *testing.T, body string) together.FineTuningListResponseData {
+	t.Helper()
+	var j together.FineTuningListResponseData
+	require.NoError(t, json.Unmarshal([]byte(body), &j))
+	return j
+}
+
+func TestFineTuneArgsDecodeProvenance(t *testing.T) {
+	// Synthetic: shaped like the documented fine-tune list entry; no live account was checked.
+	j := decodeFineTune(t, `{
+	  "id": "ft-0000",
+	  "status": "completed",
+	  "created_at": "2026-10-01T12:00:00Z",
+	  "updated_at": "2026-10-02T12:00:00Z",
+	  "started_at": "2026-10-01T12:05:00Z",
+	  "user_id": "user-1111",
+	  "from_hf_model": "example-org/example-model",
+	  "hf_model_revision": "rev-2222",
+	  "from_checkpoint": "ft-9999:10",
+	  "training_method": {"method": "dpo", "dpo_beta": 0.1},
+	  "training_type": {"type": "Lora", "lora_r": 8, "lora_alpha": 16},
+	  "wandb_project_name": "example-project",
+	  "wandb_api_key": "`+wandbKeyMarker+`",
+	  "owner_address": "owner-3333"
+	}`)
+
+	args := fineTuneArgs(j)
+	assert.Equal(t, "example-org/example-model", args["fromHfModel"].Value)
+	assert.Equal(t, "rev-2222", args["hfModelRevision"].Value)
+	assert.Equal(t, "ft-9999:10", args["fromCheckpoint"].Value)
+	assert.Equal(t, "dpo", args["trainingMethod"].Value)
+	assert.Equal(t, "Lora", args["trainingType"].Value)
+	assert.Equal(t, "example-project", args["wandbProjectName"].Value)
+	assert.Equal(t, "owner-3333", args["ownerAddress"].Value)
+	assert.Equal(t, "user-1111", args["userId"].Value)
+	assert.Equal(t, time.Date(2026, 10, 1, 12, 5, 0, 0, time.UTC), *args["startedAt"].Value.(*time.Time))
+
+	for name, v := range args {
+		if s, ok := v.Value.(string); ok {
+			assert.NotContains(t, s, wandbKeyMarker, "%s carries the Weights & Biases key", name)
+		}
+	}
+}
+
+func TestFineTuneArgsAbsentProvenanceIsNull(t *testing.T) {
+	// Synthetic: a job trained from a Together AI model with no optional provenance; no live account was checked.
+	args := fineTuneArgs(decodeFineTune(t, `{"id": "ft-0001", "status": "queued", "user_id": "user-1111"}`))
+
+	for _, field := range []string{"fromHfModel", "hfModelRevision", "fromCheckpoint", "trainingMethod", "trainingType", "wandbProjectName", "ownerAddress", "startedAt"} {
+		assert.Nil(t, args[field].Value, "%s is not reported and must be null, not empty", field)
+	}
+}
+
+// filesFixture is shaped like the documented GET v1/files response.
+// Synthetic: the values are invented; no live account was checked.
+const filesFixture = `{"data": [
+  {"id": "file-train", "filename": "train.jsonl", "purpose": "fine-tune", "FileType": "jsonl", "bytes": 10, "created_at": 1760000000},
+  {"id": "file-input", "filename": "requests.jsonl", "purpose": "batch-api", "FileType": "jsonl", "bytes": 20, "created_at": 1760000000},
+  {"id": "file-output", "filename": "results.jsonl", "purpose": "batch-api", "FileType": "jsonl", "bytes": 30, "created_at": 1760000000}
+]}`
+
+func TestFineTuneDatasetsResolveThroughTheFileList(t *testing.T) {
+	// Synthetic: one job whose training file is listed and whose validation file is not; no live account was checked.
+	r := newRoutedTogether(t, map[string]string{
+		"/v1/fine-tunes": `{"data": [{"id": "ft-0000", "status": "completed", "user_id": "u",
+		  "training_file": "file-train", "validation_file": "file-gone"}]}`,
+		"/v1/files": filesFixture,
+	})
+
+	jobs, err := r.fineTunes()
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	job := jobs[0].(*mqlTogetherFineTune)
+
+	training, err := job.trainingDataset()
+	require.NoError(t, err)
+	require.NotNil(t, training)
+	assert.Equal(t, "train.jsonl", training.Filename.Data)
+
+	validation, err := job.validationDataset()
+	require.NoError(t, err)
+	assert.Nil(t, validation)
+	assertNull(t, job.ValidationDataset, "validationDataset")
+}
+
+func TestBatchReferencesResolveThroughTheAccountLists(t *testing.T) {
+	// Synthetic: a finished batch with no error file, against a catalog that lists its model; no live account was checked.
+	r := newRoutedTogether(t, map[string]string{
+		"/v1/batches": `[{"id": "batch-0000", "status": "COMPLETED", "model_id": "example-org/Example-8B",
+		  "input_file_id": "file-input", "output_file_id": "file-output"}]`,
+		"/v1/files": filesFixture,
+		"/v2/supported-models": `{"data": [{"name": "example-org/Other-70B", "displayName": "Other 70B"},
+		  {"name": "example-org/Example-8B", "displayName": "Example 8B"}]}`,
+	})
+
+	batches, err := r.batches()
+	require.NoError(t, err)
+	require.Len(t, batches, 1)
+	batch := batches[0].(*mqlTogetherBatch)
+
+	model, err := batch.model()
+	require.NoError(t, err)
+	require.NotNil(t, model)
+	assert.Equal(t, "Example 8B", model.DisplayName.Data)
+
+	input, err := batch.inputFile()
+	require.NoError(t, err)
+	require.NotNil(t, input)
+	assert.Equal(t, "requests.jsonl", input.Filename.Data)
+
+	output, err := batch.outputFile()
+	require.NoError(t, err)
+	require.NotNil(t, output)
+	assert.Equal(t, "results.jsonl", output.Filename.Data)
+
+	errorFile, err := batch.errorFile()
+	require.NoError(t, err)
+	assert.Nil(t, errorFile)
+	assertNull(t, batch.ErrorFile, "errorFile")
+}
+
+func TestBatchModelOutsideTheCatalogIsNull(t *testing.T) {
+	// Synthetic: a batch run on a model the catalog does not list, as a fine-tuned model is not; no live account was checked.
+	r := newRoutedTogether(t, map[string]string{
+		"/v1/batches":          `[{"id": "batch-0001", "status": "COMPLETED", "model_id": "acct/my-finetune"}]`,
+		"/v2/supported-models": `{"data": [{"name": "example-org/Example-8B", "displayName": "Example 8B"}]}`,
+	})
+
+	batches, err := r.batches()
+	require.NoError(t, err)
+	require.Len(t, batches, 1)
+	batch := batches[0].(*mqlTogetherBatch)
+
+	model, err := batch.model()
+	require.NoError(t, err)
+	assert.Nil(t, model)
+	assertNull(t, batch.Model, "model")
+	assert.Equal(t, "acct/my-finetune", batch.ModelId.Data)
 }

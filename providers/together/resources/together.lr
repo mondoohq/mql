@@ -151,9 +151,61 @@ together.fineTune @defaults("id status model") @maturity("preview") {
   // Output model name after fine-tuning completes
   modelOutputName string
   // File ID of the training dataset
-  trainingFile string
+  //
+  // Deprecated in favor of trainingDataset, which reports the uploaded file.
+  trainingFile @maturity("deprecated") string
   // File ID of the validation dataset
-  validationFile string
+  //
+  // Deprecated in favor of validationDataset, which reports the uploaded file.
+  validationFile @maturity("deprecated") string
+  // Uploaded file holding the training dataset
+  //
+  // Null when the file is not among the files the API key can list.
+  trainingDataset() together.file
+  // Uploaded file holding the validation dataset
+  //
+  // Null when the job was started without a validation dataset, or when
+  // the file is not among the files the API key can list.
+  validationDataset() together.file
+  // Hugging Face Hub repository the job started training from
+  //
+  // Null when the job started from a Together AI model rather than a
+  // Hugging Face repository.
+  fromHfModel string
+  // Hugging Face Hub revision the job started training from
+  //
+  // Null when the job names no revision.
+  hfModelRevision string
+  // Checkpoint the job continued training from
+  //
+  // Null when the job started from a model rather than an earlier
+  // checkpoint.
+  fromCheckpoint string
+  // Training method
+  //
+  // One of sft, supervised fine-tuning, or dpo, direct preference
+  // optimization. Null when the job reports no method.
+  trainingMethod string
+  // Training type
+  //
+  // One of Full, which updates every weight of the model, or Lora, which
+  // trains a low-rank adapter. Null when the job reports no type.
+  trainingType string
+  // Weights & Biases project the job reports training metrics to
+  //
+  // A job with a project set sends its training metrics to a third-party
+  // service. Null when the job does not report to Weights & Biases.
+  wandbProjectName string
+  // Owner address of the job
+  //
+  // Null when the job reports no owner address.
+  ownerAddress string
+  // Identifier of the user who created the job
+  userId string
+  // Start time of the job's current stage
+  //
+  // Null when the job has not started.
+  startedAt time
   // Job creation time
   createdAt time
   // Last update time
@@ -218,6 +270,12 @@ together.endpoint @defaults("name type visibility") @maturity("preview") {
   project() together.project
   // Deployments under the endpoint
   deployments() []together.endpoint.deployment
+  // Deployments eligible for live traffic and their capacity weights
+  //
+  // Empty when the endpoint routes no live traffic. Use
+  // `together.endpoints.where(trafficSplit.length == 0)` to find unrouted
+  // endpoints.
+  trafficSplit() []together.endpoint.trafficSplitEntry
   // Endpoint creation time
   createdAt time
   // Last update time
@@ -283,10 +341,46 @@ private together.endpoint.deployment @defaults("name state model") @maturity("pr
   // Empty when the deployment carries no region restriction. Null when
   // the deployment is placed through a saved placement profile.
   placementRegions []string
+  // Minimum number of replicas the autoscaler keeps running
+  //
+  // Zero together with a zero autoscalingMaxReplicas means the deployment
+  // is stopped.
+  autoscalingMinReplicas int
+  // Maximum number of replicas the autoscaler scales out to
+  autoscalingMaxReplicas int
+  // Maximum number of inference requests in flight to a single replica
+  //
+  // Zero means unlimited. Null when the deployment sets no limit, in
+  // which case the platform applies one less than the per-replica
+  // concurrency limit of the deployment configuration.
+  maxConcurrentRequestsPerReplica int
+  // Draft model used for speculative decoding
+  //
+  // Resource name in the form
+  // `projects/{projectId}/models/{modelId}/revisions/{revisionId}`. Null
+  // when speculative decoding is disabled.
+  speculator string
   // Deployment creation time
   createdAt time
   // Last update time
   updatedAt time
+}
+
+// Entry of a Together AI endpoint traffic split
+//
+// Deployment eligible for live traffic under an endpoint, with the
+// capacity weight applied to each of its ready replicas.
+private together.endpoint.trafficSplitEntry @defaults("weight") @maturity("preview") {
+  // Deployment the entry routes live traffic to
+  //
+  // Null when the deployment is not among the endpoint's deployments.
+  deployment() together.endpoint.deployment
+  // Capacity weight applied to each ready replica of the deployment
+  //
+  // The deployment's routing capacity is its weight times its ready
+  // replicas, and requests are distributed in proportion to that
+  // capacity. Zero removes the deployment from the live traffic split.
+  weight float
 }
 
 // Together AI uploaded file
@@ -365,7 +459,13 @@ together.cluster @defaults("name gpuType numGpus region status") @maturity("prev
   // One of RESERVED, ON_DEMAND, or SCHEDULED_CAPACITY.
   billingType string
   // Project identifier
-  projectId string
+  //
+  // Deprecated in favor of project, which reports the owning project.
+  projectId @maturity("deprecated") string
+  // Project that owns the cluster
+  //
+  // Null when the project is not among the projects the API key can list.
+  project() together.project
   // CUDA version installed
   cudaVersion string
   // NVIDIA driver version installed
@@ -431,6 +531,29 @@ together.cluster @defaults("name gpuType numGpus region status") @maturity("prev
   // True when the cluster accepts inbound traffic through its ingress
   // configuration. Null when the cluster reports no ingress settings.
   ingressEnabled bool
+  // Whether the Headlamp Kubernetes dashboard add-on is enabled
+  //
+  // Headlamp is a web console into the cluster, an administrative entry
+  // point like the Kubernetes dashboard. Null when the cluster reports no
+  // add-on list.
+  headlampEnabled bool
+  // Whether the Slurm Web add-on is enabled
+  //
+  // Slurm Web is a web interface to the cluster's Slurm scheduler. Null
+  // when the cluster reports no add-on list.
+  slurmWebEnabled bool
+  // Whether the Model Aware TorchPass add-on is enabled
+  //
+  // Null when the cluster reports no add-on list.
+  torchpassEnabled bool
+  // Whether the Traefik ingress controller is installed on the cluster
+  //
+  // Null when the cluster does not report it.
+  installTraefik bool
+  // Data-volume image of the GPU worker nodes
+  //
+  // Null when the cluster does not report it.
+  osImage string
   // Nodes that make up the cluster
   //
   // Both the GPU workers and the control plane nodes currently in the
@@ -594,18 +717,77 @@ together.deployment @defaults("name status image gpuType") @maturity("preview") 
   maxReplicas int
   // Names of environment variables configured on the deployment
   environmentVariableNames []string
+  // Names of environment variables set from a plaintext value
+  //
+  // Only the names are reported, never the values. A variable listed
+  // here carries its value in the deployment configuration rather than
+  // in a managed secret, so a credential set this way is readable by
+  // anyone who can read the deployment. Use
+  // `together.deployments.where(plaintextEnvironmentVariableNames.any(_ == /KEY|TOKEN|SECRET|PASSWORD/i))`
+  // to find credentials kept out of managed secrets.
+  plaintextEnvironmentVariableNames []string
+  // Managed secrets the deployment's environment variables read from
+  //
+  // A secret an environment variable references but that is not among
+  // the secrets the API key can list is not included.
+  secrets() []together.secret
+  // Persistent volumes mounted into the deployment's containers
+  volumeMounts []together.deployment.volumeMount
+  // Model weights mounted into the deployment's containers
+  modelMounts []together.deployment.modelMount
+  // Behavior of replicas above reserved capacity
+  //
+  // One of stable, whose replicas stay running after a scale-up, or
+  // preemptible, whose replicas may be evicted during capacity
+  // contention. Null when the deployment does not report it.
+  capacityType string
   // Deployment creation time
   createdAt time
   // Last update time
   updatedAt time
 }
 
+// Volume mount of a Together AI container deployment
+//
+// Persistent volume mounted into a container deployment, with the path
+// it is mounted at and the volume version pinned.
+private together.deployment.volumeMount @defaults("path") @maturity("preview") {
+  // Path in the container where the volume is mounted
+  path string
+  // Volume version that is mounted
+  //
+  // Null when the mount reports no version.
+  version int
+  // Persistent volume that is mounted
+  //
+  // Null when the volume is not among the volumes the API key can list.
+  volume() together.volume
+}
+
+// Model weights mount of a Together AI container deployment
+//
+// Model weights from the model registry mounted into a container
+// deployment, with the path they are mounted at and the pinned revision.
+private together.deployment.modelMount @defaults("path modelId") @maturity("preview") {
+  // Path in the container where the model weights are mounted
+  path string
+  // Model registry identifier whose weights are mounted
+  //
+  // Identifier in the form `ml_...`.
+  modelId string
+  // Model revision pinned by the mount
+  //
+  // Identifier in the form `rv_...`. Null when the mount follows the
+  // latest validated revision.
+  revisionId string
+}
+
 // Together AI batch inference job
 //
 // Batch inference job including its status, model, progress, and associated
-// input/output files. Use `together.batches.where(status == "IN_PROGRESS")`
-// to find running jobs or inspect `modelId` to audit which models are being
-// used for batch inference.
+// input, output, and error files. Use
+// `together.batches.where(status == "IN_PROGRESS")` to find running jobs, or
+// inspect `modelId` to audit which models are being used for batch inference.
 together.batch @defaults("id status modelId") @maturity("preview") {
   // Job identifier
   id string
@@ -615,14 +797,40 @@ together.batch @defaults("id status modelId") @maturity("preview") {
   status string
   // Model used for inference
   modelId string
+  // Catalog model used for inference
+  //
+  // Null when the model is not in the Together AI model catalog, as a
+  // project's own fine-tuned model is not. modelId names the model
+  // either way.
+  model() together.model
   // API endpoint used for inference
   endpoint string
   // Input file identifier
-  inputFileId string
+  //
+  // Deprecated in favor of inputFile, which reports the uploaded file.
+  inputFileId @maturity("deprecated") string
   // Output file identifier
-  outputFileId string
+  //
+  // Deprecated in favor of outputFile, which reports the uploaded file.
+  outputFileId @maturity("deprecated") string
   // Error file identifier
-  errorFileId string
+  //
+  // Deprecated in favor of errorFile, which reports the uploaded file.
+  errorFileId @maturity("deprecated") string
+  // Uploaded file holding the batch requests
+  //
+  // Null when the file is not among the files the API key can list.
+  inputFile() together.file
+  // File the job wrote its results to
+  //
+  // Null until the job has written output, or when the file is not among
+  // the files the API key can list.
+  outputFile() together.file
+  // File the job wrote its failed requests to
+  //
+  // Null when the job wrote no errors, or when the file is not among the
+  // files the API key can list.
+  errorFile() together.file
   // Completion progress (0.0 to 100.0)
   progress float
   // Input file size in bytes
