@@ -63,6 +63,18 @@ type ServerInfo struct {
 
 	AllowRuntimeLoraUpdating *bool
 	ServerDevMode            *bool
+
+	AllowedLocalMediaPath *string
+	// AllowedMediaDomains is nil when the list is unset or empty: vLLM applies
+	// no domain restriction in either case.
+	AllowedMediaDomains []string
+
+	Revision          *string
+	CodeRevision      *string
+	TokenizerRevision *string
+
+	LoadFormat  *string
+	DownloadDir *string
 }
 
 type serverInfoDoc struct {
@@ -83,6 +95,7 @@ type vllmConfigDoc struct {
 	LoRAConfig          map[string]any `json:"lora_config"`
 	ParallelConfig      map[string]any `json:"parallel_config"`
 	ObservabilityConfig map[string]any `json:"observability_config"`
+	LoadConfig          map[string]any `json:"load_config"`
 }
 
 // ServerInfo fetches and decodes /server_info once per connection. The route is
@@ -153,6 +166,16 @@ func ParseServerInfo(raw []byte) (*ServerInfo, error) {
 	info.Quantization = jsonStringPtr(m["quantization"])
 	info.EnforceEager = jsonBoolPtr(m["enforce_eager"])
 	info.ServedModelNames = jsonStringList(m["served_model_name"])
+	info.AllowedLocalMediaPath = jsonStringPtr(m["allowed_local_media_path"])
+	if domains := jsonStringList(m["allowed_media_domains"]); len(domains) > 0 {
+		info.AllowedMediaDomains = domains
+	}
+	info.Revision = jsonStringPtr(m["revision"])
+	info.CodeRevision = jsonStringPtr(m["code_revision"])
+	info.TokenizerRevision = jsonStringPtr(m["tokenizer_revision"])
+
+	info.LoadFormat = jsonStringPtr(config.LoadConfig["load_format"])
+	info.DownloadDir = jsonStringPtr(config.LoadConfig["download_dir"])
 
 	info.EnablePrefixCaching = jsonBoolPtr(config.CacheConfig["enable_prefix_caching"])
 

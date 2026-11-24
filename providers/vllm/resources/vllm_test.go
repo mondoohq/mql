@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/vllm/connection"
 )
 
@@ -126,4 +127,80 @@ func TestEndpointSpecFor(t *testing.T) {
 			t.Fatalf("body = %q, want %q", spec.Body, connection.NewPostBody())
 		}
 	})
+}
+
+// servedModel builds a listed model the way models() leaves it: the id field
+// set and the parent id stashed on the internal cache field.
+func servedModel(id, parent string) *mqlVllmModel {
+	m := &mqlVllmModel{}
+	m.Id = plugin.TValue[string]{Data: id, State: plugin.StateIsSet}
+	m.cacheParentID = parent
+	return m
+}
+
+func TestFindModelByID(t *testing.T) {
+	// Synthetic: a base model listed with two adapters; no live server was checked.
+	base := servedModel("meta-llama/Llama-3.1-8B-Instruct", "")
+	sql := servedModel("sql-lora", "meta-llama/Llama-3.1-8B-Instruct")
+	chat := servedModel("chat-lora", "meta-llama/Llama-3.1-8B-Instruct")
+	// Synthetic: an adapter whose base model is not in the list; no live server was checked.
+	orphan := servedModel("orphan-lora", "not-served")
+	models := []any{base, sql, chat, orphan}
+
+	t.Run("adapter resolves to its served base model", func(t *testing.T) {
+		if got := findModelByID(models, sql.cacheParentID); got != base {
+			t.Fatalf("got %v want base model", got)
+		}
+	})
+
+	t.Run("adapter whose base model is not served resolves to nil", func(t *testing.T) {
+		if got := findModelByID(models, orphan.cacheParentID); got != nil {
+			t.Fatalf("got %q want nil", got.Id.Data)
+		}
+	})
+}
+
+func TestAdaptersOf(t *testing.T) {
+	// Synthetic: a base model listed with two adapters; no live server was checked.
+	base := servedModel("base", "")
+	sql := servedModel("sql-lora", "base")
+	chat := servedModel("chat-lora", "base")
+	other := servedModel("other-lora", "other-base")
+	models := []any{base, sql, chat, other}
+
+	t.Run("base model lists both of its adapters", func(t *testing.T) {
+		got := adaptersOf(models, "base")
+		if len(got) != 2 || got[0] != sql || got[1] != chat {
+			t.Fatalf("got %v want [sql-lora chat-lora]", got)
+		}
+	})
+
+	t.Run("adapter has no adapters of its own", func(t *testing.T) {
+		got := adaptersOf(models, "sql-lora")
+		if got == nil || len(got) != 0 {
+			t.Fatalf("got %v want empty list", got)
+		}
+	})
+
+	t.Run("empty id never matches base models", func(t *testing.T) {
+		if got := adaptersOf(models, ""); len(got) != 0 {
+			t.Fatalf("got %v want empty list", got)
+		}
+	})
+}
+
+// The deprecated parent field keeps reporting the raw parent id.
+func TestModelArgsKeepsParent(t *testing.T) {
+	// Synthetic: an adapter card shaped after vLLM's /v1/models LoRA entries; no live server was checked.
+	args := modelArgs("http://vllm:8000", connection.ModelCard{
+		ID:     "sql-lora",
+		Root:   "/adapters/sql",
+		Parent: "meta-llama/Llama-3.1-8B-Instruct",
+	})
+	if got := args["parent"].Value.(string); got != "meta-llama/Llama-3.1-8B-Instruct" {
+		t.Fatalf("parent got %q", got)
+	}
+	if got := args["__id"].Value.(string); got != "http://vllm:8000/model/sql-lora" {
+		t.Fatalf("__id got %q", got)
+	}
 }
