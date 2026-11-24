@@ -121,6 +121,82 @@ stackit @root {
   // being enabled, or disabled. Use it to find services switched on in a
   // project that nobody inventories.
   serviceEnablements() []stackit.serviceEnablement
+  // Unified Firewall namespace (firewall rules across products)
+  ufw() stackit.ufw
+}
+
+// STACKIT Unified Firewall namespace
+//
+// Firewall rules in the project and region, gathered across every product
+// the Unified Firewall manages (security groups, database ACLs, and other
+// product access lists). Query `rules` to find any rule that admits traffic
+// from 0.0.0.0/0, whichever product it belongs to.
+stackit.ufw {
+  // Firewall rules across all products in the project and region
+  rules() []stackit.ufw.rule
+}
+
+// STACKIT Unified Firewall rule
+//
+// One firewall rule as the Unified Firewall reports it, for the product
+// instance named by `product` and `instanceId`. `type` tells an ACL entry
+// from a security group rule; `sourceIp`, `ipRange`, and `destination`
+// describe what the rule admits. `securityGroup` and `remoteSecurityGroup`
+// resolve the groups a security group rule belongs to and admits.
+private stackit.ufw.rule @defaults("product instanceName type sourceIp portRange") {
+  // Reference ID of the rule in its product (empty when not reported)
+  refId string
+  // Product the rule belongs to (for example iaas or postgresflex)
+  product string
+  // ID of the product instance the rule protects
+  //
+  // The kind of object this names depends on product, for example a
+  // security group for IaaS or a database instance for a managed database.
+  instanceId string
+  // Name of the product instance the rule protects (empty when not reported)
+  instanceName string
+  // Rule type
+  //
+  // One of ACL, SecurityRule, or SecurityGroup.
+  type string
+  // Traffic direction (ingress or egress; empty when not reported)
+  direction string
+  // Source address the rule admits, as an IP address or CIDR
+  sourceIp string
+  // IP range of the rule (empty when not reported)
+  ipRange string
+  // Destination of the rule
+  destination string
+  // Port range (empty when the rule covers all ports)
+  portRange string
+  // Protocol (empty when the rule covers all protocols)
+  protocol string
+  // Ethertype (IPv4 or IPv6; empty when not reported)
+  etherType string
+  // Whether the rule is stateful (null when not reported)
+  stateful bool
+  // Rule status
+  //
+  // One of Active, Error, Pending, Updating, Deleting, or Creating.
+  status string
+  // Error message for a rule in the Error status (empty when none)
+  errorMessage string
+  // Description
+  description string
+  // Position of the rule in the product's rule list (null when not reported)
+  offset int
+  // Region the rule applies in
+  region string
+  // Security group the rule belongs to (nullable)
+  //
+  // Null when the rule is not a security group rule, or when the group is
+  // not one of this project's.
+  securityGroup() stackit.securityGroup
+  // Security group whose members the rule admits (nullable)
+  //
+  // Null when the rule's source is an address rather than a group, or when
+  // the group is not one of this project's.
+  remoteSecurityGroup() stackit.securityGroup
 }
 
 // STACKIT project metadata
@@ -186,6 +262,27 @@ private stackit.project @defaults("id name lifecycleState") {
   //
   // Empty when the project is not part of a VPC.
   vpcId() string
+  // Compute, storage, and network quotas of the project in the connection's region
+  //
+  // One entry per quota (vcpu, ram, gigabytes, volumes, snapshots, backups,
+  // backupGigabytes, networks, nics, publicIps, securityGroups,
+  // securityGroupRules) with its limit and current usage.
+  quotas() []stackit.project.quota
+  // Public IP ranges STACKIT allocates addresses from, across all regions
+  //
+  // The CIDRs that traffic from STACKIT workloads leaves from, for
+  // allow-listing STACKIT egress on a remote firewall.
+  publicIpRanges() []string
+}
+
+// IaaS quota of a STACKIT project
+private stackit.project.quota @defaults("name usage limit") {
+  // Quota name (for example vcpu or publicIps)
+  name string
+  // Maximum allowed
+  limit int
+  // Current usage
+  usage int
 }
 
 // STACKIT organization
@@ -314,6 +411,12 @@ private stackit.server @defaults("id name status machineType") {
   volumeIds []string
   // Volumes attached to the server
   volumes() []stackit.volume
+  // Volume attachments of the server, with their deletion behavior
+  //
+  // One entry per attached volume, saying whether the volume is deleted
+  // along with the server. Use it to find data volumes that would be
+  // destroyed with the server, or that outlive it.
+  attachedVolumes() []stackit.server.attachedVolume
   // Whether the boot volume is deleted when the server is terminated
   //
   // Decides whether the boot disk and the data on it survive deletion of the
@@ -379,6 +482,14 @@ private stackit.server @defaults("id name status machineType") {
   metadata map[string]string
 }
 
+// Volume attachment of a STACKIT server
+private stackit.server.attachedVolume @defaults("deleteOnTermination") {
+  // Attached volume
+  volume() stackit.volume
+  // Whether the volume is deleted when the server is deleted (null when not reported)
+  deleteOnTermination bool
+}
+
 // STACKIT block storage volume
 //
 // Block storage volume that backs compute instances, keyed by its UUID
@@ -411,6 +522,16 @@ private stackit.volume @defaults("id name size status") {
   performanceClass string
   // Whether the volume is bootable
   bootable bool
+  // Whether a server booting from the volume uses Secure Boot
+  //
+  // Read from the volume's image configuration. Null when the volume
+  // carries no image configuration or the setting is not reported.
+  secureBoot bool
+  // Whether a server booting from the volume uses UEFI firmware
+  //
+  // Read from the volume's image configuration. Null when the volume
+  // carries no image configuration or the setting is not reported.
+  uefi bool
   // Source image UUID (empty if not image-based)
   imageId string
   // Image the volume was created from (nullable)
@@ -625,6 +746,16 @@ private stackit.image @defaults("id name status diskFormat") {
   // `operatingSystemVersion`, `rescueBus`, `rescueDevice`,
   // `secureBoot`, `uefi`, `videoModel`, and `virtioScsi`.
   config dict
+  // Whether servers booted from the image use Secure Boot
+  //
+  // Null when the image carries no configuration or the setting is not
+  // reported.
+  secureBoot bool
+  // Whether servers booted from the image use UEFI firmware
+  //
+  // Null when the image carries no configuration or the setting is not
+  // reported.
+  uefi bool
   // Creation timestamp
   createdAt time
   // Last update timestamp
@@ -731,6 +862,35 @@ private stackit.routingTable @defaults("id name isDefault") {
   dynamicRoutes bool
   // Whether automatic system routes connecting projects in the same network area are installed
   systemRoutes bool
+  // Creation timestamp
+  createdAt time
+  // Last update timestamp
+  updatedAt time
+  // User-defined labels
+  labels map[string]string
+  // Routes written to the table
+  //
+  // Each route names a destination CIDR and the next hop traffic to it is
+  // forwarded to. A route whose next hop is the internet sends the
+  // destination out of the network area directly. Null when the network
+  // area holding the table cannot be read.
+  routes() []stackit.routingTable.route
+}
+
+// Route in a STACKIT routing table
+private stackit.routingTable.route @defaults("destination nexthopType nexthopValue") {
+  // Route UUID
+  id string
+  // Destination CIDR (IPv4 or IPv6)
+  destination string
+  // Next hop type
+  //
+  // One of ipv4, ipv6, internet, or blackhole.
+  nexthopType string
+  // Next hop address (empty for internet and blackhole next hops)
+  nexthopValue string
+  // Whether the route forwards its destination to the internet
+  nexthopInternet bool
   // Creation timestamp
   createdAt time
   // Last update timestamp
@@ -891,6 +1051,8 @@ private stackit.securityGroup.rule @defaults("id direction protocol") {
   remoteSecurityGroup() stackit.securityGroup
   // Creation timestamp
   createdAt time
+  // Last update timestamp
+  updatedAt time
 }
 
 // Server internet-exposure breakdown
@@ -1457,6 +1619,33 @@ private stackit.ske.cluster @defaults("name kubernetesVersion status") {
   kubernetesExpirationDate time
   // STACKIT network the cluster is attached to
   networkRef() stackit.network
+  // Whether the cluster is hibernated
+  //
+  // A hibernated cluster has its worker nodes scaled to zero. Null when the
+  // cluster status does not report it.
+  hibernated bool
+  // Errors the cluster status reports
+  //
+  // Empty for a cluster without reported errors.
+  errors() []stackit.ske.cluster.statusError
+  // Start of the maintenance window
+  //
+  // Only the time of day is significant. Null when the cluster carries no
+  // maintenance window.
+  maintenanceWindowStart time
+  // End of the maintenance window
+  //
+  // Only the time of day is significant. Null when the cluster carries no
+  // maintenance window.
+  maintenanceWindowEnd time
+}
+
+// Error reported in the status of an SKE cluster
+private stackit.ske.cluster.statusError @defaults("code message") {
+  // Error code (for example SKE_INFRA_SNA_NETWORK_NOT_FOUND)
+  code string
+  // Error message
+  message string
 }
 
 // SKE node pool
@@ -1920,6 +2109,21 @@ private stackit.dns.zone @defaults("id dnsName type state") {
   labels map[string]string
   // Record sets in the zone
   recordSets() []stackit.dns.recordSet
+  // User-given zone name (distinct from dnsName)
+  name string
+  // Whether the zone is active (null when not reported)
+  active bool
+  // Error message for a zone in a failed state (empty when none)
+  errorMessage string
+  // When the most recent zone update started
+  updateStartedAt time
+  // When the most recent zone update finished
+  updateFinishedAt time
+  // Observability instance the zone's DNS metrics are sent to (nullable)
+  //
+  // Null when the zone has no observability extension, or when the instance
+  // is not one of this project's.
+  observabilityInstance() stackit.observability.instance
 }
 
 // STACKIT DNS record set
@@ -2069,6 +2273,40 @@ private stackit.postgresFlex.instance @defaults("id name version status") {
   // The service accepts 32 to 90 days. Null when the service reports no
   // retention.
   backupRetentionDays() int
+  // PostgreSQL server parameters of the instance
+  //
+  // One entry per server setting with its current and default value, so
+  // hardening settings such as `log_connections` or `ssl_min_protocol_version`
+  // can be checked directly.
+  parameters() []stackit.postgresFlex.instance.parameter
+}
+
+// PostgreSQL server parameter of a Postgres Flex instance
+private stackit.postgresFlex.instance.parameter @defaults("name value") {
+  // Parameter name (for example log_connections)
+  name string
+  // Current value
+  value string
+  // Default value
+  defaultValue string
+  // Value the parameter returns to on reset
+  resetValue string
+  // Whether a change to the parameter waits for a server restart (null when not reported)
+  pendingRestart bool
+  // Context that decides when a change takes effect (for example sighup or postmaster)
+  context string
+  // Data type of the value (for example bool, integer, or string)
+  dataType string
+  // Unit of the value (empty when it has none)
+  unit string
+  // Whether the parameter can be changed (null when not reported)
+  editable bool
+  // Lowest accepted value (empty when not bounded)
+  minValue string
+  // Highest accepted value (empty when not bounded)
+  maxValue string
+  // Description
+  description string
 }
 
 // STACKIT Postgres Flex database user
@@ -3805,6 +4043,38 @@ private stackit.observability.instance @defaults("id name status planName") {
   // administrator rights, so a compromised or loosely scoped provider
   // becomes an admin path into the instance.
   grafanaGenericOauthAllowAssignAdmin() bool
+  // Whether the Grafana admin account is enabled
+  //
+  // The admin account logs in with a local password rather than through
+  // STACKIT SSO or the OAuth provider. The password is not exposed.
+  grafanaAdminEnabled() bool
+  // Whether the generic OAuth provider denies login when no role mapping matches
+  //
+  // False lets a user whose claims map to no Grafana role log in with the
+  // default role. Null when no generic OAuth provider is configured or the
+  // setting is not reported.
+  grafanaGenericOauthRoleAttributeStrict() bool
+  // Whether the generic OAuth login uses PKCE
+  //
+  // Null when no generic OAuth provider is configured or the setting is not
+  // reported.
+  grafanaGenericOauthUsePkce() bool
+  // Alertmanager receivers configured on the instance
+  //
+  // Where alerts are delivered: email recipients and the kinds of webhook
+  // or Opsgenie targets. Webhook URLs and API keys are not exposed.
+  alertReceivers() []stackit.observability.alertReceiver
+  // Number of alert groups configured on the instance
+  alertGroupCount() int
+  // Number of alert rules across all alert groups
+  //
+  // Zero means no alert fires, however the receivers are set up.
+  alertRuleCount() int
+  // Technical credentials issued for the instance
+  //
+  // The inventory of credentials that can push metrics, logs, and traces
+  // into the instance and query them. Secrets are not exposed.
+  credentials() []stackit.observability.credential
   // Prometheus scrape jobs configured on the instance
   //
   // Each job names the targets the instance pulls metrics from, over which
@@ -3831,6 +4101,39 @@ private stackit.observability.instance @defaults("id name status planName") {
   //
   // Null when the traces settings cannot be read.
   tracesRetention() string
+}
+
+// Alertmanager receiver of a STACKIT Observability instance
+//
+// One named alert destination, keyed by `name` within its instance.
+// `types` lists the kinds of notifier the receiver carries, `emailTo` the
+// email recipients, and `webhookSchemes` the URL scheme of each webhook,
+// so a receiver posting alerts over plain http stands out.
+private stackit.observability.alertReceiver @defaults("name types") {
+  // Receiver name
+  name string
+  // Notifier kinds the receiver carries
+  //
+  // Any of email, opsgenie, webhook, msTeams, and googleChat.
+  types []string
+  // Email recipients
+  emailTo []string
+  // URL scheme of each webhook (for example https)
+  webhookSchemes []string
+  // Whether any notifier of the receiver also reports resolved alerts
+  //
+  // Null when none of the notifiers reports the setting.
+  sendResolved bool
+}
+
+// Technical credential of a STACKIT Observability instance
+private stackit.observability.credential @defaults("name") {
+  // Credential ID
+  id string
+  // Credential name
+  name string
+  // Description
+  description string
 }
 
 // Prometheus scrape job on a STACKIT Observability instance
@@ -4213,9 +4516,14 @@ private stackit.serviceAccount @defaults("email projectId") {
   accessTokens() @maturity("deprecated") @replaced_by("stackit.serviceAccount.keys") []dict
   // Long-lived keys associated with this service account
   //
-  // Each entry has `id`, `keyType`, `keyAlgorithm`, `keyOrigin`,
-  // `active`, `createdAt`, and `validUntil`.
-  keys() []dict
+  // Deprecated in favor of accessKeys. Each entry has `id`, `keyType`,
+  // `keyAlgorithm`, `keyOrigin`, `active`, `createdAt`, and `validUntil`.
+  keys() @maturity("deprecated") []dict
+  // Long-lived keys issued for this service account
+  //
+  // One entry per key, with whether it is active, when it was created, and
+  // when it expires. Key material is not exposed.
+  accessKeys() []stackit.serviceAccount.key
   // External identity providers trusted to obtain credentials for this account
   federatedIdentityProviders() []stackit.serviceAccount.federatedIdentityProvider
   // Project role bindings whose subject is this service account
@@ -4233,6 +4541,28 @@ private stackit.serviceAccount @defaults("email projectId") {
   // account holds. Empty when the credential may not read the account's
   // memberships.
   memberships() []stackit.iam.membership
+}
+
+// Key issued for a STACKIT service account
+//
+// One long-lived key of a service account, keyed by its `id`. Exposes
+// whether the key is active, its type, origin, and algorithm, when it was
+// created, and `validUntil`, which is null for a key that never expires.
+private stackit.serviceAccount.key @defaults("id active validUntil") {
+  // Key UUID
+  id string
+  // Whether the key is active
+  active bool
+  // Creation timestamp
+  createdAt time
+  // Expiry timestamp (null for a key without expiry)
+  validUntil time
+  // Key type (for example USER_MANAGED or SYSTEM_MANAGED)
+  keyType string
+  // Key origin (for example USER_PROVIDED or GENERATED)
+  keyOrigin string
+  // Key algorithm (for example RSA_2048)
+  keyAlgorithm string
 }
 
 // Federated identity provider trusted by a STACKIT service account
@@ -4930,6 +5260,57 @@ private stackit.vpn.gateway @defaults("id name status routingType") {
   // exchanged. Empty for a gateway with static routing; null when the
   // status could not be read.
   bgpPeers() []stackit.vpn.gateway.bgpPeer
+  // Network prefix the gateway's internal network is created from (empty when not set)
+  networkPrefix string
+  // Routing table the gateway's network uses (nullable)
+  //
+  // Null when the gateway names no routing table, or when the table is on
+  // a network area this credential cannot read.
+  routingTable() stackit.routingTable
+  // BGP route filters defined on the gateway
+  //
+  // Each filter is an ordered list of rules that permit or deny routes
+  // learned from a peer. A tunnel applies one through inboundFilter.
+  bgpFilters() []stackit.vpn.gateway.bgpFilter
+}
+
+// BGP route filter on a STACKIT VPN gateway
+//
+// Named, ordered set of rules that decides which routes the gateway
+// accepts from a BGP peer, keyed by its `id` within the gateway.
+private stackit.vpn.gateway.bgpFilter @defaults("name") {
+  // Filter UUID
+  id string
+  // Display name
+  name string
+  // Rules of the filter, in evaluation order
+  rules() []stackit.vpn.gateway.bgpFilter.rule
+}
+
+// Rule of a BGP route filter
+private stackit.vpn.gateway.bgpFilter.rule @defaults("sequence action prefixes") {
+  // Rule UUID
+  id string
+  // Position in the filter's evaluation order (null when not reported)
+  sequence int
+  // Action for a matching route (PERMIT or DENY)
+  action string
+  // Route prefixes the rule matches (empty matches any prefix)
+  prefixes []string
+  // Shortest prefix length the rule matches (null when not bounded)
+  minPrefixLength int
+  // Longest prefix length the rule matches (null when not bounded)
+  maxPrefixLength int
+  // BGP communities the rule matches
+  communities []string
+  // AS numbers of which any one in the AS path matches
+  asPathContainsAny []int
+  // First AS number in the AS path the rule matches (null when not set)
+  firstAsn int
+  // Peer address the rule matches (empty matches any peer)
+  peer string
+  // Local preference set on a matching route (null when not set)
+  localPreference int
 }
 
 // BGP session on a STACKIT VPN gateway
@@ -5066,6 +5447,11 @@ private stackit.vpn.tunnel @defaults("remoteAddress") {
   //
   // Null when the status could not be read.
   negotiatedPhase2Encapsulation() string
+  // BGP route filter applied to routes learned over the tunnel (nullable)
+  //
+  // Null when the tunnel applies no filter and accepts every route its
+  // peer advertises, or when the filter no longer exists on the gateway.
+  inboundFilter() stackit.vpn.gateway.bgpFilter
 }
 
 // STACKIT CDN namespace

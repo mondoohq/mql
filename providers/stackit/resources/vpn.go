@@ -4,13 +4,16 @@
 package resources
 
 import (
+	"math"
 	"sort"
+	"strconv"
 	"sync"
 	"sync/atomic"
 
 	vpn "github.com/stackitcloud/stackit-sdk-go/services/vpn/v1api"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 type mqlStackitVpnGatewayConnectionInternal struct {
@@ -33,6 +36,10 @@ type mqlStackitVpnGatewayInternal struct {
 	statusFetched atomic.Bool
 	status        *vpn.GatewayStatusResponse
 	statusLock    sync.Mutex
+
+	// cacheRoutingTableID is the routing table the gateway's network
+	// configuration names, resolved by routingTable().
+	cacheRoutingTableID string
 }
 
 // mqlStackitVpnTunnelInternal locates a tunnel's live status inside its
@@ -42,6 +49,9 @@ type mqlStackitVpnTunnelInternal struct {
 	cacheGatewayID    string
 	cacheConnectionID string
 	cacheSlot         string
+	// cacheInboundFilterID is the BGP filter the tunnel applies to learned
+	// routes, resolved by inboundFilter().
+	cacheInboundFilterID string
 }
 
 // fetchStatus reads the gateway's live status once and caches it. A nil
@@ -393,7 +403,13 @@ func buildVpnGateway(runtime *plugin.Runtime, g *vpn.GatewayResponse) (plugin.Re
 		bgpRoutes = bgp.GetOverrideAdvertisedRoutes()
 	}
 	az := g.GetAvailabilityZones()
+	var networkPrefix, routingTableID string
+	if nc, ok := g.GetNetworkConfigOk(); ok && nc != nil {
+		networkPrefix = nc.GetPredefinedNetworkPrefix()
+		routingTableID = nc.GetRoutingTableId()
+	}
 	args := map[string]*llx.RawData{
+		"networkPrefix":               llx.StringData(networkPrefix),
 		"id":                          llx.StringData(g.GetId()),
 		"name":                        llx.StringData(g.GetDisplayName()),
 		"status":                      llx.StringData(string(g.GetState())),
@@ -405,7 +421,205 @@ func buildVpnGateway(runtime *plugin.Runtime, g *vpn.GatewayResponse) (plugin.Re
 		"bgpOverrideAdvertisedRoutes": strSliceData(bgpRoutes),
 		"labels":                      labelData(g.GetLabels()),
 	}
-	return CreateResource(runtime, "stackit.vpn.gateway", args)
+	res, err := CreateResource(runtime, "stackit.vpn.gateway", args)
+	if err != nil {
+		return nil, err
+	}
+	res.(*mqlStackitVpnGateway).cacheRoutingTableID = routingTableID
+	return res, nil
+}
+
+// routingTable resolves the routing table the gateway's network uses from the
+// tables of the project's network areas. Null when the gateway names none, or
+// names one on an area this credential cannot read.
+func (r *mqlStackitVpnGateway) routingTable() (*mqlStackitRoutingTable, error) {
+	if r.cacheRoutingTableID == "" {
+		return markNull(&r.RoutingTable)
+	}
+	tables, err := conn(r.MqlRuntime).NetworkAreaRoutingTables(bgctx())
+	if err != nil {
+		return nil, err
+	}
+	table, ok := tables[r.cacheRoutingTableID]
+	if !ok {
+		return markNull(&r.RoutingTable)
+	}
+	return buildRoutingTable(r.MqlRuntime, &table)
+}
+
+// ------------------------- BGP filters -------------------------
+
+// mqlStackitVpnGatewayBgpFilterInternal keeps the owning gateway, which the
+// rule list call needs.
+type mqlStackitVpnGatewayBgpFilterInternal struct {
+	cacheGatewayID string
+}
+
+func (r *mqlStackitVpnGateway) bgpFilters() ([]any, error) {
+	c := conn(r.MqlRuntime)
+	client, err := c.Vpn()
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.DefaultAPI.ListGatewayBGPFilters(bgctx(), c.ProjectID(), c.Region(), r.Id.Data).Execute()
+	if err != nil {
+		if isNotFound(err) {
+			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return deniedList(err)
+		}
+		return nil, err
+	}
+	filters := resp.GetBgpFilters()
+	out := make([]any, 0, len(filters))
+	for i := range filters {
+		f := &filters[i]
+		if f.GetId() == "" {
+			continue
+		}
+		res, err := CreateResource(r.MqlRuntime, "stackit.vpn.gateway.bgpFilter", map[string]*llx.RawData{
+			"__id": llx.StringData(qualifiedId("stackit.vpn.gateway.bgpFilter", c.ProjectID()+"/"+r.Id.Data, f.GetId())),
+			"id":   llx.StringData(f.GetId()),
+			"name": llx.StringData(f.GetDisplayName()),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res.(*mqlStackitVpnGatewayBgpFilter).cacheGatewayID = r.Id.Data
+		out = append(out, res)
+	}
+	return out, nil
+}
+
+func (r *mqlStackitVpnGatewayBgpFilter) rules() ([]any, error) {
+	c := conn(r.MqlRuntime)
+	client, err := c.Vpn()
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.DefaultAPI.ListGatewayBGPFilterRules(bgctx(), c.ProjectID(), c.Region(), r.cacheGatewayID, r.Id.Data).Execute()
+	if err != nil {
+		if isNotFound(err) {
+			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return deniedList(err)
+		}
+		return nil, err
+	}
+	rules := sortBgpRules(resp.GetRules())
+	out := make([]any, 0, len(rules))
+	for i := range rules {
+		key := rules[i].GetId()
+		if key == "" {
+			key = strconv.Itoa(i)
+		}
+		res, err := CreateResource(r.MqlRuntime, "stackit.vpn.gateway.bgpFilter.rule",
+			bgpFilterRuleArgs(qualifiedId("stackit.vpn.gateway.bgpFilter.rule", r.cacheGatewayID+"/"+r.Id.Data, key), &rules[i]))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, res)
+	}
+	return out, nil
+}
+
+// sortBgpRules orders rules by their sequence, which is the order the filter
+// evaluates them in. Rules without a sequence go last, in listed order.
+func sortBgpRules(rules []vpn.BGPFilterRule) []vpn.BGPFilterRule {
+	seq := func(r *vpn.BGPFilterRule) int64 {
+		if s, ok := r.GetSequenceOk(); ok && s != nil {
+			return int64(*s)
+		}
+		return math.MaxInt64
+	}
+	sort.SliceStable(rules, func(i, j int) bool { return seq(&rules[i]) < seq(&rules[j]) })
+	return rules
+}
+
+func int32Ptr64(v *int32, ok bool) *int64 {
+	if !ok || v == nil {
+		return nil
+	}
+	n := int64(*v)
+	return &n
+}
+
+func bgpFilterRuleArgs(key string, rule *vpn.BGPFilterRule) map[string]*llx.RawData {
+	var (
+		prefixes, communities []string
+		minLen, maxLen, first *int64
+		localPref             *int64
+		peer                  string
+	)
+	asPath := []any{}
+	if m, ok := rule.GetMatchOk(); ok && m != nil {
+		prefixes = m.GetPrefixes()
+		communities = m.GetCommunities()
+		for _, asn := range m.GetAsPathContainsAny() {
+			asPath = append(asPath, asn)
+		}
+		minLen = int32Ptr64(m.GetMinPrefixLengthOk())
+		maxLen = int32Ptr64(m.GetMaxPrefixLengthOk())
+		if f, ok := m.GetFirstASNOk(); ok && f != nil {
+			v := *f
+			first = &v
+		}
+		peer = m.GetPeer()
+	}
+	if s, ok := rule.GetSetOk(); ok && s != nil {
+		localPref = int32Ptr64(s.GetLocalPreferenceOk())
+	}
+	return map[string]*llx.RawData{
+		"__id":              llx.StringData(key),
+		"id":                llx.StringData(rule.GetId()),
+		"sequence":          llx.IntDataPtr(int32Ptr64(rule.GetSequenceOk())),
+		"action":            llx.StringData(string(rule.GetAction())),
+		"prefixes":          strSliceData(prefixes),
+		"minPrefixLength":   llx.IntDataPtr(minLen),
+		"maxPrefixLength":   llx.IntDataPtr(maxLen),
+		"communities":       strSliceData(communities),
+		"asPathContainsAny": llx.ArrayData(asPath, types.Int),
+		"firstAsn":          llx.IntDataPtr(first),
+		"peer":              llx.StringData(peer),
+		"localPreference":   llx.IntDataPtr(localPref),
+	}
+}
+
+// inboundFilter resolves the BGP filter the tunnel applies to routes it
+// learns, from its gateway's filter list. Null when the tunnel applies none
+// or the gateway no longer lists the filter.
+func (r *mqlStackitVpnTunnel) inboundFilter() (*mqlStackitVpnGatewayBgpFilter, error) {
+	if r.cacheInboundFilterID == "" || r.cacheGatewayID == "" {
+		return markNull(&r.InboundFilter)
+	}
+	res, err := NewResource(r.MqlRuntime, "stackit.vpn.gateway", map[string]*llx.RawData{
+		"id": llx.StringData(r.cacheGatewayID),
+	})
+	if err != nil {
+		if isNotFound(err) {
+			return markNull(&r.InboundFilter)
+		}
+		if isAccessDenied(err) {
+			if !plugin.StructuredErrors() {
+				return markNull(&r.InboundFilter)
+			}
+			return nil, refusal(err)
+		}
+		return nil, err
+	}
+	filters := res.(*mqlStackitVpnGateway).GetBgpFilters()
+	if filters.Error != nil {
+		return nil, filters.Error
+	}
+	for _, f := range filters.Data {
+		filter, ok := f.(*mqlStackitVpnGatewayBgpFilter)
+		if ok && filter.Id.Data == r.cacheInboundFilterID {
+			return filter, nil
+		}
+	}
+	return markNull(&r.InboundFilter)
 }
 
 func (r *mqlStackitVpnGateway) id() (string, error) {
@@ -501,8 +715,10 @@ func (r *mqlStackitVpnGatewayConnection) buildTunnel(t *vpn.TunnelConfiguration,
 		peeringLocalAddress  string
 		peeringRemoteAddress string
 	)
+	var inboundFilterID string
 	if bgp, ok := t.GetBgpOk(); ok && bgp != nil {
 		bgpRemoteAsn = bgp.GetRemoteAsn()
+		inboundFilterID = bgp.GetInboundFilterId()
 	}
 	if peering, ok := t.GetPeeringOk(); ok && peering != nil {
 		peeringLocalAddress = peering.GetLocalAddress()
@@ -534,6 +750,7 @@ func (r *mqlStackitVpnGatewayConnection) buildTunnel(t *vpn.TunnelConfiguration,
 	tunnel.cacheGatewayID = r.cacheGatewayID
 	tunnel.cacheConnectionID = r.Id.Data
 	tunnel.cacheSlot = slot
+	tunnel.cacheInboundFilterID = inboundFilterID
 	return tunnel, nil
 }
 
