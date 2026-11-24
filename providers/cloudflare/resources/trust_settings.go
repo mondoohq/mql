@@ -9,13 +9,15 @@ import (
 
 	cloudflare "github.com/cloudflare/cloudflare-go/v7"
 	"github.com/cloudflare/cloudflare-go/v7/zero_trust"
-	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/cloudflare/connection"
 )
 
 type mqlCloudflareOneOrganizationInternal struct {
 	accountID string
+	// cacheExemptedZoneNames holds the zone names exempted from
+	// deny_unmatched_requests; nil when the organization does not report them.
+	cacheExemptedZoneNames []string
 
 	trustLock    sync.Mutex
 	trustFetched bool
@@ -70,34 +72,14 @@ func (o *mqlCloudflareOneOrganization) trustedAccounts() ([]any, error) {
 		return []any{}, nil
 	}
 
-	root, err := CreateResource(o.MqlRuntime, "cloudflare", map[string]*llx.RawData{})
+	byID, err := listedAccountsByID(o.MqlRuntime)
 	if err != nil {
 		return nil, err
-	}
-	known := root.(*mqlCloudflare).GetAccounts()
-	if known.Error != nil {
-		return nil, known.Error
-	}
-	byID := make(map[string]any, len(known.Data))
-	for _, a := range known.Data {
-		byID[a.(*mqlCloudflareAccount).Id.Data] = a
 	}
 
 	result := make([]any, 0, len(ts.TrustingAccounts))
 	for _, id := range dedupeStrings(ts.TrustingAccounts) {
-		if acc, ok := byID[id]; ok {
-			result = append(result, acc)
-			continue
-		}
-		// An account outside the token's reach: keep its id, and null every
-		// field the accounts list would have supplied.
-		acc, err := CreateResource(o.MqlRuntime, "cloudflare.account", map[string]*llx.RawData{
-			"id":        llx.StringData(id),
-			"name":      llx.NilData,
-			"type":      llx.NilData,
-			"settings":  llx.NilData,
-			"createdOn": llx.NilData,
-		})
+		acc, err := accountOrStub(o.MqlRuntime, byID, id)
 		if err != nil {
 			return nil, err
 		}

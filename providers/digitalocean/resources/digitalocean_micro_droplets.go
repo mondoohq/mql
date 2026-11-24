@@ -200,3 +200,53 @@ func microVMURLs(urls []godo.MicroVMURL) []any {
 	}
 	return out
 }
+
+// accessTokens lists the instance's access tokens. The list endpoint is not
+// paginated and returns metadata only; the token value exists solely in the
+// create response.
+func (r *mqlDigitaloceanMicroDroplet) accessTokens() ([]any, error) {
+	if r.Id.Data == "" {
+		return nil, errors.New("cannot list MicroDroplet access tokens without an id")
+	}
+	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
+	tokens, _, err := conn.Client().MicroVMs.ListAccessTokens(context.Background(), r.Id.Data)
+	if err != nil {
+		// An instance deleted between the listing and this call answers 404,
+		// which is genuinely no tokens. Denied and transient reads propagate.
+		if isDoNotFound(err) {
+			return []any{}, nil
+		}
+		return nil, classifyDoError(err)
+	}
+	out := make([]any, 0, len(tokens))
+	for i := range tokens {
+		args, err := microDropletAccessTokenArgs(r.Id.Data, &tokens[i])
+		if err != nil {
+			return nil, err
+		}
+		res, err := CreateResource(r.MqlRuntime, "digitalocean.microDroplet.accessToken", args)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, res)
+	}
+	return out, nil
+}
+
+// microDropletAccessTokenArgs maps an access token's metadata to its MQL
+// fields. Token ids are scoped to their instance in the API, so the cache
+// key carries both. An empty expiry means the token never expires and stays
+// null.
+func microDropletAccessTokenArgs(microVMID string, t *godo.MicroVMAccessToken) (map[string]*llx.RawData, error) {
+	id, err := resourceID("digitalocean.microDroplet.accessToken", microVMID, t.ID)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]*llx.RawData{
+		"__id":      llx.StringData(id),
+		"id":        llx.StringData(t.ID),
+		"name":      llx.StringData(t.Name),
+		"createdAt": llx.TimeDataPtr(parseDoTime(t.Created)),
+		"expiresAt": llx.TimeDataPtr(parseDoTime(t.ExpiresAt)),
+	}, nil
+}

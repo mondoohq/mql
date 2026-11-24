@@ -16,6 +16,7 @@ import (
 	"github.com/digitalocean/godo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func newTestGodoClient(t *testing.T, handler http.HandlerFunc) *godo.Client {
@@ -374,4 +375,60 @@ func TestListHostedAgentConnections_NoPaginationShortPage(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, conns, 1)
 	assert.Equal(t, 1, calls)
+}
+
+// Synthetic: consent records in the shape of godo's SignalsListConsentsResponse JSON; no live account was checked.
+func TestSignalsConsentLookups(t *testing.T) {
+	var list godo.SignalsListConsentsResponse
+	require.NoError(t, json.Unmarshal([]byte(`{"team_id":7,"consents":[
+		{"id":1,"team_id":7,"source":"agent","agent_id":"","environment_id":"env-on","enabled":true},
+		{"id":2,"team_id":7,"source":"agent","agent_id":"env-legacy","enabled":false},
+		{"id":3,"team_id":7,"source":"inference","agent_id":"","enabled":true},
+		{"id":4,"team_id":7,"source":"inference","agent_id":"","environment_id":"env-off","enabled":true}
+	]}`), &list))
+
+	on := agentSignalsConsent(&list, "env-on")
+	require.NotNil(t, on)
+	assert.True(t, *on)
+
+	// Older records name the environment only through the deprecated agent_id.
+	legacy := agentSignalsConsent(&list, "env-legacy")
+	require.NotNil(t, legacy)
+	assert.False(t, *legacy)
+
+	// An inference record naming an environment is not an agent consent.
+	assert.Nil(t, agentSignalsConsent(&list, "env-off"))
+	assert.Nil(t, agentSignalsConsent(&list, "env-unknown"))
+	assert.Nil(t, agentSignalsConsent(nil, "env-on"))
+
+	inf := inferenceSignalsConsent(&list)
+	require.NotNil(t, inf)
+	assert.True(t, *inf)
+
+	// Synthetic: a team with only agent records has no inference consent.
+	assert.Nil(t, inferenceSignalsConsent(&godo.SignalsListConsentsResponse{Consents: list.Consents[:2]}))
+}
+
+// Synthetic: the consent listing read through the API, then a team without consent records (404); no live account was checked.
+func TestSignalsConsentFields(t *testing.T) {
+	rt := statusRuntime(t, map[string]route{
+		"/v1/consent": {200, `{"team_id":7,"consents":[{"source":"inference","enabled":false},{"source":"agent","environment_id":"cfg-1","enabled":true}]}`},
+	})
+	cfg := &mqlDigitaloceanHostedAgentConfig{MqlRuntime: rt, Id: strVal("cfg-1")}
+	v, err := cfg.signalsConsentEnabled()
+	require.NoError(t, err)
+	assert.True(t, v)
+
+	root, err := parentDigitalocean(rt)
+	require.NoError(t, err)
+	inf, err := root.inferenceSignalsConsentEnabled()
+	require.NoError(t, err)
+	assert.False(t, inf)
+	assert.Equal(t, plugin.State(0), root.InferenceSignalsConsentEnabled.State, "a read false must not be null")
+
+	rt = statusRuntime(t, map[string]route{})
+	cfg = &mqlDigitaloceanHostedAgentConfig{MqlRuntime: rt, Id: strVal("cfg-1")}
+	_, err = cfg.signalsConsentEnabled()
+	require.NoError(t, err)
+	assert.Equal(t, plugin.StateIsSet|plugin.StateIsNull, cfg.SignalsConsentEnabled.State)
 }

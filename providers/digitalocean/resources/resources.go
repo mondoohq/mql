@@ -64,26 +64,64 @@ func (r *mqlDigitaloceanDatabase) replicas() ([]any, error) {
 	}
 
 	all := make([]any, 0, len(replicas))
-	for _, rep := range replicas {
-		tags := make([]any, len(rep.Tags))
-		for i, t := range rep.Tags {
-			tags[i] = t
-		}
-		res, err := CreateResource(r.MqlRuntime, "digitalocean.database.replica", map[string]*llx.RawData{
-			"databaseId": llx.StringData(r.Id.Data),
-			"name":       llx.StringData(rep.Name),
-			"region":     llx.StringData(rep.Region),
-			"status":     llx.StringData(rep.Status),
-			"createdAt":  llx.TimeData(rep.CreatedAt),
-			"size":       llx.StringData(rep.Size),
-			"tags":       llx.ArrayData(tags, types.String),
-		})
+	for i := range replicas {
+		rep := &replicas[i]
+		res, err := CreateResource(r.MqlRuntime, "digitalocean.database.replica", databaseReplicaArgs(r.Id.Data, rep))
 		if err != nil {
 			return nil, err
 		}
+		res.(*mqlDigitaloceanDatabaseReplica).cacheVpcID = rep.PrivateNetworkUUID
 		all = append(all, res)
 	}
 	return all, nil
+}
+
+// mqlDigitaloceanDatabaseReplicaInternal keeps the replica's VPC UUID so the
+// typed vpc() accessor resolves it from the account's VPC list.
+type mqlDigitaloceanDatabaseReplicaInternal struct {
+	cacheVpcID string
+}
+
+// databaseReplicaArgs maps a read-only replica to its MQL fields. The
+// connection blocks also carry the replica's URI, user, and password, which
+// are deliberately not surfaced; host, port, and TLS are reported per
+// endpoint, and an endpoint the replica does not publish leaves its fields
+// null.
+func databaseReplicaArgs(databaseID string, rep *godo.DatabaseReplica) map[string]*llx.RawData {
+	tags := make([]any, len(rep.Tags))
+	for i, t := range rep.Tags {
+		tags[i] = t
+	}
+	pubHost, pubPort, pubSSL := poolConnection(rep.Connection)
+	privHost, privPort, privSSL := poolConnection(rep.PrivateConnection)
+
+	// storage_size_mib is omitted when the API does not report it, which
+	// decodes to zero; no replica holds zero storage.
+	storage := llx.NilData
+	if rep.StorageSizeMib > 0 {
+		storage = llx.IntData(int64(rep.StorageSizeMib))
+	}
+
+	return map[string]*llx.RawData{
+		"databaseId":        llx.StringData(databaseID),
+		"name":              llx.StringData(rep.Name),
+		"region":            llx.StringData(rep.Region),
+		"status":            llx.StringData(rep.Status),
+		"createdAt":         llx.TimeData(rep.CreatedAt),
+		"size":              llx.StringData(rep.Size),
+		"tags":              llx.ArrayData(tags, types.String),
+		"storageSizeMib":    storage,
+		"host":              llx.StringDataPtr(pubHost),
+		"port":              llx.IntDataPtr(pubPort),
+		"sslEnabled":        llx.BoolDataPtr(pubSSL),
+		"privateHost":       llx.StringDataPtr(privHost),
+		"privatePort":       llx.IntDataPtr(privPort),
+		"privateSslEnabled": llx.BoolDataPtr(privSSL),
+	}
+}
+
+func (r *mqlDigitaloceanDatabaseReplica) vpc() (*mqlDigitaloceanVpc, error) {
+	return resolveVpcRef(r.MqlRuntime, &r.Vpc, r.cacheVpcID)
 }
 
 func (r *mqlDigitaloceanDatabaseReplica) id() (string, error) {
@@ -91,9 +129,11 @@ func (r *mqlDigitaloceanDatabaseReplica) id() (string, error) {
 }
 
 // databaseEngineHasPools reports whether an engine supports connection pools.
-// DigitalOcean offers PgBouncer pools on PostgreSQL clusters only.
+// DigitalOcean offers PgBouncer pools on PostgreSQL clusters only, including
+// PostgreSQL Advanced Edition (engine advanced_pg), whose standby nodes take
+// their own read-only pools.
 func databaseEngineHasPools(engine string) bool {
-	return engine == "pg"
+	return engine == "pg" || engine == "advanced_pg"
 }
 
 func (r *mqlDigitaloceanDatabase) pools() ([]any, error) {

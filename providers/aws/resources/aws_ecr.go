@@ -114,9 +114,17 @@ func ecrReplicationConfigurationToDict(cfg *ecrtypes.ReplicationConfiguration) m
 			})
 		}
 
+		// AWS documents an absent DeleteReplication as not replicating
+		// deletions, so false is the measured answer rather than a guess.
+		deleteReplication := false
+		if rule.DeleteReplication != nil {
+			deleteReplication = rule.DeleteReplication.Enabled
+		}
+
 		rules = append(rules, map[string]any{
-			"destinations":      destinations,
-			"repositoryFilters": filters,
+			"destinations":             destinations,
+			"repositoryFilters":        filters,
+			"deleteReplicationEnabled": deleteReplication,
 		})
 	}
 

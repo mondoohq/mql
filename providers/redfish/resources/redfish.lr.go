@@ -22,6 +22,7 @@ const (
 	ResourceRedfishMemory            string = "redfish.memory"
 	ResourceRedfishEthernetInterface string = "redfish.ethernetInterface"
 	ResourceRedfishManager           string = "redfish.manager"
+	ResourceRedfishHostInterface     string = "redfish.hostInterface"
 	ResourceRedfishChassisEnclosure  string = "redfish.chassisEnclosure"
 	ResourceRedfishAccount           string = "redfish.account"
 	ResourceRedfishAccountService    string = "redfish.accountService"
@@ -62,6 +63,10 @@ func init() {
 		"redfish.manager": {
 			// to override args, implement: initRedfishManager(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createRedfishManager,
+		},
+		"redfish.hostInterface": {
+			// to override args, implement: initRedfishHostInterface(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createRedfishHostInterface,
 		},
 		"redfish.chassisEnclosure": {
 			// to override args, implement: initRedfishChassisEnclosure(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -244,6 +249,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"redfish.system.secureBootCurrentBoot": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRedfishSystem).GetSecureBootCurrentBoot()).ToDataRes(types.String)
 	},
+	"redfish.system.secureBootDesiredMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishSystem).GetSecureBootDesiredMode()).ToDataRes(types.String)
+	},
+	"redfish.system.biosSetupPasswordSet": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishSystem).GetBiosSetupPasswordSet()).ToDataRes(types.Bool)
+	},
+	"redfish.system.biosBootPasswordSet": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishSystem).GetBiosBootPasswordSet()).ToDataRes(types.Bool)
+	},
+	"redfish.system.virtualizationCpuOffload": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishSystem).GetVirtualizationCpuOffload()).ToDataRes(types.Bool)
+	},
+	"redfish.system.virtualizationDeviceIsolation": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishSystem).GetVirtualizationDeviceIsolation()).ToDataRes(types.Bool)
+	},
+	"redfish.system.productionDate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishSystem).GetProductionDate()).ToDataRes(types.Time)
+	},
 	"redfish.system.trustedModules": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRedfishSystem).GetTrustedModules()).ToDataRes(types.Array(types.Dict))
 	},
@@ -291,6 +314,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"redfish.processor.maxSpeedMHz": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRedfishProcessor).GetMaxSpeedMHz()).ToDataRes(types.Int)
+	},
+	"redfish.processor.hardwareSecurityVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishProcessor).GetHardwareSecurityVersion()).ToDataRes(types.String)
 	},
 	"redfish.memory.capacityMiB": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRedfishMemory).GetCapacityMiB()).ToDataRes(types.Int)
@@ -385,6 +411,54 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"redfish.manager.networkProtocol": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRedfishManager).GetNetworkProtocol()).ToDataRes(types.Dict)
 	},
+	"redfish.manager.hostInterfaces": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishManager).GetHostInterfaces()).ToDataRes(types.Array(types.Resource("redfish.hostInterface")))
+	},
+	"redfish.hostInterface.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishHostInterface).GetName()).ToDataRes(types.String)
+	},
+	"redfish.hostInterface.hostInterfaceType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishHostInterface).GetHostInterfaceType()).ToDataRes(types.String)
+	},
+	"redfish.hostInterface.interfaceEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishHostInterface).GetInterfaceEnabled()).ToDataRes(types.Bool)
+	},
+	"redfish.hostInterface.externallyAccessible": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishHostInterface).GetExternallyAccessible()).ToDataRes(types.Bool)
+	},
+	"redfish.hostInterface.authenticationModes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishHostInterface).GetAuthenticationModes()).ToDataRes(types.Array(types.String))
+	},
+	"redfish.hostInterface.authNoneRoleId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishHostInterface).GetAuthNoneRoleId()).ToDataRes(types.String)
+	},
+	"redfish.hostInterface.firmwareAuthEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishHostInterface).GetFirmwareAuthEnabled()).ToDataRes(types.Bool)
+	},
+	"redfish.hostInterface.firmwareAuthRoleId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishHostInterface).GetFirmwareAuthRoleId()).ToDataRes(types.String)
+	},
+	"redfish.hostInterface.kernelAuthEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishHostInterface).GetKernelAuthEnabled()).ToDataRes(types.Bool)
+	},
+	"redfish.hostInterface.kernelAuthRoleId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishHostInterface).GetKernelAuthRoleId()).ToDataRes(types.String)
+	},
+	"redfish.hostInterface.credentialBootstrappingEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishHostInterface).GetCredentialBootstrappingEnabled()).ToDataRes(types.Bool)
+	},
+	"redfish.hostInterface.credentialBootstrappingEnableAfterReset": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishHostInterface).GetCredentialBootstrappingEnableAfterReset()).ToDataRes(types.Bool)
+	},
+	"redfish.hostInterface.credentialBootstrappingRoleId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishHostInterface).GetCredentialBootstrappingRoleId()).ToDataRes(types.String)
+	},
+	"redfish.hostInterface.credentialBootstrappingExpirationWindowEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishHostInterface).GetCredentialBootstrappingExpirationWindowEnabled()).ToDataRes(types.Bool)
+	},
+	"redfish.hostInterface.credentialBootstrappingExpirationWindowMinutes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishHostInterface).GetCredentialBootstrappingExpirationWindowMinutes()).ToDataRes(types.Int)
+	},
 	"redfish.chassisEnclosure.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRedfishChassisEnclosure).GetName()).ToDataRes(types.String)
 	},
@@ -405,6 +479,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"redfish.chassisEnclosure.powerState": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRedfishChassisEnclosure).GetPowerState()).ToDataRes(types.String)
+	},
+	"redfish.chassisEnclosure.productionDate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishChassisEnclosure).GetProductionDate()).ToDataRes(types.Time)
 	},
 	"redfish.account.userName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRedfishAccount).GetUserName()).ToDataRes(types.String)
@@ -502,6 +579,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"redfish.accountService.tacacsPlusAuthenticationType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRedfishAccountService).GetTacacsPlusAuthenticationType()).ToDataRes(types.String)
 	},
+	"redfish.accountService.ldapCredentialSet": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishAccountService).GetLdapCredentialSet()).ToDataRes(types.Bool)
+	},
+	"redfish.accountService.activeDirectoryCredentialSet": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishAccountService).GetActiveDirectoryCredentialSet()).ToDataRes(types.Bool)
+	},
+	"redfish.accountService.tacacsPlusCredentialSet": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishAccountService).GetTacacsPlusCredentialSet()).ToDataRes(types.Bool)
+	},
 	"redfish.networkProtocol.hostName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRedfishNetworkProtocol).GetHostName()).ToDataRes(types.String)
 	},
@@ -555,6 +641,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"redfish.networkProtocol.kvmipPort": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRedfishNetworkProtocol).GetKvmipPort()).ToDataRes(types.Int)
+	},
+	"redfish.networkProtocol.sshPreferredAuthentications": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishNetworkProtocol).GetSshPreferredAuthentications()).ToDataRes(types.Array(types.String))
 	},
 	"redfish.certificate.issuerCommonName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRedfishCertificate).GetIssuerCommonName()).ToDataRes(types.String)
@@ -631,6 +720,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"redfish.session.roles": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRedfishSession).GetRoles()).ToDataRes(types.Array(types.String))
 	},
+	"redfish.session.userAuthenticationSource": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishSession).GetUserAuthenticationSource()).ToDataRes(types.String)
+	},
 	"redfish.softwareInventory.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRedfishSoftwareInventory).GetName()).ToDataRes(types.String)
 	},
@@ -651,6 +743,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"redfish.softwareInventory.lowestSupportedVersion": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRedfishSoftwareInventory).GetLowestSupportedVersion()).ToDataRes(types.String)
+	},
+	"redfish.softwareInventory.imageState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishSoftwareInventory).GetImageState()).ToDataRes(types.String)
+	},
+	"redfish.softwareInventory.armed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedfishSoftwareInventory).GetArmed()).ToDataRes(types.Bool)
 	},
 	"redfish.hpe.licenseType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRedfishHpe).GetLicenseType()).ToDataRes(types.String)
@@ -817,6 +915,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlRedfishSystem).SecureBootCurrentBoot, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"redfish.system.secureBootDesiredMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishSystem).SecureBootDesiredMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"redfish.system.biosSetupPasswordSet": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishSystem).BiosSetupPasswordSet, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"redfish.system.biosBootPasswordSet": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishSystem).BiosBootPasswordSet, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"redfish.system.virtualizationCpuOffload": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishSystem).VirtualizationCpuOffload, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"redfish.system.virtualizationDeviceIsolation": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishSystem).VirtualizationDeviceIsolation, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"redfish.system.productionDate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishSystem).ProductionDate, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
 	"redfish.system.trustedModules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlRedfishSystem).TrustedModules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -883,6 +1005,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"redfish.processor.maxSpeedMHz": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlRedfishProcessor).MaxSpeedMHz, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"redfish.processor.hardwareSecurityVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishProcessor).HardwareSecurityVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"redfish.memory.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1021,6 +1147,74 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlRedfishManager).NetworkProtocol, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
+	"redfish.manager.hostInterfaces": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishManager).HostInterfaces, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"redfish.hostInterface.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishHostInterface).__id, ok = v.Value.(string)
+		return
+	},
+	"redfish.hostInterface.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishHostInterface).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"redfish.hostInterface.hostInterfaceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishHostInterface).HostInterfaceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"redfish.hostInterface.interfaceEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishHostInterface).InterfaceEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"redfish.hostInterface.externallyAccessible": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishHostInterface).ExternallyAccessible, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"redfish.hostInterface.authenticationModes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishHostInterface).AuthenticationModes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"redfish.hostInterface.authNoneRoleId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishHostInterface).AuthNoneRoleId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"redfish.hostInterface.firmwareAuthEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishHostInterface).FirmwareAuthEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"redfish.hostInterface.firmwareAuthRoleId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishHostInterface).FirmwareAuthRoleId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"redfish.hostInterface.kernelAuthEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishHostInterface).KernelAuthEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"redfish.hostInterface.kernelAuthRoleId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishHostInterface).KernelAuthRoleId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"redfish.hostInterface.credentialBootstrappingEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishHostInterface).CredentialBootstrappingEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"redfish.hostInterface.credentialBootstrappingEnableAfterReset": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishHostInterface).CredentialBootstrappingEnableAfterReset, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"redfish.hostInterface.credentialBootstrappingRoleId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishHostInterface).CredentialBootstrappingRoleId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"redfish.hostInterface.credentialBootstrappingExpirationWindowEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishHostInterface).CredentialBootstrappingExpirationWindowEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"redfish.hostInterface.credentialBootstrappingExpirationWindowMinutes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishHostInterface).CredentialBootstrappingExpirationWindowMinutes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
 	"redfish.chassisEnclosure.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlRedfishChassisEnclosure).__id, ok = v.Value.(string)
 		return
@@ -1051,6 +1245,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"redfish.chassisEnclosure.powerState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlRedfishChassisEnclosure).PowerState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"redfish.chassisEnclosure.productionDate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishChassisEnclosure).ProductionDate, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"redfish.account.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1189,6 +1387,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlRedfishAccountService).TacacsPlusAuthenticationType, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"redfish.accountService.ldapCredentialSet": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishAccountService).LdapCredentialSet, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"redfish.accountService.activeDirectoryCredentialSet": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishAccountService).ActiveDirectoryCredentialSet, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"redfish.accountService.tacacsPlusCredentialSet": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishAccountService).TacacsPlusCredentialSet, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"redfish.networkProtocol.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlRedfishNetworkProtocol).__id, ok = v.Value.(string)
 		return
@@ -1263,6 +1473,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"redfish.networkProtocol.kvmipPort": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlRedfishNetworkProtocol).KvmipPort, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"redfish.networkProtocol.sshPreferredAuthentications": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishNetworkProtocol).SshPreferredAuthentications, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"redfish.certificate.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1377,6 +1591,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlRedfishSession).Roles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"redfish.session.userAuthenticationSource": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishSession).UserAuthenticationSource, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"redfish.softwareInventory.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlRedfishSoftwareInventory).__id, ok = v.Value.(string)
 		return
@@ -1407,6 +1625,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"redfish.softwareInventory.lowestSupportedVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlRedfishSoftwareInventory).LowestSupportedVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"redfish.softwareInventory.imageState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishSoftwareInventory).ImageState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"redfish.softwareInventory.armed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedfishSoftwareInventory).Armed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"redfish.hpe.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1713,27 +1939,33 @@ type mqlRedfishSystem struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlRedfishSystemInternal
-	Uuid                      plugin.TValue[string]
-	Name                      plugin.TValue[string]
-	Manufacturer              plugin.TValue[string]
-	Model                     plugin.TValue[string]
-	SerialNumber              plugin.TValue[string]
-	Sku                       plugin.TValue[string]
-	BiosVersion               plugin.TValue[string]
-	HostName                  plugin.TValue[string]
-	PowerState                plugin.TValue[string]
-	SystemType                plugin.TValue[string]
-	SecureBootEnabled         plugin.TValue[bool]
-	SecureBootMode            plugin.TValue[string]
-	SecureBootCurrentBoot     plugin.TValue[string]
-	TrustedModules            plugin.TValue[[]any]
-	BootSourceOverrideEnabled plugin.TValue[string]
-	BootSourceOverrideTarget  plugin.TValue[string]
-	BootSourceOverrideMode    plugin.TValue[string]
-	PersistentBootOverride    plugin.TValue[bool]
-	Processors                plugin.TValue[[]any]
-	Memory                    plugin.TValue[[]any]
-	EthernetInterfaces        plugin.TValue[[]any]
+	Uuid                          plugin.TValue[string]
+	Name                          plugin.TValue[string]
+	Manufacturer                  plugin.TValue[string]
+	Model                         plugin.TValue[string]
+	SerialNumber                  plugin.TValue[string]
+	Sku                           plugin.TValue[string]
+	BiosVersion                   plugin.TValue[string]
+	HostName                      plugin.TValue[string]
+	PowerState                    plugin.TValue[string]
+	SystemType                    plugin.TValue[string]
+	SecureBootEnabled             plugin.TValue[bool]
+	SecureBootMode                plugin.TValue[string]
+	SecureBootCurrentBoot         plugin.TValue[string]
+	SecureBootDesiredMode         plugin.TValue[string]
+	BiosSetupPasswordSet          plugin.TValue[bool]
+	BiosBootPasswordSet           plugin.TValue[bool]
+	VirtualizationCpuOffload      plugin.TValue[bool]
+	VirtualizationDeviceIsolation plugin.TValue[bool]
+	ProductionDate                plugin.TValue[*time.Time]
+	TrustedModules                plugin.TValue[[]any]
+	BootSourceOverrideEnabled     plugin.TValue[string]
+	BootSourceOverrideTarget      plugin.TValue[string]
+	BootSourceOverrideMode        plugin.TValue[string]
+	PersistentBootOverride        plugin.TValue[bool]
+	Processors                    plugin.TValue[[]any]
+	Memory                        plugin.TValue[[]any]
+	EthernetInterfaces            plugin.TValue[[]any]
 }
 
 // createRedfishSystem creates a new instance of this resource
@@ -1826,6 +2058,36 @@ func (c *mqlRedfishSystem) GetSecureBootCurrentBoot() *plugin.TValue[string] {
 	})
 }
 
+func (c *mqlRedfishSystem) GetSecureBootDesiredMode() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SecureBootDesiredMode, func() (string, error) {
+		return c.secureBootDesiredMode()
+	})
+}
+
+func (c *mqlRedfishSystem) GetBiosSetupPasswordSet() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.BiosSetupPasswordSet, func() (bool, error) {
+		return c.biosSetupPasswordSet()
+	})
+}
+
+func (c *mqlRedfishSystem) GetBiosBootPasswordSet() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.BiosBootPasswordSet, func() (bool, error) {
+		return c.biosBootPasswordSet()
+	})
+}
+
+func (c *mqlRedfishSystem) GetVirtualizationCpuOffload() *plugin.TValue[bool] {
+	return &c.VirtualizationCpuOffload
+}
+
+func (c *mqlRedfishSystem) GetVirtualizationDeviceIsolation() *plugin.TValue[bool] {
+	return &c.VirtualizationDeviceIsolation
+}
+
+func (c *mqlRedfishSystem) GetProductionDate() *plugin.TValue[*time.Time] {
+	return &c.ProductionDate
+}
+
 func (c *mqlRedfishSystem) GetTrustedModules() *plugin.TValue[[]any] {
 	return &c.TrustedModules
 }
@@ -1899,14 +2161,15 @@ type mqlRedfishProcessor struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlRedfishProcessorInternal it will be used here
-	Manufacturer   plugin.TValue[string]
-	Model          plugin.TValue[string]
-	ProcessorType  plugin.TValue[string]
-	InstructionSet plugin.TValue[string]
-	Socket         plugin.TValue[string]
-	TotalCores     plugin.TValue[int64]
-	TotalThreads   plugin.TValue[int64]
-	MaxSpeedMHz    plugin.TValue[int64]
+	Manufacturer            plugin.TValue[string]
+	Model                   plugin.TValue[string]
+	ProcessorType           plugin.TValue[string]
+	InstructionSet          plugin.TValue[string]
+	Socket                  plugin.TValue[string]
+	TotalCores              plugin.TValue[int64]
+	TotalThreads            plugin.TValue[int64]
+	MaxSpeedMHz             plugin.TValue[int64]
+	HardwareSecurityVersion plugin.TValue[string]
 }
 
 // createRedfishProcessor creates a new instance of this resource
@@ -1971,6 +2234,10 @@ func (c *mqlRedfishProcessor) GetTotalThreads() *plugin.TValue[int64] {
 
 func (c *mqlRedfishProcessor) GetMaxSpeedMHz() *plugin.TValue[int64] {
 	return &c.MaxSpeedMHz
+}
+
+func (c *mqlRedfishProcessor) GetHardwareSecurityVersion() *plugin.TValue[string] {
+	return &c.HardwareSecurityVersion
 }
 
 // mqlRedfishMemory for the redfish.memory resource
@@ -2143,6 +2410,7 @@ type mqlRedfishManager struct {
 	SerialConsoleMaxConcurrentSessions    plugin.TValue[int64]
 	SerialConsoleConnectTypes             plugin.TValue[[]any]
 	NetworkProtocol                       plugin.TValue[any]
+	HostInterfaces                        plugin.TValue[[]any]
 }
 
 // createRedfishManager creates a new instance of this resource
@@ -2247,18 +2515,149 @@ func (c *mqlRedfishManager) GetNetworkProtocol() *plugin.TValue[any] {
 	})
 }
 
+func (c *mqlRedfishManager) GetHostInterfaces() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.HostInterfaces, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("redfish.manager", c.__id, "hostInterfaces")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.hostInterfaces()
+	})
+}
+
+// mqlRedfishHostInterface for the redfish.hostInterface resource
+type mqlRedfishHostInterface struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlRedfishHostInterfaceInternal it will be used here
+	Name                                           plugin.TValue[string]
+	HostInterfaceType                              plugin.TValue[string]
+	InterfaceEnabled                               plugin.TValue[bool]
+	ExternallyAccessible                           plugin.TValue[bool]
+	AuthenticationModes                            plugin.TValue[[]any]
+	AuthNoneRoleId                                 plugin.TValue[string]
+	FirmwareAuthEnabled                            plugin.TValue[bool]
+	FirmwareAuthRoleId                             plugin.TValue[string]
+	KernelAuthEnabled                              plugin.TValue[bool]
+	KernelAuthRoleId                               plugin.TValue[string]
+	CredentialBootstrappingEnabled                 plugin.TValue[bool]
+	CredentialBootstrappingEnableAfterReset        plugin.TValue[bool]
+	CredentialBootstrappingRoleId                  plugin.TValue[string]
+	CredentialBootstrappingExpirationWindowEnabled plugin.TValue[bool]
+	CredentialBootstrappingExpirationWindowMinutes plugin.TValue[int64]
+}
+
+// createRedfishHostInterface creates a new instance of this resource
+func createRedfishHostInterface(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlRedfishHostInterface{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("redfish.hostInterface", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlRedfishHostInterface) MqlName() string {
+	return "redfish.hostInterface"
+}
+
+func (c *mqlRedfishHostInterface) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlRedfishHostInterface) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlRedfishHostInterface) GetHostInterfaceType() *plugin.TValue[string] {
+	return &c.HostInterfaceType
+}
+
+func (c *mqlRedfishHostInterface) GetInterfaceEnabled() *plugin.TValue[bool] {
+	return &c.InterfaceEnabled
+}
+
+func (c *mqlRedfishHostInterface) GetExternallyAccessible() *plugin.TValue[bool] {
+	return &c.ExternallyAccessible
+}
+
+func (c *mqlRedfishHostInterface) GetAuthenticationModes() *plugin.TValue[[]any] {
+	return &c.AuthenticationModes
+}
+
+func (c *mqlRedfishHostInterface) GetAuthNoneRoleId() *plugin.TValue[string] {
+	return &c.AuthNoneRoleId
+}
+
+func (c *mqlRedfishHostInterface) GetFirmwareAuthEnabled() *plugin.TValue[bool] {
+	return &c.FirmwareAuthEnabled
+}
+
+func (c *mqlRedfishHostInterface) GetFirmwareAuthRoleId() *plugin.TValue[string] {
+	return &c.FirmwareAuthRoleId
+}
+
+func (c *mqlRedfishHostInterface) GetKernelAuthEnabled() *plugin.TValue[bool] {
+	return &c.KernelAuthEnabled
+}
+
+func (c *mqlRedfishHostInterface) GetKernelAuthRoleId() *plugin.TValue[string] {
+	return &c.KernelAuthRoleId
+}
+
+func (c *mqlRedfishHostInterface) GetCredentialBootstrappingEnabled() *plugin.TValue[bool] {
+	return &c.CredentialBootstrappingEnabled
+}
+
+func (c *mqlRedfishHostInterface) GetCredentialBootstrappingEnableAfterReset() *plugin.TValue[bool] {
+	return &c.CredentialBootstrappingEnableAfterReset
+}
+
+func (c *mqlRedfishHostInterface) GetCredentialBootstrappingRoleId() *plugin.TValue[string] {
+	return &c.CredentialBootstrappingRoleId
+}
+
+func (c *mqlRedfishHostInterface) GetCredentialBootstrappingExpirationWindowEnabled() *plugin.TValue[bool] {
+	return &c.CredentialBootstrappingExpirationWindowEnabled
+}
+
+func (c *mqlRedfishHostInterface) GetCredentialBootstrappingExpirationWindowMinutes() *plugin.TValue[int64] {
+	return &c.CredentialBootstrappingExpirationWindowMinutes
+}
+
 // mqlRedfishChassisEnclosure for the redfish.chassisEnclosure resource
 type mqlRedfishChassisEnclosure struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlRedfishChassisEnclosureInternal it will be used here
-	Name         plugin.TValue[string]
-	ChassisType  plugin.TValue[string]
-	Manufacturer plugin.TValue[string]
-	Model        plugin.TValue[string]
-	SerialNumber plugin.TValue[string]
-	Sku          plugin.TValue[string]
-	PowerState   plugin.TValue[string]
+	Name           plugin.TValue[string]
+	ChassisType    plugin.TValue[string]
+	Manufacturer   plugin.TValue[string]
+	Model          plugin.TValue[string]
+	SerialNumber   plugin.TValue[string]
+	Sku            plugin.TValue[string]
+	PowerState     plugin.TValue[string]
+	ProductionDate plugin.TValue[*time.Time]
 }
 
 // createRedfishChassisEnclosure creates a new instance of this resource
@@ -2319,6 +2718,10 @@ func (c *mqlRedfishChassisEnclosure) GetSku() *plugin.TValue[string] {
 
 func (c *mqlRedfishChassisEnclosure) GetPowerState() *plugin.TValue[string] {
 	return &c.PowerState
+}
+
+func (c *mqlRedfishChassisEnclosure) GetProductionDate() *plugin.TValue[*time.Time] {
+	return &c.ProductionDate
 }
 
 // mqlRedfishAccount for the redfish.account resource
@@ -2437,6 +2840,9 @@ type mqlRedfishAccountService struct {
 	TacacsPlusEnabled                 plugin.TValue[bool]
 	TacacsPlusServiceAddresses        plugin.TValue[[]any]
 	TacacsPlusAuthenticationType      plugin.TValue[string]
+	LdapCredentialSet                 plugin.TValue[bool]
+	ActiveDirectoryCredentialSet      plugin.TValue[bool]
+	TacacsPlusCredentialSet           plugin.TValue[bool]
 }
 
 // createRedfishAccountService creates a new instance of this resource
@@ -2608,29 +3014,48 @@ func (c *mqlRedfishAccountService) GetTacacsPlusAuthenticationType() *plugin.TVa
 	})
 }
 
+func (c *mqlRedfishAccountService) GetLdapCredentialSet() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.LdapCredentialSet, func() (bool, error) {
+		return c.ldapCredentialSet()
+	})
+}
+
+func (c *mqlRedfishAccountService) GetActiveDirectoryCredentialSet() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ActiveDirectoryCredentialSet, func() (bool, error) {
+		return c.activeDirectoryCredentialSet()
+	})
+}
+
+func (c *mqlRedfishAccountService) GetTacacsPlusCredentialSet() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.TacacsPlusCredentialSet, func() (bool, error) {
+		return c.tacacsPlusCredentialSet()
+	})
+}
+
 // mqlRedfishNetworkProtocol for the redfish.networkProtocol resource
 type mqlRedfishNetworkProtocol struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlRedfishNetworkProtocolInternal it will be used here
-	HostName            plugin.TValue[string]
-	Fqdn                plugin.TValue[string]
-	HttpEnabled         plugin.TValue[bool]
-	HttpPort            plugin.TValue[int64]
-	HttpsEnabled        plugin.TValue[bool]
-	HttpsPort           plugin.TValue[int64]
-	SshEnabled          plugin.TValue[bool]
-	SshPort             plugin.TValue[int64]
-	TelnetEnabled       plugin.TValue[bool]
-	TelnetPort          plugin.TValue[int64]
-	IpmiEnabled         plugin.TValue[bool]
-	IpmiPort            plugin.TValue[int64]
-	SnmpEnabled         plugin.TValue[bool]
-	SnmpPort            plugin.TValue[int64]
-	VirtualMediaEnabled plugin.TValue[bool]
-	VirtualMediaPort    plugin.TValue[int64]
-	KvmipEnabled        plugin.TValue[bool]
-	KvmipPort           plugin.TValue[int64]
+	HostName                    plugin.TValue[string]
+	Fqdn                        plugin.TValue[string]
+	HttpEnabled                 plugin.TValue[bool]
+	HttpPort                    plugin.TValue[int64]
+	HttpsEnabled                plugin.TValue[bool]
+	HttpsPort                   plugin.TValue[int64]
+	SshEnabled                  plugin.TValue[bool]
+	SshPort                     plugin.TValue[int64]
+	TelnetEnabled               plugin.TValue[bool]
+	TelnetPort                  plugin.TValue[int64]
+	IpmiEnabled                 plugin.TValue[bool]
+	IpmiPort                    plugin.TValue[int64]
+	SnmpEnabled                 plugin.TValue[bool]
+	SnmpPort                    plugin.TValue[int64]
+	VirtualMediaEnabled         plugin.TValue[bool]
+	VirtualMediaPort            plugin.TValue[int64]
+	KvmipEnabled                plugin.TValue[bool]
+	KvmipPort                   plugin.TValue[int64]
+	SshPreferredAuthentications plugin.TValue[[]any]
 }
 
 // createRedfishNetworkProtocol creates a new instance of this resource
@@ -2735,6 +3160,10 @@ func (c *mqlRedfishNetworkProtocol) GetKvmipEnabled() *plugin.TValue[bool] {
 
 func (c *mqlRedfishNetworkProtocol) GetKvmipPort() *plugin.TValue[int64] {
 	return &c.KvmipPort
+}
+
+func (c *mqlRedfishNetworkProtocol) GetSshPreferredAuthentications() *plugin.TValue[[]any] {
+	return &c.SshPreferredAuthentications
 }
 
 // mqlRedfishCertificate for the redfish.certificate resource
@@ -2928,12 +3357,13 @@ type mqlRedfishSession struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlRedfishSessionInternal it will be used here
-	UserName              plugin.TValue[string]
-	ClientOriginIPAddress plugin.TValue[string]
-	SessionType           plugin.TValue[string]
-	CreatedTime           plugin.TValue[*time.Time]
-	ExpirationTime        plugin.TValue[*time.Time]
-	Roles                 plugin.TValue[[]any]
+	UserName                 plugin.TValue[string]
+	ClientOriginIPAddress    plugin.TValue[string]
+	SessionType              plugin.TValue[string]
+	CreatedTime              plugin.TValue[*time.Time]
+	ExpirationTime           plugin.TValue[*time.Time]
+	Roles                    plugin.TValue[[]any]
+	UserAuthenticationSource plugin.TValue[string]
 }
 
 // createRedfishSession creates a new instance of this resource
@@ -2992,6 +3422,10 @@ func (c *mqlRedfishSession) GetRoles() *plugin.TValue[[]any] {
 	return &c.Roles
 }
 
+func (c *mqlRedfishSession) GetUserAuthenticationSource() *plugin.TValue[string] {
+	return &c.UserAuthenticationSource
+}
+
 // mqlRedfishSoftwareInventory for the redfish.softwareInventory resource
 type mqlRedfishSoftwareInventory struct {
 	MqlRuntime *plugin.Runtime
@@ -3004,6 +3438,8 @@ type mqlRedfishSoftwareInventory struct {
 	Updateable             plugin.TValue[bool]
 	ReleaseDate            plugin.TValue[string]
 	LowestSupportedVersion plugin.TValue[string]
+	ImageState             plugin.TValue[string]
+	Armed                  plugin.TValue[bool]
 }
 
 // createRedfishSoftwareInventory creates a new instance of this resource
@@ -3064,6 +3500,14 @@ func (c *mqlRedfishSoftwareInventory) GetReleaseDate() *plugin.TValue[string] {
 
 func (c *mqlRedfishSoftwareInventory) GetLowestSupportedVersion() *plugin.TValue[string] {
 	return &c.LowestSupportedVersion
+}
+
+func (c *mqlRedfishSoftwareInventory) GetImageState() *plugin.TValue[string] {
+	return &c.ImageState
+}
+
+func (c *mqlRedfishSoftwareInventory) GetArmed() *plugin.TValue[bool] {
+	return &c.Armed
 }
 
 // mqlRedfishHpe for the redfish.hpe resource

@@ -287,6 +287,9 @@ type mqlAwsRdsDbinstanceInternal struct {
 	cacheActivityStreamKmsKeyId      *string
 	cacheAssociatedRoles             []rds_types.DBInstanceRole
 	cacheOptionGroupNames            []string
+	cacheParameterGroupNames         []string
+	cacheMonitoringRoleArn           string
+	cacheCustomInstanceProfile       string
 	region                           string
 }
 
@@ -511,6 +514,10 @@ func newMqlAwsRdsInstance(runtime *plugin.Runtime, region string, accountID stri
 	if dbInstance.Endpoint != nil {
 		endpointAddress = dbInstance.Endpoint.Address
 	}
+	var primaryEndpointAddress *string
+	if dbInstance.PrimaryEndpoint != nil {
+		primaryEndpointAddress = dbInstance.PrimaryEndpoint.Address
+	}
 
 	var certificateExpiration *time.Time
 	if dbInstance.CertificateDetails != nil {
@@ -538,6 +545,8 @@ func newMqlAwsRdsInstance(runtime *plugin.Runtime, region string, accountID stri
 			"deletionProtection":                 llx.BoolDataPtr(dbInstance.DeletionProtection),
 			"enabledCloudwatchLogsExports":       llx.ArrayData(stringSliceInterface, types.String),
 			"endpoint":                           llx.StringDataPtr(endpointAddress),
+			"primaryEndpoint":                    llx.StringDataPtr(primaryEndpointAddress),
+			"vpcNetworkingEnabled":               llx.BoolDataPtr(dbInstance.VPCNetworkingEnabled),
 			"engine":                             llx.StringDataPtr(dbInstance.Engine),
 			"engineLifecycleSupport":             llx.StringDataPtr(dbInstance.EngineLifecycleSupport),
 			"engineVersion":                      llx.StringDataPtr(dbInstance.EngineVersion),
@@ -606,6 +615,15 @@ func newMqlAwsRdsInstance(runtime *plugin.Runtime, region string, accountID stri
 		}
 	}
 	mqlDBInstance.cacheOptionGroupNames = optionGroupNames
+	parameterGroupNames := make([]string, 0, len(dbInstance.DBParameterGroups))
+	for _, pg := range dbInstance.DBParameterGroups {
+		if name := convert.ToValue(pg.DBParameterGroupName); name != "" {
+			parameterGroupNames = append(parameterGroupNames, name)
+		}
+	}
+	mqlDBInstance.cacheParameterGroupNames = parameterGroupNames
+	mqlDBInstance.cacheMonitoringRoleArn = convert.ToValue(dbInstance.MonitoringRoleArn)
+	mqlDBInstance.cacheCustomInstanceProfile = convert.ToValue(dbInstance.CustomIamInstanceProfile)
 	mqlDBInstance.setSecurityGroupArns(sgsArn)
 	return mqlDBInstance, nil
 }
@@ -1599,27 +1617,29 @@ func (a *mqlAwsRdsDbcluster) snapshots() ([]any, error) {
 func newMqlAwsRdsClusterSnapshot(runtime *plugin.Runtime, region string, snapshot rds_types.DBClusterSnapshot) (*mqlAwsRdsSnapshot, error) {
 	res, err := CreateResource(runtime, ResourceAwsRdsSnapshot,
 		map[string]*llx.RawData{
-			"allocatedStorage":      llx.IntDataDefault(snapshot.AllocatedStorage, 0),
-			"arn":                   llx.StringDataPtr(snapshot.DBClusterSnapshotArn),
-			"availabilityZone":      llx.StringData(""),
-			"backupRetentionPeriod": llx.IntDataDefault(snapshot.BackupRetentionPeriod, 0),
-			"createdAt":             llx.TimeDataPtr(snapshot.SnapshotCreateTime),
-			"encrypted":             llx.BoolDataPtr(snapshot.StorageEncrypted),
-			"storageEncryptionType": llx.StringData(string(snapshot.StorageEncryptionType)),
-			"engine":                llx.StringDataPtr(snapshot.Engine),
-			"engineVersion":         llx.StringDataPtr(snapshot.EngineVersion),
-			"id":                    llx.StringDataPtr(snapshot.DBClusterSnapshotIdentifier),
-			"port":                  llx.IntDataDefault(snapshot.Port, -1),
-			"preferredBackupWindow": llx.StringDataPtr(snapshot.PreferredBackupWindow),
-			"isClusterSnapshot":     llx.BoolData(true),
-			"region":                llx.StringData(region),
-			"status":                llx.StringDataPtr(snapshot.Status),
-			"tags":                  llx.MapData(rdsTagsToMap(snapshot.TagList), types.String),
-			"timezone":              llx.StringData(""),
-			"type":                  llx.StringDataPtr(snapshot.SnapshotType),
-			"sourceSnapshot":        llx.StringDataPtr(snapshot.SourceDBClusterSnapshotArn),
-			"sourceRegion":          llx.StringData(""),
-			"originalCreatedAt":     llx.NilData,
+			"allocatedStorage":           llx.IntDataDefault(snapshot.AllocatedStorage, 0),
+			"arn":                        llx.StringDataPtr(snapshot.DBClusterSnapshotArn),
+			"availabilityZone":           llx.StringData(""),
+			"backupRetentionPeriod":      llx.IntDataDefault(snapshot.BackupRetentionPeriod, 0),
+			"createdAt":                  llx.TimeDataPtr(snapshot.SnapshotCreateTime),
+			"encrypted":                  llx.BoolDataPtr(snapshot.StorageEncrypted),
+			"storageEncryptionType":      llx.StringData(string(snapshot.StorageEncryptionType)),
+			"engine":                     llx.StringDataPtr(snapshot.Engine),
+			"engineVersion":              llx.StringDataPtr(snapshot.EngineVersion),
+			"id":                         llx.StringDataPtr(snapshot.DBClusterSnapshotIdentifier),
+			"port":                       llx.IntDataDefault(snapshot.Port, -1),
+			"preferredBackupWindow":      llx.StringDataPtr(snapshot.PreferredBackupWindow),
+			"isClusterSnapshot":          llx.BoolData(true),
+			"region":                     llx.StringData(region),
+			"status":                     llx.StringDataPtr(snapshot.Status),
+			"tags":                       llx.MapData(rdsTagsToMap(snapshot.TagList), types.String),
+			"timezone":                   llx.StringData(""),
+			"type":                       llx.StringDataPtr(snapshot.SnapshotType),
+			"sourceSnapshot":             llx.StringDataPtr(snapshot.SourceDBClusterSnapshotArn),
+			"sourceDbInstanceIdentifier": llx.StringData(""),
+			"sourceDbClusterIdentifier":  llx.StringDataPtr(snapshot.DBClusterIdentifier),
+			"sourceRegion":               llx.StringData(""),
+			"originalCreatedAt":          llx.NilData,
 		})
 	if err != nil {
 		return nil, err
@@ -1635,27 +1655,29 @@ func newMqlAwsRdsClusterSnapshot(runtime *plugin.Runtime, region string, snapsho
 func newMqlAwsRdsDbSnapshot(runtime *plugin.Runtime, region string, snapshot rds_types.DBSnapshot) (*mqlAwsRdsSnapshot, error) {
 	res, err := CreateResource(runtime, ResourceAwsRdsSnapshot,
 		map[string]*llx.RawData{
-			"allocatedStorage":      llx.IntDataDefault(snapshot.AllocatedStorage, 0),
-			"arn":                   llx.StringDataPtr(snapshot.DBSnapshotArn),
-			"availabilityZone":      llx.StringDataPtr(snapshot.AvailabilityZone),
-			"backupRetentionPeriod": llx.IntDataDefault(snapshot.BackupRetentionPeriod, 0),
-			"createdAt":             llx.TimeDataPtr(snapshot.SnapshotCreateTime),
-			"encrypted":             llx.BoolDataPtr(snapshot.Encrypted),
-			"storageEncryptionType": llx.StringData(string(snapshot.StorageEncryptionType)),
-			"engine":                llx.StringDataPtr(snapshot.Engine),
-			"engineVersion":         llx.StringDataPtr(snapshot.EngineVersion),
-			"id":                    llx.StringDataPtr(snapshot.DBSnapshotIdentifier),
-			"port":                  llx.IntDataDefault(snapshot.Port, -1),
-			"preferredBackupWindow": llx.StringDataPtr(snapshot.PreferredBackupWindow),
-			"isClusterSnapshot":     llx.BoolData(false),
-			"region":                llx.StringData(region),
-			"status":                llx.StringDataPtr(snapshot.Status),
-			"tags":                  llx.MapData(rdsTagsToMap(snapshot.TagList), types.String),
-			"timezone":              llx.StringDataPtr(snapshot.Timezone),
-			"type":                  llx.StringDataPtr(snapshot.SnapshotType),
-			"sourceSnapshot":        llx.StringDataPtr(snapshot.SourceDBSnapshotIdentifier),
-			"sourceRegion":          llx.StringDataPtr(snapshot.SourceRegion),
-			"originalCreatedAt":     llx.TimeDataPtr(snapshot.OriginalSnapshotCreateTime),
+			"allocatedStorage":           llx.IntDataDefault(snapshot.AllocatedStorage, 0),
+			"arn":                        llx.StringDataPtr(snapshot.DBSnapshotArn),
+			"availabilityZone":           llx.StringDataPtr(snapshot.AvailabilityZone),
+			"backupRetentionPeriod":      llx.IntDataDefault(snapshot.BackupRetentionPeriod, 0),
+			"createdAt":                  llx.TimeDataPtr(snapshot.SnapshotCreateTime),
+			"encrypted":                  llx.BoolDataPtr(snapshot.Encrypted),
+			"storageEncryptionType":      llx.StringData(string(snapshot.StorageEncryptionType)),
+			"engine":                     llx.StringDataPtr(snapshot.Engine),
+			"engineVersion":              llx.StringDataPtr(snapshot.EngineVersion),
+			"id":                         llx.StringDataPtr(snapshot.DBSnapshotIdentifier),
+			"port":                       llx.IntDataDefault(snapshot.Port, -1),
+			"preferredBackupWindow":      llx.StringDataPtr(snapshot.PreferredBackupWindow),
+			"isClusterSnapshot":          llx.BoolData(false),
+			"region":                     llx.StringData(region),
+			"status":                     llx.StringDataPtr(snapshot.Status),
+			"tags":                       llx.MapData(rdsTagsToMap(snapshot.TagList), types.String),
+			"timezone":                   llx.StringDataPtr(snapshot.Timezone),
+			"type":                       llx.StringDataPtr(snapshot.SnapshotType),
+			"sourceSnapshot":             llx.StringDataPtr(snapshot.SourceDBSnapshotIdentifier),
+			"sourceDbInstanceIdentifier": llx.StringDataPtr(snapshot.DBInstanceIdentifier),
+			"sourceDbClusterIdentifier":  llx.StringData(""),
+			"sourceRegion":               llx.StringDataPtr(snapshot.SourceRegion),
+			"originalCreatedAt":          llx.TimeDataPtr(snapshot.OriginalSnapshotCreateTime),
 		})
 	if err != nil {
 		return nil, err
@@ -2362,4 +2384,70 @@ func (a *mqlAwsRdsDbcluster) globalCluster() (*mqlAwsRdsGlobalCluster, error) {
 
 type mqlAwsRdsDbinstanceAssociatedRoleInternal struct {
 	cacheRoleArn string
+}
+
+func (a *mqlAwsRdsDbinstance) parameterGroups() ([]any, error) {
+	res := []any{}
+	if len(a.cacheParameterGroupNames) == 0 {
+		return res, nil
+	}
+	r, err := rdsGetParent(a.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	groups := r.GetParameterGroups()
+	if groups.Error != nil {
+		return nil, groups.Error
+	}
+	// Parameter group names are unique per region only; default groups such as
+	// default.postgres16 exist in every region.
+	byName := map[string]*mqlAwsRdsParameterGroup{}
+	for _, raw := range groups.Data {
+		pg, ok := raw.(*mqlAwsRdsParameterGroup)
+		if ok && pg.Region.Data == a.region {
+			byName[pg.Name.Data] = pg
+		}
+	}
+	for _, name := range a.cacheParameterGroupNames {
+		if pg, ok := byName[name]; ok {
+			res = append(res, pg)
+		}
+	}
+	return res, nil
+}
+
+func (a *mqlAwsRdsDbinstance) monitoringRole() (*mqlAwsIamRole, error) {
+	if a.cacheMonitoringRoleArn == "" {
+		a.MonitoringRole.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	mqlRole, err := NewResource(a.MqlRuntime, ResourceAwsIamRole,
+		map[string]*llx.RawData{"arn": llx.StringData(a.cacheMonitoringRoleArn)})
+	if err != nil {
+		return nil, err
+	}
+	return mqlRole.(*mqlAwsIamRole), nil
+}
+
+// instanceProfileArn returns an instance profile ARN for a value that is
+// either already an ARN or a bare profile name.
+func instanceProfileArn(accountID, profile string) string {
+	if profile == "" || strings.HasPrefix(profile, "arn:") {
+		return profile
+	}
+	return fmt.Sprintf("arn:aws:iam::%s:instance-profile/%s", accountID, profile)
+}
+
+func (a *mqlAwsRdsDbinstance) customInstanceProfile() (*mqlAwsIamInstanceProfile, error) {
+	if a.cacheCustomInstanceProfile == "" {
+		a.CustomInstanceProfile.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	res, err := NewResource(a.MqlRuntime, ResourceAwsIamInstanceProfile,
+		map[string]*llx.RawData{"arn": llx.StringData(instanceProfileArn(conn.AccountId(), a.cacheCustomInstanceProfile))})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsIamInstanceProfile), nil
 }

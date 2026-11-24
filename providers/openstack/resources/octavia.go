@@ -87,6 +87,8 @@ type mqlOpenstackOctaviaLoadBalancerInternal struct {
 	cacheVipSubnetID  string
 	cacheListenerIDs  []string
 	cachePoolIDs      []string
+	// nil when the API omits vip_sg_ids (Octavia before API 2.29)
+	cacheVipSecurityGroupIDs []string
 }
 
 func (r *mqlOpenstackOctaviaLoadBalancer) id() (string, error) {
@@ -153,6 +155,7 @@ func newMqlOpenstackOctaviaLoadBalancer(runtime *plugin.Runtime, lb *loadbalance
 	mqlLb.cacheVipSubnetID = lb.VipSubnetID
 	mqlLb.cacheListenerIDs = listenerIDsFromLB(lb.Listeners)
 	mqlLb.cachePoolIDs = poolIDsFromLB(lb.Pools)
+	mqlLb.cacheVipSecurityGroupIDs = lb.VipSecGroupIDs
 	return mqlLb, nil
 }
 
@@ -250,6 +253,30 @@ func (r *mqlOpenstackOctaviaLoadBalancer) pools() ([]any, error) {
 			continue
 		}
 		res, err := NewResource(r.MqlRuntime, "openstack.octavia.pool", map[string]*llx.RawData{"id": llx.StringData(id)})
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, res)
+	}
+	return out, nil
+}
+
+func (r *mqlOpenstackOctaviaLoadBalancer) vipSecurityGroups() ([]any, error) {
+	if r.cacheVipSecurityGroupIDs == nil {
+		r.VipSecurityGroups.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	out := make([]any, 0, len(r.cacheVipSecurityGroupIDs))
+	for _, id := range r.cacheVipSecurityGroupIDs {
+		if id == "" {
+			continue
+		}
+		// The security group init resolves the id against the memoized
+		// project list and only falls back to a direct Get for groups
+		// outside it.
+		res, err := NewResource(r.MqlRuntime, "openstack.securityGroup", map[string]*llx.RawData{
+			"id": llx.StringData(id),
+		})
 		if err != nil {
 			return nil, err
 		}

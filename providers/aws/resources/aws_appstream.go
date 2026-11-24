@@ -436,19 +436,28 @@ func newMqlAwsAppstreamStack(runtime *plugin.Runtime, region string, stack appst
 	if err != nil {
 		return nil, err
 	}
+	webAuthnRedirectionEnabled := llx.NilData
+	webAuthnProcesses := []any{}
+	if w := stack.WebAuthnRedirection; w != nil {
+		webAuthnRedirectionEnabled = llx.BoolDataPtr(w.Enabled)
+		webAuthnProcesses = toInterfaceArr(w.ProcessCompatibilityList)
+	}
 	resource, err := CreateResource(runtime, "aws.appstream.stack",
 		map[string]*llx.RawData{
-			"__id":                llx.StringDataPtr(stack.Arn),
-			"arn":                 llx.StringDataPtr(stack.Arn),
-			"name":                llx.StringDataPtr(stack.Name),
-			"description":         llx.StringDataPtr(stack.Description),
-			"createdAt":           llx.TimeDataPtr(stack.CreatedTime),
-			"accessEndpoints":     llx.ArrayData(accessEndpoints, types.Dict),
-			"applicationSettings": llx.MapData(applicationSettings, types.Any),
-			"storageConnectors":   llx.ArrayData(storageConnectors, types.Dict),
-			"userSettings":        llx.ArrayData(userSettings, types.Dict),
-			"embedHostDomains":    llx.ArrayData(toInterfaceArr(stack.EmbedHostDomains), types.String),
-			"region":              llx.StringData(region),
+			"__id":                           llx.StringDataPtr(stack.Arn),
+			"arn":                            llx.StringDataPtr(stack.Arn),
+			"name":                           llx.StringDataPtr(stack.Name),
+			"description":                    llx.StringDataPtr(stack.Description),
+			"createdAt":                      llx.TimeDataPtr(stack.CreatedTime),
+			"accessEndpoints":                llx.ArrayData(accessEndpoints, types.Dict),
+			"applicationSettings":            llx.MapData(applicationSettings, types.Any),
+			"storageConnectors":              llx.ArrayData(storageConnectors, types.Dict),
+			"userSettings":                   llx.ArrayData(userSettings, types.Dict),
+			"embedHostDomains":               llx.ArrayData(toInterfaceArr(stack.EmbedHostDomains), types.String),
+			"region":                         llx.StringData(region),
+			"webAuthnRedirectionEnabled":     webAuthnRedirectionEnabled,
+			"webAuthnRedirectionProcesses":   llx.ArrayData(webAuthnProcesses, types.String),
+			"storageConnectorAuthentication": llx.StringDataPtr(nonEmptyEnum(stack.StorageConnectorAuthentication)),
 		})
 	if err != nil {
 		return nil, err
@@ -659,8 +668,18 @@ func newMqlAwsAppstreamImageBuilder(runtime *plugin.Runtime, region string, ib a
 		return nil, err
 	}
 
+	agentAccessConfig := llx.NilData
+	if ib.AgentAccessConfig != nil {
+		cfg, err := newMqlAwsAppstreamImageBuilderAgentAccessConfig(runtime, convert.ToValue(ib.Arn), ib.AgentAccessConfig)
+		if err != nil {
+			return nil, err
+		}
+		agentAccessConfig = llx.ResourceData(cfg, ResourceAwsAppstreamImageBuilderAgentAccessConfig)
+	}
+
 	resource, err := CreateResource(runtime, "aws.appstream.imageBuilder",
 		map[string]*llx.RawData{
+			"agentAccessConfig":           agentAccessConfig,
 			"__id":                        llx.StringDataPtr(ib.Arn),
 			"arn":                         llx.StringDataPtr(ib.Arn),
 			"name":                        llx.StringDataPtr(ib.Name),
@@ -1339,6 +1358,54 @@ func (a *mqlAwsAppstreamSession) networkInterface() (*mqlAwsEc2Networkinterface,
 
 type mqlAwsAppstreamImageBuilderInternal struct {
 	cacheIamRoleArn string
+}
+
+func newMqlAwsAppstreamImageBuilderAgentAccessConfig(runtime *plugin.Runtime, imageBuilderArn string, cfg *appstreamtypes.ImageBuilderAgentAccessConfig) (*mqlAwsAppstreamImageBuilderAgentAccessConfig, error) {
+	res, err := CreateResource(runtime, ResourceAwsAppstreamImageBuilderAgentAccessConfig,
+		map[string]*llx.RawData{
+			"__id":                     llx.StringData(imageBuilderArn + "/agentAccessConfig"),
+			"agentActions":             llx.MapData(appstreamAgentActions(cfg.Settings), types.String),
+			"userControlMode":          llx.StringDataPtr(nonEmptyEnum(cfg.UserControlMode)),
+			"screenImageFormat":        llx.StringData(string(cfg.ScreenImageFormat)),
+			"screenResolution":         llx.StringData(string(cfg.ScreenResolution)),
+			"screenshotsUploadEnabled": llx.BoolDataPtr(cfg.ScreenshotsUploadEnabled),
+		})
+	if err != nil {
+		return nil, err
+	}
+	mqlCfg := res.(*mqlAwsAppstreamImageBuilderAgentAccessConfig)
+	mqlCfg.cacheS3BucketArn = convert.ToValue(cfg.S3BucketArn)
+	return mqlCfg, nil
+}
+
+// appstreamAgentActions maps each agent action to its permission, ENABLED or
+// DISABLED.
+func appstreamAgentActions(settings []appstreamtypes.AgentAccessSetting) map[string]any {
+	res := make(map[string]any, len(settings))
+	for _, s := range settings {
+		if s.AgentAction == "" {
+			continue
+		}
+		res[string(s.AgentAction)] = string(s.Permission)
+	}
+	return res
+}
+
+type mqlAwsAppstreamImageBuilderAgentAccessConfigInternal struct {
+	cacheS3BucketArn string
+}
+
+func (a *mqlAwsAppstreamImageBuilderAgentAccessConfig) screenshotsBucket() (*mqlAwsS3Bucket, error) {
+	if a.cacheS3BucketArn == "" {
+		a.ScreenshotsBucket.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, ResourceAwsS3Bucket,
+		map[string]*llx.RawData{"arn": llx.StringData(a.cacheS3BucketArn)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsS3Bucket), nil
 }
 
 type mqlAwsAppstreamSessionInternal struct {

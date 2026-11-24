@@ -10,8 +10,9 @@ option root = "mistral"
 // Mistral AI workspace
 //
 // Mistral AI workspace covering the available models, fine-tuning jobs,
-// uploaded files, batch inference jobs, document libraries, and the remote
-// servers the models may call, all reachable through a single
+// uploaded files, batch inference jobs, document libraries, the remote
+// servers the models may call, agents, and the webhooks and triggers that
+// start work on incoming events, all reachable through a single
 // API key. Backs AI security posture assessment and AI Bill of
 // Materials generation. API keys are scoped to one workspace, so add
 // each workspace as a separate asset to scan an entire organization.
@@ -30,6 +31,12 @@ mistral @defaults("ownedBy") @maturity("preview") @root {
   connectors() []mistral.connector
   // Document libraries available to this workspace
   libraries() []mistral.library
+  // Agents configured in this workspace
+  agents() []mistral.agent
+  // Webhooks that receive events from third-party services
+  webhooks() []mistral.webhook
+  // Triggers that start a workflow, agent, or app when a webhook receives an event
+  triggers() []mistral.trigger
 }
 
 // Mistral AI model
@@ -91,10 +98,26 @@ mistral.model @defaults("id type ownedBy maxContextLength") @maturity("preview")
   capabilityAudio bool
   // Whether the model supports audio transcription
   capabilityAudioTranscription bool
-  // Fine-tuning job ID that produced this model (fine-tuned models only)
-  job string
-  // Root base model ID (fine-tuned models only)
+  // Fine-tuning job identifier
+  //
+  // Deprecated in favor of fineTuningJob.
+  job @maturity("deprecated") string
+  // Fine-tuning job that produced this model
+  //
+  // Null for base models, and for a fine-tuned model whose job is no longer
+  // listed in the workspace.
+  fineTuningJob() mistral.fineTuningJob
+  // Identifier of the base model a fine-tuned model was trained from
+  //
+  // Kept beside baseModel because a fine-tuned model can outlive its base
+  // model: once Mistral retires the base model it drops out of the model list,
+  // and this identifier is then the only record of the lineage.
   root string
+  // Base model a fine-tuned model was trained from
+  //
+  // Null for base models, and when the base model named in root is not in the
+  // workspace model list.
+  baseModel() mistral.model
   // Whether this fine-tuned model has been archived
   archived bool
   // Architecture family parsed from the model name (e.g., "Mistral", "Codestral", "Pixtral")
@@ -108,8 +131,9 @@ mistral.model @defaults("id type ownedBy maxContextLength") @maturity("preview")
 // Fine-tuning job including its status, base model, output model name,
 // training configuration, and cost metadata. Query
 // `mistral.fineTuningJobs.where(status == "RUNNING")` to find active
-// jobs, or inspect `model` and `fineTunedModel` for model lineage
-// auditing.
+// jobs, or inspect `model`, `trainingData`, and `outputModel` for model
+// lineage auditing: the base model, the data that went in, and the model
+// that came out.
 mistral.fineTuningJob @defaults("id status model") @maturity("preview") {
   // Job identifier
   id string
@@ -122,15 +146,34 @@ mistral.fineTuningJob @defaults("id status model") @maturity("preview") {
   // Base model used for fine-tuning
   model string
   // Output model name after fine-tuning completes
-  fineTunedModel string
+  //
+  // Deprecated in favor of outputModel.
+  fineTunedModel @maturity("deprecated") string
+  // Model the job produced
+  //
+  // Null until the job succeeds, and when the produced model is no longer in
+  // the workspace model list.
+  outputModel() mistral.model
   // Model name suffix
   suffix string
   // Whether the job starts automatically after creation
   autoStart bool
   // Training file IDs
-  trainingFiles []string
+  //
+  // Deprecated in favor of trainingData.
+  trainingFiles @maturity("deprecated") []string
   // Validation file IDs
-  validationFiles []string
+  //
+  // Deprecated in favor of validationData.
+  validationFiles @maturity("deprecated") []string
+  // Files the job trained on
+  //
+  // Files deleted from the workspace since the job ran are not listed.
+  trainingData() []mistral.file
+  // Files the job validated against
+  //
+  // Files deleted from the workspace since the job ran are not listed.
+  validationData() []mistral.file
   // Total tokens trained
   trainedTokens int
   // Job creation time
@@ -211,6 +254,14 @@ mistral.file @defaults("id filename purpose") @maturity("preview") {
   numLines int
   // MIME type
   mimeType string
+  // Who can access the file
+  //
+  // One of workspace or user. Null when the API reports none.
+  visibility string
+  // Time after which Mistral deletes the file
+  //
+  // Null for a file that does not expire.
+  expiresAt time
 }
 
 // Mistral AI batch inference job
@@ -233,12 +284,35 @@ mistral.batchJob @defaults("id status endpoint") @maturity("preview") {
   endpoint string
   // Model used for inference
   model string
+  // Agent the batch requests ran through
+  //
+  // Null for a batch that targets a model directly, and when the agent is no
+  // longer listed in the workspace.
+  agent() mistral.agent
   // Input file IDs
-  inputFiles []string
+  //
+  // Deprecated in favor of inputs.
+  inputFiles @maturity("deprecated") []string
   // Output file identifier
-  outputFile string
+  //
+  // Deprecated in favor of results.
+  outputFile @maturity("deprecated") string
   // Error file identifier
-  errorFile string
+  //
+  // Deprecated in favor of errorDetails.
+  errorFile @maturity("deprecated") string
+  // Files holding the batch requests
+  //
+  // Files deleted from the workspace since the job ran are not listed.
+  inputs() []mistral.file
+  // File holding the batch results
+  //
+  // Null until the job writes results, and when the file is no longer listed.
+  results() mistral.file
+  // File holding the requests that failed and why
+  //
+  // Null when the job wrote no error file, and when the file is no longer listed.
+  errorDetails() mistral.file
   // Total number of requests in the batch
   totalRequests int
   // Number of completed requests
@@ -287,6 +361,8 @@ mistral.connector @defaults("name visibility server") @maturity("preview") {
   id string
   // Connector name
   name string
+  // Display title of the connector
+  title string
   // Connector description
   description string
   // URL of the server the connector calls
@@ -303,6 +379,21 @@ mistral.connector @defaults("name visibility server") @maturity("preview") {
   //
   // One of user, workspace, org, or system.
   ownerType string
+  // Identifier of the entity that owns the connector
+  ownerId string
+  // Identifier of the user who created the connector
+  creatorId string
+  // Whether raw HTTP calls through the connector are allowed
+  //
+  // False when any connection preference turns raw HTTP calls off, true when at
+  // least one allows them and none turns them off, and null when no preference
+  // states it, which is always the case for connectors that do not speak http.
+  httpProxyEnabled bool
+  // Levels at which the connector is blocked
+  //
+  // Each entry is one of user, workspace, org, or system. Empty when nothing
+  // blocks the connector.
+  blockedBy []string
   // Authentication methods the connector accepts
   //
   // Method names only, drawn from oauth2, bearer, none, github_app, and
@@ -365,4 +456,163 @@ mistral.library.access @defaults("shareWithType role") @maturity("preview") {
   //
   // Such as Viewer or Editor.
   role string
+}
+
+// Mistral AI agent
+//
+// Agent configured in the workspace, covering the model it runs on, its
+// instructions, the tools it may call and which of them need a human to
+// confirm, the document libraries and connectors it reaches, the agents it can
+// hand a conversation off to, and whether its guardrails block requests when
+// they fail. Query
+// `mistral.agents.where(tools.any(type == "connector" && requiresConfirmation.length == 0))`
+// to find agents that call remote servers without confirmation.
+mistral.agent @defaults("id name modelName") @maturity("preview") {
+  // Agent identifier
+  id string
+  // Agent name
+  name string
+  // Agent description
+  description string
+  // Version of the agent configuration reported
+  version int
+  // Identifier of the model the agent runs on, as configured
+  //
+  // Kept beside model because the agent can name a model the workspace model
+  // list does not carry.
+  modelName string
+  // Model the agent runs on
+  //
+  // Null when the model named in modelName is not in the workspace model list.
+  model() mistral.model
+  // Instruction prompt the agent follows
+  instructions string
+  // Tools the agent may call
+  tools []mistral.agent.tool
+  // Document libraries the agent searches
+  libraries() []mistral.library
+  // Connectors the agent calls
+  connectors() []mistral.connector
+  // Agents this agent can hand a conversation off to
+  handoffs() []mistral.agent
+  // Whether the guardrails block a request when they fail
+  //
+  // True when every configured guardrail blocks on a server-side error, false
+  // when any lets the request through, and null when the agent has no
+  // guardrails.
+  guardrailsBlockOnError bool
+  // Agent creation time
+  createdAt time
+  // Last update time
+  updatedAt time
+}
+
+// Tool an agent may call
+private mistral.agent.tool @defaults("type name") @maturity("preview") {
+  // Tool type
+  //
+  // Such as function, web_search, web_search_premium, code_interpreter,
+  // image_generation, document_library, or connector.
+  type string
+  // Name of the function a function tool calls
+  //
+  // Null for other tool types.
+  name string
+  // Connector a connector tool calls
+  //
+  // Null for other tool types, and when the connector is not listed in the
+  // workspace.
+  connector() mistral.connector
+  // Tool names that need a human to confirm each call
+  requiresConfirmation []string
+  // Tool names the agent may call, when restricted
+  include []string
+  // Tool names the agent may not call
+  exclude []string
+}
+
+// Mistral AI webhook
+//
+// Endpoint that receives events from a third-party service, covering the
+// service, the URL, whether the URL was verified, how incoming events are
+// signed and how long a signature stays valid, and when the webhook expires.
+// No verification token or signing secret is reported. Query
+// `mistral.webhooks.where(signatureHashAlgorithm == null)` to find webhooks
+// that accept unsigned events.
+mistral.webhook @defaults("name provider urlVerified") @maturity("preview") {
+  // Webhook identifier
+  id string
+  // Webhook name
+  name string
+  // Service that sends the events
+  //
+  // One of slack, github, notion, lucca, linear, microsoft, ashby, whatsapp,
+  // or custom.
+  provider string
+  // URL of the webhook
+  url string
+  // Whether the URL passed the provider's verification
+  //
+  // Null when the provider does not verify URLs.
+  urlVerified bool
+  // Hash algorithm incoming event signatures are checked with
+  //
+  // One of sha256 or sha1. Null when events are not signed.
+  signatureHashAlgorithm string
+  // Seconds a signed event stays valid after its timestamp
+  //
+  // Null when no validity period is enforced.
+  validityPeriodSeconds int
+  // Kind of entity that owns the webhook
+  //
+  // One of workspace or user.
+  ownerType string
+  // Time the webhook expires
+  //
+  // Null for a webhook that does not expire.
+  expiresAt time
+  // Webhook creation time
+  createdAt time
+  // Last update time
+  updatedAt time
+}
+
+// Mistral AI trigger
+//
+// Rule that starts a workflow, agent, or app when a webhook receives an event,
+// covering the webhook it listens on, the event filter, and the action it
+// takes. Query `mistral.triggers.where(filters == null) { title eventSource.provider }`
+// to find triggers that act on every event their webhook receives.
+mistral.trigger @defaults("title handler actionType") @maturity("preview") {
+  // Trigger identifier
+  id string
+  // Trigger title
+  title string
+  // Webhook the trigger listens on
+  eventSource mistral.webhook
+  // Kind of target the trigger starts
+  //
+  // One of workflows, agents, or spaces.
+  handler string
+  // Action the trigger takes
+  //
+  // One of start_workflow, build_app, deploy_app, or start_agent_session.
+  actionType string
+  // Agent the trigger starts a session with
+  //
+  // Null when the action does not start an agent session, and when the agent
+  // is no longer listed.
+  agent() mistral.agent
+  // Identifier of the workflow or app the action runs
+  //
+  // Null when the action starts an agent session, which agent reports.
+  actionTargetId string
+  // Expression selecting which events start the action
+  //
+  // Null when every event starts it.
+  filters string
+  // Kind of entity that owns the trigger
+  //
+  // One of workspace or user.
+  ownerType string
 }

@@ -5,7 +5,9 @@ replace go.mondoo.com/mql => ../..
 go 1.27.3
 
 require (
+	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.12.1
+	github.com/weaviate/weaviate v1.38.16-0.20260915093746-7ecf175277a5
 	github.com/weaviate/weaviate-go-client/v5 v5.7.4
 	go.mondoo.com/mql v0.0.0-20261109064811-87180a95a1f3
 	go.mondoo.com/ranger-rpc v0.8.2
@@ -97,7 +99,6 @@ require (
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rogpeppe/go-internal v1.16.0 // indirect
-	github.com/rs/zerolog v1.35.1 // indirect
 	github.com/segmentio/fasthash v1.0.3 // indirect
 	github.com/segmentio/ksuid v1.0.4 // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
@@ -105,7 +106,6 @@ require (
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/pflag v1.1.0 // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
-	github.com/weaviate/weaviate v1.38.16-0.20260915093746-7ecf175277a5 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	go.mongodb.org/mongo-driver v1.17.9 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect

@@ -1,7 +1,7 @@
 {
   "provider": "azure",
-  "version": "14.7.0",
-  "generated_at": "2026-11-06T15:02:37-08:00",
+  "version": "14.12.0",
+  "generated_at": "2026-11-23T13:24:57-08:00",
   "permissions": [
     "Microsoft.Advisor/recommendations/read",
     "Microsoft.ApiManagement/service/apis/policies/read",
@@ -45,6 +45,8 @@
     "Microsoft.BotService/botServices/channels/read",
     "Microsoft.BotService/botServices/connections/read",
     "Microsoft.BotService/botServices/read",
+    "Microsoft.Cache/redis/accessPolicies/read",
+    "Microsoft.Cache/redis/accessPolicyAssignments/read",
     "Microsoft.Cache/redis/firewallRules/read",
     "Microsoft.Cache/redis/patchSchedules/read",
     "Microsoft.Cache/redis/read",
@@ -114,6 +116,7 @@
     "Microsoft.DataFactory/factories/linkedservices/read",
     "Microsoft.DataFactory/factories/managedVirtualNetworks/managedPrivateEndpoints/read",
     "Microsoft.DataFactory/factories/managedVirtualNetworks/read",
+    "Microsoft.DataFactory/factories/privateEndpointConnections/read",
     "Microsoft.DataFactory/factories/read",
     "Microsoft.DataProtection/backupVaults/backupInstances/read",
     "Microsoft.DataProtection/backupVaults/backupPolicies/read",
@@ -362,11 +365,17 @@
     "Microsoft.Storage/storageAccounts/read",
     "Microsoft.Storage/storageAccounts/tableServices/tables/read",
     "Microsoft.StorageCache/amlFilesystems/read",
+    "Microsoft.Synapse/workspaces/administrators/read",
+    "Microsoft.Synapse/workspaces/auditingSettings/read",
+    "Microsoft.Synapse/workspaces/bigDataPools/read",
+    "Microsoft.Synapse/workspaces/dedicatedSQLminimalTlsSettings/read",
     "Microsoft.Synapse/workspaces/firewallRules/read",
     "Microsoft.Synapse/workspaces/read",
+    "Microsoft.Synapse/workspaces/securityAlertPolicies/read",
     "Microsoft.Synapse/workspaces/sqlPools/auditingSettings/read",
     "Microsoft.Synapse/workspaces/sqlPools/read",
     "Microsoft.Synapse/workspaces/sqlPools/transparentDataEncryption/read",
+    "Microsoft.Synapse/workspaces/vulnerabilityAssessments/read",
     "Microsoft.Web/certificates/read",
     "Microsoft.Web/hostingEnvironments/read",
     "Microsoft.Web/serverfarms/read",
@@ -634,6 +643,18 @@
       "service": "Microsoft.BotService",
       "action": "NewListPager",
       "source_file": "botservice.go"
+    },
+    {
+      "permission": "Microsoft.Cache/redis/accessPolicies/read",
+      "service": "Microsoft.Cache",
+      "action": "NewListPager",
+      "source_file": "redis.go"
+    },
+    {
+      "permission": "Microsoft.Cache/redis/accessPolicyAssignments/read",
+      "service": "Microsoft.Cache",
+      "action": "NewListPager",
+      "source_file": "redis.go"
     },
     {
       "permission": "Microsoft.Cache/redis/firewallRules/read",
@@ -1045,6 +1066,12 @@
     },
     {
       "permission": "Microsoft.DataFactory/factories/managedVirtualNetworks/read",
+      "service": "Microsoft.DataFactory",
+      "action": "NewListByFactoryPager",
+      "source_file": "datafactory_extras.go"
+    },
+    {
+      "permission": "Microsoft.DataFactory/factories/privateEndpointConnections/read",
       "service": "Microsoft.DataFactory",
       "action": "NewListByFactoryPager",
       "source_file": "datafactory_extras.go"
@@ -2586,6 +2613,30 @@
       "source_file": "storagecache.go"
     },
     {
+      "permission": "Microsoft.Synapse/workspaces/administrators/read",
+      "service": "Microsoft.Synapse",
+      "action": "Get",
+      "source_file": "synapse_security.go"
+    },
+    {
+      "permission": "Microsoft.Synapse/workspaces/auditingSettings/read",
+      "service": "Microsoft.Synapse",
+      "action": "Get",
+      "source_file": "synapse_security.go"
+    },
+    {
+      "permission": "Microsoft.Synapse/workspaces/bigDataPools/read",
+      "service": "Microsoft.Synapse",
+      "action": "NewListByWorkspacePager",
+      "source_file": "synapse_security.go"
+    },
+    {
+      "permission": "Microsoft.Synapse/workspaces/dedicatedSQLminimalTlsSettings/read",
+      "service": "Microsoft.Synapse",
+      "action": "Get",
+      "source_file": "synapse_security.go"
+    },
+    {
       "permission": "Microsoft.Synapse/workspaces/firewallRules/read",
       "service": "Microsoft.Synapse",
       "action": "NewListByWorkspacePager",
@@ -2596,6 +2647,12 @@
       "service": "Microsoft.Synapse",
       "action": "NewListPager",
       "source_file": "synapse.go"
+    },
+    {
+      "permission": "Microsoft.Synapse/workspaces/securityAlertPolicies/read",
+      "service": "Microsoft.Synapse",
+      "action": "Get",
+      "source_file": "synapse_security.go"
     },
     {
       "permission": "Microsoft.Synapse/workspaces/sqlPools/auditingSettings/read",
@@ -2611,6 +2668,12 @@
     },
     {
       "permission": "Microsoft.Synapse/workspaces/sqlPools/transparentDataEncryption/read",
+      "service": "Microsoft.Synapse",
+      "action": "Get",
+      "source_file": "synapse_security.go"
+    },
+    {
+      "permission": "Microsoft.Synapse/workspaces/vulnerabilityAssessments/read",
       "service": "Microsoft.Synapse",
       "action": "Get",
       "source_file": "synapse_security.go"

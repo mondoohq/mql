@@ -889,6 +889,7 @@ func newMqlDeployKey(runtime *plugin.Runtime, k *github.Key, repo *mqlGithubRepo
 		"createdAt": llx.TimeDataPtr(githubTimestamp(k.CreatedAt)),
 		"lastUsed":  llx.TimeDataPtr(githubTimestamp(k.LastUsed)),
 		"ageInDays": llx.IntData(keyAgeInDays(k.CreatedAt)),
+		"enabled":   llx.BoolDataPtr(k.Enabled),
 	}
 	r, err := CreateResource(runtime, "github.deployKey", args)
 	if err != nil {
@@ -937,7 +938,7 @@ func (g *mqlGithubDeployKey) repository() (*mqlGithubRepository, error) {
 		}
 		return nil, err
 	}
-	return newMqlGithubRepository(g.MqlRuntime, repo)
+	return newMqlGithubRepositoryFromGet(g.MqlRuntime, repo)
 }
 
 func (g *mqlGithubRepository) deployKeys() ([]any, error) {

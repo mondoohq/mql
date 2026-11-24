@@ -130,6 +130,9 @@ type mqlDigitaloceanDropletInternal struct {
 	// cacheVPCUUID holds the UUID of the VPC the droplet is attached to so
 	// the typed vpc() accessor can resolve it without a refetch.
 	cacheVPCUUID string
+	// cacheSubnetUUID holds the UUID of the VPC subnet the droplet is placed
+	// in so the typed subnet() accessor can resolve it without a refetch.
+	cacheSubnetUUID string
 }
 
 func (r *mqlDigitalocean) droplets() ([]any, error) {
@@ -245,6 +248,7 @@ func (r *mqlDigitalocean) droplets() ([]any, error) {
 		mqlDroplet.image = d.Image
 		mqlDroplet.size = d.Size
 		mqlDroplet.cacheVPCUUID = d.VPCUUID
+		mqlDroplet.cacheSubnetUUID = d.SubnetUUID
 		mqlDroplet.cacheVolumeIDs = d.VolumeIDs
 		mqlDroplet.cacheSnapshotIDs = d.SnapshotIDs
 		mqlDroplet.cacheBackupIDs = d.BackupIDs
@@ -503,6 +507,9 @@ type mqlDigitaloceanLoadBalancerInternal struct {
 	// droplets() accessors can resolve them without a refetch.
 	cacheVPCUUID    string
 	cacheDropletIDs []any
+	// cacheSubnetUUID holds the VPC subnet the load balancer is placed in, so
+	// the typed subnet() accessor can resolve it without a refetch.
+	cacheSubnetUUID string
 	// cacheForwardingRules holds the port mappings the load balancer accepts
 	// connections on, so listeners() can build one resource per rule.
 	cacheForwardingRules []godo.ForwardingRule

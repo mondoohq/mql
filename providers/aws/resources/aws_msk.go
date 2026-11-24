@@ -1748,8 +1748,9 @@ func (a *mqlAwsMskCluster) nodes() ([]any, error) {
 		var brokerId int64
 		var clientSubnetId, clientVpcIp, eniId string
 		endpoints := make([]any, 0)
-		var subnetPtr, eniPtr *string
+		var subnetPtr, eniPtr, brokerNodeType *string
 		if node.BrokerNodeInfo != nil {
+			brokerNodeType = nonEmptyEnum(node.BrokerNodeInfo.BrokerNodeType)
 			if node.BrokerNodeInfo.BrokerId != nil {
 				brokerId = int64(*node.BrokerNodeInfo.BrokerId)
 			}
@@ -1779,6 +1780,7 @@ func (a *mqlAwsMskCluster) nodes() ([]any, error) {
 			"clientVpcIpAddress": llx.StringData(clientVpcIp),
 			"attachedENIId":      llx.StringData(eniId),
 			"endpoints":          llx.ArrayData(endpoints, types.String),
+			"brokerNodeType":     llx.StringDataPtr(brokerNodeType),
 		}
 		resource, err := CreateResource(a.MqlRuntime, "aws.msk.cluster.node", args)
 		if err != nil {

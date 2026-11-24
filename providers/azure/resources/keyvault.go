@@ -1127,6 +1127,32 @@ func (a *mqlAzureSubscriptionKeyVaultServiceKey) curveName() (string, error) {
 	return "", nil
 }
 
+func (a *mqlAzureSubscriptionKeyVaultServiceKey) externalKeyId() (string, error) {
+	keyResp, err := a.fetchKeyDetails()
+	if err != nil {
+		return "", err
+	}
+	id := keyBundleExternalKeyID(&keyResp.KeyBundle)
+	if id == nil {
+		a.ExternalKeyId.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *id, nil
+}
+
+// keyBundleExternalKeyID returns the external key manager's identifier for the
+// key, or nil when Key Vault holds the key material itself.
+func keyBundleExternalKeyID(bundle *azkeys.KeyBundle) *string {
+	if bundle == nil || bundle.Attributes == nil || bundle.Attributes.ExternalKey == nil {
+		return nil
+	}
+	id := bundle.Attributes.ExternalKey.ID
+	if id == nil || *id == "" {
+		return nil
+	}
+	return id
+}
+
 func (a *mqlAzureSubscriptionKeyVaultServiceKey) keyOps() ([]any, error) {
 	keyResp, err := a.fetchKeyDetails()
 	if err != nil {
@@ -2078,6 +2104,7 @@ func (a *mqlAzureSubscriptionKeyVaultService) managedHsms() ([]any, error) {
 			var scheduledPurgeDate *time.Time
 			regions := []any{}
 
+			var securityDomainActivationStatus, securityDomainActivationStatusMessage, statusMessage *string
 			if hsm.Properties != nil {
 				props := hsm.Properties
 				if props.HsmURI != nil {
@@ -2108,6 +2135,11 @@ func (a *mqlAzureSubscriptionKeyVaultService) managedHsms() ([]any, error) {
 				}
 				privateEndpointConns = props.PrivateEndpointConnections
 				scheduledPurgeDate = props.ScheduledPurgeDate
+				statusMessage = props.StatusMessage
+				if sd := props.SecurityDomainProperties; sd != nil {
+					securityDomainActivationStatus = stringEnumPtr(sd.ActivationStatus)
+					securityDomainActivationStatusMessage = sd.ActivationStatusMessage
+				}
 				for _, r := range props.Regions {
 					if r == nil {
 						continue
@@ -2139,6 +2171,10 @@ func (a *mqlAzureSubscriptionKeyVaultService) managedHsms() ([]any, error) {
 					"networkAcls":               llx.DictData(networkAcls),
 					"scheduledPurgeDate":        llx.TimeDataPtr(scheduledPurgeDate),
 					"regions":                   llx.ArrayData(regions, types.Dict),
+
+					"securityDomainActivationStatus":        llx.StringDataPtr(securityDomainActivationStatus),
+					"securityDomainActivationStatusMessage": llx.StringDataPtr(securityDomainActivationStatusMessage),
+					"statusMessage":                         llx.StringDataPtr(statusMessage),
 				})
 			if err != nil {
 				return nil, err
@@ -2310,4 +2346,53 @@ func keyVaultPageFault(field *plugin.TValue[[]any], collected []any, what string
 	}
 
 	return nil, err
+}
+
+func (a *mqlAzureSubscriptionKeyVaultServiceManagedHsm) diagnosticSettings() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
+}
+
+func (a *mqlAzureSubscriptionKeyVaultServiceVault) tenantId() (string, error) {
+	vault, err := a.fetchVault()
+	if err != nil {
+		return "", err
+	}
+	if vault.Properties == nil || vault.Properties.TenantID == nil {
+		a.TenantId.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *vault.Properties.TenantID, nil
+}
+
+func (a *mqlAzureSubscriptionKeyVaultServiceVault) provisioningState() (string, error) {
+	vault, err := a.fetchVault()
+	if err != nil {
+		return "", err
+	}
+	if vault.Properties == nil || vault.Properties.ProvisioningState == nil {
+		a.ProvisioningState.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return string(*vault.Properties.ProvisioningState), nil
+}
+
+func (a *mqlAzureSubscriptionKeyVaultServiceVaultNetworkAcls) virtualNetworkSubnets() ([]any, error) {
+	return azureResourceRefsByID(a.MqlRuntime, ResourceAzureSubscriptionNetworkServiceSubnet, anyStrings(a.VirtualNetworkSubnetIds.Data))
+}
+
+func (a *mqlAzureSubscriptionKeyVaultServiceManagedHsmNetworkRuleSet) virtualNetworkSubnets() ([]any, error) {
+	return azureResourceRefsByID(a.MqlRuntime, ResourceAzureSubscriptionNetworkServiceSubnet, anyStrings(a.VirtualNetworkSubnetIds.Data))
+}
+
+// anyStrings returns the string elements of an MQL string list, skipping any
+// element that is not a string.
+func anyStrings(list []any) []string {
+	res := make([]string, 0, len(list))
+	for _, v := range list {
+		if s, ok := v.(string); ok {
+			res = append(res, s)
+		}
+	}
+	return res
 }

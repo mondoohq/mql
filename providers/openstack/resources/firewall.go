@@ -76,6 +76,8 @@ func (o *mqlOpenstack) firewallGroups() ([]any, error) {
 			"adminStateUp": llx.BoolData(g.AdminStateUp),
 			"status":       llx.StringData(g.Status),
 			"shared":       llx.BoolData(g.Shared),
+			"createdAt":    llx.TimeDataPtr(timePtr(g.CreatedAt)),
+			"updatedAt":    llx.TimeDataPtr(timePtr(g.UpdatedAt)),
 		})
 		if err != nil {
 			return nil, err
@@ -191,6 +193,8 @@ func (o *mqlOpenstack) firewallPolicies() ([]any, error) {
 			"description": llx.StringData(p.Description),
 			"audited":     llx.BoolData(p.Audited),
 			"shared":      llx.BoolData(p.Shared),
+			"createdAt":   llx.TimeDataPtr(timePtr(p.CreatedAt)),
+			"updatedAt":   llx.TimeDataPtr(timePtr(p.UpdatedAt)),
 		})
 		if err != nil {
 			return nil, err
@@ -317,6 +321,8 @@ func (o *mqlOpenstack) firewallRules() ([]any, error) {
 			"destinationPort":      llx.StringData(fr.DestinationPort),
 			"shared":               llx.BoolData(fr.Shared),
 			"enabled":              llx.BoolData(fr.Enabled),
+			"createdAt":            llx.TimeDataPtr(timePtr(fr.CreatedAt)),
+			"updatedAt":            llx.TimeDataPtr(timePtr(fr.UpdatedAt)),
 		})
 		if err != nil {
 			return nil, err

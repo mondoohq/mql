@@ -12,7 +12,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/search/armsearch"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/search/armsearch/v2"
 	"github.com/rs/zerolog/log"
 
 	"go.mondoo.com/mql/llx"
@@ -58,9 +58,7 @@ func (a *mqlAzureSubscriptionSearchService) services() ([]any, error) {
 		return nil, err
 	}
 
-	// NewListBySubscriptionPager takes two optional params: *SearchManagementRequestOptions
-	// and *ServicesClientListBySubscriptionOptions. Both are left as default (nil).
-	pager := client.NewListBySubscriptionPager(nil, nil)
+	pager := client.NewListBySubscriptionPager(nil)
 	res := []any{}
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
@@ -102,7 +100,7 @@ func searchServiceToMql(runtime *plugin.Runtime, svc *armsearch.Service) (*mqlAz
 	var disableLocalAuth bool
 	var replicaCount, partitionCount int64
 	var authMode string
-	var aadAuthFailureMode, computeType, semanticSearch, upgradeAvailable *string
+	var aadAuthFailureMode, computeType, semanticSearch, upgradeAvailable, knowledgeRetrieval *string
 	var serviceUpgradedAt *time.Time
 	dataExfiltrationProtections := []any{}
 	networkRuleSet := llx.NilData
@@ -158,6 +156,7 @@ func searchServiceToMql(runtime *plugin.Runtime, svc *armsearch.Service) (*mqlAz
 		}
 		computeType = stringEnumPtr(p.ComputeType)
 		semanticSearch = stringEnumPtr(p.SemanticSearch)
+		knowledgeRetrieval = stringEnumPtr(p.KnowledgeRetrieval)
 		upgradeAvailable = stringEnumPtr(p.UpgradeAvailable)
 		serviceUpgradedAt = p.ServiceUpgradedAt
 		if p.NetworkRuleSet != nil {
@@ -198,6 +197,7 @@ func searchServiceToMql(runtime *plugin.Runtime, svc *armsearch.Service) (*mqlAz
 		"dataExfiltrationProtections": llx.ArrayData(dataExfiltrationProtections, types.String),
 		"computeType":                 llx.StringDataPtr(computeType),
 		"semanticSearch":              llx.StringDataPtr(semanticSearch),
+		"knowledgeRetrieval":          llx.StringDataPtr(knowledgeRetrieval),
 		"upgradeAvailable":            llx.StringDataPtr(upgradeAvailable),
 		"serviceUpgradedAt":           llx.TimeDataPtr(serviceUpgradedAt),
 	}

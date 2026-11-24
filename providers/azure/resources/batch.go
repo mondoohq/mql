@@ -242,6 +242,12 @@ func createBatchAccountRawData(account *armbatch.Account) (map[string]*llx.RawDa
 		}
 	}
 
+	var sdkNetworkProfile *armbatch.NetworkProfile
+	if account.Properties != nil {
+		sdkNetworkProfile = account.Properties.NetworkProfile
+	}
+	access := batchNetworkAccessFields(sdkNetworkProfile)
+
 	return map[string]*llx.RawData{
 		"id":                                    llx.StringDataPtr(account.ID),
 		"name":                                  llx.StringDataPtr(account.Name),
@@ -264,7 +270,61 @@ func createBatchAccountRawData(account *armbatch.Account) (map[string]*llx.RawDa
 		"allowedAuthenticationModes":            allowedAuthenticationModes,
 		"networkProfile":                        networkProfile,
 		"privateEndpointConnections":            privateEndpointConnections,
+		"identityType":                          llx.StringDataPtr(batchIdentityType(account.Identity)),
+		"accountAccessDefaultAction":            llx.StringDataPtr(access.accountDefaultAction),
+		"accountAccessIpRules":                  llx.ArrayData(access.accountIPRules, types.String),
+		"nodeManagementAccessDefaultAction":     llx.StringDataPtr(access.nodeManagementDefaultAction),
+		"nodeManagementAccessIpRules":           llx.ArrayData(access.nodeManagementIPRules, types.String),
 	}, nil
+}
+
+// batchIdentityType returns the account's managed identity type, or nil when
+// the account has no identity block.
+func batchIdentityType(id *armbatch.AccountIdentity) *string {
+	if id == nil {
+		return nil
+	}
+	return stringEnumPtr(id.Type)
+}
+
+// batchNetworkAccess holds the default action and allowed source ranges of the
+// account's two network endpoints.
+type batchNetworkAccess struct {
+	accountDefaultAction        *string
+	accountIPRules              []any
+	nodeManagementDefaultAction *string
+	nodeManagementIPRules       []any
+}
+
+// batchNetworkAccessFields flattens the account's network profile. A nil
+// default action means the account sets no profile for that endpoint, in which
+// case publicNetworkAccess alone governs it.
+func batchNetworkAccessFields(np *armbatch.NetworkProfile) batchNetworkAccess {
+	res := batchNetworkAccess{accountIPRules: []any{}, nodeManagementIPRules: []any{}}
+	if np == nil {
+		return res
+	}
+	if p := np.AccountAccess; p != nil {
+		res.accountDefaultAction = stringEnumPtr(p.DefaultAction)
+		res.accountIPRules = batchIPRuleValues(p.IPRules)
+	}
+	if p := np.NodeManagementAccess; p != nil {
+		res.nodeManagementDefaultAction = stringEnumPtr(p.DefaultAction)
+		res.nodeManagementIPRules = batchIPRuleValues(p.IPRules)
+	}
+	return res
+}
+
+// batchIPRuleValues returns the address ranges of the IP rules. Every rule's
+// action is Allow, so only the range carries information.
+func batchIPRuleValues(rules []*armbatch.IPRule) []any {
+	res := []any{}
+	for _, r := range rules {
+		if r != nil && r.Value != nil && *r.Value != "" {
+			res = append(res, *r.Value)
+		}
+	}
+	return res
 }
 
 func batchAccountToMql(runtime *plugin.Runtime, account *armbatch.Account) (*mqlAzureSubscriptionBatchServiceAccount, error) {
@@ -287,9 +347,11 @@ func batchAccountToMql(runtime *plugin.Runtime, account *armbatch.Account) (*mql
 
 	if account.Identity != nil {
 		mqlAccount.cacheUserAssignedIdentityIds = sortedUserAssignedIdentityIDs(account.Identity.UserAssignedIdentities)
+		mqlAccount.cacheIdentityTenantId = convert.ToValue(account.Identity.TenantID)
 	}
 	if account.Properties != nil {
 		props := account.Properties
+		mqlAccount.cachePrivateEndpointConnections = props.PrivateEndpointConnections
 		if props.KeyVaultReference != nil && props.KeyVaultReference.ID != nil {
 			mqlAccount.cacheKeyVaultId = *props.KeyVaultReference.ID
 		}
@@ -310,6 +372,17 @@ type mqlAzureSubscriptionBatchServiceAccountInternal struct {
 	cacheEncryptionKeyId         string
 	cacheAutoStorageAccountId    string
 	cacheUserAssignedIdentityIds []string
+
+	cacheIdentityTenantId           string
+	cachePrivateEndpointConnections []*armbatch.PrivateEndpointConnection
+}
+
+func (a *mqlAzureSubscriptionBatchServiceAccount) systemAssignedIdentity() (*mqlAzureSubscriptionManagedIdentity, error) {
+	return newSystemAssignedManagedIdentity(a.MqlRuntime, a.Id.Data, a.PrincipalId.Data, a.cacheIdentityTenantId, &a.SystemAssignedIdentity)
+}
+
+func (a *mqlAzureSubscriptionBatchServiceAccount) privateLinkConnections() ([]any, error) {
+	return azurePrivateEndpointConnectionsToMql(a.MqlRuntime, a.cachePrivateEndpointConnections)
 }
 
 func (a *mqlAzureSubscriptionBatchServiceAccount) userAssignedIdentities() ([]any, error) {

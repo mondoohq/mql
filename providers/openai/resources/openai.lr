@@ -333,6 +333,11 @@ openai.model @defaults("id ownedBy") @maturity("preview") {
   // Extracted from the fine-tuned model ID. For example, a model with
   // id "ft:gpt-4o-mini:my-org:custom:abc123" has baseModel "gpt-4o-mini".
   baseModel() string
+  // Fine-tuning job that produced this model
+  //
+  // Null for a base model, and for a fine-tuned model whose job is not among
+  // the fine-tuning jobs the project key can list.
+  fineTuningJob() openai.fineTuningJob
 }
 
 // OpenAI batch job
@@ -477,6 +482,12 @@ openai.fineTuningJob @defaults("id model status") @maturity("preview") {
   finishedAt time
   // Identifier of the resulting fine-tuned model (empty until succeeded)
   fineTunedModel string
+  // Fine-tuned model the job produced
+  //
+  // Null until the job succeeds, and when the model has since been deleted
+  // while the job record remains. `fineTunedModel` keeps the identifier in
+  // that case.
+  outputModel() openai.model
   // Training file
   trainingFile() openai.file
   // Validation file (null if not provided)
@@ -815,6 +826,11 @@ openai.project.apiKey @defaults("id name") @maturity("preview") {
   ownerName string
   // Owner identifier
   ownerId string
+  // Whether the key's owner still has access to the project
+  //
+  // False for a key whose owner has lost access to the project while the key
+  // stays enabled. Null when the API reports neither active nor inactive.
+  ownerHasProjectAccess bool
   // Organization member that owns the key
   //
   // Null when a service account owns the key, and when the member has since
@@ -1141,6 +1157,15 @@ openai.invite @defaults("id email status") @maturity("preview") {
   acceptedAt time
   // Expiration timestamp
   expiresAt time
+  // Projects the invitee joins on acceptance
+  //
+  // Leaves out a project that no longer exists in the organization.
+  projects() []openai.project
+  // Project role granted on acceptance, keyed by project ID
+  //
+  // Each role is one of owner or member, for example
+  // `projectRoles["proj_abc123"] == "member"`.
+  projectRoles map[string]string
 }
 
 // OpenAI audit log entry
@@ -1621,6 +1646,11 @@ openai.automation @defaults("name type status") @maturity("preview") {
   // One of active, paused, or completed. Only a once automation completes, and
   // completed means its schedule has finished, not that the agent's work has.
   status string
+  // Reason the automation was paused
+  //
+  // For example target_session_failed, set when the session it delivers into
+  // failed. Null when the automation was not paused for a recorded reason.
+  pauseReason string
   // Cron expression a periodic automation fires on
   //
   // Null for a once automation.

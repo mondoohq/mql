@@ -4,6 +4,7 @@ package resources
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -14,7 +15,9 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/providers/cloudflare/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // errNoAccountBound guards the account-scoped accessors. An empty account id
@@ -56,6 +59,40 @@ func timeOrNil(t time.Time) *llx.RawData {
 	}
 	tt := t
 	return llx.TimeDataPtr(&tt)
+}
+
+// rawJSONDict decodes a raw JSON value, as the API sent it, into dict data. An
+// absent value, an explicit JSON null and a value that does not parse all read
+// as null rather than as an empty dict.
+func rawJSONDict(raw string) *llx.RawData {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "null" {
+		return llx.NilData
+	}
+	var v any
+	if err := json.Unmarshal([]byte(raw), &v); err != nil || v == nil {
+		return llx.NilData
+	}
+	return llx.DictData(v)
+}
+
+// stringSliceOrNil converts a string slice into MQL list data, returning null
+// for a nil slice (the value was absent) and an empty list for an empty one.
+func stringSliceOrNil(in []string) *llx.RawData {
+	if in == nil {
+		return llx.NilData
+	}
+	return llx.ArrayData(convert.SliceAnyToInterface(in), types.String)
+}
+
+// boolOrNil returns null for a value the API omitted or sent as null, and the
+// boolean otherwise. The SDK decodes an absent boolean to false, so absent is
+// read from the field's JSON metadata.
+func boolOrNil(v bool, absent bool) *llx.RawData {
+	if absent {
+		return llx.NilData
+	}
+	return llx.BoolData(v)
 }
 
 // cfGetPaged walks a page-numbered Cloudflare list endpoint via the client's

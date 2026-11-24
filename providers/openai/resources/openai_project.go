@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/packages/pagination"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
@@ -85,6 +86,17 @@ func initOpenaiProject(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 	return mapProject(*p), nil, nil
 }
 
+// projectAPIKeyPager lists every enabled API key of a project. Without an
+// owner_project_access filter the endpoint applies its membership-based
+// visibility rules, which can leave out enabled keys, among them the keys
+// whose owner no longer has access to the project. Asking for `any` returns
+// them all.
+func projectAPIKeyPager(ctx context.Context, client *openai.Client, projectID string) *pagination.ConversationCursorPageAutoPager[openai.ProjectAPIKey] {
+	return client.Admin.Organization.Projects.APIKeys.ListAutoPaging(ctx, projectID, openai.AdminOrganizationProjectAPIKeyListParams{
+		OwnerProjectAccess: openai.AdminOrganizationProjectAPIKeyListParamsOwnerProjectAccessAny,
+	})
+}
+
 func (r *mqlOpenaiProject) apiKeys() ([]any, error) {
 	conn := openaiConn(r.MqlRuntime)
 	client, err := adminPlaneClient(conn, "openai.project.apiKeys")
@@ -96,7 +108,7 @@ func (r *mqlOpenaiProject) apiKeys() ([]any, error) {
 	}
 	ctx := context.Background()
 
-	iter := client.Admin.Organization.Projects.APIKeys.ListAutoPaging(ctx, r.Id.Data, openai.AdminOrganizationProjectAPIKeyListParams{})
+	iter := projectAPIKeyPager(ctx, client, r.Id.Data)
 	var res []any
 	for iter.Next() {
 		k := iter.Current()
@@ -123,6 +135,8 @@ func (r *mqlOpenaiProject) apiKeys() ([]any, error) {
 			"ownerType":     llx.StringData(ownerType),
 			"ownerName":     llx.StringData(ownerName),
 			"ownerId":       llx.StringData(ownerId),
+
+			"ownerHasProjectAccess": llx.BoolDataPtr(ownerProjectAccess(k.OwnerProjectAccess)),
 		})
 		if err != nil {
 			return nil, err
@@ -320,6 +334,22 @@ func resolveProject(runtime *plugin.Runtime, projectID string) (*mqlOpenaiProjec
 		}
 	}
 	return nil, nil
+}
+
+// ownerProjectAccess reads whether a key's owner still has access to the
+// key's project. Any value other than active or inactive, including an absent
+// one, is reported as unknown rather than guessed.
+func ownerProjectAccess(access openai.ProjectAPIKeyOwnerProjectAccess) *bool {
+	var v bool
+	switch access {
+	case openai.ProjectAPIKeyOwnerProjectAccessActive:
+		v = true
+	case openai.ProjectAPIKeyOwnerProjectAccessInactive:
+		v = false
+	default:
+		return nil
+	}
+	return &v
 }
 
 type mqlOpenaiProjectApiKeyInternal struct {

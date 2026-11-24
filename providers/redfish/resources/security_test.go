@@ -11,10 +11,13 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"math/big"
 	"testing"
 	"time"
+
+	"go.mondoo.com/mql/llx"
 )
 
 // idracNetworkProtocol is a recorded ManagerNetworkProtocol document of a Dell
@@ -787,5 +790,93 @@ func TestParseAccountFlagsMalformed(t *testing.T) {
 	flags := parseAccountFlags([]byte(`{not json`))
 	if flags.PasswordChangeRequired != nil || flags.StrictAccountTypes != nil {
 		t.Errorf("parseAccountFlags(malformed) = %+v, want every flag null", flags)
+	}
+}
+
+func TestProtocolPreferredAuthentications(t *testing.T) {
+	// Measured: DMTF Redfish-Mockup-Server public-rackmount1 NetworkProtocol,
+	// fetched 2026-11-23. Its SSH block has no PreferredAuthentications.
+	np, err := parseNetworkProtocol([]byte(`{"SSH": {"ProtocolEnabled": true, "Port": 22}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := protocolPreferredAuthentications(np.SSH); got != llx.NilData {
+		t.Errorf("unreported methods = %v, want null", got)
+	}
+	if got := protocolPreferredAuthentications(nil); got != llx.NilData {
+		t.Errorf("unreported SSH block = %v, want null", got)
+	}
+
+	// Synthetic: ManagerNetworkProtocol v1.13 documents; no target showed this.
+	np, err = parseNetworkProtocol([]byte(`{"SSH": {"ProtocolEnabled": true, "PreferredAuthentications": ["PublicKey", "Password"]}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := protocolPreferredAuthentications(np.SSH).Value.([]any)
+	if !ok || len(got) != 2 || got[0] != "PublicKey" || got[1] != "Password" {
+		t.Errorf("methods = %v, want [PublicKey Password] in order", got)
+	}
+
+	// An empty list permits no method, which differs from an unreported one.
+	np, err = parseNetworkProtocol([]byte(`{"SSH": {"PreferredAuthentications": []}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := protocolPreferredAuthentications(np.SSH).Value.([]any); !ok || len(got) != 0 {
+		t.Errorf("empty methods = %v, want an empty list", got)
+	}
+}
+
+func TestProviderCredentialSet(t *testing.T) {
+	// Measured: DMTF Redfish-Mockup-Server public-rackmount1 AccountService,
+	// fetched 2026-11-23. LDAP and Active Directory name a method but report no
+	// Set flag.
+	svc, err := parseAccountService([]byte(`{
+  "LDAP": {"ServiceEnabled": true, "Authentication": {"AuthenticationType": "UsernameAndPassword", "Username": "cn=Manager,dc=example,dc=org", "Password": null}},
+  "ActiveDirectory": {"ServiceEnabled": true, "Authentication": {"AuthenticationType": "KerberosKeytab", "KerberosKeytab": null}}
+}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := svc.LDAP.Authentication.credentialSet(); got != nil {
+		t.Errorf("LDAP credentialSet = %v, want null", *got)
+	}
+	if got := svc.ActiveDirectory.Authentication.credentialSet(); got != nil {
+		t.Errorf("ActiveDirectory credentialSet = %v, want null", *got)
+	}
+
+	// Synthetic: AccountService v1.15 Authentication blocks; no target showed
+	// this. Each method reads its own flag and ignores the others.
+	tests := []struct {
+		name string
+		auth string
+		want *bool
+	}{
+		{"password set", `{"AuthenticationType": "UsernameAndPassword", "PasswordSet": true, "TokenSet": false}`, new(true)},
+		{"password missing", `{"AuthenticationType": "UsernameAndPassword", "PasswordSet": false, "TokenSet": true}`, new(false)},
+		{"token missing", `{"AuthenticationType": "Token", "TokenSet": false, "PasswordSet": true}`, new(false)},
+		{"keytab set", `{"AuthenticationType": "KerberosKeytab", "KerberosKeytabSet": true}`, new(true)},
+		{"keytab flag absent", `{"AuthenticationType": "KerberosKeytab", "PasswordSet": true}`, nil},
+		{"oem", `{"AuthenticationType": "OEM", "PasswordSet": true}`, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var a providerAuthenticationJSON
+			if err := json.Unmarshal([]byte(tt.auth), &a); err != nil {
+				t.Fatal(err)
+			}
+			got := a.credentialSet()
+			switch {
+			case tt.want == nil && got != nil:
+				t.Errorf("credentialSet = %v, want null", *got)
+			case tt.want != nil && (got == nil || *got != *tt.want):
+				t.Errorf("credentialSet = %v, want %v", got, *tt.want)
+			}
+		})
+	}
+
+	var none *providerAuthenticationJSON
+	if none.credentialSet() != nil {
+		t.Error("a provider without an Authentication block reported a credential state")
 	}
 }

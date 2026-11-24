@@ -2957,12 +2957,49 @@ func buildVolumeResource(runtime *plugin.Runtime, region, accountID string, vol 
 	v := mqlVol.(*mqlAwsEc2Volume)
 	v.cacheKmsKeyId = vol.KmsKeyId
 	v.cacheSourceVolumeId = vol.SourceVolumeId
+	v.cacheInstanceIds = volumeAttachedInstanceIds(vol.Attachments)
 	return v, nil
 }
 
 type mqlAwsEc2VolumeInternal struct {
 	cacheKmsKeyId       *string
 	cacheSourceVolumeId *string
+	cacheInstanceIds    []string
+}
+
+// volumeAttachedInstanceIds returns the ids of the instances a volume is
+// attached to, each once. A Multi-Attach volume lists one attachment per
+// instance; an attachment managed by an AWS service may carry no instance id.
+func volumeAttachedInstanceIds(attachments []ec2types.VolumeAttachment) []string {
+	ids := []string{}
+	seen := map[string]struct{}{}
+	for _, att := range attachments {
+		id := convert.ToValue(att.InstanceId)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func (a *mqlAwsEc2Volume) instances() ([]any, error) {
+	res := []any{}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	for _, id := range a.cacheInstanceIds {
+		inst, err := NewResource(a.MqlRuntime, ResourceAwsEc2Instance,
+			map[string]*llx.RawData{"arn": llx.StringData(fmt.Sprintf(ec2InstanceArnPattern, a.Region.Data, conn.AccountId(), id))})
+		if err != nil {
+			log.Warn().Err(err).Str("instance", id).Msg("cannot resolve instance attached to volume, skipping it")
+			continue
+		}
+		res = append(res, inst)
+	}
+	return res, nil
 }
 
 // snapshot resolves the source snapshot when it is still present in this
@@ -3120,6 +3157,7 @@ func buildSnapshotResource(runtime *plugin.Runtime, region, accountID string, sn
 	}
 	s := mqlSnap.(*mqlAwsEc2Snapshot)
 	s.cacheKmsKeyId = snapshot.KmsKeyId
+	s.cacheAssociatedKmsKeyIds = associatedKmsKeyArns(snapshot.AssociatedKmsKeys)
 	return s, nil
 }
 
@@ -3342,8 +3380,9 @@ func (a *mqlAwsEc2) getSnapshots(conn *connection.AwsConnection) []*jobpool.Job 
 }
 
 type mqlAwsEc2SnapshotInternal struct {
-	cacheKmsKeyId *string
-	snapshotLock  snapshotLockState
+	cacheKmsKeyId            *string
+	cacheAssociatedKmsKeyIds []string
+	snapshotLock             snapshotLockState
 
 	cvpOnce   sync.Once
 	cvp       []ec2types.CreateVolumePermission
@@ -3412,6 +3451,32 @@ func (a *mqlAwsEc2Snapshot) kmsKey() (*mqlAwsKmsKey, error) {
 		return nil, err
 	}
 	return mqlKey.(*mqlAwsKmsKey), nil
+}
+
+// associatedKmsKeyArns lists the ARNs of a snapshot's additional KMS keys,
+// skipping entries AWS returns without one.
+func associatedKmsKeyArns(keys []ec2types.AssociatedKmsKey) []string {
+	res := make([]string, 0, len(keys))
+	for _, k := range keys {
+		if k.KmsKeyId == nil || *k.KmsKeyId == "" {
+			continue
+		}
+		res = append(res, *k.KmsKeyId)
+	}
+	return res
+}
+
+func (a *mqlAwsEc2Snapshot) associatedKmsKeys() ([]any, error) {
+	res := make([]any, 0, len(a.cacheAssociatedKmsKeyIds))
+	for _, keyArn := range a.cacheAssociatedKmsKeyIds {
+		mqlKey, err := NewResource(a.MqlRuntime, ResourceAwsKmsKey,
+			map[string]*llx.RawData{"arn": llx.StringData(keyArn)})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlKey)
+	}
+	return res, nil
 }
 
 func (a *mqlAwsEc2Snapshot) isPublic() (bool, error) {
@@ -3935,6 +4000,32 @@ func dhGroupNumbersToInts[T any](values []T, get func(T) *int32) []any {
 	return result
 }
 
+// newMqlVpnAdditionalKeyExchanges builds the additional key exchange rounds
+// of one IKE phase of a VPN tunnel. Round numbers are unique within a phase,
+// so they key each round; the slice index is the fallback for a round AWS
+// reports without a number.
+func newMqlVpnAdditionalKeyExchanges(runtime *plugin.Runtime, phaseId string, rounds []ec2types.VpnAdditionalKeyExchange) ([]any, error) {
+	res := make([]any, 0, len(rounds))
+	for i, r := range rounds {
+		key := fmt.Sprintf("index-%d", i)
+		if r.AdditionalKeyExchangeRound != nil {
+			key = fmt.Sprintf("round-%d", *r.AdditionalKeyExchangeRound)
+		}
+		mqlRound, err := CreateResource(runtime, ResourceAwsEc2VpnconnectionTunnelOptionAdditionalKeyExchange,
+			map[string]*llx.RawData{
+				"__id":               llx.StringData(phaseId + "/additionalKeyExchange/" + key),
+				"round":              llx.IntDataPtr(r.AdditionalKeyExchangeRound),
+				"keyExchangeMethods": llx.ArrayData(dhGroupNumbersToInts(r.KeyExchangeMethods, func(v ec2types.AdditionalKeyExchangeMethodsListValue) *int32 { return v.Value }), types.Int),
+				"requirement":        llx.StringData(string(r.Requirement)),
+			})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlRound)
+	}
+	return res, nil
+}
+
 // VPN connection enhancement (#3)
 
 type mqlAwsEc2VpnconnectionInternal struct {
@@ -3984,19 +4075,30 @@ func newMqlVpnConnection(runtime *plugin.Runtime, region string, accountID strin
 
 		for i, tun := range opts.TunnelOptions {
 			outsideIP := convert.ToValue(tun.OutsideIpAddress)
+			// index disambiguates tunnels whose outside IP is still empty during provisioning
+			tunnelId := fmt.Sprintf("%s/tunnelOption/%d/%s", connID, i, outsideIP)
+			phase1Akx, err := newMqlVpnAdditionalKeyExchanges(runtime, tunnelId+"/phase1", tun.Phase1AdditionalKeyExchanges)
+			if err != nil {
+				return nil, err
+			}
+			phase2Akx, err := newMqlVpnAdditionalKeyExchanges(runtime, tunnelId+"/phase2", tun.Phase2AdditionalKeyExchanges)
+			if err != nil {
+				return nil, err
+			}
 			mqlTunnelOpt, err := CreateResource(runtime, ResourceAwsEc2VpnconnectionTunnelOption,
 				map[string]*llx.RawData{
-					// index disambiguates tunnels whose outside IP is still empty during provisioning
-					"__id":                       llx.StringData(fmt.Sprintf("%s/tunnelOption/%d/%s", connID, i, outsideIP)),
-					"outsideIpAddress":           llx.StringData(outsideIP),
-					"tunnelInsideCidr":           llx.StringData(convert.ToValue(tun.TunnelInsideCidr)),
-					"ikeVersions":                llx.ArrayData(listValuesToStrings(tun.IkeVersions, func(v ec2types.IKEVersionsListValue) *string { return v.Value }), types.String),
-					"phase1EncryptionAlgorithms": llx.ArrayData(listValuesToStrings(tun.Phase1EncryptionAlgorithms, func(v ec2types.Phase1EncryptionAlgorithmsListValue) *string { return v.Value }), types.String),
-					"phase2EncryptionAlgorithms": llx.ArrayData(listValuesToStrings(tun.Phase2EncryptionAlgorithms, func(v ec2types.Phase2EncryptionAlgorithmsListValue) *string { return v.Value }), types.String),
-					"phase1IntegrityAlgorithms":  llx.ArrayData(listValuesToStrings(tun.Phase1IntegrityAlgorithms, func(v ec2types.Phase1IntegrityAlgorithmsListValue) *string { return v.Value }), types.String),
-					"phase2IntegrityAlgorithms":  llx.ArrayData(listValuesToStrings(tun.Phase2IntegrityAlgorithms, func(v ec2types.Phase2IntegrityAlgorithmsListValue) *string { return v.Value }), types.String),
-					"phase1DHGroupNumbers":       llx.ArrayData(dhGroupNumbersToInts(tun.Phase1DHGroupNumbers, func(v ec2types.Phase1DHGroupNumbersListValue) *int32 { return v.Value }), types.Int),
-					"phase2DHGroupNumbers":       llx.ArrayData(dhGroupNumbersToInts(tun.Phase2DHGroupNumbers, func(v ec2types.Phase2DHGroupNumbersListValue) *int32 { return v.Value }), types.Int),
+					"__id":                         llx.StringData(tunnelId),
+					"phase1AdditionalKeyExchanges": llx.ArrayData(phase1Akx, types.Resource(ResourceAwsEc2VpnconnectionTunnelOptionAdditionalKeyExchange)),
+					"phase2AdditionalKeyExchanges": llx.ArrayData(phase2Akx, types.Resource(ResourceAwsEc2VpnconnectionTunnelOptionAdditionalKeyExchange)),
+					"outsideIpAddress":             llx.StringData(outsideIP),
+					"tunnelInsideCidr":             llx.StringData(convert.ToValue(tun.TunnelInsideCidr)),
+					"ikeVersions":                  llx.ArrayData(listValuesToStrings(tun.IkeVersions, func(v ec2types.IKEVersionsListValue) *string { return v.Value }), types.String),
+					"phase1EncryptionAlgorithms":   llx.ArrayData(listValuesToStrings(tun.Phase1EncryptionAlgorithms, func(v ec2types.Phase1EncryptionAlgorithmsListValue) *string { return v.Value }), types.String),
+					"phase2EncryptionAlgorithms":   llx.ArrayData(listValuesToStrings(tun.Phase2EncryptionAlgorithms, func(v ec2types.Phase2EncryptionAlgorithmsListValue) *string { return v.Value }), types.String),
+					"phase1IntegrityAlgorithms":    llx.ArrayData(listValuesToStrings(tun.Phase1IntegrityAlgorithms, func(v ec2types.Phase1IntegrityAlgorithmsListValue) *string { return v.Value }), types.String),
+					"phase2IntegrityAlgorithms":    llx.ArrayData(listValuesToStrings(tun.Phase2IntegrityAlgorithms, func(v ec2types.Phase2IntegrityAlgorithmsListValue) *string { return v.Value }), types.String),
+					"phase1DHGroupNumbers":         llx.ArrayData(dhGroupNumbersToInts(tun.Phase1DHGroupNumbers, func(v ec2types.Phase1DHGroupNumbersListValue) *int32 { return v.Value }), types.Int),
+					"phase2DHGroupNumbers":         llx.ArrayData(dhGroupNumbersToInts(tun.Phase2DHGroupNumbers, func(v ec2types.Phase2DHGroupNumbersListValue) *int32 { return v.Value }), types.Int),
 				})
 			if err != nil {
 				return nil, err

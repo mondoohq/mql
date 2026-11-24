@@ -96,6 +96,16 @@ func cloudfrontOriginTls(config *cftypes.CustomOriginConfig) (string, []any) {
 	return string(config.OriginProtocolPolicy), protocols
 }
 
+// cloudfrontOriginHttpVersion reports the HTTP version CloudFront uses toward
+// a custom origin. S3 origins carry no custom origin config, and a custom
+// origin that leaves the version unset reports none; both read null.
+func cloudfrontOriginHttpVersion(config *cftypes.CustomOriginConfig) *string {
+	if config == nil {
+		return nil
+	}
+	return nonEmptyEnum(config.OriginHttpVersion)
+}
+
 func (a *mqlAwsCloudfront) distributions() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 
@@ -142,6 +152,7 @@ func (a *mqlAwsCloudfront) distributions() ([]any, error) {
 							"originAccessIdentity":  llx.StringData(oai),
 							"originProtocolPolicy":  llx.StringData(originProtocolPolicy),
 							"originSslProtocols":    llx.ArrayData(originSslProtocols, types.String),
+							"originHttpVersion":     llx.StringDataPtr(cloudfrontOriginHttpVersion(origin.CustomOriginConfig)),
 						})
 					if err != nil {
 						return nil, err
@@ -178,13 +189,19 @@ func (a *mqlAwsCloudfront) distributions() ([]any, error) {
 			}
 			var minimumProtocolVersion string
 			var sslSupportMethod string
+			var acmCertificateArn string
 			if distribution.ViewerCertificate != nil {
 				minimumProtocolVersion = string(distribution.ViewerCertificate.MinimumProtocolVersion)
 				sslSupportMethod = string(distribution.ViewerCertificate.SSLSupportMethod)
+				acmCertificateArn = convert.ToValue(distribution.ViewerCertificate.ACMCertificateArn)
 			}
 			var geoRestrictionType string
+			geoRestrictionLocations := []any{}
 			if distribution.Restrictions != nil && distribution.Restrictions.GeoRestriction != nil {
 				geoRestrictionType = string(distribution.Restrictions.GeoRestriction.RestrictionType)
+				for _, loc := range distribution.Restrictions.GeoRestriction.Items {
+					geoRestrictionLocations = append(geoRestrictionLocations, loc)
+				}
 			}
 
 			var viewerMtlsMode, viewerMtlsTrustStoreId string
@@ -196,34 +213,37 @@ func (a *mqlAwsCloudfront) distributions() ([]any, error) {
 			}
 
 			args := map[string]*llx.RawData{
-				"arn":                    llx.StringDataPtr(distribution.ARN),
-				"id":                     llx.StringDataPtr(distribution.Id),
-				"staging":                llx.BoolDataPtr(distribution.Staging),
-				"cacheBehaviors":         llx.ArrayData(cacheBehaviors, types.Any),
-				"cnames":                 llx.ArrayData(cnames, types.String),
-				"defaultCacheBehavior":   llx.MapData(defaultCacheBehavior, types.Any),
-				"domainName":             llx.StringDataPtr(distribution.DomainName),
-				"enabled":                llx.BoolDataPtr(distribution.Enabled),
-				"httpVersion":            llx.StringData(string(distribution.HttpVersion)),
-				"isIPV6Enabled":          llx.BoolDataPtr(distribution.IsIPV6Enabled),
-				"origins":                llx.ArrayData(origins, types.Resource("aws.cloudfront.distribution.origin")),
-				"priceClass":             llx.StringData(string(distribution.PriceClass)),
-				"status":                 llx.StringDataPtr(distribution.Status),
-				"viewerProtocolPolicy":   llx.StringData(viewerProtocolPolicy),
-				"minimumProtocolVersion": llx.StringData(minimumProtocolVersion),
-				"sslSupportMethod":       llx.StringData(sslSupportMethod),
-				"webAclId":               llx.StringDataPtr(distribution.WebACLId),
-				"geoRestrictionType":     llx.StringData(geoRestrictionType),
-				"lastModifiedAt":         llx.TimeDataPtr(distribution.LastModifiedTime),
-				"comment":                llx.StringDataPtr(distribution.Comment),
-				"viewerMtlsMode":         llx.StringData(viewerMtlsMode),
-				"viewerMtlsTrustStoreId": llx.StringData(viewerMtlsTrustStoreId),
+				"arn":                     llx.StringDataPtr(distribution.ARN),
+				"id":                      llx.StringDataPtr(distribution.Id),
+				"staging":                 llx.BoolDataPtr(distribution.Staging),
+				"cacheBehaviors":          llx.ArrayData(cacheBehaviors, types.Any),
+				"cnames":                  llx.ArrayData(cnames, types.String),
+				"defaultCacheBehavior":    llx.MapData(defaultCacheBehavior, types.Any),
+				"domainName":              llx.StringDataPtr(distribution.DomainName),
+				"enabled":                 llx.BoolDataPtr(distribution.Enabled),
+				"httpVersion":             llx.StringData(string(distribution.HttpVersion)),
+				"isIPV6Enabled":           llx.BoolDataPtr(distribution.IsIPV6Enabled),
+				"origins":                 llx.ArrayData(origins, types.Resource("aws.cloudfront.distribution.origin")),
+				"priceClass":              llx.StringData(string(distribution.PriceClass)),
+				"status":                  llx.StringDataPtr(distribution.Status),
+				"viewerProtocolPolicy":    llx.StringData(viewerProtocolPolicy),
+				"minimumProtocolVersion":  llx.StringData(minimumProtocolVersion),
+				"sslSupportMethod":        llx.StringData(sslSupportMethod),
+				"webAclId":                llx.StringDataPtr(distribution.WebACLId),
+				"geoRestrictionType":      llx.StringData(geoRestrictionType),
+				"geoRestrictionLocations": llx.ArrayData(geoRestrictionLocations, types.String),
+				"certificateSource":       llx.StringData(cloudfrontCertificateSource(distribution.ViewerCertificate)),
+				"lastModifiedAt":          llx.TimeDataPtr(distribution.LastModifiedTime),
+				"comment":                 llx.StringDataPtr(distribution.Comment),
+				"viewerMtlsMode":          llx.StringData(viewerMtlsMode),
+				"viewerMtlsTrustStoreId":  llx.StringData(viewerMtlsTrustStoreId),
 			}
 
 			mqlAwsCloudfrontDist, err := CreateResource(a.MqlRuntime, "aws.cloudfront.distribution", args)
 			if err != nil {
 				return nil, err
 			}
+			mqlAwsCloudfrontDist.(*mqlAwsCloudfrontDistribution).cacheAcmCertificateArn = acmCertificateArn
 
 			res = append(res, mqlAwsCloudfrontDist)
 		}
@@ -253,10 +273,11 @@ func (a *mqlAwsCloudfrontDistribution) webAcl() (*mqlAwsWafAcl, error) {
 }
 
 type mqlAwsCloudfrontDistributionInternal struct {
-	detailFetched bool
-	detailErr     error
-	detailLock    sync.Mutex
-	detail        *cloudfront.GetDistributionOutput
+	cacheAcmCertificateArn string
+	detailFetched          bool
+	detailErr              error
+	detailLock             sync.Mutex
+	detail                 *cloudfront.GetDistributionOutput
 }
 
 // fetchDistributionDetail lazily loads the full distribution via GetDistribution
@@ -803,4 +824,107 @@ func cloudfrontResourceTags(runtime *plugin.Runtime, resourceArn string) (map[st
 	return tagsToMap(resp.Tags.Items,
 		func(t cftypes.Tag) *string { return t.Key },
 		func(t cftypes.Tag) *string { return t.Value }), nil
+}
+
+// cloudfrontCertificateSource names where the viewer certificate comes from.
+// The SDK's CertificateSource field is deprecated in favor of the three
+// mutually exclusive fields read here.
+func cloudfrontCertificateSource(vc *cftypes.ViewerCertificate) string {
+	if vc == nil {
+		return ""
+	}
+	switch {
+	case convert.ToValue(vc.ACMCertificateArn) != "":
+		return "acm"
+	case convert.ToValue(vc.IAMCertificateId) != "":
+		return "iam"
+	case convert.ToValue(vc.CloudFrontDefaultCertificate):
+		return "cloudfront"
+	}
+	return ""
+}
+
+func (a *mqlAwsCloudfrontDistribution) certificate() (*mqlAwsAcmCertificate, error) {
+	if a.cacheAcmCertificateArn == "" {
+		a.Certificate.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	mqlCert, err := NewResource(a.MqlRuntime, ResourceAwsAcmCertificate,
+		map[string]*llx.RawData{"arn": llx.StringData(a.cacheAcmCertificateArn)})
+	if err != nil {
+		return nil, err
+	}
+	return mqlCert.(*mqlAwsAcmCertificate), nil
+}
+
+func (a *mqlAwsCloudfrontDistributionOrigin) originAccessControl() (*mqlAwsCloudfrontOriginAccessControl, error) {
+	oacId := a.OriginAccessControlId.Data
+	if oacId == "" {
+		a.OriginAccessControl.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	obj, err := CreateResource(a.MqlRuntime, ResourceAwsCloudfront, map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	oacs := obj.(*mqlAwsCloudfront).GetOriginAccessControls()
+	if oacs.Error != nil {
+		return nil, oacs.Error
+	}
+	for _, raw := range oacs.Data {
+		oac, ok := raw.(*mqlAwsCloudfrontOriginAccessControl)
+		if ok && oac.Id.Data == oacId {
+			return oac, nil
+		}
+	}
+	a.OriginAccessControl.State = plugin.StateIsNull | plugin.StateIsSet
+	return nil, nil
+}
+
+func (a *mqlAwsCloudfrontDistributionOrigin) s3Bucket() (*mqlAwsS3Bucket, error) {
+	name := s3BucketFromOriginDomain(a.DomainName.Data)
+	if name == "" {
+		a.S3Bucket.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	mqlBucket, err := NewResource(a.MqlRuntime, ResourceAwsS3Bucket,
+		map[string]*llx.RawData{"name": llx.StringData(name)})
+	if err != nil {
+		return nil, err
+	}
+	return mqlBucket.(*mqlAwsS3Bucket), nil
+}
+
+// s3BucketFromOriginDomain returns the bucket name a CloudFront origin domain
+// names, or "" when the domain is not an S3 bucket endpoint. It recognizes the
+// virtual-hosted REST endpoints (bucket.s3.amazonaws.com,
+// bucket.s3.<region>.amazonaws.com, the legacy bucket.s3-<region>.amazonaws.com,
+// and the dualstack form) and the static website endpoints
+// (bucket.s3-website-<region>.amazonaws.com and
+// bucket.s3-website.<region>.amazonaws.com). Access point and Object Lambda
+// hosts are not buckets and yield "".
+func s3BucketFromOriginDomain(domain string) string {
+	d := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(domain)), ".")
+	var host string
+	switch {
+	case strings.HasSuffix(d, ".amazonaws.com.cn"):
+		host = strings.TrimSuffix(d, ".amazonaws.com.cn")
+	case strings.HasSuffix(d, ".amazonaws.com"):
+		host = strings.TrimSuffix(d, ".amazonaws.com")
+	default:
+		return ""
+	}
+	// The bucket is everything before the first S3 service label; bucket names
+	// may themselves contain dots.
+	labels := strings.Split(host, ".")
+	for i := 1; i < len(labels); i++ {
+		l := labels[i]
+		if strings.HasPrefix(l, "s3-accesspoint") || strings.HasPrefix(l, "s3-object-lambda") {
+			return ""
+		}
+		if l == "s3" || strings.HasPrefix(l, "s3-") {
+			return strings.Join(labels[:i], ".")
+		}
+	}
+	return ""
 }

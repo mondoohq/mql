@@ -5,6 +5,7 @@ package resources
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -109,6 +110,9 @@ func (a *mqlAwsApigateway) getRestApis(conn *connection.AwsConnection) []*jobpoo
 						})
 					if err != nil {
 						return nil, err
+					}
+					if restApi.EndpointConfiguration != nil {
+						mqlRestApi.(*mqlAwsApigatewayRestapi).cacheVpcEndpointIds = restApi.EndpointConfiguration.VpcEndpointIds
 					}
 					res = append(res, mqlRestApi)
 				}
@@ -319,6 +323,14 @@ func (a *mqlAwsApigatewayRestapi) authorizers() ([]any, error) {
 				providerArns = append(providerArns, p)
 			}
 			authId := convert.ToValue(auth.Id)
+			jwtConfig := llx.NilData
+			if auth.JwtConfiguration != nil {
+				d, err := convert.JsonToDict(auth.JwtConfiguration)
+				if err != nil {
+					return nil, err
+				}
+				jwtConfig = llx.DictData(d)
+			}
 			mqlAuth, err := CreateResource(a.MqlRuntime, ResourceAwsApigatewayAuthorizer,
 				map[string]*llx.RawData{
 					"arn":                          llx.StringData(fmt.Sprintf(apiAuthorizerArnPattern, region, conn.AccountId(), restApiId, authId)),
@@ -334,6 +346,7 @@ func (a *mqlAwsApigatewayRestapi) authorizers() ([]any, error) {
 					"identityValidationExpression": llx.StringData(convert.ToValue(auth.IdentityValidationExpression)),
 					"providerArns":                 llx.ArrayData(providerArns, mqltypes.String),
 					"region":                       llx.StringData(region),
+					"jwtConfiguration":             jwtConfig,
 				})
 			if err != nil {
 				return nil, err
@@ -811,4 +824,66 @@ func (a *mqlAwsApigatewayVpcLink) targets() ([]any, error) {
 
 type mqlAwsApigatewayStageInternal struct {
 	cacheWebAclArn string
+}
+
+// apigatewayPolicyJSON returns a REST API resource policy as a JSON document.
+// API Gateway returns the policy as the body of a JSON string literal, with
+// its quotes and slashes escaped ({\"Version\":...,\"Resource\":\"arn:...\/*\"}),
+// which no JSON parser accepts as a document. Decoding it as a JSON string
+// undoes exactly that escaping. A policy that already parses is returned
+// unchanged.
+func apigatewayPolicyJSON(raw string) string {
+	if raw == "" || json.Valid([]byte(raw)) {
+		return raw
+	}
+	var unquoted string
+	if err := json.Unmarshal([]byte(`"`+raw+`"`), &unquoted); err != nil || !json.Valid([]byte(unquoted)) {
+		return raw
+	}
+	return unquoted
+}
+
+func (a *mqlAwsApigatewayRestapi) policyStatements() ([]any, error) {
+	policy := a.GetPolicy()
+	if policy.Error != nil {
+		return nil, policy.Error
+	}
+	return newPolicyStatementResources(a.MqlRuntime, a.Arn.Data, apigatewayPolicyJSON(policy.Data))
+}
+
+// restApiIsPublic decides whether a REST API can be invoked from the internet
+// without its resource policy restricting the caller: it needs a non-PRIVATE
+// endpoint, the default execute-api endpoint enabled, and either no policy or
+// a policy granting a wildcard principal without a scoping condition.
+func restApiIsPublic(endpointTypes []any, executeApiDisabled bool, hasPolicy bool, policyPublic bool) bool {
+	if executeApiDisabled {
+		return false
+	}
+	internetFacing := false
+	for _, t := range endpointTypes {
+		if s, ok := t.(string); ok && (s == "EDGE" || s == "REGIONAL") {
+			internetFacing = true
+		}
+	}
+	if !internetFacing {
+		return false
+	}
+	return !hasPolicy || policyPublic
+}
+
+func (a *mqlAwsApigatewayRestapi) isPublic() (bool, error) {
+	statements := a.GetPolicyStatements()
+	if statements.Error != nil {
+		return false, statements.Error
+	}
+	policyPublic, err := statementsAllowPublic(statements.Data)
+	if err != nil {
+		return false, err
+	}
+	hasPolicy := strings.TrimSpace(a.Policy.Data) != ""
+	return restApiIsPublic(a.EndpointTypes.Data, a.DisableExecuteApiEndpoint.Data, hasPolicy, policyPublic), nil
+}
+
+func (a *mqlAwsApigatewayRestapi) vpcEndpoints() ([]any, error) {
+	return vpcEndpointsByIds(a.MqlRuntime, a.Region.Data, a.cacheVpcEndpointIds)
 }

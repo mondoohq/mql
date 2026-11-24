@@ -200,12 +200,13 @@ func (c *Client) ListConnectors(ctx context.Context) ([]Connector, error) {
 	}
 }
 
-// ListLibraries walks every page of GET /v1/libraries. The endpoint offers both
-// a deprecated offset "page" parameter and an opaque continuation token; the
-// token is the supported form, so the walk follows next_page_token and stops
-// when it comes back null, empty, or unchanged.
-func (c *Client) ListLibraries(ctx context.Context) ([]Library, error) {
-	var all []Library
+// listTokenPaged walks every page of an endpoint that hands back an opaque
+// continuation token: it requests page_size items, follows the token the page
+// reports, and stops when the token comes back null, empty, or unchanged. A
+// server that keeps returning a token it already gave would otherwise loop
+// forever. next extracts the items and the token from one decoded page.
+func listTokenPaged[P any, T any](ctx context.Context, c *Client, path string, next func(P) ([]T, *string)) ([]T, error) {
+	var all []T
 	token := ""
 	seen := map[string]bool{}
 	for {
@@ -215,22 +216,56 @@ func (c *Client) ListLibraries(ctx context.Context) ([]Library, error) {
 			q.Set("page_token", token)
 		}
 
-		var page libraryPage
-		if err := c.request(ctx, http.MethodGet, "/v1/libraries?"+q.Encode(), &page); err != nil {
+		var page P
+		if err := c.request(ctx, http.MethodGet, path+"?"+q.Encode(), &page); err != nil {
 			return nil, err
 		}
-		all = append(all, page.Data...)
+		items, nextToken := next(page)
+		all = append(all, items...)
 
-		if page.NextPageToken == nil || *page.NextPageToken == "" {
+		if nextToken == nil || *nextToken == "" || seen[*nextToken] {
 			return all, nil
 		}
-		next := *page.NextPageToken
-		if seen[next] {
-			return all, nil
-		}
-		seen[next] = true
-		token = next
+		seen[*nextToken] = true
+		token = *nextToken
 	}
+}
+
+// ListLibraries walks every page of GET /v1/libraries. The endpoint offers both
+// a deprecated offset "page" parameter and an opaque continuation token; the
+// token is the supported form.
+func (c *Client) ListLibraries(ctx context.Context) ([]Library, error) {
+	return listTokenPaged(ctx, c, "/v1/libraries", func(p libraryPage) ([]Library, *string) {
+		return p.Data, p.NextPageToken
+	})
+}
+
+// ListAgents walks every page of GET /v1/agents/pages, the token-paginated
+// listing. The offset-paginated GET /v1/agents is deprecated.
+func (c *Client) ListAgents(ctx context.Context) ([]Agent, error) {
+	return listTokenPaged(ctx, c, "/v1/agents/pages", func(p agentPage) ([]Agent, *string) {
+		return p.Data, p.NextPageToken
+	})
+}
+
+// ListWebhooks returns every webhook in the workspace. The endpoint is not
+// paginated and returns a bare array.
+func (c *Client) ListWebhooks(ctx context.Context) ([]Webhook, error) {
+	var res []Webhook
+	if err := c.request(ctx, http.MethodGet, "/v1/webhooks", &res); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+// ListTriggers returns every trigger in the workspace. The endpoint is not
+// paginated and returns a bare array.
+func (c *Client) ListTriggers(ctx context.Context) ([]Trigger, error) {
+	var res []Trigger
+	if err := c.request(ctx, http.MethodGet, "/v1/triggers", &res); err != nil {
+		return nil, err
+	}
+	return res, nil
 }
 
 // ListLibraryAccesses returns every entity a library is shared with. The

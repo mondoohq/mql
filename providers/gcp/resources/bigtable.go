@@ -175,6 +175,7 @@ func (g *mqlGcpProjectBigtableService) instances() ([]any, error) {
 			"displayName":  llx.StringData(inst.DisplayName),
 			"state":        llx.StringData(bigtableInstanceStateToString(inst.InstanceState)),
 			"instanceType": llx.StringData(bigtableInstanceTypeToString(inst.InstanceType)),
+			"edition":      llx.StringData(bigtableEditionToString(inst.Edition)),
 			"labels":       llx.MapData(convert.MapToInterfaceMap(inst.Labels), types.String),
 			"createdAt":    llx.NilData, // Bigtable SDK doesn't expose creation time in InstanceInfo
 		})
@@ -206,6 +207,17 @@ func bigtableInstanceTypeToString(t bigtable.InstanceType) string {
 		return "DEVELOPMENT"
 	default:
 		return "UNSPECIFIED"
+	}
+}
+
+func bigtableEditionToString(e bigtable.Edition) string {
+	switch e {
+	case bigtable.Enterprise:
+		return "ENTERPRISE"
+	case bigtable.EnterprisePlus:
+		return "ENTERPRISE_PLUS"
+	default:
+		return "EDITION_UNSPECIFIED"
 	}
 }
 

@@ -48,6 +48,11 @@ const clustersFixture = `{
       "nvidia_driver_version": "550.54.15",
       "num_cpu_workers": 2,
       "install_traefik": false,
+      "os_image": "example-gpu-image-v1",
+      "add_ons": [
+        {"name": "headlamp", "add_on_type": "headlamp", "config": {"headlamp": {"enabled": true}}, "state": {}},
+        {"name": "torchpass", "add_on_type": "torchpass", "config": {"torchpass": {"enabled": true}}, "state": {}}
+      ],
       "kube_config": "apiVersion: v1\nusers:\n- name: example\n  user:\n    token: ` + kubeConfigMarker + `\n",
       "cluster_config": {
         "load_balancer": "TRAEFIK",
@@ -200,6 +205,68 @@ func TestClusterExposureControlsComeFromTheClusterConfig(t *testing.T) {
 
 	// A reported false is a measured fact and must not read as null.
 	assertNotNull(t, cluster.SshCaEnabled, "sshCaEnabled")
+}
+
+// The API lists only enabled add-ons, so slurm web, missing from a reported
+// list, is a measured false. install_traefik is false while the load balancer
+// is TRAEFIK, so reading the wrong field fails here.
+func TestClusterAddOnsAndControlPlaneSettings(t *testing.T) {
+	// Synthetic: clustersFixture, with headlamp and torchpass listed and slurm web not; no live account was checked.
+	cluster := oneCluster(t, clustersFixture)
+
+	assert.True(t, cluster.HeadlampEnabled.Data, "headlampEnabled")
+	assert.True(t, cluster.TorchpassEnabled.Data, "torchpassEnabled")
+	assert.False(t, cluster.SlurmWebEnabled.Data, "slurmWebEnabled")
+	assertNotNull(t, cluster.SlurmWebEnabled, "slurmWebEnabled")
+	assert.False(t, cluster.InstallTraefik.Data, "installTraefik")
+	assertNotNull(t, cluster.InstallTraefik, "installTraefik")
+	assert.Equal(t, "example-gpu-image-v1", cluster.OsImage.Data)
+}
+
+func TestClusterAddOnsAreNullWithoutAnAddOnList(t *testing.T) {
+	// Synthetic: bareClusterFixture, which reports no add-on list; no live account was checked.
+	cluster := oneCluster(t, bareClusterFixture)
+
+	assertNull(t, cluster.HeadlampEnabled, "headlampEnabled")
+	assertNull(t, cluster.SlurmWebEnabled, "slurmWebEnabled")
+	assertNull(t, cluster.TorchpassEnabled, "torchpassEnabled")
+	assertNull(t, cluster.InstallTraefik, "installTraefik")
+	assertNull(t, cluster.OsImage, "osImage")
+}
+
+func TestClusterProjectResolvesThroughTheProjectList(t *testing.T) {
+	// Synthetic: clustersFixture's project and an unrelated one in the project list; no live account was checked.
+	r := newRoutedTogether(t, map[string]string{
+		"/v1/compute/clusters": clustersFixture,
+		"/v1/projects": `{"data": [
+		  {"id": "proj-other", "name": "Other", "slug": "other", "organization_id": "org-1", "organization_name": "Org"},
+		  {"id": "proj-2222222222222222", "name": "Example Project", "slug": "example-project", "organization_id": "org-1", "organization_name": "Org"}
+		]}`,
+	})
+	clusters, err := r.clusters()
+	require.NoError(t, err)
+	require.Len(t, clusters, 1)
+
+	project, err := clusters[0].(*mqlTogetherCluster).project()
+	require.NoError(t, err)
+	require.NotNil(t, project)
+	assert.Equal(t, "example-project", project.Slug.Data)
+}
+
+func TestClusterProjectOutsideTheProjectListIsNull(t *testing.T) {
+	// Synthetic: a project list that does not include the cluster's project; no live account was checked.
+	r := newRoutedTogether(t, map[string]string{
+		"/v1/compute/clusters": clustersFixture,
+		"/v1/projects":         `{"data": [{"id": "proj-other", "name": "Other", "slug": "other", "organization_id": "org-1", "organization_name": "Org"}]}`,
+	})
+	clusters, err := r.clusters()
+	require.NoError(t, err)
+	cluster := clusters[0].(*mqlTogetherCluster)
+
+	project, err := cluster.project()
+	require.NoError(t, err)
+	assert.Nil(t, project)
+	assertNull(t, cluster.Project, "project")
 }
 
 func TestClusterOidcClaimsComeFromTheOidcConfig(t *testing.T) {

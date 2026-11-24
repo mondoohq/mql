@@ -250,6 +250,7 @@ func (o *mqlOciAiGenerativeAi) fetchEndpoints(svc *generativeai.GenerativeAiClie
 			"timeUpdated":                   sdkTimeData(e.TimeUpdated),
 			"freeformTags":                  llx.MapData(strMapToAny(e.FreeformTags), types.String),
 			"definedTags":                   llx.MapData(definedTagsToAny(e.DefinedTags), types.Any),
+			"systemTags":                    llx.MapData(definedTagsToAny(e.SystemTags), types.Dict),
 		})
 		if err != nil {
 			return nil, err
@@ -1306,4 +1307,8 @@ func ociObjectStorageSource(v *generativeai.ObjectStorageObject) ociImportedMode
 		prefix:     stringValue(v.PrefixName),
 		region:     stringValue(v.Region),
 	}
+}
+
+func (o *mqlOciAiGenerativeAiEndpoint) region() (*mqlOciRegion, error) {
+	return resolveOciRegionByKey(o.MqlRuntime, o.cacheRegion, &o.Region)
 }

@@ -251,3 +251,42 @@ func TestRedactSecretFieldsLeavesCleanMessagesAlone(t *testing.T) {
 	empty := &aiplatformpb.ModelContainerSpec{Env: []*aiplatformpb.EnvVar{{Name: "ONLY_NAME"}}}
 	assert.Same(t, empty, redactSecretFields(empty))
 }
+
+func TestProjectOfResourceName(t *testing.T) {
+	tests := []struct {
+		name, kind, def, want string
+	}{
+		// Synthetic: CA pool and worker pool names as the APIs return them.
+		{"projects/p1/locations/us-central1/caPools/pool", "caPools", "p0", "p1"},
+		{"projects/p1/locations/us-central1/workerPools/wp", "workerPools", "", "p1"},
+		// Synthetic: a project number is listed under the referencing project.
+		{"projects/123456789/locations/us-central1/workerPools/wp", "workerPools", "p0", "p0"},
+		{"projects/123456789/locations/us-central1/workerPools/wp", "workerPools", "", "123456789"},
+		// Synthetic: wrong kind, extra segments, empty value.
+		{"projects/p1/locations/us-central1/caPools/pool", "workerPools", "p0", ""},
+		{"projects/p1/locations/us-central1/caPools/pool/certificateAuthorities/ca", "caPools", "p0", ""},
+		{"", "caPools", "p0", ""},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, projectOfResourceName(tt.name, tt.kind, tt.def), tt.name)
+	}
+}
+
+func TestSameLocationScopedName(t *testing.T) {
+	// Synthetic: identical names.
+	assert.True(t, sameLocationScopedName("projects/p1/locations/l/caPools/a", "projects/p1/locations/l/caPools/a"))
+	// Measured: live Cloud Run function and Cloud Build worker pool, 2026-11-23
+	// (identifiers replaced). The function's buildConfig names the pool under
+	// the project ID, ListWorkerPools returns it under the project number.
+	assert.True(t, sameLocationScopedName(
+		"projects/123456789012/locations/us-central1/workerPools/wp",
+		"projects/p1/locations/us-central1/workerPools/wp"))
+	// Synthetic: two different project IDs never match.
+	assert.False(t, sameLocationScopedName("projects/p2/locations/l/caPools/a", "projects/p1/locations/l/caPools/a"))
+	// Synthetic: location, kind, or name differ.
+	assert.False(t, sameLocationScopedName("projects/123/locations/l2/caPools/a", "projects/p1/locations/l/caPools/a"))
+	assert.False(t, sameLocationScopedName("projects/123/locations/l/workerPools/a", "projects/p1/locations/l/caPools/a"))
+	assert.False(t, sameLocationScopedName("projects/123/locations/l/caPools/b", "projects/p1/locations/l/caPools/a"))
+	// Synthetic: empty names never match.
+	assert.False(t, sameLocationScopedName("", ""))
+}

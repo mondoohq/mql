@@ -150,3 +150,79 @@ func collectPages[T any](fetch func(opts *github.ListOptions) ([]T, *github.Resp
 		opts.Page = next
 	}
 }
+
+// classifyReadErr decides what a failed read of an optional GitHub feature
+// reports. A refusal is a Forbidden error under structured errors and an
+// unknown (null) value otherwise. A 404, 409 or 422, which GitHub returns for
+// a feature the plan or the scope does not have, is an unknown value either
+// way. Anything else, including a transport failure, stays an error. A nil
+// return means the caller reports null.
+func classifyReadErr(err error, what, scope string) error {
+	switch {
+	case githubForbidden(err):
+		if plugin.StructuredErrors() {
+			return llx.Forbidden(err)
+		}
+		log.Warn().Err(err).Str("scope", scope).Str("read", what).
+			Msg("permission denied; reporting the value as unknown")
+		return nil
+	case githubNotAvailable(err), githubResponseStatus(err) == http.StatusUnprocessableEntity:
+		log.Debug().Err(err).Str("scope", scope).Str("read", what).
+			Msg("not available for this scope")
+		return nil
+	}
+	return err
+}
+
+// collectCursorPages walks a cursor-paginated GitHub listing, which hands out
+// an opaque `after` cursor in the Link header instead of a page number. A
+// cursor seen before ends the walk, so a server that hands back the same
+// cursor cannot loop the walk forever.
+func collectCursorPages[T any](fetch func(after string) ([]T, *github.Response, error)) ([]T, error) {
+	var all []T
+	after := ""
+	seen := map[string]struct{}{}
+	for {
+		items, resp, err := fetch(after)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, items...)
+		if resp == nil || resp.After == "" {
+			return all, nil
+		}
+		if _, ok := seen[resp.After]; ok {
+			return all, nil
+		}
+		seen[resp.After] = struct{}{}
+		after = resp.After
+	}
+}
+
+// memoized runs fetch once per key for the whole scan, through the memoizer the
+// github root resource holds. It is for responses that several resources read,
+// such as an organization's default code security configurations.
+func memoized(runtime *plugin.Runtime, key string, fetch func() (any, error)) (any, error) {
+	obj, err := CreateResource(runtime, "github", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	g := obj.(*mqlGithub)
+	if g.memoize == nil {
+		g.memoize = memoize.New(cacheExpirationTime, cacheCleanupTime)
+	}
+	res, _, err := g.memoize.Memoize(key, fetch)
+	return res, err
+}
+
+// githubUserRef builds a github.user from an account embedded in another
+// response. The user's own init fills in the rest on first use.
+func githubUserRef(runtime *plugin.Runtime, user *github.User) (plugin.Resource, error) {
+	if user == nil || user.Login == nil {
+		return nil, nil
+	}
+	return NewResource(runtime, "github.user", map[string]*llx.RawData{
+		"id":    llx.IntDataDefault(user.ID, 0),
+		"login": llx.StringDataPtr(user.Login),
+	})
+}

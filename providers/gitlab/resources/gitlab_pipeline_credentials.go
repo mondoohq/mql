@@ -90,6 +90,7 @@ func (p *mqlGitlabProject) pipelineTriggers() ([]any, error) {
 	for _, trigger := range all {
 		// Token is intentionally omitted: GitLab returns the live secret here.
 		mqlTrigger, err := CreateResource(p.MqlRuntime, "gitlab.project.pipelineTrigger", map[string]*llx.RawData{
+			"__id":        llx.StringData(projectScopedID("gitlab.project.pipelineTrigger", p.Id.Data, strconv.FormatInt(trigger.ID, 10))),
 			"id":          llx.IntData(trigger.ID),
 			"description": llx.StringData(trigger.Description),
 			"createdAt":   llx.TimeDataPtr(trigger.CreatedAt),
@@ -237,6 +238,7 @@ func (p *mqlGitlabProject) pipelineSchedules() ([]any, error) {
 		// variables and lastPipeline* are absent from this response and are
 		// resolved by fetchDetail on first access.
 		mqlSchedule, err := CreateResource(p.MqlRuntime, "gitlab.project.pipelineSchedule", map[string]*llx.RawData{
+			"__id":         llx.StringData(projectScopedID("gitlab.project.pipelineSchedule", p.Id.Data, strconv.FormatInt(schedule.ID, 10))),
 			"id":           llx.IntData(schedule.ID),
 			"description":  llx.StringData(schedule.Description),
 			"ref":          llx.StringData(schedule.Ref),
@@ -312,6 +314,7 @@ func (p *mqlGitlabProject) secureFiles() ([]any, error) {
 		}
 
 		mqlFile, err := CreateResource(p.MqlRuntime, "gitlab.project.secureFile", map[string]*llx.RawData{
+			"__id":                 llx.StringData(projectScopedID("gitlab.project.secureFile", p.Id.Data, strconv.FormatInt(file.ID, 10))),
 			"id":                   llx.IntData(file.ID),
 			"name":                 llx.StringData(file.Name),
 			"checksum":             llx.StringData(file.Checksum),
@@ -410,6 +413,8 @@ func (a *mqlGitlabProjectClusterAgent) tokens() ([]any, error) {
 	for _, token := range all {
 		// Token is intentionally omitted: GitLab returns the live secret here.
 		mqlToken, err := CreateResource(a.MqlRuntime, "gitlab.project.clusterAgent.token", map[string]*llx.RawData{
+			"__id": llx.StringData(projectScopedID("gitlab.project.clusterAgent.token", a.projectID,
+				strconv.FormatInt(a.Id.Data, 10), strconv.FormatInt(token.ID, 10))),
 			"id":          llx.IntData(token.ID),
 			"name":        llx.StringData(token.Name),
 			"description": llx.StringData(token.Description),
@@ -475,6 +480,7 @@ func (p *mqlGitlabProject) clusterAgents() ([]any, error) {
 	res := make([]any, 0, len(all))
 	for _, agent := range all {
 		mqlAgent, err := CreateResource(p.MqlRuntime, "gitlab.project.clusterAgent", map[string]*llx.RawData{
+			"__id":        llx.StringData(projectScopedID("gitlab.project.clusterAgent", p.Id.Data, strconv.FormatInt(agent.ID, 10))),
 			"id":          llx.IntData(agent.ID),
 			"name":        llx.StringData(agent.Name),
 			"createdAt":   llx.TimeDataPtr(agent.CreatedAt),
@@ -532,6 +538,7 @@ func (p *mqlGitlabProject) remoteMirrors() ([]any, error) {
 	res := make([]any, 0, len(all))
 	for _, mirror := range all {
 		mqlMirror, err := CreateResource(p.MqlRuntime, "gitlab.project.remoteMirror", map[string]*llx.RawData{
+			"__id":                   llx.StringData(projectScopedID("gitlab.project.remoteMirror", p.Id.Data, strconv.FormatInt(mirror.ID, 10))),
 			"id":                     llx.IntData(mirror.ID),
 			"enabled":                llx.BoolData(mirror.Enabled),
 			"url":                    llx.StringData(mirror.URL),
@@ -543,6 +550,8 @@ func (p *mqlGitlabProject) remoteMirrors() ([]any, error) {
 			"lastError":              llx.StringData(mirror.LastError),
 			"lastUpdateAt":           llx.TimeDataPtr(mirror.LastUpdateAt),
 			"lastSuccessfulUpdateAt": llx.TimeDataPtr(mirror.LastSuccessfulUpdateAt),
+			"lastUpdateStartedAt":    llx.TimeDataPtr(mirror.LastUpdateStartedAt),
+			"hostKeys":               stringsOrNull(mirrorHostKeyFingerprints(mirror.HostKeys)),
 		})
 		if err != nil {
 			return nil, err
@@ -553,4 +562,19 @@ func (p *mqlGitlabProject) remoteMirrors() ([]any, error) {
 	}
 
 	return res, nil
+}
+
+// mirrorHostKeyFingerprints returns the SHA256 fingerprints of a push mirror's
+// pinned SSH host keys, or nil when the mirror reports none.
+func mirrorHostKeyFingerprints(keys *[]gitlab.HostKey) []string {
+	if keys == nil || len(*keys) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(*keys))
+	for _, k := range *keys {
+		if k.FingerprintSHA256 != "" {
+			out = append(out, k.FingerprintSHA256)
+		}
+	}
+	return out
 }

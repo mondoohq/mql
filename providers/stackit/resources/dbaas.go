@@ -26,6 +26,14 @@ import (
 // (version, flavor, ACL, replicas, storage, backup schedule, options) lives
 // behind GetInstance(projectId, region, instanceId). We model that detail as
 // computed methods that share a single cached fetch per instance.
+//
+// These calls stay on the deprecated v2 API on purpose. The v3 record has no
+// replicas count and no options map, carries only a flavor id instead of the
+// flavor object, and reports state as an upper-case enum (READY, PENDING,
+// TERMINATING, ...) where v2 reports status as "Ready", "Progressing",
+// "Failure". Moving list or detail to v3 would change the shipped status,
+// replicas, options and flavor values. The v3-only fields read a separate v3
+// record (dbaas_flex_v3.go).
 
 type mqlStackitPostgresFlexInstanceInternal struct {
 	fetched atomic.Bool
@@ -105,6 +113,54 @@ func (r *mqlStackitPostgresFlexInstance) fetchDetail() (*postgresflex.Instance, 
 	}
 	r.fetched.Store(true)
 	return r.detail, nil
+}
+
+// parameters lists the instance's PostgreSQL server settings. Only the v2 API
+// serves them.
+func (r *mqlStackitPostgresFlexInstance) parameters() ([]any, error) {
+	c := conn(r.MqlRuntime)
+	client, err := c.PostgresFlex()
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.DefaultAPI.ListDatabaseParameters(bgctx(), c.ProjectID(), c.Region(), r.Id.Data).Execute()
+	if err != nil {
+		if isAccessDenied(err) {
+			return deniedList(err)
+		}
+		return nil, err
+	}
+	params := resp.GetParameter()
+	out := make([]any, 0, len(params))
+	for i := range params {
+		if params[i].GetName() == "" {
+			continue
+		}
+		res, err := CreateResource(r.MqlRuntime, "stackit.postgresFlex.instance.parameter", postgresParameterArgs(r.Id.Data, &params[i]))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, res)
+	}
+	return out, nil
+}
+
+func postgresParameterArgs(instanceID string, p *postgresflex.PostgresDatabaseParameter) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":           llx.StringData(qualifiedId("stackit.postgresFlex.instance.parameter", instanceID, p.GetName())),
+		"name":           llx.StringData(p.GetName()),
+		"value":          llx.StringDataPtr(strOrNil(p.GetValueOk())),
+		"defaultValue":   llx.StringDataPtr(strOrNil(p.GetDefaultValueOk())),
+		"resetValue":     llx.StringDataPtr(strOrNil(p.GetResetValueOk())),
+		"pendingRestart": llx.BoolDataPtr(optBool(p.GetPendingRestartOk())),
+		"context":        llx.StringData(p.GetContext()),
+		"dataType":       llx.StringData(p.GetDataType()),
+		"unit":           llx.StringData(p.GetUnit()),
+		"editable":       llx.BoolDataPtr(optBool(p.GetEditOk())),
+		"minValue":       llx.StringData(p.GetMinValue()),
+		"maxValue":       llx.StringData(p.GetMaxValue()),
+		"description":    llx.StringData(p.GetDescription()),
+	}
 }
 
 func (r *mqlStackitPostgresFlexInstance) version() (string, error) {
@@ -739,6 +795,13 @@ type mqlStackitObservabilityInstanceInternal struct {
 	retentionFetched atomic.Bool
 	retention        *observability.GetMetricsStorageRetentionResponse
 	retentionLock    sync.Mutex
+
+	// The alert group and rule counts share one ListAlertgroups call, whose
+	// groups carry their rules inline (observability_alerting.go).
+	alertGroupsFetched atomic.Bool
+	alertGroups        []observability.AlertGroup
+	alertGroupsRead    bool
+	alertGroupsLock    sync.Mutex
 }
 
 func (r *mqlStackitObservability) instances() ([]any, error) {
@@ -972,6 +1035,11 @@ func (r *mqlStackitObservabilityInstance) grafanaGenericOauthAllowAssignAdmin() 
 // postgresflex is (projectId, region, instanceId[, userId]) while mongodbflex
 // and sqlserverflex are (projectId, instanceId[, userId], region). Swapping
 // them still compiles.
+//
+// Postgres and SQLServer Flex users stay on the deprecated v2 API: v3 keys
+// users by an int64 id where v2 uses a string id (the shipped `id` field and
+// the GetUser key), the Postgres v3 user record has no host or port, and the
+// v3 list pages at 10 users by default.
 
 type mqlStackitPostgresFlexInstanceUserInternal struct {
 	cacheInstanceId string
@@ -1679,6 +1747,12 @@ func initStackitLogMeInstance(runtime *plugin.Runtime, args map[string]*llx.RawD
 // Flex shape, identical to Postgres/MongoDB Flex: the list returns
 // id/name/status only; version/flavor/acl/replicas/storage/backupSchedule/
 // options are lazy-loaded once per instance via GetInstance.
+//
+// As for Postgres Flex, these calls stay on the deprecated v2 API: the v3
+// record has no options map (the source of options, edition and
+// backupRetentionDays), carries only a flavor id, spells the edition
+// differently ("Standard", "EnterpriseCore"), and reports state as an
+// upper-case enum where v2 reports "Ready", "Progressing", "Failed".
 
 type mqlStackitSqlServerFlexInstanceInternal struct {
 	fetched atomic.Bool

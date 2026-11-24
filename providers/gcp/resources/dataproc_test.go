@@ -171,3 +171,25 @@ func TestDataprocEffectiveSshEnabled(t *testing.T) {
 		})
 	}
 }
+
+func TestDataprocZoneRef(t *testing.T) {
+	tests := []struct {
+		uri, def, project, zone string
+	}{
+		// Measured: a live single-node cluster created with zone us-central1-a,
+		// 2026-11-23 (project replaced); Dataproc reported the full URL.
+		{"https://www.googleapis.com/compute/v1/projects/p1/zones/us-central1-a", "p0", "p1", "us-central1-a"},
+		// Synthetic: the other two forms Dataproc accepts for zoneUri.
+		{"projects/p1/zones/us-central1-f", "p0", "p1", "us-central1-f"},
+		{"us-central1-f", "p0", "p0", "us-central1-f"},
+		// Synthetic: Auto Zone Placement leaves it empty; malformed values.
+		{"", "p0", "", ""},
+		{"us-central1-f", "", "", ""},
+		{"projects/p1/regions/us-central1", "p0", "", ""},
+	}
+	for _, tt := range tests {
+		p, z := dataprocZoneRef(tt.uri, tt.def)
+		assert.Equal(t, tt.project, p, tt.uri)
+		assert.Equal(t, tt.zone, z, tt.uri)
+	}
+}

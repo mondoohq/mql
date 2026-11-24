@@ -406,6 +406,45 @@ func TestFetchUserSignInActivityListsLargeFetches(t *testing.T) {
 	assert.Equal(t, "2026-11-01T10:00:00Z", last["lastSignInDateTime"])
 }
 
+func TestFetchUserSignInActivityListsPastUnreadableEntries(t *testing.T) {
+	// Synthetic: the first page of the listing holds a null entry and a user
+	// of a derived type (an agent user), the two kinds of entry that used to
+	// end the listing at their page. No per-user route exists, so a user the
+	// listing lost would be read by id and fail the batch-call count.
+	ids := signInActivityIDs(batchChunkSize + 1)
+	var page1, page2 []string
+	for i, id := range ids {
+		row := `{"id": "` + id + `", "signInActivity": {"lastSignInDateTime": "2026-11-01T10:00:00Z"}}`
+		switch {
+		case i == 1:
+			page1 = append(page1, "null", `{"@odata.type": "#microsoft.graph.agentUser", "id": "`+id+`", "signInActivity": {"lastSignInDateTime": "2026-11-02T10:00:00Z"}}`)
+		case i < 10:
+			page1 = append(page1, row)
+		default:
+			page2 = append(page2, row)
+		}
+	}
+	f := newFakeGraph(t, map[string]fakeRoute{
+		"/users": {status: 200, body: `{
+			"@odata.nextLink": "{{base}}/users/page2",
+			"value": [` + strings.Join(page1, ",") + `]}`},
+		"/users/page2": {status: 200, body: `{"value": [` + strings.Join(page2, ",") + `]}`},
+	})
+
+	got, errs, err := fetchUserSignInActivity(context.Background(), f.client(), ids)
+	require.NoError(t, err)
+	assert.Empty(t, errs)
+	assert.Zero(t, f.batchCalls, "no user is lost from the listing and read with a request of its own")
+	require.Len(t, got, len(ids))
+
+	agent, ok := got[ids[1]].(map[string]any)
+	require.True(t, ok, "the derived user's sign-in activity is read")
+	assert.Equal(t, "2026-11-02T10:00:00Z", agent["lastSignInDateTime"])
+	last, ok := got[ids[len(ids)-1]].(map[string]any)
+	require.True(t, ok, "the page after the unreadable entries is followed")
+	assert.Equal(t, "2026-11-01T10:00:00Z", last["lastSignInDateTime"])
+}
+
 func TestFetchUserSignInActivityReadsUsersMissingFromListing(t *testing.T) {
 	// Synthetic: the listing leaves out the last two users; one is readable
 	// by id, the other is refused.

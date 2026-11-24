@@ -645,3 +645,131 @@ func TestListRawPagesSurfacesTheResponseOnError(t *testing.T) {
 	require.NotNil(t, resp)
 	assert.True(t, isTierOrPermissionGated(resp))
 }
+
+func TestInstanceSettingsPolicyDecodesAccessAndLifecycleSettings(t *testing.T) {
+	// Synthetic: attribute names from the GitLab application settings API. The
+	// booleans alternate and the numbers differ so a tag on the wrong field
+	// fails. No target showed these values.
+	payload := []byte(`{
+		"restricted_visibility_levels": ["public"],
+		"disable_personal_access_tokens": true,
+		"max_ssh_key_lifetime": 365,
+		"prevent_merge_requests_author_approval": false,
+		"prevent_merge_requests_committers_approval": true,
+		"email_confirmation_setting": "hard",
+		"user_default_external": false,
+		"delete_unconfirmed_users": true,
+		"unconfirmed_users_delete_after_days": 7,
+		"lock_memberships_to_ldap": false,
+		"lock_memberships_to_saml": true,
+		"allow_group_owners_to_manage_ldap": false,
+		"valid_runner_registrars": ["group"],
+		"dns_rebinding_protection_enabled": true,
+		"outbound_local_requests_whitelist": ["10.0.0.5", "internal.example.com"],
+		"enforce_terms": false,
+		"disable_admin_oauth_scopes": true,
+		"user_oauth_applications": false,
+		"inactive_resource_access_tokens_delete_after_days": 30,
+		"default_project_deletion_protection": true,
+		"allow_project_creation_for_guest_and_below": false,
+		"project_export_enabled": true,
+		"bulk_import_enabled": false,
+		"silent_admin_exports_enabled": true,
+		"secret_push_protection_available": false,
+		"disable_feed_token": true,
+		"globally_allowed_ips": "10.0.0.0/8, 192.168.1.1",
+		"allow_all_integrations": false,
+		"allowed_integrations": ["jira", "slack"],
+		"default_branch_protection_defaults": {
+			"allowed_to_push": [{"access_level": 40}],
+			"allow_force_push": false,
+			"allowed_to_merge": [{"access_level": 30}],
+			"developer_can_initial_push": true
+		}
+	}`)
+
+	policy := &instanceSettingsPolicy{}
+	require.NoError(t, json.Unmarshal(payload, policy))
+	args := map[string]*llx.RawData{}
+	setInstanceSettingsPolicyArgs(args, policy)
+
+	expected := map[string]any{
+		"restrictedVisibilityLevels":                  []any{"public"},
+		"disablePersonalAccessTokens":                 true,
+		"maxSshKeyLifetime":                           int64(365),
+		"preventMergeRequestsAuthorApproval":          false,
+		"preventMergeRequestsCommittersApproval":      true,
+		"emailConfirmationSetting":                    "hard",
+		"userDefaultExternal":                         false,
+		"deleteUnconfirmedUsers":                      true,
+		"unconfirmedUsersDeleteAfterDays":             int64(7),
+		"lockMembershipsToLdap":                       false,
+		"lockMembershipsToSaml":                       true,
+		"allowGroupOwnersToManageLdap":                false,
+		"validRunnerRegistrars":                       []any{"group"},
+		"dnsRebindingProtectionEnabled":               true,
+		"outboundLocalRequestsAllowlist":              []any{"10.0.0.5", "internal.example.com"},
+		"enforceTerms":                                false,
+		"disableAdminOauthScopes":                     true,
+		"userOauthApplications":                       false,
+		"inactiveResourceAccessTokensDeleteAfterDays": int64(30),
+		"defaultProjectDeletionProtection":            true,
+		"allowProjectCreationForGuestAndBelow":        false,
+		"projectExportEnabled":                        true,
+		"bulkImportEnabled":                           false,
+		"silentAdminExportsEnabled":                   true,
+		"secretPushProtectionAvailable":               false,
+		"disableFeedToken":                            true,
+		"globallyAllowedIps":                          []any{"10.0.0.0/8", "192.168.1.1"},
+		"allowAllIntegrations":                        false,
+		"allowedIntegrations":                         []any{"jira", "slack"},
+		"defaultBranchProtection": map[string]any{
+			"allowForcePush":            false,
+			"developerCanInitialPush":   true,
+			"codeOwnerApprovalRequired": false,
+			"allowedToPush":             []any{int64(40)},
+			"allowedToMerge":            []any{int64(30)},
+		},
+	}
+	for key, want := range expected {
+		require.Contains(t, args, key)
+		assert.Equal(t, want, args[key].Value, key)
+	}
+}
+
+func TestInstanceSettingsPolicyKeepsUnreportedListsNull(t *testing.T) {
+	// Synthetic: an older release that sends none of the newer settings, and
+	// one that sends empty lists.
+	args := map[string]*llx.RawData{}
+	setInstanceSettingsPolicyArgs(args, &instanceSettingsPolicy{})
+	for _, key := range []string{"restrictedVisibilityLevels", "validRunnerRegistrars", "outboundLocalRequestsAllowlist", "globallyAllowedIps", "allowedIntegrations", "defaultBranchProtection"} {
+		assert.Nil(t, args[key].Value, "%s must be null when the instance did not report it", key)
+	}
+
+	policy := &instanceSettingsPolicy{}
+	require.NoError(t, json.Unmarshal([]byte(`{"restricted_visibility_levels": [], "globally_allowed_ips": ""}`), policy))
+	args = map[string]*llx.RawData{}
+	setInstanceSettingsPolicyArgs(args, policy)
+	assert.Equal(t, []any{}, args["restrictedVisibilityLevels"].Value, "a reported empty list means no level is restricted")
+	assert.Equal(t, []any{}, args["globallyAllowedIps"].Value)
+}
+
+func TestDecodeHooksKeepsUnreportedDeployTokenEventsNull(t *testing.T) {
+	// Synthetic: project hooks from a release with and without the attribute.
+	raw := []json.RawMessage{
+		json.RawMessage(`{"id":1,"resource_deploy_token_events":true}`),
+		json.RawMessage(`{"id":2,"resource_deploy_token_events":false}`),
+		json.RawMessage(`{"id":3}`),
+	}
+
+	_, presence, err := decodeHooks[gitlab.ProjectHook](raw)
+	require.NoError(t, err)
+	require.Len(t, presence, 3)
+
+	require.NotNil(t, presence[0].ResourceDeployTokenEvents)
+	assert.True(t, *presence[0].ResourceDeployTokenEvents)
+	require.NotNil(t, presence[1].ResourceDeployTokenEvents)
+	assert.False(t, *presence[1].ResourceDeployTokenEvents)
+	assert.Nil(t, presence[2].ResourceDeployTokenEvents,
+		"a release that does not carry the attribute must read null, not 'trigger switched off'")
+}

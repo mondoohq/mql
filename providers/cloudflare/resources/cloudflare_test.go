@@ -75,6 +75,35 @@ func TestZones(t *testing.T) {
 	assert.Empty(t, z2.VanityNameServers.Data)
 }
 
+// Synthetic: a zone flagged for phishing, one explicitly not flagged, and one
+// whose meta block omits the flag; no live account was checked.
+func TestZonesPhishingDetected(t *testing.T) {
+	env := setupTestEnv(t)
+	root := newTestRoot(t, env)
+
+	env.Mux.HandleFunc("/zones", func(w http.ResponseWriter, r *http.Request) {
+		if page := r.URL.Query().Get("page"); page != "" && page != "1" {
+			jsonResponse(w, `{"result":[],"success":true,"errors":[],"messages":[]}`)
+			return
+		}
+		jsonResponse(w, `{"success":true,"result":[
+			{"id":"z-flagged","name":"flagged.example","meta":{"phishing_detected":true}},
+			{"id":"z-clean","name":"clean.example","meta":{"phishing_detected":false}},
+			{"id":"z-unknown","name":"unknown.example","meta":{}}
+		]}`)
+	})
+
+	result, err := root.zones()
+	require.NoError(t, err)
+	require.Len(t, result, 3)
+
+	assert.True(t, result[0].(*mqlCloudflareZone).PhishingDetected.Data)
+	clean := result[1].(*mqlCloudflareZone)
+	assert.False(t, clean.PhishingDetected.IsNull())
+	assert.False(t, clean.PhishingDetected.Data)
+	assert.True(t, result[2].(*mqlCloudflareZone).PhishingDetected.IsNull())
+}
+
 func TestAccounts(t *testing.T) {
 	env := setupTestEnv(t)
 	root := newTestRoot(t, env)

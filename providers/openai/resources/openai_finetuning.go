@@ -266,3 +266,51 @@ func (r *mqlOpenaiFineTuningJobCheckpointPermission) project() (*mqlOpenaiProjec
 	}
 	return project, nil
 }
+
+// openaiFineTuningJobList returns the fine-tuning job collection through the
+// openai resource so the underlying list call is made once per scan.
+func openaiFineTuningJobList(runtime *plugin.Runtime) ([]any, error) {
+	obj, err := CreateResource(runtime, "openai", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	jobs := obj.(*mqlOpenai).GetFineTuningJobs()
+	if jobs.Error != nil {
+		return nil, jobs.Error
+	}
+	return jobs.Data, nil
+}
+
+// jobProducingModel finds the job whose fine-tuned model is modelID, or nil
+// when no listed job produced it.
+func jobProducingModel(jobs []any, modelID string) *mqlOpenaiFineTuningJob {
+	if modelID == "" {
+		return nil
+	}
+	for i := range jobs {
+		j, ok := jobs[i].(*mqlOpenaiFineTuningJob)
+		if ok && j.FineTunedModel.Data == modelID {
+			return j
+		}
+	}
+	return nil
+}
+
+// outputModel resolves the model the job produced from the cached model list.
+// A job record outlives a deleted model, so a miss is null and the identifier
+// stays readable in fineTunedModel.
+func (r *mqlOpenaiFineTuningJob) outputModel() (*mqlOpenaiModel, error) {
+	if r.FineTunedModel.Data == "" {
+		r.OutputModel.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	m, err := resolveModel(r.MqlRuntime, r.FineTunedModel.Data)
+	if err != nil {
+		return nil, err
+	}
+	if m == nil {
+		r.OutputModel.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return m, nil
+}

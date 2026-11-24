@@ -430,8 +430,8 @@ github.com/stackitcloud/stackit-sdk-go/services/loadbalancer v1.17.0 h1:yVjO+lEu
 github.com/stackitcloud/stackit-sdk-go/services/loadbalancer v1.17.0/go.mod h1:tVD3LmpowgML5U3imG9DdGAjhLmccibO92Ta7DPNfc0=
 github.com/stackitcloud/stackit-sdk-go/services/logme v1.6.0 h1:uMAKAgYGSlVTxzEp71CP3ZQ19uf2nItJKXJS6baorQc=
 github.com/stackitcloud/stackit-sdk-go/services/logme v1.6.0/go.mod h1:88EgGOZDYkw31BPtuQsqhh2yqzF9ZfoggsP/cYz7+O0=
-github.com/stackitcloud/stackit-sdk-go/services/logs v0.12.0 h1:4ZUQuj5Zp9E4EbymAFxSTnBSa6DjOIQlhKfHM5YF1ZA=
-github.com/stackitcloud/stackit-sdk-go/services/logs v0.12.0/go.mod h1:YKBTmDJmeVeaWKnmJoyLTsZCy/FkdWcD/GXm3rAvG3c=
+github.com/stackitcloud/stackit-sdk-go/services/logs v0.13.0 h1:ynv8TbzSDoqLrEaRvmPgrrcsv+vSmLtrAJBh5hRr05I=
+github.com/stackitcloud/stackit-sdk-go/services/logs v0.13.0/go.mod h1:YKBTmDJmeVeaWKnmJoyLTsZCy/FkdWcD/GXm3rAvG3c=
 github.com/stackitcloud/stackit-sdk-go/services/mariadb v1.4.0 h1:LFpdvASJnTv5Y/PEfwgK0pn7ixXLgcUmLt2cRTg979g=
 github.com/stackitcloud/stackit-sdk-go/services/mariadb v1.4.0/go.mod h1:GpFHOEVEq+Pog9dWPMvGeF4mEvB+MVLIRh3/jB1isUI=
 github.com/stackitcloud/stackit-sdk-go/services/modelexperiments v0.3.2 h1:9ptgH6o+xHMoBF0X05MQQ87k+MdDsYJ21GywJc2kL9I=
@@ -474,6 +474,8 @@ github.com/stackitcloud/stackit-sdk-go/services/telemetrylink v0.6.0 h1:glsamuWG
 github.com/stackitcloud/stackit-sdk-go/services/telemetrylink v0.6.0/go.mod h1:JyuStufMDibWblEo4wPOrh3B02aMgIUEhDF7YK5WGas=
 github.com/stackitcloud/stackit-sdk-go/services/telemetryrouter v0.6.1 h1:RPMUjr73Zpko6mi+cwKb7omQF73i5QfuRrj3DTxHrKM=
 github.com/stackitcloud/stackit-sdk-go/services/telemetryrouter v0.6.1/go.mod h1:e457u40HTJAVzw9YFP7Ri90otkJlgDqIphiDD5AZISI=
+github.com/stackitcloud/stackit-sdk-go/services/ufw v0.3.0 h1:W0vuG7LdOce+QnJVCQPZyAr2lqsUzRUv35aJmCjAkow=
+github.com/stackitcloud/stackit-sdk-go/services/ufw v0.3.0/go.mod h1:sHqwJsQYN2NYRvMpANLJ295c7WQAsqQuLcRKeCUU5MA=
 github.com/stackitcloud/stackit-sdk-go/services/valkey v0.4.0 h1:75iJs+mZPnrGSlSoTZtKYYCyNqtqgx6JVChwJokcKVg=
 github.com/stackitcloud/stackit-sdk-go/services/valkey v0.4.0/go.mod h1:0crDO5v97ulHjVZVoFR2gJ4FCpEQeXGdM+V+AlZ6M6E=
 github.com/stackitcloud/stackit-sdk-go/services/vpn v0.16.0 h1:G6ec8vtjGJUWr5SK1dvZGCRdFxa08mTMGDK6vSx1SgQ=

@@ -16,83 +16,99 @@ import (
 
 // The MQL type names exposed as public consts for ease of reference.
 const (
-	ResourceGithub                                   string = "github"
-	ResourceGitCommit                                string = "git.commit"
-	ResourceGitCommitAuthor                          string = "git.commitAuthor"
-	ResourceGitGpgSignature                          string = "git.gpgSignature"
-	ResourceGithubOrganization                       string = "github.organization"
-	ResourceGithubOrganizationSubscription           string = "github.organization.subscription"
-	ResourceGithubOrganizationFeatures               string = "github.organization.features"
-	ResourceGithubOrganizationRunnerGroup            string = "github.organization.runnerGroup"
-	ResourceGithubOrganizationMembership             string = "github.organization.membership"
-	ResourceGithubOrganizationInvitation             string = "github.organization.invitation"
-	ResourceGithubOrganizationSamlConfig             string = "github.organization.samlConfig"
-	ResourceGithubOrganizationIpAllowList            string = "github.organization.ipAllowList"
-	ResourceGithubOrganizationIpAllowListEntry       string = "github.organization.ipAllowList.entry"
-	ResourceGithubOrganizationCustomRole             string = "github.organization.customRole"
-	ResourceGithubOrganizationOauthApp               string = "github.organization.oauthApp"
-	ResourceGithubOrganizationPersonalAccessToken    string = "github.organization.personalAccessToken"
-	ResourceGithubOrganizationAuditLogStreamConfig   string = "github.organization.auditLogStreamConfig"
-	ResourceGithubRepositoryFineGrainedPermission    string = "github.repositoryFineGrainedPermission"
-	ResourceGithubOrganizationCustomProperty         string = "github.organization.customProperty"
-	ResourceGithubOrganizationCopilot                string = "github.organization.copilot"
-	ResourceGithubOrganizationCopilotSeat            string = "github.organization.copilot.seat"
-	ResourceGithubUser                               string = "github.user"
-	ResourceGithubTeam                               string = "github.team"
-	ResourceGithubRepositoryTeam                     string = "github.repository.team"
-	ResourceGithubCollaborator                       string = "github.collaborator"
-	ResourceGithubPackage                            string = "github.package"
-	ResourceGithubPackageVersion                     string = "github.packageVersion"
-	ResourceGithubPackages                           string = "github.packages"
-	ResourceGithubRepository                         string = "github.repository"
-	ResourceGithubRepositoryCopilotCloudAgent        string = "github.repository.copilotCloudAgent"
-	ResourceGithubRepositoryPages                    string = "github.repository.pages"
-	ResourceGithubDeployKey                          string = "github.deployKey"
-	ResourceGithubPublicKey                          string = "github.publicKey"
-	ResourceGithubRepositoryCodeowners               string = "github.repository.codeowners"
-	ResourceGithubCodeownersRule                     string = "github.codeowners.rule"
-	ResourceGithubRepositorySbom                     string = "github.repository.sbom"
-	ResourceGithubRepositorySbomPackage              string = "github.repository.sbom.package"
-	ResourceGithubRepositorySbomPackageExternalRef   string = "github.repository.sbom.package.externalRef"
-	ResourceGithubRepositorySbomRelationship         string = "github.repository.sbom.relationship"
-	ResourceGithubLicense                            string = "github.license"
-	ResourceGithubRepositoryRuleset                  string = "github.repositoryRuleset"
-	ResourceGithubRepositoryActionsSettings          string = "github.repositoryActionsSettings"
-	ResourceGithubOrganizationActionsSettings        string = "github.organizationActionsSettings"
-	ResourceGithubFile                               string = "github.file"
-	ResourceGithubRelease                            string = "github.release"
-	ResourceGithubWebhook                            string = "github.webhook"
-	ResourceGithubWorkflow                           string = "github.workflow"
-	ResourceGithubBranch                             string = "github.branch"
-	ResourceGithubBranchRules                        string = "github.branchRules"
-	ResourceGithubBranchprotection                   string = "github.branchprotection"
-	ResourceGithubCommit                             string = "github.commit"
-	ResourceGithubMergeRequest                       string = "github.mergeRequest"
-	ResourceGithubReview                             string = "github.review"
-	ResourceGithubInstallation                       string = "github.installation"
-	ResourceGithubGist                               string = "github.gist"
-	ResourceGithubGistfile                           string = "github.gistfile"
-	ResourceGithubMilestone                          string = "github.milestone"
-	ResourceGithubIssue                              string = "github.issue"
-	ResourceGithubDependabotAlert                    string = "github.dependabotAlert"
-	ResourceGithubSecretScanningAlert                string = "github.secretScanningAlert"
-	ResourceGithubCodeScanningAlert                  string = "github.codeScanningAlert"
-	ResourceGithubAuditLogEntry                      string = "github.auditLogEntry"
-	ResourceGithubRunner                             string = "github.runner"
-	ResourceGithubRunnerLabel                        string = "github.runnerLabel"
-	ResourceGithubEnvironment                        string = "github.environment"
-	ResourceGithubEnvironmentProtectionRule          string = "github.environmentProtectionRule"
-	ResourceGithubDeployment                         string = "github.deployment"
-	ResourceGithubDeploymentStatus                   string = "github.deploymentStatus"
-	ResourceGithubActionsSecret                      string = "github.actionsSecret"
-	ResourceGithubActionsVariable                    string = "github.actionsVariable"
-	ResourceGithubRepositoryCodeScanningDefaultSetup string = "github.repository.codeScanningDefaultSetup"
-	ResourceGithubOrganizationImmutableReleases      string = "github.organization.immutableReleases"
-	ResourceGithubDependabotSecret                   string = "github.dependabotSecret"
-	ResourceGithubAgentSecret                        string = "github.agentSecret"
-	ResourceGithubGpgKey                             string = "github.gpgKey"
-	ResourceGithubSshSigningKey                      string = "github.sshSigningKey"
-	ResourceGithubMetadata                           string = "github.metadata"
+	ResourceGithub                                    string = "github"
+	ResourceGitCommit                                 string = "git.commit"
+	ResourceGitCommitAuthor                           string = "git.commitAuthor"
+	ResourceGitGpgSignature                           string = "git.gpgSignature"
+	ResourceGithubOrganization                        string = "github.organization"
+	ResourceGithubOrganizationSubscription            string = "github.organization.subscription"
+	ResourceGithubOrganizationFeatures                string = "github.organization.features"
+	ResourceGithubOrganizationRunnerGroup             string = "github.organization.runnerGroup"
+	ResourceGithubOrganizationMembership              string = "github.organization.membership"
+	ResourceGithubOrganizationInvitation              string = "github.organization.invitation"
+	ResourceGithubOrganizationSamlConfig              string = "github.organization.samlConfig"
+	ResourceGithubOrganizationIpAllowList             string = "github.organization.ipAllowList"
+	ResourceGithubOrganizationIpAllowListEntry        string = "github.organization.ipAllowList.entry"
+	ResourceGithubOrganizationCustomRole              string = "github.organization.customRole"
+	ResourceGithubOrganizationOauthApp                string = "github.organization.oauthApp"
+	ResourceGithubOrganizationPersonalAccessToken     string = "github.organization.personalAccessToken"
+	ResourceGithubOrganizationAuditLogStreamConfig    string = "github.organization.auditLogStreamConfig"
+	ResourceGithubRepositoryFineGrainedPermission     string = "github.repositoryFineGrainedPermission"
+	ResourceGithubOrganizationCustomProperty          string = "github.organization.customProperty"
+	ResourceGithubOrganizationCopilot                 string = "github.organization.copilot"
+	ResourceGithubOrganizationCopilotSeat             string = "github.organization.copilot.seat"
+	ResourceGithubUser                                string = "github.user"
+	ResourceGithubTeam                                string = "github.team"
+	ResourceGithubRepositoryTeam                      string = "github.repository.team"
+	ResourceGithubCollaborator                        string = "github.collaborator"
+	ResourceGithubPackage                             string = "github.package"
+	ResourceGithubPackageVersion                      string = "github.packageVersion"
+	ResourceGithubPackages                            string = "github.packages"
+	ResourceGithubRepository                          string = "github.repository"
+	ResourceGithubRepositoryCopilotCloudAgent         string = "github.repository.copilotCloudAgent"
+	ResourceGithubRepositoryPages                     string = "github.repository.pages"
+	ResourceGithubDeployKey                           string = "github.deployKey"
+	ResourceGithubPublicKey                           string = "github.publicKey"
+	ResourceGithubRepositoryCodeowners                string = "github.repository.codeowners"
+	ResourceGithubCodeownersRule                      string = "github.codeowners.rule"
+	ResourceGithubRepositorySbom                      string = "github.repository.sbom"
+	ResourceGithubRepositorySbomPackage               string = "github.repository.sbom.package"
+	ResourceGithubRepositorySbomPackageExternalRef    string = "github.repository.sbom.package.externalRef"
+	ResourceGithubRepositorySbomRelationship          string = "github.repository.sbom.relationship"
+	ResourceGithubLicense                             string = "github.license"
+	ResourceGithubRepositoryRuleset                   string = "github.repositoryRuleset"
+	ResourceGithubRepositoryActionsSettings           string = "github.repositoryActionsSettings"
+	ResourceGithubOrganizationActionsSettings         string = "github.organizationActionsSettings"
+	ResourceGithubFile                                string = "github.file"
+	ResourceGithubRelease                             string = "github.release"
+	ResourceGithubReleaseAsset                        string = "github.releaseAsset"
+	ResourceGithubWebhook                             string = "github.webhook"
+	ResourceGithubWorkflow                            string = "github.workflow"
+	ResourceGithubBranch                              string = "github.branch"
+	ResourceGithubBranchRules                         string = "github.branchRules"
+	ResourceGithubBranchprotection                    string = "github.branchprotection"
+	ResourceGithubCommit                              string = "github.commit"
+	ResourceGithubMergeRequest                        string = "github.mergeRequest"
+	ResourceGithubReview                              string = "github.review"
+	ResourceGithubInstallation                        string = "github.installation"
+	ResourceGithubGist                                string = "github.gist"
+	ResourceGithubGistfile                            string = "github.gistfile"
+	ResourceGithubMilestone                           string = "github.milestone"
+	ResourceGithubIssue                               string = "github.issue"
+	ResourceGithubDependabotAlert                     string = "github.dependabotAlert"
+	ResourceGithubSecretScanningAlert                 string = "github.secretScanningAlert"
+	ResourceGithubCodeScanningAlert                   string = "github.codeScanningAlert"
+	ResourceGithubAuditLogEntry                       string = "github.auditLogEntry"
+	ResourceGithubRunner                              string = "github.runner"
+	ResourceGithubRunnerLabel                         string = "github.runnerLabel"
+	ResourceGithubEnvironment                         string = "github.environment"
+	ResourceGithubEnvironmentBranchPolicy             string = "github.environmentBranchPolicy"
+	ResourceGithubEnvironmentCustomProtectionRule     string = "github.environmentCustomProtectionRule"
+	ResourceGithubEnvironmentProtectionRule           string = "github.environmentProtectionRule"
+	ResourceGithubDeployment                          string = "github.deployment"
+	ResourceGithubDeploymentStatus                    string = "github.deploymentStatus"
+	ResourceGithubActionsSecret                       string = "github.actionsSecret"
+	ResourceGithubActionsVariable                     string = "github.actionsVariable"
+	ResourceGithubRepositoryCodeScanningDefaultSetup  string = "github.repository.codeScanningDefaultSetup"
+	ResourceGithubOrganizationImmutableReleases       string = "github.organization.immutableReleases"
+	ResourceGithubDependabotSecret                    string = "github.dependabotSecret"
+	ResourceGithubAgentSecret                         string = "github.agentSecret"
+	ResourceGithubGpgKey                              string = "github.gpgKey"
+	ResourceGithubSshSigningKey                       string = "github.sshSigningKey"
+	ResourceGithubMetadata                            string = "github.metadata"
+	ResourceGithubCodeSecurityConfiguration           string = "github.codeSecurityConfiguration"
+	ResourceGithubCodeSecurityConfigurationRepository string = "github.codeSecurityConfigurationRepository"
+	ResourceGithubSecretScanningCustomPattern         string = "github.secretScanningCustomPattern"
+	ResourceGithubSecretScanningPatternConfiguration  string = "github.secretScanningPatternConfiguration"
+	ResourceGithubRepositorySecurityAdvisory          string = "github.repositorySecurityAdvisory"
+	ResourceGithubCodespacesSecret                    string = "github.codespacesSecret"
+	ResourceGithubHostedRunner                        string = "github.hostedRunner"
+	ResourceGithubNetworkConfiguration                string = "github.networkConfiguration"
+	ResourceGithubPrivateRegistry                     string = "github.privateRegistry"
+	ResourceGithubCodespace                           string = "github.codespace"
+	ResourceGithubRepositoryInvitation                string = "github.repository.invitation"
+	ResourceGithubTeamExternalGroup                   string = "github.team.externalGroup"
+	ResourceGithubTeamIdpGroup                        string = "github.team.idpGroup"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -279,6 +295,10 @@ func init() {
 			// to override args, implement: initGithubRelease(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createGithubRelease,
 		},
+		"github.releaseAsset": {
+			// to override args, implement: initGithubReleaseAsset(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGithubReleaseAsset,
+		},
 		"github.webhook": {
 			// to override args, implement: initGithubWebhook(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createGithubWebhook,
@@ -359,6 +379,14 @@ func init() {
 			// to override args, implement: initGithubEnvironment(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createGithubEnvironment,
 		},
+		"github.environmentBranchPolicy": {
+			// to override args, implement: initGithubEnvironmentBranchPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGithubEnvironmentBranchPolicy,
+		},
+		"github.environmentCustomProtectionRule": {
+			// to override args, implement: initGithubEnvironmentCustomProtectionRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGithubEnvironmentCustomProtectionRule,
+		},
 		"github.environmentProtectionRule": {
 			// to override args, implement: initGithubEnvironmentProtectionRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createGithubEnvironmentProtectionRule,
@@ -406,6 +434,58 @@ func init() {
 		"github.metadata": {
 			Init:   initGithubMetadata,
 			Create: createGithubMetadata,
+		},
+		"github.codeSecurityConfiguration": {
+			// to override args, implement: initGithubCodeSecurityConfiguration(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGithubCodeSecurityConfiguration,
+		},
+		"github.codeSecurityConfigurationRepository": {
+			// to override args, implement: initGithubCodeSecurityConfigurationRepository(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGithubCodeSecurityConfigurationRepository,
+		},
+		"github.secretScanningCustomPattern": {
+			// to override args, implement: initGithubSecretScanningCustomPattern(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGithubSecretScanningCustomPattern,
+		},
+		"github.secretScanningPatternConfiguration": {
+			// to override args, implement: initGithubSecretScanningPatternConfiguration(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGithubSecretScanningPatternConfiguration,
+		},
+		"github.repositorySecurityAdvisory": {
+			// to override args, implement: initGithubRepositorySecurityAdvisory(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGithubRepositorySecurityAdvisory,
+		},
+		"github.codespacesSecret": {
+			// to override args, implement: initGithubCodespacesSecret(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGithubCodespacesSecret,
+		},
+		"github.hostedRunner": {
+			// to override args, implement: initGithubHostedRunner(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGithubHostedRunner,
+		},
+		"github.networkConfiguration": {
+			// to override args, implement: initGithubNetworkConfiguration(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGithubNetworkConfiguration,
+		},
+		"github.privateRegistry": {
+			// to override args, implement: initGithubPrivateRegistry(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGithubPrivateRegistry,
+		},
+		"github.codespace": {
+			// to override args, implement: initGithubCodespace(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGithubCodespace,
+		},
+		"github.repository.invitation": {
+			// to override args, implement: initGithubRepositoryInvitation(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGithubRepositoryInvitation,
+		},
+		"github.team.externalGroup": {
+			// to override args, implement: initGithubTeamExternalGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGithubTeamExternalGroup,
+		},
+		"github.team.idpGroup": {
+			// to override args, implement: initGithubTeamIdpGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGithubTeamIdpGroup,
 		},
 	}
 }
@@ -712,6 +792,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"github.organization.defaultRepositoryBranch": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubOrganization).GetDefaultRepositoryBranch()).ToDataRes(types.String)
 	},
+	"github.organization.deployKeysEnabledForRepositories": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubOrganization).GetDeployKeysEnabledForRepositories()).ToDataRes(types.Bool)
+	},
+	"github.organization.secretScanningPushProtectionCustomLinkEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubOrganization).GetSecretScanningPushProtectionCustomLinkEnabled()).ToDataRes(types.Bool)
+	},
+	"github.organization.secretScanningPushProtectionCustomLink": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubOrganization).GetSecretScanningPushProtectionCustomLink()).ToDataRes(types.String)
+	},
+	"github.organization.archivedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubOrganization).GetArchivedAt()).ToDataRes(types.Time)
+	},
 	"github.organization.actionsSettings": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubOrganization).GetActionsSettings()).ToDataRes(types.Resource("github.organizationActionsSettings"))
 	},
@@ -778,6 +870,33 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"github.organization.features": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubOrganization).GetFeatures()).ToDataRes(types.Resource("github.organization.features"))
 	},
+	"github.organization.codeSecurityConfigurations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubOrganization).GetCodeSecurityConfigurations()).ToDataRes(types.Array(types.Resource("github.codeSecurityConfiguration")))
+	},
+	"github.organization.secretScanningCustomPatterns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubOrganization).GetSecretScanningCustomPatterns()).ToDataRes(types.Array(types.Resource("github.secretScanningCustomPattern")))
+	},
+	"github.organization.secretScanningPatternConfigurations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubOrganization).GetSecretScanningPatternConfigurations()).ToDataRes(types.Array(types.Resource("github.secretScanningPatternConfiguration")))
+	},
+	"github.organization.securityAdvisories": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubOrganization).GetSecurityAdvisories()).ToDataRes(types.Array(types.Resource("github.repositorySecurityAdvisory")))
+	},
+	"github.organization.codespacesSecrets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubOrganization).GetCodespacesSecrets()).ToDataRes(types.Array(types.Resource("github.codespacesSecret")))
+	},
+	"github.organization.hostedRunners": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubOrganization).GetHostedRunners()).ToDataRes(types.Array(types.Resource("github.hostedRunner")))
+	},
+	"github.organization.networkConfigurations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubOrganization).GetNetworkConfigurations()).ToDataRes(types.Array(types.Resource("github.networkConfiguration")))
+	},
+	"github.organization.privateRegistries": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubOrganization).GetPrivateRegistries()).ToDataRes(types.Array(types.Resource("github.privateRegistry")))
+	},
+	"github.organization.codespaces": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubOrganization).GetCodespaces()).ToDataRes(types.Array(types.Resource("github.codespace")))
+	},
 	"github.organization.subscription.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubOrganizationSubscription).GetName()).ToDataRes(types.String)
 	},
@@ -843,6 +962,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"github.organization.runnerGroup.networkConfigurationId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubOrganizationRunnerGroup).GetNetworkConfigurationId()).ToDataRes(types.String)
+	},
+	"github.organization.runnerGroup.networkConfiguration": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubOrganizationRunnerGroup).GetNetworkConfiguration()).ToDataRes(types.Resource("github.networkConfiguration"))
 	},
 	"github.organization.runnerGroup.selectedRepositories": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubOrganizationRunnerGroup).GetSelectedRepositories()).ToDataRes(types.Array(types.Resource("github.repository")))
@@ -1261,6 +1383,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"github.team.organization": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubTeam).GetOrganization()).ToDataRes(types.Resource("github.organization"))
 	},
+	"github.team.notificationSetting": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubTeam).GetNotificationSetting()).ToDataRes(types.String)
+	},
+	"github.team.parent": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubTeam).GetParent()).ToDataRes(types.Resource("github.team"))
+	},
+	"github.team.childTeams": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubTeam).GetChildTeams()).ToDataRes(types.Array(types.Resource("github.team")))
+	},
+	"github.team.membersCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubTeam).GetMembersCount()).ToDataRes(types.Int)
+	},
+	"github.team.reposCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubTeam).GetReposCount()).ToDataRes(types.Int)
+	},
+	"github.team.externalGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubTeam).GetExternalGroups()).ToDataRes(types.Array(types.Resource("github.team.externalGroup")))
+	},
+	"github.team.idpGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubTeam).GetIdpGroups()).ToDataRes(types.Array(types.Resource("github.team.idpGroup")))
+	},
 	"github.repository.team.team": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubRepositoryTeam).GetTeam()).ToDataRes(types.Resource("github.team"))
 	},
@@ -1624,6 +1767,39 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"github.repository.agentSecrets": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubRepository).GetAgentSecrets()).ToDataRes(types.Array(types.Resource("github.agentSecret")))
 	},
+	"github.repository.parent": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepository).GetParent()).ToDataRes(types.Resource("github.repository"))
+	},
+	"github.repository.source": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepository).GetSource()).ToDataRes(types.Resource("github.repository"))
+	},
+	"github.repository.templateRepository": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepository).GetTemplateRepository()).ToDataRes(types.Resource("github.repository"))
+	},
+	"github.repository.deleteBranchOnMerge": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepository).GetDeleteBranchOnMerge()).ToDataRes(types.Bool)
+	},
+	"github.repository.allowUpdateBranch": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepository).GetAllowUpdateBranch()).ToDataRes(types.Bool)
+	},
+	"github.repository.codeSecurityConfiguration": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepository).GetCodeSecurityConfiguration()).ToDataRes(types.Resource("github.codeSecurityConfiguration"))
+	},
+	"github.repository.codeSecurityConfigurationState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepository).GetCodeSecurityConfigurationState()).ToDataRes(types.String)
+	},
+	"github.repository.secretScanningCustomPatterns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepository).GetSecretScanningCustomPatterns()).ToDataRes(types.Array(types.Resource("github.secretScanningCustomPattern")))
+	},
+	"github.repository.securityAdvisories": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepository).GetSecurityAdvisories()).ToDataRes(types.Array(types.Resource("github.repositorySecurityAdvisory")))
+	},
+	"github.repository.codespacesSecrets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepository).GetCodespacesSecrets()).ToDataRes(types.Array(types.Resource("github.codespacesSecret")))
+	},
+	"github.repository.pendingInvitations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepository).GetPendingInvitations()).ToDataRes(types.Array(types.Resource("github.repository.invitation")))
+	},
 	"github.repository.copilotCloudAgent.isFirewallEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubRepositoryCopilotCloudAgent).GetIsFirewallEnabled()).ToDataRes(types.Bool)
 	},
@@ -1722,6 +1898,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"github.deployKey.repository": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubDeployKey).GetRepository()).ToDataRes(types.Resource("github.repository"))
+	},
+	"github.deployKey.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubDeployKey).GetEnabled()).ToDataRes(types.Bool)
 	},
 	"github.publicKey.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubPublicKey).GetId()).ToDataRes(types.Int)
@@ -1906,6 +2085,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"github.repositoryActionsSettings.verifiedAllowed": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubRepositoryActionsSettings).GetVerifiedAllowed()).ToDataRes(types.Bool)
 	},
+	"github.repositoryActionsSettings.forkPrApprovalPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositoryActionsSettings).GetForkPrApprovalPolicy()).ToDataRes(types.String)
+	},
+	"github.repositoryActionsSettings.forkPrWorkflowsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositoryActionsSettings).GetForkPrWorkflowsEnabled()).ToDataRes(types.Bool)
+	},
+	"github.repositoryActionsSettings.forkPrWriteTokens": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositoryActionsSettings).GetForkPrWriteTokens()).ToDataRes(types.Bool)
+	},
+	"github.repositoryActionsSettings.forkPrSecretsAndVariables": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositoryActionsSettings).GetForkPrSecretsAndVariables()).ToDataRes(types.Bool)
+	},
+	"github.repositoryActionsSettings.forkPrRequireApproval": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositoryActionsSettings).GetForkPrRequireApproval()).ToDataRes(types.Bool)
+	},
+	"github.repositoryActionsSettings.artifactRetentionDays": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositoryActionsSettings).GetArtifactRetentionDays()).ToDataRes(types.Int)
+	},
+	"github.repositoryActionsSettings.artifactRetentionMaxDays": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositoryActionsSettings).GetArtifactRetentionMaxDays()).ToDataRes(types.Int)
+	},
 	"github.organizationActionsSettings.enabledRepositories": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubOrganizationActionsSettings).GetEnabledRepositories()).ToDataRes(types.String)
 	},
@@ -1929,6 +2129,33 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"github.organizationActionsSettings.verifiedAllowed": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubOrganizationActionsSettings).GetVerifiedAllowed()).ToDataRes(types.Bool)
+	},
+	"github.organizationActionsSettings.forkPrApprovalPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubOrganizationActionsSettings).GetForkPrApprovalPolicy()).ToDataRes(types.String)
+	},
+	"github.organizationActionsSettings.forkPrWorkflowsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubOrganizationActionsSettings).GetForkPrWorkflowsEnabled()).ToDataRes(types.Bool)
+	},
+	"github.organizationActionsSettings.forkPrWriteTokens": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubOrganizationActionsSettings).GetForkPrWriteTokens()).ToDataRes(types.Bool)
+	},
+	"github.organizationActionsSettings.forkPrSecretsAndVariables": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubOrganizationActionsSettings).GetForkPrSecretsAndVariables()).ToDataRes(types.Bool)
+	},
+	"github.organizationActionsSettings.forkPrRequireApproval": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubOrganizationActionsSettings).GetForkPrRequireApproval()).ToDataRes(types.Bool)
+	},
+	"github.organizationActionsSettings.artifactRetentionDays": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubOrganizationActionsSettings).GetArtifactRetentionDays()).ToDataRes(types.Int)
+	},
+	"github.organizationActionsSettings.artifactRetentionMaxDays": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubOrganizationActionsSettings).GetArtifactRetentionMaxDays()).ToDataRes(types.Int)
+	},
+	"github.organizationActionsSettings.selfHostedRunnersEnabledRepositories": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubOrganizationActionsSettings).GetSelfHostedRunnersEnabledRepositories()).ToDataRes(types.String)
+	},
+	"github.organizationActionsSettings.selfHostedRunnersSelectedRepositories": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubOrganizationActionsSettings).GetSelfHostedRunnersSelectedRepositories()).ToDataRes(types.Array(types.Resource("github.repository")))
 	},
 	"github.file.path": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubFile).GetPath()).ToDataRes(types.String)
@@ -1983,6 +2210,54 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"github.release.author": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubRelease).GetAuthor()).ToDataRes(types.Resource("github.user"))
+	},
+	"github.release.draft": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRelease).GetDraft()).ToDataRes(types.Bool)
+	},
+	"github.release.immutable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRelease).GetImmutable()).ToDataRes(types.Bool)
+	},
+	"github.release.targetCommitish": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRelease).GetTargetCommitish()).ToDataRes(types.String)
+	},
+	"github.release.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRelease).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"github.release.assets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRelease).GetAssets()).ToDataRes(types.Array(types.Resource("github.releaseAsset")))
+	},
+	"github.releaseAsset.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubReleaseAsset).GetId()).ToDataRes(types.Int)
+	},
+	"github.releaseAsset.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubReleaseAsset).GetName()).ToDataRes(types.String)
+	},
+	"github.releaseAsset.label": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubReleaseAsset).GetLabel()).ToDataRes(types.String)
+	},
+	"github.releaseAsset.contentType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubReleaseAsset).GetContentType()).ToDataRes(types.String)
+	},
+	"github.releaseAsset.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubReleaseAsset).GetState()).ToDataRes(types.String)
+	},
+	"github.releaseAsset.size": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubReleaseAsset).GetSize()).ToDataRes(types.Int)
+	},
+	"github.releaseAsset.downloadCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubReleaseAsset).GetDownloadCount()).ToDataRes(types.Int)
+	},
+	"github.releaseAsset.digest": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubReleaseAsset).GetDigest()).ToDataRes(types.String)
+	},
+	"github.releaseAsset.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubReleaseAsset).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"github.releaseAsset.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubReleaseAsset).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"github.releaseAsset.uploader": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubReleaseAsset).GetUploader()).ToDataRes(types.Resource("github.user"))
 	},
 	"github.webhook.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubWebhook).GetId()).ToDataRes(types.Int)
@@ -2314,6 +2589,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"github.mergeRequest.stackBaseSha": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubMergeRequest).GetStackBaseSha()).ToDataRes(types.String)
 	},
+	"github.mergeRequest.authorAssociation": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubMergeRequest).GetAuthorAssociation()).ToDataRes(types.String)
+	},
+	"github.mergeRequest.draft": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubMergeRequest).GetDraft()).ToDataRes(types.Bool)
+	},
+	"github.mergeRequest.headRepository": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubMergeRequest).GetHeadRepository()).ToDataRes(types.Resource("github.repository"))
+	},
+	"github.mergeRequest.requestedTeams": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubMergeRequest).GetRequestedTeams()).ToDataRes(types.Array(types.Resource("github.team")))
+	},
+	"github.mergeRequest.mergeCommitSha": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubMergeRequest).GetMergeCommitSha()).ToDataRes(types.String)
+	},
 	"github.review.url": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubReview).GetUrl()).ToDataRes(types.String)
 	},
@@ -2620,6 +2910,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"github.secretScanningAlert.metadata": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubSecretScanningAlert).GetMetadata()).ToDataRes(types.Map(types.String, types.String))
 	},
+	"github.secretScanningAlert.pushProtectionBypassRequestComment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningAlert).GetPushProtectionBypassRequestComment()).ToDataRes(types.String)
+	},
+	"github.secretScanningAlert.pushProtectionBypassRequestReviewer": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningAlert).GetPushProtectionBypassRequestReviewer()).ToDataRes(types.Resource("github.user"))
+	},
+	"github.secretScanningAlert.pushProtectionBypassRequestReviewerComment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningAlert).GetPushProtectionBypassRequestReviewerComment()).ToDataRes(types.String)
+	},
+	"github.secretScanningAlert.firstLocationDetected": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningAlert).GetFirstLocationDetected()).ToDataRes(types.Dict)
+	},
+	"github.secretScanningAlert.hasMoreLocations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningAlert).GetHasMoreLocations()).ToDataRes(types.Bool)
+	},
 	"github.codeScanningAlert.number": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubCodeScanningAlert).GetNumber()).ToDataRes(types.Int)
 	},
@@ -2752,6 +3057,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"github.runner.labels": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubRunner).GetLabels()).ToDataRes(types.Array(types.Resource("github.runnerLabel")))
 	},
+	"github.runner.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRunner).GetVersion()).ToDataRes(types.String)
+	},
+	"github.runner.runnerGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRunner).GetRunnerGroup()).ToDataRes(types.Resource("github.organization.runnerGroup"))
+	},
 	"github.runnerLabel.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubRunnerLabel).GetId()).ToDataRes(types.Int)
 	},
@@ -2799,6 +3110,33 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"github.environment.variables": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubEnvironment).GetVariables()).ToDataRes(types.Array(types.Resource("github.actionsVariable")))
+	},
+	"github.environment.deploymentBranchPolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubEnvironment).GetDeploymentBranchPolicies()).ToDataRes(types.Array(types.Resource("github.environmentBranchPolicy")))
+	},
+	"github.environment.customProtectionRules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubEnvironment).GetCustomProtectionRules()).ToDataRes(types.Array(types.Resource("github.environmentCustomProtectionRule")))
+	},
+	"github.environmentBranchPolicy.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubEnvironmentBranchPolicy).GetId()).ToDataRes(types.Int)
+	},
+	"github.environmentBranchPolicy.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubEnvironmentBranchPolicy).GetName()).ToDataRes(types.String)
+	},
+	"github.environmentBranchPolicy.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubEnvironmentBranchPolicy).GetType()).ToDataRes(types.String)
+	},
+	"github.environmentCustomProtectionRule.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubEnvironmentCustomProtectionRule).GetId()).ToDataRes(types.Int)
+	},
+	"github.environmentCustomProtectionRule.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubEnvironmentCustomProtectionRule).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"github.environmentCustomProtectionRule.appId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubEnvironmentCustomProtectionRule).GetAppId()).ToDataRes(types.Int)
+	},
+	"github.environmentCustomProtectionRule.appSlug": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubEnvironmentCustomProtectionRule).GetAppSlug()).ToDataRes(types.String)
 	},
 	"github.environmentProtectionRule.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubEnvironmentProtectionRule).GetId()).ToDataRes(types.Int)
@@ -3084,6 +3422,507 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"github.metadata.version": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubMetadata).GetVersion()).ToDataRes(types.String)
+	},
+	"github.codeSecurityConfiguration.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetId()).ToDataRes(types.Int)
+	},
+	"github.codeSecurityConfiguration.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetName()).ToDataRes(types.String)
+	},
+	"github.codeSecurityConfiguration.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetDescription()).ToDataRes(types.String)
+	},
+	"github.codeSecurityConfiguration.targetType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetTargetType()).ToDataRes(types.String)
+	},
+	"github.codeSecurityConfiguration.enforcement": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetEnforcement()).ToDataRes(types.String)
+	},
+	"github.codeSecurityConfiguration.advancedSecurity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetAdvancedSecurity()).ToDataRes(types.String)
+	},
+	"github.codeSecurityConfiguration.codeSecurity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetCodeSecurity()).ToDataRes(types.String)
+	},
+	"github.codeSecurityConfiguration.secretProtection": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetSecretProtection()).ToDataRes(types.String)
+	},
+	"github.codeSecurityConfiguration.dependencyGraph": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetDependencyGraph()).ToDataRes(types.String)
+	},
+	"github.codeSecurityConfiguration.dependencyGraphAutosubmitAction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetDependencyGraphAutosubmitAction()).ToDataRes(types.String)
+	},
+	"github.codeSecurityConfiguration.dependencyGraphAutosubmitActionLabeledRunners": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetDependencyGraphAutosubmitActionLabeledRunners()).ToDataRes(types.Bool)
+	},
+	"github.codeSecurityConfiguration.dependabotAlerts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetDependabotAlerts()).ToDataRes(types.String)
+	},
+	"github.codeSecurityConfiguration.dependabotSecurityUpdates": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetDependabotSecurityUpdates()).ToDataRes(types.String)
+	},
+	"github.codeSecurityConfiguration.dependabotDelegatedAlertDismissal": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetDependabotDelegatedAlertDismissal()).ToDataRes(types.String)
+	},
+	"github.codeSecurityConfiguration.codeScanningDefaultSetup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetCodeScanningDefaultSetup()).ToDataRes(types.String)
+	},
+	"github.codeSecurityConfiguration.codeScanningDefaultSetupRunnerType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetCodeScanningDefaultSetupRunnerType()).ToDataRes(types.String)
+	},
+	"github.codeSecurityConfiguration.codeScanningDefaultSetupRunnerLabel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetCodeScanningDefaultSetupRunnerLabel()).ToDataRes(types.String)
+	},
+	"github.codeSecurityConfiguration.codeScanningAllowAdvanced": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetCodeScanningAllowAdvanced()).ToDataRes(types.Bool)
+	},
+	"github.codeSecurityConfiguration.codeScanningDelegatedAlertDismissal": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetCodeScanningDelegatedAlertDismissal()).ToDataRes(types.String)
+	},
+	"github.codeSecurityConfiguration.secretScanning": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetSecretScanning()).ToDataRes(types.String)
+	},
+	"github.codeSecurityConfiguration.secretScanningPushProtection": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetSecretScanningPushProtection()).ToDataRes(types.String)
+	},
+	"github.codeSecurityConfiguration.secretScanningDelegatedBypass": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetSecretScanningDelegatedBypass()).ToDataRes(types.String)
+	},
+	"github.codeSecurityConfiguration.secretScanningDelegatedBypassReviewers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetSecretScanningDelegatedBypassReviewers()).ToDataRes(types.Array(types.Dict))
+	},
+	"github.codeSecurityConfiguration.secretScanningDelegatedBypassTeams": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetSecretScanningDelegatedBypassTeams()).ToDataRes(types.Array(types.Resource("github.team")))
+	},
+	"github.codeSecurityConfiguration.secretScanningValidityChecks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetSecretScanningValidityChecks()).ToDataRes(types.String)
+	},
+	"github.codeSecurityConfiguration.secretScanningNonProviderPatterns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetSecretScanningNonProviderPatterns()).ToDataRes(types.String)
+	},
+	"github.codeSecurityConfiguration.secretScanningGenericSecrets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetSecretScanningGenericSecrets()).ToDataRes(types.String)
+	},
+	"github.codeSecurityConfiguration.secretScanningDelegatedAlertDismissal": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetSecretScanningDelegatedAlertDismissal()).ToDataRes(types.String)
+	},
+	"github.codeSecurityConfiguration.secretScanningExtendedMetadata": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetSecretScanningExtendedMetadata()).ToDataRes(types.String)
+	},
+	"github.codeSecurityConfiguration.privateVulnerabilityReporting": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetPrivateVulnerabilityReporting()).ToDataRes(types.String)
+	},
+	"github.codeSecurityConfiguration.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"github.codeSecurityConfiguration.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"github.codeSecurityConfiguration.defaultForNewRepos": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetDefaultForNewRepos()).ToDataRes(types.String)
+	},
+	"github.codeSecurityConfiguration.repositories": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfiguration).GetRepositories()).ToDataRes(types.Array(types.Resource("github.codeSecurityConfigurationRepository")))
+	},
+	"github.codeSecurityConfigurationRepository.repository": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfigurationRepository).GetRepository()).ToDataRes(types.Resource("github.repository"))
+	},
+	"github.codeSecurityConfigurationRepository.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodeSecurityConfigurationRepository).GetStatus()).ToDataRes(types.String)
+	},
+	"github.secretScanningCustomPattern.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningCustomPattern).GetId()).ToDataRes(types.Int)
+	},
+	"github.secretScanningCustomPattern.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningCustomPattern).GetName()).ToDataRes(types.String)
+	},
+	"github.secretScanningCustomPattern.slug": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningCustomPattern).GetSlug()).ToDataRes(types.String)
+	},
+	"github.secretScanningCustomPattern.pattern": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningCustomPattern).GetPattern()).ToDataRes(types.String)
+	},
+	"github.secretScanningCustomPattern.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningCustomPattern).GetState()).ToDataRes(types.String)
+	},
+	"github.secretScanningCustomPattern.pushProtectionEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningCustomPattern).GetPushProtectionEnabled()).ToDataRes(types.Bool)
+	},
+	"github.secretScanningCustomPattern.startDelimiter": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningCustomPattern).GetStartDelimiter()).ToDataRes(types.String)
+	},
+	"github.secretScanningCustomPattern.endDelimiter": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningCustomPattern).GetEndDelimiter()).ToDataRes(types.String)
+	},
+	"github.secretScanningCustomPattern.mustMatch": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningCustomPattern).GetMustMatch()).ToDataRes(types.Array(types.String))
+	},
+	"github.secretScanningCustomPattern.mustNotMatch": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningCustomPattern).GetMustNotMatch()).ToDataRes(types.Array(types.String))
+	},
+	"github.secretScanningCustomPattern.scope": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningCustomPattern).GetScope()).ToDataRes(types.String)
+	},
+	"github.secretScanningCustomPattern.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningCustomPattern).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"github.secretScanningCustomPattern.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningCustomPattern).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"github.secretScanningPatternConfiguration.kind": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningPatternConfiguration).GetKind()).ToDataRes(types.String)
+	},
+	"github.secretScanningPatternConfiguration.tokenType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningPatternConfiguration).GetTokenType()).ToDataRes(types.String)
+	},
+	"github.secretScanningPatternConfiguration.slug": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningPatternConfiguration).GetSlug()).ToDataRes(types.String)
+	},
+	"github.secretScanningPatternConfiguration.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningPatternConfiguration).GetDisplayName()).ToDataRes(types.String)
+	},
+	"github.secretScanningPatternConfiguration.customPatternVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningPatternConfiguration).GetCustomPatternVersion()).ToDataRes(types.String)
+	},
+	"github.secretScanningPatternConfiguration.setting": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningPatternConfiguration).GetSetting()).ToDataRes(types.String)
+	},
+	"github.secretScanningPatternConfiguration.defaultSetting": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningPatternConfiguration).GetDefaultSetting()).ToDataRes(types.String)
+	},
+	"github.secretScanningPatternConfiguration.enterpriseSetting": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningPatternConfiguration).GetEnterpriseSetting()).ToDataRes(types.String)
+	},
+	"github.secretScanningPatternConfiguration.alertTotal": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningPatternConfiguration).GetAlertTotal()).ToDataRes(types.Int)
+	},
+	"github.secretScanningPatternConfiguration.alertTotalPercentage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningPatternConfiguration).GetAlertTotalPercentage()).ToDataRes(types.Int)
+	},
+	"github.secretScanningPatternConfiguration.falsePositives": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningPatternConfiguration).GetFalsePositives()).ToDataRes(types.Int)
+	},
+	"github.secretScanningPatternConfiguration.falsePositiveRate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningPatternConfiguration).GetFalsePositiveRate()).ToDataRes(types.Int)
+	},
+	"github.secretScanningPatternConfiguration.bypassRate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubSecretScanningPatternConfiguration).GetBypassRate()).ToDataRes(types.Int)
+	},
+	"github.repositorySecurityAdvisory.ghsaId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositorySecurityAdvisory).GetGhsaId()).ToDataRes(types.String)
+	},
+	"github.repositorySecurityAdvisory.cveId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositorySecurityAdvisory).GetCveId()).ToDataRes(types.String)
+	},
+	"github.repositorySecurityAdvisory.summary": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositorySecurityAdvisory).GetSummary()).ToDataRes(types.String)
+	},
+	"github.repositorySecurityAdvisory.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositorySecurityAdvisory).GetDescription()).ToDataRes(types.String)
+	},
+	"github.repositorySecurityAdvisory.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositorySecurityAdvisory).GetState()).ToDataRes(types.String)
+	},
+	"github.repositorySecurityAdvisory.severity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositorySecurityAdvisory).GetSeverity()).ToDataRes(types.String)
+	},
+	"github.repositorySecurityAdvisory.cvssScore": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositorySecurityAdvisory).GetCvssScore()).ToDataRes(types.Float)
+	},
+	"github.repositorySecurityAdvisory.cvssVector": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositorySecurityAdvisory).GetCvssVector()).ToDataRes(types.String)
+	},
+	"github.repositorySecurityAdvisory.cweIds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositorySecurityAdvisory).GetCweIds()).ToDataRes(types.Array(types.String))
+	},
+	"github.repositorySecurityAdvisory.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositorySecurityAdvisory).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"github.repositorySecurityAdvisory.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositorySecurityAdvisory).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"github.repositorySecurityAdvisory.publishedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositorySecurityAdvisory).GetPublishedAt()).ToDataRes(types.Time)
+	},
+	"github.repositorySecurityAdvisory.closedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositorySecurityAdvisory).GetClosedAt()).ToDataRes(types.Time)
+	},
+	"github.repositorySecurityAdvisory.withdrawnAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositorySecurityAdvisory).GetWithdrawnAt()).ToDataRes(types.Time)
+	},
+	"github.repositorySecurityAdvisory.author": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositorySecurityAdvisory).GetAuthor()).ToDataRes(types.Resource("github.user"))
+	},
+	"github.repositorySecurityAdvisory.publisher": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositorySecurityAdvisory).GetPublisher()).ToDataRes(types.Resource("github.user"))
+	},
+	"github.repositorySecurityAdvisory.collaboratingUsers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositorySecurityAdvisory).GetCollaboratingUsers()).ToDataRes(types.Array(types.Resource("github.user")))
+	},
+	"github.repositorySecurityAdvisory.collaboratingTeams": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositorySecurityAdvisory).GetCollaboratingTeams()).ToDataRes(types.Array(types.Resource("github.team")))
+	},
+	"github.repositorySecurityAdvisory.privateFork": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositorySecurityAdvisory).GetPrivateFork()).ToDataRes(types.Resource("github.repository"))
+	},
+	"github.codespacesSecret.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespacesSecret).GetName()).ToDataRes(types.String)
+	},
+	"github.codespacesSecret.scope": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespacesSecret).GetScope()).ToDataRes(types.String)
+	},
+	"github.codespacesSecret.organizationName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespacesSecret).GetOrganizationName()).ToDataRes(types.String)
+	},
+	"github.codespacesSecret.repositoryName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespacesSecret).GetRepositoryName()).ToDataRes(types.String)
+	},
+	"github.codespacesSecret.repositoryOwner": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespacesSecret).GetRepositoryOwner()).ToDataRes(types.String)
+	},
+	"github.codespacesSecret.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespacesSecret).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"github.codespacesSecret.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespacesSecret).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"github.codespacesSecret.visibility": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespacesSecret).GetVisibility()).ToDataRes(types.String)
+	},
+	"github.codespacesSecret.selectedRepositories": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespacesSecret).GetSelectedRepositories()).ToDataRes(types.Array(types.Resource("github.repository")))
+	},
+	"github.hostedRunner.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubHostedRunner).GetId()).ToDataRes(types.Int)
+	},
+	"github.hostedRunner.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubHostedRunner).GetName()).ToDataRes(types.String)
+	},
+	"github.hostedRunner.platform": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubHostedRunner).GetPlatform()).ToDataRes(types.String)
+	},
+	"github.hostedRunner.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubHostedRunner).GetStatus()).ToDataRes(types.String)
+	},
+	"github.hostedRunner.imageId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubHostedRunner).GetImageId()).ToDataRes(types.String)
+	},
+	"github.hostedRunner.imageDisplayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubHostedRunner).GetImageDisplayName()).ToDataRes(types.String)
+	},
+	"github.hostedRunner.imageSource": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubHostedRunner).GetImageSource()).ToDataRes(types.String)
+	},
+	"github.hostedRunner.imageVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubHostedRunner).GetImageVersion()).ToDataRes(types.String)
+	},
+	"github.hostedRunner.imageSizeGb": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubHostedRunner).GetImageSizeGb()).ToDataRes(types.Int)
+	},
+	"github.hostedRunner.imageGen": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubHostedRunner).GetImageGen()).ToDataRes(types.Bool)
+	},
+	"github.hostedRunner.machineSize": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubHostedRunner).GetMachineSize()).ToDataRes(types.String)
+	},
+	"github.hostedRunner.cpuCores": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubHostedRunner).GetCpuCores()).ToDataRes(types.Int)
+	},
+	"github.hostedRunner.memoryGb": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubHostedRunner).GetMemoryGb()).ToDataRes(types.Int)
+	},
+	"github.hostedRunner.storageGb": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubHostedRunner).GetStorageGb()).ToDataRes(types.Int)
+	},
+	"github.hostedRunner.maximumRunners": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubHostedRunner).GetMaximumRunners()).ToDataRes(types.Int)
+	},
+	"github.hostedRunner.publicIpEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubHostedRunner).GetPublicIpEnabled()).ToDataRes(types.Bool)
+	},
+	"github.hostedRunner.publicIps": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubHostedRunner).GetPublicIps()).ToDataRes(types.Array(types.String))
+	},
+	"github.hostedRunner.lastActiveOn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubHostedRunner).GetLastActiveOn()).ToDataRes(types.Time)
+	},
+	"github.hostedRunner.runnerGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubHostedRunner).GetRunnerGroup()).ToDataRes(types.Resource("github.organization.runnerGroup"))
+	},
+	"github.networkConfiguration.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubNetworkConfiguration).GetId()).ToDataRes(types.String)
+	},
+	"github.networkConfiguration.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubNetworkConfiguration).GetName()).ToDataRes(types.String)
+	},
+	"github.networkConfiguration.computeService": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubNetworkConfiguration).GetComputeService()).ToDataRes(types.String)
+	},
+	"github.networkConfiguration.networkSettingsIds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubNetworkConfiguration).GetNetworkSettingsIds()).ToDataRes(types.Array(types.String))
+	},
+	"github.networkConfiguration.createdOn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubNetworkConfiguration).GetCreatedOn()).ToDataRes(types.Time)
+	},
+	"github.privateRegistry.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubPrivateRegistry).GetName()).ToDataRes(types.String)
+	},
+	"github.privateRegistry.registryType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubPrivateRegistry).GetRegistryType()).ToDataRes(types.String)
+	},
+	"github.privateRegistry.url": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubPrivateRegistry).GetUrl()).ToDataRes(types.String)
+	},
+	"github.privateRegistry.authType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubPrivateRegistry).GetAuthType()).ToDataRes(types.String)
+	},
+	"github.privateRegistry.username": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubPrivateRegistry).GetUsername()).ToDataRes(types.String)
+	},
+	"github.privateRegistry.replacesBase": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubPrivateRegistry).GetReplacesBase()).ToDataRes(types.Bool)
+	},
+	"github.privateRegistry.visibility": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubPrivateRegistry).GetVisibility()).ToDataRes(types.String)
+	},
+	"github.privateRegistry.azureTenantId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubPrivateRegistry).GetAzureTenantId()).ToDataRes(types.String)
+	},
+	"github.privateRegistry.azureClientId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubPrivateRegistry).GetAzureClientId()).ToDataRes(types.String)
+	},
+	"github.privateRegistry.awsRegion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubPrivateRegistry).GetAwsRegion()).ToDataRes(types.String)
+	},
+	"github.privateRegistry.awsAccountId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubPrivateRegistry).GetAwsAccountId()).ToDataRes(types.String)
+	},
+	"github.privateRegistry.awsRoleName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubPrivateRegistry).GetAwsRoleName()).ToDataRes(types.String)
+	},
+	"github.privateRegistry.codeArtifactDomain": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubPrivateRegistry).GetCodeArtifactDomain()).ToDataRes(types.String)
+	},
+	"github.privateRegistry.codeArtifactDomainOwner": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubPrivateRegistry).GetCodeArtifactDomainOwner()).ToDataRes(types.String)
+	},
+	"github.privateRegistry.jfrogOidcProviderName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubPrivateRegistry).GetJfrogOidcProviderName()).ToDataRes(types.String)
+	},
+	"github.privateRegistry.jfrogIdentityMappingName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubPrivateRegistry).GetJfrogIdentityMappingName()).ToDataRes(types.String)
+	},
+	"github.privateRegistry.oidcAudience": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubPrivateRegistry).GetOidcAudience()).ToDataRes(types.String)
+	},
+	"github.privateRegistry.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubPrivateRegistry).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"github.privateRegistry.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubPrivateRegistry).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"github.privateRegistry.selectedRepositories": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubPrivateRegistry).GetSelectedRepositories()).ToDataRes(types.Array(types.Resource("github.repository")))
+	},
+	"github.codespace.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespace).GetId()).ToDataRes(types.Int)
+	},
+	"github.codespace.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespace).GetName()).ToDataRes(types.String)
+	},
+	"github.codespace.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespace).GetDisplayName()).ToDataRes(types.String)
+	},
+	"github.codespace.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespace).GetState()).ToDataRes(types.String)
+	},
+	"github.codespace.machineName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespace).GetMachineName()).ToDataRes(types.String)
+	},
+	"github.codespace.machineDisplayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespace).GetMachineDisplayName()).ToDataRes(types.String)
+	},
+	"github.codespace.machineOperatingSystem": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespace).GetMachineOperatingSystem()).ToDataRes(types.String)
+	},
+	"github.codespace.machineCpus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespace).GetMachineCpus()).ToDataRes(types.Int)
+	},
+	"github.codespace.machineMemoryInBytes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespace).GetMachineMemoryInBytes()).ToDataRes(types.Int)
+	},
+	"github.codespace.machineStorageInBytes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespace).GetMachineStorageInBytes()).ToDataRes(types.Int)
+	},
+	"github.codespace.devcontainerPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespace).GetDevcontainerPath()).ToDataRes(types.String)
+	},
+	"github.codespace.prebuild": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespace).GetPrebuild()).ToDataRes(types.Bool)
+	},
+	"github.codespace.idleTimeoutMinutes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespace).GetIdleTimeoutMinutes()).ToDataRes(types.Int)
+	},
+	"github.codespace.retentionPeriodMinutes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespace).GetRetentionPeriodMinutes()).ToDataRes(types.Int)
+	},
+	"github.codespace.retentionExpiresAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespace).GetRetentionExpiresAt()).ToDataRes(types.Time)
+	},
+	"github.codespace.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespace).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"github.codespace.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespace).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"github.codespace.lastUsedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespace).GetLastUsedAt()).ToDataRes(types.Time)
+	},
+	"github.codespace.owner": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespace).GetOwner()).ToDataRes(types.Resource("github.user"))
+	},
+	"github.codespace.billableOwner": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespace).GetBillableOwner()).ToDataRes(types.Resource("github.user"))
+	},
+	"github.codespace.repository": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCodespace).GetRepository()).ToDataRes(types.Resource("github.repository"))
+	},
+	"github.repository.invitation.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositoryInvitation).GetId()).ToDataRes(types.Int)
+	},
+	"github.repository.invitation.permissions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositoryInvitation).GetPermissions()).ToDataRes(types.String)
+	},
+	"github.repository.invitation.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositoryInvitation).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"github.repository.invitation.expired": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositoryInvitation).GetExpired()).ToDataRes(types.Bool)
+	},
+	"github.repository.invitation.invitee": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositoryInvitation).GetInvitee()).ToDataRes(types.Resource("github.user"))
+	},
+	"github.repository.invitation.inviter": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubRepositoryInvitation).GetInviter()).ToDataRes(types.Resource("github.user"))
+	},
+	"github.team.externalGroup.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubTeamExternalGroup).GetId()).ToDataRes(types.Int)
+	},
+	"github.team.externalGroup.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubTeamExternalGroup).GetName()).ToDataRes(types.String)
+	},
+	"github.team.externalGroup.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubTeamExternalGroup).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"github.team.idpGroup.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubTeamIdpGroup).GetId()).ToDataRes(types.String)
+	},
+	"github.team.idpGroup.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubTeamIdpGroup).GetName()).ToDataRes(types.String)
+	},
+	"github.team.idpGroup.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubTeamIdpGroup).GetDescription()).ToDataRes(types.String)
 	},
 }
 
@@ -3429,6 +4268,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGithubOrganization).DefaultRepositoryBranch, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"github.organization.deployKeysEnabledForRepositories": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubOrganization).DeployKeysEnabledForRepositories, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.organization.secretScanningPushProtectionCustomLinkEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubOrganization).SecretScanningPushProtectionCustomLinkEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.organization.secretScanningPushProtectionCustomLink": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubOrganization).SecretScanningPushProtectionCustomLink, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.organization.archivedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubOrganization).ArchivedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
 	"github.organization.actionsSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGithubOrganization).ActionsSettings, ok = plugin.RawToTValue[*mqlGithubOrganizationActionsSettings](v.Value, v.Error)
 		return
@@ -3515,6 +4370,42 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"github.organization.features": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGithubOrganization).Features, ok = plugin.RawToTValue[*mqlGithubOrganizationFeatures](v.Value, v.Error)
+		return
+	},
+	"github.organization.codeSecurityConfigurations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubOrganization).CodeSecurityConfigurations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.organization.secretScanningCustomPatterns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubOrganization).SecretScanningCustomPatterns, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.organization.secretScanningPatternConfigurations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubOrganization).SecretScanningPatternConfigurations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.organization.securityAdvisories": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubOrganization).SecurityAdvisories, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.organization.codespacesSecrets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubOrganization).CodespacesSecrets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.organization.hostedRunners": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubOrganization).HostedRunners, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.organization.networkConfigurations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubOrganization).NetworkConfigurations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.organization.privateRegistries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubOrganization).PrivateRegistries, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.organization.codespaces": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubOrganization).Codespaces, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"github.organization.subscription.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -3615,6 +4506,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"github.organization.runnerGroup.networkConfigurationId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGithubOrganizationRunnerGroup).NetworkConfigurationId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.organization.runnerGroup.networkConfiguration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubOrganizationRunnerGroup).NetworkConfiguration, ok = plugin.RawToTValue[*mqlGithubNetworkConfiguration](v.Value, v.Error)
 		return
 	},
 	"github.organization.runnerGroup.selectedRepositories": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -4233,6 +5128,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGithubTeam).Organization, ok = plugin.RawToTValue[*mqlGithubOrganization](v.Value, v.Error)
 		return
 	},
+	"github.team.notificationSetting": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubTeam).NotificationSetting, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.team.parent": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubTeam).Parent, ok = plugin.RawToTValue[*mqlGithubTeam](v.Value, v.Error)
+		return
+	},
+	"github.team.childTeams": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubTeam).ChildTeams, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.team.membersCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubTeam).MembersCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.team.reposCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubTeam).ReposCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.team.externalGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubTeam).ExternalGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.team.idpGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubTeam).IdpGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"github.repository.team.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGithubRepositoryTeam).__id, ok = v.Value.(string)
 		return
@@ -4741,6 +5664,50 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGithubRepository).AgentSecrets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"github.repository.parent": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepository).Parent, ok = plugin.RawToTValue[*mqlGithubRepository](v.Value, v.Error)
+		return
+	},
+	"github.repository.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepository).Source, ok = plugin.RawToTValue[*mqlGithubRepository](v.Value, v.Error)
+		return
+	},
+	"github.repository.templateRepository": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepository).TemplateRepository, ok = plugin.RawToTValue[*mqlGithubRepository](v.Value, v.Error)
+		return
+	},
+	"github.repository.deleteBranchOnMerge": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepository).DeleteBranchOnMerge, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.repository.allowUpdateBranch": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepository).AllowUpdateBranch, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.repository.codeSecurityConfiguration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepository).CodeSecurityConfiguration, ok = plugin.RawToTValue[*mqlGithubCodeSecurityConfiguration](v.Value, v.Error)
+		return
+	},
+	"github.repository.codeSecurityConfigurationState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepository).CodeSecurityConfigurationState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.repository.secretScanningCustomPatterns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepository).SecretScanningCustomPatterns, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.repository.securityAdvisories": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepository).SecurityAdvisories, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.repository.codespacesSecrets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepository).CodespacesSecrets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.repository.pendingInvitations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepository).PendingInvitations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"github.repository.copilotCloudAgent.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGithubRepositoryCopilotCloudAgent).__id, ok = v.Value.(string)
 		return
@@ -4883,6 +5850,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"github.deployKey.repository": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGithubDeployKey).Repository, ok = plugin.RawToTValue[*mqlGithubRepository](v.Value, v.Error)
+		return
+	},
+	"github.deployKey.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubDeployKey).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"github.publicKey.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -5169,6 +6140,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGithubRepositoryActionsSettings).VerifiedAllowed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"github.repositoryActionsSettings.forkPrApprovalPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositoryActionsSettings).ForkPrApprovalPolicy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.repositoryActionsSettings.forkPrWorkflowsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositoryActionsSettings).ForkPrWorkflowsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.repositoryActionsSettings.forkPrWriteTokens": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositoryActionsSettings).ForkPrWriteTokens, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.repositoryActionsSettings.forkPrSecretsAndVariables": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositoryActionsSettings).ForkPrSecretsAndVariables, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.repositoryActionsSettings.forkPrRequireApproval": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositoryActionsSettings).ForkPrRequireApproval, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.repositoryActionsSettings.artifactRetentionDays": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositoryActionsSettings).ArtifactRetentionDays, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.repositoryActionsSettings.artifactRetentionMaxDays": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositoryActionsSettings).ArtifactRetentionMaxDays, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
 	"github.organizationActionsSettings.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGithubOrganizationActionsSettings).__id, ok = v.Value.(string)
 		return
@@ -5203,6 +6202,42 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"github.organizationActionsSettings.verifiedAllowed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGithubOrganizationActionsSettings).VerifiedAllowed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.organizationActionsSettings.forkPrApprovalPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubOrganizationActionsSettings).ForkPrApprovalPolicy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.organizationActionsSettings.forkPrWorkflowsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubOrganizationActionsSettings).ForkPrWorkflowsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.organizationActionsSettings.forkPrWriteTokens": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubOrganizationActionsSettings).ForkPrWriteTokens, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.organizationActionsSettings.forkPrSecretsAndVariables": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubOrganizationActionsSettings).ForkPrSecretsAndVariables, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.organizationActionsSettings.forkPrRequireApproval": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubOrganizationActionsSettings).ForkPrRequireApproval, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.organizationActionsSettings.artifactRetentionDays": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubOrganizationActionsSettings).ArtifactRetentionDays, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.organizationActionsSettings.artifactRetentionMaxDays": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubOrganizationActionsSettings).ArtifactRetentionMaxDays, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.organizationActionsSettings.selfHostedRunnersEnabledRepositories": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubOrganizationActionsSettings).SelfHostedRunnersEnabledRepositories, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.organizationActionsSettings.selfHostedRunnersSelectedRepositories": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubOrganizationActionsSettings).SelfHostedRunnersSelectedRepositories, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"github.file.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -5283,6 +6318,74 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"github.release.author": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGithubRelease).Author, ok = plugin.RawToTValue[*mqlGithubUser](v.Value, v.Error)
+		return
+	},
+	"github.release.draft": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRelease).Draft, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.release.immutable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRelease).Immutable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.release.targetCommitish": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRelease).TargetCommitish, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.release.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRelease).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"github.release.assets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRelease).Assets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.releaseAsset.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubReleaseAsset).__id, ok = v.Value.(string)
+		return
+	},
+	"github.releaseAsset.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubReleaseAsset).Id, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.releaseAsset.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubReleaseAsset).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.releaseAsset.label": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubReleaseAsset).Label, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.releaseAsset.contentType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubReleaseAsset).ContentType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.releaseAsset.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubReleaseAsset).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.releaseAsset.size": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubReleaseAsset).Size, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.releaseAsset.downloadCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubReleaseAsset).DownloadCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.releaseAsset.digest": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubReleaseAsset).Digest, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.releaseAsset.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubReleaseAsset).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"github.releaseAsset.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubReleaseAsset).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"github.releaseAsset.uploader": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubReleaseAsset).Uploader, ok = plugin.RawToTValue[*mqlGithubUser](v.Value, v.Error)
 		return
 	},
 	"github.webhook.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -5753,6 +6856,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGithubMergeRequest).StackBaseSha, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"github.mergeRequest.authorAssociation": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubMergeRequest).AuthorAssociation, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.mergeRequest.draft": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubMergeRequest).Draft, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.mergeRequest.headRepository": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubMergeRequest).HeadRepository, ok = plugin.RawToTValue[*mqlGithubRepository](v.Value, v.Error)
+		return
+	},
+	"github.mergeRequest.requestedTeams": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubMergeRequest).RequestedTeams, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.mergeRequest.mergeCommitSha": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubMergeRequest).MergeCommitSha, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"github.review.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGithubReview).__id, ok = v.Value.(string)
 		return
@@ -6193,6 +7316,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGithubSecretScanningAlert).Metadata, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
+	"github.secretScanningAlert.pushProtectionBypassRequestComment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningAlert).PushProtectionBypassRequestComment, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningAlert.pushProtectionBypassRequestReviewer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningAlert).PushProtectionBypassRequestReviewer, ok = plugin.RawToTValue[*mqlGithubUser](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningAlert.pushProtectionBypassRequestReviewerComment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningAlert).PushProtectionBypassRequestReviewerComment, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningAlert.firstLocationDetected": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningAlert).FirstLocationDetected, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningAlert.hasMoreLocations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningAlert).HasMoreLocations, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"github.codeScanningAlert.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGithubCodeScanningAlert).__id, ok = v.Value.(string)
 		return
@@ -6381,6 +7524,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGithubRunner).Labels, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"github.runner.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRunner).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.runner.runnerGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRunner).RunnerGroup, ok = plugin.RawToTValue[*mqlGithubOrganizationRunnerGroup](v.Value, v.Error)
+		return
+	},
 	"github.runnerLabel.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGithubRunnerLabel).__id, ok = v.Value.(string)
 		return
@@ -6451,6 +7602,50 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"github.environment.variables": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGithubEnvironment).Variables, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.environment.deploymentBranchPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubEnvironment).DeploymentBranchPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.environment.customProtectionRules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubEnvironment).CustomProtectionRules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.environmentBranchPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubEnvironmentBranchPolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"github.environmentBranchPolicy.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubEnvironmentBranchPolicy).Id, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.environmentBranchPolicy.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubEnvironmentBranchPolicy).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.environmentBranchPolicy.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubEnvironmentBranchPolicy).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.environmentCustomProtectionRule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubEnvironmentCustomProtectionRule).__id, ok = v.Value.(string)
+		return
+	},
+	"github.environmentCustomProtectionRule.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubEnvironmentCustomProtectionRule).Id, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.environmentCustomProtectionRule.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubEnvironmentCustomProtectionRule).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.environmentCustomProtectionRule.appId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubEnvironmentCustomProtectionRule).AppId, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.environmentCustomProtectionRule.appSlug": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubEnvironmentCustomProtectionRule).AppSlug, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"github.environmentProtectionRule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -6881,6 +8076,726 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGithubMetadata).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"github.codeSecurityConfiguration.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).__id, ok = v.Value.(string)
+		return
+	},
+	"github.codeSecurityConfiguration.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).Id, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.targetType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).TargetType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.enforcement": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).Enforcement, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.advancedSecurity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).AdvancedSecurity, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.codeSecurity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).CodeSecurity, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.secretProtection": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).SecretProtection, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.dependencyGraph": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).DependencyGraph, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.dependencyGraphAutosubmitAction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).DependencyGraphAutosubmitAction, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.dependencyGraphAutosubmitActionLabeledRunners": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).DependencyGraphAutosubmitActionLabeledRunners, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.dependabotAlerts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).DependabotAlerts, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.dependabotSecurityUpdates": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).DependabotSecurityUpdates, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.dependabotDelegatedAlertDismissal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).DependabotDelegatedAlertDismissal, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.codeScanningDefaultSetup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).CodeScanningDefaultSetup, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.codeScanningDefaultSetupRunnerType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).CodeScanningDefaultSetupRunnerType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.codeScanningDefaultSetupRunnerLabel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).CodeScanningDefaultSetupRunnerLabel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.codeScanningAllowAdvanced": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).CodeScanningAllowAdvanced, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.codeScanningDelegatedAlertDismissal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).CodeScanningDelegatedAlertDismissal, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.secretScanning": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).SecretScanning, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.secretScanningPushProtection": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).SecretScanningPushProtection, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.secretScanningDelegatedBypass": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).SecretScanningDelegatedBypass, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.secretScanningDelegatedBypassReviewers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).SecretScanningDelegatedBypassReviewers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.secretScanningDelegatedBypassTeams": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).SecretScanningDelegatedBypassTeams, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.secretScanningValidityChecks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).SecretScanningValidityChecks, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.secretScanningNonProviderPatterns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).SecretScanningNonProviderPatterns, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.secretScanningGenericSecrets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).SecretScanningGenericSecrets, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.secretScanningDelegatedAlertDismissal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).SecretScanningDelegatedAlertDismissal, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.secretScanningExtendedMetadata": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).SecretScanningExtendedMetadata, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.privateVulnerabilityReporting": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).PrivateVulnerabilityReporting, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.defaultForNewRepos": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).DefaultForNewRepos, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfiguration.repositories": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfiguration).Repositories, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfigurationRepository.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfigurationRepository).__id, ok = v.Value.(string)
+		return
+	},
+	"github.codeSecurityConfigurationRepository.repository": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfigurationRepository).Repository, ok = plugin.RawToTValue[*mqlGithubRepository](v.Value, v.Error)
+		return
+	},
+	"github.codeSecurityConfigurationRepository.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodeSecurityConfigurationRepository).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningCustomPattern.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningCustomPattern).__id, ok = v.Value.(string)
+		return
+	},
+	"github.secretScanningCustomPattern.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningCustomPattern).Id, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningCustomPattern.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningCustomPattern).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningCustomPattern.slug": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningCustomPattern).Slug, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningCustomPattern.pattern": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningCustomPattern).Pattern, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningCustomPattern.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningCustomPattern).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningCustomPattern.pushProtectionEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningCustomPattern).PushProtectionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningCustomPattern.startDelimiter": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningCustomPattern).StartDelimiter, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningCustomPattern.endDelimiter": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningCustomPattern).EndDelimiter, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningCustomPattern.mustMatch": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningCustomPattern).MustMatch, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningCustomPattern.mustNotMatch": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningCustomPattern).MustNotMatch, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningCustomPattern.scope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningCustomPattern).Scope, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningCustomPattern.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningCustomPattern).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningCustomPattern.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningCustomPattern).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningPatternConfiguration.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningPatternConfiguration).__id, ok = v.Value.(string)
+		return
+	},
+	"github.secretScanningPatternConfiguration.kind": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningPatternConfiguration).Kind, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningPatternConfiguration.tokenType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningPatternConfiguration).TokenType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningPatternConfiguration.slug": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningPatternConfiguration).Slug, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningPatternConfiguration.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningPatternConfiguration).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningPatternConfiguration.customPatternVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningPatternConfiguration).CustomPatternVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningPatternConfiguration.setting": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningPatternConfiguration).Setting, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningPatternConfiguration.defaultSetting": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningPatternConfiguration).DefaultSetting, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningPatternConfiguration.enterpriseSetting": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningPatternConfiguration).EnterpriseSetting, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningPatternConfiguration.alertTotal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningPatternConfiguration).AlertTotal, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningPatternConfiguration.alertTotalPercentage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningPatternConfiguration).AlertTotalPercentage, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningPatternConfiguration.falsePositives": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningPatternConfiguration).FalsePositives, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningPatternConfiguration.falsePositiveRate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningPatternConfiguration).FalsePositiveRate, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.secretScanningPatternConfiguration.bypassRate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubSecretScanningPatternConfiguration).BypassRate, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.repositorySecurityAdvisory.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositorySecurityAdvisory).__id, ok = v.Value.(string)
+		return
+	},
+	"github.repositorySecurityAdvisory.ghsaId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositorySecurityAdvisory).GhsaId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.repositorySecurityAdvisory.cveId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositorySecurityAdvisory).CveId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.repositorySecurityAdvisory.summary": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositorySecurityAdvisory).Summary, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.repositorySecurityAdvisory.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositorySecurityAdvisory).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.repositorySecurityAdvisory.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositorySecurityAdvisory).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.repositorySecurityAdvisory.severity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositorySecurityAdvisory).Severity, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.repositorySecurityAdvisory.cvssScore": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositorySecurityAdvisory).CvssScore, ok = plugin.RawToTValue[float64](v.Value, v.Error)
+		return
+	},
+	"github.repositorySecurityAdvisory.cvssVector": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositorySecurityAdvisory).CvssVector, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.repositorySecurityAdvisory.cweIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositorySecurityAdvisory).CweIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.repositorySecurityAdvisory.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositorySecurityAdvisory).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"github.repositorySecurityAdvisory.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositorySecurityAdvisory).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"github.repositorySecurityAdvisory.publishedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositorySecurityAdvisory).PublishedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"github.repositorySecurityAdvisory.closedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositorySecurityAdvisory).ClosedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"github.repositorySecurityAdvisory.withdrawnAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositorySecurityAdvisory).WithdrawnAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"github.repositorySecurityAdvisory.author": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositorySecurityAdvisory).Author, ok = plugin.RawToTValue[*mqlGithubUser](v.Value, v.Error)
+		return
+	},
+	"github.repositorySecurityAdvisory.publisher": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositorySecurityAdvisory).Publisher, ok = plugin.RawToTValue[*mqlGithubUser](v.Value, v.Error)
+		return
+	},
+	"github.repositorySecurityAdvisory.collaboratingUsers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositorySecurityAdvisory).CollaboratingUsers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.repositorySecurityAdvisory.collaboratingTeams": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositorySecurityAdvisory).CollaboratingTeams, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.repositorySecurityAdvisory.privateFork": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositorySecurityAdvisory).PrivateFork, ok = plugin.RawToTValue[*mqlGithubRepository](v.Value, v.Error)
+		return
+	},
+	"github.codespacesSecret.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespacesSecret).__id, ok = v.Value.(string)
+		return
+	},
+	"github.codespacesSecret.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespacesSecret).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codespacesSecret.scope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespacesSecret).Scope, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codespacesSecret.organizationName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespacesSecret).OrganizationName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codespacesSecret.repositoryName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespacesSecret).RepositoryName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codespacesSecret.repositoryOwner": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespacesSecret).RepositoryOwner, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codespacesSecret.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespacesSecret).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"github.codespacesSecret.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespacesSecret).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"github.codespacesSecret.visibility": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespacesSecret).Visibility, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codespacesSecret.selectedRepositories": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespacesSecret).SelectedRepositories, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.hostedRunner.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubHostedRunner).__id, ok = v.Value.(string)
+		return
+	},
+	"github.hostedRunner.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubHostedRunner).Id, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.hostedRunner.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubHostedRunner).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.hostedRunner.platform": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubHostedRunner).Platform, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.hostedRunner.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubHostedRunner).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.hostedRunner.imageId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubHostedRunner).ImageId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.hostedRunner.imageDisplayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubHostedRunner).ImageDisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.hostedRunner.imageSource": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubHostedRunner).ImageSource, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.hostedRunner.imageVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubHostedRunner).ImageVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.hostedRunner.imageSizeGb": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubHostedRunner).ImageSizeGb, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.hostedRunner.imageGen": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubHostedRunner).ImageGen, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.hostedRunner.machineSize": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubHostedRunner).MachineSize, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.hostedRunner.cpuCores": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubHostedRunner).CpuCores, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.hostedRunner.memoryGb": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubHostedRunner).MemoryGb, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.hostedRunner.storageGb": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubHostedRunner).StorageGb, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.hostedRunner.maximumRunners": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubHostedRunner).MaximumRunners, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.hostedRunner.publicIpEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubHostedRunner).PublicIpEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.hostedRunner.publicIps": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubHostedRunner).PublicIps, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.hostedRunner.lastActiveOn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubHostedRunner).LastActiveOn, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"github.hostedRunner.runnerGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubHostedRunner).RunnerGroup, ok = plugin.RawToTValue[*mqlGithubOrganizationRunnerGroup](v.Value, v.Error)
+		return
+	},
+	"github.networkConfiguration.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubNetworkConfiguration).__id, ok = v.Value.(string)
+		return
+	},
+	"github.networkConfiguration.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubNetworkConfiguration).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.networkConfiguration.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubNetworkConfiguration).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.networkConfiguration.computeService": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubNetworkConfiguration).ComputeService, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.networkConfiguration.networkSettingsIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubNetworkConfiguration).NetworkSettingsIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.networkConfiguration.createdOn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubNetworkConfiguration).CreatedOn, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"github.privateRegistry.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubPrivateRegistry).__id, ok = v.Value.(string)
+		return
+	},
+	"github.privateRegistry.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubPrivateRegistry).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.privateRegistry.registryType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubPrivateRegistry).RegistryType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.privateRegistry.url": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubPrivateRegistry).Url, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.privateRegistry.authType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubPrivateRegistry).AuthType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.privateRegistry.username": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubPrivateRegistry).Username, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.privateRegistry.replacesBase": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubPrivateRegistry).ReplacesBase, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.privateRegistry.visibility": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubPrivateRegistry).Visibility, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.privateRegistry.azureTenantId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubPrivateRegistry).AzureTenantId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.privateRegistry.azureClientId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubPrivateRegistry).AzureClientId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.privateRegistry.awsRegion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubPrivateRegistry).AwsRegion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.privateRegistry.awsAccountId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubPrivateRegistry).AwsAccountId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.privateRegistry.awsRoleName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubPrivateRegistry).AwsRoleName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.privateRegistry.codeArtifactDomain": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubPrivateRegistry).CodeArtifactDomain, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.privateRegistry.codeArtifactDomainOwner": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubPrivateRegistry).CodeArtifactDomainOwner, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.privateRegistry.jfrogOidcProviderName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubPrivateRegistry).JfrogOidcProviderName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.privateRegistry.jfrogIdentityMappingName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubPrivateRegistry).JfrogIdentityMappingName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.privateRegistry.oidcAudience": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubPrivateRegistry).OidcAudience, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.privateRegistry.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubPrivateRegistry).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"github.privateRegistry.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubPrivateRegistry).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"github.privateRegistry.selectedRepositories": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubPrivateRegistry).SelectedRepositories, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.codespace.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespace).__id, ok = v.Value.(string)
+		return
+	},
+	"github.codespace.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespace).Id, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.codespace.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespace).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codespace.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespace).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codespace.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespace).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codespace.machineName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespace).MachineName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codespace.machineDisplayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespace).MachineDisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codespace.machineOperatingSystem": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespace).MachineOperatingSystem, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codespace.machineCpus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespace).MachineCpus, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.codespace.machineMemoryInBytes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespace).MachineMemoryInBytes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.codespace.machineStorageInBytes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespace).MachineStorageInBytes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.codespace.devcontainerPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespace).DevcontainerPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.codespace.prebuild": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespace).Prebuild, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.codespace.idleTimeoutMinutes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespace).IdleTimeoutMinutes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.codespace.retentionPeriodMinutes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespace).RetentionPeriodMinutes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.codespace.retentionExpiresAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespace).RetentionExpiresAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"github.codespace.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespace).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"github.codespace.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespace).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"github.codespace.lastUsedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespace).LastUsedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"github.codespace.owner": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespace).Owner, ok = plugin.RawToTValue[*mqlGithubUser](v.Value, v.Error)
+		return
+	},
+	"github.codespace.billableOwner": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespace).BillableOwner, ok = plugin.RawToTValue[*mqlGithubUser](v.Value, v.Error)
+		return
+	},
+	"github.codespace.repository": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCodespace).Repository, ok = plugin.RawToTValue[*mqlGithubRepository](v.Value, v.Error)
+		return
+	},
+	"github.repository.invitation.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositoryInvitation).__id, ok = v.Value.(string)
+		return
+	},
+	"github.repository.invitation.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositoryInvitation).Id, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.repository.invitation.permissions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositoryInvitation).Permissions, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.repository.invitation.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositoryInvitation).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"github.repository.invitation.expired": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositoryInvitation).Expired, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.repository.invitation.invitee": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositoryInvitation).Invitee, ok = plugin.RawToTValue[*mqlGithubUser](v.Value, v.Error)
+		return
+	},
+	"github.repository.invitation.inviter": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubRepositoryInvitation).Inviter, ok = plugin.RawToTValue[*mqlGithubUser](v.Value, v.Error)
+		return
+	},
+	"github.team.externalGroup.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubTeamExternalGroup).__id, ok = v.Value.(string)
+		return
+	},
+	"github.team.externalGroup.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubTeamExternalGroup).Id, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"github.team.externalGroup.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubTeamExternalGroup).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.team.externalGroup.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubTeamExternalGroup).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"github.team.idpGroup.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubTeamIdpGroup).__id, ok = v.Value.(string)
+		return
+	},
+	"github.team.idpGroup.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubTeamIdpGroup).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.team.idpGroup.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubTeamIdpGroup).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.team.idpGroup.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubTeamIdpGroup).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 }
 
 func SetData(resource plugin.Resource, field string, val *llx.RawData) error {
@@ -7215,6 +9130,10 @@ type mqlGithubOrganization struct {
 	MembersCanCreateTeams                          plugin.TValue[bool]
 	MembersCanViewDependencyInsights               plugin.TValue[bool]
 	DefaultRepositoryBranch                        plugin.TValue[string]
+	DeployKeysEnabledForRepositories               plugin.TValue[bool]
+	SecretScanningPushProtectionCustomLinkEnabled  plugin.TValue[bool]
+	SecretScanningPushProtectionCustomLink         plugin.TValue[string]
+	ArchivedAt                                     plugin.TValue[*time.Time]
 	ActionsSettings                                plugin.TValue[*mqlGithubOrganizationActionsSettings]
 	SamlConfig                                     plugin.TValue[*mqlGithubOrganizationSamlConfig]
 	IpAllowList                                    plugin.TValue[*mqlGithubOrganizationIpAllowList]
@@ -7237,6 +9156,15 @@ type mqlGithubOrganization struct {
 	ImmutableReleases                              plugin.TValue[*mqlGithubOrganizationImmutableReleases]
 	Subscription                                   plugin.TValue[*mqlGithubOrganizationSubscription]
 	Features                                       plugin.TValue[*mqlGithubOrganizationFeatures]
+	CodeSecurityConfigurations                     plugin.TValue[[]any]
+	SecretScanningCustomPatterns                   plugin.TValue[[]any]
+	SecretScanningPatternConfigurations            plugin.TValue[[]any]
+	SecurityAdvisories                             plugin.TValue[[]any]
+	CodespacesSecrets                              plugin.TValue[[]any]
+	HostedRunners                                  plugin.TValue[[]any]
+	NetworkConfigurations                          plugin.TValue[[]any]
+	PrivateRegistries                              plugin.TValue[[]any]
+	Codespaces                                     plugin.TValue[[]any]
 }
 
 // createGithubOrganization creates a new instance of this resource
@@ -7676,6 +9604,22 @@ func (c *mqlGithubOrganization) GetDefaultRepositoryBranch() *plugin.TValue[stri
 	return &c.DefaultRepositoryBranch
 }
 
+func (c *mqlGithubOrganization) GetDeployKeysEnabledForRepositories() *plugin.TValue[bool] {
+	return &c.DeployKeysEnabledForRepositories
+}
+
+func (c *mqlGithubOrganization) GetSecretScanningPushProtectionCustomLinkEnabled() *plugin.TValue[bool] {
+	return &c.SecretScanningPushProtectionCustomLinkEnabled
+}
+
+func (c *mqlGithubOrganization) GetSecretScanningPushProtectionCustomLink() *plugin.TValue[string] {
+	return &c.SecretScanningPushProtectionCustomLink
+}
+
+func (c *mqlGithubOrganization) GetArchivedAt() *plugin.TValue[*time.Time] {
+	return &c.ArchivedAt
+}
+
 func (c *mqlGithubOrganization) GetActionsSettings() *plugin.TValue[*mqlGithubOrganizationActionsSettings] {
 	return plugin.GetOrCompute[*mqlGithubOrganizationActionsSettings](&c.ActionsSettings, func() (*mqlGithubOrganizationActionsSettings, error) {
 		if c.MqlRuntime.HasRecording {
@@ -8018,6 +9962,150 @@ func (c *mqlGithubOrganization) GetFeatures() *plugin.TValue[*mqlGithubOrganizat
 	})
 }
 
+func (c *mqlGithubOrganization) GetCodeSecurityConfigurations() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.CodeSecurityConfigurations, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.organization", c.__id, "codeSecurityConfigurations")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.codeSecurityConfigurations()
+	})
+}
+
+func (c *mqlGithubOrganization) GetSecretScanningCustomPatterns() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SecretScanningCustomPatterns, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.organization", c.__id, "secretScanningCustomPatterns")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.secretScanningCustomPatterns()
+	})
+}
+
+func (c *mqlGithubOrganization) GetSecretScanningPatternConfigurations() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SecretScanningPatternConfigurations, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.organization", c.__id, "secretScanningPatternConfigurations")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.secretScanningPatternConfigurations()
+	})
+}
+
+func (c *mqlGithubOrganization) GetSecurityAdvisories() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SecurityAdvisories, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.organization", c.__id, "securityAdvisories")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.securityAdvisories()
+	})
+}
+
+func (c *mqlGithubOrganization) GetCodespacesSecrets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.CodespacesSecrets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.organization", c.__id, "codespacesSecrets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.codespacesSecrets()
+	})
+}
+
+func (c *mqlGithubOrganization) GetHostedRunners() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.HostedRunners, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.organization", c.__id, "hostedRunners")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.hostedRunners()
+	})
+}
+
+func (c *mqlGithubOrganization) GetNetworkConfigurations() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.NetworkConfigurations, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.organization", c.__id, "networkConfigurations")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.networkConfigurations()
+	})
+}
+
+func (c *mqlGithubOrganization) GetPrivateRegistries() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PrivateRegistries, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.organization", c.__id, "privateRegistries")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.privateRegistries()
+	})
+}
+
+func (c *mqlGithubOrganization) GetCodespaces() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Codespaces, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.organization", c.__id, "codespaces")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.codespaces()
+	})
+}
+
 // mqlGithubOrganizationSubscription for the github.organization.subscription resource
 type mqlGithubOrganizationSubscription struct {
 	MqlRuntime *plugin.Runtime
@@ -8181,6 +10269,7 @@ type mqlGithubOrganizationRunnerGroup struct {
 	SelectedWorkflows            plugin.TValue[[]any]
 	WorkflowRestrictionsReadOnly plugin.TValue[bool]
 	NetworkConfigurationId       plugin.TValue[string]
+	NetworkConfiguration         plugin.TValue[*mqlGithubNetworkConfiguration]
 	SelectedRepositories         plugin.TValue[[]any]
 	Runners                      plugin.TValue[[]any]
 }
@@ -8260,6 +10349,22 @@ func (c *mqlGithubOrganizationRunnerGroup) GetWorkflowRestrictionsReadOnly() *pl
 
 func (c *mqlGithubOrganizationRunnerGroup) GetNetworkConfigurationId() *plugin.TValue[string] {
 	return &c.NetworkConfigurationId
+}
+
+func (c *mqlGithubOrganizationRunnerGroup) GetNetworkConfiguration() *plugin.TValue[*mqlGithubNetworkConfiguration] {
+	return plugin.GetOrCompute[*mqlGithubNetworkConfiguration](&c.NetworkConfiguration, func() (*mqlGithubNetworkConfiguration, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.organization.runnerGroup", c.__id, "networkConfiguration")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGithubNetworkConfiguration), nil
+			}
+		}
+
+		return c.networkConfiguration()
+	})
 }
 
 func (c *mqlGithubOrganizationRunnerGroup) GetSelectedRepositories() *plugin.TValue[[]any] {
@@ -9683,17 +11788,24 @@ func (c *mqlGithubUser) GetSshSigningKeys() *plugin.TValue[[]any] {
 type mqlGithubTeam struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlGithubTeamInternal it will be used here
-	Id                plugin.TValue[int64]
-	Name              plugin.TValue[string]
-	Description       plugin.TValue[string]
-	Slug              plugin.TValue[string]
-	Privacy           plugin.TValue[string]
-	DefaultPermission plugin.TValue[string]
-	Type              plugin.TValue[string]
-	Members           plugin.TValue[[]any]
-	Repositories      plugin.TValue[[]any]
-	Organization      plugin.TValue[*mqlGithubOrganization]
+	mqlGithubTeamInternal
+	Id                  plugin.TValue[int64]
+	Name                plugin.TValue[string]
+	Description         plugin.TValue[string]
+	Slug                plugin.TValue[string]
+	Privacy             plugin.TValue[string]
+	DefaultPermission   plugin.TValue[string]
+	Type                plugin.TValue[string]
+	Members             plugin.TValue[[]any]
+	Repositories        plugin.TValue[[]any]
+	Organization        plugin.TValue[*mqlGithubOrganization]
+	NotificationSetting plugin.TValue[string]
+	Parent              plugin.TValue[*mqlGithubTeam]
+	ChildTeams          plugin.TValue[[]any]
+	MembersCount        plugin.TValue[int64]
+	ReposCount          plugin.TValue[int64]
+	ExternalGroups      plugin.TValue[[]any]
+	IdpGroups           plugin.TValue[[]any]
 }
 
 // createGithubTeam creates a new instance of this resource
@@ -9795,6 +11907,86 @@ func (c *mqlGithubTeam) GetRepositories() *plugin.TValue[[]any] {
 
 func (c *mqlGithubTeam) GetOrganization() *plugin.TValue[*mqlGithubOrganization] {
 	return &c.Organization
+}
+
+func (c *mqlGithubTeam) GetNotificationSetting() *plugin.TValue[string] {
+	return &c.NotificationSetting
+}
+
+func (c *mqlGithubTeam) GetParent() *plugin.TValue[*mqlGithubTeam] {
+	return plugin.GetOrCompute[*mqlGithubTeam](&c.Parent, func() (*mqlGithubTeam, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.team", c.__id, "parent")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGithubTeam), nil
+			}
+		}
+
+		return c.parent()
+	})
+}
+
+func (c *mqlGithubTeam) GetChildTeams() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ChildTeams, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.team", c.__id, "childTeams")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.childTeams()
+	})
+}
+
+func (c *mqlGithubTeam) GetMembersCount() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MembersCount, func() (int64, error) {
+		return c.membersCount()
+	})
+}
+
+func (c *mqlGithubTeam) GetReposCount() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.ReposCount, func() (int64, error) {
+		return c.reposCount()
+	})
+}
+
+func (c *mqlGithubTeam) GetExternalGroups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ExternalGroups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.team", c.__id, "externalGroups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.externalGroups()
+	})
+}
+
+func (c *mqlGithubTeam) GetIdpGroups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.IdpGroups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.team", c.__id, "idpGroups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.idpGroups()
+	})
 }
 
 // mqlGithubRepositoryTeam for the github.repository.team resource
@@ -10335,6 +12527,17 @@ type mqlGithubRepository struct {
 	CodeScanningDefaultSetup             plugin.TValue[*mqlGithubRepositoryCodeScanningDefaultSetup]
 	DependabotSecrets                    plugin.TValue[[]any]
 	AgentSecrets                         plugin.TValue[[]any]
+	Parent                               plugin.TValue[*mqlGithubRepository]
+	Source                               plugin.TValue[*mqlGithubRepository]
+	TemplateRepository                   plugin.TValue[*mqlGithubRepository]
+	DeleteBranchOnMerge                  plugin.TValue[bool]
+	AllowUpdateBranch                    plugin.TValue[bool]
+	CodeSecurityConfiguration            plugin.TValue[*mqlGithubCodeSecurityConfiguration]
+	CodeSecurityConfigurationState       plugin.TValue[string]
+	SecretScanningCustomPatterns         plugin.TValue[[]any]
+	SecurityAdvisories                   plugin.TValue[[]any]
+	CodespacesSecrets                    plugin.TValue[[]any]
+	PendingInvitations                   plugin.TValue[[]any]
 }
 
 // createGithubRepository creates a new instance of this resource
@@ -11250,6 +13453,152 @@ func (c *mqlGithubRepository) GetAgentSecrets() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlGithubRepository) GetParent() *plugin.TValue[*mqlGithubRepository] {
+	return plugin.GetOrCompute[*mqlGithubRepository](&c.Parent, func() (*mqlGithubRepository, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.repository", c.__id, "parent")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGithubRepository), nil
+			}
+		}
+
+		return c.parent()
+	})
+}
+
+func (c *mqlGithubRepository) GetSource() *plugin.TValue[*mqlGithubRepository] {
+	return plugin.GetOrCompute[*mqlGithubRepository](&c.Source, func() (*mqlGithubRepository, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.repository", c.__id, "source")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGithubRepository), nil
+			}
+		}
+
+		return c.source()
+	})
+}
+
+func (c *mqlGithubRepository) GetTemplateRepository() *plugin.TValue[*mqlGithubRepository] {
+	return plugin.GetOrCompute[*mqlGithubRepository](&c.TemplateRepository, func() (*mqlGithubRepository, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.repository", c.__id, "templateRepository")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGithubRepository), nil
+			}
+		}
+
+		return c.templateRepository()
+	})
+}
+
+func (c *mqlGithubRepository) GetDeleteBranchOnMerge() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.DeleteBranchOnMerge, func() (bool, error) {
+		return c.deleteBranchOnMerge()
+	})
+}
+
+func (c *mqlGithubRepository) GetAllowUpdateBranch() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AllowUpdateBranch, func() (bool, error) {
+		return c.allowUpdateBranch()
+	})
+}
+
+func (c *mqlGithubRepository) GetCodeSecurityConfiguration() *plugin.TValue[*mqlGithubCodeSecurityConfiguration] {
+	return plugin.GetOrCompute[*mqlGithubCodeSecurityConfiguration](&c.CodeSecurityConfiguration, func() (*mqlGithubCodeSecurityConfiguration, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.repository", c.__id, "codeSecurityConfiguration")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGithubCodeSecurityConfiguration), nil
+			}
+		}
+
+		return c.codeSecurityConfiguration()
+	})
+}
+
+func (c *mqlGithubRepository) GetCodeSecurityConfigurationState() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.CodeSecurityConfigurationState, func() (string, error) {
+		return c.codeSecurityConfigurationState()
+	})
+}
+
+func (c *mqlGithubRepository) GetSecretScanningCustomPatterns() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SecretScanningCustomPatterns, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.repository", c.__id, "secretScanningCustomPatterns")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.secretScanningCustomPatterns()
+	})
+}
+
+func (c *mqlGithubRepository) GetSecurityAdvisories() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SecurityAdvisories, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.repository", c.__id, "securityAdvisories")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.securityAdvisories()
+	})
+}
+
+func (c *mqlGithubRepository) GetCodespacesSecrets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.CodespacesSecrets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.repository", c.__id, "codespacesSecrets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.codespacesSecrets()
+	})
+}
+
+func (c *mqlGithubRepository) GetPendingInvitations() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PendingInvitations, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.repository", c.__id, "pendingInvitations")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.pendingInvitations()
+	})
+}
+
 // mqlGithubRepositoryCopilotCloudAgent for the github.repository.copilotCloudAgent resource
 type mqlGithubRepositoryCopilotCloudAgent struct {
 	MqlRuntime *plugin.Runtime
@@ -11468,6 +13817,7 @@ type mqlGithubDeployKey struct {
 	AddedBy    plugin.TValue[*mqlGithubUser]
 	AgeInDays  plugin.TValue[int64]
 	Repository plugin.TValue[*mqlGithubRepository]
+	Enabled    plugin.TValue[bool]
 }
 
 // createGithubDeployKey creates a new instance of this resource
@@ -11569,6 +13919,10 @@ func (c *mqlGithubDeployKey) GetRepository() *plugin.TValue[*mqlGithubRepository
 
 		return c.repository()
 	})
+}
+
+func (c *mqlGithubDeployKey) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
 }
 
 // mqlGithubPublicKey for the github.publicKey resource
@@ -12233,6 +14587,13 @@ type mqlGithubRepositoryActionsSettings struct {
 	PatternsAllowed              plugin.TValue[[]any]
 	GithubOwnedAllowed           plugin.TValue[bool]
 	VerifiedAllowed              plugin.TValue[bool]
+	ForkPrApprovalPolicy         plugin.TValue[string]
+	ForkPrWorkflowsEnabled       plugin.TValue[bool]
+	ForkPrWriteTokens            plugin.TValue[bool]
+	ForkPrSecretsAndVariables    plugin.TValue[bool]
+	ForkPrRequireApproval        plugin.TValue[bool]
+	ArtifactRetentionDays        plugin.TValue[int64]
+	ArtifactRetentionMaxDays     plugin.TValue[int64]
 }
 
 // createGithubRepositoryActionsSettings creates a new instance of this resource
@@ -12316,19 +14677,70 @@ func (c *mqlGithubRepositoryActionsSettings) GetVerifiedAllowed() *plugin.TValue
 	})
 }
 
+func (c *mqlGithubRepositoryActionsSettings) GetForkPrApprovalPolicy() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ForkPrApprovalPolicy, func() (string, error) {
+		return c.forkPrApprovalPolicy()
+	})
+}
+
+func (c *mqlGithubRepositoryActionsSettings) GetForkPrWorkflowsEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ForkPrWorkflowsEnabled, func() (bool, error) {
+		return c.forkPrWorkflowsEnabled()
+	})
+}
+
+func (c *mqlGithubRepositoryActionsSettings) GetForkPrWriteTokens() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ForkPrWriteTokens, func() (bool, error) {
+		return c.forkPrWriteTokens()
+	})
+}
+
+func (c *mqlGithubRepositoryActionsSettings) GetForkPrSecretsAndVariables() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ForkPrSecretsAndVariables, func() (bool, error) {
+		return c.forkPrSecretsAndVariables()
+	})
+}
+
+func (c *mqlGithubRepositoryActionsSettings) GetForkPrRequireApproval() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ForkPrRequireApproval, func() (bool, error) {
+		return c.forkPrRequireApproval()
+	})
+}
+
+func (c *mqlGithubRepositoryActionsSettings) GetArtifactRetentionDays() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.ArtifactRetentionDays, func() (int64, error) {
+		return c.artifactRetentionDays()
+	})
+}
+
+func (c *mqlGithubRepositoryActionsSettings) GetArtifactRetentionMaxDays() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.ArtifactRetentionMaxDays, func() (int64, error) {
+		return c.artifactRetentionMaxDays()
+	})
+}
+
 // mqlGithubOrganizationActionsSettings for the github.organizationActionsSettings resource
 type mqlGithubOrganizationActionsSettings struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlGithubOrganizationActionsSettingsInternal
-	EnabledRepositories          plugin.TValue[string]
-	AllowedActions               plugin.TValue[string]
-	ShaPinningRequired           plugin.TValue[bool]
-	DefaultWorkflowPermissions   plugin.TValue[string]
-	CanApprovePullRequestReviews plugin.TValue[bool]
-	PatternsAllowed              plugin.TValue[[]any]
-	GithubOwnedAllowed           plugin.TValue[bool]
-	VerifiedAllowed              plugin.TValue[bool]
+	EnabledRepositories                   plugin.TValue[string]
+	AllowedActions                        plugin.TValue[string]
+	ShaPinningRequired                    plugin.TValue[bool]
+	DefaultWorkflowPermissions            plugin.TValue[string]
+	CanApprovePullRequestReviews          plugin.TValue[bool]
+	PatternsAllowed                       plugin.TValue[[]any]
+	GithubOwnedAllowed                    plugin.TValue[bool]
+	VerifiedAllowed                       plugin.TValue[bool]
+	ForkPrApprovalPolicy                  plugin.TValue[string]
+	ForkPrWorkflowsEnabled                plugin.TValue[bool]
+	ForkPrWriteTokens                     plugin.TValue[bool]
+	ForkPrSecretsAndVariables             plugin.TValue[bool]
+	ForkPrRequireApproval                 plugin.TValue[bool]
+	ArtifactRetentionDays                 plugin.TValue[int64]
+	ArtifactRetentionMaxDays              plugin.TValue[int64]
+	SelfHostedRunnersEnabledRepositories  plugin.TValue[string]
+	SelfHostedRunnersSelectedRepositories plugin.TValue[[]any]
 }
 
 // createGithubOrganizationActionsSettings creates a new instance of this resource
@@ -12403,6 +14815,70 @@ func (c *mqlGithubOrganizationActionsSettings) GetGithubOwnedAllowed() *plugin.T
 func (c *mqlGithubOrganizationActionsSettings) GetVerifiedAllowed() *plugin.TValue[bool] {
 	return plugin.GetOrCompute[bool](&c.VerifiedAllowed, func() (bool, error) {
 		return c.verifiedAllowed()
+	})
+}
+
+func (c *mqlGithubOrganizationActionsSettings) GetForkPrApprovalPolicy() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ForkPrApprovalPolicy, func() (string, error) {
+		return c.forkPrApprovalPolicy()
+	})
+}
+
+func (c *mqlGithubOrganizationActionsSettings) GetForkPrWorkflowsEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ForkPrWorkflowsEnabled, func() (bool, error) {
+		return c.forkPrWorkflowsEnabled()
+	})
+}
+
+func (c *mqlGithubOrganizationActionsSettings) GetForkPrWriteTokens() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ForkPrWriteTokens, func() (bool, error) {
+		return c.forkPrWriteTokens()
+	})
+}
+
+func (c *mqlGithubOrganizationActionsSettings) GetForkPrSecretsAndVariables() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ForkPrSecretsAndVariables, func() (bool, error) {
+		return c.forkPrSecretsAndVariables()
+	})
+}
+
+func (c *mqlGithubOrganizationActionsSettings) GetForkPrRequireApproval() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ForkPrRequireApproval, func() (bool, error) {
+		return c.forkPrRequireApproval()
+	})
+}
+
+func (c *mqlGithubOrganizationActionsSettings) GetArtifactRetentionDays() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.ArtifactRetentionDays, func() (int64, error) {
+		return c.artifactRetentionDays()
+	})
+}
+
+func (c *mqlGithubOrganizationActionsSettings) GetArtifactRetentionMaxDays() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.ArtifactRetentionMaxDays, func() (int64, error) {
+		return c.artifactRetentionMaxDays()
+	})
+}
+
+func (c *mqlGithubOrganizationActionsSettings) GetSelfHostedRunnersEnabledRepositories() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SelfHostedRunnersEnabledRepositories, func() (string, error) {
+		return c.selfHostedRunnersEnabledRepositories()
+	})
+}
+
+func (c *mqlGithubOrganizationActionsSettings) GetSelfHostedRunnersSelectedRepositories() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SelfHostedRunnersSelectedRepositories, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.organizationActionsSettings", c.__id, "selfHostedRunnersSelectedRepositories")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.selfHostedRunnersSelectedRepositories()
 	})
 }
 
@@ -12524,13 +15000,18 @@ type mqlGithubRelease struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlGithubReleaseInternal it will be used here
-	Url         plugin.TValue[string]
-	Name        plugin.TValue[string]
-	TagName     plugin.TValue[string]
-	PreRelease  plugin.TValue[bool]
-	CreatedAt   plugin.TValue[*time.Time]
-	PublishedAt plugin.TValue[*time.Time]
-	Author      plugin.TValue[*mqlGithubUser]
+	Url             plugin.TValue[string]
+	Name            plugin.TValue[string]
+	TagName         plugin.TValue[string]
+	PreRelease      plugin.TValue[bool]
+	CreatedAt       plugin.TValue[*time.Time]
+	PublishedAt     plugin.TValue[*time.Time]
+	Author          plugin.TValue[*mqlGithubUser]
+	Draft           plugin.TValue[bool]
+	Immutable       plugin.TValue[bool]
+	TargetCommitish plugin.TValue[string]
+	UpdatedAt       plugin.TValue[*time.Time]
+	Assets          plugin.TValue[[]any]
 }
 
 // createGithubRelease creates a new instance of this resource
@@ -12596,6 +15077,125 @@ func (c *mqlGithubRelease) GetPublishedAt() *plugin.TValue[*time.Time] {
 
 func (c *mqlGithubRelease) GetAuthor() *plugin.TValue[*mqlGithubUser] {
 	return &c.Author
+}
+
+func (c *mqlGithubRelease) GetDraft() *plugin.TValue[bool] {
+	return &c.Draft
+}
+
+func (c *mqlGithubRelease) GetImmutable() *plugin.TValue[bool] {
+	return &c.Immutable
+}
+
+func (c *mqlGithubRelease) GetTargetCommitish() *plugin.TValue[string] {
+	return &c.TargetCommitish
+}
+
+func (c *mqlGithubRelease) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlGithubRelease) GetAssets() *plugin.TValue[[]any] {
+	return &c.Assets
+}
+
+// mqlGithubReleaseAsset for the github.releaseAsset resource
+type mqlGithubReleaseAsset struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGithubReleaseAssetInternal it will be used here
+	Id            plugin.TValue[int64]
+	Name          plugin.TValue[string]
+	Label         plugin.TValue[string]
+	ContentType   plugin.TValue[string]
+	State         plugin.TValue[string]
+	Size          plugin.TValue[int64]
+	DownloadCount plugin.TValue[int64]
+	Digest        plugin.TValue[string]
+	CreatedAt     plugin.TValue[*time.Time]
+	UpdatedAt     plugin.TValue[*time.Time]
+	Uploader      plugin.TValue[*mqlGithubUser]
+}
+
+// createGithubReleaseAsset creates a new instance of this resource
+func createGithubReleaseAsset(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGithubReleaseAsset{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("github.releaseAsset", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGithubReleaseAsset) MqlName() string {
+	return "github.releaseAsset"
+}
+
+func (c *mqlGithubReleaseAsset) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGithubReleaseAsset) GetId() *plugin.TValue[int64] {
+	return &c.Id
+}
+
+func (c *mqlGithubReleaseAsset) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGithubReleaseAsset) GetLabel() *plugin.TValue[string] {
+	return &c.Label
+}
+
+func (c *mqlGithubReleaseAsset) GetContentType() *plugin.TValue[string] {
+	return &c.ContentType
+}
+
+func (c *mqlGithubReleaseAsset) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlGithubReleaseAsset) GetSize() *plugin.TValue[int64] {
+	return &c.Size
+}
+
+func (c *mqlGithubReleaseAsset) GetDownloadCount() *plugin.TValue[int64] {
+	return &c.DownloadCount
+}
+
+func (c *mqlGithubReleaseAsset) GetDigest() *plugin.TValue[string] {
+	return &c.Digest
+}
+
+func (c *mqlGithubReleaseAsset) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlGithubReleaseAsset) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlGithubReleaseAsset) GetUploader() *plugin.TValue[*mqlGithubUser] {
+	return &c.Uploader
 }
 
 // mqlGithubWebhook for the github.webhook resource
@@ -13372,6 +15972,11 @@ type mqlGithubMergeRequest struct {
 	StackPosition      plugin.TValue[int64]
 	StackBaseBranch    plugin.TValue[string]
 	StackBaseSha       plugin.TValue[string]
+	AuthorAssociation  plugin.TValue[string]
+	Draft              plugin.TValue[bool]
+	HeadRepository     plugin.TValue[*mqlGithubRepository]
+	RequestedTeams     plugin.TValue[[]any]
+	MergeCommitSha     plugin.TValue[string]
 }
 
 // createGithubMergeRequest creates a new instance of this resource
@@ -13533,6 +16138,26 @@ func (c *mqlGithubMergeRequest) GetStackBaseBranch() *plugin.TValue[string] {
 
 func (c *mqlGithubMergeRequest) GetStackBaseSha() *plugin.TValue[string] {
 	return &c.StackBaseSha
+}
+
+func (c *mqlGithubMergeRequest) GetAuthorAssociation() *plugin.TValue[string] {
+	return &c.AuthorAssociation
+}
+
+func (c *mqlGithubMergeRequest) GetDraft() *plugin.TValue[bool] {
+	return &c.Draft
+}
+
+func (c *mqlGithubMergeRequest) GetHeadRepository() *plugin.TValue[*mqlGithubRepository] {
+	return &c.HeadRepository
+}
+
+func (c *mqlGithubMergeRequest) GetRequestedTeams() *plugin.TValue[[]any] {
+	return &c.RequestedTeams
+}
+
+func (c *mqlGithubMergeRequest) GetMergeCommitSha() *plugin.TValue[string] {
+	return &c.MergeCommitSha
 }
 
 // mqlGithubReview for the github.review resource
@@ -14242,32 +16867,37 @@ type mqlGithubSecretScanningAlert struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlGithubSecretScanningAlertInternal
-	Number                        plugin.TValue[int64]
-	State                         plugin.TValue[string]
-	Resolution                    plugin.TValue[string]
-	SecretType                    plugin.TValue[string]
-	SecretTypeDisplayName         plugin.TValue[string]
-	Secret                        plugin.TValue[string]
-	Validity                      plugin.TValue[string]
-	PubliclyLeaked                plugin.TValue[bool]
-	MultiRepo                     plugin.TValue[bool]
-	Url                           plugin.TValue[string]
-	HtmlUrl                       plugin.TValue[string]
-	CreatedAt                     plugin.TValue[*time.Time]
-	UpdatedAt                     plugin.TValue[*time.Time]
-	ResolvedAt                    plugin.TValue[*time.Time]
-	ResolvedBy                    plugin.TValue[*mqlGithubUser]
-	PushProtectionBypassed        plugin.TValue[bool]
-	PushProtectionBypassedBy      plugin.TValue[*mqlGithubUser]
-	PushProtectionBypassedAt      plugin.TValue[*time.Time]
-	ResolutionComment             plugin.TValue[string]
-	AssignedTo                    plugin.TValue[*mqlGithubUser]
-	ClosureRequestComment         plugin.TValue[string]
-	ClosureRequestReviewer        plugin.TValue[*mqlGithubUser]
-	ClosureRequestReviewerComment plugin.TValue[string]
-	Provider                      plugin.TValue[string]
-	ProviderSlug                  plugin.TValue[string]
-	Metadata                      plugin.TValue[map[string]any]
+	Number                                     plugin.TValue[int64]
+	State                                      plugin.TValue[string]
+	Resolution                                 plugin.TValue[string]
+	SecretType                                 plugin.TValue[string]
+	SecretTypeDisplayName                      plugin.TValue[string]
+	Secret                                     plugin.TValue[string]
+	Validity                                   plugin.TValue[string]
+	PubliclyLeaked                             plugin.TValue[bool]
+	MultiRepo                                  plugin.TValue[bool]
+	Url                                        plugin.TValue[string]
+	HtmlUrl                                    plugin.TValue[string]
+	CreatedAt                                  plugin.TValue[*time.Time]
+	UpdatedAt                                  plugin.TValue[*time.Time]
+	ResolvedAt                                 plugin.TValue[*time.Time]
+	ResolvedBy                                 plugin.TValue[*mqlGithubUser]
+	PushProtectionBypassed                     plugin.TValue[bool]
+	PushProtectionBypassedBy                   plugin.TValue[*mqlGithubUser]
+	PushProtectionBypassedAt                   plugin.TValue[*time.Time]
+	ResolutionComment                          plugin.TValue[string]
+	AssignedTo                                 plugin.TValue[*mqlGithubUser]
+	ClosureRequestComment                      plugin.TValue[string]
+	ClosureRequestReviewer                     plugin.TValue[*mqlGithubUser]
+	ClosureRequestReviewerComment              plugin.TValue[string]
+	Provider                                   plugin.TValue[string]
+	ProviderSlug                               plugin.TValue[string]
+	Metadata                                   plugin.TValue[map[string]any]
+	PushProtectionBypassRequestComment         plugin.TValue[string]
+	PushProtectionBypassRequestReviewer        plugin.TValue[*mqlGithubUser]
+	PushProtectionBypassRequestReviewerComment plugin.TValue[string]
+	FirstLocationDetected                      plugin.TValue[any]
+	HasMoreLocations                           plugin.TValue[bool]
 }
 
 // createGithubSecretScanningAlert creates a new instance of this resource
@@ -14411,6 +17041,26 @@ func (c *mqlGithubSecretScanningAlert) GetMetadata() *plugin.TValue[map[string]a
 	return plugin.GetOrCompute[map[string]any](&c.Metadata, func() (map[string]any, error) {
 		return c.metadata()
 	})
+}
+
+func (c *mqlGithubSecretScanningAlert) GetPushProtectionBypassRequestComment() *plugin.TValue[string] {
+	return &c.PushProtectionBypassRequestComment
+}
+
+func (c *mqlGithubSecretScanningAlert) GetPushProtectionBypassRequestReviewer() *plugin.TValue[*mqlGithubUser] {
+	return &c.PushProtectionBypassRequestReviewer
+}
+
+func (c *mqlGithubSecretScanningAlert) GetPushProtectionBypassRequestReviewerComment() *plugin.TValue[string] {
+	return &c.PushProtectionBypassRequestReviewerComment
+}
+
+func (c *mqlGithubSecretScanningAlert) GetFirstLocationDetected() *plugin.TValue[any] {
+	return &c.FirstLocationDetected
+}
+
+func (c *mqlGithubSecretScanningAlert) GetHasMoreLocations() *plugin.TValue[bool] {
+	return &c.HasMoreLocations
 }
 
 // mqlGithubCodeScanningAlert for the github.codeScanningAlert resource
@@ -14685,7 +17335,7 @@ func (c *mqlGithubAuditLogEntry) GetAdditionalFields() *plugin.TValue[any] {
 type mqlGithubRunner struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlGithubRunnerInternal it will be used here
+	mqlGithubRunnerInternal
 	Id           plugin.TValue[int64]
 	Name         plugin.TValue[string]
 	Os           plugin.TValue[string]
@@ -14694,6 +17344,8 @@ type mqlGithubRunner struct {
 	Ephemeral    plugin.TValue[bool]
 	Architecture plugin.TValue[string]
 	Labels       plugin.TValue[[]any]
+	Version      plugin.TValue[string]
+	RunnerGroup  plugin.TValue[*mqlGithubOrganizationRunnerGroup]
 }
 
 // createGithubRunner creates a new instance of this resource
@@ -14765,6 +17417,26 @@ func (c *mqlGithubRunner) GetLabels() *plugin.TValue[[]any] {
 	return &c.Labels
 }
 
+func (c *mqlGithubRunner) GetVersion() *plugin.TValue[string] {
+	return &c.Version
+}
+
+func (c *mqlGithubRunner) GetRunnerGroup() *plugin.TValue[*mqlGithubOrganizationRunnerGroup] {
+	return plugin.GetOrCompute[*mqlGithubOrganizationRunnerGroup](&c.RunnerGroup, func() (*mqlGithubOrganizationRunnerGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.runner", c.__id, "runnerGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGithubOrganizationRunnerGroup), nil
+			}
+		}
+
+		return c.runnerGroup()
+	})
+}
+
 // mqlGithubRunnerLabel for the github.runnerLabel resource
 type mqlGithubRunnerLabel struct {
 	MqlRuntime *plugin.Runtime
@@ -14829,19 +17501,21 @@ type mqlGithubEnvironment struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlGithubEnvironmentInternal
-	Id                   plugin.TValue[int64]
-	Name                 plugin.TValue[string]
-	Url                  plugin.TValue[string]
-	HtmlUrl              plugin.TValue[string]
-	WaitTimer            plugin.TValue[int64]
-	CanAdminsBypass      plugin.TValue[bool]
-	CreatedAt            plugin.TValue[*time.Time]
-	UpdatedAt            plugin.TValue[*time.Time]
-	ProtectedBranches    plugin.TValue[bool]
-	CustomBranchPolicies plugin.TValue[bool]
-	ProtectionRules      plugin.TValue[[]any]
-	Secrets              plugin.TValue[[]any]
-	Variables            plugin.TValue[[]any]
+	Id                       plugin.TValue[int64]
+	Name                     plugin.TValue[string]
+	Url                      plugin.TValue[string]
+	HtmlUrl                  plugin.TValue[string]
+	WaitTimer                plugin.TValue[int64]
+	CanAdminsBypass          plugin.TValue[bool]
+	CreatedAt                plugin.TValue[*time.Time]
+	UpdatedAt                plugin.TValue[*time.Time]
+	ProtectedBranches        plugin.TValue[bool]
+	CustomBranchPolicies     plugin.TValue[bool]
+	ProtectionRules          plugin.TValue[[]any]
+	Secrets                  plugin.TValue[[]any]
+	Variables                plugin.TValue[[]any]
+	DeploymentBranchPolicies plugin.TValue[[]any]
+	CustomProtectionRules    plugin.TValue[[]any]
 }
 
 // createGithubEnvironment creates a new instance of this resource
@@ -14955,6 +17629,161 @@ func (c *mqlGithubEnvironment) GetVariables() *plugin.TValue[[]any] {
 
 		return c.variables()
 	})
+}
+
+func (c *mqlGithubEnvironment) GetDeploymentBranchPolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DeploymentBranchPolicies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.environment", c.__id, "deploymentBranchPolicies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.deploymentBranchPolicies()
+	})
+}
+
+func (c *mqlGithubEnvironment) GetCustomProtectionRules() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.CustomProtectionRules, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.environment", c.__id, "customProtectionRules")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.customProtectionRules()
+	})
+}
+
+// mqlGithubEnvironmentBranchPolicy for the github.environmentBranchPolicy resource
+type mqlGithubEnvironmentBranchPolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGithubEnvironmentBranchPolicyInternal it will be used here
+	Id   plugin.TValue[int64]
+	Name plugin.TValue[string]
+	Type plugin.TValue[string]
+}
+
+// createGithubEnvironmentBranchPolicy creates a new instance of this resource
+func createGithubEnvironmentBranchPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGithubEnvironmentBranchPolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("github.environmentBranchPolicy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGithubEnvironmentBranchPolicy) MqlName() string {
+	return "github.environmentBranchPolicy"
+}
+
+func (c *mqlGithubEnvironmentBranchPolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGithubEnvironmentBranchPolicy) GetId() *plugin.TValue[int64] {
+	return &c.Id
+}
+
+func (c *mqlGithubEnvironmentBranchPolicy) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGithubEnvironmentBranchPolicy) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+// mqlGithubEnvironmentCustomProtectionRule for the github.environmentCustomProtectionRule resource
+type mqlGithubEnvironmentCustomProtectionRule struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGithubEnvironmentCustomProtectionRuleInternal it will be used here
+	Id      plugin.TValue[int64]
+	Enabled plugin.TValue[bool]
+	AppId   plugin.TValue[int64]
+	AppSlug plugin.TValue[string]
+}
+
+// createGithubEnvironmentCustomProtectionRule creates a new instance of this resource
+func createGithubEnvironmentCustomProtectionRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGithubEnvironmentCustomProtectionRule{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("github.environmentCustomProtectionRule", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGithubEnvironmentCustomProtectionRule) MqlName() string {
+	return "github.environmentCustomProtectionRule"
+}
+
+func (c *mqlGithubEnvironmentCustomProtectionRule) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGithubEnvironmentCustomProtectionRule) GetId() *plugin.TValue[int64] {
+	return &c.Id
+}
+
+func (c *mqlGithubEnvironmentCustomProtectionRule) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlGithubEnvironmentCustomProtectionRule) GetAppId() *plugin.TValue[int64] {
+	return &c.AppId
+}
+
+func (c *mqlGithubEnvironmentCustomProtectionRule) GetAppSlug() *plugin.TValue[string] {
+	return &c.AppSlug
 }
 
 // mqlGithubEnvironmentProtectionRule for the github.environmentProtectionRule resource
@@ -16054,4 +18883,1593 @@ func (c *mqlGithubMetadata) GetEnterpriseServer() *plugin.TValue[bool] {
 
 func (c *mqlGithubMetadata) GetVersion() *plugin.TValue[string] {
 	return &c.Version
+}
+
+// mqlGithubCodeSecurityConfiguration for the github.codeSecurityConfiguration resource
+type mqlGithubCodeSecurityConfiguration struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlGithubCodeSecurityConfigurationInternal
+	Id                                            plugin.TValue[int64]
+	Name                                          plugin.TValue[string]
+	Description                                   plugin.TValue[string]
+	TargetType                                    plugin.TValue[string]
+	Enforcement                                   plugin.TValue[string]
+	AdvancedSecurity                              plugin.TValue[string]
+	CodeSecurity                                  plugin.TValue[string]
+	SecretProtection                              plugin.TValue[string]
+	DependencyGraph                               plugin.TValue[string]
+	DependencyGraphAutosubmitAction               plugin.TValue[string]
+	DependencyGraphAutosubmitActionLabeledRunners plugin.TValue[bool]
+	DependabotAlerts                              plugin.TValue[string]
+	DependabotSecurityUpdates                     plugin.TValue[string]
+	DependabotDelegatedAlertDismissal             plugin.TValue[string]
+	CodeScanningDefaultSetup                      plugin.TValue[string]
+	CodeScanningDefaultSetupRunnerType            plugin.TValue[string]
+	CodeScanningDefaultSetupRunnerLabel           plugin.TValue[string]
+	CodeScanningAllowAdvanced                     plugin.TValue[bool]
+	CodeScanningDelegatedAlertDismissal           plugin.TValue[string]
+	SecretScanning                                plugin.TValue[string]
+	SecretScanningPushProtection                  plugin.TValue[string]
+	SecretScanningDelegatedBypass                 plugin.TValue[string]
+	SecretScanningDelegatedBypassReviewers        plugin.TValue[[]any]
+	SecretScanningDelegatedBypassTeams            plugin.TValue[[]any]
+	SecretScanningValidityChecks                  plugin.TValue[string]
+	SecretScanningNonProviderPatterns             plugin.TValue[string]
+	SecretScanningGenericSecrets                  plugin.TValue[string]
+	SecretScanningDelegatedAlertDismissal         plugin.TValue[string]
+	SecretScanningExtendedMetadata                plugin.TValue[string]
+	PrivateVulnerabilityReporting                 plugin.TValue[string]
+	CreatedAt                                     plugin.TValue[*time.Time]
+	UpdatedAt                                     plugin.TValue[*time.Time]
+	DefaultForNewRepos                            plugin.TValue[string]
+	Repositories                                  plugin.TValue[[]any]
+}
+
+// createGithubCodeSecurityConfiguration creates a new instance of this resource
+func createGithubCodeSecurityConfiguration(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGithubCodeSecurityConfiguration{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("github.codeSecurityConfiguration", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) MqlName() string {
+	return "github.codeSecurityConfiguration"
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetId() *plugin.TValue[int64] {
+	return &c.Id
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetTargetType() *plugin.TValue[string] {
+	return &c.TargetType
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetEnforcement() *plugin.TValue[string] {
+	return &c.Enforcement
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetAdvancedSecurity() *plugin.TValue[string] {
+	return &c.AdvancedSecurity
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetCodeSecurity() *plugin.TValue[string] {
+	return &c.CodeSecurity
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetSecretProtection() *plugin.TValue[string] {
+	return &c.SecretProtection
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetDependencyGraph() *plugin.TValue[string] {
+	return &c.DependencyGraph
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetDependencyGraphAutosubmitAction() *plugin.TValue[string] {
+	return &c.DependencyGraphAutosubmitAction
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetDependencyGraphAutosubmitActionLabeledRunners() *plugin.TValue[bool] {
+	return &c.DependencyGraphAutosubmitActionLabeledRunners
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetDependabotAlerts() *plugin.TValue[string] {
+	return &c.DependabotAlerts
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetDependabotSecurityUpdates() *plugin.TValue[string] {
+	return &c.DependabotSecurityUpdates
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetDependabotDelegatedAlertDismissal() *plugin.TValue[string] {
+	return &c.DependabotDelegatedAlertDismissal
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetCodeScanningDefaultSetup() *plugin.TValue[string] {
+	return &c.CodeScanningDefaultSetup
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetCodeScanningDefaultSetupRunnerType() *plugin.TValue[string] {
+	return &c.CodeScanningDefaultSetupRunnerType
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetCodeScanningDefaultSetupRunnerLabel() *plugin.TValue[string] {
+	return &c.CodeScanningDefaultSetupRunnerLabel
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetCodeScanningAllowAdvanced() *plugin.TValue[bool] {
+	return &c.CodeScanningAllowAdvanced
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetCodeScanningDelegatedAlertDismissal() *plugin.TValue[string] {
+	return &c.CodeScanningDelegatedAlertDismissal
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetSecretScanning() *plugin.TValue[string] {
+	return &c.SecretScanning
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetSecretScanningPushProtection() *plugin.TValue[string] {
+	return &c.SecretScanningPushProtection
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetSecretScanningDelegatedBypass() *plugin.TValue[string] {
+	return &c.SecretScanningDelegatedBypass
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetSecretScanningDelegatedBypassReviewers() *plugin.TValue[[]any] {
+	return &c.SecretScanningDelegatedBypassReviewers
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetSecretScanningDelegatedBypassTeams() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SecretScanningDelegatedBypassTeams, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.codeSecurityConfiguration", c.__id, "secretScanningDelegatedBypassTeams")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.secretScanningDelegatedBypassTeams()
+	})
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetSecretScanningValidityChecks() *plugin.TValue[string] {
+	return &c.SecretScanningValidityChecks
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetSecretScanningNonProviderPatterns() *plugin.TValue[string] {
+	return &c.SecretScanningNonProviderPatterns
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetSecretScanningGenericSecrets() *plugin.TValue[string] {
+	return &c.SecretScanningGenericSecrets
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetSecretScanningDelegatedAlertDismissal() *plugin.TValue[string] {
+	return &c.SecretScanningDelegatedAlertDismissal
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetSecretScanningExtendedMetadata() *plugin.TValue[string] {
+	return &c.SecretScanningExtendedMetadata
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetPrivateVulnerabilityReporting() *plugin.TValue[string] {
+	return &c.PrivateVulnerabilityReporting
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetDefaultForNewRepos() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.DefaultForNewRepos, func() (string, error) {
+		return c.defaultForNewRepos()
+	})
+}
+
+func (c *mqlGithubCodeSecurityConfiguration) GetRepositories() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Repositories, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.codeSecurityConfiguration", c.__id, "repositories")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.repositories()
+	})
+}
+
+// mqlGithubCodeSecurityConfigurationRepository for the github.codeSecurityConfigurationRepository resource
+type mqlGithubCodeSecurityConfigurationRepository struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGithubCodeSecurityConfigurationRepositoryInternal it will be used here
+	Repository plugin.TValue[*mqlGithubRepository]
+	Status     plugin.TValue[string]
+}
+
+// createGithubCodeSecurityConfigurationRepository creates a new instance of this resource
+func createGithubCodeSecurityConfigurationRepository(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGithubCodeSecurityConfigurationRepository{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("github.codeSecurityConfigurationRepository", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGithubCodeSecurityConfigurationRepository) MqlName() string {
+	return "github.codeSecurityConfigurationRepository"
+}
+
+func (c *mqlGithubCodeSecurityConfigurationRepository) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGithubCodeSecurityConfigurationRepository) GetRepository() *plugin.TValue[*mqlGithubRepository] {
+	return &c.Repository
+}
+
+func (c *mqlGithubCodeSecurityConfigurationRepository) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+// mqlGithubSecretScanningCustomPattern for the github.secretScanningCustomPattern resource
+type mqlGithubSecretScanningCustomPattern struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGithubSecretScanningCustomPatternInternal it will be used here
+	Id                    plugin.TValue[int64]
+	Name                  plugin.TValue[string]
+	Slug                  plugin.TValue[string]
+	Pattern               plugin.TValue[string]
+	State                 plugin.TValue[string]
+	PushProtectionEnabled plugin.TValue[bool]
+	StartDelimiter        plugin.TValue[string]
+	EndDelimiter          plugin.TValue[string]
+	MustMatch             plugin.TValue[[]any]
+	MustNotMatch          plugin.TValue[[]any]
+	Scope                 plugin.TValue[string]
+	CreatedAt             plugin.TValue[*time.Time]
+	UpdatedAt             plugin.TValue[*time.Time]
+}
+
+// createGithubSecretScanningCustomPattern creates a new instance of this resource
+func createGithubSecretScanningCustomPattern(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGithubSecretScanningCustomPattern{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("github.secretScanningCustomPattern", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGithubSecretScanningCustomPattern) MqlName() string {
+	return "github.secretScanningCustomPattern"
+}
+
+func (c *mqlGithubSecretScanningCustomPattern) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGithubSecretScanningCustomPattern) GetId() *plugin.TValue[int64] {
+	return &c.Id
+}
+
+func (c *mqlGithubSecretScanningCustomPattern) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGithubSecretScanningCustomPattern) GetSlug() *plugin.TValue[string] {
+	return &c.Slug
+}
+
+func (c *mqlGithubSecretScanningCustomPattern) GetPattern() *plugin.TValue[string] {
+	return &c.Pattern
+}
+
+func (c *mqlGithubSecretScanningCustomPattern) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlGithubSecretScanningCustomPattern) GetPushProtectionEnabled() *plugin.TValue[bool] {
+	return &c.PushProtectionEnabled
+}
+
+func (c *mqlGithubSecretScanningCustomPattern) GetStartDelimiter() *plugin.TValue[string] {
+	return &c.StartDelimiter
+}
+
+func (c *mqlGithubSecretScanningCustomPattern) GetEndDelimiter() *plugin.TValue[string] {
+	return &c.EndDelimiter
+}
+
+func (c *mqlGithubSecretScanningCustomPattern) GetMustMatch() *plugin.TValue[[]any] {
+	return &c.MustMatch
+}
+
+func (c *mqlGithubSecretScanningCustomPattern) GetMustNotMatch() *plugin.TValue[[]any] {
+	return &c.MustNotMatch
+}
+
+func (c *mqlGithubSecretScanningCustomPattern) GetScope() *plugin.TValue[string] {
+	return &c.Scope
+}
+
+func (c *mqlGithubSecretScanningCustomPattern) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlGithubSecretScanningCustomPattern) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+// mqlGithubSecretScanningPatternConfiguration for the github.secretScanningPatternConfiguration resource
+type mqlGithubSecretScanningPatternConfiguration struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGithubSecretScanningPatternConfigurationInternal it will be used here
+	Kind                 plugin.TValue[string]
+	TokenType            plugin.TValue[string]
+	Slug                 plugin.TValue[string]
+	DisplayName          plugin.TValue[string]
+	CustomPatternVersion plugin.TValue[string]
+	Setting              plugin.TValue[string]
+	DefaultSetting       plugin.TValue[string]
+	EnterpriseSetting    plugin.TValue[string]
+	AlertTotal           plugin.TValue[int64]
+	AlertTotalPercentage plugin.TValue[int64]
+	FalsePositives       plugin.TValue[int64]
+	FalsePositiveRate    plugin.TValue[int64]
+	BypassRate           plugin.TValue[int64]
+}
+
+// createGithubSecretScanningPatternConfiguration creates a new instance of this resource
+func createGithubSecretScanningPatternConfiguration(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGithubSecretScanningPatternConfiguration{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("github.secretScanningPatternConfiguration", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGithubSecretScanningPatternConfiguration) MqlName() string {
+	return "github.secretScanningPatternConfiguration"
+}
+
+func (c *mqlGithubSecretScanningPatternConfiguration) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGithubSecretScanningPatternConfiguration) GetKind() *plugin.TValue[string] {
+	return &c.Kind
+}
+
+func (c *mqlGithubSecretScanningPatternConfiguration) GetTokenType() *plugin.TValue[string] {
+	return &c.TokenType
+}
+
+func (c *mqlGithubSecretScanningPatternConfiguration) GetSlug() *plugin.TValue[string] {
+	return &c.Slug
+}
+
+func (c *mqlGithubSecretScanningPatternConfiguration) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlGithubSecretScanningPatternConfiguration) GetCustomPatternVersion() *plugin.TValue[string] {
+	return &c.CustomPatternVersion
+}
+
+func (c *mqlGithubSecretScanningPatternConfiguration) GetSetting() *plugin.TValue[string] {
+	return &c.Setting
+}
+
+func (c *mqlGithubSecretScanningPatternConfiguration) GetDefaultSetting() *plugin.TValue[string] {
+	return &c.DefaultSetting
+}
+
+func (c *mqlGithubSecretScanningPatternConfiguration) GetEnterpriseSetting() *plugin.TValue[string] {
+	return &c.EnterpriseSetting
+}
+
+func (c *mqlGithubSecretScanningPatternConfiguration) GetAlertTotal() *plugin.TValue[int64] {
+	return &c.AlertTotal
+}
+
+func (c *mqlGithubSecretScanningPatternConfiguration) GetAlertTotalPercentage() *plugin.TValue[int64] {
+	return &c.AlertTotalPercentage
+}
+
+func (c *mqlGithubSecretScanningPatternConfiguration) GetFalsePositives() *plugin.TValue[int64] {
+	return &c.FalsePositives
+}
+
+func (c *mqlGithubSecretScanningPatternConfiguration) GetFalsePositiveRate() *plugin.TValue[int64] {
+	return &c.FalsePositiveRate
+}
+
+func (c *mqlGithubSecretScanningPatternConfiguration) GetBypassRate() *plugin.TValue[int64] {
+	return &c.BypassRate
+}
+
+// mqlGithubRepositorySecurityAdvisory for the github.repositorySecurityAdvisory resource
+type mqlGithubRepositorySecurityAdvisory struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlGithubRepositorySecurityAdvisoryInternal
+	GhsaId             plugin.TValue[string]
+	CveId              plugin.TValue[string]
+	Summary            plugin.TValue[string]
+	Description        plugin.TValue[string]
+	State              plugin.TValue[string]
+	Severity           plugin.TValue[string]
+	CvssScore          plugin.TValue[float64]
+	CvssVector         plugin.TValue[string]
+	CweIds             plugin.TValue[[]any]
+	CreatedAt          plugin.TValue[*time.Time]
+	UpdatedAt          plugin.TValue[*time.Time]
+	PublishedAt        plugin.TValue[*time.Time]
+	ClosedAt           plugin.TValue[*time.Time]
+	WithdrawnAt        plugin.TValue[*time.Time]
+	Author             plugin.TValue[*mqlGithubUser]
+	Publisher          plugin.TValue[*mqlGithubUser]
+	CollaboratingUsers plugin.TValue[[]any]
+	CollaboratingTeams plugin.TValue[[]any]
+	PrivateFork        plugin.TValue[*mqlGithubRepository]
+}
+
+// createGithubRepositorySecurityAdvisory creates a new instance of this resource
+func createGithubRepositorySecurityAdvisory(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGithubRepositorySecurityAdvisory{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("github.repositorySecurityAdvisory", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGithubRepositorySecurityAdvisory) MqlName() string {
+	return "github.repositorySecurityAdvisory"
+}
+
+func (c *mqlGithubRepositorySecurityAdvisory) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGithubRepositorySecurityAdvisory) GetGhsaId() *plugin.TValue[string] {
+	return &c.GhsaId
+}
+
+func (c *mqlGithubRepositorySecurityAdvisory) GetCveId() *plugin.TValue[string] {
+	return &c.CveId
+}
+
+func (c *mqlGithubRepositorySecurityAdvisory) GetSummary() *plugin.TValue[string] {
+	return &c.Summary
+}
+
+func (c *mqlGithubRepositorySecurityAdvisory) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlGithubRepositorySecurityAdvisory) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlGithubRepositorySecurityAdvisory) GetSeverity() *plugin.TValue[string] {
+	return &c.Severity
+}
+
+func (c *mqlGithubRepositorySecurityAdvisory) GetCvssScore() *plugin.TValue[float64] {
+	return &c.CvssScore
+}
+
+func (c *mqlGithubRepositorySecurityAdvisory) GetCvssVector() *plugin.TValue[string] {
+	return &c.CvssVector
+}
+
+func (c *mqlGithubRepositorySecurityAdvisory) GetCweIds() *plugin.TValue[[]any] {
+	return &c.CweIds
+}
+
+func (c *mqlGithubRepositorySecurityAdvisory) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlGithubRepositorySecurityAdvisory) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlGithubRepositorySecurityAdvisory) GetPublishedAt() *plugin.TValue[*time.Time] {
+	return &c.PublishedAt
+}
+
+func (c *mqlGithubRepositorySecurityAdvisory) GetClosedAt() *plugin.TValue[*time.Time] {
+	return &c.ClosedAt
+}
+
+func (c *mqlGithubRepositorySecurityAdvisory) GetWithdrawnAt() *plugin.TValue[*time.Time] {
+	return &c.WithdrawnAt
+}
+
+func (c *mqlGithubRepositorySecurityAdvisory) GetAuthor() *plugin.TValue[*mqlGithubUser] {
+	return plugin.GetOrCompute[*mqlGithubUser](&c.Author, func() (*mqlGithubUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.repositorySecurityAdvisory", c.__id, "author")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGithubUser), nil
+			}
+		}
+
+		return c.author()
+	})
+}
+
+func (c *mqlGithubRepositorySecurityAdvisory) GetPublisher() *plugin.TValue[*mqlGithubUser] {
+	return plugin.GetOrCompute[*mqlGithubUser](&c.Publisher, func() (*mqlGithubUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.repositorySecurityAdvisory", c.__id, "publisher")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGithubUser), nil
+			}
+		}
+
+		return c.publisher()
+	})
+}
+
+func (c *mqlGithubRepositorySecurityAdvisory) GetCollaboratingUsers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.CollaboratingUsers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.repositorySecurityAdvisory", c.__id, "collaboratingUsers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.collaboratingUsers()
+	})
+}
+
+func (c *mqlGithubRepositorySecurityAdvisory) GetCollaboratingTeams() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.CollaboratingTeams, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.repositorySecurityAdvisory", c.__id, "collaboratingTeams")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.collaboratingTeams()
+	})
+}
+
+func (c *mqlGithubRepositorySecurityAdvisory) GetPrivateFork() *plugin.TValue[*mqlGithubRepository] {
+	return plugin.GetOrCompute[*mqlGithubRepository](&c.PrivateFork, func() (*mqlGithubRepository, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.repositorySecurityAdvisory", c.__id, "privateFork")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGithubRepository), nil
+			}
+		}
+
+		return c.privateFork()
+	})
+}
+
+// mqlGithubCodespacesSecret for the github.codespacesSecret resource
+type mqlGithubCodespacesSecret struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlGithubCodespacesSecretInternal
+	Name                 plugin.TValue[string]
+	Scope                plugin.TValue[string]
+	OrganizationName     plugin.TValue[string]
+	RepositoryName       plugin.TValue[string]
+	RepositoryOwner      plugin.TValue[string]
+	CreatedAt            plugin.TValue[*time.Time]
+	UpdatedAt            plugin.TValue[*time.Time]
+	Visibility           plugin.TValue[string]
+	SelectedRepositories plugin.TValue[[]any]
+}
+
+// createGithubCodespacesSecret creates a new instance of this resource
+func createGithubCodespacesSecret(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGithubCodespacesSecret{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("github.codespacesSecret", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGithubCodespacesSecret) MqlName() string {
+	return "github.codespacesSecret"
+}
+
+func (c *mqlGithubCodespacesSecret) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGithubCodespacesSecret) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGithubCodespacesSecret) GetScope() *plugin.TValue[string] {
+	return &c.Scope
+}
+
+func (c *mqlGithubCodespacesSecret) GetOrganizationName() *plugin.TValue[string] {
+	return &c.OrganizationName
+}
+
+func (c *mqlGithubCodespacesSecret) GetRepositoryName() *plugin.TValue[string] {
+	return &c.RepositoryName
+}
+
+func (c *mqlGithubCodespacesSecret) GetRepositoryOwner() *plugin.TValue[string] {
+	return &c.RepositoryOwner
+}
+
+func (c *mqlGithubCodespacesSecret) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlGithubCodespacesSecret) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlGithubCodespacesSecret) GetVisibility() *plugin.TValue[string] {
+	return &c.Visibility
+}
+
+func (c *mqlGithubCodespacesSecret) GetSelectedRepositories() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SelectedRepositories, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.codespacesSecret", c.__id, "selectedRepositories")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.selectedRepositories()
+	})
+}
+
+// mqlGithubHostedRunner for the github.hostedRunner resource
+type mqlGithubHostedRunner struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlGithubHostedRunnerInternal
+	Id               plugin.TValue[int64]
+	Name             plugin.TValue[string]
+	Platform         plugin.TValue[string]
+	Status           plugin.TValue[string]
+	ImageId          plugin.TValue[string]
+	ImageDisplayName plugin.TValue[string]
+	ImageSource      plugin.TValue[string]
+	ImageVersion     plugin.TValue[string]
+	ImageSizeGb      plugin.TValue[int64]
+	ImageGen         plugin.TValue[bool]
+	MachineSize      plugin.TValue[string]
+	CpuCores         plugin.TValue[int64]
+	MemoryGb         plugin.TValue[int64]
+	StorageGb        plugin.TValue[int64]
+	MaximumRunners   plugin.TValue[int64]
+	PublicIpEnabled  plugin.TValue[bool]
+	PublicIps        plugin.TValue[[]any]
+	LastActiveOn     plugin.TValue[*time.Time]
+	RunnerGroup      plugin.TValue[*mqlGithubOrganizationRunnerGroup]
+}
+
+// createGithubHostedRunner creates a new instance of this resource
+func createGithubHostedRunner(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGithubHostedRunner{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("github.hostedRunner", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGithubHostedRunner) MqlName() string {
+	return "github.hostedRunner"
+}
+
+func (c *mqlGithubHostedRunner) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGithubHostedRunner) GetId() *plugin.TValue[int64] {
+	return &c.Id
+}
+
+func (c *mqlGithubHostedRunner) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGithubHostedRunner) GetPlatform() *plugin.TValue[string] {
+	return &c.Platform
+}
+
+func (c *mqlGithubHostedRunner) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlGithubHostedRunner) GetImageId() *plugin.TValue[string] {
+	return &c.ImageId
+}
+
+func (c *mqlGithubHostedRunner) GetImageDisplayName() *plugin.TValue[string] {
+	return &c.ImageDisplayName
+}
+
+func (c *mqlGithubHostedRunner) GetImageSource() *plugin.TValue[string] {
+	return &c.ImageSource
+}
+
+func (c *mqlGithubHostedRunner) GetImageVersion() *plugin.TValue[string] {
+	return &c.ImageVersion
+}
+
+func (c *mqlGithubHostedRunner) GetImageSizeGb() *plugin.TValue[int64] {
+	return &c.ImageSizeGb
+}
+
+func (c *mqlGithubHostedRunner) GetImageGen() *plugin.TValue[bool] {
+	return &c.ImageGen
+}
+
+func (c *mqlGithubHostedRunner) GetMachineSize() *plugin.TValue[string] {
+	return &c.MachineSize
+}
+
+func (c *mqlGithubHostedRunner) GetCpuCores() *plugin.TValue[int64] {
+	return &c.CpuCores
+}
+
+func (c *mqlGithubHostedRunner) GetMemoryGb() *plugin.TValue[int64] {
+	return &c.MemoryGb
+}
+
+func (c *mqlGithubHostedRunner) GetStorageGb() *plugin.TValue[int64] {
+	return &c.StorageGb
+}
+
+func (c *mqlGithubHostedRunner) GetMaximumRunners() *plugin.TValue[int64] {
+	return &c.MaximumRunners
+}
+
+func (c *mqlGithubHostedRunner) GetPublicIpEnabled() *plugin.TValue[bool] {
+	return &c.PublicIpEnabled
+}
+
+func (c *mqlGithubHostedRunner) GetPublicIps() *plugin.TValue[[]any] {
+	return &c.PublicIps
+}
+
+func (c *mqlGithubHostedRunner) GetLastActiveOn() *plugin.TValue[*time.Time] {
+	return &c.LastActiveOn
+}
+
+func (c *mqlGithubHostedRunner) GetRunnerGroup() *plugin.TValue[*mqlGithubOrganizationRunnerGroup] {
+	return plugin.GetOrCompute[*mqlGithubOrganizationRunnerGroup](&c.RunnerGroup, func() (*mqlGithubOrganizationRunnerGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.hostedRunner", c.__id, "runnerGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGithubOrganizationRunnerGroup), nil
+			}
+		}
+
+		return c.runnerGroup()
+	})
+}
+
+// mqlGithubNetworkConfiguration for the github.networkConfiguration resource
+type mqlGithubNetworkConfiguration struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGithubNetworkConfigurationInternal it will be used here
+	Id                 plugin.TValue[string]
+	Name               plugin.TValue[string]
+	ComputeService     plugin.TValue[string]
+	NetworkSettingsIds plugin.TValue[[]any]
+	CreatedOn          plugin.TValue[*time.Time]
+}
+
+// createGithubNetworkConfiguration creates a new instance of this resource
+func createGithubNetworkConfiguration(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGithubNetworkConfiguration{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("github.networkConfiguration", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGithubNetworkConfiguration) MqlName() string {
+	return "github.networkConfiguration"
+}
+
+func (c *mqlGithubNetworkConfiguration) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGithubNetworkConfiguration) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlGithubNetworkConfiguration) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGithubNetworkConfiguration) GetComputeService() *plugin.TValue[string] {
+	return &c.ComputeService
+}
+
+func (c *mqlGithubNetworkConfiguration) GetNetworkSettingsIds() *plugin.TValue[[]any] {
+	return &c.NetworkSettingsIds
+}
+
+func (c *mqlGithubNetworkConfiguration) GetCreatedOn() *plugin.TValue[*time.Time] {
+	return &c.CreatedOn
+}
+
+// mqlGithubPrivateRegistry for the github.privateRegistry resource
+type mqlGithubPrivateRegistry struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlGithubPrivateRegistryInternal
+	Name                     plugin.TValue[string]
+	RegistryType             plugin.TValue[string]
+	Url                      plugin.TValue[string]
+	AuthType                 plugin.TValue[string]
+	Username                 plugin.TValue[string]
+	ReplacesBase             plugin.TValue[bool]
+	Visibility               plugin.TValue[string]
+	AzureTenantId            plugin.TValue[string]
+	AzureClientId            plugin.TValue[string]
+	AwsRegion                plugin.TValue[string]
+	AwsAccountId             plugin.TValue[string]
+	AwsRoleName              plugin.TValue[string]
+	CodeArtifactDomain       plugin.TValue[string]
+	CodeArtifactDomainOwner  plugin.TValue[string]
+	JfrogOidcProviderName    plugin.TValue[string]
+	JfrogIdentityMappingName plugin.TValue[string]
+	OidcAudience             plugin.TValue[string]
+	CreatedAt                plugin.TValue[*time.Time]
+	UpdatedAt                plugin.TValue[*time.Time]
+	SelectedRepositories     plugin.TValue[[]any]
+}
+
+// createGithubPrivateRegistry creates a new instance of this resource
+func createGithubPrivateRegistry(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGithubPrivateRegistry{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("github.privateRegistry", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGithubPrivateRegistry) MqlName() string {
+	return "github.privateRegistry"
+}
+
+func (c *mqlGithubPrivateRegistry) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGithubPrivateRegistry) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGithubPrivateRegistry) GetRegistryType() *plugin.TValue[string] {
+	return &c.RegistryType
+}
+
+func (c *mqlGithubPrivateRegistry) GetUrl() *plugin.TValue[string] {
+	return &c.Url
+}
+
+func (c *mqlGithubPrivateRegistry) GetAuthType() *plugin.TValue[string] {
+	return &c.AuthType
+}
+
+func (c *mqlGithubPrivateRegistry) GetUsername() *plugin.TValue[string] {
+	return &c.Username
+}
+
+func (c *mqlGithubPrivateRegistry) GetReplacesBase() *plugin.TValue[bool] {
+	return &c.ReplacesBase
+}
+
+func (c *mqlGithubPrivateRegistry) GetVisibility() *plugin.TValue[string] {
+	return &c.Visibility
+}
+
+func (c *mqlGithubPrivateRegistry) GetAzureTenantId() *plugin.TValue[string] {
+	return &c.AzureTenantId
+}
+
+func (c *mqlGithubPrivateRegistry) GetAzureClientId() *plugin.TValue[string] {
+	return &c.AzureClientId
+}
+
+func (c *mqlGithubPrivateRegistry) GetAwsRegion() *plugin.TValue[string] {
+	return &c.AwsRegion
+}
+
+func (c *mqlGithubPrivateRegistry) GetAwsAccountId() *plugin.TValue[string] {
+	return &c.AwsAccountId
+}
+
+func (c *mqlGithubPrivateRegistry) GetAwsRoleName() *plugin.TValue[string] {
+	return &c.AwsRoleName
+}
+
+func (c *mqlGithubPrivateRegistry) GetCodeArtifactDomain() *plugin.TValue[string] {
+	return &c.CodeArtifactDomain
+}
+
+func (c *mqlGithubPrivateRegistry) GetCodeArtifactDomainOwner() *plugin.TValue[string] {
+	return &c.CodeArtifactDomainOwner
+}
+
+func (c *mqlGithubPrivateRegistry) GetJfrogOidcProviderName() *plugin.TValue[string] {
+	return &c.JfrogOidcProviderName
+}
+
+func (c *mqlGithubPrivateRegistry) GetJfrogIdentityMappingName() *plugin.TValue[string] {
+	return &c.JfrogIdentityMappingName
+}
+
+func (c *mqlGithubPrivateRegistry) GetOidcAudience() *plugin.TValue[string] {
+	return &c.OidcAudience
+}
+
+func (c *mqlGithubPrivateRegistry) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlGithubPrivateRegistry) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlGithubPrivateRegistry) GetSelectedRepositories() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SelectedRepositories, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.privateRegistry", c.__id, "selectedRepositories")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.selectedRepositories()
+	})
+}
+
+// mqlGithubCodespace for the github.codespace resource
+type mqlGithubCodespace struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlGithubCodespaceInternal
+	Id                     plugin.TValue[int64]
+	Name                   plugin.TValue[string]
+	DisplayName            plugin.TValue[string]
+	State                  plugin.TValue[string]
+	MachineName            plugin.TValue[string]
+	MachineDisplayName     plugin.TValue[string]
+	MachineOperatingSystem plugin.TValue[string]
+	MachineCpus            plugin.TValue[int64]
+	MachineMemoryInBytes   plugin.TValue[int64]
+	MachineStorageInBytes  plugin.TValue[int64]
+	DevcontainerPath       plugin.TValue[string]
+	Prebuild               plugin.TValue[bool]
+	IdleTimeoutMinutes     plugin.TValue[int64]
+	RetentionPeriodMinutes plugin.TValue[int64]
+	RetentionExpiresAt     plugin.TValue[*time.Time]
+	CreatedAt              plugin.TValue[*time.Time]
+	UpdatedAt              plugin.TValue[*time.Time]
+	LastUsedAt             plugin.TValue[*time.Time]
+	Owner                  plugin.TValue[*mqlGithubUser]
+	BillableOwner          plugin.TValue[*mqlGithubUser]
+	Repository             plugin.TValue[*mqlGithubRepository]
+}
+
+// createGithubCodespace creates a new instance of this resource
+func createGithubCodespace(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGithubCodespace{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("github.codespace", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGithubCodespace) MqlName() string {
+	return "github.codespace"
+}
+
+func (c *mqlGithubCodespace) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGithubCodespace) GetId() *plugin.TValue[int64] {
+	return &c.Id
+}
+
+func (c *mqlGithubCodespace) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGithubCodespace) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlGithubCodespace) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlGithubCodespace) GetMachineName() *plugin.TValue[string] {
+	return &c.MachineName
+}
+
+func (c *mqlGithubCodespace) GetMachineDisplayName() *plugin.TValue[string] {
+	return &c.MachineDisplayName
+}
+
+func (c *mqlGithubCodespace) GetMachineOperatingSystem() *plugin.TValue[string] {
+	return &c.MachineOperatingSystem
+}
+
+func (c *mqlGithubCodespace) GetMachineCpus() *plugin.TValue[int64] {
+	return &c.MachineCpus
+}
+
+func (c *mqlGithubCodespace) GetMachineMemoryInBytes() *plugin.TValue[int64] {
+	return &c.MachineMemoryInBytes
+}
+
+func (c *mqlGithubCodespace) GetMachineStorageInBytes() *plugin.TValue[int64] {
+	return &c.MachineStorageInBytes
+}
+
+func (c *mqlGithubCodespace) GetDevcontainerPath() *plugin.TValue[string] {
+	return &c.DevcontainerPath
+}
+
+func (c *mqlGithubCodespace) GetPrebuild() *plugin.TValue[bool] {
+	return &c.Prebuild
+}
+
+func (c *mqlGithubCodespace) GetIdleTimeoutMinutes() *plugin.TValue[int64] {
+	return &c.IdleTimeoutMinutes
+}
+
+func (c *mqlGithubCodespace) GetRetentionPeriodMinutes() *plugin.TValue[int64] {
+	return &c.RetentionPeriodMinutes
+}
+
+func (c *mqlGithubCodespace) GetRetentionExpiresAt() *plugin.TValue[*time.Time] {
+	return &c.RetentionExpiresAt
+}
+
+func (c *mqlGithubCodespace) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlGithubCodespace) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlGithubCodespace) GetLastUsedAt() *plugin.TValue[*time.Time] {
+	return &c.LastUsedAt
+}
+
+func (c *mqlGithubCodespace) GetOwner() *plugin.TValue[*mqlGithubUser] {
+	return plugin.GetOrCompute[*mqlGithubUser](&c.Owner, func() (*mqlGithubUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.codespace", c.__id, "owner")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGithubUser), nil
+			}
+		}
+
+		return c.owner()
+	})
+}
+
+func (c *mqlGithubCodespace) GetBillableOwner() *plugin.TValue[*mqlGithubUser] {
+	return plugin.GetOrCompute[*mqlGithubUser](&c.BillableOwner, func() (*mqlGithubUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.codespace", c.__id, "billableOwner")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGithubUser), nil
+			}
+		}
+
+		return c.billableOwner()
+	})
+}
+
+func (c *mqlGithubCodespace) GetRepository() *plugin.TValue[*mqlGithubRepository] {
+	return plugin.GetOrCompute[*mqlGithubRepository](&c.Repository, func() (*mqlGithubRepository, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.codespace", c.__id, "repository")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGithubRepository), nil
+			}
+		}
+
+		return c.repository()
+	})
+}
+
+// mqlGithubRepositoryInvitation for the github.repository.invitation resource
+type mqlGithubRepositoryInvitation struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlGithubRepositoryInvitationInternal
+	Id          plugin.TValue[int64]
+	Permissions plugin.TValue[string]
+	CreatedAt   plugin.TValue[*time.Time]
+	Expired     plugin.TValue[bool]
+	Invitee     plugin.TValue[*mqlGithubUser]
+	Inviter     plugin.TValue[*mqlGithubUser]
+}
+
+// createGithubRepositoryInvitation creates a new instance of this resource
+func createGithubRepositoryInvitation(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGithubRepositoryInvitation{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("github.repository.invitation", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGithubRepositoryInvitation) MqlName() string {
+	return "github.repository.invitation"
+}
+
+func (c *mqlGithubRepositoryInvitation) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGithubRepositoryInvitation) GetId() *plugin.TValue[int64] {
+	return &c.Id
+}
+
+func (c *mqlGithubRepositoryInvitation) GetPermissions() *plugin.TValue[string] {
+	return &c.Permissions
+}
+
+func (c *mqlGithubRepositoryInvitation) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlGithubRepositoryInvitation) GetExpired() *plugin.TValue[bool] {
+	return &c.Expired
+}
+
+func (c *mqlGithubRepositoryInvitation) GetInvitee() *plugin.TValue[*mqlGithubUser] {
+	return plugin.GetOrCompute[*mqlGithubUser](&c.Invitee, func() (*mqlGithubUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.repository.invitation", c.__id, "invitee")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGithubUser), nil
+			}
+		}
+
+		return c.invitee()
+	})
+}
+
+func (c *mqlGithubRepositoryInvitation) GetInviter() *plugin.TValue[*mqlGithubUser] {
+	return plugin.GetOrCompute[*mqlGithubUser](&c.Inviter, func() (*mqlGithubUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("github.repository.invitation", c.__id, "inviter")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGithubUser), nil
+			}
+		}
+
+		return c.inviter()
+	})
+}
+
+// mqlGithubTeamExternalGroup for the github.team.externalGroup resource
+type mqlGithubTeamExternalGroup struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGithubTeamExternalGroupInternal it will be used here
+	Id        plugin.TValue[int64]
+	Name      plugin.TValue[string]
+	UpdatedAt plugin.TValue[*time.Time]
+}
+
+// createGithubTeamExternalGroup creates a new instance of this resource
+func createGithubTeamExternalGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGithubTeamExternalGroup{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("github.team.externalGroup", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGithubTeamExternalGroup) MqlName() string {
+	return "github.team.externalGroup"
+}
+
+func (c *mqlGithubTeamExternalGroup) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGithubTeamExternalGroup) GetId() *plugin.TValue[int64] {
+	return &c.Id
+}
+
+func (c *mqlGithubTeamExternalGroup) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGithubTeamExternalGroup) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+// mqlGithubTeamIdpGroup for the github.team.idpGroup resource
+type mqlGithubTeamIdpGroup struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGithubTeamIdpGroupInternal it will be used here
+	Id          plugin.TValue[string]
+	Name        plugin.TValue[string]
+	Description plugin.TValue[string]
+}
+
+// createGithubTeamIdpGroup creates a new instance of this resource
+func createGithubTeamIdpGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGithubTeamIdpGroup{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("github.team.idpGroup", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGithubTeamIdpGroup) MqlName() string {
+	return "github.team.idpGroup"
+}
+
+func (c *mqlGithubTeamIdpGroup) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGithubTeamIdpGroup) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlGithubTeamIdpGroup) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGithubTeamIdpGroup) GetDescription() *plugin.TValue[string] {
+	return &c.Description
 }

@@ -1143,3 +1143,209 @@ func newMqlIamDenyRules(runtime *plugin.Runtime, policyName string, rules []*iam
 	}
 	return res, nil
 }
+
+// serviceAccountEmailMatches compares the service account a workload is
+// configured with to an account's email. GKE writes "default", or nothing, for
+// the Compute Engine default service account, so those match the default
+// account only.
+func serviceAccountEmailMatches(configured, email string, isDefaultComputeSA, emptyIsDefault bool) bool {
+	if email == "" {
+		return false
+	}
+	if configured == "" {
+		return emptyIsDefault && isDefaultComputeSA
+	}
+	if configured == "default" {
+		return isDefaultComputeSA
+	}
+	return strings.EqualFold(configured, email)
+}
+
+// isDefaultComputeServiceAccount reports whether email is a project's Compute
+// Engine default service account, <number>-compute@developer.gserviceaccount.com.
+func isDefaultComputeServiceAccount(email string) bool {
+	local, domain, ok := strings.Cut(email, "@")
+	if !ok || domain != "developer.gserviceaccount.com" {
+		return false
+	}
+	num, ok := strings.CutSuffix(local, "-compute")
+	return ok && num != "" && strings.Trim(num, "0123456789") == ""
+}
+
+func (g *mqlGcpProjectIamServiceServiceAccount) instances() ([]any, error) {
+	if g.ProjectId.Error != nil {
+		return nil, g.ProjectId.Error
+	}
+	if g.Email.Error != nil {
+		return nil, g.Email.Error
+	}
+	instances, err := projectComputeInstances(g.MqlRuntime, g.ProjectId.Data)
+	if err != nil {
+		return nil, err
+	}
+	res := []any{}
+	for _, i := range instances {
+		inst, ok := i.(*mqlGcpProjectComputeServiceInstance)
+		if !ok {
+			continue
+		}
+		for _, e := range inst.cacheServiceAccountEmails {
+			if serviceAccountEmailMatches(e, g.Email.Data, false, false) {
+				res = append(res, inst)
+				break
+			}
+		}
+	}
+	return res, nil
+}
+
+func (g *mqlGcpProjectIamServiceServiceAccount) cloudRunServices() ([]any, error) {
+	if g.ProjectId.Error != nil {
+		return nil, g.ProjectId.Error
+	}
+	if g.Email.Error != nil {
+		return nil, g.Email.Error
+	}
+	obj, err := CreateResource(g.MqlRuntime, "gcp.project.cloudRunService", map[string]*llx.RawData{
+		"projectId": llx.StringData(g.ProjectId.Data),
+	})
+	if err != nil {
+		return nil, err
+	}
+	services := obj.(*mqlGcpProjectCloudRunService).GetServices()
+	if services.Error != nil {
+		return nil, services.Error
+	}
+	res := []any{}
+	for _, s := range services.Data {
+		svc, ok := s.(*mqlGcpProjectCloudRunServiceService)
+		if !ok {
+			continue
+		}
+		tpl := svc.GetTemplate()
+		if tpl.Error != nil {
+			return nil, tpl.Error
+		}
+		if tpl.Data == nil {
+			continue
+		}
+		if serviceAccountEmailMatches(tpl.Data.ServiceAccountEmail.Data, g.Email.Data, false, false) {
+			res = append(res, svc)
+		}
+	}
+	return res, nil
+}
+
+func (g *mqlGcpProjectIamServiceServiceAccount) projectResource() (*mqlGcpProject, error) {
+	obj, err := NewResource(g.MqlRuntime, "gcp.project", map[string]*llx.RawData{
+		"id": llx.StringData(g.ProjectId.Data),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return obj.(*mqlGcpProject), nil
+}
+
+func (g *mqlGcpProjectIamServiceServiceAccount) cloudFunctions() ([]any, error) {
+	if g.ProjectId.Error != nil {
+		return nil, g.ProjectId.Error
+	}
+	if g.Email.Error != nil {
+		return nil, g.Email.Error
+	}
+	project, err := g.projectResource()
+	if err != nil {
+		return nil, err
+	}
+	fns := project.GetCloudFunctions()
+	if fns.Error != nil {
+		return nil, fns.Error
+	}
+	res := []any{}
+	for _, f := range fns.Data {
+		fn, ok := f.(*mqlGcpProjectCloudFunction)
+		if !ok {
+			continue
+		}
+		if serviceAccountEmailMatches(fn.ServiceAccountEmail.Data, g.Email.Data, false, false) {
+			res = append(res, fn)
+		}
+	}
+	return res, nil
+}
+
+func (g *mqlGcpProjectIamServiceServiceAccount) cloudFunctionsV2() ([]any, error) {
+	if g.ProjectId.Error != nil {
+		return nil, g.ProjectId.Error
+	}
+	if g.Email.Error != nil {
+		return nil, g.Email.Error
+	}
+	project, err := g.projectResource()
+	if err != nil {
+		return nil, err
+	}
+	fns := project.GetCloudFunctionsV2()
+	if fns.Error != nil {
+		return nil, fns.Error
+	}
+	res := []any{}
+	for _, f := range fns.Data {
+		fn, ok := f.(*mqlGcpProjectCloudFunctionV2)
+		if !ok {
+			continue
+		}
+		sc := fn.GetServiceConfig()
+		if sc.Error != nil {
+			return nil, sc.Error
+		}
+		if sc.Data == nil {
+			continue
+		}
+		if serviceAccountEmailMatches(sc.Data.cacheServiceAccountEmail, g.Email.Data, false, false) {
+			res = append(res, fn)
+		}
+	}
+	return res, nil
+}
+
+func (g *mqlGcpProjectIamServiceServiceAccount) gkeNodePools() ([]any, error) {
+	if g.ProjectId.Error != nil {
+		return nil, g.ProjectId.Error
+	}
+	if g.Email.Error != nil {
+		return nil, g.Email.Error
+	}
+	obj, err := CreateResource(g.MqlRuntime, "gcp.project.gkeService", map[string]*llx.RawData{
+		"projectId": llx.StringData(g.ProjectId.Data),
+	})
+	if err != nil {
+		return nil, err
+	}
+	clusters := obj.(*mqlGcpProjectGkeService).GetClusters()
+	if clusters.Error != nil {
+		return nil, clusters.Error
+	}
+	isDefault := isDefaultComputeServiceAccount(g.Email.Data)
+	res := []any{}
+	for _, c := range clusters.Data {
+		cluster, ok := c.(*mqlGcpProjectGkeServiceCluster)
+		if !ok {
+			continue
+		}
+		pools := cluster.GetNodePools()
+		if pools.Error != nil {
+			return nil, pools.Error
+		}
+		for _, p := range pools.Data {
+			np, ok := p.(*mqlGcpProjectGkeServiceClusterNodepool)
+			if !ok {
+				continue
+			}
+			if serviceAccountEmailMatches(np.cacheServiceAccount, g.Email.Data, isDefault, true) {
+				res = append(res, np)
+			}
+		}
+	}
+	return res, nil
+}

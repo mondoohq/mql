@@ -92,6 +92,40 @@ func TestWorkersPages(t *testing.T) {
 	assert.Equal(t, "main", p.ProductionBranch.Data)
 }
 
+// Synthetic: a Git-connected project with custom preview branches, and a
+// direct-upload project without a source block; no live account was checked.
+func TestWorkersPagesSourceConfig(t *testing.T) {
+	env := setupTestEnv(t)
+	env.Mux.HandleFunc("/accounts/"+testAccountID+"/pages/projects", func(w http.ResponseWriter, r *http.Request) {
+		jsonResponse(w, `{"success":true,"errors":[],"messages":[],"result":[
+			{"id":"proj-git","name":"docs","production_branch":"main",
+			 "source":{"type":"github","config":{"owner":"example","repo_name":"docs",
+			   "preview_deployment_setting":"custom","production_deployments_enabled":false,
+			   "preview_branch_includes":["release/*"],"preview_branch_excludes":["dependabot/*"]}},
+			 "canonical_deployment":{"id":"dep-git","short_id":"g","project_id":"proj-git","environment":"production"}},
+			{"id":"proj-upload","name":"static","production_branch":"main",
+			 "canonical_deployment":{"id":"dep-up","short_id":"u","project_id":"proj-upload","environment":"production"}}
+		],"result_info":{"page":1,"total_pages":1}}`)
+	})
+
+	pages, err := newTestWorkers(env).pages()
+	require.NoError(t, err)
+	require.Len(t, pages, 2)
+
+	git := pages[0].(*mqlCloudflareWorkersPage)
+	assert.Equal(t, "custom", git.PreviewDeploymentSetting.Data)
+	assert.False(t, git.ProductionDeploymentsEnabled.IsNull())
+	assert.False(t, git.ProductionDeploymentsEnabled.Data)
+	assert.Equal(t, []any{"release/*"}, git.PreviewBranchIncludes.Data)
+	assert.Equal(t, []any{"dependabot/*"}, git.PreviewBranchExcludes.Data)
+
+	upload := pages[1].(*mqlCloudflareWorkersPage)
+	assert.True(t, upload.PreviewDeploymentSetting.IsNull())
+	assert.True(t, upload.ProductionDeploymentsEnabled.IsNull())
+	assert.True(t, upload.PreviewBranchIncludes.IsNull())
+	assert.True(t, upload.PreviewBranchExcludes.IsNull())
+}
+
 // TestWorkersUnboundAccountIssuesNoRequest is the regression guard for the empty
 // account id. `cloudflare.workers` reached bare (not via
 // cloudflare.account.workers) was built with no AccountID, so every accessor

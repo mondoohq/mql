@@ -21,6 +21,7 @@ type mqlAzureSubscriptionIotServiceIotHubInternal struct {
 	cacheSystemData                 any
 	cacheUserAssignedIdentityIds    []string
 	cachePrivateEndpointConnections []*armiothub.PrivateEndpointConnection
+	cacheIPFilterRules              []*armiothub.IPFilterRule
 }
 
 func (a *mqlAzureSubscriptionIotService) id() (string, error) {
@@ -242,9 +243,42 @@ func (a *mqlAzureSubscriptionIotService) iotHubs() ([]any, error) {
 			mqlHubRes.cacheUserAssignedIdentityIds = userAssignedIdentityIds
 			if hub.Properties != nil {
 				mqlHubRes.cachePrivateEndpointConnections = hub.Properties.PrivateEndpointConnections
+				mqlHubRes.cacheIPFilterRules = hub.Properties.IPFilterRules
 			}
 			res = append(res, mqlHub)
 		}
 	}
 	return keepTagMatches(a.MqlRuntime, res), nil
+}
+
+// ipFilterRules returns the hub's legacy IP filter rules, in evaluation order.
+func (a *mqlAzureSubscriptionIotServiceIotHub) ipFilterRules() ([]any, error) {
+	res := []any{}
+	for i, rule := range a.cacheIPFilterRules {
+		if rule == nil {
+			continue
+		}
+		r, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionIotServiceIotHubIpFilterRule,
+			map[string]*llx.RawData{
+				"__id":   llx.StringData(iotHubIPFilterRuleID(a.Id.Data, i, rule.FilterName)),
+				"name":   llx.StringDataPtr(rule.FilterName),
+				"action": llx.StringDataPtr(stringEnumPtr(rule.Action)),
+				"ipMask": llx.StringDataPtr(rule.IPMask),
+			})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, r)
+	}
+	return res, nil
+}
+
+// iotHubIPFilterRuleID keys an IP filter rule by its name, which Azure keeps
+// unique within a hub, so the ID stays stable when rules are reordered. A rule
+// without a name falls back to its position.
+func iotHubIPFilterRuleID(hubID string, index int, name *string) string {
+	if name != nil && *name != "" {
+		return hubID + "/ipFilterRules/" + *name
+	}
+	return fmt.Sprintf("%s/ipFilterRules/#%d", hubID, index)
 }

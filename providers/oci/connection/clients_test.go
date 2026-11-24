@@ -123,6 +123,7 @@ var regionalAccessors = map[string]func(*OciConnection, string) (endpointer, err
 	"NosqlClient":             func(c *OciConnection, r string) (endpointer, error) { return c.NosqlClient(r) },
 	"OpensearchClusterClient": func(c *OciConnection, r string) (endpointer, error) { return c.OpensearchClusterClient(r) },
 	"RedisClusterClient":      func(c *OciConnection, r string) (endpointer, error) { return c.RedisClusterClient(r) },
+	"OciCacheUserClient":      func(c *OciConnection, r string) (endpointer, error) { return c.OciCacheUserClient(r) },
 	"GoldenGateClient":        func(c *OciConnection, r string) (endpointer, error) { return c.GoldenGateClient(r) },
 	"DataSafeClient":          func(c *OciConnection, r string) (endpointer, error) { return c.DataSafeClient(r) },
 

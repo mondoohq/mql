@@ -344,16 +344,7 @@ func (g *mqlGithubRepository) teams() ([]any, error) {
 
 	res := []any{}
 	for _, team := range allTeams {
-		mqlTeam, err := CreateResource(g.MqlRuntime, "github.team", map[string]*llx.RawData{
-			"id":                llx.IntDataPtr(team.ID),
-			"name":              llx.StringDataPtr(team.Name),
-			"description":       llx.StringDataPtr(team.Description),
-			"slug":              llx.StringDataPtr(team.Slug),
-			"privacy":           llx.StringDataPtr(team.Privacy),
-			"defaultPermission": llx.StringDataPtr(team.Permission),
-			"type":              llx.StringDataPtr(team.Type),
-			"organization":      organization,
-		})
+		mqlTeam, err := newMqlGithubTeam(g.MqlRuntime, team, organization, true)
 		if err != nil {
 			return nil, err
 		}
@@ -443,16 +434,7 @@ func (g *mqlGithubOrganizationCustomRole) teams() ([]any, error) {
 			return nil, err
 		}
 		for _, team := range teams {
-			r, err := CreateResource(g.MqlRuntime, "github.team", map[string]*llx.RawData{
-				"id":                llx.IntDataPtr(team.ID),
-				"name":              llx.StringDataPtr(team.Name),
-				"description":       llx.StringDataPtr(team.Description),
-				"slug":              llx.StringDataPtr(team.Slug),
-				"privacy":           llx.StringDataPtr(team.Privacy),
-				"defaultPermission": llx.StringDataPtr(team.Permission),
-				"type":              llx.StringDataPtr(team.Type),
-				"organization":      organization,
-			})
+			r, err := newMqlGithubTeam(g.MqlRuntime, team, organization, true)
 			if err != nil {
 				return nil, err
 			}
@@ -488,4 +470,61 @@ func (g *mqlGithubOrganizationCustomRole) roleLookupKeys() (string, int64, error
 		orgLogin = strings.TrimSpace(login.Data)
 	}
 	return orgLogin, g.Id.Data, nil
+}
+
+// ---------- Repository collaborator invitations ----------
+
+type mqlGithubRepositoryInvitationInternal struct {
+	cacheInvitation *github.RepositoryInvitation
+}
+
+func (g *mqlGithubRepositoryInvitation) id() (string, error) {
+	return g.__id, nil
+}
+
+func (g *mqlGithubRepository) pendingInvitations() ([]any, error) {
+	conn := g.MqlRuntime.Connection.(*connection.GithubConnection)
+	owner, repo, err := repoOwnerAndName(g)
+	if err != nil {
+		return nil, err
+	}
+
+	all, err := collectPages(func(opts *github.ListOptions) ([]*github.RepositoryInvitation, *github.Response, error) {
+		return conn.Client().Repositories.ListInvitations(conn.Context(), owner, repo, opts)
+	})
+	if err != nil {
+		if err := classifyReadErr(err, "repository invitations", owner+"/"+repo); err != nil {
+			return nil, err
+		}
+		g.PendingInvitations.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	res := make([]any, 0, len(all))
+	for _, inv := range all {
+		if inv == nil || inv.ID == nil {
+			continue
+		}
+		r, err := CreateResource(g.MqlRuntime, "github.repository.invitation", map[string]*llx.RawData{
+			"__id":        llx.StringData("github.repository.invitation/" + owner + "/" + repo + "/" + strconv.FormatInt(*inv.ID, 10)),
+			"id":          llx.IntDataPtr(inv.ID),
+			"permissions": llx.StringDataPtr(inv.Permissions),
+			"createdAt":   llx.TimeDataPtr(githubTime(inv.CreatedAt)),
+			"expired":     llx.BoolDataPtr(inv.Expired),
+		})
+		if err != nil {
+			return nil, err
+		}
+		r.(*mqlGithubRepositoryInvitation).cacheInvitation = inv
+		res = append(res, r)
+	}
+	return res, nil
+}
+
+func (g *mqlGithubRepositoryInvitation) invitee() (*mqlGithubUser, error) {
+	return embeddedUser(g.MqlRuntime, g.cacheInvitation.GetInvitee(), &g.Invitee)
+}
+
+func (g *mqlGithubRepositoryInvitation) inviter() (*mqlGithubUser, error) {
+	return embeddedUser(g.MqlRuntime, g.cacheInvitation.GetInviter(), &g.Inviter)
 }

@@ -608,3 +608,33 @@ func getESTags(ctx context.Context, svc *elasticsearchservice.Client, arn *strin
 	}
 	return tags, nil
 }
+
+func (a *mqlAwsEsDomain) cognitoUserPool() (*mqlAwsCognitoUserPool, error) {
+	if !a.CognitoEnabled.Data {
+		a.CognitoUserPool.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	pool, err := resolveCognitoUserPoolById(a.MqlRuntime, a.CognitoUserPoolId.Data)
+	if err != nil {
+		return nil, err
+	}
+	if pool == nil {
+		a.CognitoUserPool.State = plugin.StateIsNull | plugin.StateIsSet
+	}
+	return pool, nil
+}
+
+func (a *mqlAwsEsDomain) cognitoIdentityPool() (*mqlAwsCognitoIdentityPool, error) {
+	if !a.CognitoEnabled.Data {
+		a.CognitoIdentityPool.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	pool, err := resolveCognitoIdentityPool(a.MqlRuntime, a.CognitoIdentityPoolId.Data)
+	if err != nil {
+		return nil, err
+	}
+	if pool == nil {
+		a.CognitoIdentityPool.State = plugin.StateIsNull | plugin.StateIsSet
+	}
+	return pool, nil
+}

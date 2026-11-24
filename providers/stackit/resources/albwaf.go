@@ -8,7 +8,7 @@ import (
 	"slices"
 	"sort"
 
-	albwaf "github.com/stackitcloud/stackit-sdk-go/services/albwaf/v1betaapi"
+	albwaf "github.com/stackitcloud/stackit-sdk-go/services/albwaf/v1api"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
@@ -493,27 +493,16 @@ func (r *mqlStackitAlbCustomRuleGroup) rules() ([]any, error) {
 	out := make([]any, 0, len(rules))
 	for i := range rules {
 		rule := rules[i]
-		var (
-			action   string
-			logMatch bool
-			logMsg   string
-			severity string
-		)
-		if b, ok := rule.GetBehaviourOk(); ok && b != nil {
-			action = string(b.GetAction())
-			logMatch = b.GetLog()
-			logMsg = b.GetLogMsg()
-			severity = string(b.GetSeverity())
-		}
+		b := customRuleBehavior(&rule)
 		idBase := fmt.Sprintf("stackit.alb.customRule/%s/%s/%d", c.ProjectID(), r.Name.Data, rule.GetId())
 		res, err := CreateResource(r.MqlRuntime, "stackit.alb.customRule", map[string]*llx.RawData{
 			"__id":        llx.StringData(idBase),
 			"id":          llx.IntData(int64(rule.GetId())),
 			"description": llx.StringData(rule.GetDescription()),
-			"action":      llx.StringData(action),
-			"log":         llx.BoolData(logMatch),
-			"logMsg":      llx.StringData(logMsg),
-			"severity":    llx.StringData(severity),
+			"action":      llx.StringData(b.action),
+			"log":         llx.BoolData(b.log),
+			"logMsg":      llx.StringData(b.logMsg),
+			"severity":    llx.StringData(b.severity),
 		})
 		if err != nil {
 			return nil, err
@@ -524,6 +513,26 @@ func (r *mqlStackitAlbCustomRuleGroup) rules() ([]any, error) {
 		out = append(out, res)
 	}
 	return out, nil
+}
+
+// customRuleFields holds the behavior values a custom rule exposes.
+type customRuleFields struct {
+	action   string
+	log      bool
+	logMsg   string
+	severity string
+}
+
+// customRuleBehavior reads a rule's behavior block. The v1 API always returns
+// action, log and severity; logMsg is optional and reads as "" when unset.
+func customRuleBehavior(rule *albwaf.GetCustomRule) customRuleFields {
+	b := rule.GetBehavior()
+	return customRuleFields{
+		action:   string(b.GetAction()),
+		log:      b.GetLog(),
+		logMsg:   b.GetLogMsg(),
+		severity: string(b.GetSeverity()),
+	}
 }
 
 // conditions exposes the rule's match conditions as typed sub-resources,

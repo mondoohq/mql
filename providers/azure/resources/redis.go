@@ -6,7 +6,9 @@ package resources
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
@@ -587,4 +589,166 @@ func (a *mqlAzureSubscriptionCacheServiceRedisInstancePrivateEndpointConnection)
 		return nil, err
 	}
 	return res.(*mqlAzureSubscriptionNetworkServicePrivateEndpoint), nil
+}
+
+func (a *mqlAzureSubscriptionCacheServiceRedisInstance) diagnosticSettings() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
+}
+
+func (a *mqlAzureSubscriptionCacheServiceRedisInstance) systemAssignedIdentity() (*mqlAzureSubscriptionManagedIdentity, error) {
+	return newSystemAssignedManagedIdentity(a.MqlRuntime, a.Id.Data, a.PrincipalId.Data, "", &a.SystemAssignedIdentity)
+}
+
+// redisCacheRef returns the subscription, resource group, and cache name of the
+// cache with the given ARM ID.
+func redisCacheRef(id string) (subscriptionID, resourceGroup, cacheName string, err error) {
+	resourceID, err := ParseResourceID(id)
+	if err != nil {
+		return "", "", "", err
+	}
+	cacheName, err = resourceID.Component("redis")
+	if err != nil {
+		return "", "", "", err
+	}
+	return resourceID.SubscriptionID, resourceID.ResourceGroup, cacheName, nil
+}
+
+// accessPolicies lists the data-plane access policies defined on the cache,
+// built-in and custom.
+func (a *mqlAzureSubscriptionCacheServiceRedisInstance) accessPolicies() ([]any, error) {
+	conn, err := azureConn(a.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	sub, rg, cacheName, err := redisCacheRef(a.Id.Data)
+	if err != nil {
+		return nil, err
+	}
+	client, err := armredis.NewAccessPolicyClient(sub, conn.Token(), &arm.ClientOptions{ClientOptions: conn.ClientOptions()})
+	if err != nil {
+		return nil, err
+	}
+	res := []any{}
+	pager := client.NewListPager(rg, cacheName, nil)
+	for pager.More() {
+		page, err := pager.NextPage(context.Background())
+		if err != nil {
+			if isAzureAccessDenied(err) {
+				return refusedCollection(&a.AccessPolicies, err, "Microsoft.Cache/redis/accessPolicies/read")
+			}
+			return nil, err
+		}
+		for _, p := range page.Value {
+			if p == nil || p.ID == nil {
+				continue
+			}
+			var policyType, permissions, provisioningState *string
+			if p.Properties != nil {
+				policyType = stringEnumPtr(p.Properties.Type)
+				permissions = p.Properties.Permissions
+				provisioningState = stringEnumPtr(p.Properties.ProvisioningState)
+			}
+			r, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionCacheServiceRedisInstanceAccessPolicy,
+				map[string]*llx.RawData{
+					"id":                llx.StringDataPtr(p.ID),
+					"name":              llx.StringDataPtr(p.Name),
+					"type":              llx.StringDataPtr(policyType),
+					"permissions":       llx.StringDataPtr(permissions),
+					"provisioningState": llx.StringDataPtr(provisioningState),
+				})
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, r)
+		}
+	}
+	return res, nil
+}
+
+func (a *mqlAzureSubscriptionCacheServiceRedisInstanceAccessPolicy) id() (string, error) {
+	return a.Id.Data, nil
+}
+
+type mqlAzureSubscriptionCacheServiceRedisInstanceAccessPolicyAssignmentInternal struct {
+	cacheCache *mqlAzureSubscriptionCacheServiceRedisInstance
+}
+
+// accessPolicyAssignments lists who is granted data-plane access to the cache
+// through Microsoft Entra authentication, and with which access policy.
+func (a *mqlAzureSubscriptionCacheServiceRedisInstance) accessPolicyAssignments() ([]any, error) {
+	conn, err := azureConn(a.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	sub, rg, cacheName, err := redisCacheRef(a.Id.Data)
+	if err != nil {
+		return nil, err
+	}
+	client, err := armredis.NewAccessPolicyAssignmentClient(sub, conn.Token(), &arm.ClientOptions{ClientOptions: conn.ClientOptions()})
+	if err != nil {
+		return nil, err
+	}
+	res := []any{}
+	pager := client.NewListPager(rg, cacheName, nil)
+	for pager.More() {
+		page, err := pager.NextPage(context.Background())
+		if err != nil {
+			if isAzureAccessDenied(err) {
+				return refusedCollection(&a.AccessPolicyAssignments, err, "Microsoft.Cache/redis/accessPolicyAssignments/read")
+			}
+			return nil, err
+		}
+		for _, p := range page.Value {
+			if p == nil || p.ID == nil {
+				continue
+			}
+			var policyName, objectID, objectIDAlias, provisioningState *string
+			if p.Properties != nil {
+				policyName = p.Properties.AccessPolicyName
+				objectID = p.Properties.ObjectID
+				objectIDAlias = p.Properties.ObjectIDAlias
+				provisioningState = stringEnumPtr(p.Properties.ProvisioningState)
+			}
+			r, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionCacheServiceRedisInstanceAccessPolicyAssignment,
+				map[string]*llx.RawData{
+					"id":                llx.StringDataPtr(p.ID),
+					"name":              llx.StringDataPtr(p.Name),
+					"accessPolicyName":  llx.StringDataPtr(policyName),
+					"objectId":          llx.StringDataPtr(objectID),
+					"objectIdAlias":     llx.StringDataPtr(objectIDAlias),
+					"provisioningState": llx.StringDataPtr(provisioningState),
+				})
+			if err != nil {
+				return nil, err
+			}
+			r.(*mqlAzureSubscriptionCacheServiceRedisInstanceAccessPolicyAssignment).cacheCache = a
+			res = append(res, r)
+		}
+	}
+	return res, nil
+}
+
+func (a *mqlAzureSubscriptionCacheServiceRedisInstanceAccessPolicyAssignment) id() (string, error) {
+	return a.Id.Data, nil
+}
+
+// accessPolicy resolves the assignment's policy by name among the cache's
+// access policies.
+func (a *mqlAzureSubscriptionCacheServiceRedisInstanceAccessPolicyAssignment) accessPolicy() (*mqlAzureSubscriptionCacheServiceRedisInstanceAccessPolicy, error) {
+	if a.cacheCache == nil || a.AccessPolicyName.Data == "" {
+		a.AccessPolicy.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	policies := a.cacheCache.GetAccessPolicies()
+	if policies.Error != nil {
+		return nil, policies.Error
+	}
+	for _, p := range policies.Data {
+		policy, ok := p.(*mqlAzureSubscriptionCacheServiceRedisInstanceAccessPolicy)
+		if ok && strings.EqualFold(policy.Name.Data, a.AccessPolicyName.Data) {
+			return policy, nil
+		}
+	}
+	return nil, fmt.Errorf("redis access policy %q not found", a.AccessPolicyName.Data)
 }

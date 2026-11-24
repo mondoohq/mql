@@ -809,6 +809,24 @@ private gcp.project.redisService.cluster @defaults("name") {
   serverCaMode string
   // The CA pool resource for customer-managed CAS
   serverCaPool string
+  // Certificate Authority Service CA pool that issues the cluster's server certificates
+  //
+  // Set when `serverCaMode` is CUSTOMER_MANAGED_CAS_CA. Null when the cluster
+  // uses a Google-managed CA, or the pool cannot be listed.
+  caPool() gcp.project.certificateAuthorityService.caPool
+  // Resource name of the ACL policy attached to the cluster
+  //
+  // An ACL policy defines the Valkey or Redis users and the commands and
+  // keys each may access. Empty when no ACL policy is attached.
+  aclPolicy string
+  // ACL policy revision currently applied on the cluster
+  //
+  // Resource name of the revision the cluster runs, which can lag behind the
+  // latest revision of `aclPolicy` while an update rolls out. Empty when no
+  // ACL policy is attached.
+  aclPolicyAppliedRevision string
+  // Revision number of the ACL policy currently applied on the cluster
+  aclPolicyAppliedRevisionNumber int
   // Private Service Connect service attachments the cluster exposes
   //
   // Each entry has `serviceAttachment` (the service attachment resource)
@@ -1106,6 +1124,16 @@ gcp.project @defaults("name number") {
   iamPolicy() []gcp.resourcemanager.binding
   // Whether the project's IAM policy grants any role to allUsers or allAuthenticatedUsers
   hasPublicIamBinding() bool
+  // Whether billing is enabled for the project
+  //
+  // False when the project has no billing account, or its billing account is
+  // closed. Paid APIs stop serving a project without billing.
+  billingEnabled() bool
+  // Resource name of the billing account the project is linked to
+  //
+  // For example billingAccounts/012345-567890-ABCDEF. Empty when the project
+  // has no billing account.
+  billingAccount() string
   // IAM bindings using primitive roles (roles/owner, roles/editor, roles/viewer); prefer predefined or custom roles instead
   primitiveRoleBindings() []gcp.resourcemanager.binding
   // Audit logging configuration
@@ -2297,6 +2325,74 @@ gcp.project.computeService.instance @defaults("name id") {
   // discarded when the instance stops, so the local SSD contents cannot be
   // recovered afterwards.
   localSsdEncryptionMode string
+  // Whether OS Login is in effect for the instance, as Compute Engine resolves it
+  //
+  // The value Compute Engine computes from the instance metadata
+  // `enable-oslogin` and the project metadata together, so it also reflects
+  // an organization policy or project default the instance does not set.
+  // Null when the API returns no effective metadata for the instance.
+  effectiveOsLoginEnabled bool
+  // Whether the interactive serial console is in effect for the instance, as Compute Engine resolves it
+  //
+  // Computed by Compute Engine from the instance and project
+  // `serial-port-enable` metadata. Null when the API returns no effective
+  // metadata for the instance.
+  effectiveSerialPortEnabled bool
+  // Whether serial port output logging to Cloud Logging is in effect for the instance
+  //
+  // Computed by Compute Engine from the instance and project
+  // `serial-port-logging-enable` metadata. Null when the API returns no
+  // effective metadata for the instance.
+  effectiveSerialPortLoggingEnabled bool
+  // Whether project-wide SSH keys are blocked for the instance, as Compute Engine resolves it
+  //
+  // Computed by Compute Engine from the instance and project
+  // `block-project-ssh-keys` metadata. Null when the API returns no
+  // effective metadata for the instance.
+  effectiveBlockProjectSshKeys bool
+  // Whether the VM Manager OS Config agent is enabled for the instance, as Compute Engine resolves it
+  //
+  // Computed from the instance and project `enable-osconfig` metadata. Null
+  // when the API returns no effective metadata for the instance.
+  effectiveOsConfigEnabled bool
+  // Whether VM Manager OS inventory collection is enabled for the instance, as Compute Engine resolves it
+  //
+  // Computed from the instance and project `enable-os-inventory` metadata.
+  // Null when the API returns no effective metadata for the instance.
+  effectiveOsInventoryEnabled bool
+  // Whether guest attributes are enabled for the instance, as Compute Engine resolves it
+  //
+  // Computed from the instance and project `enable-guest-attributes`
+  // metadata. Guest attributes let workloads on the VM publish values that
+  // anyone with read access to the instance can query. Null when the API
+  // returns no effective metadata for the instance.
+  effectiveGuestAttributesEnabled bool
+  // Internal DNS setting in effect for the instance, as Compute Engine resolves it
+  //
+  // Computed from the instance and project `VmDnsSetting` metadata, for
+  // example ZonalOnly or GlobalDefault. Empty when neither sets it. Null when
+  // the API returns no effective metadata for the instance.
+  effectiveVmDnsSetting string
+  // Host maintenance event scheduled for the instance
+  //
+  // Keys: `type` (SCHEDULED, UNSCHEDULED, MULTIPLE, or
+  // UNKNOWN_TYPE), `maintenanceStatus` (PENDING, ONGOING, or
+  // UNKNOWN), `canReschedule`, `windowStartTime`, `windowEndTime`,
+  // `latestWindowStartTime`, `maintenanceOnShutdown`, and
+  // `maintenanceReasons`. Null when no maintenance is scheduled.
+  upcomingMaintenance dict
+  // Machine image the instance was created from
+  //
+  // Null when the instance was not created from a machine image, or the
+  // machine image no longer exists.
+  machineImage() gcp.project.computeService.machineImage
+  // IAM policy bindings set on the instance itself
+  //
+  // Roles granted here apply to this VM only, on top of the project and
+  // folder policies. A grant such as roles/compute.instanceAdmin.v1 or
+  // roles/iam.serviceAccountUser on the instance lets the member control the
+  // VM, or act as its service account, without any project-level role.
+  iamPolicy() []gcp.resourcemanager.binding
 }
 
 // Compute instance internet-exposure breakdown
@@ -2314,7 +2410,9 @@ private gcp.project.computeService.instance.exposure @defaults("internetReachabl
   internetReachable bool
   // Whether the instance has an external IP
   hasPublicIp bool
-  // Whether a firewall rule or network firewall policy rule that applies to the instance admits inbound traffic from any address (0.0.0.0/0 or ::/0)
+  // Whether a firewall rule or network firewall policy rule that applies to the instance admits inbound traffic from the internet
+  //
+  // A rule counts when its source ranges are 0.0.0.0/0 or ::/0, or together cover most of the internet.
   firewallAllowsIngress bool
   // Legacy VPC firewall rules that apply to the instance and admit ingress from any address
   openIngressFirewalls []gcp.project.computeService.firewall
@@ -2918,6 +3016,32 @@ private gcp.project.computeService.image @defaults("id name") {
   iamPolicy() []gcp.resourcemanager.binding
   // Whether the image's IAM policy grants any role to allUsers or allAuthenticatedUsers
   public() bool
+  // Deprecation state of the image
+  //
+  // One of ACTIVE, DEPRECATED, OBSOLETE, or DELETED. Empty when the image
+  // was never deprecated, which Compute Engine treats as ACTIVE. New VMs
+  // cannot boot from an OBSOLETE or DELETED image.
+  deprecationState string
+  // Time the image is or was marked DEPRECATED
+  deprecatedAt time
+  // Time the image is or was marked OBSOLETE
+  obsoleteAt time
+  // Time the image is or was marked DELETED
+  deletedAt time
+  // Image suggested as the replacement for this deprecated image
+  //
+  // Null when the image is not deprecated, names no replacement, or the
+  // replacement no longer exists.
+  replacement() gcp.project.computeService.image
+  // Guest OS features the image declares
+  //
+  // Feature types such as UEFI_COMPATIBLE, SEV_CAPABLE, SEV_SNP_CAPABLE,
+  // TDX_CAPABLE, GVNIC, IDPF, VIRTIO_SCSI_MULTIQUEUE, MULTI_IP_SUBNET,
+  // WINDOWS, and SECURE_BOOT. UEFI_COMPATIBLE is required for Shielded VM
+  // Secure Boot, and the SEV, SEV_SNP, and TDX entries for Confidential VMs.
+  guestOsFeatures []string
+  // Integer license codes attached to the image
+  licenseCodes []int
   // Infrastructure-management system that provisioned the resource
   //
   // Value derived from the provenance labels and annotations Google and IaC
@@ -3013,7 +3137,9 @@ private gcp.project.computeService.firewall @defaults("name") {
   disabled bool
   // Source ranges
   sourceRanges []string
-  // Whether this rule allows ingress traffic from the public internet (INGRESS, enabled, has allow rules, sourceRanges contains 0.0.0.0/0 or ::/0)
+  // Whether this rule allows ingress traffic from the public internet
+  //
+  // True for an enabled INGRESS rule with allow entries whose sourceRanges are 0.0.0.0/0 or ::/0, or together cover most of the internet.
   openToInternet() bool
   // Whether this rule permits SSH (tcp/22) from the public internet (narrower form of openToInternet for the SSH-specific port check)
   allowsSshFromInternet() bool
@@ -3112,7 +3238,10 @@ gcp.project.computeService.network @defaults("name") {
   // Network mode: legacy, custom or auto
   mode string
   // List of URLs for the subnetwork in the network
-  subnetworkUrls []string
+  //
+  // Deprecated in favor of subnetworks, which resolves each URL to the
+  // subnetwork it names.
+  subnetworkUrls @maturity("deprecated") @replaced_by("gcp.project.computeService.network.subnetworks") []string
   // Subnetworks in the network
   subnetworks() []gcp.project.computeService.subnetwork
   // VPC firewall rules attached to the network
@@ -3138,6 +3267,11 @@ gcp.project.computeService.network @defaults("name") {
   firewallPolicyRef() gcp.project.computeService.firewallPolicy
   // URL of the network profile applied to this network
   networkProfile string
+  // Compute Engine instances with a network interface on this network
+  //
+  // Only instances in the network's own project are listed; instances in
+  // Shared VPC service projects attached to it are not.
+  instances() []gcp.project.computeService.instance
 }
 
 // Google Cloud VPC subnetwork
@@ -3227,6 +3361,17 @@ gcp.project.computeService.subnetwork @defaults("name") {
   // Keys: `internalIpv6Utilization` and `externalIpv6Utilization`, each with
   // the assigned and free address counts for that family.
   utilizationDetails dict
+  // Compute Engine instances with a network interface on this subnetwork
+  //
+  // Only instances in the subnetwork's own project are listed; instances in
+  // Shared VPC service projects attached to it are not.
+  instances() []gcp.project.computeService.instance
+  // IAM policy bindings set on the subnetwork
+  //
+  // A grant of roles/compute.networkUser here lets the member attach
+  // workloads to this subnetwork, which is how a Shared VPC host project
+  // shares individual subnetworks with service projects.
+  iamPolicy() []gcp.resourcemanager.binding
 }
 
 // Google Cloud (GCP) Compute VPC network partitioning log configuration
@@ -3962,7 +4107,7 @@ private gcp.project.sqlService.instance @defaults("name") {
   settings gcp.project.sqlService.instance.settings
   // Whether the instance is reachable on a public IP (flat hoist of settings.ipConfiguration.ipv4Enabled)
   publicIpEnabled() bool
-  // Whether the instance is reachable from the internet (a public IP and an authorized network open to 0.0.0.0/0)
+  // Whether the instance is reachable from the internet (a public IP and authorized networks that admit the internet)
   internetReachable() bool
   // Whether IAM database authentication is enabled
   //
@@ -4478,10 +4623,16 @@ private gcp.project.sqlService.instance.settings.ipConfiguration {
   //
   // Each entry is a CIDR allow-list rule: value is the authorized CIDR range,
   // name is an optional label, and expirationTime, when set, is when the rule
-  // stops applying. An entry with value 0.0.0.0/0 exposes the instance to the
-  // entire internet. See hasOpenAuthorizedNetworks for that check.
+  // stops applying. An entry with value 0.0.0.0/0, or entries that together
+  // cover most of the internet, expose the instance to it. See
+  // hasOpenAuthorizedNetworks for that check.
   authorizedNetworks []dict
-  // Whether any authorized network entry uses 0.0.0.0/0 or ::/0 (public internet)
+  // Whether the authorized networks admit the public internet
+  //
+  // True when the entries are 0.0.0.0/0 or ::/0, or together cover most of the
+  // internet: their union, limited to IPv4 outside 224.0.0.0/3 and IPv6 inside
+  // 2000::/3, contains an aligned IPv4 /7 or IPv6 /11 or covers at least half
+  // of that space.
   hasOpenAuthorizedNetworks() bool
   // Whether the instance is assigned a public IP address
   ipv4Enabled bool
@@ -4501,6 +4652,11 @@ private gcp.project.sqlService.instance.settings.ipConfiguration {
   //
   // Format: `projects/{PROJECT}/locations/{REGION}/caPools/{CA_POOL_ID}`.
   serverCaPool string
+  // Certificate Authority Service CA pool that issues the instance's server certificates
+  //
+  // Set when `serverCaMode` is CUSTOMER_MANAGED_CAS_CA. Null when the instance uses
+  // a Google-managed CA, or the pool cannot be listed.
+  caPool() gcp.project.certificateAuthorityService.caPool
   // Custom Subject Alternative Names (SANs) presented on the instance server certificate
   customSubjectAlternativeNames []string
   // Server certificate auto-rotation mode
@@ -5355,11 +5511,16 @@ private gcp.project.gkeService.cluster @defaults("name description location stat
   // Whether cluster monitoring is enabled (monitoringService is set and not "none")
   monitoringEnabled() bool
   // The name of the Google Compute Engine network to which the cluster is connected
-  network string
+  //
+  // Deprecated in favor of networkConfig.network, which resolves the network.
+  network @maturity("deprecated") @replaced_by("gcp.project.gkeService.cluster.networkConfig.network") string
   // The IP address range of the container pods in this cluster
   clusterIpv4Cidr string
   // The name of the Google Compute Engine subnetwork to which the cluster is connected
-  subnetwork string
+  //
+  // Deprecated in favor of networkConfig.subnetwork, which resolves the
+  // subnetwork.
+  subnetwork @maturity("deprecated") @replaced_by("gcp.project.gkeService.cluster.networkConfig.subnetwork") string
   // The list of node pools for the cluster
   nodePools []gcp.project.gkeService.cluster.nodepool
   // The list of Google Compute Engine zones in which the cluster's nodes should be located
@@ -5484,8 +5645,8 @@ private gcp.project.gkeService.cluster @defaults("name description location stat
   //
   // True when the control plane has a public IP endpoint enabled AND either
   // master authorized networks is not enforced (any source may reach it) or
-  // the authorized-networks allowlist contains an open CIDR (0.0.0.0/0 or
-  // ::/0). False means the API server is private or restricted to specific
+  // the authorized-networks allowlist admits the internet: 0.0.0.0/0, ::/0, or
+  // ranges that together cover most of it. False means the API server is private or restricted to specific
   // source ranges. Derived from cached cluster fields; no extra API calls.
   controlPlaneInternetReachable() bool
   // Logging components enabled on the control plane
@@ -5696,6 +5857,38 @@ private gcp.project.gkeService.cluster @defaults("name description location stat
   nodePoolAutoConfig dict
   // Node auto-provisioning settings, and the defaults applied to the nodes it creates
   nodeAutoprovisioning gcp.project.gkeService.cluster.nodeAutoprovisioningConfig
+  // End of standard support for the cluster's minor version
+  //
+  // After this date the cluster is automatically upgraded, or moves to
+  // extended support when it is enrolled in the Extended release channel.
+  // Null when GKE does not report the date.
+  endOfStandardSupport() time
+  // End of extended support for the cluster's minor version
+  //
+  // Null when GKE does not report the date, for example on a cluster that is
+  // not on the Extended release channel.
+  endOfExtendedSupport() time
+  // Auto-upgrade status of the cluster
+  //
+  // Entries are ACTIVE, MINOR_UPGRADE_PAUSED, UPGRADE_PAUSED, or UNKNOWN. A
+  // paused status means the cluster is not receiving the upgrades its
+  // release channel would otherwise apply; `autoUpgradePausedReasons` says why.
+  autoUpgradeStatus() []string
+  // Reasons auto-upgrades are paused on the cluster
+  //
+  // Entries such as MAINTENANCE_WINDOW, MAINTENANCE_EXCLUSION_NO_UPGRADES,
+  // MAINTENANCE_EXCLUSION_NO_MINOR_UPGRADES, CLUSTER_DISRUPTION_BUDGET,
+  // CLUSTER_DISRUPTION_BUDGET_MINOR_UPGRADE, or SYSTEM_CONFIG. Empty when
+  // upgrades are not paused.
+  autoUpgradePausedReasons() []string
+  // Version the cluster's next automatic minor upgrade targets
+  //
+  // Empty when GKE has no minor upgrade target for the cluster.
+  minorTargetVersion() string
+  // Version the cluster's next automatic patch upgrade targets
+  //
+  // Empty when GKE has no patch upgrade target for the cluster.
+  patchTargetVersion() string
 }
 
 // Node auto-provisioning settings of a GKE cluster
@@ -7827,6 +8020,29 @@ private gcp.project.iamService.serviceAccount @defaults("displayName name") {
   // matched by name only, not by the permissions they carry. Roles granted
   // on folders or the organization are not considered.
   hasAdminRole() bool
+  // Compute Engine instances that run as this service account
+  //
+  // Only instances in the service account's own project are listed. Anyone
+  // who can run code on one of these instances can act as the account.
+  instances() []gcp.project.computeService.instance
+  // Cloud Run services whose revisions run as this service account
+  //
+  // Only services in the service account's own project are listed.
+  cloudRunServices() []gcp.project.cloudRunService.service
+  // Cloud Functions (1st gen) that run as this service account
+  //
+  // Only functions in the service account's own project are listed.
+  cloudFunctions() []gcp.project.cloudFunction
+  // Cloud Run functions (2nd gen) that run as this service account
+  //
+  // Only functions in the service account's own project are listed.
+  cloudFunctionsV2() []gcp.project.cloudFunctionV2
+  // GKE node pools whose nodes run as this service account
+  //
+  // Only node pools in the service account's own project are listed. A node
+  // pool that sets no service account, or sets "default", runs as the Compute
+  // Engine default service account and is listed under that account.
+  gkeNodePools() []gcp.project.gkeService.cluster.nodepool
 }
 
 // Google Cloud (GCP) IAM service account key
@@ -8314,11 +8530,18 @@ private gcp.project.cloudFunction @defaults("name") {
   // balancer).
   ingressSettings string
   // Resource name of a KMS crypto key used to encrypt/decrypt function resources
-  kmsKeyName string
+  //
+  // Deprecated in favor of kmsKey, which resolves the key this name points to.
+  kmsKeyName @maturity("deprecated") @replaced_by("gcp.project.cloudFunction.kmsKey") string
   // Cloud KMS key used to encrypt/decrypt function resources
   kmsKey() gcp.project.kmsService.keyring.cryptokey
   // Name of the Cloud Build custom WorkerPool that should be used to build the function
   buildWorkerPool string
+  // Cloud Build private worker pool that builds the function
+  //
+  // Null when the function builds on the default Cloud Build pool, or the
+  // worker pool cannot be listed.
+  workerPool() gcp.project.cloudBuildService.workerPool
   // Cloud Build ID of the latest successful deployment of the function
   buildId string
   // Cloud Build name of the function deployment
@@ -8420,6 +8643,11 @@ private gcp.project.cloudFunctionV2.buildConfig @defaults("runtime entryPoint") 
   source dict
   // Name of the Cloud Build custom worker pool to use
   buildWorkerPool string
+  // Cloud Build private worker pool that builds the function
+  //
+  // Null when the function builds on the default Cloud Build pool, or the
+  // worker pool cannot be listed.
+  workerPool() gcp.project.cloudBuildService.workerPool
   // Build environment variables
   environmentVariables map[string]string
   // Artifact Registry repository that stores the function's built images
@@ -9025,6 +9253,11 @@ private gcp.project.dataprocService.cluster.config.gceCluster {
   tags []string
   // Zone where the Compute Engine cluster is located
   zoneUri string
+  // Compute Engine zone the cluster runs in
+  //
+  // Null when the cluster uses Auto Zone Placement and Dataproc has not
+  // reported a zone.
+  zone() gcp.project.computeService.zone
 }
 
 // Google Cloud (GCP) Dataproc cluster GCE cluster reservation affinity config
@@ -10415,6 +10648,33 @@ private gcp.project.firestoreService.database @defaults("name") {
   createdAt time
   // Last update time
   updatedAt time
+  // Time the database was deleted, null for a live database
+  deletedAt time
+  // System-generated ID of the database that previously used this database ID, empty when none
+  previousId string
+  // Database edition
+  //
+  // One of STANDARD, ENTERPRISE, or DATABASE_EDITION_UNSPECIFIED.
+  databaseEdition string
+  // Whether the database is on the free tier
+  //
+  // Null when the API does not report the free-tier status.
+  freeTier bool
+  // Whether the Firestore API can be used to access the database
+  //
+  // One of DATA_ACCESS_MODE_ENABLED, DATA_ACCESS_MODE_DISABLED, or
+  // DATA_ACCESS_MODE_UNSPECIFIED.
+  firestoreDataAccessMode string
+  // Whether the MongoDB-compatible API can be used to access the database
+  //
+  // One of DATA_ACCESS_MODE_ENABLED, DATA_ACCESS_MODE_DISABLED, or
+  // DATA_ACCESS_MODE_UNSPECIFIED.
+  mongodbCompatibleDataAccessMode string
+  // Whether real-time listeners receive updates from the database
+  //
+  // One of REALTIME_UPDATES_MODE_ENABLED, REALTIME_UPDATES_MODE_DISABLED,
+  // or REALTIME_UPDATES_MODE_UNSPECIFIED.
+  realtimeUpdatesMode string
   // Database indexes
   indexes() []gcp.project.firestoreService.database.index
   // Backup schedules
@@ -10908,6 +11168,11 @@ private gcp.project.bigtableService.instance @defaults("name") {
   state string
   // Instance type (PRODUCTION or DEVELOPMENT)
   instanceType string
+  // Edition of the instance
+  //
+  // One of ENTERPRISE, ENTERPRISE_PLUS, or EDITION_UNSPECIFIED, which Bigtable
+  // treats as ENTERPRISE.
+  edition string
   // Labels for the instance
   labels map[string]string
   // Creation time
@@ -11246,6 +11511,29 @@ private gcp.project.alloydbService.cluster @defaults("name") {
   createdAt time
   // Last update time
   updatedAt time
+  // Time the cluster was deleted, null for a live cluster
+  deletedAt time
+  // Subscription type of the cluster
+  //
+  // One of STANDARD, TRIAL, or SUBSCRIPTION_TYPE_UNSPECIFIED. A TRIAL cluster
+  // is upgraded to STANDARD, and starts billing, when the trial ends.
+  subscriptionType string
+  // Time the free trial started, null for a cluster that is not on a trial
+  trialStartTime time
+  // Time the free trial ends, null for a cluster that is not on a trial
+  trialEndTime time
+  // Time the trial cluster was upgraded to a standard cluster
+  trialUpgradeTime time
+  // Time the grace period after the free trial ends
+  trialGraceEndTime time
+  // Whether the cluster satisfies Google's Protected Zone Separation requirements
+  satisfiesPzs bool
+  // Google-managed project number to allowlist on a network attachment for outbound Private Service Connect connectivity
+  //
+  // Zero when Private Service Connect is not enabled on the cluster.
+  pscServiceOwnedProjectNumber int
+  // Whether the cluster's metadata is synced to Dataplex Universal Catalog
+  dataplexEnabled bool
   // List of instances in this cluster
   instances() []gcp.project.alloydbService.instance
   // List of backups for this cluster
@@ -15759,6 +16047,12 @@ private gcp.project.vertexaiService.endpoint @defaults("name displayName") {
   iamPolicy() []gcp.resourcemanager.binding
   // Whether the IAM policy grants access to allUsers or allAuthenticatedUsers
   public() bool
+  // Infrastructure-management system that provisioned the resource
+  //
+  // Value derived from the provenance labels and annotations Google and IaC
+  // tools apply: "terraform", "config-connector", or "cloud-composer". Empty
+  // when the resource carries no management signal.
+  managedBy() string
 }
 
 // Google Cloud (GCP) Vertex AI model deployment
@@ -16245,6 +16539,12 @@ private gcp.project.vertexaiService.notebookRuntimeTemplate @defaults("displayNa
   createdAt time
   // Last update time
   updatedAt time
+  // Infrastructure-management system that provisioned the resource
+  //
+  // Value derived from the provenance labels and annotations Google and IaC
+  // tools apply: "terraform", "config-connector", or "cloud-composer". Empty
+  // when the resource carries no management signal.
+  managedBy() string
 }
 
 // Google Cloud (GCP) Colab Enterprise notebook execution job
@@ -20982,6 +21282,11 @@ private gcp.project.memorystoreService.instance @defaults("name state mode") {
   serverCaMode string
   // Server CA pool resource name
   serverCaPool string
+  // Certificate Authority Service CA pool that issues the instance's server certificates
+  //
+  // Set when `serverCaMode` is CUSTOMER_MANAGED_CAS_CA. Null when the instance uses
+  // a Google-managed CA, or the pool cannot be listed.
+  caPool() gcp.project.certificateAuthorityService.caPool
   // In-transit encryption mode: TRANSIT_ENCRYPTION_DISABLED | SERVER_AUTHENTICATION
   transitEncryptionMode string
   // Customer-managed KMS key (CMEK)

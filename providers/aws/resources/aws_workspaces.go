@@ -127,6 +127,7 @@ func newMqlAwsWorkspacesDirectory(runtime *plugin.Runtime, region string, dir wo
 			"ipGroupIds":                     llx.ArrayData(toInterfaceArr(dir.IpGroupIds), types.String),
 			"selfservicePermissions":         llx.MapData(selfservicePerms, types.Any),
 			"iamRoleId":                      llx.StringDataPtr(dir.IamRoleId),
+			"workspaceOsUserMode":            llx.StringDataPtr(nonEmptyEnum(dir.WorkspaceOsUserMode)),
 			"region":                         llx.StringData(region),
 		})
 	if err != nil {

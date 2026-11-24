@@ -64,6 +64,66 @@ func (c *mqlCloudflareZoneOwner) id() (string, error) {
 	return c.Id.Data, nil
 }
 
+// normalizeZoneName folds a zone or domain name to the form zone names are
+// compared in: lower case, without surrounding space or a trailing root dot.
+func normalizeZoneName(name string) string {
+	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(name)), ".")
+}
+
+// listedZones returns the zones the connection can list, reusing the root zone
+// list so resolving many names costs one list call in total.
+func listedZones(runtime *plugin.Runtime) ([]any, error) {
+	cf, err := CreateResource(runtime, "cloudflare", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	list := cf.(*mqlCloudflare).GetZones()
+	if list.Error != nil {
+		return nil, list.Error
+	}
+	return list.Data, nil
+}
+
+// zoneNamed finds the zone with the given name owned by accountID. The same
+// name can be added to more than one account, and a token can list zones of
+// several accounts, so a zone of another account is never returned: it is a
+// different zone that only shares the name. It returns nil when the account
+// has no listed zone with the name.
+func zoneNamed(list []any, name, accountID string) *mqlCloudflareZone {
+	key := normalizeZoneName(name)
+	if key == "" || accountID == "" {
+		return nil
+	}
+	for _, entry := range list {
+		zone, ok := entry.(*mqlCloudflareZone)
+		if !ok || normalizeZoneName(zone.Name.Data) != key {
+			continue
+		}
+		if acc := zone.Account.Data; acc != nil && acc.Id.Data == accountID {
+			return zone
+		}
+	}
+	return nil
+}
+
+// zonesNamed resolves zone names to the account's zones, in the order given,
+// skipping duplicates and names the account has no listed zone for.
+func zonesNamed(names []string, list []any, accountID string) []any {
+	out := make([]any, 0, len(names))
+	seen := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		key := normalizeZoneName(name)
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		if zone := zoneNamed(list, name, accountID); zone != nil {
+			out = append(out, zone)
+		}
+	}
+	return out
+}
+
 // zoneActivatedOn returns the zone's activation time, or null for a zone that
 // has not been activated yet (the API reports activated_on as null).
 func zoneActivatedOn(zone zones.Zone) *llx.RawData {

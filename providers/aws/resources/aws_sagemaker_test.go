@@ -299,3 +299,32 @@ func TestNotebookInstanceDetailsNullSubnet(t *testing.T) {
 func TestModelPackagesListInputIncludesVersioned(t *testing.T) {
 	assert.Equal(t, sagemakerTypes.ModelPackageTypeBoth, modelPackagesListInput().ModelPackageType)
 }
+
+// Synthetic: cross-region traffic configuration presence and absence; no target showed this.
+func TestSagemakerCrossRegionTraffic(t *testing.T) {
+	t.Run("absent configuration reads null", func(t *testing.T) {
+		assert.Nil(t, sagemakerCrossRegionTraffic(nil, sagemakerCrossRegionMaxPercent))
+		assert.Nil(t, sagemakerCrossRegionTraffic(nil, sagemakerCrossRegionMaxInvocations))
+	})
+
+	t.Run("each getter reads its own member", func(t *testing.T) {
+		cfg := &sagemakerTypes.CrossRegionTrafficConfig{
+			MaxCrossRegionPercentPerEndpoint:   aws.Int32(25),
+			MaxInvocationsPerSecondPerInstance: aws.Int32(40),
+		}
+		pct := sagemakerCrossRegionTraffic(cfg, sagemakerCrossRegionMaxPercent)
+		require.NotNil(t, pct)
+		assert.Equal(t, int64(25), *pct)
+		inv := sagemakerCrossRegionTraffic(cfg, sagemakerCrossRegionMaxInvocations)
+		require.NotNil(t, inv)
+		assert.Equal(t, int64(40), *inv)
+	})
+
+	t.Run("unset member reads null, not zero", func(t *testing.T) {
+		cfg := &sagemakerTypes.CrossRegionTrafficConfig{MaxCrossRegionPercentPerEndpoint: aws.Int32(0)}
+		pct := sagemakerCrossRegionTraffic(cfg, sagemakerCrossRegionMaxPercent)
+		require.NotNil(t, pct)
+		assert.Equal(t, int64(0), *pct)
+		assert.Nil(t, sagemakerCrossRegionTraffic(cfg, sagemakerCrossRegionMaxInvocations))
+	})
+}

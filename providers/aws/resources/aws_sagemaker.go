@@ -4610,3 +4610,98 @@ func sagemakerRegionList(conn *connection.AwsConnection, collect func(svc *sagem
 	}
 	return res, nil
 }
+
+func (a *mqlAwsSagemakerDomain) homeEfsFileSystem() (*mqlAwsEfsFilesystem, error) {
+	if err := a.fetchDetails(); err != nil {
+		return nil, err
+	}
+	fsId := convert.ToValue(a.cacheHomeEfsId)
+	if fsId == "" {
+		a.HomeEfsFileSystem.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	res, err := NewResource(a.MqlRuntime, ResourceAwsEfsFilesystem,
+		map[string]*llx.RawData{"arn": llx.StringData(fmt.Sprintf(efsFilesystemArnPattern, a.Region.Data, conn.AccountId(), fsId))})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsEfsFilesystem), nil
+}
+
+// sagemakerCrossRegionTraffic reads one value out of an endpoint or endpoint
+// configuration's cross-region traffic configuration. Both members are
+// required whenever the configuration is present, so a nil configuration or a
+// nil member means the endpoint carries no cross-region traffic setting and
+// reads null rather than 0.
+func sagemakerCrossRegionTraffic(cfg *sagemakerTypes.CrossRegionTrafficConfig, get func(*sagemakerTypes.CrossRegionTrafficConfig) *int32) *int64 {
+	if cfg == nil {
+		return nil
+	}
+	v := get(cfg)
+	if v == nil {
+		return nil
+	}
+	n := int64(*v)
+	return &n
+}
+
+func sagemakerCrossRegionMaxPercent(c *sagemakerTypes.CrossRegionTrafficConfig) *int32 {
+	return c.MaxCrossRegionPercentPerEndpoint
+}
+
+func sagemakerCrossRegionMaxInvocations(c *sagemakerTypes.CrossRegionTrafficConfig) *int32 {
+	return c.MaxInvocationsPerSecondPerInstance
+}
+
+func (a *mqlAwsSagemakerEndpoint) crossRegionMaxPercent() (int64, error) {
+	resp, err := a.fetchDetails()
+	if err != nil {
+		return 0, err
+	}
+	v := sagemakerCrossRegionTraffic(resp.CrossRegionTrafficConfig, sagemakerCrossRegionMaxPercent)
+	if v == nil {
+		a.CrossRegionMaxPercent.State = plugin.StateIsNull | plugin.StateIsSet
+		return 0, nil
+	}
+	return *v, nil
+}
+
+func (a *mqlAwsSagemakerEndpoint) crossRegionMaxInvocationsPerSecondPerInstance() (int64, error) {
+	resp, err := a.fetchDetails()
+	if err != nil {
+		return 0, err
+	}
+	v := sagemakerCrossRegionTraffic(resp.CrossRegionTrafficConfig, sagemakerCrossRegionMaxInvocations)
+	if v == nil {
+		a.CrossRegionMaxInvocationsPerSecondPerInstance.State = plugin.StateIsNull | plugin.StateIsSet
+		return 0, nil
+	}
+	return *v, nil
+}
+
+func (a *mqlAwsSagemakerEndpointConfig) crossRegionMaxPercent() (int64, error) {
+	resp, err := a.fetchDetails()
+	if err != nil {
+		return 0, err
+	}
+	v := sagemakerCrossRegionTraffic(resp.CrossRegionTrafficConfig, sagemakerCrossRegionMaxPercent)
+	if v == nil {
+		a.CrossRegionMaxPercent.State = plugin.StateIsNull | plugin.StateIsSet
+		return 0, nil
+	}
+	return *v, nil
+}
+
+func (a *mqlAwsSagemakerEndpointConfig) crossRegionMaxInvocationsPerSecondPerInstance() (int64, error) {
+	resp, err := a.fetchDetails()
+	if err != nil {
+		return 0, err
+	}
+	v := sagemakerCrossRegionTraffic(resp.CrossRegionTrafficConfig, sagemakerCrossRegionMaxInvocations)
+	if v == nil {
+		a.CrossRegionMaxInvocationsPerSecondPerInstance.State = plugin.StateIsNull | plugin.StateIsSet
+		return 0, nil
+	}
+	return *v, nil
+}

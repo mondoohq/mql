@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
@@ -27,6 +28,13 @@ type mqlAzureSubscriptionSynapseServiceWorkspaceInternal struct {
 	cacheUserAssignedIdentityIds    []string
 	cacheComputeSubnetId            *string
 	cachePrivateEndpointConnections []*armsynapse.PrivateEndpointConnection
+
+	sqlAdminOnce sync.Once
+	sqlAdmin     *armsynapse.AADAdminProperties
+	sqlAdminErr  error
+	sqlAuditOnce sync.Once
+	sqlAudit     *armsynapse.ServerBlobAuditingPolicyProperties
+	sqlAuditErr  error
 }
 
 // computeSubnet resolves the subnet the workspace's managed Spark compute
@@ -371,4 +379,9 @@ func initAzureSubscriptionSynapseServiceWorkspace(runtime *plugin.Runtime, args 
 	}
 
 	return nil, nil, errors.New("azure synapse workspace does not exist")
+}
+
+func (a *mqlAzureSubscriptionSynapseServiceWorkspace) diagnosticSettings() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
 }

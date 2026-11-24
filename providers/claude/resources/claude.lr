@@ -58,7 +58,9 @@ claude.model @defaults("id displayName") {
   vendor string
   // Model family
   //
-  // Parsed from the model identifier, for example opus, sonnet, or haiku.
+  // Model line the model belongs to, for example opus, sonnet, haiku, or
+  // fable, as the Models API reports it. More lines may be added. Null when
+  // the model belongs to no line.
   family string
   // Object type
   //
@@ -84,6 +86,24 @@ claude.model @defaults("id displayName") {
   structuredOutputsSupported bool
   // Whether extended thinking is supported
   thinkingSupported bool
+  // Lifecycle stage of the model
+  //
+  // One of active, deprecated, or retired. A deprecated model stays
+  // callable for organizations with existing access but is closed to new
+  // adopters and headed for retirement. Inference requests naming a retired
+  // model fail.
+  lifecycle string
+  // Timestamp of the model's most recent deprecation
+  //
+  // Set for deprecated and retired models. Null while the model is active.
+  deprecatedAt time
+  // Scheduled retirement date
+  //
+  // The schedule can be revised until retirement occurs. Null while the
+  // model is active or no retirement is scheduled. A past date on a
+  // deprecated model means retirement is overdue, not that it happened:
+  // `lifecycle` is the retirement signal.
+  retiresAt time
 }
 
 // Claude managed agent
@@ -630,6 +650,11 @@ claude.organization @defaults("id name") {
   // `activities` field reads. An organization with a parent reads the
   // state inherited from the parent's configuration.
   complianceApiState() string
+  // Whether Access Transparency is enabled for the organization
+  //
+  // Read from the organization's Compliance Settings. Null when Access
+  // Transparency is not available to the organization.
+  accessTransparencyEnabled() bool
   // RBAC groups in the Claude Enterprise tenant
   rbacGroups() []claude.organization.rbacGroup
   // RBAC roles in the Claude Enterprise tenant
@@ -702,6 +727,29 @@ claude.organization.workspace @defaults("id name") {
   defaultInferenceGeo string
   // Allowed inference geographic regions
   allowedInferenceGeos []string
+  // Whether Anthropic human review applies to the workspace
+  //
+  // Human review is off only while the setting is disabled and Anthropic's
+  // approval of that stands. Null when the organization is not enabled for
+  // inference data privacy settings.
+  humanReviewEnabled() bool
+  // Where safeguards data retained for the workspace is stored
+  //
+  // One of internal or external. External sends the data Anthropic's
+  // safeguards systems retain to an External Storage bucket the
+  // organization owns. Internal sends it to Anthropic's storage or, on a
+  // cloud provider's platform, to that provider's storage. A recent change
+  // may not have taken effect yet. Null when the organization is not
+  // enabled for this setting.
+  safeguardsStorageType() string
+  // Where copies of the workspace's transcripts are stored
+  //
+  // One of internal or external. External sends copies of transcripts, and
+  // of Anthropic's safety findings about them, to an External Storage
+  // bucket the organization owns. Internal makes no copies. A recent change
+  // may not have taken effect yet. Null when the organization is not
+  // enabled for this setting.
+  transcriptsStorageType() string
   // Customer-managed encryption key protecting this workspace
   //
   // Deprecated in favor of externalKey, which carries the same
@@ -1358,6 +1406,11 @@ claude.organization.rbacRole @defaults("id name") {
   id string
   // Role name
   name string
+  // Origin of the role
+  //
+  // Either built_in, a role Anthropic provides, or custom. More values may
+  // be added, so a role that is not built_in is not necessarily custom.
+  sourceType string
   // Permissions the role grants
   permissions() []claude.organization.rbacRole.permission
   // Groups the role is attached to

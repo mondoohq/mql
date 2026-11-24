@@ -1037,12 +1037,30 @@ func newMqlElbMutualAuthentication(runtime *plugin.Runtime, listenerArn string, 
 	if ma == nil {
 		return llx.NilData, nil
 	}
+	maId := listenerArn + "/mutualAuthentication"
+	// The filters are an ordered list with no key of their own, so the
+	// position within the listener keys each one.
+	filters := make([]any, 0, len(ma.ClientCertificateIdentityFilters))
+	for i, f := range ma.ClientCertificateIdentityFilters {
+		mqlFilter, err := CreateResource(runtime, "aws.elb.mutualAuthentication.identityFilter", map[string]*llx.RawData{
+			"__id":      llx.StringData(fmt.Sprintf("%s/identityFilter/%d", maId, i)),
+			"action":    llx.StringData(string(f.Action)),
+			"field":     llx.StringData(string(f.Field)),
+			"matchType": llx.StringData(string(f.MatchType)),
+			"value":     llx.StringData(convert.ToValue(f.Value)),
+		})
+		if err != nil {
+			return nil, err
+		}
+		filters = append(filters, mqlFilter)
+	}
 	res, err := CreateResource(runtime, "aws.elb.mutualAuthentication", map[string]*llx.RawData{
-		"__id":                          llx.StringData(listenerArn + "/mutualAuthentication"),
-		"mode":                          llx.StringData(convert.ToValue(ma.Mode)),
-		"ignoreClientCertificateExpiry": llx.BoolData(convert.ToValue(ma.IgnoreClientCertificateExpiry)),
-		"advertiseTrustStoreCaNames":    llx.StringData(string(ma.AdvertiseTrustStoreCaNames)),
-		"trustStoreAssociationStatus":   llx.StringData(string(ma.TrustStoreAssociationStatus)),
+		"__id":                             llx.StringData(maId),
+		"mode":                             llx.StringData(convert.ToValue(ma.Mode)),
+		"ignoreClientCertificateExpiry":    llx.BoolData(convert.ToValue(ma.IgnoreClientCertificateExpiry)),
+		"advertiseTrustStoreCaNames":       llx.StringData(string(ma.AdvertiseTrustStoreCaNames)),
+		"trustStoreAssociationStatus":      llx.StringData(string(ma.TrustStoreAssociationStatus)),
+		"clientCertificateIdentityFilters": llx.ArrayData(filters, types.Resource("aws.elb.mutualAuthentication.identityFilter")),
 	})
 	if err != nil {
 		return nil, err
