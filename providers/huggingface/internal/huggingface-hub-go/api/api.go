@@ -400,9 +400,43 @@ func (a *API) ListSpaces(ctx context.Context, opts *models.SpaceListOptions) (*m
 	return &spaceList, nil
 }
 
-func (a *API) ListInferenceEndpoints(ctx context.Context, namespace string) (*models.InferenceEndpointList, error) {
-	u := fmt.Sprintf("https://api.endpoints.huggingface.cloud/v2/endpoint/%s", url.PathEscape(namespace))
+// inferenceEndpointsBaseURL is the Inference Endpoints API, which is served
+// from its own host rather than the Hub's.
+var inferenceEndpointsBaseURL = "https://api.endpoints.huggingface.cloud"
 
+// ListInferenceEndpoints returns every inference endpoint in the namespace.
+// The list paginates with a nextCursor in the body; a cursor seen twice stops
+// the walk with an error instead of looping.
+func (a *API) ListInferenceEndpoints(ctx context.Context, namespace string) (*models.InferenceEndpointList, error) {
+	const maxPages = 1000
+	base := fmt.Sprintf("%s/v2/endpoint/%s", inferenceEndpointsBaseURL, url.PathEscape(namespace))
+
+	all := &models.InferenceEndpointList{}
+	seen := map[string]bool{}
+	cursor := ""
+	for range maxPages {
+		u := base
+		if cursor != "" {
+			u += "?cursor=" + url.QueryEscape(cursor)
+		}
+		page, err := a.getInferenceEndpointPage(ctx, u)
+		if err != nil {
+			return nil, err
+		}
+		all.Endpoints = append(all.Endpoints, page.Endpoints...)
+		if page.NextCursor == nil || *page.NextCursor == "" || len(page.Endpoints) == 0 {
+			return all, nil
+		}
+		cursor = *page.NextCursor
+		if seen[cursor] {
+			return nil, fmt.Errorf("inference endpoint list returned cursor %q twice", cursor)
+		}
+		seen[cursor] = true
+	}
+	return all, nil
+}
+
+func (a *API) getInferenceEndpointPage(ctx context.Context, u string) (*models.InferenceEndpointList, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -423,11 +457,11 @@ func (a *API) ListInferenceEndpoints(ctx context.Context, namespace string) (*mo
 		return nil, fmt.Errorf("API error: %s (status: %d)", string(bodyBytes), resp.StatusCode)
 	}
 
-	var endpointList models.InferenceEndpointList
-	if err := json.NewDecoder(resp.Body).Decode(&endpointList); err != nil {
+	var page models.InferenceEndpointList
+	if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
-	return &endpointList, nil
+	return &page, nil
 }
 
 func (a *API) ListWebhooks(ctx context.Context, opts *models.WebhookListOptions) ([]models.Webhook, error) {

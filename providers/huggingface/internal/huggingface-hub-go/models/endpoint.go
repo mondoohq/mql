@@ -3,17 +3,31 @@
 
 package models
 
+// InferenceEndpoint is one entry of the Inference Endpoints v2 list
+// (EndpointWithStatus in the Endpoints OpenAPI document). The API names an
+// endpoint by its namespace and name and returns no separate id. The deployed
+// model and the runtime state are nested objects.
 type InferenceEndpoint struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Model       string `json:"model"`
-	Framework   string `json:"framework"`
-	Status      string `json:"status"`
-	EndpointURL string `json:"endpoint_url"`
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
+	Name   string                 `json:"name"`
+	Model  InferenceEndpointModel `json:"model"`
+	Status InferenceEndpointState `json:"status"`
 }
 
+type InferenceEndpointModel struct {
+	Repository string `json:"repository"`
+	Framework  string `json:"framework"`
+}
+
+type InferenceEndpointState struct {
+	State     string `json:"state"`
+	URL       string `json:"url"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
+// InferenceEndpointList is one page of the list. NextCursor is null on the
+// last page.
 type InferenceEndpointList struct {
-	Endpoints []InferenceEndpoint `json:"items"`
+	Endpoints  []InferenceEndpoint `json:"items"`
+	NextCursor *string             `json:"nextCursor"`
 }

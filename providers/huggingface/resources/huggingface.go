@@ -332,17 +332,7 @@ func (r *mqlHuggingface) inferenceEndpoints() ([]any, error) {
 
 	endpoints := make([]any, 0, len(endpointList.Endpoints))
 	for _, ep := range endpointList.Endpoints {
-		res, err := CreateResource(r.MqlRuntime, "huggingface.inferenceEndpoint", map[string]*llx.RawData{
-			"__id":        llx.StringData("huggingface.inferenceEndpoint/" + ep.ID),
-			"id":          llx.StringData(ep.ID),
-			"name":        llx.StringData(ep.Name),
-			"model":       llx.StringData(ep.Model),
-			"framework":   llx.StringData(ep.Framework),
-			"status":      llx.StringData(ep.Status),
-			"endpointUrl": llx.StringData(ep.EndpointURL),
-			"createdAt":   llx.TimeDataPtr(parseHFTime(ep.CreatedAt)),
-			"updatedAt":   llx.TimeDataPtr(parseHFTime(ep.UpdatedAt)),
-		})
+		res, err := CreateResource(r.MqlRuntime, "huggingface.inferenceEndpoint", inferenceEndpointArgs(ns, ep))
 		if err != nil {
 			return nil, err
 		}
@@ -350,6 +340,25 @@ func (r *mqlHuggingface) inferenceEndpoints() ([]any, error) {
 	}
 
 	return endpoints, nil
+}
+
+// inferenceEndpointArgs maps an endpoint onto resource arguments. The API has
+// no endpoint id; an endpoint is named by its namespace and name, so the id is
+// both joined, which is also what keeps two namespaces' endpoints of the same
+// name apart in the resource cache.
+func inferenceEndpointArgs(namespace string, ep hfmodels.InferenceEndpoint) map[string]*llx.RawData {
+	id := namespace + "/" + ep.Name
+	return map[string]*llx.RawData{
+		"__id":        llx.StringData("huggingface.inferenceEndpoint/" + id),
+		"id":          llx.StringData(id),
+		"name":        llx.StringData(ep.Name),
+		"model":       llx.StringData(ep.Model.Repository),
+		"framework":   llx.StringData(ep.Model.Framework),
+		"status":      llx.StringData(ep.Status.State),
+		"endpointUrl": llx.StringData(ep.Status.URL),
+		"createdAt":   llx.TimeDataPtr(parseHFTime(ep.Status.CreatedAt)),
+		"updatedAt":   llx.TimeDataPtr(parseHFTime(ep.Status.UpdatedAt)),
+	}
 }
 
 // --- huggingface.user ---

@@ -97,3 +97,29 @@ func TestStringsToInterface(t *testing.T) {
 	assert.Equal(t, []any{}, stringsToInterface(nil))
 	assert.Equal(t, []any{"a", "b"}, stringsToInterface([]string{"a", "b"}))
 }
+
+// Synthetic: an endpoint record shaped after the Inference Endpoints v2
+// OpenAPI document; no live account was checked.
+//
+// The API returns no endpoint id, so the id is namespace/name. Two
+// namespaces' endpoints of the same name must not share a cache id.
+func TestInferenceEndpointArgs(t *testing.T) {
+	ep := hfmodels.InferenceEndpoint{
+		Name:  "chat",
+		Model: hfmodels.InferenceEndpointModel{Repository: "acme/llm", Framework: "pytorch"},
+		Status: hfmodels.InferenceEndpointState{
+			State: "running", URL: "https://chat.endpoints.huggingface.cloud",
+			CreatedAt: "2026-01-02T03:04:05Z",
+		},
+	}
+
+	args := inferenceEndpointArgs("acme", ep)
+	assert.Equal(t, "acme/chat", args["id"].Value)
+	assert.Equal(t, "acme/llm", args["model"].Value)
+	assert.Equal(t, "pytorch", args["framework"].Value)
+	assert.Equal(t, "running", args["status"].Value)
+	assert.Equal(t, "https://chat.endpoints.huggingface.cloud", args["endpointUrl"].Value)
+
+	other := inferenceEndpointArgs("other-org", ep)
+	assert.NotEqual(t, args["__id"].Value, other["__id"].Value)
+}

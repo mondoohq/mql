@@ -378,6 +378,10 @@ huggingface.webhook @defaults("id webhookUrl") {
 // can audit which models are exposed, whether a deployment is healthy
 // or scaled to zero, and where inference traffic is served from.
 huggingface.inferenceEndpoint @defaults("name status") {
+  // Endpoint identifier
+  //
+  // The namespace and the endpoint name joined by a slash, for example
+  // `acme/chat`.
   id string
   name string
   // Model ID deployed on this endpoint

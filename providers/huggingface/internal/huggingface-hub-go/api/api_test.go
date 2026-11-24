@@ -157,3 +157,62 @@ func TestListModelsPropagatesError(t *testing.T) {
 	// matches on to degrade gracefully.
 	assert.Contains(t, err.Error(), "(status: 403)")
 }
+
+// Synthetic: two pages shaped after the Inference Endpoints v2 OpenAPI
+// document (EndpointWithStatusList); no live account was checked.
+//
+// The list nests the model and the status as objects and pages with a
+// nextCursor in the body. Decoding them as flat strings failed on any account
+// with an endpoint, and stopping after one page dropped the rest.
+func TestListInferenceEndpointsPagination(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/v2/endpoint/acme", r.URL.Path)
+		switch r.URL.Query().Get("cursor") {
+		case "":
+			_, _ = w.Write([]byte(`{"items":[{"name":"one","type":"authenticated",
+				"model":{"repository":"acme/llm","framework":"pytorch","image":{}},
+				"status":{"state":"running","url":"https://one.endpoints.huggingface.cloud",
+					"createdAt":"2026-01-02T03:04:05Z","updatedAt":"2026-02-03T04:05:06Z"}}],
+				"nextCursor":"page2","totalItems":2}`))
+		case "page2":
+			_, _ = w.Write([]byte(`{"items":[{"name":"two","model":{"repository":"acme/other"},
+				"status":{"state":"scaledToZero"}}],"nextCursor":null,"totalItems":2}`))
+		default:
+			t.Fatalf("unexpected cursor %q", r.URL.Query().Get("cursor"))
+		}
+	}))
+	defer srv.Close()
+
+	orig := inferenceEndpointsBaseURL
+	inferenceEndpointsBaseURL = srv.URL
+	defer func() { inferenceEndpointsBaseURL = orig }()
+
+	a := NewAPI(srv.URL, srv.Client(), "")
+	list, err := a.ListInferenceEndpoints(context.Background(), "acme")
+	require.NoError(t, err)
+	require.Len(t, list.Endpoints, 2)
+	assert.Equal(t, "one", list.Endpoints[0].Name)
+	assert.Equal(t, "acme/llm", list.Endpoints[0].Model.Repository)
+	assert.Equal(t, "pytorch", list.Endpoints[0].Model.Framework)
+	assert.Equal(t, "running", list.Endpoints[0].Status.State)
+	assert.Equal(t, "https://one.endpoints.huggingface.cloud", list.Endpoints[0].Status.URL)
+	assert.Equal(t, "2026-01-02T03:04:05Z", list.Endpoints[0].Status.CreatedAt)
+	assert.Equal(t, "scaledToZero", list.Endpoints[1].Status.State)
+}
+
+// Synthetic: a server that keeps answering with the same cursor; no live
+// account showed this. The walk must stop with an error, not loop.
+func TestListInferenceEndpointsStopsOnRepeatedCursor(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"items":[{"name":"one"}],"nextCursor":"same","totalItems":9}`))
+	}))
+	defer srv.Close()
+
+	orig := inferenceEndpointsBaseURL
+	inferenceEndpointsBaseURL = srv.URL
+	defer func() { inferenceEndpointsBaseURL = orig }()
+
+	a := NewAPI(srv.URL, srv.Client(), "")
+	_, err := a.ListInferenceEndpoints(context.Background(), "acme")
+	require.Error(t, err)
+}
