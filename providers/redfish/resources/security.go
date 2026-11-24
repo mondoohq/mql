@@ -33,10 +33,14 @@ type odataRef struct {
 // protocolSettingJSON is one protocol block of a ManagerNetworkProtocol
 // document. ProtocolEnabled and Port are pointers so an absent property stays
 // distinguishable from a property the controller reports as false or zero.
+//
+// PreferredAuthentications is defined for the SSH block only, and stays nil
+// when the controller leaves it out.
 type protocolSettingJSON struct {
-	ProtocolEnabled *bool     `json:"ProtocolEnabled"`
-	Port            *int64    `json:"Port"`
-	Certificates    *odataRef `json:"Certificates"`
+	ProtocolEnabled          *bool     `json:"ProtocolEnabled"`
+	Port                     *int64    `json:"Port"`
+	Certificates             *odataRef `json:"Certificates"`
+	PreferredAuthentications []string  `json:"PreferredAuthentications"`
 }
 
 // networkProtocolJSON is the subset of a ManagerNetworkProtocol document the
@@ -81,6 +85,21 @@ func protocolPort(p *protocolSettingJSON) *int64 {
 		return nil
 	}
 	return p.Port
+}
+
+// protocolPreferredAuthentications returns the authentication methods a
+// protocol block permits. It returns null when the controller does not report
+// the protocol or leaves the list out, so an audit does not read an unreported
+// list as one that permits nothing.
+func protocolPreferredAuthentications(p *protocolSettingJSON) *llx.RawData {
+	if p == nil || p.PreferredAuthentications == nil {
+		return llx.NilData
+	}
+	methods := make([]any, 0, len(p.PreferredAuthentications))
+	for _, m := range p.PreferredAuthentications {
+		methods = append(methods, m)
+	}
+	return llx.ArrayData(methods, types.String)
 }
 
 // parseManagerNetworkProtocolLink returns the NetworkProtocol URI of a manager
@@ -213,15 +232,43 @@ func parseAccountFlags(raw []byte) accountFlagsJSON {
 }
 
 // externalAccountProviderJSON is the subset of an external account provider
-// block the provider surfaces. Only the authentication method is read: the
-// same block also carries the password, the token, and the encryption key that
-// the controller uses to bind to the directory, and those never leave it.
+// block the provider surfaces. Only the authentication method and whether its
+// credential is set are read: the same block also carries the password, the
+// token, and the encryption key that the controller uses to bind to the
+// directory, and those never leave it.
 type externalAccountProviderJSON struct {
-	ServiceEnabled   *bool    `json:"ServiceEnabled"`
-	ServiceAddresses []string `json:"ServiceAddresses"`
-	Authentication   *struct {
-		AuthenticationType string `json:"AuthenticationType"`
-	} `json:"Authentication"`
+	ServiceEnabled   *bool                       `json:"ServiceEnabled"`
+	ServiceAddresses []string                    `json:"ServiceAddresses"`
+	Authentication   *providerAuthenticationJSON `json:"Authentication"`
+}
+
+// providerAuthenticationJSON is the Authentication block of an external account
+// provider. The Set flags are pointers so a controller that predates them
+// resolves to null rather than to a credential that is missing.
+type providerAuthenticationJSON struct {
+	AuthenticationType string `json:"AuthenticationType"`
+	PasswordSet        *bool  `json:"PasswordSet"`
+	TokenSet           *bool  `json:"TokenSet"`
+	KerberosKeytabSet  *bool  `json:"KerberosKeytabSet"`
+}
+
+// credentialSet returns whether the credential that the configured
+// authentication method needs is set. It returns nil when the method is OEM or
+// unknown, or when the controller does not report the matching flag.
+func (a *providerAuthenticationJSON) credentialSet() *bool {
+	if a == nil {
+		return nil
+	}
+	switch a.AuthenticationType {
+	case "UsernameAndPassword":
+		return a.PasswordSet
+	case "Token":
+		return a.TokenSet
+	case "KerberosKeytab":
+		return a.KerberosKeytabSet
+	default:
+		return nil
+	}
 }
 
 // accountServiceJSON is the subset of a Redfish AccountService document the
@@ -491,6 +538,8 @@ func (r *mqlRedfish) networkProtocols() ([]any, error) {
 			"virtualMediaPort":    llx.IntDataPtr(protocolPort(np.VirtualMedia)),
 			"kvmipEnabled":        llx.BoolDataPtr(protocolEnabled(np.KVMIP)),
 			"kvmipPort":           llx.IntDataPtr(protocolPort(np.KVMIP)),
+
+			"sshPreferredAuthentications": protocolPreferredAuthentications(np.SSH),
 		})
 		if err != nil {
 			return nil, err
@@ -686,6 +735,8 @@ func (r *mqlRedfish) sessions() ([]any, error) {
 			"createdTime":           llx.TimeDataPtr(parseRedfishTime(s.CreatedTime)),
 			"expirationTime":        llx.TimeDataPtr(parseRedfishTime(s.ExpirationTime)),
 			"roles":                 llx.ArrayData(roles, types.String),
+
+			"userAuthenticationSource": llx.StringDataPtr(nonEmpty(s.UserAuthenticationSource)),
 		})
 		if err != nil {
 			return nil, err
@@ -873,6 +924,27 @@ func (r *mqlRedfishAccountService) providerAuthType(field *plugin.TValue[string]
 		return r.stringField(field, "")
 	}
 	return r.stringField(field, p.Authentication.AuthenticationType)
+}
+
+// providerCredentialSet reports whether an external account provider holds the
+// credential its authentication method needs. The credential is never read.
+func (r *mqlRedfishAccountService) providerCredentialSet(field *plugin.TValue[bool], p *externalAccountProviderJSON) (bool, error) {
+	if p == nil {
+		return r.boolField(field, nil)
+	}
+	return r.boolField(field, p.Authentication.credentialSet())
+}
+
+func (r *mqlRedfishAccountService) ldapCredentialSet() (bool, error) {
+	return r.providerCredentialSet(&r.LdapCredentialSet, r.value().LDAP)
+}
+
+func (r *mqlRedfishAccountService) activeDirectoryCredentialSet() (bool, error) {
+	return r.providerCredentialSet(&r.ActiveDirectoryCredentialSet, r.value().ActiveDirectory)
+}
+
+func (r *mqlRedfishAccountService) tacacsPlusCredentialSet() (bool, error) {
+	return r.providerCredentialSet(&r.TacacsPlusCredentialSet, r.value().TACACSplus)
 }
 
 func (r *mqlRedfishAccountService) ldapEnabled() (bool, error) {
