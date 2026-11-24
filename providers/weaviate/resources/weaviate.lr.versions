@@ -1,23 +1,49 @@
 # Copyright Mondoo, Inc. 2024, 2026
 # SPDX-License-Identifier: BUSL-1.1
 
+weaviate.alias 14.1.1
+weaviate.alias.collection 14.1.1
+weaviate.alias.name 14.1.1
+weaviate.backup 14.1.1
+weaviate.backup.backend 14.1.1
+weaviate.backup.collectionNames 14.1.1
+weaviate.backup.collections 14.1.1
+weaviate.backup.completedAt 14.1.1
+weaviate.backup.id 14.1.1
+weaviate.backup.sizeGiB 14.1.1
+weaviate.backup.startedAt 14.1.1
+weaviate.backup.status 14.1.1
 weaviate.collection 13.0.0
 weaviate.collection.asyncReplicationEnabled 13.0.0
 weaviate.collection.autoTenantActivation 13.0.0
 weaviate.collection.autoTenantCreation 13.0.0
 weaviate.collection.description 13.0.0
+weaviate.collection.generativeModule 14.1.1
+weaviate.collection.moduleEndpoints 14.1.1
 weaviate.collection.modules 13.0.0
 weaviate.collection.multiTenancyEnabled 13.0.0
 weaviate.collection.name 13.0.0
+weaviate.collection.objectTtlDefault 14.1.1
+weaviate.collection.objectTtlDeleteOn 14.1.1
+weaviate.collection.objectTtlEnabled 14.1.1
+weaviate.collection.replicationDeletionStrategy 14.1.1
 weaviate.collection.replicationFactor 13.0.0
+weaviate.collection.rerankerModule 14.1.1
+weaviate.collection.tenant 14.1.1
+weaviate.collection.tenant.activityStatus 14.1.1
+weaviate.collection.tenant.name 14.1.1
+weaviate.collection.tenants 14.1.1
 weaviate.collection.vectorIndexType 13.0.0
 weaviate.collection.vectorizer 13.0.0
+weaviate.collection.vectorizers 14.1.1
 weaviate.group 14.0.0
 weaviate.group.groupId 14.0.0
 weaviate.group.groupType 14.0.0
 weaviate.group.roles 14.0.0
 weaviate.instance 13.0.0
+weaviate.instance.aliases 14.1.1
 weaviate.instance.anonymousAccessEnabled 13.0.0
+weaviate.instance.backups 14.1.1
 weaviate.instance.collections 13.0.0
 weaviate.instance.groups 14.0.0
 weaviate.instance.hostname 13.0.0
@@ -34,6 +60,7 @@ weaviate.node 13.0.0
 weaviate.node.gitHash 13.0.0
 weaviate.node.name 13.0.0
 weaviate.node.objectCount 13.0.0
+weaviate.node.operationalMode 14.1.1
 weaviate.node.shardCount 13.0.0
 weaviate.node.status 13.0.0
 weaviate.node.version 13.0.0

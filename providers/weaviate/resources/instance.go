@@ -80,35 +80,10 @@ func (r *mqlWeaviateInstance) collections() ([]any, error) {
 	serverID := r.__id
 	list := []any{}
 	for _, class := range schema.Classes {
-		multiEnabled := false
-		autoCreate := false
-		autoActivate := false
-		if mt := class.MultiTenancyConfig; mt != nil {
-			multiEnabled = mt.Enabled
-			autoCreate = mt.AutoTenantCreation
-			autoActivate = mt.AutoTenantActivation
+		if class == nil {
+			continue
 		}
-		replFactor := int64(0)
-		asyncRepl := false
-		if rc := class.ReplicationConfig; rc != nil {
-			replFactor = rc.Factor
-			// Async replication is signaled by a present async config block.
-			asyncRepl = rc.AsyncConfig != nil
-		}
-
-		res, err := CreateResource(r.MqlRuntime, "weaviate.collection", map[string]*llx.RawData{
-			"__id":                    llx.StringData(collectionResourceID(serverID, class.Class)),
-			"name":                    llx.StringData(class.Class),
-			"description":             llx.StringData(class.Description),
-			"vectorizer":              llx.StringData(class.Vectorizer),
-			"modules":                 llx.ArrayData(moduleNames(class.ModuleConfig), types.String),
-			"multiTenancyEnabled":     llx.BoolData(multiEnabled),
-			"autoTenantCreation":      llx.BoolData(autoCreate),
-			"autoTenantActivation":    llx.BoolData(autoActivate),
-			"replicationFactor":       llx.IntData(replFactor),
-			"asyncReplicationEnabled": llx.BoolData(asyncRepl),
-			"vectorIndexType":         llx.StringData(class.VectorIndexType),
-		})
+		res, err := CreateResource(r.MqlRuntime, "weaviate.collection", collectionArgs(serverID, class))
 		if err != nil {
 			return nil, err
 		}
@@ -155,6 +130,8 @@ func (r *mqlWeaviateInstance) nodes() ([]any, error) {
 			"gitHash":     llx.StringData(n.GitHash),
 			"shardCount":  llx.IntData(shardCount),
 			"objectCount": llx.IntData(objectCount),
+			// The server omits the mode when it reports none.
+			"operationalMode": llx.StringDataPtr(nonEmpty(n.OperationalMode)),
 		})
 		if err != nil {
 			return nil, err

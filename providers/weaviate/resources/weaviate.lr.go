@@ -16,13 +16,16 @@ import (
 
 // The MQL type names exposed as public consts for ease of reference.
 const (
-	ResourceWeaviateInstance       string = "weaviate.instance"
-	ResourceWeaviateCollection     string = "weaviate.collection"
-	ResourceWeaviateRole           string = "weaviate.role"
-	ResourceWeaviateRolePermission string = "weaviate.role.permission"
-	ResourceWeaviateUser           string = "weaviate.user"
-	ResourceWeaviateGroup          string = "weaviate.group"
-	ResourceWeaviateNode           string = "weaviate.node"
+	ResourceWeaviateInstance         string = "weaviate.instance"
+	ResourceWeaviateBackup           string = "weaviate.backup"
+	ResourceWeaviateAlias            string = "weaviate.alias"
+	ResourceWeaviateCollection       string = "weaviate.collection"
+	ResourceWeaviateCollectionTenant string = "weaviate.collection.tenant"
+	ResourceWeaviateRole             string = "weaviate.role"
+	ResourceWeaviateRolePermission   string = "weaviate.role.permission"
+	ResourceWeaviateUser             string = "weaviate.user"
+	ResourceWeaviateGroup            string = "weaviate.group"
+	ResourceWeaviateNode             string = "weaviate.node"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -33,9 +36,21 @@ func init() {
 			Init:   initWeaviateInstance,
 			Create: createWeaviateInstance,
 		},
+		"weaviate.backup": {
+			// to override args, implement: initWeaviateBackup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createWeaviateBackup,
+		},
+		"weaviate.alias": {
+			// to override args, implement: initWeaviateAlias(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createWeaviateAlias,
+		},
 		"weaviate.collection": {
 			// to override args, implement: initWeaviateCollection(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createWeaviateCollection,
+		},
+		"weaviate.collection.tenant": {
+			// to override args, implement: initWeaviateCollectionTenant(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createWeaviateCollectionTenant,
 		},
 		"weaviate.role": {
 			// to override args, implement: initWeaviateRole(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -167,6 +182,42 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"weaviate.instance.nodes": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWeaviateInstance).GetNodes()).ToDataRes(types.Array(types.Resource("weaviate.node")))
 	},
+	"weaviate.instance.backups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateInstance).GetBackups()).ToDataRes(types.Array(types.Resource("weaviate.backup")))
+	},
+	"weaviate.instance.aliases": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateInstance).GetAliases()).ToDataRes(types.Array(types.Resource("weaviate.alias")))
+	},
+	"weaviate.backup.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateBackup).GetId()).ToDataRes(types.String)
+	},
+	"weaviate.backup.backend": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateBackup).GetBackend()).ToDataRes(types.String)
+	},
+	"weaviate.backup.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateBackup).GetStatus()).ToDataRes(types.String)
+	},
+	"weaviate.backup.startedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateBackup).GetStartedAt()).ToDataRes(types.Time)
+	},
+	"weaviate.backup.completedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateBackup).GetCompletedAt()).ToDataRes(types.Time)
+	},
+	"weaviate.backup.sizeGiB": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateBackup).GetSizeGiB()).ToDataRes(types.Float)
+	},
+	"weaviate.backup.collectionNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateBackup).GetCollectionNames()).ToDataRes(types.Array(types.String))
+	},
+	"weaviate.backup.collections": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateBackup).GetCollections()).ToDataRes(types.Array(types.Resource("weaviate.collection")))
+	},
+	"weaviate.alias.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateAlias).GetName()).ToDataRes(types.String)
+	},
+	"weaviate.alias.collection": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateAlias).GetCollection()).ToDataRes(types.Resource("weaviate.collection"))
+	},
 	"weaviate.collection.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWeaviateCollection).GetName()).ToDataRes(types.String)
 	},
@@ -196,6 +247,39 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"weaviate.collection.vectorIndexType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWeaviateCollection).GetVectorIndexType()).ToDataRes(types.String)
+	},
+	"weaviate.collection.generativeModule": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateCollection).GetGenerativeModule()).ToDataRes(types.String)
+	},
+	"weaviate.collection.rerankerModule": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateCollection).GetRerankerModule()).ToDataRes(types.String)
+	},
+	"weaviate.collection.moduleEndpoints": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateCollection).GetModuleEndpoints()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"weaviate.collection.vectorizers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateCollection).GetVectorizers()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"weaviate.collection.objectTtlEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateCollection).GetObjectTtlEnabled()).ToDataRes(types.Bool)
+	},
+	"weaviate.collection.objectTtlDefault": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateCollection).GetObjectTtlDefault()).ToDataRes(types.Int)
+	},
+	"weaviate.collection.objectTtlDeleteOn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateCollection).GetObjectTtlDeleteOn()).ToDataRes(types.String)
+	},
+	"weaviate.collection.replicationDeletionStrategy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateCollection).GetReplicationDeletionStrategy()).ToDataRes(types.String)
+	},
+	"weaviate.collection.tenants": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateCollection).GetTenants()).ToDataRes(types.Array(types.Resource("weaviate.collection.tenant")))
+	},
+	"weaviate.collection.tenant.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateCollectionTenant).GetName()).ToDataRes(types.String)
+	},
+	"weaviate.collection.tenant.activityStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateCollectionTenant).GetActivityStatus()).ToDataRes(types.String)
 	},
 	"weaviate.role.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWeaviateRole).GetName()).ToDataRes(types.String)
@@ -299,6 +383,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"weaviate.node.objectCount": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWeaviateNode).GetObjectCount()).ToDataRes(types.Int)
 	},
+	"weaviate.node.operationalMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateNode).GetOperationalMode()).ToDataRes(types.String)
+	},
 }
 
 func GetData(resource plugin.Resource, field string, args map[string]*llx.RawData) *plugin.DataRes {
@@ -367,6 +454,62 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlWeaviateInstance).Nodes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"weaviate.instance.backups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateInstance).Backups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"weaviate.instance.aliases": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateInstance).Aliases, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"weaviate.backup.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateBackup).__id, ok = v.Value.(string)
+		return
+	},
+	"weaviate.backup.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateBackup).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"weaviate.backup.backend": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateBackup).Backend, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"weaviate.backup.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateBackup).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"weaviate.backup.startedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateBackup).StartedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"weaviate.backup.completedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateBackup).CompletedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"weaviate.backup.sizeGiB": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateBackup).SizeGiB, ok = plugin.RawToTValue[float64](v.Value, v.Error)
+		return
+	},
+	"weaviate.backup.collectionNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateBackup).CollectionNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"weaviate.backup.collections": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateBackup).Collections, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"weaviate.alias.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateAlias).__id, ok = v.Value.(string)
+		return
+	},
+	"weaviate.alias.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateAlias).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"weaviate.alias.collection": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateAlias).Collection, ok = plugin.RawToTValue[*mqlWeaviateCollection](v.Value, v.Error)
+		return
+	},
 	"weaviate.collection.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlWeaviateCollection).__id, ok = v.Value.(string)
 		return
@@ -409,6 +552,54 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"weaviate.collection.vectorIndexType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlWeaviateCollection).VectorIndexType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"weaviate.collection.generativeModule": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateCollection).GenerativeModule, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"weaviate.collection.rerankerModule": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateCollection).RerankerModule, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"weaviate.collection.moduleEndpoints": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateCollection).ModuleEndpoints, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"weaviate.collection.vectorizers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateCollection).Vectorizers, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"weaviate.collection.objectTtlEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateCollection).ObjectTtlEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"weaviate.collection.objectTtlDefault": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateCollection).ObjectTtlDefault, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"weaviate.collection.objectTtlDeleteOn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateCollection).ObjectTtlDeleteOn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"weaviate.collection.replicationDeletionStrategy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateCollection).ReplicationDeletionStrategy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"weaviate.collection.tenants": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateCollection).Tenants, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"weaviate.collection.tenant.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateCollectionTenant).__id, ok = v.Value.(string)
+		return
+	},
+	"weaviate.collection.tenant.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateCollectionTenant).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"weaviate.collection.tenant.activityStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateCollectionTenant).ActivityStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"weaviate.role.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -567,6 +758,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlWeaviateNode).ObjectCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
+	"weaviate.node.operationalMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateNode).OperationalMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 }
 
 func SetData(resource plugin.Resource, field string, val *llx.RawData) error {
@@ -609,6 +804,8 @@ type mqlWeaviateInstance struct {
 	Users                  plugin.TValue[[]any]
 	Groups                 plugin.TValue[[]any]
 	Nodes                  plugin.TValue[[]any]
+	Backups                plugin.TValue[[]any]
+	Aliases                plugin.TValue[[]any]
 }
 
 // createWeaviateInstance creates a new instance of this resource
@@ -755,21 +952,214 @@ func (c *mqlWeaviateInstance) GetNodes() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlWeaviateInstance) GetBackups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Backups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("weaviate.instance", c.__id, "backups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.backups()
+	})
+}
+
+func (c *mqlWeaviateInstance) GetAliases() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Aliases, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("weaviate.instance", c.__id, "aliases")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.aliases()
+	})
+}
+
+// mqlWeaviateBackup for the weaviate.backup resource
+type mqlWeaviateBackup struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlWeaviateBackupInternal
+	Id              plugin.TValue[string]
+	Backend         plugin.TValue[string]
+	Status          plugin.TValue[string]
+	StartedAt       plugin.TValue[*time.Time]
+	CompletedAt     plugin.TValue[*time.Time]
+	SizeGiB         plugin.TValue[float64]
+	CollectionNames plugin.TValue[[]any]
+	Collections     plugin.TValue[[]any]
+}
+
+// createWeaviateBackup creates a new instance of this resource
+func createWeaviateBackup(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlWeaviateBackup{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("weaviate.backup", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlWeaviateBackup) MqlName() string {
+	return "weaviate.backup"
+}
+
+func (c *mqlWeaviateBackup) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlWeaviateBackup) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlWeaviateBackup) GetBackend() *plugin.TValue[string] {
+	return &c.Backend
+}
+
+func (c *mqlWeaviateBackup) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlWeaviateBackup) GetStartedAt() *plugin.TValue[*time.Time] {
+	return &c.StartedAt
+}
+
+func (c *mqlWeaviateBackup) GetCompletedAt() *plugin.TValue[*time.Time] {
+	return &c.CompletedAt
+}
+
+func (c *mqlWeaviateBackup) GetSizeGiB() *plugin.TValue[float64] {
+	return &c.SizeGiB
+}
+
+func (c *mqlWeaviateBackup) GetCollectionNames() *plugin.TValue[[]any] {
+	return &c.CollectionNames
+}
+
+func (c *mqlWeaviateBackup) GetCollections() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Collections, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("weaviate.backup", c.__id, "collections")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.collections()
+	})
+}
+
+// mqlWeaviateAlias for the weaviate.alias resource
+type mqlWeaviateAlias struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlWeaviateAliasInternal
+	Name       plugin.TValue[string]
+	Collection plugin.TValue[*mqlWeaviateCollection]
+}
+
+// createWeaviateAlias creates a new instance of this resource
+func createWeaviateAlias(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlWeaviateAlias{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("weaviate.alias", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlWeaviateAlias) MqlName() string {
+	return "weaviate.alias"
+}
+
+func (c *mqlWeaviateAlias) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlWeaviateAlias) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlWeaviateAlias) GetCollection() *plugin.TValue[*mqlWeaviateCollection] {
+	return plugin.GetOrCompute[*mqlWeaviateCollection](&c.Collection, func() (*mqlWeaviateCollection, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("weaviate.alias", c.__id, "collection")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlWeaviateCollection), nil
+			}
+		}
+
+		return c.collection()
+	})
+}
+
 // mqlWeaviateCollection for the weaviate.collection resource
 type mqlWeaviateCollection struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlWeaviateCollectionInternal it will be used here
-	Name                    plugin.TValue[string]
-	Description             plugin.TValue[string]
-	Vectorizer              plugin.TValue[string]
-	Modules                 plugin.TValue[[]any]
-	MultiTenancyEnabled     plugin.TValue[bool]
-	AutoTenantCreation      plugin.TValue[bool]
-	AutoTenantActivation    plugin.TValue[bool]
-	ReplicationFactor       plugin.TValue[int64]
-	AsyncReplicationEnabled plugin.TValue[bool]
-	VectorIndexType         plugin.TValue[string]
+	Name                        plugin.TValue[string]
+	Description                 plugin.TValue[string]
+	Vectorizer                  plugin.TValue[string]
+	Modules                     plugin.TValue[[]any]
+	MultiTenancyEnabled         plugin.TValue[bool]
+	AutoTenantCreation          plugin.TValue[bool]
+	AutoTenantActivation        plugin.TValue[bool]
+	ReplicationFactor           plugin.TValue[int64]
+	AsyncReplicationEnabled     plugin.TValue[bool]
+	VectorIndexType             plugin.TValue[string]
+	GenerativeModule            plugin.TValue[string]
+	RerankerModule              plugin.TValue[string]
+	ModuleEndpoints             plugin.TValue[map[string]any]
+	Vectorizers                 plugin.TValue[map[string]any]
+	ObjectTtlEnabled            plugin.TValue[bool]
+	ObjectTtlDefault            plugin.TValue[int64]
+	ObjectTtlDeleteOn           plugin.TValue[string]
+	ReplicationDeletionStrategy plugin.TValue[string]
+	Tenants                     plugin.TValue[[]any]
 }
 
 // createWeaviateCollection creates a new instance of this resource
@@ -842,6 +1232,103 @@ func (c *mqlWeaviateCollection) GetAsyncReplicationEnabled() *plugin.TValue[bool
 
 func (c *mqlWeaviateCollection) GetVectorIndexType() *plugin.TValue[string] {
 	return &c.VectorIndexType
+}
+
+func (c *mqlWeaviateCollection) GetGenerativeModule() *plugin.TValue[string] {
+	return &c.GenerativeModule
+}
+
+func (c *mqlWeaviateCollection) GetRerankerModule() *plugin.TValue[string] {
+	return &c.RerankerModule
+}
+
+func (c *mqlWeaviateCollection) GetModuleEndpoints() *plugin.TValue[map[string]any] {
+	return &c.ModuleEndpoints
+}
+
+func (c *mqlWeaviateCollection) GetVectorizers() *plugin.TValue[map[string]any] {
+	return &c.Vectorizers
+}
+
+func (c *mqlWeaviateCollection) GetObjectTtlEnabled() *plugin.TValue[bool] {
+	return &c.ObjectTtlEnabled
+}
+
+func (c *mqlWeaviateCollection) GetObjectTtlDefault() *plugin.TValue[int64] {
+	return &c.ObjectTtlDefault
+}
+
+func (c *mqlWeaviateCollection) GetObjectTtlDeleteOn() *plugin.TValue[string] {
+	return &c.ObjectTtlDeleteOn
+}
+
+func (c *mqlWeaviateCollection) GetReplicationDeletionStrategy() *plugin.TValue[string] {
+	return &c.ReplicationDeletionStrategy
+}
+
+func (c *mqlWeaviateCollection) GetTenants() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tenants, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("weaviate.collection", c.__id, "tenants")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.tenants()
+	})
+}
+
+// mqlWeaviateCollectionTenant for the weaviate.collection.tenant resource
+type mqlWeaviateCollectionTenant struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlWeaviateCollectionTenantInternal it will be used here
+	Name           plugin.TValue[string]
+	ActivityStatus plugin.TValue[string]
+}
+
+// createWeaviateCollectionTenant creates a new instance of this resource
+func createWeaviateCollectionTenant(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlWeaviateCollectionTenant{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("weaviate.collection.tenant", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlWeaviateCollectionTenant) MqlName() string {
+	return "weaviate.collection.tenant"
+}
+
+func (c *mqlWeaviateCollectionTenant) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlWeaviateCollectionTenant) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlWeaviateCollectionTenant) GetActivityStatus() *plugin.TValue[string] {
+	return &c.ActivityStatus
 }
 
 // mqlWeaviateRole for the weaviate.role resource
@@ -1195,12 +1682,13 @@ type mqlWeaviateNode struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlWeaviateNodeInternal it will be used here
-	Name        plugin.TValue[string]
-	Status      plugin.TValue[string]
-	Version     plugin.TValue[string]
-	GitHash     plugin.TValue[string]
-	ShardCount  plugin.TValue[int64]
-	ObjectCount plugin.TValue[int64]
+	Name            plugin.TValue[string]
+	Status          plugin.TValue[string]
+	Version         plugin.TValue[string]
+	GitHash         plugin.TValue[string]
+	ShardCount      plugin.TValue[int64]
+	ObjectCount     plugin.TValue[int64]
+	OperationalMode plugin.TValue[string]
 }
 
 // createWeaviateNode creates a new instance of this resource
@@ -1257,4 +1745,8 @@ func (c *mqlWeaviateNode) GetShardCount() *plugin.TValue[int64] {
 
 func (c *mqlWeaviateNode) GetObjectCount() *plugin.TValue[int64] {
 	return &c.ObjectCount
+}
+
+func (c *mqlWeaviateNode) GetOperationalMode() *plugin.TValue[string] {
+	return &c.OperationalMode
 }

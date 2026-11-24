@@ -98,8 +98,17 @@ func TestIntegrationResolveAll(t *testing.T) {
 		if v := c.GetName(); v.Error != nil {
 			t.Errorf("collection.name errored: %v", v.Error)
 		}
+		resolveList(t, "collection.tenants", c.GetTenants())
 	}
 	resolveList(t, "nodes", inst.GetNodes())
+	for _, x := range resolveList(t, "backups", inst.GetBackups()) {
+		resolveList(t, "backup.collections", x.(*mqlWeaviateBackup).GetCollections())
+	}
+	for _, x := range resolveList(t, "aliases", inst.GetAliases()) {
+		if v := x.(*mqlWeaviateAlias).GetCollection(); v.Error != nil {
+			t.Errorf("alias.collection errored: %v", v.Error)
+		}
+	}
 
 	for _, x := range resolveList(t, "roles", inst.GetRoles()) {
 		role := x.(*mqlWeaviateRole)

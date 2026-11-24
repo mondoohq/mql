@@ -18,3 +18,16 @@ type mqlWeaviateRoleInternal struct {
 type mqlWeaviateUserInternal struct {
 	cacheRoleNames []string
 }
+
+// mqlWeaviateBackupInternal keeps the instance that listed the backup, so the
+// backup's collections resolve against the instance's own collection list.
+type mqlWeaviateBackupInternal struct {
+	cacheInstance *mqlWeaviateInstance
+}
+
+// mqlWeaviateAliasInternal keeps the instance that listed the alias and the
+// name of the collection it points to.
+type mqlWeaviateAliasInternal struct {
+	cacheInstance   *mqlWeaviateInstance
+	cacheCollection string
+}
