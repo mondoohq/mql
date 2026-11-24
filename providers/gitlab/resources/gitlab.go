@@ -11,6 +11,9 @@ import (
 	"time"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 // getRawJSON issues a GET through the SDK client and decodes the body into out.
@@ -37,6 +40,48 @@ func nextPage(resp *gitlab.Response, current int64) int64 {
 		return 0
 	}
 	return resp.NextPage
+}
+
+// collectPages walks an offset-paginated GitLab collection, calling fetch with
+// each page number until the server reports no further page or repeats one.
+func collectPages[T any](fetch func(page int64) ([]T, *gitlab.Response, error)) ([]T, error) {
+	var all []T
+	page := int64(1)
+	for {
+		items, resp, err := fetch(page)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, items...)
+
+		page = nextPage(resp, page)
+		if page == 0 {
+			return all, nil
+		}
+	}
+}
+
+// gatedError classifies the failure of a call to an endpoint GitLab gates by
+// license tier, role, or feature. A 404 means the data does not apply here
+// (the tier does not include the feature, or the project never set it up), so
+// it returns nil and the caller reports an empty list or null. A 403 is a
+// refusal and comes back as llx.Forbidden; without structured errors it reads
+// as no data too, as every other gated call in this provider does. Any other
+// failure is returned unchanged.
+func gatedError(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case isGitlabStatus(err, 404):
+		return nil
+	case isGitlabStatus(err, 403):
+		if !plugin.StructuredErrors() {
+			return nil
+		}
+		return llx.Forbidden(err)
+	default:
+		return err
+	}
 }
 
 // listRawPages walks an offset-paginated GitLab collection through the SDK
@@ -69,11 +114,13 @@ func listRawPages(c *gitlab.Client, path string, perPage int64) ([]json.RawMessa
 // unauthenticated. repositoryUpdateEvents is here for the same reason: the group
 // webhook field of that name shipped as a permanent false because the API never
 // sent the attribute. It applies to instance, group, and project hooks alike,
-// though not every tier answers with every attribute.
+// though not every tier answers with every attribute. resourceDeployTokenEvents
+// is a project hook trigger newer releases added.
 type hookPosture struct {
-	TokenPresent           *bool `json:"token_present"`
-	SigningTokenPresent    *bool `json:"signing_token_present"`
-	RepositoryUpdateEvents *bool `json:"repository_update_events"`
+	TokenPresent              *bool `json:"token_present"`
+	SigningTokenPresent       *bool `json:"signing_token_present"`
+	RepositoryUpdateEvents    *bool `json:"repository_update_events"`
+	ResourceDeployTokenEvents *bool `json:"resource_deploy_token_events"`
 }
 
 // decodeHooks decodes one page of hooks into the SDK type and the posture
@@ -177,4 +224,64 @@ func labelPriority(priority gitlab.Nullable[int64]) int64 {
 		return 0
 	}
 	return value
+}
+
+// valueOrNull returns *v, or marks the field null and returns the zero value
+// when v is nil. Computed accessors use it for attributes GitLab omits for a
+// token below the role that may read them, or on a tier or release that lacks
+// the setting, so the omission reads as null instead of as false, 0, or "".
+func valueOrNull[T any](field *plugin.TValue[T], v *T) T {
+	if v == nil {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		var zero T
+		return zero
+	}
+	return *v
+}
+
+// reported decodes an attribute whose explicit null carries meaning (GitLab's
+// "not configured, use the default"), keeping it apart from an attribute the
+// payload did not include at all. Set is true whenever the key was present.
+type reported[T any] struct {
+	Set   bool
+	Value *T
+}
+
+func (r *reported[T]) UnmarshalJSON(b []byte) error {
+	r.Set = true
+	if string(b) == "null" {
+		r.Value = nil
+		return nil
+	}
+	v := new(T)
+	if err := json.Unmarshal(b, v); err != nil {
+		return err
+	}
+	r.Value = v
+	return nil
+}
+
+// stringsOrNull converts a decoded string list to MQL, keeping nil (attribute
+// not reported) as null and an empty list as an empty list.
+func stringsOrNull(values []string) *llx.RawData {
+	if values == nil {
+		return llx.NilData
+	}
+	out := make([]any, 0, len(values))
+	for _, v := range values {
+		out = append(out, v)
+	}
+	return llx.ArrayData(out, types.String)
+}
+
+// splitCommaList splits a comma-separated setting into its trimmed entries,
+// dropping empty ones.
+func splitCommaList(value string) []string {
+	out := []string{}
+	for _, part := range strings.Split(value, ",") {
+		if entry := strings.TrimSpace(part); entry != "" {
+			out = append(out, entry)
+		}
+	}
+	return out
 }
