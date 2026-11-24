@@ -211,18 +211,22 @@ func (m *mqlMount) fetchDfEntries() (map[string]*mount.DfEntry, error) {
 		return m.dfEntries, nil
 	}
 	cmd := o.(*mqlCommand)
+	run, err := commandResult(cmd)
+	if err != nil {
+		return nil, err
+	}
 	// df exits non-zero when it cannot stat a single mount point (Solaris,
 	// unprivileged, cannot stat /var/share/sstore/repo) yet still prints every
 	// other one. Only an empty listing means df could not answer.
-	if exit := cmd.GetExitcode(); exit.Data != 0 && strings.TrimSpace(cmd.Stdout.Data) == "" {
+	if run.exitcode != 0 && strings.TrimSpace(run.stdout) == "" {
 		// df failed (not installed, no permission, etc.) — return empty, not error
-		log.Debug().Str("stderr", cmd.Stderr.Data).Msg("mql[mount]> df command failed")
+		log.Debug().Str("stderr", run.stderr).Msg("mql[mount]> df command failed")
 		m.dfEntries = map[string]*mount.DfEntry{}
 		m.dfFetched = true
 		return m.dfEntries, nil
 	}
 
-	m.dfEntries = mount.ParseDf(strings.NewReader(cmd.Stdout.Data))
+	m.dfEntries = mount.ParseDf(strings.NewReader(run.stdout))
 	m.dfFetched = true
 	return m.dfEntries, nil
 }

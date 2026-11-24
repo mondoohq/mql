@@ -4,7 +4,6 @@
 package resources
 
 import (
-	"errors"
 	"strings"
 	"sync"
 
@@ -34,11 +33,12 @@ func (m *mqlMacosFilevault) fetchStatus() (string, error) {
 		return "", err
 	}
 	cmd := res.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return "", errors.New("fdesetup status failed: " + cmd.GetStderr().Data)
+	stdout, err := commandOutput(cmd, "fdesetup status")
+	if err != nil {
+		return "", err
 	}
 
-	m.output = parseFdesetupStatus(cmd.GetStdout().Data)
+	m.output = parseFdesetupStatus(stdout)
 	m.fetched = true
 	return m.output, nil
 }
@@ -111,10 +111,11 @@ func (m *mqlMacosFilevault) runFdesetup(subcmd string) (string, error) {
 		return "", err
 	}
 	cmd := res.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return "", errors.New("fdesetup " + subcmd + " failed: " + cmd.GetStderr().Data)
+	stdout, err := commandOutput(cmd, "fdesetup "+subcmd)
+	if err != nil {
+		return "", err
 	}
-	return strings.TrimSpace(cmd.GetStdout().Data), nil
+	return strings.TrimSpace(stdout), nil
 }
 
 func (m *mqlMacosFilevault) hasPersonalRecoveryKey() (bool, error) {

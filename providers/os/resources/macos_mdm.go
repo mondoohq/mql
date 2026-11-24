@@ -72,11 +72,12 @@ func (m *mqlMacosMdm) fetchEnrollment() (mdmEnrollment, error) {
 		return mdmEnrollment{}, err
 	}
 	cmd := res.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return mdmEnrollment{}, errors.New("profiles status failed: " + cmd.GetStderr().Data)
+	stdout, err := commandOutput(cmd, "profiles status")
+	if err != nil {
+		return mdmEnrollment{}, err
 	}
 
-	m.state = parseMdmEnrollment(cmd.GetStdout().Data)
+	m.state = parseMdmEnrollment(stdout)
 	m.fetched = true
 	return m.state, nil
 }
@@ -170,13 +171,17 @@ func (p *mqlMacosProfiles) list() ([]any, error) {
 		return nil, err
 	}
 	cmd := res.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
+	run, err := commandResult(cmd)
+	if err != nil {
+		return nil, err
+	}
+	if run.exitcode != 0 {
 		// `profiles list` exits non-zero on argument errors (missing
 		// action, unknown flag) — surface those as real errors so
 		// authors notice when the command shape changes upstream.
-		stderr := strings.TrimSpace(cmd.GetStderr().Data)
+		stderr := strings.TrimSpace(run.stderr)
 		if stderr == "" {
-			stderr = strings.TrimSpace(cmd.GetStdout().Data)
+			stderr = strings.TrimSpace(run.stdout)
 		}
 		return nil, errors.New("profiles list failed: " + stderr)
 	}
@@ -186,7 +191,7 @@ func (p *mqlMacosProfiles) list() ([]any, error) {
 	// "profiles: this command requires root privileges" to stdout
 	// instead of failing. Detect that diagnostic up front so callers
 	// don't see a misleading XML parse error.
-	stdout := cmd.GetStdout().Data
+	stdout := run.stdout
 	trimmed := strings.TrimSpace(stdout)
 	if strings.HasPrefix(trimmed, "profiles:") {
 		return nil, errors.New("profiles list failed: " + trimmed)
