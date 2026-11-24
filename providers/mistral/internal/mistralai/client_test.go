@@ -398,14 +398,17 @@ func TestAuthMethodNames_SkipsUnnamedMethods(t *testing.T) {
 	assert.Equal(t, []string{"oauth2", "none"}, c.AuthMethodNames())
 }
 
-// tokenServer serves Library objects paged by an opaque continuation token.
+// tokenServer serves objects carrying only an id, paged by an opaque
+// continuation token. Ids are "<prefix>-<n>", prefix defaulting to "lib".
 type tokenServer struct {
 	total     int
 	perPage   int
 	stuck     bool
 	failAfter int
+	prefix    string
 	requests  int
 	tokens    []string
+	paths     []string
 }
 
 func (s *tokenServer) handler(t *testing.T) http.HandlerFunc {
@@ -413,6 +416,7 @@ func (s *tokenServer) handler(t *testing.T) http.HandlerFunc {
 		s.requests++
 		token := r.URL.Query().Get("page_token")
 		s.tokens = append(s.tokens, token)
+		s.paths = append(s.paths, r.URL.Path)
 
 		if s.failAfter > 0 && s.requests > s.failAfter {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -427,9 +431,13 @@ func (s *tokenServer) handler(t *testing.T) http.HandlerFunc {
 			require.NoError(t, err)
 		}
 
-		data := []Library{}
+		prefix := s.prefix
+		if prefix == "" {
+			prefix = "lib"
+		}
+		data := []map[string]any{}
 		for i := start; i < start+s.perPage && i < s.total; i++ {
-			data = append(data, Library{ID: fmt.Sprintf("lib-%d", i)})
+			data = append(data, map[string]any{"id": fmt.Sprintf("%s-%d", prefix, i)})
 		}
 
 		env := map[string]any{"data": data}
@@ -605,4 +613,315 @@ func TestListConnectors_AccessDeniedIsClassified(t *testing.T) {
 	_, err := c.ListConnectors(context.Background())
 	require.Error(t, err)
 	assert.True(t, IsAccessDenied(err), "a 403 on connectors must read as not permitted")
+}
+
+// Synthetic: three-page token walk; no live account was checked.
+func TestListAgents_FollowsPageToken(t *testing.T) {
+	srv := &tokenServer{total: 5, perPage: 2, prefix: "ag"}
+	c := newTestClient(t, srv.handler(t))
+
+	agents, err := c.ListAgents(context.Background())
+	require.NoError(t, err)
+
+	require.Len(t, agents, 5)
+	for i, a := range agents {
+		assert.Equal(t, fmt.Sprintf("ag-%d", i), a.ID)
+	}
+	assert.Equal(t, []string{"", "2", "4"}, srv.tokens)
+	// The offset-paginated /v1/agents listing is deprecated; the walk must use
+	// the token-paginated one.
+	assert.Equal(t, []string{"/v1/agents/pages", "/v1/agents/pages", "/v1/agents/pages"}, srv.paths)
+}
+
+// Synthetic: server that hands back the same token forever; no live account was checked.
+func TestListAgents_RepeatedTokenTerminates(t *testing.T) {
+	srv := &tokenServer{total: 50, perPage: 2, stuck: true, failAfter: 6, prefix: "ag"}
+	c := newTestClient(t, srv.handler(t))
+
+	agents, err := c.ListAgents(context.Background())
+	require.NoError(t, err, "the walk must stop on a repeated page token")
+	assert.Len(t, agents, 4)
+	assert.Equal(t, 2, srv.requests)
+}
+
+// Synthetic: payload shaped after the Agent schema in the public OpenAPI spec; no live account was checked.
+const agentPayload = `{
+  "object": "list",
+  "data": [
+    {
+      "id": "ag_0001",
+      "object": "agent",
+      "name": "support-triage",
+      "description": "Routes tickets",
+      "version": 3,
+      "versions": [1, 2, 3],
+      "model": "mistral-medium-latest",
+      "instructions": "Be brief.",
+      "deployment_chat": false,
+      "source": "api",
+      "tools": [
+        {"type": "function", "function": {"name": "lookup_ticket", "parameters": {"type": "object"}}},
+        {"type": "document_library", "library_ids": ["lib-a", "lib-b"]},
+        {"type": "connector", "connector_id": "conn-1",
+         "authorization": {"type": "api-key", "value": "api-key-must-not-be-decoded"},
+         "tool_configuration": {"requires_confirmation": ["create_issue"], "include": ["create_issue", "search"], "exclude": ["delete_repo"]}},
+        {"type": "document_library", "library_ids": ["lib-b"]},
+        {"type": "web_search"}
+      ],
+      "guardrails": [{"block_on_error": true}, {"block_on_error": true}],
+      "handoffs": ["ag_0002"],
+      "created_at": "2026-03-04T05:06:07Z",
+      "updated_at": "2026-04-05T06:07:08Z"
+    }
+  ],
+  "next_page_token": null
+}`
+
+func TestListAgents_DecodesEveryModeledField(t *testing.T) {
+	c := staticJSONClient(t, agentPayload)
+
+	agents, err := c.ListAgents(context.Background())
+	require.NoError(t, err)
+	require.Len(t, agents, 1)
+	got := agents[0]
+
+	assert.Equal(t, "ag_0001", got.ID)
+	assert.Equal(t, "support-triage", got.Name)
+	require.NotNil(t, got.Description)
+	assert.Equal(t, "Routes tickets", *got.Description)
+	assert.Equal(t, int64(3), got.Version)
+	assert.Equal(t, "mistral-medium-latest", got.Model)
+	require.NotNil(t, got.Instructions)
+	assert.Equal(t, "Be brief.", *got.Instructions)
+	assert.Equal(t, []string{"ag_0002"}, got.Handoffs)
+
+	require.Len(t, got.Tools, 5)
+	assert.Equal(t, "function", got.Tools[0].Type)
+	require.NotNil(t, got.Tools[0].Function)
+	assert.Equal(t, "lookup_ticket", got.Tools[0].Function.Name)
+	assert.Equal(t, []string{"lib-a", "lib-b"}, got.Tools[1].LibraryIDs)
+	require.NotNil(t, got.Tools[2].ConnectorID)
+	assert.Equal(t, "conn-1", *got.Tools[2].ConnectorID)
+	require.NotNil(t, got.Tools[2].ToolConfiguration)
+	assert.Equal(t, []string{"create_issue"}, got.Tools[2].ToolConfiguration.RequiresConfirmation)
+	assert.Equal(t, []string{"create_issue", "search"}, got.Tools[2].ToolConfiguration.Include)
+	assert.Equal(t, []string{"delete_repo"}, got.Tools[2].ToolConfiguration.Exclude)
+	assert.Nil(t, got.Tools[4].ToolConfiguration)
+
+	assert.Equal(t, []string{"lib-a", "lib-b"}, got.LibraryIDs(), "a library two tools search is listed once")
+	assert.Equal(t, []string{"conn-1"}, got.ConnectorIDs())
+	require.NotNil(t, got.GuardrailsBlockOnError())
+	assert.True(t, *got.GuardrailsBlockOnError())
+
+	require.NotNil(t, got.CreatedAt)
+	assert.Equal(t, time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC), got.CreatedAt.UTC())
+	require.NotNil(t, got.UpdatedAt)
+	assert.Equal(t, time.Date(2026, 4, 5, 6, 7, 8, 0, time.UTC), got.UpdatedAt.UTC())
+
+	// Re-encoding shows everything the provider retained. Decoding a
+	// connector tool's authorization block fails this.
+	encoded, err := json.Marshal(got)
+	require.NoError(t, err)
+	assert.NotContains(t, string(encoded), "api-key-must-not-be-decoded")
+}
+
+// Synthetic: minimal agent with every optional field absent; no live account was checked.
+func TestListAgents_MissingOptionalFieldsAreNull(t *testing.T) {
+	c := staticJSONClient(t, `{"data":[{"id":"ag","name":"n","model":"m","version":0}]}`)
+
+	agents, err := c.ListAgents(context.Background())
+	require.NoError(t, err)
+	require.Len(t, agents, 1)
+
+	assert.Nil(t, agents[0].Description)
+	assert.Nil(t, agents[0].Instructions)
+	assert.Nil(t, agents[0].CreatedAt, "an absent timestamp stays null, not year 1")
+	assert.Nil(t, agents[0].GuardrailsBlockOnError(), "no guardrails is null, not false")
+	assert.Empty(t, agents[0].LibraryIDs())
+	assert.Empty(t, agents[0].ConnectorIDs())
+}
+
+// Synthetic: payload shaped after the Webhook schema in the public OpenAPI spec; no live account was checked.
+const webhookJSON = `{
+  "id": "5f0c6d1e-0000-4000-8000-000000000001",
+  "creator_id": "5f0c6d1e-0000-4000-8000-0000000000aa",
+  "organization_id": "5f0c6d1e-0000-4000-8000-0000000000bb",
+  "workspace_id": "5f0c6d1e-0000-4000-8000-0000000000cc",
+  "owner_type": "workspace",
+  "provider": "github",
+  "name": "repo-events",
+  "url": "https://hooks.example.invalid/in/abc",
+  "http_method": "POST",
+  "url_verified": true,
+  "url_verification_token": "verification-token-must-not-be-decoded",
+  "signature_hash_algorithm": "sha256",
+  "signature_header_name": "X-Hub-Signature-256",
+  "validity_period_second": 300,
+  "signature_extractor_regex": null,
+  "timestamp_extractor_regex": null,
+  "signature_payload_pattern": null,
+  "signature_encoding": "hex",
+  "success_status_code": 200,
+  "expires_at": "2027-01-02T03:04:05Z",
+  "created_at": "2026-03-04T05:06:07Z",
+  "updated_at": "2026-04-05T06:07:08Z"
+}`
+
+func TestListWebhooks_DecodesEveryModeledField(t *testing.T) {
+	var gotPath string
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("[" + webhookJSON + "]"))
+	}))
+
+	webhooks, err := c.ListWebhooks(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "/v1/webhooks", gotPath)
+	require.Len(t, webhooks, 1)
+	got := webhooks[0]
+
+	assert.Equal(t, "5f0c6d1e-0000-4000-8000-000000000001", got.ID)
+	assert.Equal(t, "repo-events", got.Name)
+	assert.Equal(t, "github", got.Provider)
+	assert.Equal(t, "https://hooks.example.invalid/in/abc", got.URL)
+	require.NotNil(t, got.URLVerified)
+	assert.True(t, *got.URLVerified)
+	require.NotNil(t, got.SignatureHashAlgorithm)
+	assert.Equal(t, "sha256", *got.SignatureHashAlgorithm)
+	require.NotNil(t, got.ValidityPeriodSecond)
+	assert.Equal(t, int64(300), *got.ValidityPeriodSecond)
+	assert.Equal(t, "workspace", got.OwnerType)
+	require.NotNil(t, got.ExpiresAt)
+	assert.Equal(t, time.Date(2027, 1, 2, 3, 4, 5, 0, time.UTC), got.ExpiresAt.UTC())
+	require.NotNil(t, got.CreatedAt)
+	require.NotNil(t, got.UpdatedAt)
+
+	encoded, err := json.Marshal(got)
+	require.NoError(t, err)
+	assert.NotContains(t, string(encoded), "verification-token-must-not-be-decoded")
+}
+
+// Synthetic: unsigned, unverified, non-expiring webhook; no live account was checked.
+func TestListWebhooks_MissingOptionalFieldsAreNull(t *testing.T) {
+	c := staticJSONClient(t, `[{"id":"w","name":"n","provider":"custom","url":"u","owner_type":"user",`+
+		`"url_verified":null,"signature_hash_algorithm":null,"validity_period_second":null,"expires_at":null}]`)
+
+	webhooks, err := c.ListWebhooks(context.Background())
+	require.NoError(t, err)
+	require.Len(t, webhooks, 1)
+	assert.Nil(t, webhooks[0].URLVerified, "an unverified-by-design URL is null, not false")
+	assert.Nil(t, webhooks[0].SignatureHashAlgorithm)
+	assert.Nil(t, webhooks[0].ValidityPeriodSecond, "no validity period is null, not 0")
+	assert.Nil(t, webhooks[0].ExpiresAt)
+}
+
+// Synthetic: 401 on the webhook listing; no live account was checked.
+func TestListWebhooks_AccessDeniedIsClassified(t *testing.T) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"message":"no"}`))
+	}))
+
+	_, err := c.ListWebhooks(context.Background())
+	require.Error(t, err)
+	assert.True(t, IsAccessDenied(err))
+}
+
+// Synthetic: payload shaped after the Trigger schema in the public OpenAPI spec; no live account was checked.
+func TestListTriggers_DecodesEveryModeledField(t *testing.T) {
+	var gotPath string
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[
+		  {"id":"t1","creator_id":"u","workspace_id":"w","organization_id":"o","customer_id":"c",
+		   "owner_type":"user","event_source":` + webhookJSON + `,"handler":"agents",
+		   "action":{"primitive_id":"ag_0001","type":"start_agent_session"},
+		   "filters":"event.type == 'push'","title":"On push"},
+		  {"id":"t2","owner_type":"workspace","event_source":` + webhookJSON + `,"handler":"workflows",
+		   "action":{"primitive_id":"wf-9","type":"start_workflow"},"filters":null,"title":"Nightly"}
+		]`))
+	}))
+
+	triggers, err := c.ListTriggers(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "/v1/triggers", gotPath)
+	require.Len(t, triggers, 2)
+
+	got := triggers[0]
+	assert.Equal(t, "t1", got.ID)
+	assert.Equal(t, "On push", got.Title)
+	assert.Equal(t, "user", got.OwnerType)
+	assert.Equal(t, "agents", got.Handler)
+	assert.Equal(t, "ag_0001", got.Action.PrimitiveID)
+	assert.Equal(t, TriggerActionStartAgentSession, got.Action.Type)
+	require.NotNil(t, got.Filters)
+	assert.Equal(t, "event.type == 'push'", *got.Filters)
+	require.NotNil(t, got.EventSource)
+	assert.Equal(t, "5f0c6d1e-0000-4000-8000-000000000001", got.EventSource.ID)
+	assert.Equal(t, "github", got.EventSource.Provider)
+
+	assert.Nil(t, triggers[1].Filters, "no filter is null, not an empty expression")
+	assert.Equal(t, "start_workflow", triggers[1].Action.Type)
+}
+
+// Synthetic: connector payload carrying the ownership, credential-state and blocking fields; no live account was checked.
+func TestListConnectors_DecodesOwnershipAndBlocking(t *testing.T) {
+	c := staticJSONClient(t, `{"items":[{"id":"c1","name":"jira","title":"Jira","description":"",
+		"owner_type":"workspace","owner_id":"ws-1","creator_id":"user-1","visibility":"shared_workspace",
+		"private_tool_execution":false,"protocol":"http","is_authenticated":false,"blocked_by":["org","user"],
+		"connection_preferences":[
+		  {"consumer_type":"org","http_proxy_enabled":true,"tool_configuration":{}},
+		  {"consumer_type":"workspace","http_proxy_enabled":false,"tool_configuration":{}}
+		]}],"pagination":{"page_size":100}}`)
+
+	connectors, err := c.ListConnectors(context.Background())
+	require.NoError(t, err)
+	require.Len(t, connectors, 1)
+	got := connectors[0]
+
+	require.NotNil(t, got.Title)
+	assert.Equal(t, "Jira", *got.Title)
+	require.NotNil(t, got.OwnerID)
+	assert.Equal(t, "ws-1", *got.OwnerID)
+	require.NotNil(t, got.CreatorID)
+	assert.Equal(t, "user-1", *got.CreatorID)
+	assert.Equal(t, []string{"org", "user"}, got.BlockedBy)
+	require.Len(t, got.ConnectionPreferences, 2)
+	require.NotNil(t, got.HTTPProxyEnabled())
+	assert.False(t, *got.HTTPProxyEnabled(), "a workspace-level false switches raw HTTP off")
+}
+
+// Synthetic: file record carrying visibility and expiry; no live account was checked.
+func TestListFiles_DecodesVisibilityAndExpiry(t *testing.T) {
+	c := staticJSONClient(t, `{"object":"list","total":2,"data":[
+		{"id":"f1","object":"file","bytes":1,"created_at":1,"filename":"a.jsonl","purpose":"batch",
+		 "sample_type":"batch_request","source":"upload","visibility":"user","expires_at":1767225600},
+		{"id":"f2","object":"file","bytes":1,"created_at":1,"filename":"b.jsonl","purpose":"batch",
+		 "sample_type":"batch_request","source":"upload"}]}`)
+
+	files, err := c.ListFiles(context.Background())
+	require.NoError(t, err)
+	require.Len(t, files, 2)
+	require.NotNil(t, files[0].Visibility)
+	assert.Equal(t, "user", *files[0].Visibility)
+	require.NotNil(t, files[0].ExpiresAt)
+	assert.Equal(t, int64(1767225600), *files[0].ExpiresAt)
+	assert.Nil(t, files[1].Visibility)
+	assert.Nil(t, files[1].ExpiresAt, "a file that does not expire has no expiry")
+}
+
+// Synthetic: batch run through an agent rather than a model; no live account was checked.
+func TestListBatchJobs_DecodesAgentID(t *testing.T) {
+	c := staticJSONClient(t, `{"object":"list","total":1,"data":[{"id":"b1","input_files":["f1"],
+		"endpoint":"/v1/agents/completions","model":null,"agent_id":"ag_0001","errors":[],"status":"SUCCESS",
+		"created_at":1,"total_requests":1,"completed_requests":1,"succeeded_requests":1,"failed_requests":0}]}`)
+
+	jobs, err := c.ListBatchJobs(context.Background())
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	require.NotNil(t, jobs[0].AgentID)
+	assert.Equal(t, "ag_0001", *jobs[0].AgentID)
+	assert.Nil(t, jobs[0].Model)
 }

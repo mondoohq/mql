@@ -26,6 +26,10 @@ const (
 	ResourceMistralConnector                string = "mistral.connector"
 	ResourceMistralLibrary                  string = "mistral.library"
 	ResourceMistralLibraryAccess            string = "mistral.library.access"
+	ResourceMistralAgent                    string = "mistral.agent"
+	ResourceMistralAgentTool                string = "mistral.agent.tool"
+	ResourceMistralWebhook                  string = "mistral.webhook"
+	ResourceMistralTrigger                  string = "mistral.trigger"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -71,6 +75,22 @@ func init() {
 		"mistral.library.access": {
 			// to override args, implement: initMistralLibraryAccess(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMistralLibraryAccess,
+		},
+		"mistral.agent": {
+			// to override args, implement: initMistralAgent(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMistralAgent,
+		},
+		"mistral.agent.tool": {
+			// to override args, implement: initMistralAgentTool(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMistralAgentTool,
+		},
+		"mistral.webhook": {
+			// to override args, implement: initMistralWebhook(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMistralWebhook,
+		},
+		"mistral.trigger": {
+			// to override args, implement: initMistralTrigger(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMistralTrigger,
 		},
 	}
 }
@@ -164,6 +184,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mistral.libraries": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMistral).GetLibraries()).ToDataRes(types.Array(types.Resource("mistral.library")))
 	},
+	"mistral.agents": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistral).GetAgents()).ToDataRes(types.Array(types.Resource("mistral.agent")))
+	},
+	"mistral.webhooks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistral).GetWebhooks()).ToDataRes(types.Array(types.Resource("mistral.webhook")))
+	},
+	"mistral.triggers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistral).GetTriggers()).ToDataRes(types.Array(types.Resource("mistral.trigger")))
+	},
 	"mistral.model.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMistralModel).GetId()).ToDataRes(types.String)
 	},
@@ -230,8 +259,14 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mistral.model.job": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMistralModel).GetJob()).ToDataRes(types.String)
 	},
+	"mistral.model.fineTuningJob": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralModel).GetFineTuningJob()).ToDataRes(types.Resource("mistral.fineTuningJob"))
+	},
 	"mistral.model.root": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMistralModel).GetRoot()).ToDataRes(types.String)
+	},
+	"mistral.model.baseModel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralModel).GetBaseModel()).ToDataRes(types.Resource("mistral.model"))
 	},
 	"mistral.model.archived": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMistralModel).GetArchived()).ToDataRes(types.Bool)
@@ -254,6 +289,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mistral.fineTuningJob.fineTunedModel": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMistralFineTuningJob).GetFineTunedModel()).ToDataRes(types.String)
 	},
+	"mistral.fineTuningJob.outputModel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralFineTuningJob).GetOutputModel()).ToDataRes(types.Resource("mistral.model"))
+	},
 	"mistral.fineTuningJob.suffix": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMistralFineTuningJob).GetSuffix()).ToDataRes(types.String)
 	},
@@ -265,6 +303,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"mistral.fineTuningJob.validationFiles": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMistralFineTuningJob).GetValidationFiles()).ToDataRes(types.Array(types.String))
+	},
+	"mistral.fineTuningJob.trainingData": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralFineTuningJob).GetTrainingData()).ToDataRes(types.Array(types.Resource("mistral.file")))
+	},
+	"mistral.fineTuningJob.validationData": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralFineTuningJob).GetValidationData()).ToDataRes(types.Array(types.Resource("mistral.file")))
 	},
 	"mistral.fineTuningJob.trainedTokens": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMistralFineTuningJob).GetTrainedTokens()).ToDataRes(types.Int)
@@ -341,6 +385,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mistral.file.mimeType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMistralFile).GetMimeType()).ToDataRes(types.String)
 	},
+	"mistral.file.visibility": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralFile).GetVisibility()).ToDataRes(types.String)
+	},
+	"mistral.file.expiresAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralFile).GetExpiresAt()).ToDataRes(types.Time)
+	},
 	"mistral.batchJob.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMistralBatchJob).GetId()).ToDataRes(types.String)
 	},
@@ -353,6 +403,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mistral.batchJob.model": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMistralBatchJob).GetModel()).ToDataRes(types.String)
 	},
+	"mistral.batchJob.agent": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralBatchJob).GetAgent()).ToDataRes(types.Resource("mistral.agent"))
+	},
 	"mistral.batchJob.inputFiles": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMistralBatchJob).GetInputFiles()).ToDataRes(types.Array(types.String))
 	},
@@ -361,6 +414,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"mistral.batchJob.errorFile": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMistralBatchJob).GetErrorFile()).ToDataRes(types.String)
+	},
+	"mistral.batchJob.inputs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralBatchJob).GetInputs()).ToDataRes(types.Array(types.Resource("mistral.file")))
+	},
+	"mistral.batchJob.results": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralBatchJob).GetResults()).ToDataRes(types.Resource("mistral.file"))
+	},
+	"mistral.batchJob.errorDetails": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralBatchJob).GetErrorDetails()).ToDataRes(types.Resource("mistral.file"))
 	},
 	"mistral.batchJob.totalRequests": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMistralBatchJob).GetTotalRequests()).ToDataRes(types.Int)
@@ -401,6 +463,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mistral.connector.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMistralConnector).GetName()).ToDataRes(types.String)
 	},
+	"mistral.connector.title": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralConnector).GetTitle()).ToDataRes(types.String)
+	},
 	"mistral.connector.description": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMistralConnector).GetDescription()).ToDataRes(types.String)
 	},
@@ -415,6 +480,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"mistral.connector.ownerType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMistralConnector).GetOwnerType()).ToDataRes(types.String)
+	},
+	"mistral.connector.ownerId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralConnector).GetOwnerId()).ToDataRes(types.String)
+	},
+	"mistral.connector.creatorId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralConnector).GetCreatorId()).ToDataRes(types.String)
+	},
+	"mistral.connector.httpProxyEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralConnector).GetHttpProxyEnabled()).ToDataRes(types.Bool)
+	},
+	"mistral.connector.blockedBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralConnector).GetBlockedBy()).ToDataRes(types.Array(types.String))
 	},
 	"mistral.connector.supportedAuthMethods": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMistralConnector).GetSupportedAuthMethods()).ToDataRes(types.Array(types.String))
@@ -467,6 +544,126 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mistral.library.access.role": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMistralLibraryAccess).GetRole()).ToDataRes(types.String)
 	},
+	"mistral.agent.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralAgent).GetId()).ToDataRes(types.String)
+	},
+	"mistral.agent.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralAgent).GetName()).ToDataRes(types.String)
+	},
+	"mistral.agent.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralAgent).GetDescription()).ToDataRes(types.String)
+	},
+	"mistral.agent.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralAgent).GetVersion()).ToDataRes(types.Int)
+	},
+	"mistral.agent.modelName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralAgent).GetModelName()).ToDataRes(types.String)
+	},
+	"mistral.agent.model": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralAgent).GetModel()).ToDataRes(types.Resource("mistral.model"))
+	},
+	"mistral.agent.instructions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralAgent).GetInstructions()).ToDataRes(types.String)
+	},
+	"mistral.agent.tools": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralAgent).GetTools()).ToDataRes(types.Array(types.Resource("mistral.agent.tool")))
+	},
+	"mistral.agent.libraries": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralAgent).GetLibraries()).ToDataRes(types.Array(types.Resource("mistral.library")))
+	},
+	"mistral.agent.connectors": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralAgent).GetConnectors()).ToDataRes(types.Array(types.Resource("mistral.connector")))
+	},
+	"mistral.agent.handoffs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralAgent).GetHandoffs()).ToDataRes(types.Array(types.Resource("mistral.agent")))
+	},
+	"mistral.agent.guardrailsBlockOnError": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralAgent).GetGuardrailsBlockOnError()).ToDataRes(types.Bool)
+	},
+	"mistral.agent.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralAgent).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"mistral.agent.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralAgent).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"mistral.agent.tool.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralAgentTool).GetType()).ToDataRes(types.String)
+	},
+	"mistral.agent.tool.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralAgentTool).GetName()).ToDataRes(types.String)
+	},
+	"mistral.agent.tool.connector": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralAgentTool).GetConnector()).ToDataRes(types.Resource("mistral.connector"))
+	},
+	"mistral.agent.tool.requiresConfirmation": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralAgentTool).GetRequiresConfirmation()).ToDataRes(types.Array(types.String))
+	},
+	"mistral.agent.tool.include": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralAgentTool).GetInclude()).ToDataRes(types.Array(types.String))
+	},
+	"mistral.agent.tool.exclude": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralAgentTool).GetExclude()).ToDataRes(types.Array(types.String))
+	},
+	"mistral.webhook.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralWebhook).GetId()).ToDataRes(types.String)
+	},
+	"mistral.webhook.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralWebhook).GetName()).ToDataRes(types.String)
+	},
+	"mistral.webhook.provider": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralWebhook).GetProvider()).ToDataRes(types.String)
+	},
+	"mistral.webhook.url": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralWebhook).GetUrl()).ToDataRes(types.String)
+	},
+	"mistral.webhook.urlVerified": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralWebhook).GetUrlVerified()).ToDataRes(types.Bool)
+	},
+	"mistral.webhook.signatureHashAlgorithm": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralWebhook).GetSignatureHashAlgorithm()).ToDataRes(types.String)
+	},
+	"mistral.webhook.validityPeriodSeconds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralWebhook).GetValidityPeriodSeconds()).ToDataRes(types.Int)
+	},
+	"mistral.webhook.ownerType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralWebhook).GetOwnerType()).ToDataRes(types.String)
+	},
+	"mistral.webhook.expiresAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralWebhook).GetExpiresAt()).ToDataRes(types.Time)
+	},
+	"mistral.webhook.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralWebhook).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"mistral.webhook.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralWebhook).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"mistral.trigger.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralTrigger).GetId()).ToDataRes(types.String)
+	},
+	"mistral.trigger.title": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralTrigger).GetTitle()).ToDataRes(types.String)
+	},
+	"mistral.trigger.eventSource": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralTrigger).GetEventSource()).ToDataRes(types.Resource("mistral.webhook"))
+	},
+	"mistral.trigger.handler": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralTrigger).GetHandler()).ToDataRes(types.String)
+	},
+	"mistral.trigger.actionType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralTrigger).GetActionType()).ToDataRes(types.String)
+	},
+	"mistral.trigger.agent": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralTrigger).GetAgent()).ToDataRes(types.Resource("mistral.agent"))
+	},
+	"mistral.trigger.actionTargetId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralTrigger).GetActionTargetId()).ToDataRes(types.String)
+	},
+	"mistral.trigger.filters": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralTrigger).GetFilters()).ToDataRes(types.String)
+	},
+	"mistral.trigger.ownerType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralTrigger).GetOwnerType()).ToDataRes(types.String)
+	},
 }
 
 func GetData(resource plugin.Resource, field string, args map[string]*llx.RawData) *plugin.DataRes {
@@ -509,6 +706,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mistral.libraries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMistral).Libraries, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"mistral.agents": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistral).Agents, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"mistral.webhooks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistral).Webhooks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"mistral.triggers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistral).Triggers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"mistral.model.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -603,8 +812,16 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMistralModel).Job, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"mistral.model.fineTuningJob": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralModel).FineTuningJob, ok = plugin.RawToTValue[*mqlMistralFineTuningJob](v.Value, v.Error)
+		return
+	},
 	"mistral.model.root": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMistralModel).Root, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mistral.model.baseModel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralModel).BaseModel, ok = plugin.RawToTValue[*mqlMistralModel](v.Value, v.Error)
 		return
 	},
 	"mistral.model.archived": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -639,6 +856,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMistralFineTuningJob).FineTunedModel, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"mistral.fineTuningJob.outputModel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralFineTuningJob).OutputModel, ok = plugin.RawToTValue[*mqlMistralModel](v.Value, v.Error)
+		return
+	},
 	"mistral.fineTuningJob.suffix": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMistralFineTuningJob).Suffix, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -653,6 +874,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mistral.fineTuningJob.validationFiles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMistralFineTuningJob).ValidationFiles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"mistral.fineTuningJob.trainingData": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralFineTuningJob).TrainingData, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"mistral.fineTuningJob.validationData": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralFineTuningJob).ValidationData, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"mistral.fineTuningJob.trainedTokens": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -763,6 +992,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMistralFile).MimeType, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"mistral.file.visibility": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralFile).Visibility, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mistral.file.expiresAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralFile).ExpiresAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
 	"mistral.batchJob.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMistralBatchJob).__id, ok = v.Value.(string)
 		return
@@ -783,6 +1020,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMistralBatchJob).Model, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"mistral.batchJob.agent": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralBatchJob).Agent, ok = plugin.RawToTValue[*mqlMistralAgent](v.Value, v.Error)
+		return
+	},
 	"mistral.batchJob.inputFiles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMistralBatchJob).InputFiles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -793,6 +1034,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mistral.batchJob.errorFile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMistralBatchJob).ErrorFile, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mistral.batchJob.inputs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralBatchJob).Inputs, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"mistral.batchJob.results": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralBatchJob).Results, ok = plugin.RawToTValue[*mqlMistralFile](v.Value, v.Error)
+		return
+	},
+	"mistral.batchJob.errorDetails": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralBatchJob).ErrorDetails, ok = plugin.RawToTValue[*mqlMistralFile](v.Value, v.Error)
 		return
 	},
 	"mistral.batchJob.totalRequests": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -855,6 +1108,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMistralConnector).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"mistral.connector.title": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralConnector).Title, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"mistral.connector.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMistralConnector).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -873,6 +1130,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mistral.connector.ownerType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMistralConnector).OwnerType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mistral.connector.ownerId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralConnector).OwnerId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mistral.connector.creatorId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralConnector).CreatorId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mistral.connector.httpProxyEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralConnector).HttpProxyEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"mistral.connector.blockedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralConnector).BlockedBy, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"mistral.connector.supportedAuthMethods": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -951,6 +1224,182 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMistralLibraryAccess).Role, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"mistral.agent.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralAgent).__id, ok = v.Value.(string)
+		return
+	},
+	"mistral.agent.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralAgent).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mistral.agent.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralAgent).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mistral.agent.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralAgent).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mistral.agent.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralAgent).Version, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"mistral.agent.modelName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralAgent).ModelName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mistral.agent.model": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralAgent).Model, ok = plugin.RawToTValue[*mqlMistralModel](v.Value, v.Error)
+		return
+	},
+	"mistral.agent.instructions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralAgent).Instructions, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mistral.agent.tools": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralAgent).Tools, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"mistral.agent.libraries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralAgent).Libraries, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"mistral.agent.connectors": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralAgent).Connectors, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"mistral.agent.handoffs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralAgent).Handoffs, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"mistral.agent.guardrailsBlockOnError": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralAgent).GuardrailsBlockOnError, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"mistral.agent.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralAgent).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"mistral.agent.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralAgent).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"mistral.agent.tool.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralAgentTool).__id, ok = v.Value.(string)
+		return
+	},
+	"mistral.agent.tool.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralAgentTool).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mistral.agent.tool.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralAgentTool).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mistral.agent.tool.connector": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralAgentTool).Connector, ok = plugin.RawToTValue[*mqlMistralConnector](v.Value, v.Error)
+		return
+	},
+	"mistral.agent.tool.requiresConfirmation": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralAgentTool).RequiresConfirmation, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"mistral.agent.tool.include": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralAgentTool).Include, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"mistral.agent.tool.exclude": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralAgentTool).Exclude, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"mistral.webhook.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralWebhook).__id, ok = v.Value.(string)
+		return
+	},
+	"mistral.webhook.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralWebhook).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mistral.webhook.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralWebhook).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mistral.webhook.provider": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralWebhook).Provider, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mistral.webhook.url": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralWebhook).Url, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mistral.webhook.urlVerified": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralWebhook).UrlVerified, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"mistral.webhook.signatureHashAlgorithm": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralWebhook).SignatureHashAlgorithm, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mistral.webhook.validityPeriodSeconds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralWebhook).ValidityPeriodSeconds, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"mistral.webhook.ownerType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralWebhook).OwnerType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mistral.webhook.expiresAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralWebhook).ExpiresAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"mistral.webhook.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralWebhook).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"mistral.webhook.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralWebhook).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"mistral.trigger.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralTrigger).__id, ok = v.Value.(string)
+		return
+	},
+	"mistral.trigger.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralTrigger).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mistral.trigger.title": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralTrigger).Title, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mistral.trigger.eventSource": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralTrigger).EventSource, ok = plugin.RawToTValue[*mqlMistralWebhook](v.Value, v.Error)
+		return
+	},
+	"mistral.trigger.handler": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralTrigger).Handler, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mistral.trigger.actionType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralTrigger).ActionType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mistral.trigger.agent": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralTrigger).Agent, ok = plugin.RawToTValue[*mqlMistralAgent](v.Value, v.Error)
+		return
+	},
+	"mistral.trigger.actionTargetId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralTrigger).ActionTargetId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mistral.trigger.filters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralTrigger).Filters, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mistral.trigger.ownerType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralTrigger).OwnerType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 }
 
 func SetData(resource plugin.Resource, field string, val *llx.RawData) error {
@@ -987,6 +1436,9 @@ type mqlMistral struct {
 	BatchJobs      plugin.TValue[[]any]
 	Connectors     plugin.TValue[[]any]
 	Libraries      plugin.TValue[[]any]
+	Agents         plugin.TValue[[]any]
+	Webhooks       plugin.TValue[[]any]
+	Triggers       plugin.TValue[[]any]
 }
 
 // createMistral creates a new instance of this resource
@@ -1128,6 +1580,54 @@ func (c *mqlMistral) GetLibraries() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlMistral) GetAgents() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Agents, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mistral", c.__id, "agents")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.agents()
+	})
+}
+
+func (c *mqlMistral) GetWebhooks() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Webhooks, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mistral", c.__id, "webhooks")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.webhooks()
+	})
+}
+
+func (c *mqlMistral) GetTriggers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Triggers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mistral", c.__id, "triggers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.triggers()
+	})
+}
+
 // mqlMistralModel for the mistral.model resource
 type mqlMistralModel struct {
 	MqlRuntime *plugin.Runtime
@@ -1155,7 +1655,9 @@ type mqlMistralModel struct {
 	CapabilityAudio              plugin.TValue[bool]
 	CapabilityAudioTranscription plugin.TValue[bool]
 	Job                          plugin.TValue[string]
+	FineTuningJob                plugin.TValue[*mqlMistralFineTuningJob]
 	Root                         plugin.TValue[string]
+	BaseModel                    plugin.TValue[*mqlMistralModel]
 	Archived                     plugin.TValue[bool]
 	Family                       plugin.TValue[string]
 	ParameterSize                plugin.TValue[string]
@@ -1298,8 +1800,40 @@ func (c *mqlMistralModel) GetJob() *plugin.TValue[string] {
 	return &c.Job
 }
 
+func (c *mqlMistralModel) GetFineTuningJob() *plugin.TValue[*mqlMistralFineTuningJob] {
+	return plugin.GetOrCompute[*mqlMistralFineTuningJob](&c.FineTuningJob, func() (*mqlMistralFineTuningJob, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mistral.model", c.__id, "fineTuningJob")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMistralFineTuningJob), nil
+			}
+		}
+
+		return c.fineTuningJob()
+	})
+}
+
 func (c *mqlMistralModel) GetRoot() *plugin.TValue[string] {
 	return &c.Root
+}
+
+func (c *mqlMistralModel) GetBaseModel() *plugin.TValue[*mqlMistralModel] {
+	return plugin.GetOrCompute[*mqlMistralModel](&c.BaseModel, func() (*mqlMistralModel, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mistral.model", c.__id, "baseModel")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMistralModel), nil
+			}
+		}
+
+		return c.baseModel()
+	})
 }
 
 func (c *mqlMistralModel) GetArchived() *plugin.TValue[bool] {
@@ -1327,10 +1861,13 @@ type mqlMistralFineTuningJob struct {
 	Status                  plugin.TValue[string]
 	Model                   plugin.TValue[string]
 	FineTunedModel          plugin.TValue[string]
+	OutputModel             plugin.TValue[*mqlMistralModel]
 	Suffix                  plugin.TValue[string]
 	AutoStart               plugin.TValue[bool]
 	TrainingFiles           plugin.TValue[[]any]
 	ValidationFiles         plugin.TValue[[]any]
+	TrainingData            plugin.TValue[[]any]
+	ValidationData          plugin.TValue[[]any]
 	TrainedTokens           plugin.TValue[int64]
 	CreatedAt               plugin.TValue[*time.Time]
 	ModifiedAt              plugin.TValue[*time.Time]
@@ -1397,6 +1934,22 @@ func (c *mqlMistralFineTuningJob) GetFineTunedModel() *plugin.TValue[string] {
 	return &c.FineTunedModel
 }
 
+func (c *mqlMistralFineTuningJob) GetOutputModel() *plugin.TValue[*mqlMistralModel] {
+	return plugin.GetOrCompute[*mqlMistralModel](&c.OutputModel, func() (*mqlMistralModel, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mistral.fineTuningJob", c.__id, "outputModel")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMistralModel), nil
+			}
+		}
+
+		return c.outputModel()
+	})
+}
+
 func (c *mqlMistralFineTuningJob) GetSuffix() *plugin.TValue[string] {
 	return &c.Suffix
 }
@@ -1411,6 +1964,38 @@ func (c *mqlMistralFineTuningJob) GetTrainingFiles() *plugin.TValue[[]any] {
 
 func (c *mqlMistralFineTuningJob) GetValidationFiles() *plugin.TValue[[]any] {
 	return &c.ValidationFiles
+}
+
+func (c *mqlMistralFineTuningJob) GetTrainingData() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TrainingData, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mistral.fineTuningJob", c.__id, "trainingData")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.trainingData()
+	})
+}
+
+func (c *mqlMistralFineTuningJob) GetValidationData() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ValidationData, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mistral.fineTuningJob", c.__id, "validationData")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.validationData()
+	})
 }
 
 func (c *mqlMistralFineTuningJob) GetTrainedTokens() *plugin.TValue[int64] {
@@ -1535,6 +2120,8 @@ type mqlMistralFile struct {
 	Source     plugin.TValue[string]
 	NumLines   plugin.TValue[int64]
 	MimeType   plugin.TValue[string]
+	Visibility plugin.TValue[string]
+	ExpiresAt  plugin.TValue[*time.Time]
 }
 
 // createMistralFile creates a new instance of this resource
@@ -1610,18 +2197,30 @@ func (c *mqlMistralFile) GetMimeType() *plugin.TValue[string] {
 	return &c.MimeType
 }
 
+func (c *mqlMistralFile) GetVisibility() *plugin.TValue[string] {
+	return &c.Visibility
+}
+
+func (c *mqlMistralFile) GetExpiresAt() *plugin.TValue[*time.Time] {
+	return &c.ExpiresAt
+}
+
 // mqlMistralBatchJob for the mistral.batchJob resource
 type mqlMistralBatchJob struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlMistralBatchJobInternal it will be used here
+	mqlMistralBatchJobInternal
 	Id                plugin.TValue[string]
 	Status            plugin.TValue[string]
 	Endpoint          plugin.TValue[string]
 	Model             plugin.TValue[string]
+	Agent             plugin.TValue[*mqlMistralAgent]
 	InputFiles        plugin.TValue[[]any]
 	OutputFile        plugin.TValue[string]
 	ErrorFile         plugin.TValue[string]
+	Inputs            plugin.TValue[[]any]
+	Results           plugin.TValue[*mqlMistralFile]
+	ErrorDetails      plugin.TValue[*mqlMistralFile]
 	TotalRequests     plugin.TValue[int64]
 	CompletedRequests plugin.TValue[int64]
 	SucceededRequests plugin.TValue[int64]
@@ -1686,6 +2285,22 @@ func (c *mqlMistralBatchJob) GetModel() *plugin.TValue[string] {
 	return &c.Model
 }
 
+func (c *mqlMistralBatchJob) GetAgent() *plugin.TValue[*mqlMistralAgent] {
+	return plugin.GetOrCompute[*mqlMistralAgent](&c.Agent, func() (*mqlMistralAgent, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mistral.batchJob", c.__id, "agent")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMistralAgent), nil
+			}
+		}
+
+		return c.agent()
+	})
+}
+
 func (c *mqlMistralBatchJob) GetInputFiles() *plugin.TValue[[]any] {
 	return &c.InputFiles
 }
@@ -1696,6 +2311,54 @@ func (c *mqlMistralBatchJob) GetOutputFile() *plugin.TValue[string] {
 
 func (c *mqlMistralBatchJob) GetErrorFile() *plugin.TValue[string] {
 	return &c.ErrorFile
+}
+
+func (c *mqlMistralBatchJob) GetInputs() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Inputs, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mistral.batchJob", c.__id, "inputs")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.inputs()
+	})
+}
+
+func (c *mqlMistralBatchJob) GetResults() *plugin.TValue[*mqlMistralFile] {
+	return plugin.GetOrCompute[*mqlMistralFile](&c.Results, func() (*mqlMistralFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mistral.batchJob", c.__id, "results")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMistralFile), nil
+			}
+		}
+
+		return c.results()
+	})
+}
+
+func (c *mqlMistralBatchJob) GetErrorDetails() *plugin.TValue[*mqlMistralFile] {
+	return plugin.GetOrCompute[*mqlMistralFile](&c.ErrorDetails, func() (*mqlMistralFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mistral.batchJob", c.__id, "errorDetails")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMistralFile), nil
+			}
+		}
+
+		return c.errorDetails()
+	})
 }
 
 func (c *mqlMistralBatchJob) GetTotalRequests() *plugin.TValue[int64] {
@@ -1790,11 +2453,16 @@ type mqlMistralConnector struct {
 	// optional: if you define mqlMistralConnectorInternal it will be used here
 	Id                   plugin.TValue[string]
 	Name                 plugin.TValue[string]
+	Title                plugin.TValue[string]
 	Description          plugin.TValue[string]
 	Server               plugin.TValue[string]
 	Protocol             plugin.TValue[string]
 	Visibility           plugin.TValue[string]
 	OwnerType            plugin.TValue[string]
+	OwnerId              plugin.TValue[string]
+	CreatorId            plugin.TValue[string]
+	HttpProxyEnabled     plugin.TValue[bool]
+	BlockedBy            plugin.TValue[[]any]
 	SupportedAuthMethods plugin.TValue[[]any]
 	PrivateToolExecution plugin.TValue[bool]
 	CreatedAt            plugin.TValue[*time.Time]
@@ -1846,6 +2514,10 @@ func (c *mqlMistralConnector) GetName() *plugin.TValue[string] {
 	return &c.Name
 }
 
+func (c *mqlMistralConnector) GetTitle() *plugin.TValue[string] {
+	return &c.Title
+}
+
 func (c *mqlMistralConnector) GetDescription() *plugin.TValue[string] {
 	return &c.Description
 }
@@ -1864,6 +2536,22 @@ func (c *mqlMistralConnector) GetVisibility() *plugin.TValue[string] {
 
 func (c *mqlMistralConnector) GetOwnerType() *plugin.TValue[string] {
 	return &c.OwnerType
+}
+
+func (c *mqlMistralConnector) GetOwnerId() *plugin.TValue[string] {
+	return &c.OwnerId
+}
+
+func (c *mqlMistralConnector) GetCreatorId() *plugin.TValue[string] {
+	return &c.CreatorId
+}
+
+func (c *mqlMistralConnector) GetHttpProxyEnabled() *plugin.TValue[bool] {
+	return &c.HttpProxyEnabled
+}
+
+func (c *mqlMistralConnector) GetBlockedBy() *plugin.TValue[[]any] {
+	return &c.BlockedBy
 }
 
 func (c *mqlMistralConnector) GetSupportedAuthMethods() *plugin.TValue[[]any] {
@@ -2040,4 +2728,447 @@ func (c *mqlMistralLibraryAccess) GetShareWithUuid() *plugin.TValue[string] {
 
 func (c *mqlMistralLibraryAccess) GetRole() *plugin.TValue[string] {
 	return &c.Role
+}
+
+// mqlMistralAgent for the mistral.agent resource
+type mqlMistralAgent struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMistralAgentInternal
+	Id                     plugin.TValue[string]
+	Name                   plugin.TValue[string]
+	Description            plugin.TValue[string]
+	Version                plugin.TValue[int64]
+	ModelName              plugin.TValue[string]
+	Model                  plugin.TValue[*mqlMistralModel]
+	Instructions           plugin.TValue[string]
+	Tools                  plugin.TValue[[]any]
+	Libraries              plugin.TValue[[]any]
+	Connectors             plugin.TValue[[]any]
+	Handoffs               plugin.TValue[[]any]
+	GuardrailsBlockOnError plugin.TValue[bool]
+	CreatedAt              plugin.TValue[*time.Time]
+	UpdatedAt              plugin.TValue[*time.Time]
+}
+
+// createMistralAgent creates a new instance of this resource
+func createMistralAgent(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMistralAgent{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("mistral.agent", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMistralAgent) MqlName() string {
+	return "mistral.agent"
+}
+
+func (c *mqlMistralAgent) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMistralAgent) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMistralAgent) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlMistralAgent) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlMistralAgent) GetVersion() *plugin.TValue[int64] {
+	return &c.Version
+}
+
+func (c *mqlMistralAgent) GetModelName() *plugin.TValue[string] {
+	return &c.ModelName
+}
+
+func (c *mqlMistralAgent) GetModel() *plugin.TValue[*mqlMistralModel] {
+	return plugin.GetOrCompute[*mqlMistralModel](&c.Model, func() (*mqlMistralModel, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mistral.agent", c.__id, "model")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMistralModel), nil
+			}
+		}
+
+		return c.model()
+	})
+}
+
+func (c *mqlMistralAgent) GetInstructions() *plugin.TValue[string] {
+	return &c.Instructions
+}
+
+func (c *mqlMistralAgent) GetTools() *plugin.TValue[[]any] {
+	return &c.Tools
+}
+
+func (c *mqlMistralAgent) GetLibraries() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Libraries, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mistral.agent", c.__id, "libraries")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.libraries()
+	})
+}
+
+func (c *mqlMistralAgent) GetConnectors() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Connectors, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mistral.agent", c.__id, "connectors")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.connectors()
+	})
+}
+
+func (c *mqlMistralAgent) GetHandoffs() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Handoffs, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mistral.agent", c.__id, "handoffs")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.handoffs()
+	})
+}
+
+func (c *mqlMistralAgent) GetGuardrailsBlockOnError() *plugin.TValue[bool] {
+	return &c.GuardrailsBlockOnError
+}
+
+func (c *mqlMistralAgent) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlMistralAgent) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+// mqlMistralAgentTool for the mistral.agent.tool resource
+type mqlMistralAgentTool struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMistralAgentToolInternal
+	Type                 plugin.TValue[string]
+	Name                 plugin.TValue[string]
+	Connector            plugin.TValue[*mqlMistralConnector]
+	RequiresConfirmation plugin.TValue[[]any]
+	Include              plugin.TValue[[]any]
+	Exclude              plugin.TValue[[]any]
+}
+
+// createMistralAgentTool creates a new instance of this resource
+func createMistralAgentTool(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMistralAgentTool{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("mistral.agent.tool", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMistralAgentTool) MqlName() string {
+	return "mistral.agent.tool"
+}
+
+func (c *mqlMistralAgentTool) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMistralAgentTool) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlMistralAgentTool) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlMistralAgentTool) GetConnector() *plugin.TValue[*mqlMistralConnector] {
+	return plugin.GetOrCompute[*mqlMistralConnector](&c.Connector, func() (*mqlMistralConnector, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mistral.agent.tool", c.__id, "connector")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMistralConnector), nil
+			}
+		}
+
+		return c.connector()
+	})
+}
+
+func (c *mqlMistralAgentTool) GetRequiresConfirmation() *plugin.TValue[[]any] {
+	return &c.RequiresConfirmation
+}
+
+func (c *mqlMistralAgentTool) GetInclude() *plugin.TValue[[]any] {
+	return &c.Include
+}
+
+func (c *mqlMistralAgentTool) GetExclude() *plugin.TValue[[]any] {
+	return &c.Exclude
+}
+
+// mqlMistralWebhook for the mistral.webhook resource
+type mqlMistralWebhook struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMistralWebhookInternal it will be used here
+	Id                     plugin.TValue[string]
+	Name                   plugin.TValue[string]
+	Provider               plugin.TValue[string]
+	Url                    plugin.TValue[string]
+	UrlVerified            plugin.TValue[bool]
+	SignatureHashAlgorithm plugin.TValue[string]
+	ValidityPeriodSeconds  plugin.TValue[int64]
+	OwnerType              plugin.TValue[string]
+	ExpiresAt              plugin.TValue[*time.Time]
+	CreatedAt              plugin.TValue[*time.Time]
+	UpdatedAt              plugin.TValue[*time.Time]
+}
+
+// createMistralWebhook creates a new instance of this resource
+func createMistralWebhook(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMistralWebhook{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("mistral.webhook", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMistralWebhook) MqlName() string {
+	return "mistral.webhook"
+}
+
+func (c *mqlMistralWebhook) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMistralWebhook) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMistralWebhook) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlMistralWebhook) GetProvider() *plugin.TValue[string] {
+	return &c.Provider
+}
+
+func (c *mqlMistralWebhook) GetUrl() *plugin.TValue[string] {
+	return &c.Url
+}
+
+func (c *mqlMistralWebhook) GetUrlVerified() *plugin.TValue[bool] {
+	return &c.UrlVerified
+}
+
+func (c *mqlMistralWebhook) GetSignatureHashAlgorithm() *plugin.TValue[string] {
+	return &c.SignatureHashAlgorithm
+}
+
+func (c *mqlMistralWebhook) GetValidityPeriodSeconds() *plugin.TValue[int64] {
+	return &c.ValidityPeriodSeconds
+}
+
+func (c *mqlMistralWebhook) GetOwnerType() *plugin.TValue[string] {
+	return &c.OwnerType
+}
+
+func (c *mqlMistralWebhook) GetExpiresAt() *plugin.TValue[*time.Time] {
+	return &c.ExpiresAt
+}
+
+func (c *mqlMistralWebhook) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlMistralWebhook) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+// mqlMistralTrigger for the mistral.trigger resource
+type mqlMistralTrigger struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMistralTriggerInternal
+	Id             plugin.TValue[string]
+	Title          plugin.TValue[string]
+	EventSource    plugin.TValue[*mqlMistralWebhook]
+	Handler        plugin.TValue[string]
+	ActionType     plugin.TValue[string]
+	Agent          plugin.TValue[*mqlMistralAgent]
+	ActionTargetId plugin.TValue[string]
+	Filters        plugin.TValue[string]
+	OwnerType      plugin.TValue[string]
+}
+
+// createMistralTrigger creates a new instance of this resource
+func createMistralTrigger(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMistralTrigger{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("mistral.trigger", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMistralTrigger) MqlName() string {
+	return "mistral.trigger"
+}
+
+func (c *mqlMistralTrigger) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMistralTrigger) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMistralTrigger) GetTitle() *plugin.TValue[string] {
+	return &c.Title
+}
+
+func (c *mqlMistralTrigger) GetEventSource() *plugin.TValue[*mqlMistralWebhook] {
+	return &c.EventSource
+}
+
+func (c *mqlMistralTrigger) GetHandler() *plugin.TValue[string] {
+	return &c.Handler
+}
+
+func (c *mqlMistralTrigger) GetActionType() *plugin.TValue[string] {
+	return &c.ActionType
+}
+
+func (c *mqlMistralTrigger) GetAgent() *plugin.TValue[*mqlMistralAgent] {
+	return plugin.GetOrCompute[*mqlMistralAgent](&c.Agent, func() (*mqlMistralAgent, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mistral.trigger", c.__id, "agent")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMistralAgent), nil
+			}
+		}
+
+		return c.agent()
+	})
+}
+
+func (c *mqlMistralTrigger) GetActionTargetId() *plugin.TValue[string] {
+	return &c.ActionTargetId
+}
+
+func (c *mqlMistralTrigger) GetFilters() *plugin.TValue[string] {
+	return &c.Filters
+}
+
+func (c *mqlMistralTrigger) GetOwnerType() *plugin.TValue[string] {
+	return &c.OwnerType
 }
