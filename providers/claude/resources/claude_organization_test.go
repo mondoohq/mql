@@ -512,3 +512,46 @@ func TestUsageEntriesFor(t *testing.T) {
 	// Synthetic: a caller with no id never claims the rows that have none.
 	assert.Empty(t, usageEntriesFor(all, "", byKey))
 }
+
+func decodeBetaWorkspace(t *testing.T, payload string) anthropic.BetaWorkspace {
+	t.Helper()
+	var w anthropic.BetaWorkspace
+	require.NoError(t, json.Unmarshal([]byte(payload), &w))
+	return w
+}
+
+// Synthetic: a workspace with every inference data privacy setting present,
+// shaped after the Admin API reference; no live organization was enabled for
+// these settings.
+func TestWorkspacePrivacySettings_Present(t *testing.T) {
+	w := decodeBetaWorkspace(t, `{
+		"id": "wrkspc_01",
+		"inference_data_privacy": {
+			"human_review": {"type": "disabled"},
+			"safeguards_storage": {"type": "external", "external_storage_id": "extstor_01"},
+			"transcripts_storage": {"type": "internal"}
+		}
+	}`)
+
+	humanReview, safeguards, transcripts := workspacePrivacySettings(w.InferenceDataPrivacy)
+	require.NotNil(t, humanReview)
+	assert.False(t, *humanReview)
+	require.NotNil(t, safeguards)
+	assert.Equal(t, "external", *safeguards)
+	require.NotNil(t, transcripts)
+	assert.Equal(t, "internal", *transcripts)
+}
+
+// Synthetic: an organization not enabled for the settings, where the API
+// omits them; no live organization was checked.
+//
+// Omitted settings must read as null. Human review in particular must not
+// read as false, which would claim it is off.
+func TestWorkspacePrivacySettings_Omitted(t *testing.T) {
+	w := decodeBetaWorkspace(t, `{"id": "wrkspc_01"}`)
+
+	humanReview, safeguards, transcripts := workspacePrivacySettings(w.InferenceDataPrivacy)
+	assert.Nil(t, humanReview)
+	assert.Nil(t, safeguards)
+	assert.Nil(t, transcripts)
+}

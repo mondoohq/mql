@@ -6,6 +6,8 @@ package resources
 import (
 	"context"
 	"fmt"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
@@ -351,6 +353,115 @@ func (r *mqlClaudeOrganizationWorkspace) userProfile() (*mqlClaudeUserProfile, e
 		return nil, nil
 	}
 	return profile, nil
+}
+
+// claude.organization.workspace inference data privacy
+
+type mqlClaudeOrganizationInternal struct {
+	privacyLock   sync.Mutex
+	privacyLoaded atomic.Bool
+	privacy       map[string]anthropic.BetaInferenceDataPrivacy
+	privacyErr    error
+}
+
+// workspacePrivacy reads the inference data privacy settings of every
+// workspace in one list call per organization. The API returns them only to
+// requests carrying the efs-2026-10-01 beta value, which the workspace list
+// behind the other workspace fields does not send. A failed read is kept, so
+// the fields of every workspace report it without listing again.
+func (r *mqlClaudeOrganization) workspacePrivacy() (map[string]anthropic.BetaInferenceDataPrivacy, error) {
+	if r.privacyLoaded.Load() {
+		return r.privacy, nil
+	}
+	r.privacyLock.Lock()
+	defer r.privacyLock.Unlock()
+	if r.privacyLoaded.Load() || r.privacyErr != nil {
+		return r.privacy, r.privacyErr
+	}
+
+	client, err := adminSDKClient(r.MqlRuntime)
+	if err != nil {
+		r.privacyErr = err
+		return nil, err
+	}
+	pager := client.Beta.Organization.Workspaces.ListAutoPaging(context.Background(),
+		anthropic.BetaOrganizationWorkspaceListParams{
+			IncludeArchived: anthropic.Bool(true),
+			Limit:           anthropic.Int(100),
+			Betas:           []anthropic.AnthropicBeta{anthropic.AnthropicBetaEfs2026_10_01},
+		})
+	privacy := map[string]anthropic.BetaInferenceDataPrivacy{}
+	for pager.Next() {
+		ws := pager.Current()
+		privacy[ws.ID] = ws.InferenceDataPrivacy
+	}
+	if err := pager.Err(); err != nil {
+		r.privacyErr = classifyAdminError(fmt.Errorf("listing workspace data privacy settings: %w", err), endpointUnavailable)
+		return nil, r.privacyErr
+	}
+
+	r.privacy = privacy
+	r.privacyLoaded.Store(true)
+	return privacy, nil
+}
+
+// workspacePrivacySettings maps one workspace's inference data privacy
+// settings onto its fields. A setting the API omitted, because the
+// organization is not enabled for it, comes back nil and reads as null.
+func workspacePrivacySettings(p anthropic.BetaInferenceDataPrivacy) (humanReview *bool, safeguardsStorage, transcriptsStorage *string) {
+	if enabled, ok := enabledDisabled(string(p.HumanReview.Type)); ok {
+		humanReview = &enabled
+	}
+	return humanReview, nullableString(p.SafeguardsStorage.Type), nullableString(p.TranscriptsStorage.Type)
+}
+
+func (r *mqlClaudeOrganizationWorkspace) privacySettings() (humanReview *bool, safeguardsStorage, transcriptsStorage *string, err error) {
+	res, err := CreateResource(r.MqlRuntime, "claude.organization", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	all, err := res.(*mqlClaudeOrganization).workspacePrivacy()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	humanReview, safeguardsStorage, transcriptsStorage = workspacePrivacySettings(all[r.Id.Data])
+	return humanReview, safeguardsStorage, transcriptsStorage, nil
+}
+
+func (r *mqlClaudeOrganizationWorkspace) humanReviewEnabled() (bool, error) {
+	humanReview, _, _, err := r.privacySettings()
+	if err != nil {
+		return false, err
+	}
+	if humanReview == nil {
+		r.HumanReviewEnabled.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return *humanReview, nil
+}
+
+func (r *mqlClaudeOrganizationWorkspace) safeguardsStorageType() (string, error) {
+	_, storage, _, err := r.privacySettings()
+	if err != nil {
+		return "", err
+	}
+	if storage == nil {
+		r.SafeguardsStorageType.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *storage, nil
+}
+
+func (r *mqlClaudeOrganizationWorkspace) transcriptsStorageType() (string, error) {
+	_, _, storage, err := r.privacySettings()
+	if err != nil {
+		return "", err
+	}
+	if storage == nil {
+		r.TranscriptsStorageType.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *storage, nil
 }
 
 type mqlClaudeOrganizationWorkspaceMemberInternal struct {
