@@ -6,9 +6,9 @@ package resources
 import (
 	"strings"
 
-	"github.com/weaviate/weaviate-go-client/v5/weaviate/rbac"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/weaviate/connection"
 	"go.mondoo.com/mql/types"
 )
 
@@ -25,11 +25,8 @@ func (r *mqlWeaviateInstance) roles() ([]any, error) {
 
 	serverID := conn.ServerID()
 	list := make([]any, 0, len(roles))
-	for i := range roles {
-		// &roles[i], not the address of a loop copy: a Role carries twelve
-		// permission slices, and every one of them becomes a retained resource
-		// anyway, so copying each before taking its address buys nothing.
-		mqlRole, err := newWeaviateRole(r.MqlRuntime, serverID, &roles[i])
+	for _, role := range roles {
+		mqlRole, err := newWeaviateRole(r.MqlRuntime, serverID, role)
 		if err != nil {
 			return nil, err
 		}
@@ -38,9 +35,9 @@ func (r *mqlWeaviateInstance) roles() ([]any, error) {
 	return list, nil
 }
 
-// Permission domains, one per typed permission slice a role carries. Reported
-// as the permission's domain so a policy can select a whole class of grants
-// without matching on action names.
+// Permission domains the server defines. Reported as the permission's domain
+// so a policy can select a whole class of grants without matching on action
+// names.
 const (
 	domainAlias       = "alias"
 	domainBackups     = "backups"
@@ -49,6 +46,7 @@ const (
 	domainData        = "data"
 	domainGroups      = "groups"
 	domainMCP         = "mcp"
+	domainNamespaces  = "namespaces"
 	domainNodes       = "nodes"
 	domainReplicate   = "replicate"
 	domainRoles       = "roles"
@@ -72,6 +70,10 @@ type permEntry struct {
 	alias      *string
 	shard      *string
 	verbosity  *string
+	tenant     *string
+	object     *string
+	targetUser *string
+	namespace  *string
 }
 
 //go:fix inline
@@ -84,58 +86,122 @@ func derefStr(s *string) string {
 	return *s
 }
 
-// flattenPermissions expands a role's per-domain permission slices into one
-// entry per action, carrying every qualifier the domain defines. Dropping a
-// qualifier makes two different grants look identical: a create_roles grant
-// scoped "all" can hand out permissions the role does not itself hold, and one
-// scoped "match" cannot.
-func flattenPermissions(role *rbac.Role) []permEntry {
+// permissionDomain names the domain a grant belongs to. The server puts a
+// grant's qualifiers under a key naming its domain, so that key decides first.
+// A key this build has no model for still names the domain, so a grant in a
+// domain added to the server later is reported rather than dropped. The cluster
+// and mcp domains carry no qualifiers at all, and an older server may omit the
+// tenants and users qualifiers, so a grant without any falls back to the last
+// word of its action ("read_cluster", "assign_and_revoke_users").
+func permissionDomain(p *connection.Permission) string {
+	switch {
+	case p.Aliases != nil:
+		return domainAlias
+	case p.Backups != nil:
+		return domainBackups
+	case p.Collections != nil:
+		return domainCollections
+	case p.Data != nil:
+		return domainData
+	case p.Groups != nil:
+		return domainGroups
+	case p.Namespaces != nil:
+		return domainNamespaces
+	case p.Nodes != nil:
+		return domainNodes
+	case p.Replicate != nil:
+		return domainReplicate
+	case p.Roles != nil:
+		return domainRoles
+	case p.Tenants != nil:
+		return domainTenants
+	case p.Users != nil:
+		return domainUsers
+	}
+	if len(p.QualifierKeys) > 0 {
+		return p.QualifierKeys[0]
+	}
+	action := p.ActionName()
+	domain := action[strings.LastIndex(action, "_")+1:]
+	if domain == "aliases" {
+		return domainAlias
+	}
+	return domain
+}
+
+// flattenPermissions turns a role's grants into one entry per action, carrying
+// every qualifier the domain defines. Dropping a qualifier makes two different
+// grants look identical: a create_roles grant scoped "all" can hand out
+// permissions the role does not itself hold, and one scoped "match" cannot; a
+// read_data grant on one tenant reaches far less than one on every tenant.
+//
+// A qualifier is reported, possibly as an empty string, exactly when the server
+// sent the object holding it, and is null otherwise.
+func flattenPermissions(role *connection.Role) []permEntry {
 	if role == nil {
 		return nil
 	}
 	var out []permEntry
-	add := func(actions []string, base permEntry) {
-		for _, a := range actions {
-			e := base
-			e.action = a
-			out = append(out, e)
+	for _, p := range role.Permissions {
+		if p == nil {
+			continue
 		}
-	}
-	for _, p := range role.Alias {
-		add(p.Actions, permEntry{domain: domainAlias, collection: p.Collection, alias: new(p.Alias)})
-	}
-	for _, p := range role.Backups {
-		add(p.Actions, permEntry{domain: domainBackups, collection: p.Collection})
-	}
-	for _, p := range role.Cluster {
-		add(p.Actions, permEntry{domain: domainCluster})
-	}
-	for _, p := range role.Collections {
-		add(p.Actions, permEntry{domain: domainCollections, collection: p.Collection})
-	}
-	for _, p := range role.Data {
-		add(p.Actions, permEntry{domain: domainData, collection: p.Collection})
-	}
-	for _, p := range role.Groups {
-		add(p.Actions, permEntry{domain: domainGroups, group: new(p.Group), groupType: new(p.GroupType)})
-	}
-	for _, p := range role.MCP {
-		add(p.Actions, permEntry{domain: domainMCP})
-	}
-	for _, p := range role.Nodes {
-		add(p.Actions, permEntry{domain: domainNodes, collection: p.Collection, verbosity: new(p.Verbosity)})
-	}
-	for _, p := range role.Replicate {
-		add(p.Actions, permEntry{domain: domainReplicate, collection: p.Collection, shard: new(p.Shard)})
-	}
-	for _, p := range role.Roles {
-		add(p.Actions, permEntry{domain: domainRoles, targetRole: new(p.Role), scope: new(p.Scope)})
-	}
-	for _, p := range role.Tenants {
-		add(p.Actions, permEntry{domain: domainTenants})
-	}
-	for _, p := range role.Users {
-		add(p.Actions, permEntry{domain: domainUsers})
+		e := permEntry{action: p.ActionName(), domain: permissionDomain(p)}
+		switch e.domain {
+		case domainAlias:
+			if p.Aliases != nil {
+				e.collection = derefStr(p.Aliases.Collection)
+				e.alias = new(derefStr(p.Aliases.Alias))
+			}
+		case domainBackups:
+			if p.Backups != nil {
+				e.collection = derefStr(p.Backups.Collection)
+			}
+		case domainCollections:
+			if p.Collections != nil {
+				e.collection = derefStr(p.Collections.Collection)
+			}
+		case domainData:
+			if p.Data != nil {
+				e.collection = derefStr(p.Data.Collection)
+				e.tenant = new(derefStr(p.Data.Tenant))
+				e.object = new(derefStr(p.Data.Object))
+			}
+		case domainGroups:
+			if p.Groups != nil {
+				e.group = new(derefStr(p.Groups.Group))
+				e.groupType = new(string(p.Groups.GroupType))
+			}
+		case domainNamespaces:
+			if p.Namespaces != nil {
+				e.namespace = new(derefStr(p.Namespaces.Namespace))
+			}
+		case domainNodes:
+			if p.Nodes != nil {
+				e.collection = derefStr(p.Nodes.Collection)
+				e.verbosity = new(derefStr(p.Nodes.Verbosity))
+			}
+		case domainReplicate:
+			if p.Replicate != nil {
+				e.collection = derefStr(p.Replicate.Collection)
+				e.shard = new(derefStr(p.Replicate.Shard))
+			}
+		case domainRoles:
+			if p.Roles != nil {
+				e.targetRole = new(derefStr(p.Roles.Role))
+				e.scope = new(derefStr(p.Roles.Scope))
+			}
+		case domainTenants:
+			if p.Tenants != nil {
+				e.collection = derefStr(p.Tenants.Collection)
+				e.tenant = new(derefStr(p.Tenants.Tenant))
+			}
+		case domainUsers:
+			if p.Users != nil {
+				e.targetUser = new(derefStr(p.Users.Users))
+			}
+		}
+		out = append(out, e)
 	}
 	return out
 }
@@ -144,11 +210,13 @@ func flattenPermissions(role *rbac.Role) []permEntry {
 // it can repeat. The action alone is not enough: one role can hold create_roles
 // twice, once scoped "all" over one target role and once scoped "match" over
 // another, and a key carrying only the action reports the first grant twice.
+// Likewise read_data on two tenants of one collection is two grants.
 func permEntryKey(p permEntry) string {
 	return strings.Join([]string{
 		p.domain, p.action, p.collection, derefStr(p.scope), derefStr(p.targetRole),
 		derefStr(p.group), derefStr(p.groupType), derefStr(p.alias),
-		derefStr(p.shard), derefStr(p.verbosity),
+		derefStr(p.shard), derefStr(p.verbosity), derefStr(p.tenant),
+		derefStr(p.object), derefStr(p.targetUser), derefStr(p.namespace),
 	}, "/")
 }
 
@@ -180,6 +248,10 @@ func (r *mqlWeaviateRole) permissions() ([]any, error) {
 			"alias":      llx.StringDataPtr(p.alias),
 			"shard":      llx.StringDataPtr(p.shard),
 			"verbosity":  llx.StringDataPtr(p.verbosity),
+			"tenant":     llx.StringDataPtr(p.tenant),
+			"object":     llx.StringDataPtr(p.object),
+			"targetUser": llx.StringDataPtr(p.targetUser),
+			"namespace":  llx.StringDataPtr(p.namespace),
 		})
 		if err != nil {
 			return nil, err
@@ -289,16 +361,10 @@ func (r *mqlWeaviateGroup) roles() ([]any, error) {
 		return []any{}, nil
 	}
 	conn := weaviateConnection(r.MqlRuntime)
-	client, err := conn.Client()
-	if err != nil {
-		return nil, err
-	}
-	// WithIncludeFullRoles carries each role's permissions back with it, so the
-	// permissions of a role held only by a group resolve without another call.
-	roles, err := client.Groups().OIDC().RolesGetter().
-		WithGroupID(r.GroupId.Data).
-		WithIncludeFullRoles(true).
-		Do(weaviateContext())
+	// The roles come back with their permissions, so the permissions of a role
+	// held only by a group resolve without another call. They are read from the
+	// server's own response for the same reason as the instance's role list.
+	roles, err := conn.GroupRoles(weaviateContext(), r.GroupType.Data, r.GroupId.Data)
 	if err != nil {
 		if isForbidden(err) || isNotFound(err) {
 			return []any{}, nil
@@ -355,37 +421,37 @@ func (r *mqlWeaviateInstance) users() ([]any, error) {
 			return nil, err
 		}
 		mqlUser := res.(*mqlWeaviateUser)
-		mqlUser.cacheRoles = info.Roles
+		names := make([]string, 0, len(info.Roles))
+		for _, role := range info.Roles {
+			if role != nil {
+				names = append(names, role.Name)
+			}
+		}
+		mqlUser.cacheRoleNames = names
 		list = append(list, mqlUser)
 	}
 	return list, nil
 }
 
 // resolveRole returns the server's own definition of a role named by something
-// else. The user listing names a user's roles and nothing more, leaving every
-// permission slice empty, so a role reached through a user would otherwise
-// report no permissions at all. The server's role list is read once per
-// connection and indexed by name, so this costs neither a request nor a scan.
-// When the list cannot be read the reference is returned unchanged, which keeps
-// the role's name available to a credential that may query users but not roles.
-func resolveRole(runtime *plugin.Runtime, ref *rbac.Role) *rbac.Role {
-	if hasPermissions(ref) {
-		return ref
-	}
-	if full, ok := weaviateConnection(runtime).RoleByName(ref.Name); ok {
+// else. The user listing names a user's roles and nothing more, so a role
+// reached through a user would otherwise report no permissions at all. The
+// server's role list is read once per connection and indexed by name, so this
+// costs neither a request nor a scan. When the list cannot be read a bare
+// reference carrying only the name comes back, which keeps the role's name
+// available to a credential that may query users but not roles.
+func resolveRole(runtime *plugin.Runtime, name string) *connection.Role {
+	if full, ok := weaviateConnection(runtime).RoleByName(name); ok {
 		return full
 	}
-	return ref
+	return &connection.Role{Name: name}
 }
 
 func (r *mqlWeaviateUser) roles() ([]any, error) {
 	serverID := weaviateConnection(r.MqlRuntime).ServerID()
 	list := []any{}
-	for _, role := range r.cacheRoles {
-		if role == nil {
-			continue
-		}
-		mqlRole, err := newWeaviateRole(r.MqlRuntime, serverID, resolveRole(r.MqlRuntime, role))
+	for _, name := range r.cacheRoleNames {
+		mqlRole, err := newWeaviateRole(r.MqlRuntime, serverID, resolveRole(r.MqlRuntime, name))
 		if err != nil {
 			return nil, err
 		}

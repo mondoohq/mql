@@ -49,9 +49,13 @@ weaviate.role.permission.collection 13.0.0
 weaviate.role.permission.domain 14.0.0
 weaviate.role.permission.group 14.0.0
 weaviate.role.permission.groupType 14.0.0
+weaviate.role.permission.namespace 14.0.16
+weaviate.role.permission.object 14.0.16
 weaviate.role.permission.scope 14.0.0
 weaviate.role.permission.shard 14.0.0
 weaviate.role.permission.targetRole 14.0.0
+weaviate.role.permission.targetUser 14.0.16
+weaviate.role.permission.tenant 14.0.16
 weaviate.role.permission.verbosity 14.0.0
 weaviate.role.permissions 13.0.0
 weaviate.user 13.0.0
