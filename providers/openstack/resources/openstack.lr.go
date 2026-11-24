@@ -1949,6 +1949,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"openstack.octavia.loadBalancer.exposure": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenstackOctaviaLoadBalancer).GetExposure()).ToDataRes(types.Resource("openstack.octavia.loadBalancer.exposure"))
 	},
+	"openstack.octavia.loadBalancer.vipSecurityGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenstackOctaviaLoadBalancer).GetVipSecurityGroups()).ToDataRes(types.Array(types.Resource("openstack.securityGroup")))
+	},
 	"openstack.octavia.loadBalancer.exposure.internetReachable": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenstackOctaviaLoadBalancerExposure).GetInternetReachable()).ToDataRes(types.Bool)
 	},
@@ -2492,6 +2495,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"openstack.firewall.group.shared": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenstackFirewallGroup).GetShared()).ToDataRes(types.Bool)
 	},
+	"openstack.firewall.group.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenstackFirewallGroup).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"openstack.firewall.group.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenstackFirewallGroup).GetUpdatedAt()).ToDataRes(types.Time)
+	},
 	"openstack.firewall.group.project": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenstackFirewallGroup).GetProject()).ToDataRes(types.Resource("openstack.project"))
 	},
@@ -2518,6 +2527,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"openstack.firewall.policy.shared": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenstackFirewallPolicy).GetShared()).ToDataRes(types.Bool)
+	},
+	"openstack.firewall.policy.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenstackFirewallPolicy).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"openstack.firewall.policy.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenstackFirewallPolicy).GetUpdatedAt()).ToDataRes(types.Time)
 	},
 	"openstack.firewall.policy.project": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenstackFirewallPolicy).GetProject()).ToDataRes(types.Resource("openstack.project"))
@@ -2560,6 +2575,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"openstack.firewall.rule.enabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenstackFirewallRule).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"openstack.firewall.rule.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenstackFirewallRule).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"openstack.firewall.rule.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenstackFirewallRule).GetUpdatedAt()).ToDataRes(types.Time)
 	},
 	"openstack.firewall.rule.project": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenstackFirewallRule).GetProject()).ToDataRes(types.Resource("openstack.project"))
@@ -6449,6 +6470,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOpenstackOctaviaLoadBalancer).Exposure, ok = plugin.RawToTValue[*mqlOpenstackOctaviaLoadBalancerExposure](v.Value, v.Error)
 		return
 	},
+	"openstack.octavia.loadBalancer.vipSecurityGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenstackOctaviaLoadBalancer).VipSecurityGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"openstack.octavia.loadBalancer.exposure.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOpenstackOctaviaLoadBalancerExposure).__id, ok = v.Value.(string)
 		return
@@ -7221,6 +7246,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOpenstackFirewallGroup).Shared, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"openstack.firewall.group.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenstackFirewallGroup).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"openstack.firewall.group.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenstackFirewallGroup).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
 	"openstack.firewall.group.project": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOpenstackFirewallGroup).Project, ok = plugin.RawToTValue[*mqlOpenstackProject](v.Value, v.Error)
 		return
@@ -7259,6 +7292,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"openstack.firewall.policy.shared": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOpenstackFirewallPolicy).Shared, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"openstack.firewall.policy.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenstackFirewallPolicy).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"openstack.firewall.policy.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenstackFirewallPolicy).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"openstack.firewall.policy.project": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -7319,6 +7360,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"openstack.firewall.rule.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOpenstackFirewallRule).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"openstack.firewall.rule.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenstackFirewallRule).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"openstack.firewall.rule.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenstackFirewallRule).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"openstack.firewall.rule.project": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -15571,6 +15620,7 @@ type mqlOpenstackOctaviaLoadBalancer struct {
 	Pools              plugin.TValue[[]any]
 	EnforcesTls        plugin.TValue[bool]
 	Exposure           plugin.TValue[*mqlOpenstackOctaviaLoadBalancerExposure]
+	VipSecurityGroups  plugin.TValue[[]any]
 }
 
 // createOpenstackOctaviaLoadBalancer creates a new instance of this resource
@@ -15781,6 +15831,22 @@ func (c *mqlOpenstackOctaviaLoadBalancer) GetExposure() *plugin.TValue[*mqlOpens
 		}
 
 		return c.exposure()
+	})
+}
+
+func (c *mqlOpenstackOctaviaLoadBalancer) GetVipSecurityGroups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.VipSecurityGroups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("openstack.octavia.loadBalancer", c.__id, "vipSecurityGroups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.vipSecurityGroups()
 	})
 }
 
@@ -17657,6 +17723,8 @@ type mqlOpenstackFirewallGroup struct {
 	AdminStateUp  plugin.TValue[bool]
 	Status        plugin.TValue[string]
 	Shared        plugin.TValue[bool]
+	CreatedAt     plugin.TValue[*time.Time]
+	UpdatedAt     plugin.TValue[*time.Time]
 	Project       plugin.TValue[*mqlOpenstackProject]
 	Ports         plugin.TValue[[]any]
 	IngressPolicy plugin.TValue[*mqlOpenstackFirewallPolicy]
@@ -17722,6 +17790,14 @@ func (c *mqlOpenstackFirewallGroup) GetStatus() *plugin.TValue[string] {
 
 func (c *mqlOpenstackFirewallGroup) GetShared() *plugin.TValue[bool] {
 	return &c.Shared
+}
+
+func (c *mqlOpenstackFirewallGroup) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlOpenstackFirewallGroup) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
 }
 
 func (c *mqlOpenstackFirewallGroup) GetProject() *plugin.TValue[*mqlOpenstackProject] {
@@ -17798,6 +17874,8 @@ type mqlOpenstackFirewallPolicy struct {
 	Description plugin.TValue[string]
 	Audited     plugin.TValue[bool]
 	Shared      plugin.TValue[bool]
+	CreatedAt   plugin.TValue[*time.Time]
+	UpdatedAt   plugin.TValue[*time.Time]
 	Project     plugin.TValue[*mqlOpenstackProject]
 	Rules       plugin.TValue[[]any]
 }
@@ -17859,6 +17937,14 @@ func (c *mqlOpenstackFirewallPolicy) GetShared() *plugin.TValue[bool] {
 	return &c.Shared
 }
 
+func (c *mqlOpenstackFirewallPolicy) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlOpenstackFirewallPolicy) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
 func (c *mqlOpenstackFirewallPolicy) GetProject() *plugin.TValue[*mqlOpenstackProject] {
 	return plugin.GetOrCompute[*mqlOpenstackProject](&c.Project, func() (*mqlOpenstackProject, error) {
 		if c.MqlRuntime.HasRecording {
@@ -17908,6 +17994,8 @@ type mqlOpenstackFirewallRule struct {
 	DestinationPort      plugin.TValue[string]
 	Shared               plugin.TValue[bool]
 	Enabled              plugin.TValue[bool]
+	CreatedAt            plugin.TValue[*time.Time]
+	UpdatedAt            plugin.TValue[*time.Time]
 	Project              plugin.TValue[*mqlOpenstackProject]
 	Policies             plugin.TValue[[]any]
 }
@@ -17995,6 +18083,14 @@ func (c *mqlOpenstackFirewallRule) GetShared() *plugin.TValue[bool] {
 
 func (c *mqlOpenstackFirewallRule) GetEnabled() *plugin.TValue[bool] {
 	return &c.Enabled
+}
+
+func (c *mqlOpenstackFirewallRule) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlOpenstackFirewallRule) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
 }
 
 func (c *mqlOpenstackFirewallRule) GetProject() *plugin.TValue[*mqlOpenstackProject] {

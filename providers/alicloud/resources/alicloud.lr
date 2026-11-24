@@ -2112,6 +2112,11 @@ alicloud.vpc.vswitch {
   ipv6CidrBlock string
   // Whether IPv6 is enabled for the vSwitch
   enabledIpv6 bool
+  // Whether the vSwitch is an IPv6 single-stack vSwitch
+  //
+  // True when the vSwitch hands out IPv6 addresses only. Null when the service
+  // does not report it.
+  ipv6Only() bool
   // Lifecycle status
   //
   // One of Pending or Available.
@@ -2510,6 +2515,10 @@ alicloud.vpc.eipAddress {
   bandwidthPackageBandwidth string
   // Maximum bandwidth of the EIP in Mbit/s
   eipBandwidth string
+  // Bandwidth cap of the EIP within its shared bandwidth plan, in Mbit/s
+  //
+  // Empty when the EIP has no cap of its own in the plan or has not joined one.
+  commonBandwidthPackageIpBandwidth string
   // Business type of the EIP
   bizType string
   // Business (payment) status of the EIP
@@ -3482,6 +3491,57 @@ alicloud.rds.instance {
 alicloud.redis {
   // ApsaraDB for Redis (Tair) instances across all enabled regions
   instances() []alicloud.redis.instance
+  // Tair AI gateway instances across all enabled regions
+  aiGateways() []alicloud.redis.aiGateway
+}
+
+// Tair AI gateway instance
+//
+// A Tair AI gateway (semantic cache) instance, keyed by instanceId, for
+// example tg-bp1zxszhcgatnx. Exposes the instance class and status, the
+// billing method, the VPC and vSwitch it is attached to, the gateway
+// parameters, and which gateway plug-ins are switched on. Select one with
+// `alicloud.redis.aiGateway(instanceId: "tg-bp1zxszhcgatnx", regionId: "cn-hangzhou")`.
+alicloud.redis.aiGateway @defaults("instanceId instanceName instanceStatus regionId") {
+  init(instanceId string, regionId string)
+  // Instance ID, for example tg-bp1zxszhcgatnx
+  instanceId string
+  // Instance name
+  instanceName string
+  // Lifecycle status, for example Normal, Creating, Changing, or Released
+  instanceStatus string
+  // Instance type
+  instanceType string
+  // Instance class (specification)
+  instanceClass string
+  // Billing method, for example PostPaid (pay-as-you-go)
+  chargeType string
+  // Network type, for example VPC
+  networkType string
+  // Region ID the instance is deployed in, for example cn-hangzhou
+  regionId string
+  // Zone ID the instance is deployed in, for example cn-hangzhou-h
+  zoneId string
+  // Time the instance was created
+  createTime time
+  // Time the instance expires
+  endTime time
+  // ID of the resource group the instance belongs to
+  resourceGroupId string
+  // Resource group that contains the instance
+  resourceGroup() alicloud.resourceManager.resourceGroup
+  // VPC the instance is attached to
+  vpc() alicloud.vpc.network
+  // vSwitch the instance is attached to
+  vswitch() alicloud.vpc.vswitch
+  // Tags attached to the instance, as key/value pairs
+  tags map[string]string
+  // Gateway parameters, keyed by parameter name
+  parameters() map[string]string
+  // Gateway plug-in switches, keyed by plug-in parameter name
+  //
+  // Each value records whether that plug-in is switched on for the gateway.
+  pluginSwitches() map[string]string
 }
 
 // ApsaraDB for Redis instance
@@ -3759,6 +3819,55 @@ alicloud.mongodb.instance {
   securityGroups() []alicloud.ecs.securitygroup
   // Whether the audit log feature is enabled
   auditPolicyEnabled() bool
+  // Database accounts on the instance
+  //
+  // Every account the instance reports, including the system account root,
+  // with its account type and the roles granted to it. Use it to find accounts
+  // holding administrative roles such as root or userAdminAnyDatabase.
+  accounts() []alicloud.mongodb.instance.account
+  // Roles defined on the instance
+  //
+  // The roles that can be granted to accounts, each with the database it is
+  // defined in.
+  roles() []alicloud.mongodb.instance.role
+  // Names of the databases on the instance
+  //
+  // Includes the system databases admin, local, and config.
+  databases() []string
+}
+
+// ApsaraDB for MongoDB database account
+//
+// A database account on an ApsaraDB for MongoDB instance, keyed by the account
+// type, the database the account belongs to, and the account name. Reports
+// the account status and the roles granted to it.
+private alicloud.mongodb.instance.account @defaults("name dbName characterType status") {
+  // Account name, for example root
+  name string
+  // Database the account belongs to, for example admin
+  dbName string
+  // Account type
+  //
+  // normal for a replica set account. For a sharded cluster, cs for a
+  // ConfigServer account or db for a shard account.
+  characterType string
+  // Account status, for example Available
+  status string
+  // Account description
+  description string
+  // Roles granted to the account
+  roles []alicloud.mongodb.instance.role
+}
+
+// ApsaraDB for MongoDB database role
+//
+// A role on an ApsaraDB for MongoDB instance, identified by its name and the
+// database it is defined in, for example readWrite on admin.
+private alicloud.mongodb.instance.role @defaults("name dbName") {
+  // Role name, for example read, readWrite, or root
+  name string
+  // Database the role is defined in, for example admin
+  dbName string
 }
 
 // PolarDB

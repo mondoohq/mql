@@ -504,6 +504,7 @@ openstack.federationMappings 13.7.6
 openstack.federationServiceProviders 13.7.6
 openstack.firewall.group 13.0.1
 openstack.firewall.group.adminStateUp 13.0.1
+openstack.firewall.group.createdAt 14.0.15
 openstack.firewall.group.description 13.0.1
 openstack.firewall.group.egressPolicy 13.0.1
 openstack.firewall.group.id 13.0.1
@@ -513,16 +514,20 @@ openstack.firewall.group.ports 13.0.1
 openstack.firewall.group.project 13.0.1
 openstack.firewall.group.shared 13.0.1
 openstack.firewall.group.status 13.0.1
+openstack.firewall.group.updatedAt 14.0.15
 openstack.firewall.policy 13.0.1
 openstack.firewall.policy.audited 13.0.1
+openstack.firewall.policy.createdAt 14.0.15
 openstack.firewall.policy.description 13.0.1
 openstack.firewall.policy.id 13.0.1
 openstack.firewall.policy.name 13.0.1
 openstack.firewall.policy.project 13.0.1
 openstack.firewall.policy.rules 13.0.1
 openstack.firewall.policy.shared 13.0.1
+openstack.firewall.policy.updatedAt 14.0.15
 openstack.firewall.rule 13.0.1
 openstack.firewall.rule.action 13.0.1
+openstack.firewall.rule.createdAt 14.0.15
 openstack.firewall.rule.description 13.0.1
 openstack.firewall.rule.destinationIpAddress 13.0.1
 openstack.firewall.rule.destinationPort 13.0.1
@@ -536,6 +541,7 @@ openstack.firewall.rule.protocol 13.0.1
 openstack.firewall.rule.shared 13.0.1
 openstack.firewall.rule.sourceIpAddress 13.0.1
 openstack.firewall.rule.sourcePort 13.0.1
+openstack.firewall.rule.updatedAt 14.0.15
 openstack.firewallGroups 13.0.1
 openstack.firewallPolicies 13.0.1
 openstack.firewallRules 13.0.1
@@ -975,6 +981,7 @@ openstack.octavia.loadBalancer.updatedAt 13.0.1
 openstack.octavia.loadBalancer.vipAddress 13.0.1
 openstack.octavia.loadBalancer.vipNetwork 13.0.1
 openstack.octavia.loadBalancer.vipPort 13.0.1
+openstack.octavia.loadBalancer.vipSecurityGroups 14.0.15
 openstack.octavia.loadBalancer.vipSubnet 13.0.1
 openstack.octavia.member 13.0.1
 openstack.octavia.member.address 13.0.1
