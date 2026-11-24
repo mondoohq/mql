@@ -119,3 +119,28 @@ func TestLoadBalancerPublicNetDNSPtr(t *testing.T) {
 	assert.Equal(t, "lb.example.com", lb.PublicNet.IPv4.DNSPtr)
 	assert.Equal(t, "lb6.example.com", lb.PublicNet.IPv6.DNSPtr)
 }
+
+func TestPublicIPBlocked(t *testing.T) {
+	// Synthetic: a load balancer with a public IPv4 that abuse handling blocked; no live project was checked.
+	t.Run("blocked address", func(t *testing.T) {
+		got := publicIPBlocked(net.ParseIP("203.0.113.10"), true)
+		if assert.NotNil(t, got) {
+			assert.True(t, *got)
+		}
+	})
+
+	// Synthetic: a public IPv6 that is not blocked reads false, not null; no live project was checked.
+	t.Run("unblocked address", func(t *testing.T) {
+		got := publicIPBlocked(net.ParseIP("2001:db8::1"), false)
+		if assert.NotNil(t, got) {
+			assert.False(t, *got)
+		}
+	})
+
+	// Synthetic: public interface disabled, so the API returns no address; no live project was checked.
+	t.Run("no address is null", func(t *testing.T) {
+		assert.Nil(t, publicIPBlocked(nil, false))
+		assert.Nil(t, publicIPBlocked(net.IP{}, true))
+		assert.Nil(t, publicIPBlocked(net.IPv4zero, false))
+	})
+}

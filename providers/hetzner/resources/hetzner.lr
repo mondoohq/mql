@@ -305,7 +305,8 @@ private hetzner.serverType @defaults("id name cores memory") {
   //
   // Reports 0 for every server type after 2024-08-05, when Hetzner moved the
   // included traffic allowance into per-location pricing and stopped
-  // publishing it on the type itself. Carried for inventory completeness.
+  // publishing it on the type itself. Carried for inventory completeness. The
+  // allowance in effect is includedTraffic on each entry in locations.
   includedTraffic int
   // Per-location availability and deprecation info
   locations() []hetzner.serverType.location
@@ -328,6 +329,10 @@ private hetzner.serverType.location @defaults("available recommended") {
   // `unavailableAfter` (timestamp after which new servers of this type can
   // no longer be created). Empty when the type is not deprecated here.
   deprecation dict
+  // Included monthly traffic in bytes for servers of this type in this location
+  //
+  // Null when Hetzner publishes no pricing for the server type in this location.
+  includedTraffic int
 }
 
 // Hetzner Cloud image (system image, snapshot, backup, or app)
@@ -649,7 +654,7 @@ private hetzner.floatingIp @defaults("id ip type") {
 // or replaced. Reports the address and `type`, whether it is currently
 // `blocked`, the `autoDelete` behavior that removes it alongside its
 // assignee, the reverse DNS records, delete protection, and the server
-// it is assigned to. Select a primary IP by its numeric id, for example
+// or load balancer it is assigned to. Select a primary IP by its numeric id, for example
 // `hetzner.primaryIp(id: 12345)`.
 private hetzner.primaryIp @defaults("id ip type") {
   init(id? int)
@@ -661,7 +666,10 @@ private hetzner.primaryIp @defaults("id ip type") {
   ip string
   // Name
   name string
-  // Assignee type (server)
+  // Assignee type (server, unassigned)
+  //
+  // A Primary IP held by a load balancer is linked from the load balancer
+  // side; see loadBalancer.
   assigneeType string
   // ID of the assigned resource (0 if unassigned)
   assigneeId int
@@ -673,6 +681,11 @@ private hetzner.primaryIp @defaults("id ip type") {
   location() hetzner.location
   // Server the IP is assigned to (nullable)
   server() hetzner.server
+  // Load balancer the IP is assigned to
+  //
+  // The load balancer whose public IPv4 or IPv6 address is this Primary IP.
+  // Null when the IP is held by a server or is unassigned.
+  loadBalancer() hetzner.loadBalancer
   // Reverse DNS entries [{ip, dnsPtr}]
   dnsPtr []dict
   // Resource protection (delete)
@@ -715,6 +728,18 @@ hetzner.loadBalancer @defaults("id name") {
   publicIpv4DnsPtr string
   // Reverse DNS (PTR) record for the public IPv6 address; empty when unset or the load balancer has no public interface
   publicIpv6DnsPtr string
+  // Whether the public IPv4 address is blocked by Hetzner abuse handling
+  //
+  // Null when the load balancer has no public IPv4 address.
+  publicIpv4Blocked bool
+  // Whether the public IPv6 address is blocked by Hetzner abuse handling
+  //
+  // Null when the load balancer has no public IPv6 address.
+  publicIpv6Blocked bool
+  // Primary IP that provides the public IPv4 address (nullable)
+  primaryIpv4() hetzner.primaryIp
+  // Primary IP that provides the public IPv6 address (nullable)
+  primaryIpv6() hetzner.primaryIp
   // Private network attachments
   privateNet() []hetzner.loadBalancer.privateNet
   // Location

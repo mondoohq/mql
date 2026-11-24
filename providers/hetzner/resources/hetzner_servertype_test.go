@@ -56,3 +56,40 @@ func TestServerTypeCategory(t *testing.T) {
 	// rather than a guess.
 	assert.Equal(t, "", hcloud.ServerType{Name: "cx22"}.Category)
 }
+
+func TestServerTypeLocationIncludedTraffic(t *testing.T) {
+	// Pricing entries carry only the location name, as hcloud decodes them.
+	pricings := []hcloud.ServerTypeLocationPricing{
+		{Location: &hcloud.Location{Name: "fsn1"}, IncludedTraffic: 21990232555520},
+		{Location: &hcloud.Location{Name: "ash"}, IncludedTraffic: 1099511627776},
+		{Location: nil, IncludedTraffic: 5},
+	}
+
+	// Synthetic: availability entry joined to its pricing by location name; no live project was checked.
+	t.Run("matching location", func(t *testing.T) {
+		got := serverTypeLocationIncludedTraffic(pricings, &hcloud.Location{ID: 1, Name: "fsn1"})
+		if assert.NotNil(t, got) {
+			assert.Equal(t, int64(21990232555520), *got)
+		}
+		got = serverTypeLocationIncludedTraffic(pricings, &hcloud.Location{ID: 4, Name: "ash"})
+		if assert.NotNil(t, got) {
+			assert.Equal(t, int64(1099511627776), *got)
+		}
+	})
+
+	// Synthetic: a location with no pricing entry reads null, not 0; no live project was checked.
+	t.Run("location without pricing", func(t *testing.T) {
+		assert.Nil(t, serverTypeLocationIncludedTraffic(pricings, &hcloud.Location{ID: 3, Name: "hel1"}))
+	})
+
+	// Synthetic: availability entry without a location; no live project was checked.
+	t.Run("no location", func(t *testing.T) {
+		assert.Nil(t, serverTypeLocationIncludedTraffic(pricings, nil))
+		assert.Nil(t, serverTypeLocationIncludedTraffic(pricings, &hcloud.Location{}))
+	})
+
+	// Synthetic: server type with no pricing at all; no live project was checked.
+	t.Run("no pricings", func(t *testing.T) {
+		assert.Nil(t, serverTypeLocationIncludedTraffic(nil, &hcloud.Location{Name: "fsn1"}))
+	})
+}
