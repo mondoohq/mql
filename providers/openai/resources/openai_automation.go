@@ -37,6 +37,7 @@ func automationArgs(a openai.AutomationUnion) (map[string]*llx.RawData, automati
 		"name":                llx.StringDataPtr(emptyToNil(a.Name)),
 		"type":                llx.StringDataPtr(emptyToNil(a.Type)),
 		"status":              llx.StringDataPtr(emptyToNil(a.Status)),
+		"pauseReason":         llx.StringDataPtr(emptyToNil(a.PauseReason)),
 		"expression":          llx.NilData,
 		"timezone":            llx.NilData,
 		"runAt":               llx.NilData,

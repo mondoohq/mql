@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/openai/openai-go/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -39,4 +40,25 @@ func TestProjectAPIKeyPagerRequestsEveryKey(t *testing.T) {
 
 	assert.Equal(t, "any", query)
 	assert.Equal(t, "key_abc", iter.Current().ID)
+}
+
+// Synthetic: owner_project_access values from the Admin API reference; no live
+// organization was checked.
+func TestOwnerProjectAccess(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		json string
+		want *bool
+	}{
+		{"active", `{"id":"key_a","owner_project_access":"active"}`, new(true)},
+		{"inactive", `{"id":"key_b","owner_project_access":"inactive"}`, new(false)},
+		{"absent", `{"id":"key_c"}`, nil},
+		{"null", `{"id":"key_d","owner_project_access":null}`, nil},
+		{"unlisted value", `{"id":"key_e","owner_project_access":"suspended"}`, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			k := decodeJSON[openai.ProjectAPIKey](t, tc.json)
+			assert.Equal(t, tc.want, ownerProjectAccess(k.OwnerProjectAccess))
+		})
+	}
 }

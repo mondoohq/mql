@@ -546,6 +546,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"openai.model.baseModel": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiModel).GetBaseModel()).ToDataRes(types.String)
 	},
+	"openai.model.fineTuningJob": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiModel).GetFineTuningJob()).ToDataRes(types.Resource("openai.fineTuningJob"))
+	},
 	"openai.batch.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiBatch).GetId()).ToDataRes(types.String)
 	},
@@ -656,6 +659,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"openai.fineTuningJob.fineTunedModel": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiFineTuningJob).GetFineTunedModel()).ToDataRes(types.String)
+	},
+	"openai.fineTuningJob.outputModel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiFineTuningJob).GetOutputModel()).ToDataRes(types.Resource("openai.model"))
 	},
 	"openai.fineTuningJob.trainingFile": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiFineTuningJob).GetTrainingFile()).ToDataRes(types.Resource("openai.file"))
@@ -918,6 +924,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"openai.project.apiKey.ownerId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiProjectApiKey).GetOwnerId()).ToDataRes(types.String)
 	},
+	"openai.project.apiKey.ownerHasProjectAccess": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiProjectApiKey).GetOwnerHasProjectAccess()).ToDataRes(types.Bool)
+	},
 	"openai.project.apiKey.owner": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiProjectApiKey).GetOwner()).ToDataRes(types.Resource("openai.organizationUser"))
 	},
@@ -1157,6 +1166,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"openai.invite.expiresAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiInvite).GetExpiresAt()).ToDataRes(types.Time)
+	},
+	"openai.invite.projects": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiInvite).GetProjects()).ToDataRes(types.Array(types.Resource("openai.project")))
+	},
+	"openai.invite.projectRoles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiInvite).GetProjectRoles()).ToDataRes(types.Map(types.String, types.String))
 	},
 	"openai.auditLog.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiAuditLog).GetId()).ToDataRes(types.String)
@@ -1484,6 +1499,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"openai.automation.status": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiAutomation).GetStatus()).ToDataRes(types.String)
+	},
+	"openai.automation.pauseReason": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiAutomation).GetPauseReason()).ToDataRes(types.String)
 	},
 	"openai.automation.expression": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiAutomation).GetExpression()).ToDataRes(types.String)
@@ -1962,6 +1980,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOpenaiModel).BaseModel, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"openai.model.fineTuningJob": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiModel).FineTuningJob, ok = plugin.RawToTValue[*mqlOpenaiFineTuningJob](v.Value, v.Error)
+		return
+	},
 	"openai.batch.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOpenaiBatch).__id, ok = v.Value.(string)
 		return
@@ -2124,6 +2146,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"openai.fineTuningJob.fineTunedModel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOpenaiFineTuningJob).FineTunedModel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.fineTuningJob.outputModel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiFineTuningJob).OutputModel, ok = plugin.RawToTValue[*mqlOpenaiModel](v.Value, v.Error)
 		return
 	},
 	"openai.fineTuningJob.trainingFile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -2506,6 +2532,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOpenaiProjectApiKey).OwnerId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"openai.project.apiKey.ownerHasProjectAccess": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiProjectApiKey).OwnerHasProjectAccess, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"openai.project.apiKey.owner": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOpenaiProjectApiKey).Owner, ok = plugin.RawToTValue[*mqlOpenaiOrganizationUser](v.Value, v.Error)
 		return
@@ -2860,6 +2890,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"openai.invite.expiresAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOpenaiInvite).ExpiresAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"openai.invite.projects": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiInvite).Projects, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"openai.invite.projectRoles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiInvite).ProjectRoles, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
 	"openai.auditLog.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -3340,6 +3378,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"openai.automation.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOpenaiAutomation).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.automation.pauseReason": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiAutomation).PauseReason, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"openai.automation.expression": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -4465,11 +4507,12 @@ type mqlOpenaiModel struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlOpenaiModelInternal it will be used here
-	Id          plugin.TValue[string]
-	CreatedAt   plugin.TValue[*time.Time]
-	OwnedBy     plugin.TValue[string]
-	IsFineTuned plugin.TValue[bool]
-	BaseModel   plugin.TValue[string]
+	Id            plugin.TValue[string]
+	CreatedAt     plugin.TValue[*time.Time]
+	OwnedBy       plugin.TValue[string]
+	IsFineTuned   plugin.TValue[bool]
+	BaseModel     plugin.TValue[string]
+	FineTuningJob plugin.TValue[*mqlOpenaiFineTuningJob]
 }
 
 // createOpenaiModel creates a new instance of this resource
@@ -4525,6 +4568,22 @@ func (c *mqlOpenaiModel) GetIsFineTuned() *plugin.TValue[bool] {
 func (c *mqlOpenaiModel) GetBaseModel() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.BaseModel, func() (string, error) {
 		return c.baseModel()
+	})
+}
+
+func (c *mqlOpenaiModel) GetFineTuningJob() *plugin.TValue[*mqlOpenaiFineTuningJob] {
+	return plugin.GetOrCompute[*mqlOpenaiFineTuningJob](&c.FineTuningJob, func() (*mqlOpenaiFineTuningJob, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("openai.model", c.__id, "fineTuningJob")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOpenaiFineTuningJob), nil
+			}
+		}
+
+		return c.fineTuningJob()
 	})
 }
 
@@ -4859,6 +4918,7 @@ type mqlOpenaiFineTuningJob struct {
 	CreatedAt       plugin.TValue[*time.Time]
 	FinishedAt      plugin.TValue[*time.Time]
 	FineTunedModel  plugin.TValue[string]
+	OutputModel     plugin.TValue[*mqlOpenaiModel]
 	TrainingFile    plugin.TValue[*mqlOpenaiFile]
 	ValidationFile  plugin.TValue[*mqlOpenaiFile]
 	TrainedTokens   plugin.TValue[int64]
@@ -4923,6 +4983,22 @@ func (c *mqlOpenaiFineTuningJob) GetFinishedAt() *plugin.TValue[*time.Time] {
 
 func (c *mqlOpenaiFineTuningJob) GetFineTunedModel() *plugin.TValue[string] {
 	return &c.FineTunedModel
+}
+
+func (c *mqlOpenaiFineTuningJob) GetOutputModel() *plugin.TValue[*mqlOpenaiModel] {
+	return plugin.GetOrCompute[*mqlOpenaiModel](&c.OutputModel, func() (*mqlOpenaiModel, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("openai.fineTuningJob", c.__id, "outputModel")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOpenaiModel), nil
+			}
+		}
+
+		return c.outputModel()
+	})
 }
 
 func (c *mqlOpenaiFineTuningJob) GetTrainingFile() *plugin.TValue[*mqlOpenaiFile] {
@@ -5817,18 +5893,19 @@ type mqlOpenaiProjectApiKey struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlOpenaiProjectApiKeyInternal
-	Id             plugin.TValue[string]
-	Name           plugin.TValue[string]
-	RedactedValue  plugin.TValue[string]
-	CreatedAt      plugin.TValue[*time.Time]
-	LastUsedAt     plugin.TValue[*time.Time]
-	ExpiresAt      plugin.TValue[*time.Time]
-	OwnerType      plugin.TValue[string]
-	OwnerName      plugin.TValue[string]
-	OwnerId        plugin.TValue[string]
-	Owner          plugin.TValue[*mqlOpenaiOrganizationUser]
-	ServiceAccount plugin.TValue[*mqlOpenaiProjectServiceAccount]
-	UsageReport    plugin.TValue[[]any]
+	Id                    plugin.TValue[string]
+	Name                  plugin.TValue[string]
+	RedactedValue         plugin.TValue[string]
+	CreatedAt             plugin.TValue[*time.Time]
+	LastUsedAt            plugin.TValue[*time.Time]
+	ExpiresAt             plugin.TValue[*time.Time]
+	OwnerType             plugin.TValue[string]
+	OwnerName             plugin.TValue[string]
+	OwnerId               plugin.TValue[string]
+	OwnerHasProjectAccess plugin.TValue[bool]
+	Owner                 plugin.TValue[*mqlOpenaiOrganizationUser]
+	ServiceAccount        plugin.TValue[*mqlOpenaiProjectServiceAccount]
+	UsageReport           plugin.TValue[[]any]
 }
 
 // createOpenaiProjectApiKey creates a new instance of this resource
@@ -5897,6 +5974,10 @@ func (c *mqlOpenaiProjectApiKey) GetOwnerName() *plugin.TValue[string] {
 
 func (c *mqlOpenaiProjectApiKey) GetOwnerId() *plugin.TValue[string] {
 	return &c.OwnerId
+}
+
+func (c *mqlOpenaiProjectApiKey) GetOwnerHasProjectAccess() *plugin.TValue[bool] {
+	return &c.OwnerHasProjectAccess
 }
 
 func (c *mqlOpenaiProjectApiKey) GetOwner() *plugin.TValue[*mqlOpenaiOrganizationUser] {
@@ -6757,14 +6838,16 @@ func (c *mqlOpenaiGroup) GetRoles() *plugin.TValue[[]any] {
 type mqlOpenaiInvite struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlOpenaiInviteInternal it will be used here
-	Id         plugin.TValue[string]
-	Email      plugin.TValue[string]
-	Role       plugin.TValue[string]
-	Status     plugin.TValue[string]
-	CreatedAt  plugin.TValue[*time.Time]
-	AcceptedAt plugin.TValue[*time.Time]
-	ExpiresAt  plugin.TValue[*time.Time]
+	mqlOpenaiInviteInternal
+	Id           plugin.TValue[string]
+	Email        plugin.TValue[string]
+	Role         plugin.TValue[string]
+	Status       plugin.TValue[string]
+	CreatedAt    plugin.TValue[*time.Time]
+	AcceptedAt   plugin.TValue[*time.Time]
+	ExpiresAt    plugin.TValue[*time.Time]
+	Projects     plugin.TValue[[]any]
+	ProjectRoles plugin.TValue[map[string]any]
 }
 
 // createOpenaiInvite creates a new instance of this resource
@@ -6825,6 +6908,26 @@ func (c *mqlOpenaiInvite) GetAcceptedAt() *plugin.TValue[*time.Time] {
 
 func (c *mqlOpenaiInvite) GetExpiresAt() *plugin.TValue[*time.Time] {
 	return &c.ExpiresAt
+}
+
+func (c *mqlOpenaiInvite) GetProjects() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Projects, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("openai.invite", c.__id, "projects")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.projects()
+	})
+}
+
+func (c *mqlOpenaiInvite) GetProjectRoles() *plugin.TValue[map[string]any] {
+	return &c.ProjectRoles
 }
 
 // mqlOpenaiAuditLog for the openai.auditLog resource
@@ -7895,6 +7998,7 @@ type mqlOpenaiAutomation struct {
 	Name                        plugin.TValue[string]
 	Type                        plugin.TValue[string]
 	Status                      plugin.TValue[string]
+	PauseReason                 plugin.TValue[string]
 	Expression                  plugin.TValue[string]
 	Timezone                    plugin.TValue[string]
 	RunAt                       plugin.TValue[*time.Time]
@@ -7974,6 +8078,10 @@ func (c *mqlOpenaiAutomation) GetType() *plugin.TValue[string] {
 
 func (c *mqlOpenaiAutomation) GetStatus() *plugin.TValue[string] {
 	return &c.Status
+}
+
+func (c *mqlOpenaiAutomation) GetPauseReason() *plugin.TValue[string] {
+	return &c.PauseReason
 }
 
 func (c *mqlOpenaiAutomation) GetExpression() *plugin.TValue[string] {

@@ -135,6 +135,8 @@ func (r *mqlOpenaiProject) apiKeys() ([]any, error) {
 			"ownerType":     llx.StringData(ownerType),
 			"ownerName":     llx.StringData(ownerName),
 			"ownerId":       llx.StringData(ownerId),
+
+			"ownerHasProjectAccess": llx.BoolDataPtr(ownerProjectAccess(k.OwnerProjectAccess)),
 		})
 		if err != nil {
 			return nil, err
@@ -332,6 +334,22 @@ func resolveProject(runtime *plugin.Runtime, projectID string) (*mqlOpenaiProjec
 		}
 	}
 	return nil, nil
+}
+
+// ownerProjectAccess reads whether a key's owner still has access to the
+// key's project. Any value other than active or inactive, including an absent
+// one, is reported as unknown rather than guessed.
+func ownerProjectAccess(access openai.ProjectAPIKeyOwnerProjectAccess) *bool {
+	var v bool
+	switch access {
+	case openai.ProjectAPIKeyOwnerProjectAccessActive:
+		v = true
+	case openai.ProjectAPIKeyOwnerProjectAccessInactive:
+		v = false
+	default:
+		return nil
+	}
+	return &v
 }
 
 type mqlOpenaiProjectApiKeyInternal struct {
