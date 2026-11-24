@@ -536,3 +536,158 @@ func (r *mqlAlicloudMongodbInstance) auditPolicyEnabled() (bool, error) {
 	}
 	return tea.StringValue(resp.Body.LogAuditStatus) == "Enable", nil
 }
+
+// accounts lists the database accounts of the instance through
+// DescribeAccounts, which takes no paging parameters and returns every
+// account, including root.
+func (r *mqlAlicloudMongodbInstance) accounts() ([]any, error) {
+	conn := r.MqlRuntime.Connection.(*connection.AlicloudConnection)
+	client, err := conn.MongoDBClient(r.region)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.DescribeAccounts(&ddsclient.DescribeAccountsRequest{
+		DBInstanceId: new(r.instanceId),
+	})
+	if err != nil {
+		if alicloudLegacyRefusal(err) {
+			r.Accounts.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		return nil, classifyAlicloudError(err, "dds:DescribeAccounts")
+	}
+	if resp == nil || resp.Body == nil || resp.Body.Accounts == nil {
+		return []any{}, nil
+	}
+
+	res := []any{}
+	for _, acct := range resp.Body.Accounts.Account {
+		if acct == nil || acct.AccountName == nil {
+			continue
+		}
+		var roleItems []*ddsclient.DescribeAccountsResponseBodyAccountsAccountRolesRole
+		if acct.Roles != nil {
+			roleItems = acct.Roles.Role
+		}
+		roles := []any{}
+		for _, role := range roleItems {
+			if role == nil || role.Role == nil {
+				continue
+			}
+			mqlRole, err := newMongodbRole(r.MqlRuntime, r.instanceId, tea.StringValue(role.DBName), tea.StringValue(role.Role))
+			if err != nil {
+				return nil, err
+			}
+			roles = append(roles, mqlRole)
+		}
+
+		name := tea.StringValue(acct.AccountName)
+		dbName := tea.StringValue(acct.DBName)
+		characterType := tea.StringValue(acct.CharacterType)
+		resource, err := CreateResource(r.MqlRuntime, "alicloud.mongodb.instance.account", map[string]*llx.RawData{
+			"__id":          llx.StringData(mongodbAccountID(r.instanceId, characterType, dbName, name)),
+			"name":          llx.StringData(name),
+			"dbName":        llx.StringDataPtr(acct.DBName),
+			"characterType": llx.StringDataPtr(acct.CharacterType),
+			"status":        llx.StringDataPtr(acct.AccountStatus),
+			"description":   llx.StringDataPtr(acct.AccountDescription),
+			"roles":         llx.ArrayData(roles, types.Resource("alicloud.mongodb.instance.role")),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, resource)
+	}
+	return res, nil
+}
+
+// roles lists the roles defined on the instance through DescribeAccountRoles,
+// which takes no paging parameters.
+func (r *mqlAlicloudMongodbInstance) roles() ([]any, error) {
+	conn := r.MqlRuntime.Connection.(*connection.AlicloudConnection)
+	client, err := conn.MongoDBClient(r.region)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.DescribeAccountRoles(&ddsclient.DescribeAccountRolesRequest{
+		DBInstanceId: new(r.instanceId),
+	})
+	if err != nil {
+		if alicloudLegacyRefusal(err) {
+			r.Roles.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		return nil, classifyAlicloudError(err, "dds:DescribeAccountRoles")
+	}
+	if resp == nil || resp.Body == nil || resp.Body.Roles == nil {
+		return []any{}, nil
+	}
+
+	res := []any{}
+	for _, role := range resp.Body.Roles.Role {
+		if role == nil || role.Role == nil {
+			continue
+		}
+		mqlRole, err := newMongodbRole(r.MqlRuntime, r.instanceId, tea.StringValue(role.DBName), tea.StringValue(role.Role))
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlRole)
+	}
+	return res, nil
+}
+
+// databases lists the database names on the instance through
+// DescribeDatabases, which takes no paging parameters.
+func (r *mqlAlicloudMongodbInstance) databases() ([]any, error) {
+	conn := r.MqlRuntime.Connection.(*connection.AlicloudConnection)
+	client, err := conn.MongoDBClient(r.region)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.DescribeDatabases(&ddsclient.DescribeDatabasesRequest{
+		DBInstanceId: new(r.instanceId),
+	})
+	if err != nil {
+		if alicloudLegacyRefusal(err) {
+			r.Databases.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		return nil, classifyAlicloudError(err, "dds:DescribeDatabases")
+	}
+	if resp == nil || resp.Body == nil || resp.Body.Databases == nil {
+		return []any{}, nil
+	}
+	res := []any{}
+	for _, db := range resp.Body.Databases.Database {
+		if db == nil || *db == "" {
+			continue
+		}
+		res = append(res, *db)
+	}
+	return res, nil
+}
+
+// mongodbAccountID keys an account on its instance. MongoDB identifies a user
+// by name and authentication database, and a sharded cluster reports the same
+// name once per account type (cs, db), so all three are part of the key.
+func mongodbAccountID(instanceID, characterType, dbName, name string) string {
+	return instanceID + "/account/" + characterType + "/" + dbName + "/" + name
+}
+
+// mongodbRoleID keys a role on its instance by the database it is defined in
+// and its name.
+func mongodbRoleID(instanceID, dbName, role string) string {
+	return instanceID + "/role/" + dbName + "/" + role
+}
+
+// newMongodbRole builds an alicloud.mongodb.instance.role. Account role grants
+// and the instance's role list key the same role identically, so both resolve
+// to one cached resource.
+func newMongodbRole(runtime *plugin.Runtime, instanceID, dbName, role string) (plugin.Resource, error) {
+	return CreateResource(runtime, "alicloud.mongodb.instance.role", map[string]*llx.RawData{
+		"__id":   llx.StringData(mongodbRoleID(instanceID, dbName, role)),
+		"name":   llx.StringData(role),
+		"dbName": llx.StringData(dbName),
+	})
+}

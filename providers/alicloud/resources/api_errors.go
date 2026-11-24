@@ -15,6 +15,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // alicloudErrorStatus returns the HTTP status and error code of an Alibaba Cloud
@@ -64,6 +65,18 @@ func classifyAlicloudError(err error, permission string) error {
 		return llx.Unavailable(err)
 	}
 	return err
+}
+
+// alicloudLegacyRefusal reports whether a refused call keeps returning a null
+// instead of a classified error. That holds only for a 403 while structured
+// errors (ADR 046 §9) are off; with them on, every error goes through
+// classifyAlicloudError.
+func alicloudLegacyRefusal(err error) bool {
+	if plugin.StructuredErrors() {
+		return false
+	}
+	status, _, ok := alicloudErrorStatus(err)
+	return ok && status == http.StatusForbidden
 }
 
 // alicloudRegionSkippable reports whether a first-page error in a per-region

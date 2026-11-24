@@ -508,6 +508,32 @@ func (r *mqlAlicloudVpcVswitch) id() (string, error) {
 	return r.cacheRegion + "/" + r.VSwitchId.Data, nil
 }
 
+// ipv6Only reads Ipv6Only from DescribeVSwitchAttributes, the only call that
+// returns it; DescribeVSwitches, which builds the resource, does not.
+func (r *mqlAlicloudVpcVswitch) ipv6Only() (bool, error) {
+	conn := r.MqlRuntime.Connection.(*connection.AlicloudConnection)
+	client, err := conn.VpcClient(r.cacheRegion)
+	if err != nil {
+		return false, err
+	}
+	resp, err := client.DescribeVSwitchAttributes(&vpcclient.DescribeVSwitchAttributesRequest{
+		RegionId:  new(r.cacheRegion),
+		VSwitchId: new(r.VSwitchId.Data),
+	})
+	if err != nil {
+		if alicloudLegacyRefusal(err) {
+			r.Ipv6Only.State = plugin.StateIsSet | plugin.StateIsNull
+			return false, nil
+		}
+		return false, classifyAlicloudError(err, "vpc:DescribeVSwitchAttributes")
+	}
+	if resp == nil || resp.Body == nil || resp.Body.Ipv6Only == nil {
+		r.Ipv6Only.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return *resp.Body.Ipv6Only, nil
+}
+
 func (r *mqlAlicloudVpcVswitch) vpc() (*mqlAlicloudVpcNetwork, error) {
 	if r.cacheVpcID == "" {
 		r.Vpc.State = plugin.StateIsSet | plugin.StateIsNull
@@ -1057,42 +1083,43 @@ func (r *mqlAlicloudVpc) eipAddresses() ([]any, error) {
 				}
 
 				eipAddress, err := CreateResource(r.MqlRuntime, "alicloud.vpc.eipAddress", map[string]*llx.RawData{
-					"__id":                      llx.StringData(region + "/" + vpcStr(eip.AllocationId)),
-					"allocationId":              llx.StringDataPtr(eip.AllocationId),
-					"name":                      llx.StringDataPtr(eip.Name),
-					"description":               llx.StringDataPtr(eip.Description),
-					"ipAddress":                 llx.StringDataPtr(eip.IpAddress),
-					"status":                    llx.StringDataPtr(eip.Status),
-					"bandwidth":                 llx.StringDataPtr(eip.Bandwidth),
-					"internetChargeType":        llx.StringDataPtr(eip.InternetChargeType),
-					"chargeType":                llx.StringDataPtr(eip.ChargeType),
-					"isp":                       llx.StringDataPtr(eip.ISP),
-					"instanceId":                llx.StringDataPtr(eip.InstanceId),
-					"instanceType":              llx.StringDataPtr(eip.InstanceType),
-					"instanceRegionId":          llx.StringDataPtr(eip.InstanceRegionId),
-					"privateIpAddress":          llx.StringDataPtr(eip.PrivateIpAddress),
-					"allocationTime":            llx.TimeDataPtr(vpcParseTime(eip.AllocationTime)),
-					"expiredTime":               llx.TimeDataPtr(vpcParseTime(eip.ExpiredTime)),
-					"hdMonitorStatus":           llx.StringDataPtr(eip.HDMonitorStatus),
-					"deletionProtection":        llx.BoolDataPtr(eip.DeletionProtection),
-					"hasReservationData":        llx.StringDataPtr(eip.HasReservationData),
-					"netmode":                   llx.StringDataPtr(eip.Netmode),
-					"publicIpAddressPoolId":     llx.StringDataPtr(eip.PublicIpAddressPoolId),
-					"regionId":                  llx.StringDataPtr(eip.RegionId),
-					"resourceGroupId":           llx.StringDataPtr(eip.ResourceGroupId),
-					"zone":                      llx.StringDataPtr(eip.Zone),
-					"bandwidthPackageId":        llx.StringDataPtr(eip.BandwidthPackageId),
-					"bandwidthPackageType":      llx.StringDataPtr(eip.BandwidthPackageType),
-					"bandwidthPackageBandwidth": llx.StringDataPtr(eip.BandwidthPackageBandwidth),
-					"eipBandwidth":              llx.StringDataPtr(eip.EipBandwidth),
-					"bizType":                   llx.StringDataPtr(eip.BizType),
-					"businessStatus":            llx.StringDataPtr(eip.BusinessStatus),
-					"mode":                      llx.StringDataPtr(eip.Mode),
-					"secondLimited":             llx.BoolDataPtr(eip.SecondLimited),
-					"segmentInstanceId":         llx.StringDataPtr(eip.SegmentInstanceId),
-					"securityProtectionTypes":   llx.ArrayData(securityProtectionTypes, types.String),
-					"serviceManaged":            llx.IntDataPtr(eip.ServiceManaged),
-					"tags":                      llx.MapData(tags, types.String),
+					"__id":                              llx.StringData(region + "/" + vpcStr(eip.AllocationId)),
+					"allocationId":                      llx.StringDataPtr(eip.AllocationId),
+					"name":                              llx.StringDataPtr(eip.Name),
+					"description":                       llx.StringDataPtr(eip.Description),
+					"ipAddress":                         llx.StringDataPtr(eip.IpAddress),
+					"status":                            llx.StringDataPtr(eip.Status),
+					"bandwidth":                         llx.StringDataPtr(eip.Bandwidth),
+					"internetChargeType":                llx.StringDataPtr(eip.InternetChargeType),
+					"chargeType":                        llx.StringDataPtr(eip.ChargeType),
+					"isp":                               llx.StringDataPtr(eip.ISP),
+					"instanceId":                        llx.StringDataPtr(eip.InstanceId),
+					"instanceType":                      llx.StringDataPtr(eip.InstanceType),
+					"instanceRegionId":                  llx.StringDataPtr(eip.InstanceRegionId),
+					"privateIpAddress":                  llx.StringDataPtr(eip.PrivateIpAddress),
+					"allocationTime":                    llx.TimeDataPtr(vpcParseTime(eip.AllocationTime)),
+					"expiredTime":                       llx.TimeDataPtr(vpcParseTime(eip.ExpiredTime)),
+					"hdMonitorStatus":                   llx.StringDataPtr(eip.HDMonitorStatus),
+					"deletionProtection":                llx.BoolDataPtr(eip.DeletionProtection),
+					"hasReservationData":                llx.StringDataPtr(eip.HasReservationData),
+					"netmode":                           llx.StringDataPtr(eip.Netmode),
+					"publicIpAddressPoolId":             llx.StringDataPtr(eip.PublicIpAddressPoolId),
+					"regionId":                          llx.StringDataPtr(eip.RegionId),
+					"resourceGroupId":                   llx.StringDataPtr(eip.ResourceGroupId),
+					"zone":                              llx.StringDataPtr(eip.Zone),
+					"bandwidthPackageId":                llx.StringDataPtr(eip.BandwidthPackageId),
+					"bandwidthPackageType":              llx.StringDataPtr(eip.BandwidthPackageType),
+					"bandwidthPackageBandwidth":         llx.StringDataPtr(eip.BandwidthPackageBandwidth),
+					"eipBandwidth":                      llx.StringDataPtr(eip.EipBandwidth),
+					"commonBandwidthPackageIpBandwidth": llx.StringDataPtr(eip.CommonBandwidthPackageIpBandwidth),
+					"bizType":                           llx.StringDataPtr(eip.BizType),
+					"businessStatus":                    llx.StringDataPtr(eip.BusinessStatus),
+					"mode":                              llx.StringDataPtr(eip.Mode),
+					"secondLimited":                     llx.BoolDataPtr(eip.SecondLimited),
+					"segmentInstanceId":                 llx.StringDataPtr(eip.SegmentInstanceId),
+					"securityProtectionTypes":           llx.ArrayData(securityProtectionTypes, types.String),
+					"serviceManaged":                    llx.IntDataPtr(eip.ServiceManaged),
+					"tags":                              llx.MapData(tags, types.String),
 				})
 				if err != nil {
 					return nil, err

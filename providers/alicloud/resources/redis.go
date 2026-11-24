@@ -379,3 +379,258 @@ func (r *mqlAlicloudRedisInstance) authEnabled() (bool, error) {
 	}
 	return false, nil
 }
+
+// mqlAlicloudRedisAiGatewayInternal caches the region the gateway was listed
+// in and its VPC and vSwitch ids for the typed references.
+type mqlAlicloudRedisAiGatewayInternal struct {
+	cacheRegion    string
+	cacheVpcID     string
+	cacheVswitchID string
+}
+
+// aiGateways lists the Tair AI gateway instances in every enabled region. A
+// region that refuses the call is logged and skipped; the other regions'
+// gateways are kept.
+func (r *mqlAlicloudRedis) aiGateways() ([]any, error) {
+	conn := r.MqlRuntime.Connection.(*connection.AlicloudConnection)
+	regions, err := conn.GetRegions()
+	if err != nil {
+		return nil, err
+	}
+
+	res := []any{}
+	for _, region := range regions {
+		client, err := conn.RedisClient(region)
+		if err != nil {
+			return nil, err
+		}
+
+		pageNumber := int32(1)
+		pageSize := int32(50)
+		for {
+			resp, err := client.DescribeTairAIGatewayInstances(&rkvclient.DescribeTairAIGatewayInstancesRequest{
+				RegionId:   new(region),
+				PageNumber: new(pageNumber),
+				PageSize:   new(pageSize),
+			})
+			if err != nil {
+				logSkippedRegion(err, "Tair AI gateway", region)
+				break
+			}
+			if resp == nil || resp.Body == nil || resp.Body.Instances == nil {
+				break
+			}
+
+			items := resp.Body.Instances.TairSemanticCacheInstances
+			for _, inst := range items {
+				if inst == nil || inst.InstanceId == nil {
+					continue
+				}
+				gw, err := newRedisAiGateway(r.MqlRuntime, region, inst)
+				if err != nil {
+					return nil, err
+				}
+				if filteredOutByTags(conn, gw.Tags.Data) {
+					continue
+				}
+				res = append(res, gw)
+			}
+
+			total := tea.Int32Value(resp.Body.TotalCount)
+			if len(items) == 0 || int64(pageNumber)*int64(pageSize) >= int64(total) {
+				break
+			}
+			pageNumber++
+		}
+	}
+	return res, nil
+}
+
+// redisAiGatewayTags flattens the AI gateway tag list into a string map.
+func redisAiGatewayTags(tags *rkvclient.DescribeTairAIGatewayInstancesResponseBodyInstancesTairSemanticCacheInstancesTags) map[string]any {
+	res := map[string]any{}
+	if tags == nil {
+		return res
+	}
+	for _, t := range tags.Tag {
+		if t == nil || t.Key == nil {
+			continue
+		}
+		res[*t.Key] = tea.StringValue(t.Value)
+	}
+	return res
+}
+
+// newRedisAiGateway builds an alicloud.redis.aiGateway from a
+// DescribeTairAIGatewayInstances item, shared by the list accessor and the
+// by-id init.
+func newRedisAiGateway(runtime *plugin.Runtime, region string, inst *rkvclient.DescribeTairAIGatewayInstancesResponseBodyInstancesTairSemanticCacheInstances) (*mqlAlicloudRedisAiGateway, error) {
+	resource, err := CreateResource(runtime, "alicloud.redis.aiGateway", map[string]*llx.RawData{
+		"__id":            llx.StringData(region + "/" + tea.StringValue(inst.InstanceId)),
+		"instanceId":      llx.StringDataPtr(inst.InstanceId),
+		"instanceName":    llx.StringDataPtr(inst.InstanceName),
+		"instanceStatus":  llx.StringDataPtr(inst.InstanceStatus),
+		"instanceType":    llx.StringDataPtr(inst.InstanceType),
+		"instanceClass":   llx.StringDataPtr(inst.InstanceClass),
+		"chargeType":      llx.StringDataPtr(inst.ChargeType),
+		"networkType":     llx.StringDataPtr(inst.NetworkType),
+		"regionId":        llx.StringData(region),
+		"zoneId":          llx.StringDataPtr(inst.ZoneId),
+		"createTime":      llx.TimeDataPtr(parseAlicloudTime(inst.CreateTime)),
+		"endTime":         llx.TimeDataPtr(parseAlicloudTime(inst.EndTime)),
+		"resourceGroupId": llx.StringDataPtr(inst.ResourceGroupId),
+		"tags":            llx.MapData(redisAiGatewayTags(inst.Tags), types.String),
+	})
+	if err != nil {
+		return nil, err
+	}
+	gw := resource.(*mqlAlicloudRedisAiGateway)
+	gw.cacheRegion = region
+	gw.cacheVpcID = tea.StringValue(inst.VpcId)
+	gw.cacheVswitchID = tea.StringValue(inst.VSwitchId)
+	return gw, nil
+}
+
+// initAlicloudRedisAiGateway resolves a Tair AI gateway by instance id within a
+// region, reusing an already-listed gateway from the resource cache.
+func initAlicloudRedisAiGateway(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+	instanceID, err := requiredStringArg(args, "instanceId", "alicloud.redis.aiGateway")
+	if err != nil {
+		return nil, nil, err
+	}
+	region, err := requiredStringArg(args, "regionId", "alicloud.redis.aiGateway")
+	if err != nil {
+		return nil, nil, err
+	}
+	if x, ok := runtime.Resources.Get("alicloud.redis.aiGateway\x00" + region + "/" + instanceID); ok {
+		return nil, x, nil
+	}
+
+	conn := runtime.Connection.(*connection.AlicloudConnection)
+	client, err := conn.RedisClient(region)
+	if err != nil {
+		return nil, nil, err
+	}
+	resp, err := client.DescribeTairAIGatewayInstances(&rkvclient.DescribeTairAIGatewayInstancesRequest{
+		RegionId:    new(region),
+		InstanceIds: new(instanceID),
+	})
+	if err != nil {
+		return nil, nil, classifyAlicloudError(err, "kvstore:DescribeTairAIGatewayInstances")
+	}
+	if resp != nil && resp.Body != nil && resp.Body.Instances != nil {
+		for _, inst := range resp.Body.Instances.TairSemanticCacheInstances {
+			if inst == nil || tea.StringValue(inst.InstanceId) != instanceID {
+				continue
+			}
+			gw, err := newRedisAiGateway(runtime, region, inst)
+			if err != nil {
+				return nil, nil, err
+			}
+			return nil, gw, nil
+		}
+	}
+	return nil, nil, fmt.Errorf("alicloud.redis.aiGateway %q not found in region %q", instanceID, region)
+}
+
+func (r *mqlAlicloudRedisAiGateway) id() (string, error) {
+	return r.RegionId.Data + "/" + r.InstanceId.Data, nil
+}
+
+func (r *mqlAlicloudRedisAiGateway) resourceGroup() (*mqlAlicloudResourceManagerResourceGroup, error) {
+	return resolveResourceGroup(r.MqlRuntime, r.ResourceGroupId.Data, &r.ResourceGroup)
+}
+
+func (r *mqlAlicloudRedisAiGateway) vpc() (*mqlAlicloudVpcNetwork, error) {
+	if r.cacheVpcID == "" {
+		r.Vpc.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return resolveVpcNetwork(r.MqlRuntime, r.cacheRegion, r.cacheVpcID)
+}
+
+func (r *mqlAlicloudRedisAiGateway) vswitch() (*mqlAlicloudVpcVswitch, error) {
+	if r.cacheVswitchID == "" {
+		r.Vswitch.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return resolveVpcVswitch(r.MqlRuntime, r.cacheRegion, r.cacheVswitchID)
+}
+
+// parameters reads the gateway parameters through
+// DescribeTairAIGatewayParameters, which takes no paging parameters.
+func (r *mqlAlicloudRedisAiGateway) parameters() (map[string]any, error) {
+	conn := r.MqlRuntime.Connection.(*connection.AlicloudConnection)
+	client, err := conn.RedisClient(r.cacheRegion)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.DescribeTairAIGatewayParameters(&rkvclient.DescribeTairAIGatewayParametersRequest{
+		InstanceId: new(r.InstanceId.Data),
+		RegionId:   new(r.cacheRegion),
+	})
+	if err != nil {
+		if alicloudLegacyRefusal(err) {
+			r.Parameters.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		return nil, classifyAlicloudError(err, "kvstore:DescribeTairAIGatewayParameters")
+	}
+	var items []*rkvclient.DescribeTairAIGatewayParametersResponseBodyParametersParameters
+	if resp != nil && resp.Body != nil && resp.Body.Parameters != nil {
+		items = resp.Body.Parameters.Parameters
+	}
+	res := map[string]any{}
+	for _, p := range items {
+		if p == nil {
+			continue
+		}
+		addRedisAiGatewayParameter(res, p.ParameterName, p.ParameterValue)
+	}
+	return res, nil
+}
+
+// pluginSwitches reads the gateway plug-in switches through
+// DescribeTairAIGatewayPluginSwitch, which takes no paging parameters.
+func (r *mqlAlicloudRedisAiGateway) pluginSwitches() (map[string]any, error) {
+	conn := r.MqlRuntime.Connection.(*connection.AlicloudConnection)
+	client, err := conn.RedisClient(r.cacheRegion)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.DescribeTairAIGatewayPluginSwitch(&rkvclient.DescribeTairAIGatewayPluginSwitchRequest{
+		InstanceId: new(r.InstanceId.Data),
+		RegionId:   new(r.cacheRegion),
+	})
+	if err != nil {
+		if alicloudLegacyRefusal(err) {
+			r.PluginSwitches.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		return nil, classifyAlicloudError(err, "kvstore:DescribeTairAIGatewayPluginSwitch")
+	}
+	var items []*rkvclient.DescribeTairAIGatewayPluginSwitchResponseBodyParametersParameters
+	if resp != nil && resp.Body != nil && resp.Body.Parameters != nil {
+		items = resp.Body.Parameters.Parameters
+	}
+	res := map[string]any{}
+	for _, p := range items {
+		if p == nil {
+			continue
+		}
+		addRedisAiGatewayParameter(res, p.ParameterName, p.ParameterValue)
+	}
+	return res, nil
+}
+
+// addRedisAiGatewayParameter records a name/value pair, skipping an entry
+// without a name.
+func addRedisAiGatewayParameter(res map[string]any, name, value *string) {
+	if name == nil || *name == "" {
+		return
+	}
+	res[*name] = tea.StringValue(value)
+}
