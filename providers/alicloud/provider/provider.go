@@ -105,11 +105,17 @@ func (s *Service) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLIRes, error)
 	}
 
 	// The access-key secret and STS token are secrets: carry them through the
-	// credential vault rather than the plaintext options map. The connection
-	// reads the STS token from the environment when a token flow is in use.
+	// credential vault rather than the plaintext options map. Without the
+	// --sts-token flag, the connection reads the token from the environment.
 	secret := stringFlag(flags, "access-key-secret", "ALIBABA_CLOUD_ACCESS_KEY_SECRET", "ALICLOUD_SECRET_KEY")
 	if secret != "" {
 		conf.Credentials = append(conf.Credentials, vault.NewPasswordCredential("", secret))
+	}
+	if token := stringFlag(flags, "sts-token"); token != "" {
+		conf.Credentials = append(conf.Credentials, &vault.Credential{
+			Type:   vault.CredentialType_bearer,
+			Secret: []byte(token),
+		})
 	}
 
 	maps.Copy(conf.Options, parseFlagsToFiltersOpts(flags))
