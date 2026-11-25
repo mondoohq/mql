@@ -2289,6 +2289,39 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"alicloud.ess.scalingGroup.modificationTime": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudEssScalingGroup).GetModificationTime()).ToDataRes(types.Time)
 	},
+	"alicloud.ess.scalingGroup.warmPoolCapacity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEssScalingGroup).GetWarmPoolCapacity()).ToDataRes(types.Int)
+	},
+	"alicloud.ess.scalingGroup.warmPoolStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEssScalingGroup).GetWarmPoolStatus()).ToDataRes(types.String)
+	},
+	"alicloud.ess.scalingGroup.warmPoolInstanceState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEssScalingGroup).GetWarmPoolInstanceState()).ToDataRes(types.String)
+	},
+	"alicloud.ess.scalingGroup.warmPoolMinCapacity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEssScalingGroup).GetWarmPoolMinCapacity()).ToDataRes(types.Int)
+	},
+	"alicloud.ess.scalingGroup.warmPoolPreparedCapacity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEssScalingGroup).GetWarmPoolPreparedCapacity()).ToDataRes(types.Int)
+	},
+	"alicloud.ess.scalingGroup.warmPoolReuseOnScaleIn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEssScalingGroup).GetWarmPoolReuseOnScaleIn()).ToDataRes(types.Bool)
+	},
+	"alicloud.ess.scalingGroup.zoneShiftImpairedZoneIds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEssScalingGroup).GetZoneShiftImpairedZoneIds()).ToDataRes(types.Array(types.String))
+	},
+	"alicloud.ess.scalingGroup.zoneShiftExpiresAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEssScalingGroup).GetZoneShiftExpiresAt()).ToDataRes(types.Time)
+	},
+	"alicloud.ess.scalingGroup.zoneShiftImpairedZoneHealthCheck": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEssScalingGroup).GetZoneShiftImpairedZoneHealthCheck()).ToDataRes(types.String)
+	},
+	"alicloud.ess.scalingGroup.zoneShiftScaleInBlockedRuleTypes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEssScalingGroup).GetZoneShiftScaleInBlockedRuleTypes()).ToDataRes(types.Array(types.String))
+	},
+	"alicloud.ess.scalingGroup.zoneShiftScaleOutHealthyZonesOnly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEssScalingGroup).GetZoneShiftScaleOutHealthyZonesOnly()).ToDataRes(types.Bool)
+	},
 	"alicloud.ess.scalingGroup.vpc": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudEssScalingGroup).GetVpc()).ToDataRes(types.Resource("alicloud.vpc.network"))
 	},
@@ -2315,6 +2348,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"alicloud.ess.scalingConfiguration.instanceType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudEssScalingConfiguration).GetInstanceType()).ToDataRes(types.String)
+	},
+	"alicloud.ess.scalingConfiguration.secondaryEniVSwitchConstraint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEssScalingConfiguration).GetSecondaryEniVSwitchConstraint()).ToDataRes(types.String)
 	},
 	"alicloud.ess.scalingConfiguration.userData": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudEssScalingConfiguration).GetUserData()).ToDataRes(types.String)
@@ -6864,6 +6900,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"alicloud.cloudFirewall.edition": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudCloudFirewall).GetEdition()).ToDataRes(types.Int)
 	},
+	"alicloud.cloudFirewall.agenticEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudCloudFirewall).GetAgenticEnabled()).ToDataRes(types.Bool)
+	},
 	"alicloud.cloudFirewall.controlPolicies": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudCloudFirewall).GetControlPolicies()).ToDataRes(types.Array(types.Resource("alicloud.cloudFirewall.controlPolicy")))
 	},
@@ -11286,6 +11325,50 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAlicloudEssScalingGroup).ModificationTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
+	"alicloud.ess.scalingGroup.warmPoolCapacity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEssScalingGroup).WarmPoolCapacity, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.ess.scalingGroup.warmPoolStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEssScalingGroup).WarmPoolStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.ess.scalingGroup.warmPoolInstanceState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEssScalingGroup).WarmPoolInstanceState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.ess.scalingGroup.warmPoolMinCapacity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEssScalingGroup).WarmPoolMinCapacity, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.ess.scalingGroup.warmPoolPreparedCapacity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEssScalingGroup).WarmPoolPreparedCapacity, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.ess.scalingGroup.warmPoolReuseOnScaleIn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEssScalingGroup).WarmPoolReuseOnScaleIn, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.ess.scalingGroup.zoneShiftImpairedZoneIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEssScalingGroup).ZoneShiftImpairedZoneIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.ess.scalingGroup.zoneShiftExpiresAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEssScalingGroup).ZoneShiftExpiresAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"alicloud.ess.scalingGroup.zoneShiftImpairedZoneHealthCheck": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEssScalingGroup).ZoneShiftImpairedZoneHealthCheck, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.ess.scalingGroup.zoneShiftScaleInBlockedRuleTypes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEssScalingGroup).ZoneShiftScaleInBlockedRuleTypes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.ess.scalingGroup.zoneShiftScaleOutHealthyZonesOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEssScalingGroup).ZoneShiftScaleOutHealthyZonesOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"alicloud.ess.scalingGroup.vpc": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAlicloudEssScalingGroup).Vpc, ok = plugin.RawToTValue[*mqlAlicloudVpcNetwork](v.Value, v.Error)
 		return
@@ -11324,6 +11407,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"alicloud.ess.scalingConfiguration.instanceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAlicloudEssScalingConfiguration).InstanceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.ess.scalingConfiguration.secondaryEniVSwitchConstraint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEssScalingConfiguration).SecondaryEniVSwitchConstraint, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"alicloud.ess.scalingConfiguration.userData": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -17780,6 +17867,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"alicloud.cloudFirewall.edition": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAlicloudCloudFirewall).Edition, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.cloudFirewall.agenticEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudCloudFirewall).AgenticEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"alicloud.cloudFirewall.controlPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -25496,35 +25587,46 @@ type mqlAlicloudEssScalingGroup struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAlicloudEssScalingGroupInternal
-	ScalingGroupId             plugin.TValue[string]
-	Name                       plugin.TValue[string]
-	RegionId                   plugin.TValue[string]
-	LifecycleState             plugin.TValue[string]
-	GroupType                  plugin.TValue[string]
-	MinSize                    plugin.TValue[int64]
-	MaxSize                    plugin.TValue[int64]
-	DesiredCapacity            plugin.TValue[int64]
-	TotalCapacity              plugin.TValue[int64]
-	ActiveCapacity             plugin.TValue[int64]
-	DefaultCooldown            plugin.TValue[int64]
-	HealthCheckType            plugin.TValue[string]
-	MultiAZPolicy              plugin.TValue[string]
-	ScalingPolicy              plugin.TValue[string]
-	GroupDeletionProtection    plugin.TValue[bool]
-	SuspendedProcesses         plugin.TValue[[]any]
-	SystemSuspended            plugin.TValue[bool]
-	MaxInstanceLifetime        plugin.TValue[int64]
-	ResourceGroupId            plugin.TValue[string]
-	ResourceGroup              plugin.TValue[*mqlAlicloudResourceManagerResourceGroup]
-	LaunchTemplateId           plugin.TValue[string]
-	LaunchTemplateVersion      plugin.TValue[string]
-	LaunchTemplate             plugin.TValue[*mqlAlicloudEcsLaunchTemplate]
-	CreationTime               plugin.TValue[*time.Time]
-	ModificationTime           plugin.TValue[*time.Time]
-	Vpc                        plugin.TValue[*mqlAlicloudVpcNetwork]
-	Vswitches                  plugin.TValue[[]any]
-	ActiveScalingConfiguration plugin.TValue[*mqlAlicloudEssScalingConfiguration]
-	ScalingConfigurations      plugin.TValue[[]any]
+	ScalingGroupId                    plugin.TValue[string]
+	Name                              plugin.TValue[string]
+	RegionId                          plugin.TValue[string]
+	LifecycleState                    plugin.TValue[string]
+	GroupType                         plugin.TValue[string]
+	MinSize                           plugin.TValue[int64]
+	MaxSize                           plugin.TValue[int64]
+	DesiredCapacity                   plugin.TValue[int64]
+	TotalCapacity                     plugin.TValue[int64]
+	ActiveCapacity                    plugin.TValue[int64]
+	DefaultCooldown                   plugin.TValue[int64]
+	HealthCheckType                   plugin.TValue[string]
+	MultiAZPolicy                     plugin.TValue[string]
+	ScalingPolicy                     plugin.TValue[string]
+	GroupDeletionProtection           plugin.TValue[bool]
+	SuspendedProcesses                plugin.TValue[[]any]
+	SystemSuspended                   plugin.TValue[bool]
+	MaxInstanceLifetime               plugin.TValue[int64]
+	ResourceGroupId                   plugin.TValue[string]
+	ResourceGroup                     plugin.TValue[*mqlAlicloudResourceManagerResourceGroup]
+	LaunchTemplateId                  plugin.TValue[string]
+	LaunchTemplateVersion             plugin.TValue[string]
+	LaunchTemplate                    plugin.TValue[*mqlAlicloudEcsLaunchTemplate]
+	CreationTime                      plugin.TValue[*time.Time]
+	ModificationTime                  plugin.TValue[*time.Time]
+	WarmPoolCapacity                  plugin.TValue[int64]
+	WarmPoolStatus                    plugin.TValue[string]
+	WarmPoolInstanceState             plugin.TValue[string]
+	WarmPoolMinCapacity               plugin.TValue[int64]
+	WarmPoolPreparedCapacity          plugin.TValue[int64]
+	WarmPoolReuseOnScaleIn            plugin.TValue[bool]
+	ZoneShiftImpairedZoneIds          plugin.TValue[[]any]
+	ZoneShiftExpiresAt                plugin.TValue[*time.Time]
+	ZoneShiftImpairedZoneHealthCheck  plugin.TValue[string]
+	ZoneShiftScaleInBlockedRuleTypes  plugin.TValue[[]any]
+	ZoneShiftScaleOutHealthyZonesOnly plugin.TValue[bool]
+	Vpc                               plugin.TValue[*mqlAlicloudVpcNetwork]
+	Vswitches                         plugin.TValue[[]any]
+	ActiveScalingConfiguration        plugin.TValue[*mqlAlicloudEssScalingConfiguration]
+	ScalingConfigurations             plugin.TValue[[]any]
 }
 
 // createAlicloudEssScalingGroup creates a new instance of this resource
@@ -25688,6 +25790,50 @@ func (c *mqlAlicloudEssScalingGroup) GetModificationTime() *plugin.TValue[*time.
 	return &c.ModificationTime
 }
 
+func (c *mqlAlicloudEssScalingGroup) GetWarmPoolCapacity() *plugin.TValue[int64] {
+	return &c.WarmPoolCapacity
+}
+
+func (c *mqlAlicloudEssScalingGroup) GetWarmPoolStatus() *plugin.TValue[string] {
+	return &c.WarmPoolStatus
+}
+
+func (c *mqlAlicloudEssScalingGroup) GetWarmPoolInstanceState() *plugin.TValue[string] {
+	return &c.WarmPoolInstanceState
+}
+
+func (c *mqlAlicloudEssScalingGroup) GetWarmPoolMinCapacity() *plugin.TValue[int64] {
+	return &c.WarmPoolMinCapacity
+}
+
+func (c *mqlAlicloudEssScalingGroup) GetWarmPoolPreparedCapacity() *plugin.TValue[int64] {
+	return &c.WarmPoolPreparedCapacity
+}
+
+func (c *mqlAlicloudEssScalingGroup) GetWarmPoolReuseOnScaleIn() *plugin.TValue[bool] {
+	return &c.WarmPoolReuseOnScaleIn
+}
+
+func (c *mqlAlicloudEssScalingGroup) GetZoneShiftImpairedZoneIds() *plugin.TValue[[]any] {
+	return &c.ZoneShiftImpairedZoneIds
+}
+
+func (c *mqlAlicloudEssScalingGroup) GetZoneShiftExpiresAt() *plugin.TValue[*time.Time] {
+	return &c.ZoneShiftExpiresAt
+}
+
+func (c *mqlAlicloudEssScalingGroup) GetZoneShiftImpairedZoneHealthCheck() *plugin.TValue[string] {
+	return &c.ZoneShiftImpairedZoneHealthCheck
+}
+
+func (c *mqlAlicloudEssScalingGroup) GetZoneShiftScaleInBlockedRuleTypes() *plugin.TValue[[]any] {
+	return &c.ZoneShiftScaleInBlockedRuleTypes
+}
+
+func (c *mqlAlicloudEssScalingGroup) GetZoneShiftScaleOutHealthyZonesOnly() *plugin.TValue[bool] {
+	return &c.ZoneShiftScaleOutHealthyZonesOnly
+}
+
 func (c *mqlAlicloudEssScalingGroup) GetVpc() *plugin.TValue[*mqlAlicloudVpcNetwork] {
 	return plugin.GetOrCompute[*mqlAlicloudVpcNetwork](&c.Vpc, func() (*mqlAlicloudVpcNetwork, error) {
 		if c.MqlRuntime.HasRecording {
@@ -25757,34 +25903,35 @@ type mqlAlicloudEssScalingConfiguration struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAlicloudEssScalingConfigurationInternal
-	ScalingConfigurationId      plugin.TValue[string]
-	Name                        plugin.TValue[string]
-	RegionId                    plugin.TValue[string]
-	LifecycleState              plugin.TValue[string]
-	InstanceType                plugin.TValue[string]
-	UserData                    plugin.TValue[string]
-	ImageOwnerAlias             plugin.TValue[string]
-	MetadataHttpTokens          plugin.TValue[string]
-	MetadataEndpointEnabled     plugin.TValue[bool]
-	PasswordInherit             plugin.TValue[bool]
-	PasswordSet                 plugin.TValue[bool]
-	SecurityEnhancementStrategy plugin.TValue[string]
-	InternetMaxBandwidthIn      plugin.TValue[int64]
-	InternetMaxBandwidthOut     plugin.TValue[int64]
-	SystemDiskEncrypted         plugin.TValue[bool]
-	SystemDiskCategory          plugin.TValue[string]
-	SystemDiskSize              plugin.TValue[int64]
-	DeletionProtection          plugin.TValue[bool]
-	SpotStrategy                plugin.TValue[string]
-	Tenancy                     plugin.TValue[string]
-	ConfidentialComputingMode   plugin.TValue[string]
-	CreationTime                plugin.TValue[*time.Time]
-	ScalingGroup                plugin.TValue[*mqlAlicloudEssScalingGroup]
-	RamRole                     plugin.TValue[*mqlAlicloudRamRole]
-	SecurityGroups              plugin.TValue[[]any]
-	Image                       plugin.TValue[*mqlAlicloudEcsImage]
-	KeyPair                     plugin.TValue[*mqlAlicloudEcsKeypair]
-	SystemDiskKmsKey            plugin.TValue[*mqlAlicloudKmsKey]
+	ScalingConfigurationId        plugin.TValue[string]
+	Name                          plugin.TValue[string]
+	RegionId                      plugin.TValue[string]
+	LifecycleState                plugin.TValue[string]
+	InstanceType                  plugin.TValue[string]
+	SecondaryEniVSwitchConstraint plugin.TValue[string]
+	UserData                      plugin.TValue[string]
+	ImageOwnerAlias               plugin.TValue[string]
+	MetadataHttpTokens            plugin.TValue[string]
+	MetadataEndpointEnabled       plugin.TValue[bool]
+	PasswordInherit               plugin.TValue[bool]
+	PasswordSet                   plugin.TValue[bool]
+	SecurityEnhancementStrategy   plugin.TValue[string]
+	InternetMaxBandwidthIn        plugin.TValue[int64]
+	InternetMaxBandwidthOut       plugin.TValue[int64]
+	SystemDiskEncrypted           plugin.TValue[bool]
+	SystemDiskCategory            plugin.TValue[string]
+	SystemDiskSize                plugin.TValue[int64]
+	DeletionProtection            plugin.TValue[bool]
+	SpotStrategy                  plugin.TValue[string]
+	Tenancy                       plugin.TValue[string]
+	ConfidentialComputingMode     plugin.TValue[string]
+	CreationTime                  plugin.TValue[*time.Time]
+	ScalingGroup                  plugin.TValue[*mqlAlicloudEssScalingGroup]
+	RamRole                       plugin.TValue[*mqlAlicloudRamRole]
+	SecurityGroups                plugin.TValue[[]any]
+	Image                         plugin.TValue[*mqlAlicloudEcsImage]
+	KeyPair                       plugin.TValue[*mqlAlicloudEcsKeypair]
+	SystemDiskKmsKey              plugin.TValue[*mqlAlicloudKmsKey]
 }
 
 // createAlicloudEssScalingConfiguration creates a new instance of this resource
@@ -25842,6 +25989,10 @@ func (c *mqlAlicloudEssScalingConfiguration) GetLifecycleState() *plugin.TValue[
 
 func (c *mqlAlicloudEssScalingConfiguration) GetInstanceType() *plugin.TValue[string] {
 	return &c.InstanceType
+}
+
+func (c *mqlAlicloudEssScalingConfiguration) GetSecondaryEniVSwitchConstraint() *plugin.TValue[string] {
+	return &c.SecondaryEniVSwitchConstraint
 }
 
 func (c *mqlAlicloudEssScalingConfiguration) GetUserData() *plugin.TValue[string] {
@@ -40765,6 +40916,7 @@ type mqlAlicloudCloudFirewall struct {
 	mqlAlicloudCloudFirewallInternal
 	Enabled            plugin.TValue[bool]
 	Edition            plugin.TValue[int64]
+	AgenticEnabled     plugin.TValue[bool]
 	ControlPolicies    plugin.TValue[[]any]
 	LogDeliveryEnabled plugin.TValue[bool]
 	LogProjectName     plugin.TValue[string]
@@ -40822,6 +40974,12 @@ func (c *mqlAlicloudCloudFirewall) GetEnabled() *plugin.TValue[bool] {
 func (c *mqlAlicloudCloudFirewall) GetEdition() *plugin.TValue[int64] {
 	return plugin.GetOrCompute[int64](&c.Edition, func() (int64, error) {
 		return c.edition()
+	})
+}
+
+func (c *mqlAlicloudCloudFirewall) GetAgenticEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AgenticEnabled, func() (bool, error) {
+		return c.agenticEnabled()
 	})
 }
 

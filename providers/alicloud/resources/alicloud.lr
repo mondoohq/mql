@@ -1538,6 +1538,59 @@ alicloud.ess.scalingGroup @defaults("name scalingGroupId lifecycleState totalCap
   creationTime time
   // Time the scaling group was last modified
   modificationTime time
+  // Number of instances currently in the warm pool
+  //
+  // Null when the group has no warm pool.
+  warmPoolCapacity int
+  // Status of the warm pool
+  //
+  // Either Active or Deleting. Null when the group has no warm pool.
+  warmPoolStatus string
+  // State warm pool instances are kept in
+  //
+  // Either Running, where scale-out is fastest and the instances are billed in
+  // full, or Stopped, where only their disks, elastic IP addresses, and
+  // snapshots are billed but a scale-out can fail for lack of inventory. Null
+  // when the group has no warm pool.
+  warmPoolInstanceState string
+  // Minimum number of instances the warm pool always keeps
+  //
+  // Null when the group has no warm pool.
+  warmPoolMinCapacity int
+  // Number of instances the group and its warm pool together hold ready
+  //
+  // The group's own instances plus the warm pool instances are kept at this
+  // value. Null when the group has no warm pool.
+  warmPoolPreparedCapacity int
+  // Whether scale-in returns instances to the warm pool
+  //
+  // True when instances removed from the group go back into the warm pool
+  // instead of being released. Null when the group has no warm pool.
+  warmPoolReuseOnScaleIn bool
+  // Zones the group treats as impaired during a zone shift
+  //
+  // Null when no zone shift is configured on the group.
+  zoneShiftImpairedZoneIds []string
+  // Time the zone shift ends and the impaired zones are restored
+  //
+  // Null when no zone shift is configured on the group.
+  zoneShiftExpiresAt time
+  // How health checks treat instances in impaired zones during a zone shift
+  //
+  // Either ReplaceUnhealthy, where unhealthy instances in every zone are
+  // replaced, or IgnoreUnhealthy, where unhealthy instances in impaired zones
+  // are left in place. Null when no zone shift is configured on the group.
+  zoneShiftImpairedZoneHealthCheck string
+  // Scaling rule types blocked from scaling in during a zone shift
+  //
+  // Any of StepScalingRule, TargetTrackingScalingRule, or None. The block covers
+  // every zone of the group, not only the impaired ones. Null when no zone shift
+  // is configured on the group.
+  zoneShiftScaleInBlockedRuleTypes []string
+  // Whether scale-out skips impaired zones during a zone shift
+  //
+  // Null when no zone shift is configured on the group.
+  zoneShiftScaleOutHealthyZonesOnly bool
   // VPC the scaling group launches instances into
   //
   // Null on a classic-network group.
@@ -1582,6 +1635,11 @@ alicloud.ess.scalingConfiguration @defaults("name scalingConfigurationId instanc
   lifecycleState string
   // Instance type launched from this configuration, for example ecs.g6.large
   instanceType string
+  // How vSwitches are chosen for secondary elastic network interfaces
+  //
+  // Strict when every secondary network interface must use a vSwitch from the
+  // configuration's vSwitch list. Empty when no constraint is set.
+  secondaryEniVSwitchConstraint string
   // Startup script and cloud-init data written into every instance
   //
   // The user data as plain text, decoded from the base64 form the API returns.
@@ -6988,6 +7046,10 @@ alicloud.cloudFirewall {
   // 2 (Premium), 3 (Enterprise), 4 (Ultimate), or 10 (pay-as-you-go). 0 when
   // the service is not provisioned.
   edition() int
+  // Whether Agentic 2.0 is enabled on Cloud Firewall
+  //
+  // Null when the API does not report it.
+  agenticEnabled() bool
   // Internet-boundary control policies in both the inbound and outbound directions
   controlPolicies() []alicloud.cloudFirewall.controlPolicy
   // Whether Cloud Firewall delivers its traffic logs to Log Service

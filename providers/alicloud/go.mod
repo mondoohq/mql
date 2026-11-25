@@ -6,23 +6,23 @@ go 1.27.3
 
 require (
 	github.com/alibabacloud-go/actiontrail-20200706/v3 v3.5.0
-	github.com/alibabacloud-go/aiworkspace-20210204/v6 v6.3.6
+	github.com/alibabacloud-go/aiworkspace-20210204/v6 v6.3.7
 	github.com/alibabacloud-go/alb-20200616/v2 v2.3.2
 	github.com/alibabacloud-go/cas-20200407/v4 v4.7.4
 	github.com/alibabacloud-go/cbn-20170912/v2 v2.5.2
 	github.com/alibabacloud-go/cloudapi-20160714/v5 v5.8.0
-	github.com/alibabacloud-go/cloudfw-20171207/v11 v11.1.0
+	github.com/alibabacloud-go/cloudfw-20171207/v12 v12.0.0
 	github.com/alibabacloud-go/cloudsso-20210515 v1.7.1
 	github.com/alibabacloud-go/config-20200907/v4 v4.2.3
-	github.com/alibabacloud-go/cr-20181201/v3 v3.2.3
-	github.com/alibabacloud-go/cs-20151215/v8 v8.3.1
-	github.com/alibabacloud-go/darabonba-openapi/v2 v2.2.5
+	github.com/alibabacloud-go/cr-20181201/v3 v3.2.4
+	github.com/alibabacloud-go/cs-20151215/v8 v8.3.2
+	github.com/alibabacloud-go/darabonba-openapi/v2 v2.2.6
 	github.com/alibabacloud-go/ddoscoo-20200101/v5 v5.0.3
 	github.com/alibabacloud-go/dds-20151201/v10 v10.6.0
-	github.com/alibabacloud-go/eas-20210701/v7 v7.11.0
-	github.com/alibabacloud-go/ecs-20140526/v7 v7.11.7
+	github.com/alibabacloud-go/eas-20210701/v7 v7.11.1
+	github.com/alibabacloud-go/ecs-20140526/v7 v7.11.8
 	github.com/alibabacloud-go/elasticsearch-20170613/v6 v6.4.2
-	github.com/alibabacloud-go/ess-20220222/v2 v2.13.3
+	github.com/alibabacloud-go/ess-20220222/v2 v2.14.0
 	github.com/alibabacloud-go/fc-20230330/v4 v4.8.4
 	github.com/alibabacloud-go/ims-20190815/v4 v4.5.0
 	github.com/alibabacloud-go/kms-20160120/v4 v4.3.2
@@ -30,7 +30,7 @@ require (
 	github.com/alibabacloud-go/nas-20170626/v4 v4.7.5
 	github.com/alibabacloud-go/nlb-20220430/v4 v4.1.4
 	github.com/alibabacloud-go/pai-dsw-20220101/v2 v2.5.0
-	github.com/alibabacloud-go/polardb-20170801/v10 v10.3.1
+	github.com/alibabacloud-go/polardb-20170801/v10 v10.3.3
 	github.com/alibabacloud-go/privatelink-20200415/v5 v5.0.11
 	github.com/alibabacloud-go/r-kvstore-20150101/v8 v8.1.0
 	github.com/alibabacloud-go/ram-20150501/v2 v2.5.0
@@ -42,7 +42,7 @@ require (
 	github.com/alibabacloud-go/sts-20150401/v2 v2.1.0
 	github.com/alibabacloud-go/tea v1.5.4
 	github.com/alibabacloud-go/vpc-20160428/v7 v7.4.0
-	github.com/alibabacloud-go/waf-openapi-20211001/v7 v7.8.7
+	github.com/alibabacloud-go/waf-openapi-20211001/v7 v7.8.8
 	github.com/aliyun/alibabacloud-oss-go-sdk-v2 v1.6.1
 	github.com/aliyun/credentials-go v1.4.14
 	github.com/rs/zerolog v1.35.1
@@ -67,7 +67,7 @@ require (
 	github.com/alibabacloud-go/debug v1.0.1 // indirect
 	github.com/alibabacloud-go/endpoint-util v1.1.0 // indirect
 	github.com/alibabacloud-go/openapi-util v0.1.2 // indirect
-	github.com/alibabacloud-go/tea-utils/v2 v2.0.9 // indirect
+	github.com/alibabacloud-go/tea-utils/v2 v2.0.10 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.47.8 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.33.16 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.16 // indirect

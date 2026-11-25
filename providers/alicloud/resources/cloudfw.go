@@ -8,7 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	cloudfwclient "github.com/alibabacloud-go/cloudfw-20171207/v11/client"
+	cloudfwclient "github.com/alibabacloud-go/cloudfw-20171207/v12/client"
 	tea "github.com/alibabacloud-go/tea/tea"
 
 	"go.mondoo.com/mql/llx"
@@ -87,6 +87,30 @@ func (r *mqlAlicloudCloudFirewall) edition() (int64, error) {
 		return 0, err
 	}
 	return int64(tea.Int32Value(v.Version)), nil
+}
+
+func (r *mqlAlicloudCloudFirewall) agenticEnabled() (bool, error) {
+	_, v, err := r.buyVersion()
+	if err != nil {
+		return false, err
+	}
+	enabled := cloudfwAgenticEnabled(v)
+	if enabled == nil {
+		r.AgenticEnabled.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return *enabled, nil
+}
+
+// cloudfwAgenticEnabled reads the Agentic 2.0 flag, which the API reports as 1
+// when enabled. Nil when the response carries no flag, so an account the API
+// says nothing about is not reported as having it switched off.
+func cloudfwAgenticEnabled(v *cloudfwclient.DescribeUserBuyVersionResponseBody) *bool {
+	if v == nil || v.Agentic == nil {
+		return nil
+	}
+	enabled := *v.Agentic == 1
+	return &enabled
 }
 
 // cloudfwLogDelivering reports whether a log store info response describes a

@@ -369,6 +369,7 @@ alicloud.cen.instance.status 13.2.5
 alicloud.cen.instance.tags 13.2.5
 alicloud.cen.instances 13.2.5
 alicloud.cloudFirewall 13.0.1
+alicloud.cloudFirewall.agenticEnabled 14.6.1
 alicloud.cloudFirewall.controlPolicies 13.0.1
 alicloud.cloudFirewall.controlPolicy 13.0.1
 alicloud.cloudFirewall.controlPolicy.aclUuid 13.0.1
@@ -1163,6 +1164,7 @@ alicloud.ess.scalingConfiguration.ramRole 13.2.5
 alicloud.ess.scalingConfiguration.regionId 13.2.5
 alicloud.ess.scalingConfiguration.scalingConfigurationId 13.2.5
 alicloud.ess.scalingConfiguration.scalingGroup 13.2.5
+alicloud.ess.scalingConfiguration.secondaryEniVSwitchConstraint 14.6.1
 alicloud.ess.scalingConfiguration.securityEnhancementStrategy 13.2.5
 alicloud.ess.scalingConfiguration.securityGroups 13.2.5
 alicloud.ess.scalingConfiguration.spotStrategy 13.2.5
@@ -1203,6 +1205,17 @@ alicloud.ess.scalingGroup.systemSuspended 13.2.5
 alicloud.ess.scalingGroup.totalCapacity 13.2.5
 alicloud.ess.scalingGroup.vpc 13.2.5
 alicloud.ess.scalingGroup.vswitches 13.2.5
+alicloud.ess.scalingGroup.warmPoolCapacity 14.6.1
+alicloud.ess.scalingGroup.warmPoolInstanceState 14.6.1
+alicloud.ess.scalingGroup.warmPoolMinCapacity 14.6.1
+alicloud.ess.scalingGroup.warmPoolPreparedCapacity 14.6.1
+alicloud.ess.scalingGroup.warmPoolReuseOnScaleIn 14.6.1
+alicloud.ess.scalingGroup.warmPoolStatus 14.6.1
+alicloud.ess.scalingGroup.zoneShiftExpiresAt 14.6.1
+alicloud.ess.scalingGroup.zoneShiftImpairedZoneHealthCheck 14.6.1
+alicloud.ess.scalingGroup.zoneShiftImpairedZoneIds 14.6.1
+alicloud.ess.scalingGroup.zoneShiftScaleInBlockedRuleTypes 14.6.1
+alicloud.ess.scalingGroup.zoneShiftScaleOutHealthyZonesOnly 14.6.1
 alicloud.ess.scalingGroups 13.2.5
 alicloud.fc 13.0.1
 alicloud.fc.function 13.0.1
