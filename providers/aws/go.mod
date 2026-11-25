@@ -71,7 +71,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/firehose v1.52.12
 	github.com/aws/aws-sdk-go-v2/service/fms v1.54.9
 	github.com/aws/aws-sdk-go-v2/service/fsx v1.76.0
-	github.com/aws/aws-sdk-go-v2/service/globalaccelerator v1.45.11
+	github.com/aws/aws-sdk-go-v2/service/globalaccelerator v1.45.12
 	github.com/aws/aws-sdk-go-v2/service/glue v1.177.0
 	github.com/aws/aws-sdk-go-v2/service/guardduty v1.102.0
 	github.com/aws/aws-sdk-go-v2/service/iam v1.68.0
@@ -131,7 +131,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/workdocs v1.39.5
 	github.com/aws/aws-sdk-go-v2/service/workspaces v1.86.0
 	github.com/aws/aws-sdk-go-v2/service/workspacesweb v1.48.5
-	github.com/aws/smithy-go v1.28.9
+	github.com/aws/smithy-go v1.28.10
 	github.com/cockroachdb/errors v1.14.0
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/go-retryablehttp v0.7.8
