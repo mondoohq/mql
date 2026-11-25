@@ -93,13 +93,9 @@ func NewAlicloudConnection(id uint32, asset *inventory.Asset, conf *inventory.Co
 	}
 	securityToken := firstNonEmpty(os.Getenv("ALIBABA_CLOUD_SECURITY_TOKEN"), os.Getenv("ALICLOUD_SECURITY_TOKEN"))
 
-	// A secret passed through the inventory credential vault takes precedence
-	// over the environment for the access-key secret.
-	for _, c := range conf.Credentials {
-		if c != nil && c.Type == vault.CredentialType_password && len(c.Secret) > 0 {
-			accessKeySecret = string(c.Secret)
-		}
-	}
+	// Secrets passed through the inventory credential vault take precedence
+	// over the environment.
+	accessKeySecret, securityToken = vaultSecrets(conf.Credentials, accessKeySecret, securityToken)
 
 	cred, err := resolveCredential(opts, accessKeyID, accessKeySecret, securityToken)
 	if err != nil {
@@ -112,6 +108,24 @@ func NewAlicloudConnection(id uint32, asset *inventory.Asset, conf *inventory.Co
 	conn.securityToken = securityToken
 
 	return conn, nil
+}
+
+// vaultSecrets returns the access-key secret and STS token, preferring the
+// values carried in the credential vault: the access-key secret as a password
+// credential and the STS token as a bearer credential.
+func vaultSecrets(creds []*vault.Credential, accessKeySecret, securityToken string) (string, string) {
+	for _, c := range creds {
+		if c == nil || len(c.Secret) == 0 {
+			continue
+		}
+		switch c.Type {
+		case vault.CredentialType_password:
+			accessKeySecret = string(c.Secret)
+		case vault.CredentialType_bearer:
+			securityToken = string(c.Secret)
+		}
+	}
+	return accessKeySecret, securityToken
 }
 
 // resolveCredential builds a Darabonba credential from the supplied static
