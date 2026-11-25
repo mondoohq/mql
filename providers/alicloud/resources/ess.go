@@ -128,7 +128,7 @@ func essHasMorePages(pageNumber int32, pageLen int, totalCount *int32) bool {
 }
 
 func newEssScalingGroup(runtime *plugin.Runtime, region string, g *essclient.DescribeScalingGroupsResponseBodyScalingGroups) (*mqlAlicloudEssScalingGroup, error) {
-	resource, err := CreateResource(runtime, "alicloud.ess.scalingGroup", map[string]*llx.RawData{
+	args := map[string]*llx.RawData{
 		"__id":                    llx.StringData(region + "/" + tea.StringValue(g.ScalingGroupId)),
 		"scalingGroupId":          llx.StringDataPtr(g.ScalingGroupId),
 		"name":                    llx.StringDataPtr(g.ScalingGroupName),
@@ -153,7 +153,14 @@ func newEssScalingGroup(runtime *plugin.Runtime, region string, g *essclient.Des
 		"launchTemplateVersion":   llx.StringDataPtr(g.LaunchTemplateVersion),
 		"creationTime":            llx.TimeDataPtr(parseEcsTime(g.CreationTime)),
 		"modificationTime":        llx.TimeDataPtr(parseEcsTime(g.ModificationTime)),
-	})
+	}
+	for k, v := range essWarmPoolArgs(g) {
+		args[k] = v
+	}
+	for k, v := range essZoneShiftArgs(g) {
+		args[k] = v
+	}
+	resource, err := CreateResource(runtime, "alicloud.ess.scalingGroup", args)
 	if err != nil {
 		return nil, err
 	}
@@ -163,6 +170,59 @@ func newEssScalingGroup(runtime *plugin.Runtime, region string, g *essclient.Des
 	group.cacheActiveScalingConfigurationID = tea.StringValue(g.ActiveScalingConfigurationId)
 	group.cacheVswitchIDs = essGroupVswitchIDs(g)
 	return group, nil
+}
+
+// essWarmPoolArgs maps the group's warm pool. Every field is null on a group
+// without a warm pool, so a policy cannot read a missing pool as one holding
+// zero instances.
+func essWarmPoolArgs(g *essclient.DescribeScalingGroupsResponseBodyScalingGroups) map[string]*llx.RawData {
+	args := map[string]*llx.RawData{
+		"warmPoolCapacity":         llx.NilData,
+		"warmPoolStatus":           llx.NilData,
+		"warmPoolInstanceState":    llx.NilData,
+		"warmPoolMinCapacity":      llx.NilData,
+		"warmPoolPreparedCapacity": llx.NilData,
+		"warmPoolReuseOnScaleIn":   llx.NilData,
+	}
+	wp := g.WarmPoolConfiguration
+	if wp == nil {
+		return args
+	}
+	args["warmPoolCapacity"] = llx.IntDataPtr(g.WarmPoolCapacity)
+	args["warmPoolStatus"] = llx.StringDataPtr(wp.Status)
+	args["warmPoolInstanceState"] = llx.StringDataPtr(wp.PoolState)
+	if wp.CapacityOptions != nil {
+		args["warmPoolMinCapacity"] = llx.IntDataPtr(wp.CapacityOptions.MinCapacity)
+		args["warmPoolPreparedCapacity"] = llx.IntDataPtr(wp.CapacityOptions.DesiredGroupPreparedCapacity)
+	}
+	if wp.InstanceReusePolicy != nil {
+		args["warmPoolReuseOnScaleIn"] = llx.BoolDataPtr(wp.InstanceReusePolicy.ReuseOnScaleIn)
+	}
+	return args
+}
+
+// essZoneShiftArgs maps the group's zone shift. Every field is null on a group
+// without zone shift options.
+func essZoneShiftArgs(g *essclient.DescribeScalingGroupsResponseBodyScalingGroups) map[string]*llx.RawData {
+	args := map[string]*llx.RawData{
+		"zoneShiftImpairedZoneIds":          llx.NilData,
+		"zoneShiftExpiresAt":                llx.NilData,
+		"zoneShiftImpairedZoneHealthCheck":  llx.NilData,
+		"zoneShiftScaleInBlockedRuleTypes":  llx.NilData,
+		"zoneShiftScaleOutHealthyZonesOnly": llx.NilData,
+	}
+	zs := g.ZoneShiftOptions
+	if zs == nil {
+		return args
+	}
+	args["zoneShiftImpairedZoneIds"] = llx.ArrayData(llx.TArr2Raw(strPtrSliceToStrings(zs.ImpairedZoneIds)), types.String)
+	args["zoneShiftExpiresAt"] = llx.TimeDataPtr(parseEcsTime(zs.ExpiryTime))
+	if p := zs.ZoneShiftPolicy; p != nil {
+		args["zoneShiftImpairedZoneHealthCheck"] = llx.StringDataPtr(p.ImpairedZoneHealthCheckBehavior)
+		args["zoneShiftScaleInBlockedRuleTypes"] = llx.ArrayData(llx.TArr2Raw(strPtrSliceToStrings(p.ScaleInBlockedRuleTypes)), types.String)
+		args["zoneShiftScaleOutHealthyZonesOnly"] = llx.BoolDataPtr(p.ScaleOutInHealthyZonesOnly)
+	}
+	return args
 }
 
 // essGroupVswitchIDs collects the group's vSwitches. VSwitchIds supersedes the
@@ -351,29 +411,30 @@ func newEssScalingConfiguration(runtime *plugin.Runtime, region string, c *esscl
 	}
 
 	resource, err := CreateResource(runtime, "alicloud.ess.scalingConfiguration", map[string]*llx.RawData{
-		"__id":                        llx.StringData(region + "/" + tea.StringValue(c.ScalingConfigurationId)),
-		"scalingConfigurationId":      llx.StringDataPtr(c.ScalingConfigurationId),
-		"name":                        llx.StringDataPtr(c.ScalingConfigurationName),
-		"regionId":                    llx.StringData(region),
-		"lifecycleState":              llx.StringDataPtr(c.LifecycleState),
-		"instanceType":                llx.StringDataPtr(c.InstanceType),
-		"userData":                    llx.StringData(decodeUserData(tea.StringValue(c.UserData))),
-		"imageOwnerAlias":             llx.StringDataPtr(c.ImageOwnerAlias),
-		"metadataHttpTokens":          llx.StringDataPtr(c.HttpTokens),
-		"metadataEndpointEnabled":     llx.BoolData(!strings.EqualFold(tea.StringValue(c.HttpEndpoint), "disabled")),
-		"passwordInherit":             llx.BoolDataPtr(c.PasswordInherit),
-		"passwordSet":                 llx.BoolDataPtr(c.PasswordSetted),
-		"securityEnhancementStrategy": llx.StringDataPtr(c.SecurityEnhancementStrategy),
-		"internetMaxBandwidthIn":      llx.IntDataPtr(c.InternetMaxBandwidthIn),
-		"internetMaxBandwidthOut":     llx.IntDataPtr(c.InternetMaxBandwidthOut),
-		"systemDiskEncrypted":         llx.BoolDataPtr(c.SystemDiskEncrypted),
-		"systemDiskCategory":          llx.StringDataPtr(c.SystemDiskCategory),
-		"systemDiskSize":              llx.IntDataPtr(c.SystemDiskSize),
-		"deletionProtection":          llx.BoolDataPtr(c.DeletionProtection),
-		"spotStrategy":                llx.StringDataPtr(c.SpotStrategy),
-		"tenancy":                     llx.StringDataPtr(c.Tenancy),
-		"confidentialComputingMode":   llx.StringData(confidentialComputing),
-		"creationTime":                llx.TimeDataPtr(parseEcsTime(c.CreationTime)),
+		"__id":                          llx.StringData(region + "/" + tea.StringValue(c.ScalingConfigurationId)),
+		"scalingConfigurationId":        llx.StringDataPtr(c.ScalingConfigurationId),
+		"name":                          llx.StringDataPtr(c.ScalingConfigurationName),
+		"regionId":                      llx.StringData(region),
+		"lifecycleState":                llx.StringDataPtr(c.LifecycleState),
+		"instanceType":                  llx.StringDataPtr(c.InstanceType),
+		"secondaryEniVSwitchConstraint": llx.StringData(tea.StringValue(c.SecondaryEniVSwitchConstraint)),
+		"userData":                      llx.StringData(decodeUserData(tea.StringValue(c.UserData))),
+		"imageOwnerAlias":               llx.StringDataPtr(c.ImageOwnerAlias),
+		"metadataHttpTokens":            llx.StringDataPtr(c.HttpTokens),
+		"metadataEndpointEnabled":       llx.BoolData(!strings.EqualFold(tea.StringValue(c.HttpEndpoint), "disabled")),
+		"passwordInherit":               llx.BoolDataPtr(c.PasswordInherit),
+		"passwordSet":                   llx.BoolDataPtr(c.PasswordSetted),
+		"securityEnhancementStrategy":   llx.StringDataPtr(c.SecurityEnhancementStrategy),
+		"internetMaxBandwidthIn":        llx.IntDataPtr(c.InternetMaxBandwidthIn),
+		"internetMaxBandwidthOut":       llx.IntDataPtr(c.InternetMaxBandwidthOut),
+		"systemDiskEncrypted":           llx.BoolDataPtr(c.SystemDiskEncrypted),
+		"systemDiskCategory":            llx.StringDataPtr(c.SystemDiskCategory),
+		"systemDiskSize":                llx.IntDataPtr(c.SystemDiskSize),
+		"deletionProtection":            llx.BoolDataPtr(c.DeletionProtection),
+		"spotStrategy":                  llx.StringDataPtr(c.SpotStrategy),
+		"tenancy":                       llx.StringDataPtr(c.Tenancy),
+		"confidentialComputingMode":     llx.StringData(confidentialComputing),
+		"creationTime":                  llx.TimeDataPtr(parseEcsTime(c.CreationTime)),
 	})
 	if err != nil {
 		return nil, err

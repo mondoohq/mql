@@ -6,7 +6,7 @@ package resources
 import (
 	"testing"
 
-	cloudfwclient "github.com/alibabacloud-go/cloudfw-20171207/v11/client"
+	cloudfwclient "github.com/alibabacloud-go/cloudfw-20171207/v12/client"
 	tea "github.com/alibabacloud-go/tea/tea"
 	"github.com/stretchr/testify/assert"
 )
