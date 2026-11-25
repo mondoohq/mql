@@ -34,6 +34,21 @@ func betaODataErrWithCode(code string) *betaodataerrors.ODataError {
 	return err
 }
 
+// Synthetic: recoverAsError stores a panic as an error naming the operation
+// and leaves the error alone when nothing panicked. No target showed this.
+func TestRecoverAsError(t *testing.T) {
+	work := func(fail bool) (err error) {
+		defer recoverAsError("reading things", &err)
+		if fail {
+			var m map[string]int
+			m["boom"] = 1 // a runtime panic: assignment to a nil map
+		}
+		return errors.New("plain failure")
+	}
+	assert.EqualError(t, work(true), "reading things: recovered panic: assignment to entry in nil map")
+	assert.EqualError(t, work(false), "plain failure")
+}
+
 func TestGraphErrorCode(t *testing.T) {
 	tests := []struct {
 		name string

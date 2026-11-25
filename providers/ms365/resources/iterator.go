@@ -49,11 +49,17 @@ func iterate[T any](ctx context.Context, res any, adapter abstractions.RequestAd
 //
 // An entry of a type derived from T is handed over as the T it is built on,
 // see baseEntry. The SDK's iterator panics on those as well.
-func iterateEach[T any](ctx context.Context, res any, adapter abstractions.RequestAdapter, constructorFunc serialization.ParsableFactory, each func(T) error) error {
+//
+// A panic during the walk, in each or in the SDK while fetching or decoding a
+// page, ends the walk with an error for this one list. Callers page from
+// worker goroutines too (pim_groups.go), where the plugin SDK's recovery does
+// not reach.
+func iterateEach[T any](ctx context.Context, res any, adapter abstractions.RequestAdapter, constructorFunc serialization.ParsableFactory, each func(T) error) (err error) {
+	collection := collectionName(res)
+	defer recoverAsError("paging "+collection, &err)
 	if adapter == nil {
 		return errors.New("reqAdapter can't be nil")
 	}
-	collection := collectionName(res)
 	skipped := 0
 	defer func() {
 		if skipped > 0 {

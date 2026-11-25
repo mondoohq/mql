@@ -521,6 +521,42 @@ func TestBatchEachResendsFailedBatchCalls(t *testing.T) {
 	}
 }
 
+// Synthetic: a $batch call that panics in the SDK runs on a worker goroutine,
+// where nothing else recovers it. It counts as a failed call: its keys are
+// sent again and the fetch still gets every key, rather than the provider
+// crashing or the fetch waiting forever for the chunk's result. No target
+// showed this.
+func TestBatchEachRecoversPanickingSend(t *testing.T) {
+	backoff := batchRetryBackoff
+	batchRetryBackoff = time.Millisecond
+	t.Cleanup(func() { batchRetryBackoff = backoff })
+
+	keys := make([]string, 3*batchChunkSize)
+	routes := map[string]fakeRoute{}
+	for i := range keys {
+		keys[i] = fmt.Sprintf("u%03d", i)
+		routes["/users/"+keys[i]] = fakeRoute{status: http.StatusOK, body: `{"id":"` + keys[i] + `"}`}
+	}
+	client := newFakeGraph(t, routes).client()
+	adapter := &panickingAdapter{RequestAdapter: client.GetAdapter(), panics: 2}
+	ctx := context.Background()
+
+	seen := map[string]int{}
+	errs, _, err := batchEach(ctx, adapter, keys,
+		func(key string) (*abstractions.RequestInformation, error) {
+			return client.Users().ByUserId(key).ToGetRequestInformation(ctx, nil)
+		},
+		models.CreateUserFromDiscriminatorValue,
+		func(key string, u *models.User) error {
+			seen[key]++
+			return nil
+		})
+	require.NoError(t, err)
+	assert.Empty(t, errs)
+	assert.Len(t, seen, len(keys))
+	assert.LessOrEqual(t, adapter.panics, 0, "both panics were raised")
+}
+
 // A fetch whose $batch calls keep failing gives up after batchMaxSendFailures
 // failures in a row and returns the error.
 func TestBatchEachGivesUpAfterRepeatedFailures(t *testing.T) {

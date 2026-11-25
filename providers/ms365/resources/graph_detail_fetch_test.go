@@ -20,7 +20,9 @@ import (
 	"testing"
 	"time"
 
+	abstractions "github.com/microsoft/kiota-abstractions-go"
 	"github.com/microsoft/kiota-abstractions-go/authentication"
+	"github.com/microsoft/kiota-abstractions-go/serialization"
 	msgraphsdkgo "github.com/microsoftgraph/msgraph-sdk-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -62,6 +64,25 @@ type fakeGraph struct {
 type fakeRoute struct {
 	status int
 	body   string
+}
+
+// panickingAdapter wraps a request adapter and panics in Send for the first
+// panics calls, the way the SDK panics on a response it cannot handle.
+type panickingAdapter struct {
+	abstractions.RequestAdapter
+	mu     sync.Mutex
+	panics int
+}
+
+func (a *panickingAdapter) Send(ctx context.Context, requestInfo *abstractions.RequestInformation, constructor serialization.ParsableFactory, errorMappings abstractions.ErrorMappings) (serialization.Parsable, error) {
+	a.mu.Lock()
+	panicNow := a.panics > 0
+	a.panics--
+	a.mu.Unlock()
+	if panicNow {
+		panic("send blew up")
+	}
+	return a.RequestAdapter.Send(ctx, requestInfo, constructor, errorMappings)
 }
 
 func newFakeGraph(t *testing.T, routes map[string]fakeRoute) *fakeGraph {

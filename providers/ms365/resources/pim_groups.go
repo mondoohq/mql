@@ -138,6 +138,7 @@ func listPerGroup[C serialization.Parsable, I any](
 			defer wg.Done()
 			defer func() { <-sem }()
 			out := &results[i]
+			defer recoverAsError("reading PIM for Groups", &out.err)
 			batch, err := batchGet[C](ctx, adapter, chunk, factory)
 			if err != nil {
 				out.err = classifyPimError(err, permission)
