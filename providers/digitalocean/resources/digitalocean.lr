@@ -183,6 +183,8 @@ digitalocean.account @defaults("email status") {
   teamUuid string
   // Display name of the team that owns this account; empty when the API token is not scoped to a team
   teamName string
+  // Whether the account is a trial account
+  isTrial bool
 }
 
 // DigitalOcean Droplet

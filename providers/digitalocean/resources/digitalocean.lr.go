@@ -823,6 +823,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"digitalocean.account.teamName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitaloceanAccount).GetTeamName()).ToDataRes(types.String)
 	},
+	"digitalocean.account.isTrial": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanAccount).GetIsTrial()).ToDataRes(types.Bool)
+	},
 	"digitalocean.droplet.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitaloceanDroplet).GetId()).ToDataRes(types.Int)
 	},
@@ -4815,6 +4818,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"digitalocean.account.teamName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDigitaloceanAccount).TeamName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"digitalocean.account.isTrial": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanAccount).IsTrial, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"digitalocean.droplet.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -11165,6 +11172,7 @@ type mqlDigitaloceanAccount struct {
 	StatusMessage   plugin.TValue[string]
 	TeamUuid        plugin.TValue[string]
 	TeamName        plugin.TValue[string]
+	IsTrial         plugin.TValue[bool]
 }
 
 // createDigitaloceanAccount creates a new instance of this resource
@@ -11250,6 +11258,10 @@ func (c *mqlDigitaloceanAccount) GetTeamUuid() *plugin.TValue[string] {
 
 func (c *mqlDigitaloceanAccount) GetTeamName() *plugin.TValue[string] {
 	return &c.TeamName
+}
+
+func (c *mqlDigitaloceanAccount) GetIsTrial() *plugin.TValue[bool] {
+	return &c.IsTrial
 }
 
 // mqlDigitaloceanDroplet for the digitalocean.droplet resource
