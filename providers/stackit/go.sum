@@ -454,8 +454,8 @@ github.com/stackitcloud/stackit-sdk-go/services/redis v1.6.0 h1:5UEPilI+RCuXEM8j
 github.com/stackitcloud/stackit-sdk-go/services/redis v1.6.0/go.mod h1:/wE98YN+s1s1OcaEPt8Z2xO0Y46Gur3nXlg1AiiMNeY=
 github.com/stackitcloud/stackit-sdk-go/services/resourcemanager v0.28.0 h1:rZB1f9g5M/2mWKXsJIfMvGcFpFWkDQFjG28V/d1ezWw=
 github.com/stackitcloud/stackit-sdk-go/services/resourcemanager v0.28.0/go.mod h1:IsId3wbkp5oaO0JEaHZpZnbVW6KFHlAptwB+1iG3v3w=
-github.com/stackitcloud/stackit-sdk-go/services/secretsmanager v0.20.0 h1:D4/yjPk0GMbp5X96luY3wGEkFJ8RjfLJsIQhHh2ZdwI=
-github.com/stackitcloud/stackit-sdk-go/services/secretsmanager v0.20.0/go.mod h1:yV1dcbGaZfdzwcJqjsRNpZ4VVDsQETAAYj2/MCPr4RE=
+github.com/stackitcloud/stackit-sdk-go/services/secretsmanager v0.21.0 h1:beqRTrvbelABO0FdqYvFH38t1FxYxnb+LqGHyVV5OYM=
+github.com/stackitcloud/stackit-sdk-go/services/secretsmanager v0.21.0/go.mod h1:yV1dcbGaZfdzwcJqjsRNpZ4VVDsQETAAYj2/MCPr4RE=
 github.com/stackitcloud/stackit-sdk-go/services/serverbackup v1.8.0 h1:iFiKTlug6QfLtUAtPKcJe6NX4Jr9HZ84vJNgvra0Wew=
 github.com/stackitcloud/stackit-sdk-go/services/serverbackup v1.8.0/go.mod h1:VkF3N0fTP8zOztdeKEG0uoMuMp3larEqNB22fnvlA5M=
 github.com/stackitcloud/stackit-sdk-go/services/serverupdate v1.6.0 h1:X/LEJX8AfiOoKDf/pDLaZSzAxlDHzy+QIy4vD+TVeLc=
@@ -472,8 +472,8 @@ github.com/stackitcloud/stackit-sdk-go/services/sqlserverflex v1.20.0 h1:dHsxhHt
 github.com/stackitcloud/stackit-sdk-go/services/sqlserverflex v1.20.0/go.mod h1:chULz8M6OKvzWEMVH/3DWKDb1UQab87O1KLJfWV0Vp4=
 github.com/stackitcloud/stackit-sdk-go/services/telemetrylink v0.6.0 h1:glsamuWGVTwzBk3yoWYmq8gDcDkJncepHRn/tDwSwjA=
 github.com/stackitcloud/stackit-sdk-go/services/telemetrylink v0.6.0/go.mod h1:JyuStufMDibWblEo4wPOrh3B02aMgIUEhDF7YK5WGas=
-github.com/stackitcloud/stackit-sdk-go/services/telemetryrouter v0.6.1 h1:RPMUjr73Zpko6mi+cwKb7omQF73i5QfuRrj3DTxHrKM=
-github.com/stackitcloud/stackit-sdk-go/services/telemetryrouter v0.6.1/go.mod h1:e457u40HTJAVzw9YFP7Ri90otkJlgDqIphiDD5AZISI=
+github.com/stackitcloud/stackit-sdk-go/services/telemetryrouter v0.7.0 h1:dky5GDANFoZXiGQeeFxoQwMOkxkgWtx+TGyyXCr2bHM=
+github.com/stackitcloud/stackit-sdk-go/services/telemetryrouter v0.7.0/go.mod h1:e457u40HTJAVzw9YFP7Ri90otkJlgDqIphiDD5AZISI=
 github.com/stackitcloud/stackit-sdk-go/services/ufw v0.3.0 h1:W0vuG7LdOce+QnJVCQPZyAr2lqsUzRUv35aJmCjAkow=
 github.com/stackitcloud/stackit-sdk-go/services/ufw v0.3.0/go.mod h1:sHqwJsQYN2NYRvMpANLJ295c7WQAsqQuLcRKeCUU5MA=
 github.com/stackitcloud/stackit-sdk-go/services/valkey v0.4.0 h1:75iJs+mZPnrGSlSoTZtKYYCyNqtqgx6JVChwJokcKVg=
