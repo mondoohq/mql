@@ -102,7 +102,7 @@ func TestApproleDecodesDocumentedPayload(t *testing.T) {
 
 	assert.Equal(t, "ci pipeline", role.GetDescription())
 	assert.Equal(t, "3f1c0f4e-0d3b-4f0a-9c1e-2a5b6c7d8e9f", role.GetRoleId())
-	assert.Equal(t, int32(5), role.GetSecretIdNumUses())
+	assert.Equal(t, int64(5), role.GetSecretIdNumUses())
 	assert.Equal(t, "15m", role.GetSecretIdTtl())
 	assert.True(t, role.GetWrite())
 }
@@ -117,9 +117,9 @@ func TestApproleSecretDecodesDocumentedPayload(t *testing.T) {
 	}`), &secret))
 
 	assert.Equal(t, "rotated 2026-09", secret.GetDescription())
-	assert.Equal(t, int32(3), secret.GetNumUses())
+	assert.Equal(t, int64(3), secret.GetNumUses())
 	assert.Equal(t, "1h", secret.GetTtl())
-	assert.Equal(t, int32(7), secret.GetVersion())
+	assert.Equal(t, int64(7), secret.GetVersion())
 	// the credential is absent on a read, which is why it is not modeled
 	assert.Nil(t, secret.SecretId)
 }
