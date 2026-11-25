@@ -7,6 +7,7 @@ digitalocean.account.dropletLimit 13.0.1
 digitalocean.account.email 13.0.1
 digitalocean.account.emailVerified 13.0.1
 digitalocean.account.floatingIpLimit 13.0.1
+digitalocean.account.isTrial 14.6.1
 digitalocean.account.name 14.4.2
 digitalocean.account.reservedIpLimit 14.4.2
 digitalocean.account.status 13.0.1
