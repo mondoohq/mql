@@ -1985,6 +1985,7 @@ file.user 9.0.0
 files 9.0.0
 files.find 9.0.0
 files.find.depth 11.3.5
+files.find.exclude 14.47.3
 files.find.from 9.0.0
 files.find.list 9.0.0
 files.find.name 9.0.0

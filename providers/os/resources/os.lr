@@ -1103,12 +1103,15 @@ files {}
 // Files discovered by a recursive filesystem walk rooted at `from`.
 // Narrow the walk with `type` (file, directory, device, and so on),
 // `regex` (path/name pattern), `permissions` (octal mode floor),
-// `name` (filename glob), `depth` (maximum traversal depth), and
-// `xdev` (whether to cross into other mounted filesystems). Resolves
-// to the matching `[]file` list, so content, ownership, and permission
-// checks can be layered on the result. For example
+// `name` (filename glob), `depth` (maximum traversal depth), `exclude`
+// (directory names to skip), and `xdev` (whether to cross into other
+// mounted filesystems). Resolves to the matching `[]file` list, so
+// content, ownership, and permission checks can be layered on the
+// result. For example
 // `files.find(from: "/etc", type: "file", permissions: 0002) { path }`
-// finds every world-writable file under /etc.
+// finds every world-writable file under /etc, and
+// `files.find(from: 'C:\Users', name: "package.json", exclude: ["node_modules"])`
+// finds project manifests without walking installed packages.
 files.find {
   []file
   // Directory the recursive search starts from (e.g., "/etc")
@@ -1134,6 +1137,12 @@ files.find {
   name string
   // Maximum directory depth to descend (find's -maxdepth); unset means unlimited
   depth int
+  // Directory name globs the search skips
+  //
+  // A directory below `from` whose name matches one of these globs
+  // (e.g., "node_modules", ".*") is neither reported nor searched. Globs
+  // follow `name`. Unset searches every directory.
+  exclude []string
 }
 
 // Parse INI configuration files

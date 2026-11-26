@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"regexp"
 	"strings"
 	"time"
@@ -31,6 +32,33 @@ type FindOptions struct {
 	Timeout          time.Duration
 	MaxEntries       int
 	MaxMatches       int
+	// Exclude holds find -name globs. A directory below the search root
+	// whose name matches one is neither reported nor entered.
+	Exclude []string
+}
+
+// ExcludeMatcher returns a test for the directory names a search must not
+// enter, or nil when there are none. The globs are those of find -name.
+func ExcludeMatcher(globs []string) (func(name string) bool, error) {
+	if len(globs) == 0 {
+		return nil, nil
+	}
+	patterns := make([]string, len(globs))
+	for i, g := range globs {
+		// fnmatch negates a bracket expression with "!", Go's path.Match with "^"
+		patterns[i] = strings.ReplaceAll(g, "[!", "[^")
+		if _, err := path.Match(patterns[i], ""); err != nil {
+			return nil, fmt.Errorf("invalid exclude pattern %q: %w", g, err)
+		}
+	}
+	return func(name string) bool {
+		for _, p := range patterns {
+			if ok, _ := path.Match(p, name); ok {
+				return true
+			}
+		}
+		return false
+	}, nil
 }
 
 // ErrFindLimit identifies an incomplete search that exhausted its entry or match budget.
@@ -107,6 +135,10 @@ func FindFiles(iofs fs.FS, from string, r *regexp.Regexp, typ string, perm *uint
 }
 
 func FindFilesWithOptions(iofs fs.FS, from string, r *regexp.Regexp, typ string, perm *uint32, depth *int, options FindOptions) ([]string, error) {
+	excluded, err := ExcludeMatcher(options.Exclude)
+	if err != nil {
+		return nil, err
+	}
 	budget, cancel := NewFindBudget(options)
 	defer cancel()
 	if err := budget.Check(); err != nil {
@@ -138,7 +170,7 @@ func FindFilesWithOptions(iofs fs.FS, from string, r *regexp.Regexp, typ string,
 	// is reported for type:"directory" yet its contents are not walked. Full
 	// `find -L` recursion would need explicit symlink following with loop
 	// detection; it isn't required for the config-file discovery this powers.
-	err := fs.WalkDir(iofs, from, func(p string, d fs.DirEntry, err error) error {
+	err = fs.WalkDir(iofs, from, func(p string, d fs.DirEntry, err error) error {
 		if err := budget.Visit(); err != nil {
 			return err
 		}
@@ -158,6 +190,17 @@ func FindFilesWithOptions(iofs fs.FS, from string, r *regexp.Regexp, typ string,
 
 		if skipFile {
 			return nil
+		}
+		if excluded != nil && p != from && excluded(d.Name()) {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			// a link to a directory is excluded as the directory would be
+			if d.Type()&fs.ModeSymlink != 0 {
+				if info, err := fs.Stat(iofs, p); err == nil && info.IsDir() {
+					return nil
+				}
+			}
 		}
 		pruneMount := false
 		if hasDevice && d.IsDir() && p != from {

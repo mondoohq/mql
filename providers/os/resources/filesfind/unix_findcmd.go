@@ -54,7 +54,7 @@ type FindFlavor struct {
 }
 
 // BuildFilesFindCmd builds the find command of a files.find search.
-func BuildFilesFindCmd(from string, xdev bool, fileType string, regex string, permission int64, search string, depth *int64, flavor FindFlavor) string {
+func BuildFilesFindCmd(from string, xdev bool, fileType string, regex string, permission int64, search string, depth *int64, exclude []string, flavor FindFlavor) string {
 	hasGNUFind, noMaxDepth := flavor.GNU, flavor.NoMaxDepth
 	var call strings.Builder
 
@@ -109,6 +109,23 @@ func BuildFilesFindCmd(from string, xdev bool, fileType string, regex string, pe
 		call.WriteString(" -prune -o")
 	}
 
+	// A directory whose name matches an exclude glob is neither printed nor
+	// entered. from itself is always searched.
+	pruneExclude := len(exclude) > 0
+	if pruneExclude {
+		call.WriteString(" \\( -type d \\(")
+		for i := range exclude {
+			if i > 0 {
+				call.WriteString(" -o")
+			}
+			call.WriteString(" -name ")
+			call.WriteString(shellSingleQuote(exclude[i]))
+		}
+		call.WriteString(" \\) ! -path ")
+		call.WriteString(shellSingleQuote(globEscape(from)))
+		call.WriteString(" \\) -prune -o")
+	}
+
 	if fileType != "" {
 		t, ok := findTypes[fileType]
 		if ok {
@@ -143,7 +160,7 @@ func BuildFilesFindCmd(from string, xdev bool, fileType string, regex string, pe
 		call.WriteString(strconv.FormatInt(*depth, 10))
 	}
 
-	if pruneLinks || pruneDepth {
+	if pruneLinks || pruneDepth || pruneExclude {
 		// -prune suppresses find's implicit -print.
 		call.WriteString(" -print")
 	}

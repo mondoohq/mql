@@ -4855,6 +4855,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"files.find.depth": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlFilesFind).GetDepth()).ToDataRes(types.Int)
 	},
+	"files.find.exclude": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFilesFind).GetExclude()).ToDataRes(types.Array(types.String))
+	},
 	"files.find.list": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlFilesFind).GetList()).ToDataRes(types.Array(types.Resource("file")))
 	},
@@ -25855,6 +25858,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"files.find.depth": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlFilesFind).Depth, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"files.find.exclude": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFilesFind).Exclude, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"files.find.list": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -58943,6 +58950,7 @@ type mqlFilesFind struct {
 	Permissions plugin.TValue[int64]
 	Name        plugin.TValue[string]
 	Depth       plugin.TValue[int64]
+	Exclude     plugin.TValue[[]any]
 	List        plugin.TValue[[]any]
 }
 
@@ -59009,6 +59017,10 @@ func (c *mqlFilesFind) GetName() *plugin.TValue[string] {
 
 func (c *mqlFilesFind) GetDepth() *plugin.TValue[int64] {
 	return &c.Depth
+}
+
+func (c *mqlFilesFind) GetExclude() *plugin.TValue[[]any] {
+	return &c.Exclude
 }
 
 func (c *mqlFilesFind) GetList() *plugin.TValue[[]any] {
