@@ -563,22 +563,31 @@ func runExchangeSections(ctx context.Context, client *exchangeRestClient, sectio
 		wg.Go(func() {
 			sem <- struct{}{}
 			defer func() { <-sem }()
-
-			rows, err := client.invoke(ctx, section.cmdlet, section.params, section.selects...)
-			mu.Lock()
-			defer mu.Unlock()
-			if err != nil {
+			if err := runExchangeSection(ctx, client, section, report, &mu); err != nil {
+				mu.Lock()
 				failures[section.name] = err
-				return
-			}
-			if err := section.assign(rows, report); err != nil {
-				failures[section.name] = err
+				mu.Unlock()
 			}
 		})
 	}
 	wg.Wait()
 
 	return failures
+}
+
+// runExchangeSection runs one cmdlet and stores its rows in report. It runs on
+// a worker goroutine, so a panic, in the client or in a section's decoding, is
+// recovered into the section's error: the section fails, the scan goes on.
+// The rows are stored under mu, since every section writes into report.
+func runExchangeSection(ctx context.Context, client *exchangeRestClient, section exchangeSection, report *ExchangeOnlineReport, mu *sync.Mutex) (err error) {
+	defer recoverAsError("exchange cmdlet "+section.cmdlet, &err)
+	rows, err := client.invoke(ctx, section.cmdlet, section.params, section.selects...)
+	if err != nil {
+		return err
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	return section.assign(rows, report)
 }
 
 // fetchExchangeReportViaRest builds the Exchange Online report from the admin

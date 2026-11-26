@@ -391,6 +391,32 @@ func TestFetchExchangeReportViaRest(t *testing.T) {
 	})
 }
 
+// Synthetic: a section that panics while decoding its rows runs on a worker
+// goroutine, where nothing else recovers it. It fails that section alone, the
+// other sections still fill the report. No target showed this.
+func TestRunExchangeSectionsRecoversPanics(t *testing.T) {
+	srv := exchangeRowServer(t, map[string]string{
+		"Get-TransportRule": `[{"Name":"tr1"}]`,
+	}, nil)
+	defer srv.Close()
+
+	sections := []exchangeSection{
+		{name: "Broken", cmdlet: "Get-JournalRule", assign: func(rows []json.RawMessage, report *ExchangeOnlineReport) error {
+			panic("decoding blew up")
+		}},
+		{name: "TransportRule", cmdlet: "Get-TransportRule", assign: func(rows []json.RawMessage, report *ExchangeOnlineReport) error {
+			report.TransportRule = make([]any, len(rows))
+			return nil
+		}},
+	}
+	report := &ExchangeOnlineReport{}
+	failures := runExchangeSections(context.Background(), testClient(srv.URL), sections, report)
+
+	require.Len(t, failures, 1)
+	assert.EqualError(t, failures["Broken"], "exchange cmdlet Get-JournalRule: recovered panic: decoding blew up")
+	assert.Len(t, report.TransportRule, 1)
+}
+
 func TestFetchHostedConnectionFilterPolicyViaRest(t *testing.T) {
 	t.Run("reads the default policy", func(t *testing.T) {
 		var got exchangeCmdletRequest

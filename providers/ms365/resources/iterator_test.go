@@ -174,6 +174,49 @@ func TestIterateEachStopsOnCallbackError(t *testing.T) {
 	assert.Equal(t, []string{"u1", "u2"}, ids)
 }
 
+// Synthetic: a panic during the walk ends it with an error for the one list,
+// naming the collection, instead of taking the provider down. Callers page
+// from worker goroutines, where nothing else would recover it. No target
+// showed this.
+func TestIterateEachRecoversPanics(t *testing.T) {
+	routes := map[string]fakeRoute{
+		registrationDetailsPath: {status: 200, body: `{
+			"@odata.nextLink": "{{base}}` + registrationDetailsPath + `/page2",
+			"value": [{"id": "u1"}, {"id": "u2"}]}`},
+		registrationDetailsPath + "/page2": {status: 200, body: `{
+			"value": [{"id": "u3"}]}`},
+	}
+
+	t.Run("in the callback", func(t *testing.T) {
+		ids, logged, err := walkRegistrationDetails(t, routes, func(id string) error {
+			if id == "u2" {
+				panic("callback blew up")
+			}
+			return nil
+		})
+		require.EqualError(t, err, "paging UserRegistrationDetailsCollectionResponse: recovered panic: callback blew up")
+		assert.Equal(t, []string{"u1", "u2"}, ids)
+		assert.Contains(t, logged, `"level":"error"`)
+	})
+
+	t.Run("in the SDK fetching the next page", func(t *testing.T) {
+		client := newFakeGraph(t, routes).client()
+		ctx := context.Background()
+		resp, err := client.Reports().AuthenticationMethods().UserRegistrationDetails().Get(ctx, nil)
+		require.NoError(t, err)
+
+		ids := []string{}
+		err = iterateEach(ctx, resp, &panickingAdapter{RequestAdapter: client.GetAdapter(), panics: 1},
+			models.CreateUserRegistrationDetailsCollectionResponseFromDiscriminatorValue,
+			func(d models.UserRegistrationDetailsable) error {
+				ids = append(ids, *d.GetId())
+				return nil
+			})
+		require.EqualError(t, err, "paging UserRegistrationDetailsCollectionResponse: recovered panic: send blew up")
+		assert.Equal(t, []string{"u1", "u2"}, ids)
+	})
+}
+
 // Synthetic: a refused request for a later page ends the walk with an error,
 // after the earlier pages were handed over. No target showed this.
 func TestIterateEachNextPageError(t *testing.T) {
