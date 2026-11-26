@@ -88,6 +88,72 @@ message Sbom {
   // `DEPENDS_ON` graph, which lets a consumer reason about which components a
   // given component pulls in rather than just a flat inventory.
   repeated Dependency dependencies = 7;
+
+  // 'history_coverage' says how much source-control history the packages'
+  // presence_intervals were read from: one entry per lockfile and branch
+  // walked. Empty when no history was read, which is the case for every
+  // scan that is not a repository scan asked to read lockfile history. An
+  // interval is only evidence for the window its coverage entry covers; a
+  // version with no interval was not seen in that window, nothing more.
+  // protolint:disable:next REPEATED_FIELD_NAMES_PLURALIZED
+  repeated HistoryCoverage history_coverage = 8;
+}
+
+// HistoryCoverage is how much history one lockfile's walk on one branch read.
+message HistoryCoverage {
+  // 'lockfile' is the path of the lockfile, relative to the repository root.
+  string lockfile = 1;
+  // 'branch' is the branch walked, e.g. "main".
+  string branch = 2;
+  // 'requested_since' is the start of the window the scan asked for, in RFC
+  // 3339 UTC. Empty when the whole history was asked for.
+  string requested_since = 3;
+  // 'since' is the committer time of the oldest commit read, in RFC 3339
+  // UTC. Later than requested_since when the walk stopped early or the
+  // history is shorter. Empty when no commit was read.
+  string since = 4;
+  // 'commits' is the number of commits read.
+  int32 commits = 5;
+  // 'truncated' is set when the walk stopped before the start of the window
+  // or the root commit, because a limit was reached. 'truncated_reason' names
+  // the limit, as a short kebab-case reason, e.g. "max-commits" or
+  // "byte-budget".
+  bool truncated = 6;
+  string truncated_reason = 7;
+  // 'shallow' is set when the walk reached the boundary of a shallow clone,
+  // so older history exists but was not available to read.
+  bool shallow = 8;
+  // 'unparsed_commits' is the number of commits read whose lockfile did not
+  // parse. Their state is taken to be the one of the commit before.
+  int32 unparsed_commits = 9;
+}
+
+// PresenceInterval is a window of source-control history in which one
+// version of a package was in a lockfile on a branch. Times are commit
+// committer times in RFC 3339 UTC, which whoever made the commit chose: an
+// interval is evidence that the version was installed in the window, never
+// that it was absent outside of it.
+message PresenceInterval {
+  // 'lockfile' is the path of the lockfile, relative to the repository root.
+  string lockfile = 1;
+  // 'branch' is the branch the interval was read on.
+  string branch = 2;
+  // 'first_commit' is the commit that added the version, or the oldest
+  // commit read when the version was already there (see at_walk_start).
+  string first_commit = 3;
+  // 'first_seen' is the committer time of first_commit.
+  string first_seen = 4;
+  // 'at_walk_start' is set when the version was in the oldest commit read,
+  // so it may have been added before first_seen.
+  bool at_walk_start = 5;
+  // 'last_commit' is the first commit without the version, the one that
+  // removed it. Empty while open.
+  string last_commit = 6;
+  // 'last_seen' is the committer time of last_commit. Empty while open.
+  string last_seen = 7;
+  // 'open' is set when the version is in the newest commit read, the
+  // branch's head.
+  bool open = 8;
 }
 
 // Dependency is one node of the dependency graph: a component and the
@@ -347,6 +413,13 @@ message Package {
   // 'source' is where the installed build came from. Unset when the scan did
   // not report it.
   PackageSource source = 37;
+  // 'presence_intervals' are the windows of source-control history in which
+  // this version was in a lockfile, for a repository scan that read lockfile
+  // history (see Sbom.history_coverage). A version added, removed and added
+  // again has two. Empty when no history was read. A package is listed
+  // because it is in the scanned head; a version that only appears in history
+  // is not listed as a package.
+  repeated PresenceInterval presence_intervals = 38;
 }
 
 // IdentityEvidence is how one field of a package's identity was concluded,
