@@ -7,7 +7,7 @@ replace go.mondoo.com/mql => ../..
 // Drop this once the next upstream release ships the fix.
 replace github.com/apache/thrift => github.com/apache/thrift v0.22.0
 
-go 1.27.3
+go 1.27.4
 
 require (
 	// pin main

@@ -2,7 +2,7 @@ module go.mondoo.com/mql/providers/mongodbatlas
 
 replace go.mondoo.com/mql => ../..
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/stretchr/testify v1.12.1

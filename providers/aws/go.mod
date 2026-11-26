@@ -2,7 +2,7 @@ module go.mondoo.com/mql/providers/aws
 
 replace go.mondoo.com/mql => ../..
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.48.0

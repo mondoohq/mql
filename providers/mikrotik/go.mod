@@ -2,7 +2,7 @@ module go.mondoo.com/mql/providers/mikrotik
 
 replace go.mondoo.com/mql => ../..
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/go-routeros/routeros/v3 v3.0.1
