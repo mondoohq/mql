@@ -273,3 +273,48 @@ func TestResolveSystemPkgManagersFlatcar(t *testing.T) {
 		})
 	}
 }
+
+// BusyBox images carry no package manager and no package database. Detection
+// reports the platform "busybox" from /bin/busybox alone, so the name is no
+// evidence of a database. With nothing on disk the inventory is empty rather
+// than an error; a custom image that does carry a database keeps its real
+// package manager.
+func TestResolveSystemPkgManagersBusybox(t *testing.T) {
+	platform := func() *inventory.Platform {
+		return &inventory.Platform{
+			Name:   "busybox",
+			Family: []string{"linux", "unix", "os"},
+		}
+	}
+
+	t.Run("no package database", func(t *testing.T) {
+		conn := newProbeConn(t, platform(), "/bin/busybox")
+
+		pms, err := ResolveSystemPkgManagers(conn)
+		require.NoError(t, err)
+		require.Len(t, pms, 1)
+		assert.IsType(t, &ScratchPkgManager{}, pms[0])
+
+		pkgs, err := pms[0].List()
+		require.NoError(t, err)
+		assert.Empty(t, pkgs)
+	})
+
+	t.Run("dpkg database present", func(t *testing.T) {
+		conn := newProbeConn(t, platform(), "/bin/busybox", "/var/lib/dpkg/status")
+
+		pms, err := ResolveSystemPkgManagers(conn)
+		require.NoError(t, err)
+		require.Len(t, pms, 1)
+		assert.IsType(t, &DebPkgManager{}, pms[0])
+	})
+
+	t.Run("apk database present", func(t *testing.T) {
+		conn := newProbeConn(t, platform(), "/bin/busybox", "/lib/apk/db/installed")
+
+		pms, err := ResolveSystemPkgManagers(conn)
+		require.NoError(t, err)
+		require.Len(t, pms, 1)
+		assert.IsType(t, &AlpinePkgManager{}, pms[0])
+	})
+}
