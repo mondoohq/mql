@@ -330,10 +330,10 @@ func (c *config) verifyEntity(ctx context.Context, e entity, subj subject) (Resu
 	if res.Signature != nil && res.Signature.Certificate != nil {
 		cert := res.Signature.Certificate
 		r.SignerKind = SignerKeyless
-		r.Issuer = cert.Extensions.Issuer
+		r.Issuer = cert.Issuer
 		r.SAN = cert.SubjectAlternativeName
-		r.SignerRepository = cert.Extensions.SourceRepositoryURI
-		r.SignerWorkflowRef = cert.Extensions.BuildSignerURI
+		r.SignerRepository = cert.SourceRepositoryURI
+		r.SignerWorkflowRef = cert.BuildSignerURI
 	} else {
 		r.SignerKind = SignerKey
 		r.KeyFingerprint = normalizeFingerprint(e.keyHint)

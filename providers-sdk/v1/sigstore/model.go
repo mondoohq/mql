@@ -203,7 +203,7 @@ func VerifyModel(ctx context.Context, fsys afero.Fs, dir string, bundleJSON []by
 		return ModelResult{}, err
 	}
 	out.Result = sig
-	out.Result.Envelope = EnvelopeSigstoreBundle
+	out.Envelope = EnvelopeSigstoreBundle
 	if !sig.SignatureValid {
 		if c.untrustedSigner(ctx, e) {
 			out.Status = ModelUnverifiable

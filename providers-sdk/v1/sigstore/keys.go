@@ -82,15 +82,6 @@ func Fingerprint(der []byte) string {
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
-// fingerprintOf returns the fingerprint of a parsed public key.
-func fingerprintOf(pub crypto.PublicKey) (string, error) {
-	der, err := x509.MarshalPKIXPublicKey(pub)
-	if err != nil {
-		return "", err
-	}
-	return Fingerprint(der), nil
-}
-
 // normalizeFingerprint reads a key fingerprint or a bundle's public key hint
 // in the forms in use: "sha256:<hex>", bare hex, or the base64 of the
 // sha256. It returns "sha256:<hex>", or "" when s is none of them.
