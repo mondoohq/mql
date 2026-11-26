@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -59,6 +60,10 @@ type GithubConnection struct {
 	// Base URL the connection was pointed at, empty for GitHub.com and GitHub
 	// Enterprise Cloud.
 	enterpriseURL string
+
+	// Web host of the enterprise URL, empty for github.com. The platform ids
+	// of a connection to another host carry it.
+	host string
 
 	// The installed release cannot change under a running scan, so it is read
 	// once and shared: both github.metadata and every organization's feature
@@ -122,11 +127,13 @@ func NewGithubConnection(id uint32, asset *inventory.Asset) (*GithubConnection, 
 	connectionOpts := connectionOptionsFromConfigOptions(asset.Connections[0])
 
 	var clientOpts []github.ClientOptionsFunc
+	var host string
 	if connectionOpts.EnterpriseURL != "" {
 		parsedUrl, err := url.Parse(connectionOpts.EnterpriseURL)
 		if err != nil {
 			return nil, err
 		}
+		host = enterpriseHost(parsedUrl)
 
 		baseUrl := parsedUrl.JoinPath("api/v3/")
 		uploadUrl := parsedUrl.JoinPath("api/uploads/")
@@ -160,8 +167,23 @@ func NewGithubConnection(id uint32, asset *inventory.Asset) (*GithubConnection, 
 		client:        client,
 		ctx:           ctx,
 		enterpriseURL: connectionOpts.EnterpriseURL,
+		host:          host,
 		OptionsHash:   hash,
 	}, nil
+}
+
+// enterpriseHost returns the host that a user sees in the browser for an
+// enterprise URL: lower-cased, with the port only when the URL has one. The
+// enterprise URL is the web address of the installation, and the API is
+// reached below it at /api/v3, so the host of the URL is the web host. A
+// leading "api." label is the API form of the same host (api.<name>.ghe.com)
+// and is dropped. It returns "" for github.com, whose ids carry no host.
+func enterpriseHost(enterpriseURL *url.URL) string {
+	host := strings.TrimPrefix(strings.ToLower(enterpriseURL.Host), "api.")
+	if host == "github.com" {
+		return ""
+	}
+	return host
 }
 
 // EnterpriseVersion reports the release a GitHub Enterprise Server

@@ -4,10 +4,16 @@
 package resources
 
 import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/github/connection"
 )
 
@@ -205,4 +211,44 @@ func TestDiscoverUserAsset(t *testing.T) {
 	t.Run("an unrelated target does not emit it", func(t *testing.T) {
 		assert.False(t, discoverUserAsset([]string{connection.DiscoveryOrganization}))
 	})
+}
+
+// A repository on an enterprise host must not share its platform id with a
+// repository of the same owner and name on github.com.
+func TestRepoDiscoveryOnEnterpriseHostQualifiesPlatformID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v3/orgs/acme":
+			fmt.Fprint(w, `{"id": 1, "login": "acme"}`)
+		case "/api/v3/repos/acme/app":
+			fmt.Fprint(w, `{"id": 2, "name": "app", "full_name": "acme/app", "owner": {"id": 1, "login": "acme"}}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	asset := &inventory.Asset{
+		Connections: []*inventory.Config{{
+			Options: map[string]string{
+				connection.OPTION_TOKEN:          "token",
+				connection.OPTION_ENTERPRISE_URL: server.URL,
+				"owner":                          "acme",
+				"repository":                     "app",
+			},
+		}},
+	}
+	conn, err := connection.NewGithubConnection(1, asset)
+	require.NoError(t, err)
+	runtime := plugin.NewRuntime(conn, nil, false, CreateResource, NewResource, GetData, SetData, nil)
+
+	assets, err := repo(runtime, "app", "acme", conn, []string{connection.DiscoveryRepos})
+	require.NoError(t, err)
+	require.Len(t, assets, 1)
+
+	host := strings.TrimPrefix(server.URL, "http://")
+	assert.Equal(t,
+		[]string{"//platformid.api.mondoo.app/runtime/github/host/" + host + "/owner/acme/repository/app"},
+		assets[0].PlatformIds)
 }

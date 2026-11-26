@@ -138,7 +138,7 @@ func org(runtime *plugin.Runtime, orgName string, conn *connection.GithubConnect
 			labels[customProperty.Name.Data] = value
 		}
 		assetList = append(assetList, &inventory.Asset{
-			PlatformIds: []string{connection.NewGithubOrgIdentifier(org.Login.Data)},
+			PlatformIds: []string{conn.OrgIdentifier(org.Login.Data)},
 			Name:        org.Name.Data,
 			Platform:    connection.NewGithubOrgPlatform(org.Login.Data),
 			Labels:      labels,
@@ -155,7 +155,7 @@ func org(runtime *plugin.Runtime, orgName string, conn *connection.GithubConnect
 			cfg := conf.Clone(inventory.WithoutDiscovery(), inventory.WithParentConnectionId(conn.ID()))
 			cfg.Options["repository"] = repo.Name.Data
 			assetList = append(assetList, &inventory.Asset{
-				PlatformIds: []string{connection.NewGitHubRepoIdentifier(org.Login.Data, repo.Name.Data)},
+				PlatformIds: []string{conn.RepoIdentifier(org.Login.Data, repo.Name.Data)},
 				Name:        org.Login.Data + "/" + repo.Name.Data,
 				Platform:    connection.NewGitHubRepoPlatform(org.Login.Data, repo.Name.Data),
 				Labels:      convert.DictToTypedMap[string](repo.CustomProperties.Data),
@@ -184,7 +184,7 @@ func org(runtime *plugin.Runtime, orgName string, conn *connection.GithubConnect
 			cfg := conf.Clone(inventory.WithoutDiscovery(), inventory.WithParentConnectionId(conn.ID()))
 			cfg.Options["user"] = user.Login.Data
 			assetList = append(assetList, &inventory.Asset{
-				PlatformIds: []string{connection.NewGithubUserIdentifier(user.Login.Data)},
+				PlatformIds: []string{conn.UserIdentifier(user.Login.Data)},
 				Name:        name,
 				Platform:    connection.NewGithubUserPlatform(user.Login.Data),
 				Labels:      map[string]string{},
@@ -225,7 +225,7 @@ func repo(runtime *plugin.Runtime, repoName string, owner string, conn *connecti
 		cfg := conf.Clone(inventory.WithoutDiscovery(), inventory.WithParentConnectionId(conn.ID()))
 		cfg.Options["repository"] = repo.Name.Data
 		assetList = append(assetList, &inventory.Asset{
-			PlatformIds:   []string{connection.NewGitHubRepoIdentifier(owner, repo.Name.Data)},
+			PlatformIds:   []string{conn.RepoIdentifier(owner, repo.Name.Data)},
 			Name:          owner + "/" + repo.Name.Data,
 			Platform:      connection.NewGitHubRepoPlatform(owner, repo.Name.Data),
 			Labels:        convert.DictToTypedMap[string](repo.CustomProperties.Data),
@@ -272,7 +272,7 @@ func user(runtime *plugin.Runtime, userName string, conn *connection.GithubConne
 		cfg := conf.Clone(inventory.WithoutDiscovery(), inventory.WithParentConnectionId(conn.ID()))
 		cfg.Options["user"] = user.Login.Data
 		assetList = append(assetList, &inventory.Asset{
-			PlatformIds: []string{connection.NewGithubUserIdentifier(user.Login.Data)},
+			PlatformIds: []string{conn.UserIdentifier(user.Login.Data)},
 			Name:        user.Name.Data,
 			Platform:    connection.NewGithubUserPlatform(user.Login.Data),
 			Labels:      make(map[string]string),
@@ -297,7 +297,7 @@ func user(runtime *plugin.Runtime, userName string, conn *connection.GithubConne
 			// initialize github.repository.
 			repoCfg.Options["owner"] = user.Login.Data
 			assetList = append(assetList, &inventory.Asset{
-				PlatformIds: []string{connection.NewGitHubRepoIdentifier(user.Login.Data, repo.Name.Data)},
+				PlatformIds: []string{conn.RepoIdentifier(user.Login.Data, repo.Name.Data)},
 				Name:        user.Login.Data + "/" + repo.Name.Data,
 				Platform:    connection.NewGitHubRepoPlatform(user.Login.Data, repo.Name.Data),
 				Labels:      convert.DictToTypedMap[string](repo.CustomProperties.Data),

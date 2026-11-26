@@ -107,16 +107,58 @@ func NewGitHubRepoIdentifier(ownerId string, repoId string) string {
 	return "//platformid.api.mondoo.app/runtime/github/owner/" + ownerId + "/repository/" + repoId
 }
 
+// The host-qualified identifiers are for a connection to a host other than
+// github.com (GitHub Enterprise Server, or GitHub Enterprise Cloud with data
+// residency). The host keeps two accounts or repositories that have the same
+// name on different hosts apart.
+func NewGithubHostOrgIdentifier(host string, orgId string) string {
+	return "//platformid.api.mondoo.app/runtime/github/host/" + host + "/organization/" + orgId
+}
+
+func NewGithubHostUserIdentifier(host string, userId string) string {
+	return "//platformid.api.mondoo.app/runtime/github/host/" + host + "/user/" + userId
+}
+
+func NewGitHubHostRepoIdentifier(host string, ownerId string, repoId string) string {
+	return "//platformid.api.mondoo.app/runtime/github/host/" + host + "/owner/" + ownerId + "/repository/" + repoId
+}
+
+// OrgIdentifier is the platform id of an organization on the host of this
+// connection.
+func (c *GithubConnection) OrgIdentifier(orgId string) string {
+	if c.host == "" {
+		return NewGithubOrgIdentifier(orgId)
+	}
+	return NewGithubHostOrgIdentifier(c.host, orgId)
+}
+
+// UserIdentifier is the platform id of a user on the host of this connection.
+func (c *GithubConnection) UserIdentifier(userId string) string {
+	if c.host == "" {
+		return NewGithubUserIdentifier(userId)
+	}
+	return NewGithubHostUserIdentifier(c.host, userId)
+}
+
+// RepoIdentifier is the platform id of a repository on the host of this
+// connection.
+func (c *GithubConnection) RepoIdentifier(ownerId string, repoId string) string {
+	if c.host == "" {
+		return NewGitHubRepoIdentifier(ownerId, repoId)
+	}
+	return NewGitHubHostRepoIdentifier(c.host, ownerId, repoId)
+}
+
 func (c *GithubConnection) Identifier() (string, error) {
 	conf := c.asset.Connections[0]
 	orgId := conf.Options["organization"]
 	if orgId != "" {
-		return NewGithubOrgIdentifier(orgId), nil
+		return c.OrgIdentifier(orgId), nil
 	}
 
 	userId := conf.Options["user"]
 	if userId != "" {
-		return NewGithubUserIdentifier(userId), nil
+		return c.UserIdentifier(userId), nil
 	}
 
 	repoId := conf.Options["repository"]
@@ -128,7 +170,7 @@ func (c *GithubConnection) Identifier() (string, error) {
 		if ownerId == "" {
 			ownerId = conf.Options["user"]
 		}
-		return NewGitHubRepoIdentifier(ownerId, repoId), nil
+		return c.RepoIdentifier(ownerId, repoId), nil
 	}
 
 	return "", errors.New("could not identifier GitHub asset")
