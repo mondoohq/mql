@@ -2,7 +2,7 @@ module go.mondoo.com/mql/providers/arista
 
 replace go.mondoo.com/mql => ../..
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/aristanetworks/goeapi v1.0.0

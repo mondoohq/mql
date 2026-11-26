@@ -2,7 +2,7 @@ module go.mondoo.com/mql/providers/codesphere
 
 replace go.mondoo.com/mql => ../..
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/codesphere-cloud/cs-go v1.69.0

@@ -2,7 +2,7 @@ module go.mondoo.com/mql/providers/talos
 
 replace go.mondoo.com/mql => ../..
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/cosi-project/runtime v1.16.3

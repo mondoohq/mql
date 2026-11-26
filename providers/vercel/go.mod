@@ -2,7 +2,7 @@ module go.mondoo.com/mql/providers/vercel
 
 replace go.mondoo.com/mql => ../..
 
-go 1.27.3
+go 1.27.4
 
 require go.mondoo.com/mql v0.0.0-20261109064811-87180a95a1f3
 
