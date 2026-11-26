@@ -349,6 +349,18 @@ func ResolveSystemPkgManagers(conn shared.Connection) ([]OperatingSystemPkgManag
 				break
 			}
 		}
+
+		// BusyBox images (busybox:latest and the many images built on it) ship
+		// no package manager and no package database: no /var/lib/dpkg, rpm,
+		// apk or opkg state, and /var/lib may not exist at all. Detection
+		// finds them by /bin/busybox alone, so the platform name says nothing
+		// about packages. The BusyBox binary does carry dpkg and rpm applets,
+		// though, so a custom image can hold a real database; that is why this
+		// runs after the probe above and only when it found nothing. No
+		// package database on disk means the empty inventory is the truth.
+		if len(pms) == 0 && asset.Platform.Name == "busybox" {
+			pms = append(pms, &ScratchPkgManager{conn: conn})
+		}
 	}
 
 	// Oracle Database homes (unzip + runInstaller, RAC, Grid Infrastructure)
