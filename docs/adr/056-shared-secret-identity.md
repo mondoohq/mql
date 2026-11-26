@@ -1,4 +1,4 @@
-# ADR 053: Shared secret identity
+# ADR 056: Shared secret identity
 
 ## Status
 
