@@ -128,7 +128,7 @@ func Canonical(value, secretType, credentialClass string) string {
 // canonical must come from Canonical. An empty canonical value returns
 // ErrEmptyValue; a nil or closed key returns ErrNoKey or ErrClosed.
 func ID(k *Key, canonical string) (string, error) {
-	if canonical == "" {
+	if len(canonical) == 0 {
 		return "", ErrEmptyValue
 	}
 	sum, err := k.mac(DomainSecretID, canonical)
