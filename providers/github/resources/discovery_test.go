@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -213,9 +213,23 @@ func TestDiscoverUserAsset(t *testing.T) {
 	})
 }
 
-// A repository on an enterprise host must not share its platform id with a
+// gheTransport sends every request to a test server, whatever host the
+// request names. A test cannot serve a <name>.ghe.com host in another way.
+type gheTransport struct {
+	server *url.URL
+	base   http.RoundTripper
+}
+
+func (g gheTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	r = r.Clone(r.Context())
+	r.URL.Scheme = g.server.Scheme
+	r.URL.Host = g.server.Host
+	return g.base.RoundTrip(r)
+}
+
+// A repository on a <name>.ghe.com host must not share its platform id with a
 // repository of the same owner and name on github.com.
-func TestRepoDiscoveryOnEnterpriseHostQualifiesPlatformID(t *testing.T) {
+func TestRepoDiscoveryOnGheComQualifiesPlatformID(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
@@ -228,12 +242,19 @@ func TestRepoDiscoveryOnEnterpriseHostQualifiesPlatformID(t *testing.T) {
 		}
 	}))
 	defer server.Close()
+	serverURL, err := url.Parse(server.URL)
+	require.NoError(t, err)
+
+	// The token client of the connection uses http.DefaultTransport.
+	defaultTransport := http.DefaultTransport
+	http.DefaultTransport = gheTransport{server: serverURL, base: defaultTransport}
+	defer func() { http.DefaultTransport = defaultTransport }()
 
 	asset := &inventory.Asset{
 		Connections: []*inventory.Config{{
 			Options: map[string]string{
 				connection.OPTION_TOKEN:          "token",
-				connection.OPTION_ENTERPRISE_URL: server.URL,
+				connection.OPTION_ENTERPRISE_URL: "https://acme.ghe.com",
 				"owner":                          "acme",
 				"repository":                     "app",
 			},
@@ -247,8 +268,7 @@ func TestRepoDiscoveryOnEnterpriseHostQualifiesPlatformID(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, assets, 1)
 
-	host := strings.TrimPrefix(server.URL, "http://")
 	assert.Equal(t,
-		[]string{"//platformid.api.mondoo.app/runtime/github/host/" + host + "/owner/acme/repository/app"},
+		[]string{"//platformid.api.mondoo.app/runtime/github/host/acme.ghe.com/owner/acme/repository/app"},
 		assets[0].PlatformIds)
 }

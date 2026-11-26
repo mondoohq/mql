@@ -107,10 +107,10 @@ func NewGitHubRepoIdentifier(ownerId string, repoId string) string {
 	return "//platformid.api.mondoo.app/runtime/github/owner/" + ownerId + "/repository/" + repoId
 }
 
-// The host-qualified identifiers are for a connection to a host other than
-// github.com (GitHub Enterprise Server, or GitHub Enterprise Cloud with data
-// residency). The host keeps two accounts or repositories that have the same
-// name on different hosts apart.
+// The host-qualified identifiers are for a connection to GitHub Enterprise
+// Cloud with data residency (<name>.ghe.com). The host keeps two accounts or
+// repositories that have the same name on github.com and on such a host
+// apart.
 func NewGithubHostOrgIdentifier(host string, orgId string) string {
 	return "//platformid.api.mondoo.app/runtime/github/host/" + host + "/organization/" + orgId
 }

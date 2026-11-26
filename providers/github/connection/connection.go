@@ -61,8 +61,8 @@ type GithubConnection struct {
 	// Enterprise Cloud.
 	enterpriseURL string
 
-	// Web host of the enterprise URL, empty for github.com. The platform ids
-	// of a connection to another host carry it.
+	// Web host of a <name>.ghe.com enterprise URL, empty for every other
+	// host. The platform ids of a connection to such a host carry it.
 	host string
 
 	// The installed release cannot change under a running scan, so it is read
@@ -172,18 +172,17 @@ func NewGithubConnection(id uint32, asset *inventory.Asset) (*GithubConnection, 
 	}, nil
 }
 
-// enterpriseHost returns the host that a user sees in the browser for an
-// enterprise URL: lower-cased, with the port only when the URL has one. The
-// enterprise URL is the web address of the installation, and the API is
-// reached below it at /api/v3, so the host of the URL is the web host. A
-// leading "api." label is the API form of the same host (api.<name>.ghe.com)
-// and is dropped. It returns "" for github.com, whose ids carry no host.
+// enterpriseHost returns the host that goes into the platform ids, or "" when
+// the ids carry no host. Only GitHub Enterprise Cloud with data residency
+// (<name>.ghe.com) gets a host: its web host in lower case. A leading "api."
+// label is the API form of the same host (api.<name>.ghe.com) and is dropped.
+// github.com and GitHub Enterprise Server keep the ids without a host.
 func enterpriseHost(enterpriseURL *url.URL) string {
-	host := strings.TrimPrefix(strings.ToLower(enterpriseURL.Host), "api.")
-	if host == "github.com" {
+	host := strings.ToLower(enterpriseURL.Host)
+	if !strings.HasSuffix(host, ".ghe.com") {
 		return ""
 	}
-	return host
+	return strings.TrimPrefix(host, "api.")
 }
 
 // EnterpriseVersion reports the release a GitHub Enterprise Server
