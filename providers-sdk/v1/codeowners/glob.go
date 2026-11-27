@@ -356,6 +356,8 @@ func newFailedSet(rows, cols int, buf []bool) *failedSet {
 	if n <= len(buf) {
 		return &failedSet{cols: cols, dense: buf[:n]}
 	}
+	// n is at most maxDenseStates: the division check above bounds it.
+	// nosemgrep: go-allocation-size-overflow
 	return &failedSet{cols: cols, dense: make([]bool, n)}
 }
 
