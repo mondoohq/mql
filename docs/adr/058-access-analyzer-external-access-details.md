@@ -71,11 +71,12 @@ The active findings of type `ExternalAccess` of `ACCOUNT` and `ORGANIZATION` ana
 It returns `llx.NotApplicable` ("no external-access analyzer is active") when no such
 analyzer is `ACTIVE` in any region, and `llx.Forbidden` naming
 `access-analyzer:ListFindings` when every region's call is refused. A refusal in some
-regions keeps the other regions' findings and logs the denied ones. It shares one
-listing helper with `unusedAccessFindings()`, parameterised by analyzer types and
-finding type; `findings()` is unchanged.
-An unused-access list (`unusedAccessFindings()`), when it is added, uses the same helper
-and the same rule.
+regions keeps the other regions' findings (including what a region's other analyzers
+returned before the refusal), logs the denied ones, and records the refused regions for
+the edges (decision 3). When every region is refused, the error carries the
+alphabetically first region's refusal, so it does not depend on scheduling. The listing
+helper is parameterised by analyzer types and finding type; `findings()` is unchanged.
+An unused-access list is a follow-up and would use the same helper and rule.
 
 **3. Store edges.** `externalAccessFindings()` is added to `aws.dynamodb.table`,
 `aws.rds.snapshot` (DB and cluster snapshots), `aws.efs.filesystem` and
@@ -89,7 +90,25 @@ the resource's:
   region for `aws.iam.role`, a global resource), the edge returns `llx.NotApplicable`
   naming the region. The new edges do so unconditionally; the four existing edges do so
   only under `plugin.StructuredErrors()` and keep returning `[]` with the flag off
-  (ADR 046 §9).
+  (ADR 046 §9), for a refused list as well as a missing analyzer. A region whose
+  `ListAnalyzers` call is refused has no listed analyzer, so it reads as not covered.
+  `aws.s3.bucket` takes its region from the bucket's location.
+- **Refused region.** When the resource's region is covered but its findings listing was
+  refused (decision 2), the edge returns `llx.Forbidden` naming
+  `access-analyzer:ListFindings`, under the same rule as coverage: `[]` would claim the
+  resource is reachable by no one. A global resource needs only one readable region.
+- **Global resources.** Access Analyzer reports a global resource (an IAM role) in every
+  region with an analyzer, so a role's edge keeps the findings of one region, the
+  alphabetically first, and one grant is not returned once per region. Findings of an
+  `ACCOUNT` and an `ORGANIZATION` analyzer in that region both stay: they judge against
+  different zones of trust.
+- **ARN matching.** A finding belongs to the resource when service, region and resource
+  of the two ARNs agree and the accounts agree or one is empty. The partition is not
+  compared: some resource ARNs are built with `aws`, which in GovCloud and China Access
+  Analyzer reports as `aws-us-gov` and `aws-cn`, and the canonical EC2 snapshot ARN has
+  no account.
+- **Throttling** and other transient errors of the list are returned as they are, not
+  classified.
 
 **4. One detail fetch, one error rule.** The external-access details come from one
 memo per analyzer, filled by one paged `ListFindings` call (the v1 operation, whose
@@ -120,9 +139,11 @@ an external-access detail with an `AWS` account principal, with `{"AWS": "*"}` a
 `isPublic` true, with a condition and with an access-point source; null fields on an
 unused-access finding without a call; one `ListFindings` pass for two findings of one
 analyzer; the `GetFindingV2` fallback for a missing id; `Forbidden` on each refusal;
-`NotApplicable` from the list and from an edge in a region without an analyzer; the type
-filter dropping an `UnusedIAMRole` finding from a role's edge; the existing edges' `[]`
-with the flag off. Each case is labelled measured or synthetic; the measured cases come
+`NotApplicable` from the list and from an edge in a region without an analyzer;
+`Forbidden` from an edge in a region whose listing was refused while another region's is
+read; a role reported in two regions returned once; ARN matching across partitions and
+for an account-less snapshot ARN; the type filter dropping an `UnusedIAMRole` finding
+from a role's edge; the existing edges' `[]` with the flag off. Each case is labelled measured or synthetic; the measured cases come
 from an account with a bucket shared to a second account and a public bucket.
 
 ## Security implications
@@ -162,7 +183,8 @@ from an account with a bucket shared to a second account and a public bucket.
 
 - A check can say which sensitive store is reachable from outside, by whom and with which
   actions, and can tell "no analyzer here" from "nothing reachable".
-- One listing helper serves external-access and unused-access lists.
+- One listing helper, parameterised by analyzer and finding type, can serve an
+  unused-access list later.
 
 ### Negative
 
@@ -175,6 +197,9 @@ from an account with a bucket shared to a second account and a public bucket.
   directory buckets) when a check needs them.
 - A per-region coverage field on `aws.iam.accessAnalyzer` if content needs more than the
   analyzer list.
+- `unusedAccessFindings()` on `aws.iam.accessAnalyzer`, through the same helper.
+- Confirm on a live account which ARN form Access Analyzer reports for an EBS snapshot;
+  the matching rule accepts both.
 
 ## Alternatives considered
 
