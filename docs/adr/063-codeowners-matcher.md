@@ -1,4 +1,4 @@
-# ADR 054: One CODEOWNERS matcher for GitHub and GitLab
+# ADR 063: One CODEOWNERS matcher for GitHub and GitLab
 
 ## Status
 

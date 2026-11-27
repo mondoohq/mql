@@ -330,31 +330,66 @@ func (m *matcher) matchPath(segs []string) bool {
 		return m.matchFrom(0, 0, segs, nil)
 	}
 	var buf [256]bool
-	failed := buf[:0]
-	if n := (len(m.segs) + 1) * (len(segs) + 1); n <= len(buf) {
-		failed = buf[:n]
-	} else {
-		failed = make([]bool, n)
-	}
-	return m.matchFrom(0, 0, segs, failed)
+	return m.matchFrom(0, 0, segs, newFailedSet(len(m.segs)+1, len(segs)+1, buf[:]))
 }
 
-func (m *matcher) matchFrom(pi, si int, segs []string, failed []bool) bool {
-	if failed != nil {
-		key := pi*(len(segs)+1) + si
-		if failed[key] {
-			return false
-		}
-		if m.matchStep(pi, si, segs, failed) {
-			return true
-		}
-		failed[key] = true
+// maxDenseStates caps the flat table at 1 MiB of bools. Above it, which
+// takes a pattern and a path that are both long, failed states go in a map,
+// which only grows with the states actually visited.
+const maxDenseStates = 1 << 20
+
+// failedSet records the (pattern segment, path segment) states that cannot
+// match. A nil *failedSet records nothing.
+type failedSet struct {
+	cols   int
+	dense  []bool
+	sparse map[[2]int]struct{}
+}
+
+func newFailedSet(rows, cols int, buf []bool) *failedSet {
+	// rows*cols compared by division, so a huge pattern or path cannot
+	// overflow the product.
+	if rows > maxDenseStates/cols {
+		return &failedSet{sparse: map[[2]int]struct{}{}}
+	}
+	n := rows * cols
+	if n <= len(buf) {
+		return &failedSet{cols: cols, dense: buf[:n]}
+	}
+	return &failedSet{cols: cols, dense: make([]bool, n)}
+}
+
+func (f *failedSet) has(pi, si int) bool {
+	if f.sparse != nil {
+		_, ok := f.sparse[[2]int{pi, si}]
+		return ok
+	}
+	return f.dense[pi*f.cols+si]
+}
+
+func (f *failedSet) add(pi, si int) {
+	if f.sparse != nil {
+		f.sparse[[2]int{pi, si}] = struct{}{}
+		return
+	}
+	f.dense[pi*f.cols+si] = true
+}
+
+func (m *matcher) matchFrom(pi, si int, segs []string, failed *failedSet) bool {
+	if failed == nil {
+		return m.matchStep(pi, si, segs, failed)
+	}
+	if failed.has(pi, si) {
 		return false
 	}
-	return m.matchStep(pi, si, segs, failed)
+	if m.matchStep(pi, si, segs, failed) {
+		return true
+	}
+	failed.add(pi, si)
+	return false
 }
 
-func (m *matcher) matchStep(pi, si int, segs []string, failed []bool) bool {
+func (m *matcher) matchStep(pi, si int, segs []string, failed *failedSet) bool {
 	if pi == len(m.segs) {
 		rest := len(segs) - si
 		if rest == 0 {

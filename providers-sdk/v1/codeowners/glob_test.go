@@ -73,3 +73,19 @@ func TestDoubleStarBacktracking(t *testing.T) {
 		assert.Less(t, time.Since(start), 2*time.Second, d.String())
 	}
 }
+
+// Synthetic: a state table past maxDenseStates switches failedSet to the
+// map, which must still prune and still match.
+func TestDoubleStarBacktrackingSparse(t *testing.T) {
+	assert.NotNil(t, newFailedSet(maxDenseStates, 2, nil).sparse)
+	assert.Nil(t, newFailedSet(maxDenseStates/2, 2, nil).sparse)
+
+	// The same blowup as TestDoubleStarBacktracking, run on the map.
+	m := compileGitHub("/" + strings.Repeat("**/a/", 12) + "b")
+	deep := strings.Repeat("a/", 40)
+	sparse := func() *failedSet { return &failedSet{sparse: map[[2]int]struct{}{}} }
+	start := time.Now()
+	assert.False(t, m.matchFrom(0, 0, splitPath(deep+"c"), sparse()))
+	assert.True(t, m.matchFrom(0, 0, splitPath(deep+"b"), sparse()))
+	assert.Less(t, time.Since(start), 2*time.Second)
+}
