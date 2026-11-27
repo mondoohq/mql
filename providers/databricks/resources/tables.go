@@ -227,15 +227,40 @@ func columnMaskFunction(c catalog.ColumnInfo) string {
 	return c.Mask.FunctionName
 }
 
+// columnInfos returns the table's columns. The tables list includes them unless
+// omit_columns is set, which listTables does not set. A table that came back
+// without columns is read once on its own, so a list response that omits them
+// yields the columns at the cost of one call per such table rather than an
+// empty list.
+func (r *mqlDatabricksTable) columnInfos() ([]catalog.ColumnInfo, error) {
+	if len(r.cacheColumns) > 0 {
+		return r.cacheColumns, nil
+	}
+	ws, err := workspaceClient(r.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	t, err := ws.Tables.GetByFullName(context.Background(), r.FullName.Data)
+	if err != nil {
+		return nil, classifyDatabricksError(err)
+	}
+	r.cacheColumns = t.Columns
+	return r.cacheColumns, nil
+}
+
 func (r *mqlDatabricksTable) columns() ([]any, error) {
-	out := make([]any, 0, len(r.cacheColumns))
-	for i := range r.cacheColumns {
-		res, err := CreateResource(r.MqlRuntime, "databricks.table.column", columnFields(r.FullName.Data, r.cacheColumns[i]))
+	infos, err := r.columnInfos()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]any, 0, len(infos))
+	for i := range infos {
+		res, err := CreateResource(r.MqlRuntime, "databricks.table.column", columnFields(r.FullName.Data, infos[i]))
 		if err != nil {
 			return nil, err
 		}
 		col := res.(*mqlDatabricksTableColumn)
-		col.cacheMaskFunction = columnMaskFunction(r.cacheColumns[i])
+		col.cacheMaskFunction = columnMaskFunction(infos[i])
 		out = append(out, col)
 	}
 	return out, nil
