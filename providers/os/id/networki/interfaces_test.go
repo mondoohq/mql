@@ -58,7 +58,9 @@ func TestInterfacesDarwin(t *testing.T) {
 		if assert.NotNil(t, en0.Active) {
 			assert.True(t, *en0.Active)
 		}
-		assert.Nil(t, en0.Virtual)
+		if assert.NotNil(t, en0.Virtual) {
+			assert.False(t, *en0.Virtual)
+		}
 		assert.ElementsMatch(t, []string{"UP", "BROADCAST", "SMART", "RUNNING", "SIMPLEX", "MULTICAST"}, en0.Flags)
 		if assert.NotEmpty(t, en0.IPAddresses) {
 			i4 := en0.FindIP(net.ParseIP("192.168.86.36"))
@@ -79,6 +81,44 @@ func TestInterfacesDarwin(t *testing.T) {
 				assert.Equal(t, "", ipv6.Broadcast)
 				assert.Equal(t, "", ipv6.Gateway)
 			}
+		}
+	}
+}
+
+// Interfaces macOS creates in software are virtual, and ones without an
+// ifconfig status line are active when RUNNING.
+func TestInterfacesDarwinVirtualAndActive(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/macos.toml"))
+	require.NoError(t, err)
+	platform, ok := detector.DetectOS(conn)
+	require.True(t, ok)
+	interfaces, err := subject.Interfaces(conn, platform)
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		name    string
+		virtual bool
+		active  bool
+	}{
+		{"lo0", true, true},
+		{"gif0", true, false},
+		{"utun0", true, true},
+		{"ipsec0", true, true},
+		{"bridge0", true, false},
+		{"awdl0", true, true},
+		{"en0", false, true},
+		{"en1", false, false},
+	} {
+		index := subject.FindInterface(interfaces, subject.Interface{Name: tc.name})
+		if !assert.NotEqual(t, -1, index, tc.name) {
+			continue
+		}
+		iface := interfaces[index]
+		if assert.NotNil(t, iface.Virtual, tc.name) {
+			assert.Equal(t, tc.virtual, *iface.Virtual, tc.name)
+		}
+		if assert.NotNil(t, iface.Active, tc.name) {
+			assert.Equal(t, tc.active, *iface.Active, tc.name)
 		}
 	}
 }

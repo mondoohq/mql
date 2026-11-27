@@ -2404,11 +2404,11 @@ func TestSuggestions(t *testing.T) {
 			// so offering both is redundant. `os.unix.sshd` used to appear here
 			// and `sshd` covers it. Without that filter, attaching the os
 			// surface to its asset roots (ADR 031) put one rooted alias per
-			// resource in the pool and `ssh` started suggesting
+			// resource in the pool and a misspelled `sshd` started suggesting
 			// `os.base.apache2`.
-			"ssh",
-			[]string{"macos.sharing", "postgresql.hba", "sshd", "sshd.config", "windows.powershell", "windows.schannel", "windows.security.health"},
-			errors.New("cannot find resource for identifier 'ssh'"),
+			"shd",
+			[]string{"macos.hardware", "shadow", "shadow.entry", "sshd", "sshd.config", "windows.defender.threatIdAction"},
+			errors.New("cannot find resource for identifier 'shd'"),
 			nil,
 		},
 		{
@@ -2828,4 +2828,32 @@ func TestCompiler_PrivateResourcePathPrefersField(t *testing.T) {
 			})
 		})
 	}
+}
+
+// `empty` is not a value that has fields or elements. Asking for one is an
+// error the compiler reports; it used to be a panic.
+func TestCompiler_NothingIsCalledOnEmpty(t *testing.T) {
+	for _, query := range []string{
+		`1 == empty.length`,
+		`empty.length`,
+		`empty[0]`,
+		`mondoo.version == empty.length == 0`,
+		// A line that starts with [ goes on with the line before it.
+		"mondoo.version == empty\n[1]",
+	} {
+		t.Run(query, func(t *testing.T) {
+			var err error
+			require.NotPanics(t, func() {
+				_, err = mqlc.Compile(query, nil, conf)
+			})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "`empty`")
+		})
+	}
+
+	// And on its own it is what it was.
+	_, err := mqlc.Compile(`mondoo.version == empty`, nil, conf)
+	require.NoError(t, err)
+	_, err = mqlc.Compile(`mondoo.version != empty`, nil, conf)
+	require.NoError(t, err)
 }

@@ -94,6 +94,19 @@ schedule real interval 5 command show version
 	assert.Equal(t, "real", tasks[0].Name)
 }
 
+func TestParseScheduledTasks_IgnoresGlobalSettings(t *testing.T) {
+	// `schedule config ...` sets options for every schedule; it is not a
+	// schedule. `show running-config all` renders both lines (EOS 4.37).
+	cfg := `schedule config max-concurrent-jobs 1
+schedule config prepend-hostname-logfile
+schedule tech-support interval 60 timeout 30 max-log-files 100 command show tech-support
+`
+	tasks := ParseScheduledTasks(cfg)
+	require.Len(t, tasks, 1)
+	assert.Equal(t, "tech-support", tasks[0].Name)
+	assert.Equal(t, 30, tasks[0].Timeout)
+}
+
 func TestParseScheduledTasks_None(t *testing.T) {
 	assert.Empty(t, ParseScheduledTasks("interface Ethernet1\n"))
 }

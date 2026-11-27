@@ -295,6 +295,28 @@ func flexInstanceReachable(acl []any) bool {
 	return false
 }
 
+// flexScopedReachable adds the instance's network access scope, which the v3
+// Postgres and SQLServer Flex APIs report, to the ACL check. An instance
+// scoped to a STACKIT Network Area (SNA) has no public endpoint, so its ACL
+// cannot open it to the internet. A nil scope means the scope is unknown, and
+// the ACL alone decides, as it did before the scope was available.
+func flexScopedReachable(scope *string, acl []any) bool {
+	if scope != nil && !strings.EqualFold(*scope, "PUBLIC") {
+		return false
+	}
+	return flexInstanceReachable(acl)
+}
+
+// knownAccessScope returns the access scope when the service reported one, and
+// nil when it is null or could not be read, so a failed scope read falls back
+// to the ACL check instead of failing the exposure verdict.
+func knownAccessScope(field *plugin.TValue[string]) *string {
+	if field.Error != nil || field.State&plugin.StateIsNull != 0 {
+		return nil
+	}
+	return &field.Data
+}
+
 // loadBalancerExposure builds the network-exposure breakdown for a legacy
 // load balancer. The access-control allow-list takes the place of a security
 // group; openIngressRules is empty because the legacy LB has no per-rule model.
@@ -380,7 +402,7 @@ func (c *mqlStackitPostgresFlexInstance) internetReachable() (bool, error) {
 	if acl.Error != nil {
 		return false, acl.Error
 	}
-	return flexInstanceReachable(acl.Data), nil
+	return flexScopedReachable(knownAccessScope(c.GetAccessScope()), acl.Data), nil
 }
 
 func (c *mqlStackitMongoDbFlexInstance) internetReachable() (bool, error) {
@@ -410,7 +432,7 @@ func (c *mqlStackitSqlServerFlexInstance) internetReachable() (bool, error) {
 	if acl.Error != nil {
 		return false, acl.Error
 	}
-	return flexInstanceReachable(acl.Data), nil
+	return flexScopedReachable(knownAccessScope(c.GetAccessScope()), acl.Data), nil
 }
 
 // ---- DBaaS managed instances (parameters-based) ----

@@ -7,11 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices/v3"
 	"github.com/rs/zerolog/log"
@@ -76,10 +74,8 @@ func (a *mqlAzureSubscriptionCognitiveServicesService) accounts() ([]any, error)
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			var respErr *azcore.ResponseError
-			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden {
-				log.Warn().Err(err).Msg("could not list cognitive services accounts due to access denied")
-				return keepTagMatches(a.MqlRuntime, res), nil
+			if isAzureAccessDenied(err) {
+				return refusedCollection(&a.Accounts, err, "Microsoft.CognitiveServices/accounts/read")
 			}
 			return nil, err
 		}
@@ -616,10 +612,8 @@ func (a *mqlAzureSubscriptionCognitiveServicesServiceAccount) raiPolicies() ([]a
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			var respErr *azcore.ResponseError
-			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden {
-				log.Warn().Err(err).Msg("could not list cognitive services RAI policies due to access denied")
-				return res, nil
+			if isAzureAccessDenied(err) {
+				return refusedCollection(&a.RaiPolicies, err, "Microsoft.CognitiveServices/accounts/raiPolicies/read")
 			}
 			return nil, err
 		}
@@ -662,10 +656,8 @@ func (a *mqlAzureSubscriptionCognitiveServicesServiceAccount) raiTopics() ([]any
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			var respErr *azcore.ResponseError
-			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden {
-				log.Warn().Err(err).Msg("could not list cognitive services RAI topics due to access denied")
-				return res, nil
+			if isAzureAccessDenied(err) {
+				return refusedCollection(&a.RaiTopics, err, "Microsoft.CognitiveServices/accounts/raiTopics/read")
 			}
 			return nil, err
 		}
@@ -725,6 +717,9 @@ func raiPolicyToMql(runtime *plugin.Runtime, pol *armcognitiveservices.RaiPolicy
 			}
 			customBlocklists = append(customBlocklists, entry)
 		}
+		// armcognitiveservices v4 (api-version 2026-11-01) no longer returns a
+		// policy's custom topics, which is why the provider stays on v3 and why
+		// customTopics is deprecated.
 		for _, t := range p.CustomTopics {
 			if t == nil {
 				continue
@@ -934,10 +929,8 @@ func (a *mqlAzureSubscriptionCognitiveServicesServiceAccount) deployments() ([]a
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			var respErr *azcore.ResponseError
-			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden {
-				log.Warn().Err(err).Msg("could not list cognitive services deployments due to access denied")
-				return res, nil
+			if isAzureAccessDenied(err) {
+				return refusedCollection(&a.Deployments, err, "Microsoft.CognitiveServices/accounts/deployments/read")
 			}
 			return nil, err
 		}
@@ -1237,10 +1230,8 @@ func (a *mqlAzureSubscriptionCognitiveServicesServiceAccount) projects() ([]any,
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			var respErr *azcore.ResponseError
-			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden {
-				log.Warn().Err(err).Msg("could not list cognitive services projects due to access denied")
-				return res, nil
+			if isAzureAccessDenied(err) {
+				return refusedCollection(&a.Projects, err, "Microsoft.CognitiveServices/accounts/projects/read")
 			}
 			return nil, err
 		}
@@ -1350,10 +1341,8 @@ func (a *mqlAzureSubscriptionCognitiveServicesServiceAccount) connections() ([]a
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			var respErr *azcore.ResponseError
-			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden {
-				log.Warn().Err(err).Msg("could not list cognitive services account connections due to access denied")
-				return res, nil
+			if isAzureAccessDenied(err) {
+				return refusedCollection(&a.Connections, err, "Microsoft.CognitiveServices/accounts/connections/read")
 			}
 			return nil, err
 		}
@@ -1397,10 +1386,8 @@ func (a *mqlAzureSubscriptionCognitiveServicesServiceAccountProject) connections
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			var respErr *azcore.ResponseError
-			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden {
-				log.Warn().Err(err).Msg("could not list cognitive services project connections due to access denied")
-				return res, nil
+			if isAzureAccessDenied(err) {
+				return refusedCollection(&a.Connections, err, "Microsoft.CognitiveServices/accounts/projects/connections/read")
 			}
 			return nil, err
 		}

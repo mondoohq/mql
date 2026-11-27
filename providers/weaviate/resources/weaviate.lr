@@ -51,6 +51,61 @@ weaviate.instance @defaults("version rbacEnabled anonymousAccessEnabled") @root 
   groups() []weaviate.group
   // Cluster nodes backing the server
   nodes() []weaviate.node
+  // Backups held by every enabled backup backend
+  //
+  // A backend is enabled by a backup module such as backup-s3 or
+  // backup-filesystem. A server with no backup module reports no backups.
+  backups() []weaviate.backup
+  // Aliases defined on the server, each naming the collection it points to
+  aliases() []weaviate.alias
+}
+
+// Weaviate backup
+//
+// A backup held by one backup backend: its status, when it started and
+// completed, its size, and the collections it contains. The id and backend
+// fields select the backup, for example
+// weaviate.instance.backups.where(backend == "s3" && status == "FAILED").
+weaviate.backup @defaults("id backend status") {
+  // Backup identifier
+  id string
+  // Backend that holds the backup, for example "s3", "gcs", "azure", or "filesystem"
+  backend string
+  // Backup status
+  //
+  // One of STARTED, TRANSFERRING, TRANSFERRED, FINALIZING, SUCCESS, FAILED,
+  // CANCELLING, or CANCELED. A status added to the server later is reported
+  // as the server names it.
+  status string
+  // When the backup started
+  startedAt time
+  // When the backup completed, successfully or not
+  //
+  // Null while the backup is still running.
+  completedAt time
+  // Size of the backup in GiB
+  //
+  // Null when the server reports no size.
+  sizeGiB float
+  // Names of the collections the backup contains
+  //
+  // Includes collections deleted since the backup was taken, which the
+  // collections list leaves out.
+  collectionNames []string
+  // Collections the backup contains that still exist on the server
+  collections() []weaviate.collection
+}
+
+// Weaviate collection alias
+//
+// An alternative name that resolves to a collection. Queries addressed to the
+// alias reach the collection it points to. The name field selects the alias,
+// for example weaviate.instance.aliases.where(name == "ArticleLive").
+weaviate.alias @defaults("name") {
+  // Alias name
+  name string
+  // Collection the alias points to
+  collection() weaviate.collection
 }
 
 // Weaviate collection
@@ -84,6 +139,59 @@ weaviate.collection @defaults("name vectorizer multiTenancyEnabled") {
   asyncReplicationEnabled bool
   // Vector index type, for example "hnsw", "flat", or "dynamic"
   vectorIndexType string
+  // Generative module the collection sends retrieved data to, for example "generative-openai"
+  //
+  // Null when no generative module is configured. Generative search passes
+  // query results to the external language model this module calls.
+  generativeModule string
+  // Reranker module the collection sends results to, for example "reranker-cohere"
+  //
+  // Null when no reranker module is configured.
+  rerankerModule string
+  // Endpoints the collection's modules are pointed at, keyed by module name
+  //
+  // Only modules whose configuration names an endpoint appear, for example
+  // moduleEndpoints["generative-openai"] == "https://llm.internal.example".
+  // The server can store a module's default endpoint here as well. Credentials
+  // and query strings in a URL are left out.
+  moduleEndpoints map[string]string
+  // Vectorizer module of each named vector, keyed by vector name
+  //
+  // Empty for a collection without named vectors, whose single vectorizer is
+  // in vectorizer. A vector without a vectorizer reads "none".
+  vectorizers map[string]string
+  // Whether objects expire after a time to live
+  objectTtlEnabled bool
+  // Seconds added to the deleteOn time to compute an object's expiry
+  //
+  // Null when no time-to-live configuration is set.
+  objectTtlDefault int
+  // Property holding the base time an object's expiry is computed from
+  //
+  // "_creationTimeUnix", "_lastUpdateTimeUnix", or a custom date property.
+  // Null when no time-to-live configuration is set.
+  objectTtlDeleteOn string
+  // How replicas resolve an object deleted on one replica and present on another
+  //
+  // One of NoAutomatedResolution, DeleteOnConflict, or TimeBasedResolution.
+  // Null when the server reports none.
+  replicationDeletionStrategy string
+  // Tenants of a multi-tenant collection
+  //
+  // Empty when multi-tenancy is not enabled.
+  tenants() []weaviate.collection.tenant
+}
+
+// Weaviate collection tenant
+//
+// A tenant of a multi-tenant collection and whether its data is loaded. The
+// name field selects the tenant, for example
+// tenants.where(activityStatus != "ACTIVE").
+weaviate.collection.tenant @defaults("name activityStatus") {
+  // Tenant name
+  name string
+  // Tenant activity status, for example "ACTIVE", "INACTIVE", or "OFFLOADED"
+  activityStatus string
 }
 
 // Weaviate role
@@ -111,8 +219,9 @@ weaviate.role @defaults("name isBuiltin") {
 // Weaviate role permission
 //
 // A single action a role is allowed, the permission domain it belongs to, and
-// the qualifiers that domain carries: the collection, alias, shard, group, or
-// role the action is limited to, and the scope of a role-management grant. A
+// the qualifiers that domain carries: the collection, tenant, object, alias,
+// shard, group, user, namespace, or role the action is limited to, and the
+// scope of a role-management grant. A
 // qualifier the domain does not carry reads as null, so
 // permissions.where(scope == "all") selects only role-management grants that
 // can hand out permissions the role does not itself hold.
@@ -121,15 +230,16 @@ weaviate.role.permission @defaults("domain action collection") {
   action string
   // Permission domain the action belongs to
   //
-  // One of alias, backups, cluster, collections, data, groups, mcp, nodes,
-  // replicate, roles, tenants, or users. Selects a class of grants without
-  // matching on action names, for example
+  // One of alias, backups, cluster, collections, data, groups, mcp,
+  // namespaces, nodes, replicate, roles, tenants, or users. A domain added to
+  // the server later is reported by the name the server gives it. Selects a
+  // class of grants without matching on action names, for example
   // permissions.where(domain == "backups").
   domain string
   // Collection the action is scoped to, "*" for all, or empty when not applicable
   //
-  // Carried by the alias, backups, collections, data, nodes, and replicate
-  // domains. An exact collection name or a regular expression.
+  // Carried by the alias, backups, collections, data, nodes, replicate, and
+  // tenants domains. An exact collection name or a regular expression.
   collection string
   // Scope of a role-management grant
   //
@@ -165,6 +275,25 @@ weaviate.role.permission @defaults("domain action collection") {
   // "verbose" returns shard and statistics data, "minimal" does not. Null
   // outside the nodes domain.
   verbosity string
+  // Tenant the action applies to, "*" for all
+  //
+  // An exact tenant name or a regular expression, within the collection the
+  // grant names. A grant scoped to one tenant reaches only that tenant's data.
+  // Null outside the data and tenants domains.
+  tenant string
+  // Object the action applies to, "*" for all
+  //
+  // An exact object ID or a regular expression. Null outside the data domain.
+  object string
+  // User the action applies to, "*" for all
+  //
+  // An exact user name or a regular expression. Null outside the users domain.
+  targetUser string
+  // Namespace the action applies to, "*" for all
+  //
+  // An exact namespace name or a regular expression. Null outside the
+  // namespaces domain.
+  namespace string
 }
 
 // Weaviate user
@@ -226,4 +355,10 @@ weaviate.node @defaults("name status version") {
   shardCount int
   // Number of objects stored on the node
   objectCount int
+  // Mode of operation the node runs in
+  //
+  // One of ReadWrite, ReadOnly, WriteOnly, or ScaleOut. A read-only node
+  // rejects writes, a write-only node rejects reads. Null when the server
+  // reports none.
+  operationalMode string
 }

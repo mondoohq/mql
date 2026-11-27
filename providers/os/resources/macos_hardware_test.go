@@ -120,3 +120,55 @@ func TestParseMacosHardwareInvalid(t *testing.T) {
 	_, err = parseMacosHardware([]byte(`{"SPHardwareDataType": []}`))
 	assert.Error(t, err)
 }
+
+func TestParseMacosProcessorCounts(t *testing.T) {
+	tests := []struct {
+		in               string
+		total, perf, eff int64
+	}{
+		// Measured: Apple M4 Max MacBook Pro (Mac16,5), from the existing physical Mac fixture above.
+		{"proc 16:12:4", 16, 12, 4},
+		// Measured: Apple M4 Pro MacBook Pro (Mac16,8), macOS 27.2, 2026-11-19. sysctl
+		// hw.perflevel0/1.physicalcpu reported 10 performance and 4 efficiency cores, and the
+		// live scan returned cores 14, performanceCores 10, efficiencyCores 4.
+		{"proc 14:0:10:4", 14, 10, 4},
+		// Measured: Apple Virtual Machine (VirtualMac2,1), from the existing VM fixture above.
+		{"2", 2, 0, 0},
+		// Synthetic: absent or null number_processors; no target showed this.
+		{"", 0, 0, 0},
+		// Synthetic: unparseable value; no target showed this.
+		{"proc garbage", 0, 0, 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.in, func(t *testing.T) {
+			total, perf, eff := parseMacosProcessorCounts(tc.in)
+			assert.Equal(t, tc.total, total)
+			assert.Equal(t, tc.perf, perf)
+			assert.Equal(t, tc.eff, eff)
+		})
+	}
+}
+
+func TestParseMacosMemoryBytes(t *testing.T) {
+	tests := []struct {
+		in   string
+		want int64
+	}{
+		// Measured: Apple M4 Pro MacBook Pro (Mac16,8), macOS 27.2, 2026-11-19. The live scan
+		// returned physicalMemoryBytes 25769803776.
+		{"24 GB", 24 << 30},
+		// Synthetic: MB unit; no target showed this.
+		{"512 MB", 512 << 20},
+		// Synthetic: TB unit with a fraction, as on large Mac Pro configurations; no target showed this.
+		{"1.5 TB", 3 << 39},
+		// Synthetic: empty, unit-less, and unknown-unit values; no target showed these.
+		{"", 0},
+		{"lots", 0},
+		{"8 XB", 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.in, func(t *testing.T) {
+			assert.Equal(t, tc.want, parseMacosMemoryBytes(tc.in))
+		})
+	}
+}

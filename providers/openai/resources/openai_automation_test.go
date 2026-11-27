@@ -329,3 +329,26 @@ func TestAutomationSandboxSkillAndFileArgs(t *testing.T) {
 	assert.Empty(t, inlineFileID)
 	assert.Equal(t, int64(42), fileInline["sizeBytes"].Value)
 }
+
+// Synthetic: pause_reason as documented in openai-go v3.106.0, whose only
+// listed value is target_session_failed; no live organization was checked.
+func TestAutomationArgsPauseReason(t *testing.T) {
+	paused := decodeJSON[openai.AutomationUnion](t, `{
+		"id": "auto_p1", "type": "once", "status": "paused",
+		"pause_reason": "target_session_failed", "run_at": 1767225600,
+		"created_by": {"type": "developer"},
+		"target": {"type": "existing_session", "session_id": "sess_1", "instructions": "go"}
+	}`)
+	args, _ := automationArgs(paused)
+	assert.Equal(t, "target_session_failed", args["pauseReason"].Value)
+
+	for name, payload := range map[string]string{
+		"null":   `{"id": "auto_a1", "type": "once", "status": "active", "pause_reason": null}`,
+		"absent": `{"id": "auto_a2", "type": "once", "status": "active"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			args, _ := automationArgs(decodeJSON[openai.AutomationUnion](t, payload))
+			assert.Nil(t, args["pauseReason"].Value)
+		})
+	}
+}

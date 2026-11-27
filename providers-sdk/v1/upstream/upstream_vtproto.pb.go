@@ -307,7 +307,7 @@ func (m *ExchangeExternalTokenRequest) CloneVT() *ExchangeExternalTokenRequest {
 	r.IssuerUri = m.IssuerUri
 	r.Audience = m.Audience
 	r.JwtToken = m.JwtToken
-	r.ResponseType = m.ResponseType
+	r.ResponseFormat = m.ResponseFormat
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1172,12 +1172,10 @@ func (m *ExchangeExternalTokenRequest) MarshalToSizedBufferVT(dAtA []byte) (int,
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.ResponseType) > 0 {
-		i -= len(m.ResponseType)
-		copy(dAtA[i:], m.ResponseType)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ResponseType)))
+	if m.ResponseFormat != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ResponseFormat))
 		i--
-		dAtA[i] = 0x22
+		dAtA[i] = 0x20
 	}
 	if len(m.JwtToken) > 0 {
 		i -= len(m.JwtToken)
@@ -1582,9 +1580,8 @@ func (m *ExchangeExternalTokenRequest) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	l = len(m.ResponseType)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	if m.ResponseFormat != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.ResponseFormat))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -3953,10 +3950,10 @@ func (m *ExchangeExternalTokenRequest) UnmarshalVT(dAtA []byte) error {
 			m.JwtToken = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ResponseType", wireType)
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ResponseFormat", wireType)
 			}
-			var stringLen uint64
+			m.ResponseFormat = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -3966,24 +3963,11 @@ func (m *ExchangeExternalTokenRequest) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
+				m.ResponseFormat |= ExchangeExternalTokenResponseFormat(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.ResponseType = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

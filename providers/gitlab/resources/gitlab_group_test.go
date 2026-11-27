@@ -13,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -243,4 +244,73 @@ func TestPopulateGroupDetailArgsSetsDetailOnlyFields(t *testing.T) {
 	for _, k := range []string{"membershipLock", "preventForkingOutsideGroup", "ipRestrictionRanges", "allowedEmailDomainsList", "sharedWithGroups"} {
 		assert.NotContains(t, listArgs, k, "list-shaped args must leave %s to groupDetail", k)
 	}
+}
+
+func TestGetGroupDetailWithPolicyReadsSettings(t *testing.T) {
+	// Synthetic: attribute names from GET /groups/:id on a Premium top-level
+	// group. No target showed these values.
+	calls := 0
+	client, _ := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		assert.Equal(t, "/api/v4/groups/42", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"id": 42, "membership_lock": true,
+			"prevent_sharing_groups_outside_hierarchy": false,
+			"enabled_git_access_protocol": "ssh",
+			"duo_availability": "never_on",
+			"experiment_features_enabled": true,
+			"file_template_project_id": 77}`)
+	}))
+
+	grp, policy, err := getGroupDetailWithPolicy(client, 42)
+	require.NoError(t, err)
+	assert.Equal(t, 1, calls, "both views must come from one request")
+	assert.True(t, grp.MembershipLock)
+	require.NotNil(t, policy.PreventSharingGroupsOutsideHierarchy)
+	assert.False(t, *policy.PreventSharingGroupsOutsideHierarchy)
+	assert.Equal(t, "ssh", *policy.EnabledGitAccessProtocol)
+	assert.Equal(t, "never_on", *policy.DuoAvailability)
+	assert.True(t, *policy.ExperimentFeaturesEnabled)
+	assert.EqualValues(t, 77, *policy.FileTemplateProjectID)
+}
+
+func TestGroupPolicyFieldsNullWhenNotReported(t *testing.T) {
+	// Synthetic: a subgroup on a Free instance, whose payload carries none of
+	// the attributes.
+	runtime := newTestGroupRuntime(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"id": 7, "name": "api"}`)
+	}))
+	res, err := CreateResource(runtime, "gitlab.group", map[string]*llx.RawData{"id": llx.IntData(7), "name": llx.StringData("api"), "path": llx.StringData("api")})
+	require.NoError(t, err)
+	grp := res.(*mqlGitlabGroup)
+
+	sharing := grp.GetPreventSharingGroupsOutsideHierarchy()
+	require.NoError(t, sharing.Error)
+	assert.NotZero(t, sharing.State&plugin.StateIsNull, "an unreported restriction must read null, not false")
+	assert.NotZero(t, grp.GetEnabledGitAccessProtocol().State&plugin.StateIsNull)
+	assert.NotZero(t, grp.GetDuoAvailability().State&plugin.StateIsNull)
+	assert.NotZero(t, grp.GetExperimentFeaturesEnabled().State&plugin.StateIsNull)
+	templates := grp.GetFileTemplateProject()
+	require.NoError(t, templates.Error)
+	assert.NotZero(t, templates.State&plugin.StateIsNull)
+}
+
+func TestHookURLVariableNames(t *testing.T) {
+	// Synthetic: a hook with two URL variables, one carrying a value.
+	names := hookURLVariableNames([]gitlab.HookURLVariable{
+		{Key: "token", Value: "s3cret"},
+		{Key: ""},
+		{Key: "region"},
+	})
+	assert.Equal(t, []any{"token", "region"}, names)
+	assert.NotContains(t, names, "s3cret", "values must never be reported")
+	assert.Equal(t, []any{}, hookURLVariableNames(nil))
+}
+
+func TestSamlIdentityData(t *testing.T) {
+	// Synthetic: a member linked to the group's SAML provider, and one who is not.
+	data := samlIdentityData(&gitlab.GroupMemberSAMLIdentity{ExternUID: "okta|00u1", Provider: "group_saml", SAMLProviderID: 3})
+	assert.Equal(t, map[string]any{"externUid": "okta|00u1", "provider": "group_saml"}, data.Value)
+	assert.Nil(t, samlIdentityData(nil).Value, "a member without a SAML identity must read null")
 }

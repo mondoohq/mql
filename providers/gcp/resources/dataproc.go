@@ -497,12 +497,23 @@ func (g *mqlGcpProjectDataprocService) clusters() ([]any, error) {
 
 						componentGatewayEnabled := c.Config.EndpointConfig != nil && c.Config.EndpointConfig.EnableHttpPortAccess
 						kerberosEnabled := c.Config.SecurityConfig != nil && c.Config.SecurityConfig.KerberosConfig != nil && c.Config.SecurityConfig.KerberosConfig.EnableKerberos
-						sshEnabled := c.Config.SecurityConfig != nil && c.Config.SecurityConfig.IdentityConfig != nil && c.Config.SecurityConfig.IdentityConfig.EnableSsh
+						var identityCfg *dataproc.IdentityConfig
+						if c.Config.SecurityConfig != nil {
+							identityCfg = c.Config.SecurityConfig.IdentityConfig
+						}
+						imageVersion := ""
+						if c.Config.SoftwareConfig != nil {
+							imageVersion = c.Config.SoftwareConfig.ImageVersion
+						}
+						sshEnabled := llx.NilData
+						if v, ok := dataprocEffectiveSshEnabled(identityCfg, imageVersion); ok {
+							sshEnabled = llx.BoolData(v)
+						}
 						mqlConfig, err = CreateResource(g.MqlRuntime, "gcp.project.dataprocService.cluster.config", map[string]*llx.RawData{
 							"parentResourcePath":      llx.StringData(fmt.Sprintf("%s/dataproc/%s", projectId, c.ClusterName)),
 							"componentGatewayEnabled": llx.BoolData(componentGatewayEnabled),
 							"kerberosEnabled":         llx.BoolData(kerberosEnabled),
-							"sshEnabled":              llx.BoolData(sshEnabled),
+							"sshEnabled":              sshEnabled,
 							"autoscaling":             llx.DictData(mqlAutoscalingCfg),
 							"configBucket":            llx.StringData(c.Config.ConfigBucket),
 							"metrics":                 llx.DictData(mqlMetricsCfg),
@@ -1415,4 +1426,94 @@ func (g *mqlGcpProjectDataprocServiceAutoscalingPolicy) id() (string, error) {
 		return "", g.Name.Error
 	}
 	return fmt.Sprintf("gcp.project/%s/dataprocService.autoscalingPolicy/%s", g.ProjectId.Data, g.Name.Data), nil
+}
+
+// dataprocEffectiveSshEnabled reports whether SSH access to a cluster's nodes
+// is enabled, and whether that could be determined. The API returns
+// identityConfig.enableSsh only when it was set at creation; otherwise the
+// image decides: SSH is enabled for image versions before 3.1 and disabled
+// from 3.1 on. An identityConfig without a userServiceAccountMapping exists
+// only to carry enableSsh, so its false is an explicit false. With a mapping,
+// an absent and a false enableSsh decode the same, and the image default is
+// used. A version that cannot be parsed (a custom image) is unknown.
+func dataprocEffectiveSshEnabled(ic *dataproc.IdentityConfig, imageVersion string) (bool, bool) {
+	if ic != nil {
+		if ic.EnableSsh {
+			return true, true
+		}
+		if len(ic.UserServiceAccountMapping) == 0 {
+			return false, true
+		}
+	}
+
+	major, minor, ok := parseDataprocImageMajorMinor(imageVersion)
+	if !ok {
+		return false, false
+	}
+	return major < 3 || (major == 3 && minor < 1), true
+}
+
+// parseDataprocImageMajorMinor reads the major and minor version from a
+// Dataproc image version such as "2.2.89-debian12", "2.3-debian12" or "3.1".
+func parseDataprocImageMajorMinor(v string) (int, int, bool) {
+	parts := strings.SplitN(v, ".", 3)
+	if len(parts) < 2 {
+		return 0, 0, false
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, 0, false
+	}
+	minorStr := parts[1]
+	if i := strings.IndexByte(minorStr, '-'); i >= 0 {
+		minorStr = minorStr[:i]
+	}
+	minor, err := strconv.Atoi(minorStr)
+	if err != nil {
+		return 0, 0, false
+	}
+	return major, minor, true
+}
+
+// dataprocZoneRef splits a Dataproc zoneUri into the project and zone name.
+// Dataproc accepts a full Compute Engine URL, a projects/{p}/zones/{z} path, or
+// a bare zone name, in which case the zone belongs to defaultProject. Returns
+// empty strings for an empty or malformed value.
+func dataprocZoneRef(zoneUri, defaultProject string) (project, zone string) {
+	ref := strings.TrimPrefix(zoneUri, "https://www.googleapis.com/compute/v1/")
+	ref = strings.TrimPrefix(ref, "https://compute.googleapis.com/compute/v1/")
+	if ref == "" {
+		return "", ""
+	}
+	parts := strings.Split(ref, "/")
+	switch {
+	case len(parts) == 1:
+		if defaultProject == "" {
+			return "", ""
+		}
+		return defaultProject, parts[0]
+	case len(parts) == 4 && parts[0] == "projects" && parts[2] == "zones" && parts[1] != "" && parts[3] != "":
+		return parts[1], parts[3]
+	default:
+		return "", ""
+	}
+}
+
+func (g *mqlGcpProjectDataprocServiceClusterConfigGceCluster) zone() (*mqlGcpProjectComputeServiceZone, error) {
+	if g.ZoneUri.Error != nil {
+		return nil, g.ZoneUri.Error
+	}
+	project, zoneName := dataprocZoneRef(g.ZoneUri.Data, g.ProjectId.Data)
+	if zoneName == "" {
+		g.Zone.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(g.MqlRuntime, "gcp.project.computeService.zone", map[string]*llx.RawData{
+		"name":      llx.StringData(zoneName),
+		"projectId": llx.StringData(project),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGcpProjectComputeServiceZone), nil
 }

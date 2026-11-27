@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 func TestDpkgParser(t *testing.T) {
@@ -581,4 +582,88 @@ func TestParseDpkgPackages_RemovedPackagesAreNotInstalled(t *testing.T) {
 		names = append(names, p.Name)
 	}
 	assert.Equal(t, []string{"kept", "unpacked"}, names)
+}
+
+// dpkgListConn answers dpkgListMtimesCmd with a fixed output and counts how
+// often it is asked. Every other command goes to the wrapped connection.
+type dpkgListConn struct {
+	shared.Connection
+	out   string
+	exit  int
+	calls int
+}
+
+func (c *dpkgListConn) RunCommand(command string) (*shared.Command, error) {
+	if command != dpkgListMtimesCmd {
+		return c.Connection.RunCommand(command)
+	}
+	c.calls++
+	return &shared.Command{Command: command, Stdout: bytes.NewBufferString(c.out), Stderr: &bytes.Buffer{}, ExitStatus: c.exit}, nil
+}
+
+// Measured: dpkgListMtimesCmd in a php:8.3-apache container (Debian 13.7,
+// arm64), 2026-11-27, filtered to these packages. libc6 and zlib1g are
+// Multi-Arch: same, tzdata is Architecture: all.
+const deb13Arm64ListMtimes = `1792531975.0000000000 tzdata.list
+1792531975.0000000000 zlib1g:arm64.list
+1792531975.0000000000 libc6:arm64.list
+1792531975.0000000000 base-files.list
+1792542810.0000000000 apache2.list
+1792542128.0000000000 curl.list
+`
+
+// Files answers every package from one listing of /var/lib/dpkg/info. The
+// mock filesystem holds none of the lists, so a lookup by stat would find
+// nothing.
+func TestDebPkgManagerFilesFromInfoListing(t *testing.T) {
+	base, err := mock.New(0, &inventory.Asset{})
+	require.NoError(t, err)
+	conn := &dpkgListConn{Connection: base, out: deb13Arm64ListMtimes}
+	pm := &DebPkgManager{conn: conn, platform: &inventory.Platform{Name: "debian", Arch: "arm64"}}
+
+	paths := func(name, arch string) []string {
+		files, err := pm.Files(name, "", arch)
+		require.NoError(t, err)
+		res := []string{}
+		for _, f := range files {
+			res = append(res, f.Path)
+		}
+		return res
+	}
+	assert.Equal(t, []string{"/var/lib/dpkg/info/curl.list"}, paths("curl", "arm64"))
+	assert.Equal(t, []string{"/var/lib/dpkg/info/libc6:arm64.list"}, paths("libc6", "arm64"))
+	assert.Equal(t, []string{"/var/lib/dpkg/info/tzdata.list"}, paths("tzdata", "all"))
+	assert.Equal(t, []string{"/var/lib/dpkg/info/base-files.list"}, paths("base-files", ""))
+	assert.Empty(t, paths("not-installed", "arm64"))
+	assert.Equal(t, 1, conn.calls, "one listing serves every package")
+}
+
+// Synthetic: a host where the listing fails (no GNU find); no target showed
+// this. Files then looks for each list by name, as it did before.
+func TestDebPkgManagerFilesWithoutListing(t *testing.T) {
+	base, err := mock.New(0, &inventory.Asset{}, mock.WithData(&mock.TomlData{
+		Files: map[string]*mock.MockFileData{
+			"/var/lib/dpkg/info/curl.list":            {Content: "/usr/bin/curl\n"},
+			"/var/lib/dpkg/info/libc6:arm64.list":     {Content: "/usr/lib/aarch64-linux-gnu/libc.so.6\n"},
+			"/var/lib/dpkg/info/libc6:armhf.list":     {Content: "/usr/lib/arm-linux-gnueabihf/libc.so.6\n"},
+			"/var/lib/dpkg/info/tzdata.md5sums":       {Content: ""},
+			"/var/lib/dpkg/info/base-files.conffiles": {Content: ""},
+		},
+	}))
+	require.NoError(t, err)
+	conn := &dpkgListConn{Connection: base, exit: 1}
+	pm := &DebPkgManager{conn: conn, platform: &inventory.Platform{Name: "debian", Arch: "arm64"}}
+
+	files, err := pm.Files("curl", "", "arm64")
+	require.NoError(t, err)
+	assert.Equal(t, []FileRecord{{Path: "/var/lib/dpkg/info/curl.list"}}, files)
+
+	files, err = pm.Files("libc6", "", "arm64")
+	require.NoError(t, err)
+	assert.Equal(t, []FileRecord{{Path: "/var/lib/dpkg/info/libc6:arm64.list"}}, files)
+
+	files, err = pm.Files("tzdata", "", "all")
+	require.NoError(t, err)
+	assert.Empty(t, files)
+	assert.Equal(t, 1, conn.calls, "a failed listing is not retried per package")
 }

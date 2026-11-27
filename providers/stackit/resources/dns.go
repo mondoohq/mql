@@ -68,8 +68,42 @@ func buildDnsZone(runtime *plugin.Runtime, z *dns.Zone) (plugin.Resource, error)
 		"creationStartedAt":  llx.TimeDataPtr(parseDnsTime(z.GetCreationStarted())),
 		"creationFinishedAt": llx.TimeDataPtr(created),
 		"labels":             stringMapData(dnsLabels(z.GetLabels())),
+		"name":               llx.StringData(z.GetName()),
+		"active":             llx.BoolDataPtr(optBool(z.GetActiveOk())),
+		"errorMessage":       llx.StringData(z.GetError()),
+		"updateStartedAt":    llx.TimeDataPtr(parseDnsTime(z.GetUpdateStarted())),
+		"updateFinishedAt":   llx.TimeDataPtr(parseDnsTime(z.GetUpdateFinished())),
 	}
-	return CreateResource(runtime, "stackit.dns.zone", args)
+	res, err := CreateResource(runtime, "stackit.dns.zone", args)
+	if err != nil {
+		return nil, err
+	}
+	res.(*mqlStackitDnsZone).cacheObservabilityInstanceID = dnsZoneObservabilityInstanceID(z)
+	return res, nil
+}
+
+// mqlStackitDnsZoneInternal keeps the observability instance the zone's
+// observability extension names, which observabilityInstance resolves.
+type mqlStackitDnsZoneInternal struct {
+	cacheObservabilityInstanceID string
+}
+
+// dnsZoneObservabilityInstanceID returns the instance the zone's
+// observability extension sends metrics to, or "" when the zone has none.
+func dnsZoneObservabilityInstanceID(z *dns.Zone) string {
+	ext, ok := z.GetExtensionsOk()
+	if !ok || ext == nil {
+		return ""
+	}
+	obs, ok := ext.GetObservabilityExtensionOk()
+	if !ok || obs == nil {
+		return ""
+	}
+	return obs.GetObservabilityInstanceId()
+}
+
+func (r *mqlStackitDnsZone) observabilityInstance() (*mqlStackitObservabilityInstance, error) {
+	return observabilityInstanceFromList(r.MqlRuntime, r.cacheObservabilityInstanceID, &r.ObservabilityInstance)
 }
 
 // dnsLabels flattens the DNS Zone label slice (`[]dns.Label{Key, Value}`) into

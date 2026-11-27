@@ -266,6 +266,17 @@ func newLambdaFunctionResource(runtime *plugin.Runtime, region string, accountID
 		"masterArn":                   llx.StringDataPtr(function.MasterArn),
 	}
 
+	args["customerManagedRuntimeArn"] = llx.NilData
+	args["customerManagedRuntimeAlias"] = llx.NilData
+	if function.RuntimeConfig != nil {
+		args["customerManagedRuntimeArn"] = llx.StringDataPtr(function.RuntimeConfig.RuntimeArn)
+		args["customerManagedRuntimeAlias"] = llx.StringDataPtr(function.RuntimeConfig.RuntimeAlias)
+	}
+	args["acceleratorMemorySize"] = llx.NilData
+	if function.AcceleratorConfig != nil && function.AcceleratorConfig.AcceleratorMemorySize > 0 {
+		args["acceleratorMemorySize"] = llx.IntData(int64(function.AcceleratorConfig.AcceleratorMemorySize))
+	}
+
 	if function.DurableConfig != nil {
 		args["durableExecutionTimeout"] = llx.IntDataPtr(function.DurableConfig.ExecutionTimeout)
 		args["durableExecutionRetentionDays"] = llx.IntDataPtr(function.DurableConfig.RetentionPeriodInDays)
@@ -2075,4 +2086,73 @@ type mqlAwsLambdaEventSourceMappingInternal struct {
 	cacheSecretArns       []string
 	cacheSubnetIds        []string
 	cacheSecurityGroupIds []string
+}
+
+// lambdaDeadLetterService returns the service a dead-letter target ARN
+// belongs to ("sqs" or "sns"), or "" for an empty or unparseable ARN.
+func lambdaDeadLetterService(targetArn string) string {
+	if targetArn == "" {
+		return ""
+	}
+	parsed, err := arn.Parse(targetArn)
+	if err != nil {
+		return ""
+	}
+	switch parsed.Service {
+	case "sqs", "sns":
+		return parsed.Service
+	}
+	return ""
+}
+
+func (a *mqlAwsLambdaFunction) deadLetterQueue() (*mqlAwsSqsQueue, error) {
+	target := a.DlqTargetArn.Data
+	if lambdaDeadLetterService(target) != "sqs" {
+		a.DeadLetterQueue.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, ResourceAwsSqsQueue,
+		map[string]*llx.RawData{"arn": llx.StringData(target)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsSqsQueue), nil
+}
+
+func (a *mqlAwsLambdaFunction) deadLetterTopic() (*mqlAwsSnsTopic, error) {
+	target := a.DlqTargetArn.Data
+	if lambdaDeadLetterService(target) != "sns" {
+		a.DeadLetterTopic.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, ResourceAwsSnsTopic,
+		map[string]*llx.RawData{"arn": llx.StringData(target)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsSnsTopic), nil
+}
+
+func (a *mqlAwsLambdaFunction) signingProfile() (*mqlAwsSignerSigningProfile, error) {
+	versionArn := a.SigningProfileVersionArn.Data
+	if versionArn == "" {
+		a.SigningProfile.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	obj, err := CreateResource(a.MqlRuntime, ResourceAwsSigner, map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	profiles := obj.(*mqlAwsSigner).GetSigningProfiles()
+	if profiles.Error != nil {
+		return nil, profiles.Error
+	}
+	for _, raw := range profiles.Data {
+		p, ok := raw.(*mqlAwsSignerSigningProfile)
+		if ok && p.ProfileVersionArn.Data == versionArn {
+			return p, nil
+		}
+	}
+	a.SigningProfile.State = plugin.StateIsNull | plugin.StateIsSet
+	return nil, nil
 }

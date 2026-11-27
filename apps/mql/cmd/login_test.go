@@ -68,6 +68,10 @@ func TestLoginCmd_AllFlags(t *testing.T) {
 		{"api-endpoint", "", "", "string"},
 		{"timer", "", "0", "int"},
 		{"splay", "", "0", "int"},
+		{"no-browser", "", "false", "bool"},
+		{"scope", "", "", "string"},
+		{"insecure", "", "false", "bool"},
+		{"force", "", "false", "bool"},
 	}
 
 	for _, ef := range expectedFlags {

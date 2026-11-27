@@ -16,6 +16,7 @@ alias os.base.file = file
 alias os.base.packages = packages
 alias os.base.service = service
 alias os.base.services = services
+alias os.unix.ssh = ssh
 alias os.unix.sshd = sshd
 alias os.base.agentinstructions = agentinstructions
 alias os.base.agentskills = agentskills
@@ -74,6 +75,7 @@ alias os.base.processes = processes
 alias os.base.runningBinaries = runningBinaries
 alias os.base.python = python
 alias os.base.qualia = qualia
+alias os.base.rmm = rmm
 alias os.base.roo = roo
 alias os.base.squid = squid
 alias os.base.tomcat = tomcat
@@ -92,6 +94,9 @@ alias os.unix.crontab = crontab
 alias os.unix.exim = exim
 alias os.unix.inetd = inetd
 alias os.unix.jail = jail
+alias os.unix.ipfilter = ipfilter
+alias os.unix.geli = geli
+alias os.unix.ipfw = ipfw
 alias os.unix.jails = jails
 alias os.unix.kernel = kernel
 alias os.unix.loginconf = loginconf
@@ -151,6 +156,9 @@ alias os.any.inetd = inetd
 alias os.any.ip6tables = ip6tables
 alias os.any.iptables = iptables
 alias os.any.jail = jail
+alias os.any.ipfilter = ipfilter
+alias os.any.geli = geli
+alias os.any.ipfw = ipfw
 alias os.any.jails = jails
 alias os.any.kernel = kernel
 alias os.any.launchd = launchd
@@ -182,6 +190,7 @@ alias os.any.selinux = selinux
 alias os.any.shadow = shadow
 alias os.any.snmpd = snmpd
 alias os.any.sriov = sriov
+alias os.any.ssh = ssh
 alias os.any.sshd = sshd
 alias os.any.sudo = sudo
 alias os.any.sudoers = sudoers
@@ -902,15 +911,25 @@ os.any @root {
 // Operating system root certificate trust store
 //
 // X.509 root certificates that the asset's operating system trusts for TLS
-// validation, derived from the platform-appropriate trust-store files (e.g.
-// `/etc/ssl/certs/ca-certificates.crt` on Debian,
-// `/etc/pki/tls/certs/ca-bundle.crt` on RHEL, the macOS SecTrust store, the
-// Windows Root certificate store). Reads each trust-store file and exposes
-// the parsed `network.certificate` list so audits can pin specific issuers,
-// detect untrusted local additions, or count the trust-store size.
+// validation, read from the platform's trust store: the bundle file on Linux,
+// BSD, macOS, Solaris and AIX (for example `/etc/ssl/certs/ca-certificates.crt`
+// on Debian, `/etc/pki/tls/certs/ca-bundle.crt` on RHEL, `/etc/ssl/cert.pem`
+// on macOS) and the `LocalMachine\Root` certificate store on Windows. Exposes
+// the parsed certificate list so audits can pin specific issuers, detect
+// untrusted local additions, or count the trust-store size.
+//
+// On Windows the list is the local Root store, which includes the roots added
+// by Group Policy and those already downloaded through the Automatic Root
+// Certificates Update. Windows fetches further trusted roots on demand when a
+// chain needs one, so a CA missing from this list may still be trusted. On
+// macOS `/etc/ssl/cert.pem` is the bundle OpenSSL-based tools read; the
+// keychain roots macOS applications validate against are not included.
 os.rootCertificates {
   []certificate(content)
   // List of files that define these certificates
+  //
+  // Empty on Windows, where the roots are read from the certificate store
+  // rather than a file.
   files []file
   content(files) []string
   // Number of certificates in the trust-store files that could not be parsed
@@ -1544,6 +1563,9 @@ package @defaults("name version") {
   //             (FreeBSD, DragonFly BSD)
   //   macOS     the application bundle path
   //   Windows   the install location from the uninstall registry
+  //   googet    the files googet recorded as installed for the package,
+  //             without directories; none for packages that install
+  //             through a script, such as the Compute Engine drivers
   //
   // Empty on package managers with no such record, among them flatpak, snap,
   // homebrew, nix, gentoo, and the NetBSD and OpenBSD package tools.
@@ -1618,6 +1640,87 @@ package @defaults("name version") {
 
   // Windows install identity; null for anything that is not a Windows application from the Uninstall registry
   windows() package.windows
+  // Whether the operating system vendor provides this package
+  //
+  // True for software the OS vendor ships: an application that comes with
+  // macOS or Windows, and any package from the distribution's own
+  // repositories, whether it came with the image or was installed later.
+  // False for third-party software: a vendor's repository such as nginx.org or
+  // download.docker.com, an app store, Homebrew, or a file installed by hand.
+  //
+  // Decided by the signing key the operating system itself installed, not by
+  // the package name: Debian's nginx is true, nginx.org's nginx on the same
+  // host is false. On rpm the package's signature is checked against the keys
+  // the distribution's own key package installs. On dpkg the installed version
+  // is matched against the apt indexes, and the index's release file must be
+  // signed by the distribution's archive keyring. On apk the installed build
+  // is matched against the repository indexes apk downloaded, and the index
+  // must be signed by a key the distribution's key package installed
+  // (alpine-keys, wolfi-keys). On pacman the installed version is matched
+  // against the sync databases, and the package must be signed by a key from
+  // the distribution's keyring package (archlinux-keyring). On macOS the
+  // application must be signed with Apple's OS signing identity or live on the
+  // sealed system volume. On Windows an AppX package must be a system component,
+  // provisioned in the Windows image (Calculator, Photos, Edge), or a
+  // Microsoft framework; Edge and WebView2 count when Edge Update records
+  // Windows as their source.
+  //
+  // Null when nothing on the system answers: a dpkg system with no apt
+  // indexes (most container images), an outdated dpkg package whose name a
+  // third-party index also lists, any other program from the Windows
+  // Uninstall registry, an apk or pacman system with no repository indexes
+  // (most container images), an outdated apk or pacman package whose name a
+  // third-party repository also lists, a distribution whose key package is
+  // not known, and package managers without such a record (snap, flatpak).
+  osProvided() bool
+
+  // Where the installed build came from
+  //
+  // How the package reached the system, and from which repository or store.
+  // `channel` is the filterable part: everything from an app store, every
+  // vendor repository, everything installed from a file.
+  source() package.source
+}
+
+// Where an installed package came from
+//
+// The channel a package arrived through and the repository, store or
+// installer that delivered it. `channel` is one of "os" (provided by the
+// operating system vendor), "vendor-repository", "app-store", "homebrew",
+// "installer", "direct", "snap", "flatpak", "chocolatey", "winget", or
+// "unknown".
+private package.source @defaults("channel name") {
+  // How the package reached the system, e.g. "app-store", "homebrew", "direct"
+  //
+  // "os" for software the operating system vendor provides. "vendor-repository"
+  // for an apt, dnf, apk or pacman repository someone added, such as nginx.org.
+  // "app-store" for the Mac App Store and the Microsoft Store. "homebrew" for a
+  // formula or cask. "installer" for a vendor installer package: a macOS .pkg,
+  // a Windows MSI or setup program. "direct" for software copied in or
+  // installed from a file: an application dragged from a disk image, a .deb,
+  // .rpm or .apk installed by hand, an Arch package built locally or from the
+  // AUR. "snap", "flatpak", "chocolatey" and "winget" for
+  // those package managers. "unknown" when no record on the system answers.
+  channel string
+  // Repository, store, cask or installer that delivered the package
+  //
+  // The name the system itself records: the apt release's Origin ("Debian",
+  // "nginx", "Docker"), the dnf repository id ("baseos", "docker-ce-stable"),
+  // the apk repository's tag ("testing") or address without scheme, the pacman
+  // repository ("core", "extra"),
+  // "mac-app-store", "microsoft-store", the Homebrew formula or cask, or the
+  // installer package identifier, the winget package identifier ("7zip.7zip"),
+  // or the Chocolatey package id ("git.install"). Empty when the channel has
+  // none.
+  name string
+  // Address of the repository, without credentials
+  //
+  // Scheme, host and path of the apt, dnf, apk or pacman repository, or the
+  // Chocolatey feed, the package came from, e.g.
+  // "http://nginx.org/packages/debian". User names, passwords, tokens and query
+  // strings are removed. Empty for channels that are not a repository, and for a
+  // Chocolatey package whose feed is not recorded.
+  url string
 }
 
 // macOS application details of a package
@@ -2009,6 +2112,83 @@ private sshd.config.matchBlock @defaults("criteria") @context("file.context") {
   hostkeyalgorithms(params) []string
   // PermitRootLogin setting in SSH server
   permitRootLogin(params) []string
+}
+
+// OpenSSH client namespace
+//
+// Namespace hosting `ssh.config` and `ssh.knownHosts`, the OpenSSH client's
+// configuration and the host keys it trusts.
+ssh {}
+
+// OpenSSH client configuration
+//
+// Host and Match blocks of an OpenSSH client configuration (ssh_config),
+// with the files it includes. The default file is /etc/ssh/ssh_config; pass a
+// path for a user's configuration, for example
+// `ssh.config("/home/alice/.ssh/config")`. Relative Include paths resolve
+// against the configuration's directory, as ssh resolves them. `blocks` lists
+// the Host and Match blocks in the order ssh reads them, where the first value
+// set for a setting wins, so settings such as `StrictHostKeyChecking`,
+// `ForwardAgent` or `ProxyCommand` can be checked per host. `hosts` lists the
+// host names the Host blocks name.
+ssh.config @defaults("file.path hosts") {
+  init(path? string)
+  // File of this SSH client configuration
+  file() file
+  // Files making up this configuration: the file and the ones it includes
+  files(file) []file
+  // Settings outside any Host or Match block, keyed by lowercase keyword
+  params(file) map[string]string
+  // Host and Match blocks, in the order ssh reads them
+  blocks(file) []ssh.config.block
+  // Host names the Host blocks name, without wildcard or negated patterns
+  hosts(file) []string
+}
+
+// Host or Match block of an SSH client configuration
+private ssh.config.block @defaults("kind criteria") @context("file.context") {
+  // Block keyword: Host or Match
+  kind string
+  // The block's criteria as written (e.g., "bastion *.internal", "host prod exec true")
+  criteria string
+  // Host patterns of a Host block (e.g., "bastion", "*.internal", "!jump")
+  patterns []string
+  // Settings in this block, keyed by lowercase keyword; ssh uses the first value it reads
+  params map[string]string
+}
+
+// Known SSH hosts
+//
+// Host keys an OpenSSH client trusts, read from a known_hosts file. The
+// default file is /etc/ssh/ssh_known_hosts; pass a user's file, for example
+// `ssh.knownHosts("/home/alice/.ssh/known_hosts")`. Each entry lists the
+// hosts it applies to (empty when they are hashed), the key type and key, and
+// whether it marks a certificate authority or a revoked key. Lines that are
+// not entries are skipped and counted in `unreadableLines`.
+ssh.knownHosts @defaults("file.path") {
+  init(path? string)
+  // File of this known hosts list
+  file() file
+  // Entries in file order
+  entries(file) []ssh.knownHosts.entry
+  // Number of lines that could not be read as entries
+  unreadableLines(file) int
+}
+
+// Entry of a known_hosts file
+private ssh.knownHosts.entry @defaults("hosts keyType") @context("file.context") {
+  // Hosts as written: names, addresses, patterns, or `[host]:port`; empty when hashed
+  hosts []string
+  // Whether the host names are hashed (HashKnownHosts) and can't be read back
+  hashed bool
+  // Marker of the entry: cert-authority, revoked, or empty
+  marker string
+  // Key type (e.g., ssh-ed25519, ecdsa-sha2-nistp256, ssh-rsa)
+  keyType string
+  // Public key, base64 encoded
+  key string
+  // Comment after the key
+  comment string
 }
 
 // inetd super-server namespace
@@ -8440,6 +8620,30 @@ docker {
   networks() []docker.network
   // All volumes stored on the Docker host, named and anonymous
   volumes() []docker.volume
+  // Engine serving the Docker API: Docker, or Podman through its Docker-compatible API
+  engine() docker.engine
+}
+
+// Engine serving the Docker API
+//
+// The daemon that answers the Docker API on this host. Podman serves the same
+// API, so `name` tells the two apart, for example
+// `docker.engine.name == "Podman"`.
+private docker.engine @defaults("name version") {
+  // Engine name: Docker or Podman
+  name string
+  // Engine version (e.g., 27.3.1)
+  version string
+  // Highest Docker API version the engine supports (e.g., 1.47)
+  apiVersion string
+  // Operating system the engine runs on (e.g., linux)
+  os string
+  // Processor architecture the engine runs on (e.g., amd64)
+  arch string
+  // Host name of the machine the engine runs on
+  hostname() string
+  // Operating system of the machine the engine runs on (e.g., Ubuntu 24.04.1 LTS, Docker Desktop)
+  operatingSystem() string
 }
 
 // Dockerfile parser
@@ -9043,7 +9247,12 @@ docker.image {
 // `docker.containers.none(mounts.any(hostPath == "/var/run/docker.sock"))`
 // finds containers that control the Docker daemon. Filter by state, for
 // example `docker.containers.where(state == "running")`.
+//
+// On a scan of a container, `docker.container` with no argument is the
+// container being scanned, as its engine reports it; `docker.container("web")`
+// looks one up by ID, ID prefix, or name.
 docker.container @defaults("names.first status"){
+  init(id string)
   // The running container as its own asset
   //
   // A container is a separate asset, not a part of this host, so its operating
@@ -9073,6 +9282,8 @@ docker.container @defaults("names.first status"){
   status string
   // Container labels, as key/value pairs
   labels map[string]string
+  // Time the container was created
+  createdAt() time
   // Host-dependent runtime configuration
   //
   // The daemon-side `HostConfig` from container inspection, covering privilege
@@ -11491,6 +11702,89 @@ private pf.table @defaults("name") {
   name string
   // Addresses and networks in the table
   addresses() []string
+}
+
+// IP Filter packet filter
+//
+// The IP Filter firewall of Oracle Solaris 10 and 11 and illumos, run as the
+// svc:/network/ipfilter:default service and controlled with ipf and
+// ipfstat. Check `enabled` to confirm the service is online, then audit the
+// active `rules`, for example that inbound traffic is blocked by default.
+// `file` is the configuration the service loads at boot. Oracle Solaris
+// 11.4 deprecates IP Filter in favor of PF (see the `pf` resource). Reading
+// the active rules needs root; without it, `rules` fails with a permission
+// error. Not applicable on other platforms.
+ipfilter @defaults("enabled") {
+  // Whether the svc:/network/ipfilter:default service is online
+  enabled() bool
+  // Active rules, inbound and outbound, as `ipfstat -io` prints them
+  //
+  // One rule per entry, outbound rules first. Empty when no rules are
+  // loaded, and on a host without ipfstat.
+  rules() []string
+  // Configuration file IP Filter loads at boot, /etc/ipf/ipf.conf
+  //
+  // The active rules can differ from this file until it is reloaded.
+  file() file
+}
+
+// IPFW packet filter
+//
+// The ipfw firewall built into FreeBSD. Check `enabled` to confirm ipfw is
+// filtering, then audit the loaded `rules` in evaluation order and
+// `defaultAccept`, which decides what the final rule 65535 does with a packet
+// no other rule matched. Reading the rules needs root.
+ipfw @defaults("enabled") {
+  // Whether ipfw is enabled
+  //
+  // The net.inet.ip.fw.enable sysctl. False while the ipfw kernel module is
+  // not loaded.
+  enabled() bool
+  // Rules of the loaded ruleset, in evaluation order
+  //
+  // One rule per entry as `ipfw list` prints it, starting with the rule
+  // number, for example "00100 allow ip from any to any via lo0". Empty
+  // while the ipfw kernel module is not loaded.
+  rules() []string
+  // Whether the default rule accepts packets
+  //
+  // The net.inet.ip.fw.default_to_accept sysctl: true when rule 65535 is
+  // `allow ip from any to any`, false when it is `deny ip from any to any`,
+  // the default. False while the ipfw kernel module is not loaded.
+  defaultAccept() bool
+}
+
+// GELI disk encryption
+//
+// The GELI-encrypted providers attached on a FreeBSD host, as `geli list`
+// reports them. For example `geli.providers.all(keyLength >= 256)` asserts
+// that every attached provider uses a 256-bit key, and
+// `geli.providers.none(state == "SUSPENDED")` that none is suspended.
+// Providers that exist on disk but are not attached are not listed. On some
+// systems `geli list` needs root.
+geli {
+  // Attached GELI providers
+  //
+  // Empty when the GELI kernel class (geom_eli) is not loaded.
+  providers() []geli.provider
+}
+
+// Attached GELI provider
+private geli.provider @defaults("name encryptionAlgorithm keyLength") {
+  // Name of the decrypted provider, for example ada0p3.eli
+  name string
+  // Underlying encrypted provider, for example ada0p3
+  device string
+  // Encryption algorithm, for example AES-XTS
+  encryptionAlgorithm string
+  // Encryption key length in bits
+  keyLength int
+  // Data authentication algorithm, for example HMAC/SHA256
+  //
+  // Empty when the provider was initialized without data authentication.
+  authenticationAlgorithm string
+  // State: ACTIVE, or SUSPENDED when the keys have been removed from memory
+  state string
 }
 
 // fstab persistent mount table
@@ -15943,34 +16237,87 @@ macos {
 // macOS hardware overview
 //
 // Hardware and firmware details reported by `system_profiler`: chip
-// type, model identifiers, installed memory, serial number, and
+// type, model identifier, product name, part number, installed memory, serial number, and
 // Activation Lock status. Useful for asset inventory and for
 // distinguishing Apple Silicon from Intel Macs in conditional audits.
-macos.hardware @defaults("machineName chipType physicalMemory serialNumber") {
+macos.hardware @defaults("machineName chipType physicalMemoryBytes serialNumber") {
   // Activation Lock security feature status
   activationLockStatus string
   // Boot ROM (firmware) version identifier
   bootRomVersion string
   // Processor chip type (e.g., "Apple M1", "Apple M2", "Intel")
   chipType string
-  // Specific model identifier (e.g., "MacBookPro18,3")
+  // Full product name of the model
+  //
+  // The name Apple sells the model under, with size, chip, and release year where
+  // they tell models apart, for example "MacBook Pro (14-inch, M4 Pro, Nov 2024)" for
+  // `Mac16,8`. A model identifier missing from the name table is returned unchanged.
+  fullDisplayName() string
+  // Model identifier (e.g., "MacBookPro18,3")
   machineModel string
-  // User-friendly hardware name (e.g., "MacBook Pro")
+  // Product line (e.g., "MacBook Pro")
+  //
+  // The product family only, without size, chip, or year. See fullDisplayName for the full product name.
   machineName string
-  // Apple's model number for the device (e.g., "A2442")
+  // Order part number for the configuration sold (e.g., "MX2J3LL/A")
+  //
+  // Apple's part number, ending in a region suffix such as "LL/A". Build-to-order configurations start with "Z". This is not the regulatory model number printed on the case (e.g., "A2442").
   modelNumber string
+  // Processor core counts as reported by system_profiler
+  //
+  // Deprecated in favor of cores, performanceCores, and efficiencyCores, which can be
+  // compared as numbers. On Apple Silicon this is a string such as "proc 16:12:4"
+  // (total, performance, and efficiency cores); Intel Macs and virtual machines
+  // report only the total.
+  numberProcessors @maturity("deprecated") string
   // Total number of processor cores
-  numberProcessors string
+  cores int
+  // Number of performance cores (0 on Intel Macs and virtual machines)
+  performanceCores int
+  // Number of efficiency cores (0 on Intel Macs and virtual machines)
+  efficiencyCores int
   // Version of the OS bootloader
   osLoaderVersion string
   // Total RAM installed (e.g., "16 GB")
-  physicalMemory string
+  //
+  // Deprecated in favor of physicalMemoryBytes, which can be compared as a number.
+  physicalMemory @maturity("deprecated") string
+  // Total RAM installed, in bytes (0 if system_profiler reports an unknown format)
+  physicalMemoryBytes int
   // Universally unique identifier for the hardware platform
   platformUUID string
   // Unique Device Identifier for MDM provisioning
   provisioningUDID string
   // Apple's unique serial number for the device
   serialNumber string
+}
+
+// AppleCare and warranty coverage of this Mac
+//
+// The coverage macOS shows under System Settings > General > AppleCare &
+// Warranty, read from the copy macOS caches in each user's
+// `~/Library/Application Support/com.apple.NewDeviceOutreach` when that pane
+// loads. The cache is matched to this Mac by serial number (it also holds the
+// account's other Apple devices); with several users, the most recently
+// refreshed copy wins. Every field is null when no user has opened the pane.
+macos.coverage @defaults("appleCare label expires") {
+  // Whether the coverage is an AppleCare plan
+  //
+  // True for AppleCare and AppleCare+, false for the limited warranty or no coverage.
+  appleCare bool
+  // Coverage name as macOS shows it, for example "AppleCare+" or "Limited Warranty"
+  label string
+  // When the coverage ends
+  //
+  // Null when macOS shows no end date or one this resource cannot read: the
+  // cached text follows the user's language, and only English dates are read.
+  expires time
+  // The end of coverage as macOS words it, for example "Expires October 26, 2028"
+  expirationLabel string
+  // Whether the coverage includes theft and loss
+  theftAndLoss bool
+  // When macOS last refreshed this cached coverage
+  updated time
 }
 
 // macOS system profiler report for one data type
@@ -21849,6 +22196,97 @@ private mdm.intune @defaults("deviceId tenantId") {
   deviceId string
   // Microsoft Entra tenant the device is enrolled in
   tenantId string
+}
+
+// Remote monitoring and management agents
+//
+// Remote monitoring and management (RMM), remote access, patch management, and
+// client management agents recognized on this asset. products lists every
+// agent that was found, each carrying the packages, services, and processes
+// that make it up. installed and healthy answer the fleet-wide questions
+// directly, and the product ids let an audit allow only the approved tool, for
+// example `rmm.products.all(id == "ninjaone")` fails on an asset that also
+// runs any other recognized agent. Agents are recognized on Windows, Linux,
+// and macOS.
+//
+// Recognized agents. Select one by its `id`, for example
+// `rmm.products.where(id == "connectwise-screenconnect")`. An agent not listed
+// here is not reported, so installed reads false on an asset managed only by
+// an unlisted tool, and a platform without a mark is not checked for that
+// agent.
+//
+// | id | Product | Vendor | Category | Windows | Linux | macOS |
+// |---|---|---|---|:---:|:---:|:---:|
+// | `atera` | Atera Agent | Atera | rmm | ✓ | ✓ | ✓ |
+// | `connectwise-automate` | ConnectWise Automate Agent | ConnectWise | rmm | ✓ | ✓ | ✓ |
+// | `datto-rmm` | Datto RMM Agent | Datto | rmm | ✓ | ✓ | ✓ |
+// | `kaseya-vsa` | Kaseya VSA Agent | Kaseya | rmm | ✓ | ✓ | |
+// | `kaseya-vsa-x` | Kaseya VSA X Agent | Kaseya | rmm | ✓ | | ✓ |
+// | `n-able-n-central` | N-able N-central Agent | N-able | rmm | ✓ | | ✓ |
+// | `n-able-n-sight` | N-able N-sight RMM Agent | N-able | rmm | ✓ | ✓ | ✓ |
+// | `ninjaone` | NinjaOne Agent | NinjaOne | rmm | ✓ | ✓ | ✓ |
+// | `syncro` | Syncro Agent | Syncro | rmm | ✓ | ✓ | |
+// | `tactical-rmm` | Tactical RMM Agent | AmidaWare | rmm | ✓ | ✓ | ✓ |
+// | `connectwise-screenconnect` | ConnectWise ScreenConnect Client | ConnectWise | remoteAccess | ✓ | ✓ | ✓ |
+// | `automox` | Automox Agent | Automox | patchManagement | ✓ | ✓ | ✓ |
+// | `baramundi` | baramundi Management Agent | baramundi software | clientManagement | ✓ | | |
+// | `matrix42` | Matrix42 UEM Agent, and the Empirum Agent it replaced | Matrix42 | clientManagement | ✓ | | ✓ |
+// | `microsoft-configmgr` | Microsoft Configuration Manager Client (SCCM, MECM) | Microsoft | clientManagement | ✓ | | |
+// | `opsi` | opsi Client Agent | uib | clientManagement | ✓ | ✓ | ✓ |
+rmm @defaults("installed healthy") @maturity("preview") {
+  // Every recognized management agent found on this asset
+  products() []rmm.product
+  // Whether at least one recognized agent is installed
+  installed() bool
+  // Whether every installed agent is running, and enabled to start at boot where the platform reports it
+  healthy() bool
+}
+
+// Remote management agent
+//
+// A single agent recognized on this asset. The `id` field selects the
+// product, for example `rmm.products.where(id == "datto-rmm")`. installed,
+// running, and enabled report the agent's own components, and healthy
+// combines them for the platform the asset runs.
+private rmm.product @defaults("name vendor installed healthy") {
+  // Stable identifier for the product, for example datto-rmm
+  id string
+  // Product name
+  name string
+  // Vendor that publishes the product
+  vendor string
+  // Product category
+  //
+  // One of rmm, remoteAccess, patchManagement, or clientManagement.
+  category string
+  // Whether the agent is installed
+  installed bool
+  // Whether the agent is running
+  //
+  // Every service the agent needs is running, or, for an agent recognized
+  // by its process, a live process of the agent exists.
+  running bool
+  // Whether every service the agent needs is enabled to start at boot
+  //
+  // Null on platforms whose service manager does not report a distinct
+  // boot-start setting, which includes launchd on macOS, and for agents
+  // recognized by their process.
+  enabled bool
+  // Whether the agent is installed, running, and enabled where boot-start is reported
+  healthy bool
+  // Version of the agent, null when no matched package reports one
+  version string
+  // Signals that identified the agent
+  //
+  // Each entry names what matched: `package`, `path`, `service`, or
+  // `process`.
+  detectedBy []string
+  // Services that make up the agent
+  services() []service
+  // Packages that installed the agent
+  packages() []package
+  // Processes the agent is running, empty unless the agent is recognized by its process
+  processes() []process
 }
 
 // Windows Package Manager (winget)
@@ -29233,6 +29671,12 @@ private java.keystore.entry @defaults("alias isTrustedCertificate") {
 // Finds the `cacerts` file of each JDK or JRE on the asset and reads it,
 // so a check can ask what the machine's Java runtimes trust without
 // knowing where any of them is installed.
+//
+// On Windows the runtimes are found in the vendor directories under
+// `C:\Program Files` and `C:\Program Files (x86)` that the Java installers
+// use, such as `Java`, `Eclipse Adoptium`, `Microsoft`, `Amazon Corretto`,
+// `Zulu` and `BellSoft`. A runtime installed elsewhere, or per user under
+// `AppData`, is not found.
 java.truststores {
   []java.keystore(paths)
   // Paths of the trust stores that were found
@@ -29650,4 +30094,46 @@ aix.audit @defaults("running binMode streamMode") {
   classes() map[string][]string
   // Audit classes recorded per user (users stanza)
   users() map[string][]string
+}
+
+// AIX logical partition
+//
+// The logical partition (LPAR) this AIX system runs in, as `lparstat -i`
+// reports it: its name and number, whether its processors are shared or
+// dedicated and capped or uncapped, its entitled capacity, virtual
+// processors, simultaneous multithreading and online memory. Fields
+// lparstat does not report, such as the shared pool of a dedicated
+// partition, are null. Needs no root. AIX only.
+aix.lpar @defaults("partitionName type mode entitledCapacity") {
+  // Name of the partition as defined on the HMC (Partition Name)
+  partitionName() string
+  // Number of the partition (Partition Number)
+  partitionNumber() int
+  // Processor type of the partition (Type)
+  //
+  // Shared or Dedicated, followed by -SMT when simultaneous multithreading
+  // is on and the thread count when it is above 2, for example
+  // Shared-SMT-4 or Dedicated-SMT.
+  type() string
+  // Processor mode of the partition (Mode)
+  //
+  // Capped or Uncapped for shared partitions, Capped or Donating for
+  // dedicated ones.
+  mode() string
+  // Processing units the partition is entitled to (Entitled Capacity)
+  entitledCapacity() float
+  // Virtual processors online (Online Virtual CPUs)
+  onlineVirtualCpus() int
+  // Maximum virtual processors the partition can have (Maximum Virtual CPUs)
+  maxVirtualCpus() int
+  // Hardware threads per processor, from the partition type
+  //
+  // 1 when simultaneous multithreading is off.
+  smtThreads() int
+  // Shared processor pool the partition draws from (Shared Pool ID)
+  //
+  // Null for a dedicated partition.
+  sharedPoolId() int
+  // Memory online in the partition, in bytes (Online Memory)
+  onlineMemoryBytes() int
 }

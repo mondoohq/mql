@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -50,6 +51,10 @@ func TestZones(t *testing.T) {
 	require.NotNil(t, z1.NameServers.Data)
 	assert.Equal(t, []any{"ns1.example.com", "ns2.example.com"}, z1.NameServers.Data)
 	assert.Equal(t, []any{"ns-old.registrar.example.net"}, z1.OriginalNameServers.Data)
+	assert.Equal(t, "Free Website", z1.Plan.Data)
+	require.False(t, z1.ActivatedOn.IsNull())
+	assert.Equal(t, time.Date(2024, 9, 15, 8, 30, 0, 0, time.UTC), z1.ActivatedOn.Data.UTC())
+	assert.Equal(t, []any{"ns1.dns.example.com", "ns2.dns.example.com"}, z1.VanityNameServers.Data)
 
 	require.NotNil(t, z1.Account.Data)
 	assert.Equal(t, "01a7362d577a6c3019a474fd6f485823", z1.Account.Data.Id.Data)
@@ -65,6 +70,38 @@ func TestZones(t *testing.T) {
 	assert.Equal(t, "pending", z2.Status.Data)
 	assert.Equal(t, "partial", z2.Type.Data)
 	assert.Empty(t, z2.NameServers.Data)
+	assert.Equal(t, "Enterprise Website", z2.Plan.Data)
+	assert.True(t, z2.ActivatedOn.IsNull(), "a zone that was never activated has a null activatedOn")
+	assert.Empty(t, z2.VanityNameServers.Data)
+}
+
+// Synthetic: a zone flagged for phishing, one explicitly not flagged, and one
+// whose meta block omits the flag; no live account was checked.
+func TestZonesPhishingDetected(t *testing.T) {
+	env := setupTestEnv(t)
+	root := newTestRoot(t, env)
+
+	env.Mux.HandleFunc("/zones", func(w http.ResponseWriter, r *http.Request) {
+		if page := r.URL.Query().Get("page"); page != "" && page != "1" {
+			jsonResponse(w, `{"result":[],"success":true,"errors":[],"messages":[]}`)
+			return
+		}
+		jsonResponse(w, `{"success":true,"result":[
+			{"id":"z-flagged","name":"flagged.example","meta":{"phishing_detected":true}},
+			{"id":"z-clean","name":"clean.example","meta":{"phishing_detected":false}},
+			{"id":"z-unknown","name":"unknown.example","meta":{}}
+		]}`)
+	})
+
+	result, err := root.zones()
+	require.NoError(t, err)
+	require.Len(t, result, 3)
+
+	assert.True(t, result[0].(*mqlCloudflareZone).PhishingDetected.Data)
+	clean := result[1].(*mqlCloudflareZone)
+	assert.False(t, clean.PhishingDetected.IsNull())
+	assert.False(t, clean.PhishingDetected.Data)
+	assert.True(t, result[2].(*mqlCloudflareZone).PhishingDetected.IsNull())
 }
 
 func TestAccounts(t *testing.T) {

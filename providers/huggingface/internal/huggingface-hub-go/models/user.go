@@ -25,11 +25,18 @@ type Org struct {
 	AvatarURL    string `json:"avatarUrl"`
 	RoleInOrg    string `json:"roleInOrg,omitempty"`
 	IsEnterprise bool   `json:"isEnterprise"`
+	// Plan is absent on an organization without a paid plan.
+	Plan string `json:"plan,omitempty"`
+	// SecurityRestrictions is nil when the Hub did not report the list, which
+	// keeps an unreported list apart from an empty one.
+	SecurityRestrictions *[]string `json:"securityRestrictions,omitempty"`
 }
 
 type Auth struct {
 	Type        string      `json:"type"`
 	AccessToken AccessToken `json:"accessToken"`
+	// ExpiresAt is absent for a credential that never expires.
+	ExpiresAt string `json:"expiresAt,omitempty"`
 }
 
 type AccessToken struct {

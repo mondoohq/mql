@@ -156,3 +156,34 @@ func TestSQLCmekSourceLogEncryptionEnforced(t *testing.T) {
 		}
 	})
 }
+
+func TestSqlAuthorizedNetworksOpen(t *testing.T) {
+	nets := func(cidrs []any) []any {
+		out := []any{}
+		for _, c := range cidrs {
+			out = append(out, map[string]any{"value": c, "name": "n"})
+		}
+		return out
+	}
+	cases := []struct {
+		name     string
+		networks []any
+		want     bool
+	}{
+		{"ipv4 any", nets([]any{"0.0.0.0/0"}), true},
+		{"ipv6 any", nets([]any{"::/0"}), true},
+		{"ipv4 halves", nets([]any{"0.0.0.0/1", "128.0.0.0/1"}), true},
+		{"256 /8s", nets(v4Slash8s(0, 255, 1)), true},
+		{"/9s covering 0-223", nets(v4Slash9s(0, 223)), true},
+		{"mixed families, ipv6 open", nets(append(v4Slash8s(1, 221, 2), "2000::/12", "2010::/12")), true},
+		{"scattered /8s under half", nets(v4Slash8s(1, 221, 2)), false},
+		{"specific ranges", nets([]any{"203.0.113.0/24", "10.0.0.0/8"}), false},
+		{"empty", nil, false},
+		{"malformed entries skipped", []any{"0.0.0.0/0", map[string]any{"value": 42}}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, sqlAuthorizedNetworksOpen(tc.networks))
+		})
+	}
+}

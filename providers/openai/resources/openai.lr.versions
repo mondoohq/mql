@@ -88,6 +88,7 @@ openai.automation.name 14.1.5
 openai.automation.networkPolicyAllowedDomains 14.1.5
 openai.automation.networkPolicyType 14.1.5
 openai.automation.npmPackages 14.1.5
+openai.automation.pauseReason 14.3.3
 openai.automation.plugins 14.1.5
 openai.automation.pythonPackages 14.1.5
 openai.automation.runAt 14.1.5
@@ -238,6 +239,7 @@ openai.fineTuningJob.hyperparameters 13.0.0
 openai.fineTuningJob.id 13.0.0
 openai.fineTuningJob.model 13.0.0
 openai.fineTuningJob.organizationId 13.0.0
+openai.fineTuningJob.outputModel 14.3.3
 openai.fineTuningJob.seed 13.0.0
 openai.fineTuningJob.status 13.0.0
 openai.fineTuningJob.trainedTokens 13.0.0
@@ -259,12 +261,15 @@ openai.invite.createdAt 13.0.0
 openai.invite.email 13.0.0
 openai.invite.expiresAt 13.0.0
 openai.invite.id 13.0.0
+openai.invite.projectRoles 14.3.3
+openai.invite.projects 14.3.3
 openai.invite.role 13.0.0
 openai.invite.status 13.0.0
 openai.invites 13.0.0
 openai.model 13.0.0
 openai.model.baseModel 13.0.0
 openai.model.createdAt 13.0.0
+openai.model.fineTuningJob 14.3.3
 openai.model.id 13.0.0
 openai.model.isFineTuned 13.0.0
 openai.model.ownedBy 13.0.0
@@ -296,6 +301,7 @@ openai.project.apiKey.id 13.0.0
 openai.project.apiKey.lastUsedAt 13.0.0
 openai.project.apiKey.name 13.0.0
 openai.project.apiKey.owner 13.1.3
+openai.project.apiKey.ownerHasProjectAccess 14.3.3
 openai.project.apiKey.ownerId 13.0.0
 openai.project.apiKey.ownerName 13.0.0
 openai.project.apiKey.ownerType 13.0.0

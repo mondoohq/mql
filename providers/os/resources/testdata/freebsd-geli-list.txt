@@ -1,0 +1,67 @@
+Geom name: ada1.eli
+State: ACTIVE
+EncryptionAlgorithm: AES-XTS
+KeyLength: 256
+AuthenticationAlgorithm: HMAC/SHA256
+Crypto: accelerated software
+Version: 7
+UsedKey: 0
+Flags: AUTH
+KeysAllocated: 1
+KeysTotal: 1
+Providers:
+1. Name: ada1.eli
+   Mediasize: 15536783360 (14G)
+   Sectorsize: 4096
+   Mode: r0w0e0
+Consumers:
+1. Name: ada1
+   Mediasize: 17179869184 (17G)
+   Sectorsize: 512
+   Mode: r1w1e1
+
+Geom name: ada0p2.eli
+State: ACTIVE
+EncryptionAlgorithm: AES-XTS
+KeyLength: 128
+Crypto: accelerated software
+Version: 7
+Flags: ONETIME, W-DETACH, W-OPEN, AUTORESIZE
+KeysAllocated: 1
+KeysTotal: 1
+Providers:
+1. Name: ada0p2.eli
+   Mediasize: 2147483648 (2.0G)
+   Sectorsize: 4096
+   Mode: r1w1e0
+Consumers:
+1. Name: ada0p2
+   Mediasize: 2147483648 (2.0G)
+   Sectorsize: 512
+   Stripesize: 4096
+   Stripeoffset: 0
+   Mode: r1w1e1
+
+Geom name: ada0p3.eli
+State: SUSPENDED
+EncryptionAlgorithm: AES-CBC
+KeyLength: 192
+Crypto: software
+Version: 7
+UsedKey: 0
+Flags: SUSPEND, BOOT, GELIBOOT
+KeysAllocated: 466
+KeysTotal: 466
+Providers:
+1. Name: ada0p3.eli
+   Mediasize: 1000204795904 (932G)
+   Sectorsize: 4096
+   Mode: r1w1e1
+Consumers:
+1. Name: ada0p3
+   Mediasize: 1000204800000 (932G)
+   Sectorsize: 512
+   Stripesize: 4096
+   Stripeoffset: 0
+   Mode: r1w1e1
+

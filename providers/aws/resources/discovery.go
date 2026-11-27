@@ -1274,6 +1274,9 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 
 		for i := range cs.Data {
 			f := cs.Data[i].(*mqlAwsEmrCluster)
+			if !emrClusterIsDiscoverable(f.Status.Data) {
+				continue
+			}
 
 			region, err := GetRegionFromArn(f.Arn.Data)
 			if err != nil {
@@ -1714,7 +1717,7 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 
 			tags := mapStringInterfaceToStringString(f.GetTags().Data)
 			obj := mqlObject{
-				name: f.Name.Data, labels: tags,
+				name: regionalAssetName(f.Name.Data, f.Region.Data), labels: tags,
 				awsObject: awsObject{
 					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
 					id: f.Name.Data, service: "athena", objectType: "workgroup",

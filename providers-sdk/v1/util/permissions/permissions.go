@@ -1257,6 +1257,16 @@ var gcpPermissionOverrides = map[string]map[string]string{
 	"binaryauthorization": {
 		"GetSystemPolicy": "binaryauthorization.policy.get",
 	},
+	"cloudbilling": {
+		// Reading a project's billing link is gated on the project itself;
+		// no cloudbilling.projects.* permission exists.
+		"Projects.GetBillingInfo": "resourcemanager.projects.get",
+	},
+	"container": {
+		// FetchClusterUpgradeInfo starts with none of the derivable verbs, so
+		// without an entry it is dropped. It reads the cluster.
+		"FetchClusterUpgradeInfo": "container.clusters.get",
+	},
 	"cloudkms": {
 		"GetCryptoKey": "cloudkms.cryptoKeys.get",
 		"GetIamPolicy": "cloudkms.cryptoKeys.getIamPolicy",
@@ -1837,6 +1847,9 @@ var azurePathOperationOverrides = map[string]string{
 	// config at backupconfig/vaultconfig.
 	"microsoft.insights/eventtypes/management/values/read":            "Microsoft.Insights/eventtypes/values/Read",
 	"microsoft.recoveryservices/vaults/backupconfig/vaultconfig/read": "Microsoft.RecoveryServices/Vaults/backupconfig/read",
+	// The workspace Entra admin is read at administrators/activeDirectory;
+	// Synapse registers the operation without the activeDirectory segment.
+	"microsoft.synapse/workspaces/administrators/activedirectory/read": "Microsoft.Synapse/workspaces/administrators/read",
 }
 
 // azureUnregisteredOperations lists, lower-cased, the operations the provider

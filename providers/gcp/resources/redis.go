@@ -751,6 +751,9 @@ func (g *mqlGcpProjectRedisService) clusters() ([]any, error) {
 			"serverCaPool":                         llx.StringData(serverCaPool),
 			"pscServiceAttachments":                llx.ArrayData(pscServiceAttachments, types.Dict),
 			"asyncClusterEndpointsDeletionEnabled": llx.BoolDataPtr(cluster.AsyncClusterEndpointsDeletionEnabled),
+			"aclPolicy":                            llx.StringData(cluster.AclPolicy),
+			"aclPolicyAppliedRevision":             llx.StringData(cluster.GetAclPolicyInfo().GetAppliedAclPolicyRevision()),
+			"aclPolicyAppliedRevisionNumber":       llx.IntData(cluster.GetAclPolicyInfo().GetAppliedAclPolicyRevisionNumber()),
 		})
 		if err != nil {
 			return nil, err
@@ -1328,4 +1331,19 @@ func clusterConvertConnectionDetails(runtime *plugin.Runtime, projectId, cluster
 // isEnabled reports whether the API is enabled on this project.
 func (g *mqlGcpProjectRedisService) isEnabled() (bool, error) {
 	return g.resolveEnabled(g.MqlRuntime, g.ProjectId, service_redis)
+}
+
+func (c *mqlGcpProjectRedisServiceCluster) caPool() (*mqlGcpProjectCertificateAuthorityServiceCaPool, error) {
+	if c.ServerCaPool.Error != nil {
+		return nil, c.ServerCaPool.Error
+	}
+	pool, err := getCaPoolByName(c.MqlRuntime, c.ServerCaPool.Data, c.ProjectId.Data)
+	if err != nil {
+		return nil, err
+	}
+	if pool == nil {
+		c.CaPool.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return pool, nil
 }

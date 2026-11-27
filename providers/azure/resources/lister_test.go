@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
@@ -259,4 +260,34 @@ func TestListPagedBoundsEachPage(t *testing.T) {
 	for i, hasDeadline := range pager.deadlines {
 		assert.True(t, hasDeadline, "page %d was fetched with no deadline", i)
 	}
+}
+
+func TestRefusedCollection(t *testing.T) {
+	const perm = "Microsoft.MachineLearningServices/workspaces/computes/read"
+	forbidden := func() error {
+		return armError(http.StatusForbidden, `{"error":{"code":"AuthorizationFailed","message":"does not have authorization"}}`)
+	}
+
+	t.Run("without structured errors a refusal is null, not an empty list", func(t *testing.T) {
+		setStructuredErrors(t, false)
+		var field plugin.TValue[[]any]
+		res, err := refusedCollection(&field, forbidden(), perm)
+		require.NoError(t, err)
+		assert.Nil(t, res)
+		assert.True(t, field.IsSet(), "the field must be set, or GetOrCompute renders the nil slice as an empty list")
+		assert.True(t, field.IsNull())
+	})
+
+	t.Run("with structured errors a refusal is Forbidden naming the permission", func(t *testing.T) {
+		setStructuredErrors(t, true)
+		var field plugin.TValue[[]any]
+		res, err := refusedCollection(&field, forbidden(), perm)
+		require.Error(t, err)
+		assert.Nil(t, res)
+		assert.True(t, errors.Is(err, llx.ErrForbidden))
+		var lerr *llx.Error
+		require.True(t, errors.As(err, &lerr))
+		assert.Equal(t, []string{perm}, lerr.Permissions)
+		assert.False(t, field.IsSet(), "the error carries the answer; the field is left for GetOrCompute")
+	})
 }

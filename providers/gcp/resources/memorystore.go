@@ -836,3 +836,18 @@ func buildMemorystoreBackupFiles(runtime *plugin.Runtime, projectId, backupName 
 	}
 	return res, nil
 }
+
+func (g *mqlGcpProjectMemorystoreServiceInstance) caPool() (*mqlGcpProjectCertificateAuthorityServiceCaPool, error) {
+	if g.ServerCaPool.Error != nil {
+		return nil, g.ServerCaPool.Error
+	}
+	pool, err := getCaPoolByName(g.MqlRuntime, g.ServerCaPool.Data, g.ProjectId.Data)
+	if err != nil {
+		return nil, err
+	}
+	if pool == nil {
+		g.CaPool.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return pool, nil
+}

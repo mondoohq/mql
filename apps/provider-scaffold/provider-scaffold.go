@@ -16,6 +16,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/pflag"
+	"go.mondoo.com/mql"
 )
 
 //go:embed template/*
@@ -27,6 +28,7 @@ type config struct {
 	CamelcaseProviderID string
 	ProviderName        string
 	GoPackage           string
+	Version             string
 }
 
 func main() {
@@ -76,6 +78,7 @@ func main() {
 		ProviderName:        *providerName,
 		GoPackage:           goPackage,
 		CamelcaseProviderID: toCamelCase(*providerID),
+		Version:             initialVersion(mql.GetCoreVersion()),
 	}
 
 	if err := generateProvider(cfg); err != nil {
@@ -120,6 +123,13 @@ func toCamelCase(s string) string {
 		}
 	}
 	return strings.Join(parts, "")
+}
+
+// initialVersion returns the first version of a new provider: the major of the
+// mql release line it ships with, at minor and patch zero (14.3.1 gives 14.0.0).
+func initialVersion(coreVersion string) string {
+	major, _, _ := strings.Cut(coreVersion, ".")
+	return major + ".0.0"
 }
 
 func generateProvider(cfg config) error {

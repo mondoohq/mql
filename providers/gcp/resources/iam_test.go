@@ -3,7 +3,11 @@
 
 package resources
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func TestBindingMembersInclude(t *testing.T) {
 	const sa = "serviceAccount:ci@proj.iam.gserviceaccount.com"
@@ -51,4 +55,31 @@ func TestIsAdminRole(t *testing.T) {
 			t.Errorf("isAdminRole(%q) = %v, want %v", role, got, want)
 		}
 	}
+}
+
+func TestServiceAccountEmailMatches(t *testing.T) {
+	const sa = "sa@p1.iam.gserviceaccount.com"
+	const def = "123-compute@developer.gserviceaccount.com"
+	// Synthetic: exact and case-insensitive matches.
+	assert.True(t, serviceAccountEmailMatches(sa, sa, false, false))
+	assert.True(t, serviceAccountEmailMatches("SA@p1.iam.gserviceaccount.com", sa, false, false))
+	assert.False(t, serviceAccountEmailMatches("other@p1.iam.gserviceaccount.com", sa, false, false))
+	// Synthetic: GKE's "default" matches only the default compute account.
+	assert.True(t, serviceAccountEmailMatches("default", def, true, false))
+	assert.False(t, serviceAccountEmailMatches("default", sa, false, false))
+	// Synthetic: an unset value means the default account only where the
+	// workload type says so.
+	assert.True(t, serviceAccountEmailMatches("", def, true, true))
+	assert.False(t, serviceAccountEmailMatches("", def, true, false))
+	assert.False(t, serviceAccountEmailMatches("", sa, false, true))
+	assert.False(t, serviceAccountEmailMatches(sa, "", false, false))
+}
+
+func TestIsDefaultComputeServiceAccount(t *testing.T) {
+	assert.True(t, isDefaultComputeServiceAccount("123456789012-compute@developer.gserviceaccount.com"))
+	// Synthetic: similar-looking names.
+	assert.False(t, isDefaultComputeServiceAccount("sa-compute@developer.gserviceaccount.com"))
+	assert.False(t, isDefaultComputeServiceAccount("123456789012-compute@p1.iam.gserviceaccount.com"))
+	assert.False(t, isDefaultComputeServiceAccount("123456789012@cloudservices.gserviceaccount.com"))
+	assert.False(t, isDefaultComputeServiceAccount(""))
 }

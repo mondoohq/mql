@@ -57,16 +57,7 @@ func (g *mqlGithubOrganization) securityManagerTeams() ([]any, error) {
 
 	res := make([]any, 0, len(teams))
 	for _, team := range teams {
-		r, err := CreateResource(g.MqlRuntime, "github.team", map[string]*llx.RawData{
-			"id":                llx.IntDataPtr(team.ID),
-			"name":              llx.StringDataPtr(team.Name),
-			"description":       llx.StringDataPtr(team.Description),
-			"slug":              llx.StringDataPtr(team.Slug),
-			"privacy":           llx.StringDataPtr(team.Privacy),
-			"defaultPermission": llx.StringDataPtr(team.Permission),
-			"type":              llx.StringDataPtr(team.Type),
-			"organization":      llx.ResourceData(g, g.MqlName()),
-		})
+		r, err := newMqlGithubTeam(g.MqlRuntime, team, llx.ResourceData(g, g.MqlName()), false)
 		if err != nil {
 			return nil, err
 		}

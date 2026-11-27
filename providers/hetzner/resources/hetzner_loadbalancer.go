@@ -5,6 +5,7 @@ package resources
 
 import (
 	"fmt"
+	"net"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud"
 	"go.mondoo.com/mql/llx"
@@ -56,15 +57,17 @@ func newMqlHetznerLoadBalancer(runtime *plugin.Runtime, lb *hcloud.LoadBalancer)
 		// Hetzner returns one PTR per public address on a load balancer, not
 		// the per-address map a server's IPv6 /64 carries, so both are plain
 		// strings here.
-		"publicIpv4DnsPtr": llx.StringData(lb.PublicNet.IPv4.DNSPtr),
-		"publicIpv6DnsPtr": llx.StringData(lb.PublicNet.IPv6.DNSPtr),
-		"algorithm":        llx.StringData(string(lb.Algorithm.Type)),
-		"protection":       llx.DictData(protectionDict(lb.Protection.Delete)),
-		"labels":           labelData(lb.Labels),
-		"created":          llx.TimeDataPtr(timePtr(lb.Created)),
-		"includedTraffic":  llx.IntData(int64(lb.IncludedTraffic)),
-		"outgoingTraffic":  llx.IntData(int64(lb.OutgoingTraffic)),
-		"ingoingTraffic":   llx.IntData(int64(lb.IngoingTraffic)),
+		"publicIpv4DnsPtr":  llx.StringData(lb.PublicNet.IPv4.DNSPtr),
+		"publicIpv6DnsPtr":  llx.StringData(lb.PublicNet.IPv6.DNSPtr),
+		"publicIpv4Blocked": llx.BoolDataPtr(publicIPBlocked(lb.PublicNet.IPv4.IP, lb.PublicNet.IPv4.Blocked)),
+		"publicIpv6Blocked": llx.BoolDataPtr(publicIPBlocked(lb.PublicNet.IPv6.IP, lb.PublicNet.IPv6.Blocked)),
+		"algorithm":         llx.StringData(string(lb.Algorithm.Type)),
+		"protection":        llx.DictData(protectionDict(lb.Protection.Delete)),
+		"labels":            labelData(lb.Labels),
+		"created":           llx.TimeDataPtr(timePtr(lb.Created)),
+		"includedTraffic":   llx.IntData(int64(lb.IncludedTraffic)),
+		"outgoingTraffic":   llx.IntData(int64(lb.OutgoingTraffic)),
+		"ingoingTraffic":    llx.IntData(int64(lb.IngoingTraffic)),
 	})
 	if err != nil {
 		return nil, err
@@ -98,6 +101,23 @@ func initHetznerLoadBalancer(runtime *plugin.Runtime, args map[string]*llx.RawDa
 	}
 	res, err := newMqlHetznerLoadBalancer(runtime, lb)
 	return args, res, err
+}
+
+// publicIPBlocked reports a public address's abuse-block flag, or nil when the
+// load balancer holds no address of that family.
+func publicIPBlocked(ip net.IP, blocked bool) *bool {
+	if len(ip) == 0 || ip.IsUnspecified() {
+		return nil
+	}
+	return &blocked
+}
+
+func (m *mqlHetznerLoadBalancer) primaryIpv4() (*mqlHetznerPrimaryIp, error) {
+	return primaryIpRefByID(m.MqlRuntime, &m.PrimaryIpv4, m.cachePublicNet.IPv4.ID)
+}
+
+func (m *mqlHetznerLoadBalancer) primaryIpv6() (*mqlHetznerPrimaryIp, error) {
+	return primaryIpRefByID(m.MqlRuntime, &m.PrimaryIpv6, m.cachePublicNet.IPv6.ID)
 }
 
 func (m *mqlHetznerLoadBalancer) location() (*mqlHetznerLocation, error) {

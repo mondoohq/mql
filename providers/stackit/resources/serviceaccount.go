@@ -140,7 +140,9 @@ func (r *mqlStackitServiceAccount) accessTokens() ([]any, error) {
 	return []any{}, nil
 }
 
-func (r *mqlStackitServiceAccount) keys() ([]any, error) {
+// listKeys reads the account's key list. A nil list with a nil error means
+// the call was refused and structured errors are off.
+func (r *mqlStackitServiceAccount) listKeys() ([]serviceaccount.ServiceAccountKeyListResponse, error) {
 	c := conn(r.MqlRuntime)
 	client, err := c.ServiceAccount()
 	if err != nil {
@@ -149,16 +151,58 @@ func (r *mqlStackitServiceAccount) keys() ([]any, error) {
 	resp, err := client.DefaultAPI.ListServiceAccountKeys(bgctx(), r.ProjectId.Data, r.Email.Data).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return deniedList(err)
+			_, err := deniedList(err)
+			return nil, err
 		}
 		return nil, err
 	}
 	items, _ := resp.GetItemsOk()
+	return items, nil
+}
+
+func (r *mqlStackitServiceAccount) keys() ([]any, error) {
+	items, err := r.listKeys()
+	if err != nil {
+		return nil, err
+	}
 	out := make([]any, 0, len(items))
 	for i := range items {
 		out = append(out, serviceAccountKeyEntry(&items[i]))
 	}
 	return out, nil
+}
+
+func (r *mqlStackitServiceAccount) accessKeys() ([]any, error) {
+	items, err := r.listKeys()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]any, 0, len(items))
+	for i := range items {
+		res, err := CreateResource(r.MqlRuntime, "stackit.serviceAccount.key", serviceAccountKeyArgs(r.Email.Data, &items[i]))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, res)
+	}
+	return out, nil
+}
+
+// serviceAccountKeyArgs maps a key's metadata. The list response carries no
+// key material, and nothing here would read it if it did.
+func serviceAccountKeyArgs(email string, k *serviceaccount.ServiceAccountKeyListResponse) map[string]*llx.RawData {
+	createdAt, ok1 := k.GetCreatedAtOk()
+	validUntil, ok2 := k.GetValidUntilOk()
+	return map[string]*llx.RawData{
+		"__id":         llx.StringData(qualifiedId("stackit.serviceAccount.key", email, k.GetId())),
+		"id":           llx.StringData(k.GetId()),
+		"active":       llx.BoolData(k.GetActive()),
+		"createdAt":    llx.TimeDataPtr(timeOrNil(createdAt, ok1)),
+		"validUntil":   llx.TimeDataPtr(timeOrNil(validUntil, ok2)),
+		"keyType":      llx.StringData(string(k.GetKeyType())),
+		"keyOrigin":    llx.StringData(string(k.GetKeyOrigin())),
+		"keyAlgorithm": llx.StringData(string(k.GetKeyAlgorithm())),
+	}
 }
 
 // mqlStackitServiceAccountFederatedIdentityProviderInternal caches the owning

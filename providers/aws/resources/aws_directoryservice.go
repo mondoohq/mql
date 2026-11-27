@@ -211,6 +211,67 @@ func (a *mqlAwsDirectoryserviceDirectory) tags() (map[string]any, error) {
 	return tagsMap, nil
 }
 
+// sharedDirectories lists the accounts an owned directory is shared with.
+// Only AWS Managed Microsoft AD directories can be shared. A directory shared
+// into this account (SharedMicrosoftAD) is the consumer side of a share and
+// has no shares of its own, so neither type is queried.
+func (a *mqlAwsDirectoryserviceDirectory) sharedDirectories() ([]any, error) {
+	if a.Type.Data != string(dstypes.DirectoryTypeMicrosoftAd) {
+		return []any{}, nil
+	}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.DirectoryService(a.Region.Data)
+	ctx := context.Background()
+
+	res := []any{}
+	paginator := directoryservice.NewDescribeSharedDirectoriesPaginator(svc, &directoryservice.DescribeSharedDirectoriesInput{
+		OwnerDirectoryId: aws.String(a.DirectoryId.Data),
+	})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				// Null, not an empty list: a check over the shares must not pass
+				// on a directory whose shares could not be read.
+				if !plugin.StructuredErrors() {
+					log.Warn().Str("region", a.Region.Data).Msg("access denied for ds:DescribeSharedDirectories")
+					return nil, nil
+				}
+				return nil, llx.Forbidden(err, llx.WithPermissions("ds:DescribeSharedDirectories"))
+			}
+			return nil, err
+		}
+		for _, sd := range page.SharedDirectories {
+			mqlShare, err := CreateResource(a.MqlRuntime, "aws.directoryservice.directory.sharedDirectory",
+				sharedDirectoryArgs(a.Region.Data, a.DirectoryId.Data, sd))
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, mqlShare)
+		}
+	}
+	return res, nil
+}
+
+// sharedDirectoryArgs converts a DescribeSharedDirectories entry into the
+// arguments of an aws.directoryservice.directory.sharedDirectory resource.
+func sharedDirectoryArgs(region, ownerDirectoryId string, sd dstypes.SharedDirectory) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":              llx.StringData("aws.directoryservice.directory.sharedDirectory/" + region + "/" + ownerDirectoryId + "/" + aws.ToString(sd.SharedAccountId)),
+		"sharedAccountId":   llx.StringDataPtr(sd.SharedAccountId),
+		"sharedDirectoryId": llx.StringDataPtr(sd.SharedDirectoryId),
+		"shareMethod":       llx.StringData(string(sd.ShareMethod)),
+		"shareStatus":       llx.StringData(string(sd.ShareStatus)),
+		"shareNotes":        llx.StringDataPtr(sd.ShareNotes),
+		"createdAt":         llx.TimeDataPtr(sd.CreatedDateTime),
+		"updatedAt":         llx.TimeDataPtr(sd.LastUpdatedDateTime),
+	}
+}
+
+func (a *mqlAwsDirectoryserviceDirectorySharedDirectory) id() (string, error) {
+	return a.__id, nil
+}
+
 func (a *mqlAwsDirectoryserviceDirectory) radiusSettings() (*mqlAwsDirectoryserviceRadiusSettings, error) {
 	if a.dir.RadiusSettings == nil {
 		a.RadiusSettings.State = plugin.StateIsSet | plugin.StateIsNull

@@ -38,6 +38,11 @@ oci.tenancy @defaults("name") {
   name string
   // Tenancy description
   description string
+  // Home region of the tenancy
+  //
+  // The region where the tenancy was created, where IAM changes are made
+  // before they replicate to the other subscribed regions.
+  homeRegion() oci.region
   // Event retention period duration
   retentionPeriod() time
   // Free-form tags for resource management
@@ -101,12 +106,35 @@ private oci.compartment @defaults("id name") {
   // see the existence of but not look inside, which is the case a check for
   // over-broad or missing grants is looking for.
   isAccessible() bool
+  // Compartments directly beneath this one
+  children() []oci.compartment
+  // Policies attached to this compartment
+  //
+  // The policies defined in the compartment, not every policy whose
+  // statements are scoped to it.
+  policies() []oci.identity.policy
+  // Security zone governing this compartment
+  //
+  // The zone created for this compartment, or else the one of its nearest
+  // ancestor, since a security zone applies to the compartments beneath it.
+  // Null when no zone governs it.
+  securityZone() oci.cloudGuard.securityZone
+  // Cloud Guard target monitoring this compartment
+  //
+  // The target created for this compartment, or else the one of its nearest
+  // ancestor, since a target covers the compartments beneath it. Null when
+  // Cloud Guard does not monitor it.
+  cloudGuardTarget() oci.cloudGuard.target
   // Compartment description
   description string
   // Compartment creation time
   created time
   // Compartment lifecycle state (CREATING, ACTIVE, INACTIVE, DELETING, DELETED)
   state string
+  // Detailed status of an INACTIVE compartment
+  //
+  // Null when the compartment is not inactive.
+  inactiveStatus int
   // Free-form tags for resource management
   freeformTags map[string]string
   // Defined tags for governance and cost tracking
@@ -485,7 +513,9 @@ private oci.identity.domain.user.groupMembership @defaults("displayName type") {
   // Empty on a domain that predates membership OCIDs.
   membershipOcid string
   // Group SCIM identifier the membership binds to
-  groupId string
+  //
+  // Deprecated in favor of group.
+  groupId @maturity("deprecated") @replaced_by("oci.identity.domain.user.groupMembership.group") string
   // Group display name, as recorded on the membership
   displayName string
   // Group the membership binds to
@@ -909,6 +939,16 @@ private oci.identity.user @defaults("name") {
   emailVerified bool
   // Identifier of this user in a federated identity provider, empty for local users
   externalIdentifier string
+  // Database username used with the user's database credentials
+  //
+  // Unique across the tenancy. Empty when no database username is set.
+  dbUserName string
+  // Reason an INACTIVE user is inactive, as a bit mask
+  //
+  // Bit 2 (value 4) is BLOCKED: the user exceeded the maximum number of
+  // failed console login attempts. Bits 0 (SUSPENDED) and 1 (DISABLED) are
+  // reserved. Null when the user is not inactive.
+  inactiveStatus int
   // Federated identity provider this user originates from, when the user is federated
   identityProvider() oci.identity.identityProvider
   // Authentication capabilities the user is permitted to hold
@@ -934,6 +974,8 @@ private oci.identity.user @defaults("name") {
   authTokens() []oci.identity.authToken
   // Groups the user belongs to
   groups() []oci.identity.group
+  // Policies with a statement that grants to one of the user's groups by name or OCID
+  policies() []oci.identity.policy
   // MFA TOTP devices
   mfaDevices() []oci.identity.mfaDevice
   // Database password credentials for OCI database connections
@@ -1020,6 +1062,10 @@ private oci.identity.group @defaults("name") {
   definedTags map[string]map[string]string
   // Users in the group
   members() []oci.identity.user
+  // Policies with a statement that grants to this group by name or OCID
+  //
+  // Statements granting to any-group are not included.
+  policies() []oci.identity.policy
 }
 
 // Oracle Cloud Infrastructure (OCI) IAM policy that grants group permissions to resources
@@ -1036,6 +1082,10 @@ private oci.identity.policy @defaults("name description") {
   created time
   // Policy lifecycle state (CREATING, ACTIVE, INACTIVE, DELETING, DELETED)
   state string
+  // Detailed status of an INACTIVE policy
+  //
+  // Null when the policy is not inactive.
+  inactiveStatus int
   // Policy statements defining permissions
   statements []string
   // Policy statements broken into their grammatical parts
@@ -1280,7 +1330,11 @@ private oci.identity.tagDefault @defaults("tagDefinitionName value state") {
 // Oracle Cloud Infrastructure (OCI) tenancy authentication policy
 private oci.identity.authenticationPolicy @defaults("minimumPasswordLength") {
   // Compartment (tenancy) OCID the policy applies to
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.identity.authenticationPolicy.compartment") string
+  // Compartment (tenancy) the policy applies to
+  compartment() oci.compartment
   // Minimum number of characters required in a console password
   minimumPasswordLength int
   // Whether a console password must contain an uppercase character
@@ -1294,7 +1348,11 @@ private oci.identity.authenticationPolicy @defaults("minimumPasswordLength") {
   // Whether a console password is allowed to contain the user name
   passwordUsernameContainmentAllowed bool
   // OCIDs of the network sources that restrict where console and API requests may originate
-  networkSourceIds []string
+  //
+  // Deprecated in favor of networkSources.
+  networkSourceIds @maturity("deprecated") @replaced_by("oci.identity.authenticationPolicy.networkSources") []string
+  // Network sources that restrict where console and API requests may originate
+  networkSources() []oci.identity.networkSource
 }
 
 // Oracle Cloud Infrastructure (OCI) Compute
@@ -2260,6 +2318,8 @@ private oci.network.securityList @defaults("name") {
   id string
   // Compartment containing the security list
   compartment() oci.compartment
+  // Region the security list is in
+  region() oci.region
   // Security list display name
   name string
   // Security list creation time
@@ -2285,6 +2345,10 @@ private oci.network.securityList @defaults("name") {
   hasStatelessRules() bool
   // VCN that this security list belongs to
   vcn() oci.network.vcn
+  // Subnets the security list is attached to
+  //
+  // Empty for a security list no subnet uses, whose rules apply to nothing.
+  subnets() []oci.network.subnet
   // Free-form tags for resource management
   freeformTags map[string]string
   // Defined tags for governance and cost tracking
@@ -3039,9 +3103,10 @@ private oci.network.virtualCircuit @defaults("name type state") {
 private oci.network.virtualCircuit.crossConnectMapping @defaults("vlan customerBgpPeeringIp oracleBgpPeeringIp") {
   // OCID of the cross-connect or cross-connect group the mapping terminates on
   //
+  // Deprecated in favor of crossConnect.
   // Empty on a provider-mediated circuit, where the FastConnect partner owns
   // the port rather than the tenancy.
-  crossConnectId string
+  crossConnectId @maturity("deprecated") @replaced_by("oci.network.virtualCircuit.crossConnectMapping.crossConnect") string
   // Cross-connect the mapping terminates on
   //
   // Null when the mapping names a cross-connect group rather than a single
@@ -3355,6 +3420,8 @@ private oci.objectStorage.bucket {
   namespace string
   // Bucket name
   name string
+  // Service logs the bucket emits (read and write access logs)
+  logs() []oci.logging.log
   // Compartment containing the bucket
   compartment() oci.compartment
   // Bucket creation time
@@ -4108,8 +4175,15 @@ private oci.events.rule @defaults("name") {
 oci.cloudGuard {
   // Whether Cloud Guard is enabled
   status() bool
-  // Region where Cloud Guard reports findings
-  reportingRegion() string
+  // Name of the region where Cloud Guard reports findings
+  //
+  // Deprecated in favor of findingsRegion, which resolves the region.
+  reportingRegion() @maturity("deprecated") string
+  // Region where Cloud Guard reports findings, resolved
+  //
+  // Null when Cloud Guard is not configured or the region is not among the
+  // tenancy's subscriptions.
+  findingsRegion() oci.region
   // Whether Cloud Guard resources are self-managed
   selfManageResources() bool
   // Cloud Guard targets (monitored compartments/resources)
@@ -4144,6 +4218,12 @@ private oci.cloudGuard.target @defaults("name") {
   targetResourceId string
   // Type of resource being monitored (e.g., COMPARTMENT, ERPCLOUD, HCMCLOUD, SECURITY_ZONE)
   targetResourceType string
+  // Compartment the target monitors
+  //
+  // Set for a COMPARTMENT target and for the SECURITY_ZONE target Cloud Guard
+  // creates with a security zone, which monitors the zone's compartment. Null
+  // for other target types.
+  targetCompartment() oci.compartment
   // Target lifecycle state (e.g., CREATING, UPDATING, ACTIVE, INACTIVE, DELETING, DELETED, FAILED)
   state string
   // Number of detector recipes attached to the target
@@ -5188,6 +5268,8 @@ private oci.vault.secret @defaults("name") {
   name string
   // Compartment containing the secret
   compartment() oci.compartment
+  // Region the secret is in
+  region() oci.region
   // Vault containing this secret
   kmsVault() oci.kms.vault
   // KMS key used for encryption
@@ -5196,6 +5278,27 @@ private oci.vault.secret @defaults("name") {
   description string
   // Lifecycle state (e.g., CREATING, ACTIVE, UPDATING, DELETING, DELETED, SCHEDULING_DELETION, PENDING_DELETION, CANCELLING_DELETION, FAILED)
   state string
+  // Detail message describing the current lifecycle state
+  lifecycleDetails string
+  // Time the secret is scheduled for deletion
+  //
+  // Null unless deletion has been scheduled.
+  timeOfDeletion time
+  // Kind of secret the service generates when auto generation is enabled (PASSPHRASE, SSH_KEY, or BYTES)
+  //
+  // Empty when the secret carries no generation context.
+  generationType string
+  // Template the service generates the secret from
+  //
+  // For example SECRETS_DEFAULT_PASSWORD or DBAAS_DEFAULT_PASSWORD for a
+  // passphrase, RSA_2048, RSA_3072, or RSA_4096 for an SSH key, and
+  // BYTES_256 or BYTES_512 for bytes. Empty when the secret carries no
+  // generation context.
+  generationTemplate string
+  // Length of a generated passphrase
+  //
+  // Null unless generationType is PASSPHRASE and a length is set.
+  passphraseLength int
   // Rotation status (NOT_ENABLED, SCHEDULED, IN_PROGRESS, CANCELLING)
   rotationStatus string
   // Last rotation time
@@ -5236,6 +5339,24 @@ private oci.vault.secret @defaults("name") {
   isScheduledRotationEnabled() bool
   // Expiry time of the current secret version
   timeOfCurrentVersionExpiry() time
+  // Version number of the secret's current version
+  currentVersionNumber() int
+  // Interval after which each secret version expires, in ISO 8601 duration format (e.g., P30D)
+  //
+  // Empty when the secret has no expiry rule or the rule sets no interval.
+  expiryInterval() string
+  // Fixed time at which the secret's content expires
+  //
+  // Null when the secret has no expiry rule or the rule sets no absolute expiry.
+  timeOfAbsoluteExpiry() time
+  // Whether retrieving the content of an expired secret version is blocked
+  //
+  // Null when the secret has no expiry rule.
+  isContentRetrievalBlockedOnExpiry() bool
+  // Whether content of deleted secret versions may not be reused
+  //
+  // Null when the secret has no reuse rule.
+  isReuseBlockedOnDeletedVersions() bool
   // Secret versions
   secretVersions() []oci.vault.secretVersion
   // Creation time
@@ -5323,6 +5444,12 @@ private oci.loadBalancer.loadBalancer @defaults("name") {
   name string
   // Compartment containing the load balancer
   compartment() oci.compartment
+  // Region the load balancer is in
+  region() oci.region
+  // Web application firewalls attached to the load balancer
+  webAppFirewalls() []oci.waf.firewall
+  // Service logs the load balancer emits (access and error logs)
+  logs() []oci.logging.log
   // Shape name (e.g., flexible, 100Mbps, 400Mbps)
   shape string
   // Guaranteed pre-provisioned bandwidth in Mbps
@@ -5441,11 +5568,10 @@ private oci.loadBalancer.listener @defaults("name") {
   sslProtocols []string
   // SSL cipher suite name
   //
-  // Deprecated in favor of sslCipherSuite, which resolves the same name to
-  // the suite itself. Kept because it also carries the OCI-predefined suite
-  // names, which are not part of the load balancer's own collection and so
-  // do not resolve.
-  sslCipherSuiteName @maturity("deprecated") @replaced_by("oci.loadBalancer.listener.sslCipherSuite") string
+  // The only field that names an OCI-predefined suite such as
+  // oci-modern-ssl-cipher-suite-v1. Those suites are not part of the load
+  // balancer's own collection, so sslCipherSuite is null for them.
+  sslCipherSuiteName string
   // Cipher suite the listener negotiates with
   //
   // Resolves the load balancer's named cipher suite, whose ciphers list is
@@ -5747,6 +5873,17 @@ private oci.loadBalancer.healthChecker @defaults("protocol port urlPath") {
   // use it, so a backend whose certificate has expired or been replaced still
   // reports healthy.
   forcePlainText bool
+  // Whether backends set their own weight through the probe response
+  //
+  // When true, an HTTP probe reads the `X-Dynamic-Backend-Weight` header from
+  // each backend's reply and uses it as that backend's weight, so a backend
+  // can shift traffic toward or away from itself. Has no effect on a TCP probe.
+  dynamicBackendWeightEnabled bool
+  // Weight applied when a backend's probe reply carries no valid weight header
+  //
+  // Used only when dynamicBackendWeightEnabled is true. An integer from 1
+  // through 100.
+  defaultWeight int
 }
 
 // Backend server in an Oracle Cloud Infrastructure (OCI) load balancer backend set
@@ -7793,6 +7930,8 @@ private oci.oke.cluster @defaults("name") {
   name string
   // Compartment containing the cluster
   compartment() oci.compartment
+  // Region the cluster is in
+  region() oci.region
   // Kubernetes version
   kubernetesVersion string
   // Cluster type (BASIC_CLUSTER, ENHANCED_CLUSTER)
@@ -7815,7 +7954,16 @@ private oci.oke.cluster @defaults("name") {
   // but names no key, which admits every image.
   imagePolicyKmsKeys() []oci.kms.key
   // Available Kubernetes version upgrades
+  //
+  // Lists every version the control plane can move to next, patch releases
+  // included, so its length does not measure how far behind the cluster is.
   availableKubernetesUpgrades []string
+  // Kubernetes versions OKE supports in the cluster's region
+  //
+  // Read from the cluster options OKE publishes for new clusters, which name
+  // each version it currently supports and drop a version once its support
+  // ends. A kubernetesVersion absent from this list is out of support.
+  supportedKubernetesVersions() []string
   // Whether Pod Security Policy admission controller is enabled
   isPodSecurityPolicyEnabled bool
   // Whether the Kubernetes Dashboard add-on is deployed
@@ -7855,6 +8003,11 @@ private oci.oke.cluster @defaults("name") {
   // Empty when no group is attached, in which case the endpoint is governed
   // only by its subnet's security lists.
   endpointSecurityGroups() []oci.network.networkSecurityGroup
+  // Internet-exposure breakdown for the Kubernetes API endpoint
+  //
+  // A public IP on the endpoint, combined with the endpoint subnet's routing
+  // and ingress rules and the endpoint's network security groups.
+  exposure() oci.network.exposure
   // Whether the API server accepts OpenID Connect tokens
   //
   // When enabled, an external identity provider can mint tokens the cluster
@@ -8746,6 +8899,19 @@ private oci.database.autonomousDatabase.consoleUrls @defaults("sqlDevWebUrl apex
   databaseTransformsUrl string
   // Spatial Studio URL
   spatialStudioUrl string
+  // Model Context Protocol (MCP) server URL
+  //
+  // The endpoint AI agents call to run tools against the database. Null on a
+  // database that does not publish one. On publicManagementUrls a non-null
+  // value means the MCP server answers from outside the tenancy's network.
+  mcpUrl string
+  // Agent-to-Agent (A2A) server URL
+  //
+  // The endpoint other AI agents use to delegate tasks to the database's
+  // agents. Null on a database that does not publish one. On
+  // publicManagementUrls a non-null value means the A2A server answers from
+  // outside the tenancy's network.
+  a2aUrl string
 }
 
 // Oracle Cloud Infrastructure (OCI) database backup (for VM/BM databases)
@@ -9207,17 +9373,26 @@ private oci.database.autonomousDatabase @defaults("name") {
   whitelistedIps []string
   // Whether the database is reachable from the public internet
   //
-  // True when the database has a public endpoint (no private endpoint) and
-  // either access control is disabled or its allow-list admits any address
-  // (0.0.0.0/0 or 0.0.0.0). mTLS may still be required to connect, but the
-  // listener itself is reachable from the internet.
+  // True when the database has a public endpoint and either access control
+  // is disabled or its allow-list admits any address (0.0.0.0/0, 0.0.0.0, or
+  // an internet-wide range). A private endpoint database counts when public
+  // access is also allowed on it and that allow-list admits any address.
+  // mTLS may still be required to connect, but the listener itself is
+  // reachable from the internet.
   internetReachable() bool
   // Allowed client IP addresses for the Data Guard standby (ACL)
   //
   // The standby's own access control list. When it diverges from
   // whitelistedIps the standby may be reachable from networks the primary
   // blocks, so compare the two when auditing disaster-recovery exposure.
+  // Not enforced while arePrimaryWhitelistedIpsUsed is true.
   standbyWhitelistedIps []string
+  // Whether the Data Guard standby enforces the primary's access control list
+  //
+  // When true the standby admits the sources in whitelistedIps and ignores
+  // standbyWhitelistedIps; when false it enforces standbyWhitelistedIps.
+  // Null when OCI reports neither, as for a database without a standby.
+  arePrimaryWhitelistedIpsUsed bool
   // Whether auto-scaling is enabled
   isAutoScalingEnabled bool
   // Whether local Data Guard is enabled
@@ -9415,7 +9590,13 @@ private oci.apigateway.gateway @defaults("name") {
   // TLS certificate used by the gateway (from the apigateway certificates service)
   certificate() oci.apigateway.certificate
   // OCIDs of CA bundles (from the certificatesmanagement service or the apigateway certificates service) used by the gateway for TLS validation
-  caBundleIds() []string
+  //
+  // Deprecated in favor of caBundles and certificateAuthorities, which resolve the two kinds of reference this list mixes.
+  caBundleIds() @maturity("deprecated") []string
+  // CA bundles from the certificates service the gateway uses for TLS validation
+  caBundles() []oci.certificates.caBundle
+  // Certificate authorities from the certificates service the gateway uses for TLS validation
+  certificateAuthorities() []oci.certificates.certificateAuthority
   // Lifecycle state (e.g., CREATING, ACTIVE, UPDATING, DELETING, DELETED, FAILED)
   state string
   // Creation time
@@ -9451,17 +9632,30 @@ private oci.apigateway.deployment @defaults("name pathPrefix") {
   name string
   // Compartment containing the deployment
   compartment() oci.compartment
+  // Region the deployment is in
+  region() oci.region
   // Parent gateway
   gateway() oci.apigateway.gateway
+  // Service logs the deployment emits (access and execution logs)
+  logs() []oci.logging.log
   // Path prefix on the gateway that this deployment is deployed to
   pathPrefix string
   // Endpoint URL to reach this deployment
   endpoint string
   // Lifecycle state (e.g., CREATING, ACTIVE, UPDATING, DELETING, DELETED, FAILED)
   state string
-  // Authentication method configured for this deployment: NONE, TOKEN_AUTHENTICATION, JWT_AUTHENTICATION, or CUSTOM_AUTHENTICATION
+  // Detail message describing the current lifecycle state
+  lifecycleDetails string
+  // Minimum level of execution log messages the deployment emits (INFO, WARN, or ERROR)
+  //
+  // Empty when the deployment sets no execution log level.
+  executionLogLevel() string
+  // Authentication method configured for this deployment: NONE, TOKEN_AUTHENTICATION, JWT_AUTHENTICATION, CUSTOM_AUTHENTICATION, or DYNAMIC_AUTHENTICATION
   authenticationType() string
   // Whether anonymous (unauthenticated) access is allowed
+  //
+  // Under dynamic authentication this is true when any of the selectable
+  // authentication servers admits anonymous requests.
   isAnonymousAccessAllowed() bool
   // JWT audiences accepted when authenticationType is JWT_AUTHENTICATION
   jwtAudiences() []string
@@ -9481,6 +9675,11 @@ private oci.apigateway.deployment @defaults("name pathPrefix") {
   rateLimitKey() string
   // Whether dynamic authentication (multiple auth options selected by request) is configured
   hasDynamicAuthentication() bool
+  // Routes the deployment serves
+  //
+  // Each route pairs a path and its methods with the backend that answers it
+  // and the authorization it requires.
+  routes() []oci.apigateway.deployment.route
   // Creation time
   created time
   // Last update time
@@ -9495,6 +9694,47 @@ private oci.apigateway.deployment @defaults("name pathPrefix") {
   // `Oracle-Tags` namespace records the creating principal in `CreatedBy`
   // and the creation time in `CreatedOn`.
   systemTags map[string]dict
+}
+
+// Route of an Oracle Cloud Infrastructure (OCI) API gateway deployment
+//
+// One route of a deployment: the `path` and `methods` it matches, the
+// backend that answers it, and the authorization it requires. Flags HTTP
+// backends that skip TLS certificate verification with
+// `isSslVerifyDisabled`, and routes open to unauthenticated callers with
+// `authorizationType == "ANONYMOUS"`.
+private oci.apigateway.deployment.route @defaults("path methods backendType") {
+  // Path the route matches, relative to the deployment's pathPrefix
+  path string
+  // HTTP methods the route accepts
+  //
+  // Empty when the route accepts every method.
+  methods []string
+  // Backend type (HTTP_BACKEND, ORACLE_FUNCTIONS_BACKEND, STOCK_RESPONSE_BACKEND, OAUTH2_LOGIN_BACKEND, OAUTH2_LOGOUT_BACKEND, or DYNAMIC_ROUTING_BACKEND)
+  backendType string
+  // URL of the HTTP backend
+  //
+  // Empty unless backendType is HTTP_BACKEND. A dynamic routing backend's
+  // HTTP backends are listed in backendUrls.
+  backendUrl string
+  // URLs of every HTTP backend the route can send a request to
+  //
+  // The HTTP backend itself, or each HTTP backend a dynamic routing backend
+  // selects between.
+  backendUrls []string
+  // Whether TLS certificate verification is disabled on an HTTP backend of the route
+  //
+  // For a dynamic routing backend, true when any HTTP backend it selects
+  // between disables verification. Null when the route has no HTTP backend.
+  isSslVerifyDisabled bool
+  // Authorization the route requires (ANONYMOUS, ANY_OF, or AUTHENTICATION_ONLY)
+  //
+  // Empty when the route sets no authorization policy. The gateway then
+  // requires an authenticated caller when the deployment configures
+  // authentication, and admits every caller when it does not.
+  authorizationType string
+  // Scopes of which a caller must hold one, when authorizationType is ANY_OF
+  allowedScopes []string
 }
 
 // Oracle Cloud Infrastructure (OCI) API gateway TLS certificate (distinct from oci.certificates.certificate; managed by the apigateway service)
@@ -9668,6 +9908,8 @@ private oci.certificates.caBundle @defaults("name") {
 oci.redis {
   // OCI Cache clusters
   clusters() []oci.redis.cluster
+  // OCI Cache users
+  users() []oci.redis.user
 }
 
 // Oracle Cloud Infrastructure (OCI) Cache cluster (Redis or Valkey)
@@ -9699,6 +9941,8 @@ private oci.redis.cluster @defaults("name softwareVersion state") {
   primaryCluster() oci.redis.cluster
   // Compartment containing the cluster
   compartment() oci.compartment
+  // Region the cluster is in
+  region() oci.region
   // Cache engine version (e.g., REDIS_7_0, VALKEY_7_2, VALKEY_8_1)
   softwareVersion string
   // Cluster mode (SHARDED or NONSHARDED)
@@ -9713,6 +9957,19 @@ private oci.redis.cluster @defaults("name softwareVersion state") {
   subnet() oci.network.subnet
   // Network security groups attached to the cluster
   networkSecurityGroups() []oci.network.networkSecurityGroup
+  // Internet-exposure breakdown (the subnet's routing and ingress rules and the network security groups)
+  //
+  // OCI Cache endpoints carry only private addresses, so internetReachable is
+  // false; the breakdown reports which rules would admit traffic from any
+  // address. Null for a DELETED cluster.
+  exposure() oci.network.exposure
+  // Security attributes applied to this cluster, resolved
+  //
+  // Each labelling as a row carrying its namespace, its definition and whether
+  // that namespace enforces or only audits.
+  appliedSecurityAttributes() []oci.securityAttributes.applied
+  // Cache users attached to the cluster
+  users() []oci.redis.user
   // FQDN of the primary node API endpoint
   primaryFqdn string
   // Private IP of the primary node API endpoint
@@ -9727,10 +9984,58 @@ private oci.redis.cluster @defaults("name softwareVersion state") {
   discoveryEndpointIpAddress string
   // Cluster lifecycle state (e.g., CREATING, UPDATING, ACTIVE, DELETING, DELETED, FAILED)
   state string
+  // Detail message describing the current lifecycle state
+  lifecycleDetails string
   // Creation time
   created time
   // Last update time
   timeUpdated time
+  // Free-form tags for resource management
+  freeformTags map[string]string
+  // Defined tags for governance and cost tracking
+  definedTags map[string]map[string]string
+  // System tags
+  //
+  // Tags applied automatically by Oracle, keyed by namespace. The
+  // `Oracle-Tags` namespace records the creating principal in `CreatedBy`
+  // and the creation time in `CreatedOn`.
+  systemTags map[string]dict
+}
+
+// Oracle Cloud Infrastructure (OCI) Cache user
+//
+// A user that clients authenticate as against OCI Cache clusters, selected
+// by its OCID with `oci.redis.user(id: "ocid1.ocicacheuser.oc1...")`.
+// Reports how the user authenticates (`authenticationType` of IAM or
+// PASSWORD), the access control list that limits its commands and keys
+// (`aclString`), and whether it is switched on. Password hashes are not
+// exposed.
+private oci.redis.user @defaults("name authenticationType status") {
+  init(id? string)
+  // Cache user OCID
+  id string
+  // User name clients authenticate as
+  name string
+  // Compartment containing the user
+  compartment() oci.compartment
+  // User description
+  description string
+  // How the user authenticates (IAM or PASSWORD)
+  authenticationType string
+  // Access control list in Redis ACL syntax, limiting the commands, keys and channels the user may use
+  //
+  // For example `~* +@all` grants every command on every key. The first rule
+  // that carries a password or a password hash (`>`, `<`, `#`, `!`) keeps its
+  // prefix followed by `***`, and everything after the first credential rule
+  // is masked. Before it, any token that is not a known rule is masked as
+  // `***`.
+  aclString() string
+  // Whether the user is switched on (ON or OFF)
+  status string
+  // Lifecycle state (CREATING, UPDATING, ACTIVE, DELETING, DELETED, FAILED)
+  state string
+  // Creation time
+  created time
   // Free-form tags for resource management
   freeformTags map[string]string
   // Defined tags for governance and cost tracking
@@ -10330,7 +10635,9 @@ private oci.vulnerabilityScanning.hostScanRecipe @defaults("name compartmentId p
   // Recipe display name
   name string
   // Compartment OCID containing the recipe
-  compartmentId string
+  //
+  // Deprecated in favor of compartment.
+  compartmentId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostScanRecipe.compartment") string
   // Compartment containing the recipe
   compartment() oci.compartment
   // Lifecycle state (CREATING, ACTIVE, UPDATING, DELETING, DELETED, FAILED)
@@ -10375,19 +10682,27 @@ private oci.vulnerabilityScanning.hostScanTarget @defaults("name compartmentId s
   // Target description
   description string
   // Compartment OCID containing the target
-  compartmentId string
+  //
+  // Deprecated in favor of compartment.
+  compartmentId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostScanTarget.compartment") string
   // Compartment containing the target
   compartment() oci.compartment
   // Compartment OCID whose instances this target scans
-  targetCompartmentId string
+  //
+  // Deprecated in favor of targetCompartment.
+  targetCompartmentId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostScanTarget.targetCompartment") string
   // Compartment whose instances this target scans
   targetCompartment() oci.compartment
   // Host scan recipe OCID applied by this target
-  hostScanRecipeId string
+  //
+  // Deprecated in favor of recipe.
+  hostScanRecipeId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostScanTarget.recipe") string
   // Host scan recipe applied by this target
   recipe() oci.vulnerabilityScanning.hostScanRecipe
   // Compute instance OCIDs scanned by this target
-  instanceIds []string
+  //
+  // Deprecated in favor of instances.
+  instanceIds @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostScanTarget.instances") []string
   // Compute instances scanned by this target
   instances() []oci.compute.instance
   // Lifecycle state (CREATING, ACTIVE, UPDATING, DELETING, DELETED, FAILED)
@@ -10409,7 +10724,9 @@ private oci.vulnerabilityScanning.containerScanRecipe @defaults("name compartmen
   // Recipe display name
   name string
   // Compartment OCID containing the recipe
-  compartmentId string
+  //
+  // Deprecated in favor of compartment.
+  compartmentId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.containerScanRecipe.compartment") string
   // Compartment containing the recipe
   compartment() oci.compartment
   // Lifecycle state
@@ -10437,11 +10754,15 @@ private oci.vulnerabilityScanning.containerScanTarget @defaults("name compartmen
   // Target description
   description string
   // Compartment OCID containing the target
-  compartmentId string
+  //
+  // Deprecated in favor of compartment.
+  compartmentId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.containerScanTarget.compartment") string
   // Compartment containing the target
   compartment() oci.compartment
   // Container scan recipe OCID applied by this target
-  containerScanRecipeId string
+  //
+  // Deprecated in favor of recipe.
+  containerScanRecipeId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.containerScanTarget.recipe") string
   // Container scan recipe applied by this target
   recipe() oci.vulnerabilityScanning.containerScanRecipe
   // Registry type (OCIR)
@@ -10471,11 +10792,15 @@ private oci.vulnerabilityScanning.hostAgentScanResult @defaults("name instanceId
   // Scan result display name
   name string
   // Scanned compute instance OCID
-  instanceId string
+  //
+  // Deprecated in favor of instance.
+  instanceId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostAgentScanResult.instance") string
   // Scanned compute instance
   instance() oci.compute.instance
   // Compartment OCID containing the scan result
-  compartmentId string
+  //
+  // Deprecated in favor of compartment.
+  compartmentId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostAgentScanResult.compartment") string
   // Compartment containing the scan result
   compartment() oci.compartment
   // Highest finding severity (NONE, LOW, MEDIUM, HIGH, CRITICAL)
@@ -10551,11 +10876,15 @@ private oci.vulnerabilityScanning.hostPortScanResult @defaults("name instanceId 
   // Scan result display name
   name string
   // Scanned compute instance OCID
-  instanceId string
+  //
+  // Deprecated in favor of instance.
+  instanceId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostPortScanResult.instance") string
   // Scanned compute instance
   instance() oci.compute.instance
   // Compartment OCID containing the scan result
-  compartmentId string
+  //
+  // Deprecated in favor of compartment.
+  compartmentId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostPortScanResult.compartment") string
   // Compartment containing the scan result
   compartment() oci.compartment
   // Highest severity across open ports
@@ -10592,7 +10921,9 @@ private oci.vulnerabilityScanning.hostPortScanResult.openPort @defaults("port pr
   // Finding severity for this open port
   severity string
   // VNIC OCID exposing the port
-  vnicId string
+  //
+  // Deprecated in favor of vnic.
+  vnicId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostPortScanResult.openPort.vnic") string
   // VNIC exposing the port
   vnic() oci.compute.vnic
 }
@@ -10608,11 +10939,15 @@ private oci.vulnerabilityScanning.hostCisBenchmarkScanResult @defaults("name ins
   // Scan result display name
   name string
   // Scanned compute instance OCID
-  instanceId string
+  //
+  // Deprecated in favor of instance.
+  instanceId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostCisBenchmarkScanResult.instance") string
   // Scanned compute instance
   instance() oci.compute.instance
   // Compartment OCID containing the scan result
-  compartmentId string
+  //
+  // Deprecated in favor of compartment.
+  compartmentId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostCisBenchmarkScanResult.compartment") string
   // Compartment containing the scan result
   compartment() oci.compartment
   // Total number of CIS benchmark issues found
@@ -10650,11 +10985,15 @@ private oci.vulnerabilityScanning.hostEndpointProtectionScanResult @defaults("na
   // Scan result display name
   name string
   // Scanned compute instance OCID
-  instanceId string
+  //
+  // Deprecated in favor of instance.
+  instanceId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostEndpointProtectionScanResult.instance") string
   // Scanned compute instance
   instance() oci.compute.instance
   // Compartment OCID containing the scan result
-  compartmentId string
+  //
+  // Deprecated in favor of compartment.
+  compartmentId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.hostEndpointProtectionScanResult.compartment") string
   // Compartment containing the scan result
   compartment() oci.compartment
   // Overall endpoint protection problem severity
@@ -10702,13 +11041,17 @@ private oci.vulnerabilityScanning.containerScanResult @defaults("repository imag
   // Registry URL the image was pulled from
   registryUrl() string
   // Compartment OCID containing the scan result
-  compartmentId string
+  //
+  // Deprecated in favor of compartment.
+  compartmentId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.containerScanResult.compartment") string
   // Compartment containing the scan result
   compartment() oci.compartment
   // Target compartment OCID (where the source image lives)
   targetCompartmentId() string
   // Container scan target OCID
-  containerScanTargetId string
+  //
+  // Deprecated in favor of target.
+  containerScanTargetId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.containerScanResult.target") string
   // Container scan target that produced the result
   target() oci.vulnerabilityScanning.containerScanTarget
   // Highest finding severity across the image
@@ -10777,7 +11120,9 @@ private oci.vulnerabilityScanning.vulnerability @defaults("name severity vulnera
   // Vulnerability name (typically the CVE id)
   name string
   // Compartment OCID owning the rollup row
-  compartmentId string
+  //
+  // Deprecated in favor of compartment.
+  compartmentId @maturity("deprecated") @replaced_by("oci.vulnerabilityScanning.vulnerability.compartment") string
   // Compartment owning the rollup row
   compartment() oci.compartment
   // Highest observed severity
@@ -10971,7 +11316,9 @@ private oci.ai.agents.agent @defaults("name state") {
   // Agent display name
   name string
   // Compartment OCID containing the agent
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.agents.agent.compartment") string
   // Compartment containing the agent
   compartment() oci.compartment
   // Description of the agent's purpose
@@ -11013,11 +11360,15 @@ private oci.ai.agents.endpoint @defaults("name state") {
   // Endpoint display name
   name string
   // Compartment OCID containing the endpoint
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.agents.endpoint.compartment") string
   // Compartment containing the endpoint
   compartment() oci.compartment
   // OCID of the agent this endpoint serves
-  agentID string
+  //
+  // Deprecated in favor of agent.
+  agentID @maturity("deprecated") @replaced_by("oci.ai.agents.endpoint.agent") string
   // Agent this endpoint serves
   agent() oci.ai.agents.agent
   // Description of the endpoint
@@ -11086,7 +11437,9 @@ private oci.ai.agents.knowledgeBase @defaults("name state") {
   // Knowledge base display name
   name string
   // Compartment OCID containing the knowledge base
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.agents.knowledgeBase.compartment") string
   // Compartment containing the knowledge base
   compartment() oci.compartment
   // Description of the knowledge base
@@ -11119,11 +11472,15 @@ private oci.ai.agents.dataSource @defaults("name state") {
   // Data source display name
   name string
   // Compartment OCID containing the data source
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.agents.dataSource.compartment") string
   // Compartment containing the data source
   compartment() oci.compartment
   // OCID of the knowledge base this data source feeds
-  knowledgeBaseID string
+  //
+  // Deprecated in favor of knowledgeBase.
+  knowledgeBaseID @maturity("deprecated") @replaced_by("oci.ai.agents.dataSource.knowledgeBase") string
   // Knowledge base this data source feeds
   knowledgeBase() oci.ai.agents.knowledgeBase
   // Description of the data source
@@ -11158,11 +11515,15 @@ private oci.ai.agents.tool @defaults("name toolType state") {
   // Tool display name
   name string
   // Compartment OCID containing the tool
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.agents.tool.compartment") string
   // Compartment containing the tool
   compartment() oci.compartment
   // OCID of the agent this tool is attached to
-  agentID string
+  //
+  // Deprecated in favor of agent.
+  agentID @maturity("deprecated") @replaced_by("oci.ai.agents.tool.agent") string
   // Agent this tool is attached to
   agent() oci.ai.agents.agent
   // Description of the tool
@@ -11238,7 +11599,9 @@ private oci.ai.dataScience.project @defaults("name state") {
   // Project display name
   name string
   // Compartment OCID containing the project
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.dataScience.project.compartment") string
   // Compartment containing the project
   compartment() oci.compartment
   // Description of the project
@@ -11271,11 +11634,15 @@ private oci.ai.dataScience.notebookSession @defaults("name state") {
   // Notebook session display name
   name string
   // Compartment OCID containing the session
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.dataScience.notebookSession.compartment") string
   // Compartment containing the session
   compartment() oci.compartment
   // OCID of the project the session belongs to
-  projectID string
+  //
+  // Deprecated in favor of project.
+  projectID @maturity("deprecated") @replaced_by("oci.ai.dataScience.notebookSession.project") string
   // Project the session belongs to
   project() oci.ai.dataScience.project
   // OCID of the principal that created the session
@@ -11283,7 +11650,9 @@ private oci.ai.dataScience.notebookSession @defaults("name state") {
   // Compute shape backing the session
   shape string
   // OCID of the subnet the session runs in
-  subnetID string
+  //
+  // Deprecated in favor of subnet.
+  subnetID @maturity("deprecated") @replaced_by("oci.ai.dataScience.notebookSession.subnet") string
   // Subnet the session runs in
   subnet() oci.network.subnet
   // Block storage attached to the session, in gigabytes
@@ -11323,17 +11692,23 @@ private oci.ai.dataScience.model @defaults("name state") {
   // Model display name
   name string
   // Compartment OCID containing the model
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.dataScience.model.compartment") string
   // Compartment containing the model
   compartment() oci.compartment
   // OCID of the project the model belongs to
-  projectID string
+  //
+  // Deprecated in favor of project.
+  projectID @maturity("deprecated") @replaced_by("oci.ai.dataScience.model.project") string
   // Project the model belongs to
   project() oci.ai.dataScience.project
   // OCID of the principal that created the model
   createdBy string
   // OCID of the model version set the model belongs to
-  modelVersionSetID string
+  //
+  // Deprecated in favor of modelVersionSet.
+  modelVersionSetID @maturity("deprecated") @replaced_by("oci.ai.dataScience.model.modelVersionSet") string
   // Model version set the model belongs to
   modelVersionSet() oci.ai.dataScience.modelVersionSet
   // Name of the model version set the model belongs to
@@ -11409,11 +11784,15 @@ private oci.ai.dataScience.modelVersionSet @defaults("name state") {
   // Model version set name
   name string
   // Compartment OCID containing the version set
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.dataScience.modelVersionSet.compartment") string
   // Compartment containing the version set
   compartment() oci.compartment
   // OCID of the project the version set belongs to
-  projectID string
+  //
+  // Deprecated in favor of project.
+  projectID @maturity("deprecated") @replaced_by("oci.ai.dataScience.modelVersionSet.project") string
   // Project the version set belongs to
   project() oci.ai.dataScience.project
   // OCID of the principal that created the version set
@@ -11446,11 +11825,15 @@ private oci.ai.dataScience.modelDeployment @defaults("name state") {
   // Model deployment display name
   name string
   // Compartment OCID containing the deployment
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.dataScience.modelDeployment.compartment") string
   // Compartment containing the deployment
   compartment() oci.compartment
   // OCID of the project the deployment belongs to
-  projectID string
+  //
+  // Deprecated in favor of project.
+  projectID @maturity("deprecated") @replaced_by("oci.ai.dataScience.modelDeployment.project") string
   // Project the deployment belongs to
   project() oci.ai.dataScience.project
   // OCID of the principal that created the deployment
@@ -11519,11 +11902,15 @@ private oci.ai.dataScience.job @defaults("name state") {
   // Job display name
   name string
   // Compartment OCID containing the job
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.dataScience.job.compartment") string
   // Compartment containing the job
   compartment() oci.compartment
   // OCID of the project the job belongs to
-  projectID string
+  //
+  // Deprecated in favor of project.
+  projectID @maturity("deprecated") @replaced_by("oci.ai.dataScience.job.project") string
   // Project the job belongs to
   project() oci.ai.dataScience.project
   // OCID of the principal that created the job
@@ -11550,11 +11937,15 @@ private oci.ai.dataScience.pipeline @defaults("name state") {
   // Pipeline display name
   name string
   // Compartment OCID containing the pipeline
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.dataScience.pipeline.compartment") string
   // Compartment containing the pipeline
   compartment() oci.compartment
   // OCID of the project the pipeline belongs to
-  projectID string
+  //
+  // Deprecated in favor of project.
+  projectID @maturity("deprecated") @replaced_by("oci.ai.dataScience.pipeline.project") string
   // Project the pipeline belongs to
   project() oci.ai.dataScience.project
   // OCID of the principal that created the pipeline
@@ -11587,7 +11978,9 @@ private oci.ai.dataScience.privateEndpoint @defaults("name dataScienceResourceTy
   // Private endpoint display name
   name string
   // Compartment OCID containing the private endpoint
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.dataScience.privateEndpoint.compartment") string
   // Compartment containing the private endpoint
   compartment() oci.compartment
   // OCID of the principal that created the private endpoint
@@ -11662,7 +12055,9 @@ private oci.ai.generativeAi.dedicatedAiCluster @defaults("name type state") {
   // Cluster display name
   name string
   // Compartment OCID containing the cluster
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.generativeAi.dedicatedAiCluster.compartment") string
   // Compartment containing the cluster
   compartment() oci.compartment
   // Cluster purpose (HOSTING or FINE_TUNING)
@@ -11711,7 +12106,9 @@ private oci.ai.generativeAi.model @defaults("name type state") {
   // Model display name
   name string
   // Compartment OCID containing the model
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.generativeAi.model.compartment") string
   // Compartment containing the model
   compartment() oci.compartment
   // Model type (BASE or CUSTOM)
@@ -11727,7 +12124,9 @@ private oci.ai.generativeAi.model @defaults("name type state") {
   // Model version
   version string
   // OCID of the base model a custom model was fine-tuned from, when set
-  baseModelID string
+  //
+  // Deprecated in favor of baseModel.
+  baseModelID @maturity("deprecated") @replaced_by("oci.ai.generativeAi.model.baseModel") string
   // Base model a custom model was fine-tuned from, when set
   baseModel() oci.ai.generativeAi.model
   // Fine-tuning configuration for a custom model
@@ -11767,15 +12166,23 @@ private oci.ai.generativeAi.endpoint @defaults("name state") {
   // Endpoint display name
   name string
   // Compartment OCID containing the endpoint
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.generativeAi.endpoint.compartment") string
   // Compartment containing the endpoint
   compartment() oci.compartment
+  // Region the endpoint is in
+  region() oci.region
   // OCID of the model served by the endpoint
-  modelID string
+  //
+  // Deprecated in favor of model.
+  modelID @maturity("deprecated") @replaced_by("oci.ai.generativeAi.endpoint.model") string
   // Model served by the endpoint
   model() oci.ai.generativeAi.model
   // OCID of the dedicated AI cluster hosting the endpoint
-  dedicatedAiClusterID string
+  //
+  // Deprecated in favor of dedicatedAiCluster.
+  dedicatedAiClusterID @maturity("deprecated") @replaced_by("oci.ai.generativeAi.endpoint.dedicatedAiCluster") string
   // Dedicated AI cluster hosting the endpoint
   dedicatedAiCluster() oci.ai.generativeAi.dedicatedAiCluster
   // OCID of the Generative AI private endpoint isolating this endpoint, when set
@@ -11812,6 +12219,12 @@ private oci.ai.generativeAi.endpoint @defaults("name state") {
   freeformTags map[string]string
   // Defined tags for governance and cost tracking
   definedTags map[string]map[string]string
+  // System tags
+  //
+  // Tags applied automatically by Oracle, keyed by namespace. The
+  // `Oracle-Tags` namespace records the creating principal in `CreatedBy`
+  // and the creation time in `CreatedOn`.
+  systemTags map[string]dict
 }
 
 // Oracle Cloud Infrastructure (OCI) Generative AI private endpoint
@@ -11830,7 +12243,9 @@ private oci.ai.generativeAi.privateEndpoint @defaults("name state") {
   // Private endpoint display name
   name string
   // Compartment OCID containing the private endpoint
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.generativeAi.privateEndpoint.compartment") string
   // Compartment containing the private endpoint
   compartment() oci.compartment
   // Description of the private endpoint
@@ -12163,7 +12578,9 @@ private oci.ai.language.project @defaults("name state") {
   // Project display name
   name string
   // Compartment OCID containing the project
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.language.project.compartment") string
   // Compartment containing the project
   compartment() oci.compartment
   // Description of the project
@@ -12191,11 +12608,15 @@ private oci.ai.language.model @defaults("name state") {
   // Model display name
   name string
   // Compartment OCID containing the model
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.language.model.compartment") string
   // Compartment containing the model
   compartment() oci.compartment
   // OCID of the project the model belongs to
-  projectID string
+  //
+  // Deprecated in favor of project.
+  projectID @maturity("deprecated") @replaced_by("oci.ai.language.model.project") string
   // Project the model belongs to
   project() oci.ai.language.project
   // Description of the model
@@ -12231,15 +12652,21 @@ private oci.ai.language.endpoint @defaults("name state") {
   // Endpoint display name
   name string
   // Compartment OCID containing the endpoint
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.language.endpoint.compartment") string
   // Compartment containing the endpoint
   compartment() oci.compartment
   // OCID of the project the endpoint belongs to
-  projectID string
+  //
+  // Deprecated in favor of project.
+  projectID @maturity("deprecated") @replaced_by("oci.ai.language.endpoint.project") string
   // Project the endpoint belongs to
   project() oci.ai.language.project
   // OCID of the model served by the endpoint
-  modelID string
+  //
+  // Deprecated in favor of model.
+  modelID @maturity("deprecated") @replaced_by("oci.ai.language.endpoint.model") string
   // Model served by the endpoint
   model() oci.ai.language.model
   // Alias of the endpoint
@@ -12285,7 +12712,9 @@ private oci.ai.vision.project @defaults("name state") {
   // Project display name
   name string
   // Compartment OCID containing the project
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.vision.project.compartment") string
   // Compartment containing the project
   compartment() oci.compartment
   // Lifecycle state (e.g., CREATING, ACTIVE, DELETING, DELETED, FAILED)
@@ -12311,11 +12740,15 @@ private oci.ai.vision.model @defaults("name modelType state") {
   // Model display name
   name string
   // Compartment OCID containing the model
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.vision.model.compartment") string
   // Compartment containing the model
   compartment() oci.compartment
   // OCID of the project the model belongs to
-  projectID string
+  //
+  // Deprecated in favor of project.
+  projectID @maturity("deprecated") @replaced_by("oci.ai.vision.model.project") string
   // Project the model belongs to
   project() oci.ai.vision.project
   // Model type (e.g., IMAGE_CLASSIFICATION, OBJECT_DETECTION)
@@ -12360,7 +12793,9 @@ private oci.ai.speech.customization @defaults("name state") {
   // Customization display name
   name string
   // Compartment OCID containing the customization
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.speech.customization.compartment") string
   // Compartment containing the customization
   compartment() oci.compartment
   // Alias of the customization
@@ -12404,7 +12839,9 @@ private oci.ai.document.project @defaults("name state") {
   // Project display name
   name string
   // Compartment OCID containing the project
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.document.project.compartment") string
   // Compartment containing the project
   compartment() oci.compartment
   // Description of the project
@@ -12433,11 +12870,15 @@ private oci.ai.document.model @defaults("name modelType state") {
   // Model display name
   name string
   // Compartment OCID containing the model
-  compartmentID string
+  //
+  // Deprecated in favor of compartment.
+  compartmentID @maturity("deprecated") @replaced_by("oci.ai.document.model.compartment") string
   // Compartment containing the model
   compartment() oci.compartment
   // OCID of the project the model belongs to
-  projectID string
+  //
+  // Deprecated in favor of project.
+  projectID @maturity("deprecated") @replaced_by("oci.ai.document.model.project") string
   // Project the model belongs to
   project() oci.ai.document.project
   // Model type (e.g., KEY_VALUE_EXTRACTION, DOCUMENT_CLASSIFICATION)

@@ -424,6 +424,9 @@ func buildVolume(runtime *plugin.Runtime, v *iaas.Volume) (plugin.Resource, erro
 		"labels":                 labelData(v.GetLabels()),
 		"encryptionKeyProjectId": llx.StringData(enc.projectID),
 	}
+	secureBoot, uefi := imageConfigBootFlags(v.GetImageConfigOk())
+	args["secureBoot"] = llx.BoolDataPtr(secureBoot)
+	args["uefi"] = llx.BoolDataPtr(uefi)
 	res, err := CreateResource(runtime, "stackit.volume", args)
 	if err != nil {
 		return nil, err
@@ -686,7 +689,20 @@ func buildImage(runtime *plugin.Runtime, img *iaas.Image) (plugin.Resource, erro
 		"updatedAt":   llx.TimeDataPtr(timeOrNil(updatedAt, ok2)),
 		"labels":      labelData(img.GetLabels()),
 	}
+	secureBoot, uefi := imageConfigBootFlags(img.GetConfigOk())
+	args["secureBoot"] = llx.BoolDataPtr(secureBoot)
+	args["uefi"] = llx.BoolDataPtr(uefi)
 	return CreateResource(runtime, "stackit.image", args)
+}
+
+// imageConfigBootFlags reads the Secure Boot and UEFI flags of an image
+// configuration, nil for either one the configuration does not carry and for
+// both when there is no configuration.
+func imageConfigBootFlags(cfg *iaas.ImageConfig, ok bool) (secureBoot, uefi *bool) {
+	if !ok || cfg == nil {
+		return nil, nil
+	}
+	return optBool(cfg.GetSecureBootOk()), optBool(cfg.GetUefiOk())
 }
 
 func (r *mqlStackitImage) id() (string, error) {
@@ -1148,6 +1164,7 @@ func securityGroupRuleArgs(securityGroupID string, rule *iaas.SecurityGroupRule)
 	}
 
 	createdAt, okCreated := rule.GetCreatedAtOk()
+	updatedAt, okUpdated := rule.GetUpdatedAtOk()
 
 	return map[string]*llx.RawData{
 		"id":                    llx.StringData(rule.GetId()),
@@ -1163,6 +1180,7 @@ func securityGroupRuleArgs(securityGroupID string, rule *iaas.SecurityGroupRule)
 		"ipRange":               llx.StringData(rule.GetIpRange()),
 		"remoteSecurityGroupId": llx.StringData(rule.GetRemoteSecurityGroupId()),
 		"createdAt":             llx.TimeDataPtr(timeOrNil(createdAt, okCreated)),
+		"updatedAt":             llx.TimeDataPtr(timeOrNil(updatedAt, okUpdated)),
 	}
 }
 

@@ -140,9 +140,16 @@ func functionAppSiteToMql(runtime *plugin.Runtime, site *web.Site) (plugin.Resou
 			virtualNetworkSubnetId = *site.Properties.VirtualNetworkSubnetID
 		}
 	}
-	var principalId *string
+	var enabled, endToEndEncryptionEnabled *bool
+	if site.Properties != nil {
+		enabled = site.Properties.Enabled
+		endToEndEncryptionEnabled = site.Properties.EndToEndEncryptionEnabled
+	}
+	deployment := functionAppDeploymentStorageAuth(site.Properties)
+	var principalId, identityType *string
 	var userAssignedIdentityIds []string
 	if site.Identity != nil {
+		identityType = stringEnumPtr(site.Identity.Type)
 		principalId = site.Identity.PrincipalID
 		if principalId != nil {
 		}
@@ -165,6 +172,10 @@ func functionAppSiteToMql(runtime *plugin.Runtime, site *web.Site) (plugin.Resou
 		"publicNetworkAccess":       llx.StringData(publicNetworkAccess),
 		"virtualNetworkSubnetId":    llx.StringData(virtualNetworkSubnetId),
 		"properties":                llx.DictData(properties),
+		"enabled":                   llx.BoolDataPtr(enabled),
+		"identityType":              llx.StringDataPtr(identityType),
+		"endToEndEncryptionEnabled": llx.BoolDataPtr(endToEndEncryptionEnabled),
+		"deploymentStorageAuthType": llx.StringDataPtr(deployment.authType),
 	})
 	if err != nil {
 		return nil, err
@@ -176,12 +187,89 @@ func functionAppSiteToMql(runtime *plugin.Runtime, site *web.Site) (plugin.Resou
 	mqlApp := res.(*mqlAzureSubscriptionFunctionsServiceFunctionApp)
 	mqlApp.cacheSystemData = sysData
 	mqlApp.cacheUserAssignedIdentityIds = userAssignedIdentityIds
+	mqlApp.cacheDeploymentStorageIdentityId = deployment.userAssignedIdentityID
 	return res, nil
 }
 
 type mqlAzureSubscriptionFunctionsServiceFunctionAppInternal struct {
-	cacheSystemData              any
-	cacheUserAssignedIdentityIds []string
+	cacheSystemData                  any
+	cacheUserAssignedIdentityIds     []string
+	cacheDeploymentStorageIdentityId string
+}
+
+// functionAppDeploymentAuth is how a Flex Consumption app authenticates to the
+// storage its deployment package lives in.
+type functionAppDeploymentAuth struct {
+	authType               *string
+	userAssignedIdentityID string
+}
+
+// functionAppDeploymentStorageAuth reads the deployment storage authentication
+// of a Flex Consumption app. Apps on other plans have no function app config,
+// so every value stays unset.
+func functionAppDeploymentStorageAuth(p *web.SiteProperties) functionAppDeploymentAuth {
+	var res functionAppDeploymentAuth
+	if p == nil || p.FunctionAppConfig == nil || p.FunctionAppConfig.Deployment == nil ||
+		p.FunctionAppConfig.Deployment.Storage == nil || p.FunctionAppConfig.Deployment.Storage.Authentication == nil {
+		return res
+	}
+	auth := p.FunctionAppConfig.Deployment.Storage.Authentication
+	res.authType = stringEnumPtr(auth.Type)
+	if auth.Type != nil && *auth.Type == web.AuthenticationTypeUserAssignedIdentity && auth.UserAssignedIdentityResourceID != nil {
+		res.userAssignedIdentityID = *auth.UserAssignedIdentityResourceID
+	}
+	return res
+}
+
+// deploymentStorageIdentity resolves the managed identity a Flex Consumption
+// app uses for its deployment storage: the named user-assigned identity, or the
+// app's own system-assigned identity.
+func (a *mqlAzureSubscriptionFunctionsServiceFunctionApp) deploymentStorageIdentity() (*mqlAzureSubscriptionManagedIdentity, error) {
+	switch a.DeploymentStorageAuthType.Data {
+	case string(web.AuthenticationTypeSystemAssignedIdentity):
+		return newSystemAssignedManagedIdentity(a.MqlRuntime, a.Id.Data, a.PrincipalId.Data, "", &a.DeploymentStorageIdentity)
+	case string(web.AuthenticationTypeUserAssignedIdentity):
+		if a.cacheDeploymentStorageIdentityId != "" {
+			res, err := NewResource(a.MqlRuntime, ResourceAzureSubscriptionManagedIdentity,
+				map[string]*llx.RawData{"__id": llx.StringData(a.cacheDeploymentStorageIdentityId)})
+			if err != nil {
+				return nil, err
+			}
+			return res.(*mqlAzureSubscriptionManagedIdentity), nil
+		}
+	}
+	a.DeploymentStorageIdentity.State = plugin.StateIsSet | plugin.StateIsNull
+	return nil, nil
+}
+
+func (a *mqlAzureSubscriptionFunctionsServiceFunctionApp) appServicePlan() (*mqlAzureSubscriptionWebServiceAppServicePlan, error) {
+	props, _ := a.Properties.Data.(map[string]any)
+	return siteAppServicePlan(a.MqlRuntime, props, &a.AppServicePlan)
+}
+
+func (a *mqlAzureSubscriptionFunctionsServiceFunctionApp) hostingEnvironment() (*mqlAzureSubscriptionWebServiceHostingEnvironment, error) {
+	props, _ := a.Properties.Data.(map[string]any)
+	return siteHostingEnvironment(a.MqlRuntime, props, &a.HostingEnvironment)
+}
+
+func (a *mqlAzureSubscriptionFunctionsServiceFunctionApp) privateEndpointConnections() ([]any, error) {
+	return sitePrivateEndpointConnections(a.MqlRuntime, a.Id.Data)
+}
+
+func (a *mqlAzureSubscriptionFunctionsServiceFunctionApp) ftp() (*mqlAzureSubscriptionWebServiceAppsiteBasicPublishingCredentialsPolicies, error) {
+	return siteFtpPublishingPolicy(a.MqlRuntime, a.Id.Data)
+}
+
+func (a *mqlAzureSubscriptionFunctionsServiceFunctionApp) scm() (*mqlAzureSubscriptionWebServiceAppsiteBasicPublishingCredentialsPolicies, error) {
+	return siteScmPublishingPolicy(a.MqlRuntime, a.Id.Data)
+}
+
+func (a *mqlAzureSubscriptionFunctionsServiceFunctionApp) authSettingsV2() (*mqlAzureSubscriptionWebServiceAppsiteauthsettingsv2, error) {
+	return siteAuthSettingsV2(a.MqlRuntime, a.Id.Data, &a.AuthSettingsV2)
+}
+
+func (a *mqlAzureSubscriptionFunctionsServiceFunctionApp) hostNameBindings() ([]any, error) {
+	return siteHostNameBindings(a.MqlRuntime, a.Id.Data)
 }
 
 func (a *mqlAzureSubscriptionFunctionsServiceFunctionApp) userAssignedIdentities() ([]any, error) {
@@ -298,4 +386,9 @@ func (a *mqlAzureSubscriptionFunctionsServiceFunctionApp) functions() ([]any, er
 func (a *mqlAzureSubscriptionFunctionsServiceFunctionApp) configuration() (*mqlAzureSubscriptionWebServiceAppsiteconfig, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
 	return webAppSiteConfigToMql(a.MqlRuntime, conn, a.Id.Data)
+}
+
+func (a *mqlAzureSubscriptionFunctionsServiceFunctionApp) diagnosticSettings() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
 }

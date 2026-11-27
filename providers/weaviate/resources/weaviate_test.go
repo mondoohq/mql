@@ -4,12 +4,12 @@
 package resources
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
 
 	"github.com/weaviate/weaviate-go-client/v5/weaviate/fault"
-	"github.com/weaviate/weaviate-go-client/v5/weaviate/rbac"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/weaviate/connection"
@@ -62,13 +62,46 @@ func TestIsForbidden(t *testing.T) {
 	}
 }
 
-func TestFlattenPermissions(t *testing.T) {
-	role := &rbac.Role{
-		Name:        "articleReader",
-		Data:        []rbac.DataPermission{{Actions: []string{"read_data"}, Collection: "Article"}},
-		Collections: []rbac.CollectionsPermission{{Actions: []string{"read_collections"}, Collection: "Article"}},
-		Roles:       []rbac.RolesPermission{{Actions: []string{"read_roles", "create_roles"}}},
+// testRole decodes a role the way the server sends it in GET /v1/authz/roles:
+// a name and a list of grants, each an action plus, under the key naming its
+// domain, the qualifiers that limit it. Building roles from that JSON rather
+// than from Go literals keeps the tests on the path the provider reads.
+func testRole(t *testing.T, name, permissions string) *connection.Role {
+	t.Helper()
+	var role connection.Role
+	body := `{"name":` + jsonString(t, name) + `,"permissions":` + permissions + `}`
+	if err := json.Unmarshal([]byte(body), &role); err != nil {
+		t.Fatalf("decoding role %s: %v", body, err)
 	}
+	return &role
+}
+
+func jsonString(t *testing.T, s string) string {
+	t.Helper()
+	b, err := json.Marshal(s)
+	if err != nil {
+		t.Fatalf("encoding %q: %v", s, err)
+	}
+	return string(b)
+}
+
+func byAction(entries []permEntry) map[string]permEntry {
+	out := map[string]permEntry{}
+	for _, p := range entries {
+		out[p.action] = p
+	}
+	return out
+}
+
+// Synthetic: the JSON shape follows the server's models.Permission; no live
+// server was checked.
+func TestFlattenPermissions(t *testing.T) {
+	role := testRole(t, "articleReader", `[
+		{"action":"read_data","data":{"collection":"Article","tenant":"*","object":"*"}},
+		{"action":"read_collections","collections":{"collection":"Article"}},
+		{"action":"read_roles","roles":{"role":"*","scope":"match"}},
+		{"action":"create_roles","roles":{"role":"*","scope":"match"}}
+	]`)
 	got := flattenPermissions(role)
 	// One entry per action: 1 data + 1 collections + 2 roles = 4.
 	if len(got) != 4 {
@@ -76,85 +109,82 @@ func TestFlattenPermissions(t *testing.T) {
 	}
 
 	// Collection-scoped domains carry the collection; role domain does not.
-	byAction := map[string]permEntry{}
-	for _, p := range got {
-		byAction[p.action] = p
+	actions := byAction(got)
+	if actions["read_data"].collection != "Article" {
+		t.Errorf("read_data collection = %q, want Article", actions["read_data"].collection)
 	}
-	if byAction["read_data"].collection != "Article" {
-		t.Errorf("read_data collection = %q, want Article", byAction["read_data"].collection)
-	}
-	if byAction["create_roles"].collection != "" {
-		t.Errorf("create_roles collection = %q, want empty", byAction["create_roles"].collection)
+	if actions["create_roles"].collection != "" {
+		t.Errorf("create_roles collection = %q, want empty", actions["create_roles"].collection)
 	}
 
 	// Each entry says which domain it came from.
-	if d := byAction["read_data"].domain; d != domainData {
+	if d := actions["read_data"].domain; d != domainData {
 		t.Errorf("read_data domain = %q, want %q", d, domainData)
 	}
-	if d := byAction["read_collections"].domain; d != domainCollections {
+	if d := actions["read_collections"].domain; d != domainCollections {
 		t.Errorf("read_collections domain = %q, want %q", d, domainCollections)
 	}
-	if d := byAction["create_roles"].domain; d != domainRoles {
+	if d := actions["create_roles"].domain; d != domainRoles {
 		t.Errorf("create_roles domain = %q, want %q", d, domainRoles)
 	}
 }
 
-// TestFlattenPermissionsQualifiers pins the qualifier each domain carries. Every
-// one of them is read straight off the SDK's typed permission struct, and
-// dropping any of them (as the code did for all but Collection) leaves two
-// materially different grants looking identical.
+// TestFlattenPermissionsQualifiers pins the qualifier each domain carries.
+// Dropping any of them leaves two materially different grants looking
+// identical.
+//
+// Synthetic: the JSON shape follows the server's models.Permission; no live
+// server was checked.
 func TestFlattenPermissionsQualifiers(t *testing.T) {
-	role := &rbac.Role{
-		Name:      "mixed",
-		Alias:     []rbac.AliasPermission{{Actions: []string{"read_aliases"}, Alias: "ArticleAlias", Collection: "Article"}},
-		Backups:   []rbac.BackupsPermission{{Actions: []string{"manage_backups"}, Collection: "Article"}},
-		Groups:    []rbac.GroupPermission{{Actions: []string{"read_groups"}, Group: "platform-admins", GroupType: "oidc"}},
-		Nodes:     []rbac.NodesPermission{{Actions: []string{"read_nodes"}, Collection: "Article", Verbosity: "verbose"}},
-		Replicate: []rbac.ReplicatePermission{{Actions: []string{"create_replicate"}, Collection: "Article", Shard: "shard-1"}},
-		Roles:     []rbac.RolesPermission{{Actions: []string{"create_roles"}, Role: "*", Scope: "all"}},
-	}
-	byAction := map[string]permEntry{}
-	for _, p := range flattenPermissions(role) {
-		byAction[p.action] = p
-	}
+	role := testRole(t, "mixed", `[
+		{"action":"read_aliases","aliases":{"alias":"ArticleAlias","collection":"Article"}},
+		{"action":"manage_backups","backups":{"collection":"Article"}},
+		{"action":"read_groups","groups":{"group":"platform-admins","groupType":"oidc"}},
+		{"action":"read_nodes","nodes":{"collection":"Article","verbosity":"verbose"}},
+		{"action":"create_replicate","replicate":{"collection":"Article","shard":"shard-1"}},
+		{"action":"create_roles","roles":{"role":"*","scope":"all"}}
+	]`)
+	actions := byAction(flattenPermissions(role))
 
 	// Scope is the privilege-escalation control: "all" lets the holder grant
 	// permissions it does not itself hold.
-	if got := derefStr(byAction["create_roles"].scope); got != "all" {
+	if got := derefStr(actions["create_roles"].scope); got != "all" {
 		t.Errorf("create_roles scope = %q, want all", got)
 	}
-	if got := derefStr(byAction["create_roles"].targetRole); got != "*" {
+	if got := derefStr(actions["create_roles"].targetRole); got != "*" {
 		t.Errorf("create_roles targetRole = %q, want *", got)
 	}
-	if got := derefStr(byAction["read_groups"].group); got != "platform-admins" {
+	if got := derefStr(actions["read_groups"].group); got != "platform-admins" {
 		t.Errorf("read_groups group = %q, want platform-admins", got)
 	}
-	if got := derefStr(byAction["read_groups"].groupType); got != "oidc" {
+	if got := derefStr(actions["read_groups"].groupType); got != "oidc" {
 		t.Errorf("read_groups groupType = %q, want oidc", got)
 	}
-	if got := derefStr(byAction["read_aliases"].alias); got != "ArticleAlias" {
+	if got := derefStr(actions["read_aliases"].alias); got != "ArticleAlias" {
 		t.Errorf("read_aliases alias = %q, want ArticleAlias", got)
 	}
-	if got := derefStr(byAction["create_replicate"].shard); got != "shard-1" {
+	if got := derefStr(actions["create_replicate"].shard); got != "shard-1" {
 		t.Errorf("create_replicate shard = %q, want shard-1", got)
 	}
-	if got := derefStr(byAction["read_nodes"].verbosity); got != "verbose" {
+	if got := derefStr(actions["read_nodes"].verbosity); got != "verbose" {
 		t.Errorf("read_nodes verbosity = %q, want verbose", got)
+	}
+	if got := actions["read_aliases"].domain; got != domainAlias {
+		t.Errorf("read_aliases domain = %q, want %q", got, domainAlias)
 	}
 
 	// The alias, backups, nodes and replicate domains all carry a collection
 	// scope that was previously reported as unscoped.
 	for _, action := range []string{"read_aliases", "manage_backups", "read_nodes", "create_replicate"} {
-		if got := byAction[action].collection; got != "Article" {
+		if got := actions[action].collection; got != "Article" {
 			t.Errorf("%s collection = %q, want Article", action, got)
 		}
 	}
 
 	// A qualifier belonging to another domain is absent, not empty: a data
 	// grant says nothing about scope, and must not read as scope "".
-	dataOnly := flattenPermissions(&rbac.Role{
-		Data: []rbac.DataPermission{{Actions: []string{"read_data"}, Collection: "Article"}},
-	})
+	dataOnly := flattenPermissions(testRole(t, "articleReader",
+		`[{"action":"read_data","data":{"collection":"Article"}}]`))
 	if len(dataOnly) != 1 {
 		t.Fatalf("want one data entry, got %d", len(dataOnly))
 	}
@@ -162,11 +192,115 @@ func TestFlattenPermissionsQualifiers(t *testing.T) {
 		"scope": dataOnly[0].scope, "targetRole": dataOnly[0].targetRole,
 		"group": dataOnly[0].group, "groupType": dataOnly[0].groupType,
 		"alias": dataOnly[0].alias, "shard": dataOnly[0].shard,
-		"verbosity": dataOnly[0].verbosity,
+		"verbosity": dataOnly[0].verbosity, "targetUser": dataOnly[0].targetUser,
+		"namespace": dataOnly[0].namespace,
 	} {
 		if ptr != nil {
 			t.Errorf("data permission %s = %q, want absent", name, *ptr)
 		}
+	}
+}
+
+// TestFlattenPermissionsTenantQualifiers is the regression test for grants
+// scoped to a tenant. The Go client's role type kept no tenant at all, so
+// read_data on one tenant of Article read as read_data on every tenant, and a
+// tenants grant lost its collection too and read as global.
+//
+// Synthetic: the JSON shape follows the server's models.PermissionData and
+// models.PermissionTenants; no live server was checked.
+func TestFlattenPermissionsTenantQualifiers(t *testing.T) {
+	role := testRole(t, "tenantA", `[
+		{"action":"read_data","data":{"collection":"Article","tenant":"tenantA","object":"*"}},
+		{"action":"read_tenants","tenants":{"collection":"Article","tenant":"tenantA"}}
+	]`)
+	actions := byAction(flattenPermissions(role))
+
+	data := actions["read_data"]
+	if data.collection != "Article" || derefStr(data.tenant) != "tenantA" {
+		t.Errorf("read_data collection/tenant = %q/%q, want Article/tenantA", data.collection, derefStr(data.tenant))
+	}
+	if data.object == nil || *data.object != "*" {
+		t.Errorf("read_data object = %v, want *", data.object)
+	}
+
+	tenants := actions["read_tenants"]
+	if tenants.domain != domainTenants {
+		t.Errorf("read_tenants domain = %q, want %q", tenants.domain, domainTenants)
+	}
+	if tenants.collection != "Article" || derefStr(tenants.tenant) != "tenantA" {
+		t.Errorf("read_tenants collection/tenant = %q/%q, want Article/tenantA", tenants.collection, derefStr(tenants.tenant))
+	}
+	// A tenants grant carries no object.
+	if tenants.object != nil {
+		t.Errorf("read_tenants object = %q, want absent", *tenants.object)
+	}
+}
+
+// TestFlattenPermissionsUsersQualifier: the Go client's users permission kept
+// only the action, so a grant over one named user read as a grant over all.
+//
+// Synthetic: the JSON shape follows the server's models.PermissionUsers; no
+// live server was checked.
+func TestFlattenPermissionsUsersQualifier(t *testing.T) {
+	role := testRole(t, "userManager", `[
+		{"action":"update_users","users":{"users":"ci-bot"}},
+		{"action":"read_users","users":{"users":"*"}}
+	]`)
+	actions := byAction(flattenPermissions(role))
+	if got := actions["update_users"]; got.domain != domainUsers || derefStr(got.targetUser) != "ci-bot" {
+		t.Errorf("update_users domain/targetUser = %q/%q, want users/ci-bot", got.domain, derefStr(got.targetUser))
+	}
+	if got := derefStr(actions["read_users"].targetUser); got != "*" {
+		t.Errorf("read_users targetUser = %q, want *", got)
+	}
+}
+
+// TestPermissionDomain covers the grants the Go client either recognized by
+// action name alone or dropped. The domain values it did report must not
+// change, and a domain it did not know must still be reported.
+//
+// Synthetic: the JSON shape follows the server's models.Permission; no live
+// server was checked.
+func TestPermissionDomain(t *testing.T) {
+	role := testRole(t, "mixed", `[
+		{"action":"read_cluster"},
+		{"action":"read_mcp"},
+		{"action":"read_tenants"},
+		{"action":"assign_and_revoke_users"},
+		{"action":"read_aliases"},
+		{"action":"manage_namespaces","namespaces":{"namespace":"team-a"}},
+		{"action":"read_index_stats","indices":{"index":"Article"}},
+		{"action":"manage_widgets"}
+	]`)
+	entries := flattenPermissions(role)
+	if len(entries) != 8 {
+		t.Fatalf("want 8 entries, one per grant, got %d: %+v", len(entries), entries)
+	}
+	want := map[string]string{
+		"read_cluster":            domainCluster,
+		"read_mcp":                domainMCP,
+		"read_tenants":            domainTenants,
+		"assign_and_revoke_users": domainUsers,
+		"read_aliases":            domainAlias,
+		"manage_namespaces":       domainNamespaces,
+		// Domains this build has no model for: named by the server's key when
+		// it sent qualifiers, by the action otherwise.
+		"read_index_stats": "indices",
+		"manage_widgets":   "widgets",
+	}
+	actions := byAction(entries)
+	for action, domain := range want {
+		if got := actions[action].domain; got != domain {
+			t.Errorf("%s domain = %q, want %q", action, got, domain)
+		}
+	}
+	if got := derefStr(actions["manage_namespaces"].namespace); got != "team-a" {
+		t.Errorf("manage_namespaces namespace = %q, want team-a", got)
+	}
+	// A tenants or users grant without its qualifier object says nothing about
+	// which tenant or user, so the qualifier stays null rather than "".
+	if actions["read_tenants"].tenant != nil || actions["assign_and_revoke_users"].targetUser != nil {
+		t.Error("a grant sent without qualifiers must report them as null")
 	}
 }
 
@@ -180,15 +314,14 @@ func TestFlattenPermissionsNilRole(t *testing.T) {
 // includes its qualifiers. Two create_roles grants that differ only in scope are
 // two different grants; a key built from the action alone reports the first
 // twice, because CreateResource hands back the cached first instance.
+//
+// Synthetic: the JSON shape follows the server's models.Permission; no live
+// server was checked.
 func TestPermEntryKeyCarriesEveryDimension(t *testing.T) {
-	role := &rbac.Role{
-		Name: "roleManager",
-		Roles: []rbac.RolesPermission{
-			{Actions: []string{"create_roles"}, Role: "viewer", Scope: "all"},
-			{Actions: []string{"create_roles"}, Role: "viewer", Scope: "match"},
-		},
-	}
-	entries := flattenPermissions(role)
+	entries := flattenPermissions(testRole(t, "roleManager", `[
+		{"action":"create_roles","roles":{"role":"viewer","scope":"all"}},
+		{"action":"create_roles","roles":{"role":"viewer","scope":"match"}}
+	]`))
 	if len(entries) != 2 {
 		t.Fatalf("want 2 entries, got %d", len(entries))
 	}
@@ -197,45 +330,43 @@ func TestPermEntryKeyCarriesEveryDimension(t *testing.T) {
 	}
 
 	// The same holds for the other qualifiers.
-	shards := flattenPermissions(&rbac.Role{Replicate: []rbac.ReplicatePermission{
-		{Actions: []string{"read_replicate"}, Collection: "Article", Shard: "shard-1"},
-		{Actions: []string{"read_replicate"}, Collection: "Article", Shard: "shard-2"},
-	}})
-	if permEntryKey(shards[0]) == permEntryKey(shards[1]) {
-		t.Errorf("two shards share the key %q", permEntryKey(shards[0]))
+	for name, perms := range map[string]string{
+		"shard": `[{"action":"read_replicate","replicate":{"collection":"Article","shard":"shard-1"}},
+			{"action":"read_replicate","replicate":{"collection":"Article","shard":"shard-2"}}]`,
+		"data tenant": `[{"action":"read_data","data":{"collection":"Article","tenant":"tenantA"}},
+			{"action":"read_data","data":{"collection":"Article","tenant":"tenantB"}}]`,
+		"tenants tenant": `[{"action":"read_tenants","tenants":{"collection":"Article","tenant":"tenantA"}},
+			{"action":"read_tenants","tenants":{"collection":"Article","tenant":"tenantB"}}]`,
+		"object": `[{"action":"read_data","data":{"collection":"Article","object":"a"}},
+			{"action":"read_data","data":{"collection":"Article","object":"b"}}]`,
+		"target user": `[{"action":"update_users","users":{"users":"alice"}},
+			{"action":"update_users","users":{"users":"bob"}}]`,
+		"namespace": `[{"action":"manage_namespaces","namespaces":{"namespace":"a"}},
+			{"action":"manage_namespaces","namespaces":{"namespace":"b"}}]`,
+	} {
+		pair := flattenPermissions(testRole(t, "r", perms))
+		if len(pair) != 2 {
+			t.Fatalf("%s: want 2 entries, got %d", name, len(pair))
+		}
+		if permEntryKey(pair[0]) == permEntryKey(pair[1]) {
+			t.Errorf("two grants differing only by %s share the key %q", name, permEntryKey(pair[0]))
+		}
 	}
 }
 
 func TestHasPermissions(t *testing.T) {
 	// A role reference built from a name alone carries nothing.
-	if hasPermissions(&rbac.Role{Name: "viewer"}) {
+	if hasPermissions(&connection.Role{Name: "viewer"}) {
 		t.Error("a name-only role reference has no permissions")
 	}
 	if hasPermissions(nil) {
 		t.Error("a nil role has no permissions")
 	}
-
-	// Every one of the twelve permission slices counts. Missing one here means
-	// a role holding only that kind of grant is mistaken for a bare reference
-	// and gets overwritten by one.
-	populated := map[string]*rbac.Role{
-		"alias":       {Alias: []rbac.AliasPermission{{Actions: []string{"read_aliases"}}}},
-		"backups":     {Backups: []rbac.BackupsPermission{{Actions: []string{"manage_backups"}}}},
-		"cluster":     {Cluster: []rbac.ClusterPermission{{Actions: []string{"read_cluster"}}}},
-		"collections": {Collections: []rbac.CollectionsPermission{{Actions: []string{"read_collections"}}}},
-		"data":        {Data: []rbac.DataPermission{{Actions: []string{"read_data"}}}},
-		"groups":      {Groups: []rbac.GroupPermission{{Actions: []string{"read_groups"}}}},
-		"mcp":         {MCP: []rbac.MCPPermission{{Actions: []string{"read_mcp"}}}},
-		"nodes":       {Nodes: []rbac.NodesPermission{{Actions: []string{"read_nodes"}}}},
-		"replicate":   {Replicate: []rbac.ReplicatePermission{{Actions: []string{"read_replicate"}}}},
-		"roles":       {Roles: []rbac.RolesPermission{{Actions: []string{"read_roles"}}}},
-		"tenants":     {Tenants: []rbac.TenantsPermission{{Actions: []string{"read_tenants"}}}},
-		"users":       {Users: []rbac.UsersPermission{{Actions: []string{"read_users"}}}},
-	}
-	for domain, role := range populated {
-		if !hasPermissions(role) {
-			t.Errorf("a role holding only %s permissions should count as populated", domain)
-		}
+	// A grant with no qualifiers at all still counts. Missing it means a role
+	// holding only that kind of grant is mistaken for a bare reference and
+	// gets overwritten by one.
+	if !hasPermissions(testRole(t, "clusterReader", `[{"action":"read_cluster"}]`)) {
+		t.Error("a role holding only a cluster grant should count as populated")
 	}
 }
 
@@ -245,15 +376,25 @@ func testRuntime() *plugin.Runtime {
 	return plugin.NewRuntime(nil, nil, false, CreateResource, NewResource, GetData, SetData, nil)
 }
 
-func permissionActions(t *testing.T, role *mqlWeaviateRole) []string {
+func permissionList(t *testing.T, role *mqlWeaviateRole) []*mqlWeaviateRolePermission {
 	t.Helper()
 	list, err := role.permissions()
 	if err != nil {
 		t.Fatalf("permissions() errored: %v", err)
 	}
-	actions := make([]string, 0, len(list))
+	out := make([]*mqlWeaviateRolePermission, 0, len(list))
 	for _, x := range list {
-		actions = append(actions, x.(*mqlWeaviateRolePermission).Action.Data)
+		out = append(out, x.(*mqlWeaviateRolePermission))
+	}
+	return out
+}
+
+func permissionActions(t *testing.T, role *mqlWeaviateRole) []string {
+	t.Helper()
+	perms := permissionList(t, role)
+	actions := make([]string, 0, len(perms))
+	for _, p := range perms {
+		actions = append(actions, p.Action.Data)
 	}
 	return actions
 }
@@ -266,15 +407,14 @@ func permissionActions(t *testing.T, role *mqlWeaviateRole) []string {
 // passed on a server where one did.
 func TestRolePermissionsSurviveNameOnlyReference(t *testing.T) {
 	const serverID = "http://localhost:8080"
-	full := func() *rbac.Role {
-		return &rbac.Role{
-			Name:  "articleReader",
-			Data:  []rbac.DataPermission{{Actions: []string{"read_data"}, Collection: "Article"}},
-			Roles: []rbac.RolesPermission{{Actions: []string{"create_roles"}, Role: "*", Scope: "all"}},
-		}
+	full := func() *connection.Role {
+		return testRole(t, "articleReader", `[
+			{"action":"read_data","data":{"collection":"Article"}},
+			{"action":"create_roles","roles":{"role":"*","scope":"all"}}
+		]`)
 	}
-	// As users.DB().Lister() builds it: name set, every permission slice nil.
-	nameOnly := func() *rbac.Role { return &rbac.Role{Name: "articleReader"} }
+	// As the user listing names it: a name and no permissions.
+	nameOnly := func() *connection.Role { return &connection.Role{Name: "articleReader"} }
 
 	t.Run("full role read first", func(t *testing.T) {
 		runtime := testRuntime()
@@ -314,7 +454,7 @@ func TestRolePermissionsSurviveNameOnlyReference(t *testing.T) {
 // TestResolveRoleFallsBackWhenRolesUnreadable exercises the degraded path,
 // which no happy-path test reaches. A credential that may list users but not
 // roles keeps the role's name rather than losing the role altogether, so the
-// lookup has to hand the reference back untouched when it cannot answer.
+// lookup has to hand back a bare reference when it cannot answer.
 func TestResolveRoleFallsBackWhenRolesUnreadable(t *testing.T) {
 	// Port 1 on loopback refuses immediately, which is the cheapest stand-in
 	// for a role list this connection cannot read.
@@ -332,37 +472,33 @@ func TestResolveRoleFallsBackWhenRolesUnreadable(t *testing.T) {
 	}
 
 	runtime := plugin.NewRuntime(conn, nil, false, CreateResource, NewResource, GetData, SetData, nil)
-	ref := &rbac.Role{Name: "articleReader"}
-	if got := resolveRole(runtime, ref); got != ref {
-		t.Errorf("resolveRole = %+v, want the reference itself", got)
+	got := resolveRole(runtime, "articleReader")
+	if got == nil || got.Name != "articleReader" || hasPermissions(got) {
+		t.Errorf("resolveRole = %+v, want a bare reference named articleReader", got)
 	}
 }
 
 // TestRolePermissionsAreDistinctResources guards the other half of the id: two
 // grants of one action that differ only in a qualifier must not collapse into a
 // single permission through the resource cache.
+//
+// Synthetic: the JSON shape follows the server's models.Permission; no live
+// server was checked.
 func TestRolePermissionsAreDistinctResources(t *testing.T) {
 	runtime := testRuntime()
-	role, err := newWeaviateRole(runtime, "http://localhost:8080", &rbac.Role{
-		Name: "roleManager",
-		Roles: []rbac.RolesPermission{
-			{Actions: []string{"create_roles"}, Role: "viewer", Scope: "all"},
-			{Actions: []string{"create_roles"}, Role: "viewer", Scope: "match"},
-		},
-	})
+	role, err := newWeaviateRole(runtime, "http://localhost:8080", testRole(t, "roleManager", `[
+		{"action":"create_roles","roles":{"role":"viewer","scope":"all"}},
+		{"action":"create_roles","roles":{"role":"viewer","scope":"match"}}
+	]`))
 	if err != nil {
 		t.Fatalf("newWeaviateRole: %v", err)
 	}
-	list, err := role.permissions()
-	if err != nil {
-		t.Fatalf("permissions() errored: %v", err)
-	}
+	list := permissionList(t, role)
 	if len(list) != 2 {
 		t.Fatalf("want 2 permissions, got %d", len(list))
 	}
 	scopes := map[string]bool{}
-	for _, x := range list {
-		p := x.(*mqlWeaviateRolePermission)
+	for _, p := range list {
 		if p.Scope.State&plugin.StateIsNull != 0 {
 			t.Error("a roles permission must report its scope, not null")
 			continue
@@ -372,43 +508,61 @@ func TestRolePermissionsAreDistinctResources(t *testing.T) {
 	if !scopes["all"] || !scopes["match"] {
 		t.Errorf("scopes = %v, want both all and match", scopes)
 	}
+
+	// Two tenants of one collection are two permission resources, each
+	// reporting its own tenant.
+	tenantRole, err := newWeaviateRole(runtime, "http://localhost:8080", testRole(t, "twoTenants", `[
+		{"action":"read_data","data":{"collection":"Article","tenant":"tenantA"}},
+		{"action":"read_data","data":{"collection":"Article","tenant":"tenantB"}}
+	]`))
+	if err != nil {
+		t.Fatalf("newWeaviateRole: %v", err)
+	}
+	tenants := map[string]bool{}
+	for _, p := range permissionList(t, tenantRole) {
+		tenants[p.Tenant.Data] = true
+	}
+	if !tenants["tenantA"] || !tenants["tenantB"] {
+		t.Errorf("tenants = %v, want both tenantA and tenantB", tenants)
+	}
 }
 
 // TestPermissionQualifiersAreNullOffDomain pins null rather than "" for a
 // qualifier the domain does not carry, so a policy can tell a data grant from a
 // role grant whose scope happens to be blank.
+//
+// Synthetic: the JSON shape follows the server's models.Permission; no live
+// server was checked.
 func TestPermissionQualifiersAreNullOffDomain(t *testing.T) {
 	runtime := testRuntime()
-	role, err := newWeaviateRole(runtime, "http://localhost:8080", &rbac.Role{
-		Name: "articleReader",
-		Data: []rbac.DataPermission{{Actions: []string{"read_data"}, Collection: "Article"}},
-	})
+	role, err := newWeaviateRole(runtime, "http://localhost:8080", testRole(t, "articleReader",
+		`[{"action":"read_data","data":{"collection":"Article","tenant":"tenantA"}}]`))
 	if err != nil {
 		t.Fatalf("newWeaviateRole: %v", err)
 	}
-	list, err := role.permissions()
-	if err != nil {
-		t.Fatalf("permissions() errored: %v", err)
-	}
+	list := permissionList(t, role)
 	if len(list) != 1 {
 		t.Fatalf("want 1 permission, got %d", len(list))
 	}
-	p := list[0].(*mqlWeaviateRolePermission)
+	p := list[0]
 	for name, tv := range map[string]plugin.TValue[string]{
 		"scope": p.Scope, "targetRole": p.TargetRole, "group": p.Group,
 		"groupType": p.GroupType, "alias": p.Alias, "shard": p.Shard,
-		"verbosity": p.Verbosity,
+		"verbosity": p.Verbosity, "targetUser": p.TargetUser, "namespace": p.Namespace,
 	} {
 		if tv.State&plugin.StateIsNull == 0 {
 			t.Errorf("data permission %s = %q, want null", name, tv.Data)
 		}
 	}
-	// The domain and collection it does carry are reported by value.
+	// The domain, collection and tenant it does carry are reported by value.
 	if p.Domain.Data != domainData {
 		t.Errorf("domain = %q, want %q", p.Domain.Data, domainData)
 	}
 	if p.Collection.Data != "Article" {
 		t.Errorf("collection = %q, want Article", p.Collection.Data)
+	}
+	if p.Tenant.State&plugin.StateIsNull != 0 || p.Tenant.Data != "tenantA" {
+		t.Errorf("tenant = %q (null: %v), want tenantA", p.Tenant.Data, p.Tenant.State&plugin.StateIsNull != 0)
 	}
 }
 

@@ -79,3 +79,43 @@ func TestLogpushJobsFilterAttackTraffic(t *testing.T) {
 		})
 	}
 }
+
+// Synthetic: an Instant Logs job with full output options, a job whose
+// output options set none of the exposed values, and a job without output
+// options; no live account was checked.
+func TestLogpushJobOutputOptions(t *testing.T) {
+	env := setupTestEnv(t)
+	zone := createTestZone(t, env)
+
+	env.Mux.HandleFunc(fmt.Sprintf("/zones/%s/logpush/jobs", testZoneID), func(w http.ResponseWriter, r *http.Request) {
+		jsonResponse(w, `{"success":true,"result":[
+			{"id":1,"name":"sampled","dataset":"http_requests","kind":"edge",
+			 "output_options":{"sample_rate":0.25,"field_names":["ClientIP","RayID"],"CVE-2021-44228":true,"output_type":"ndjson"}},
+			{"id":2,"name":"defaults","dataset":"http_requests","kind":"","output_options":{"output_type":"ndjson"}},
+			{"id":3,"name":"legacy","dataset":"firewall_events"}
+		]}`)
+	})
+
+	result, err := zone.logpushJobs()
+	require.NoError(t, err)
+	require.Len(t, result, 3)
+
+	sampled := result[0].(*mqlCloudflareZoneLogpushJob)
+	assert.Equal(t, "edge", sampled.Kind.Data)
+	assert.Equal(t, 0.25, sampled.SampleRate.Data)
+	assert.Equal(t, []any{"ClientIP", "RayID"}, sampled.FieldNames.Data)
+	assert.True(t, sampled.RedactsLog4jPatterns.Data)
+
+	defaults := result[1].(*mqlCloudflareZoneLogpushJob)
+	assert.False(t, defaults.Kind.IsNull())
+	assert.Equal(t, "", defaults.Kind.Data)
+	assert.True(t, defaults.SampleRate.IsNull())
+	assert.True(t, defaults.FieldNames.IsNull())
+	assert.True(t, defaults.RedactsLog4jPatterns.IsNull())
+
+	legacy := result[2].(*mqlCloudflareZoneLogpushJob)
+	assert.True(t, legacy.Kind.IsNull())
+	assert.True(t, legacy.SampleRate.IsNull())
+	assert.True(t, legacy.FieldNames.IsNull())
+	assert.True(t, legacy.RedactsLog4jPatterns.IsNull())
+}

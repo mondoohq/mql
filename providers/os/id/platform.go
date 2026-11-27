@@ -19,6 +19,7 @@ import (
 	"go.mondoo.com/mql/providers/os/detector/action1"
 	"go.mondoo.com/mql/providers/os/detector/containerenv"
 	"go.mondoo.com/mql/providers/os/detector/crowdstrike"
+	"go.mondoo.com/mql/providers/os/detector/sentinelone"
 	win "go.mondoo.com/mql/providers/os/detector/windows"
 	"go.mondoo.com/mql/providers/os/id/awsec2"
 	"go.mondoo.com/mql/providers/os/id/awsecs"
@@ -325,6 +326,16 @@ func gatherPlatformInfo(conn shared.Connection, pf *inventory.Platform, idDetect
 	case ids.IdDetector_Action1Endpoint:
 		// PlatformID is "" without an agent, and on a platform Detect does not cover.
 		if identifier := action1.PlatformID(action1.Detect(conn, pf)); identifier != "" {
+			return &platformInfo{
+				IDs:                []string{identifier},
+				Name:               "",
+				RelatedPlatformIDs: []string{},
+			}, nil
+		}
+		return &platformInfo{}, nil
+	case ids.IdDetector_SentinelOneAgent:
+		// PlatformID is "" without an agent, and on a platform Detect does not cover.
+		if identifier := sentinelone.PlatformID(sentinelone.Detect(conn, pf)); identifier != "" {
 			return &platformInfo{
 				IDs:                []string{identifier},
 				Name:               "",

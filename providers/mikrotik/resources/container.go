@@ -179,3 +179,30 @@ func (r *mqlMikrotik) userAaa() (*mqlMikrotikUserAaa, error) {
 func initMikrotikUserAaa(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	return singletonInit(runtime, "/user/aaa", args, userAaaArgs)
 }
+
+// --- user.settings ---
+
+func userSettingsArgs(row map[string]string) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":                  llx.StringData("mikrotik.user.settings"),
+		"minimumPasswordLength": intField(row, "minimum-password-length"),
+		"minimumCategories":     intField(row, "minimum-categories"),
+	}
+}
+
+func (r *mqlMikrotik) userSettings() (*mqlMikrotikUserSettings, error) {
+	res, ok, err := singletonAccessor[*mqlMikrotikUserSettings](
+		r.MqlRuntime, "/user/settings", "mikrotik.user.settings", userSettingsArgs)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		r.UserSettings.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return res, nil
+}
+
+func initMikrotikUserSettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	return singletonInit(runtime, "/user/settings", args, userSettingsArgs)
+}

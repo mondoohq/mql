@@ -187,10 +187,11 @@ func (c *exchangeRestClient) post(ctx context.Context, url string, body []byte, 
 	}
 	defer resp.Body.Close()
 
-	raw, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
+	// The status decides what kind of failure this is, so a body that cannot be
+	// read must not replace it. A refusal can arrive labelled gzip with a body
+	// that is not gzip (Get-PhishFilterPolicy answers 403 that way), and the
+	// read then fails with "gzip: invalid header".
+	raw, readErr := io.ReadAll(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
@@ -199,10 +200,17 @@ func (c *exchangeRestClient) post(ctx context.Context, url string, body []byte, 
 				msg:        fmt.Sprintf("access denied running %s, please ensure the credentials have the right permissions and Exchange RBAC roles (status %d)", cmdlet, resp.StatusCode),
 			}
 		}
+		detail := string(raw)
+		if readErr != nil {
+			detail = "unreadable body: " + readErr.Error()
+		}
 		return nil, &exchangeHTTPError{
 			StatusCode: resp.StatusCode,
-			msg:        fmt.Sprintf("%s failed with status %d: %s", cmdlet, resp.StatusCode, string(raw)),
+			msg:        fmt.Sprintf("%s failed with status %d: %s", cmdlet, resp.StatusCode, detail),
 		}
+	}
+	if readErr != nil {
+		return nil, readErr
 	}
 
 	out := &exchangeCmdletResponse{}
@@ -555,22 +563,31 @@ func runExchangeSections(ctx context.Context, client *exchangeRestClient, sectio
 		wg.Go(func() {
 			sem <- struct{}{}
 			defer func() { <-sem }()
-
-			rows, err := client.invoke(ctx, section.cmdlet, section.params, section.selects...)
-			mu.Lock()
-			defer mu.Unlock()
-			if err != nil {
+			if err := runExchangeSection(ctx, client, section, report, &mu); err != nil {
+				mu.Lock()
 				failures[section.name] = err
-				return
-			}
-			if err := section.assign(rows, report); err != nil {
-				failures[section.name] = err
+				mu.Unlock()
 			}
 		})
 	}
 	wg.Wait()
 
 	return failures
+}
+
+// runExchangeSection runs one cmdlet and stores its rows in report. It runs on
+// a worker goroutine, so a panic, in the client or in a section's decoding, is
+// recovered into the section's error: the section fails, the scan goes on.
+// The rows are stored under mu, since every section writes into report.
+func runExchangeSection(ctx context.Context, client *exchangeRestClient, section exchangeSection, report *ExchangeOnlineReport, mu *sync.Mutex) (err error) {
+	defer recoverAsError("exchange cmdlet "+section.cmdlet, &err)
+	rows, err := client.invoke(ctx, section.cmdlet, section.params, section.selects...)
+	if err != nil {
+		return err
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	return section.assign(rows, report)
 }
 
 // fetchExchangeReportViaRest builds the Exchange Online report from the admin

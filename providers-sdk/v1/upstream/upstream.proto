@@ -128,6 +128,19 @@ message SshSignature {
   string sig = 3;
 }
 
+// ExchangeExternalTokenResponseFormat selects what ExchangeExternalToken
+// returns inside base64_credential. The value names are the server's, which
+// is how they are spelled in a JSON request.
+enum ExchangeExternalTokenResponseFormat {
+  // protolint:disable ENUM_FIELD_NAMES_PREFIX
+  // Certificate-based credentials of a temporary service account.
+  // protolint:disable:next ENUM_FIELD_NAMES_ZERO_VALUE_END_WITH
+  CREDENTIAL = 0;
+  // A short-lived bearer token for the service account of the WIF binding.
+  TOKEN = 1;
+  // protolint:enable ENUM_FIELD_NAMES_PREFIX
+}
+
 message ExchangeExternalTokenRequest {
   // Issuer URI of the external identity provider
   string issuer_uri = 1;
@@ -135,9 +148,9 @@ message ExchangeExternalTokenRequest {
   string audience = 2;
   // Token provided by the external identity provider to exchange
   string jwt_token = 3;
-  // Optional. When set to "TOKEN", the server returns a short-lived bearer
-  // token inside base64_credential instead of service-account credentials.
-  string response_type = 4;
+  // Optional. The server reads this field as an enum: it ignores any other
+  // type on field 4 and answers with CREDENTIAL.
+  ExchangeExternalTokenResponseFormat response_format = 4;
 }
 
 message ExchangeExternalTokenResponse {

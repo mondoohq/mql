@@ -29,8 +29,95 @@ func uintPtrToAny(p *uint) any {
 	return int64(*p)
 }
 
+// nonEmpty returns nil for an empty string, so a property the controller left
+// out resolves to null rather than to an empty value.
+func nonEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
 func (r *mqlRedfish) id() (string, error) {
 	return "redfish", nil
+}
+
+// systemExtrasJSON is the subset of a ComputerSystem document that gofish
+// decodes into plain values. The booleans are pointers here so a controller
+// that does not report virtualization capabilities resolves to null rather
+// than to a system without them.
+type systemExtrasJSON struct {
+	ProductionDate string `json:"ProductionDate"`
+	Virtualization *struct {
+		CPUOffload      *bool `json:"CPUOffload"`
+		DeviceIsolation *bool `json:"DeviceIsolation"`
+	} `json:"Virtualization"`
+	Bios *odataRef `json:"Bios"`
+}
+
+// parseSystemExtras decodes the optional properties of a ComputerSystem
+// document. It returns an empty result when the document does not decode, so
+// every field reading it resolves to null.
+func parseSystemExtras(raw []byte) systemExtrasJSON {
+	var extras systemExtrasJSON
+	if len(raw) == 0 {
+		return extras
+	}
+	if err := json.Unmarshal(raw, &extras); err != nil {
+		log.Debug().Err(err).Msg("redfish: could not decode the optional properties of a system")
+		return systemExtrasJSON{}
+	}
+	return extras
+}
+
+// virtualizationCPUOffload returns the CPU offload capability, or nil when the
+// controller does not report it.
+func (e systemExtrasJSON) virtualizationCPUOffload() *bool {
+	if e.Virtualization == nil {
+		return nil
+	}
+	return e.Virtualization.CPUOffload
+}
+
+// virtualizationDeviceIsolation returns the device isolation capability, or nil
+// when the controller does not report it.
+func (e systemExtrasJSON) virtualizationDeviceIsolation() *bool {
+	if e.Virtualization == nil {
+		return nil
+	}
+	return e.Virtualization.DeviceIsolation
+}
+
+// biosPasswordsJSON is the password status of a Bios document. Each password
+// and its Set flag are pointers so a controller that does not report a
+// password resolves to null rather than to a password that is not set.
+type biosPasswordsJSON struct {
+	Passwords *struct {
+		Setup *biosPasswordJSON `json:"Setup"`
+		Boot  *biosPasswordJSON `json:"Boot"`
+	} `json:"Passwords"`
+}
+
+type biosPasswordJSON struct {
+	Set *bool `json:"Set"`
+}
+
+// setupSet returns whether the setup password is set, or nil when the
+// controller does not report it.
+func (b *biosPasswordsJSON) setupSet() *bool {
+	if b == nil || b.Passwords == nil || b.Passwords.Setup == nil {
+		return nil
+	}
+	return b.Passwords.Setup.Set
+}
+
+// bootSet returns whether the boot password is set, or nil when the controller
+// does not report it.
+func (b *biosPasswordsJSON) bootSet() *bool {
+	if b == nil || b.Passwords == nil || b.Passwords.Boot == nil {
+		return nil
+	}
+	return b.Passwords.Boot.Set
 }
 
 func (r *mqlRedfish) systems() ([]any, error) {
@@ -43,6 +130,7 @@ func (r *mqlRedfish) systems() ([]any, error) {
 	for _, s := range systems {
 		overrideEnabled := string(s.Boot.BootSourceOverrideEnabled)
 		overrideTarget := string(s.Boot.BootSourceOverrideTarget)
+		extras := parseSystemExtras(s.RawData)
 
 		o, err := CreateResource(r.MqlRuntime, "redfish.system", map[string]*llx.RawData{
 			"__id":                      llx.StringData(s.ODataID),
@@ -61,12 +149,19 @@ func (r *mqlRedfish) systems() ([]any, error) {
 			"bootSourceOverrideMode":    llx.StringData(string(s.Boot.BootSourceOverrideMode)),
 			"persistentBootOverride":    llx.BoolData(isPersistentBootOverride(overrideEnabled, overrideTarget)),
 			"trustedModules":            llx.ArrayData(trustedModuleDicts(s.TrustedModules), types.Dict),
+
+			"virtualizationCpuOffload":      llx.BoolDataPtr(extras.virtualizationCPUOffload()),
+			"virtualizationDeviceIsolation": llx.BoolDataPtr(extras.virtualizationDeviceIsolation()),
+			"productionDate":                llx.TimeDataPtr(parseRedfishTime(extras.ProductionDate)),
 		})
 		if err != nil {
 			return nil, err
 		}
 		mqlSystem := o.(*mqlRedfishSystem)
 		mqlSystem.sys = s
+		if extras.Bios != nil {
+			mqlSystem.biosLink = extras.Bios.ODataID
+		}
 		res = append(res, mqlSystem)
 	}
 	return res, nil
@@ -134,6 +229,8 @@ func (r *mqlRedfish) chassis() ([]any, error) {
 			"serialNumber": llx.StringData(c.SerialNumber),
 			"sku":          llx.StringData(c.SKU),
 			"powerState":   llx.StringData(string(c.PowerState)),
+
+			"productionDate": llx.TimeDataPtr(parseRedfishTime(c.ProductionDate)),
 		})
 		if err != nil {
 			return nil, err
@@ -212,6 +309,9 @@ func (r *mqlRedfish) firmware() ([]any, error) {
 			"updateable":             llx.BoolData(sw.Updateable),
 			"releaseDate":            llx.StringData(sw.ReleaseDate),
 			"lowestSupportedVersion": llx.StringData(sw.LowestSupportedVersion),
+
+			"imageState": llx.StringDataPtr(nonEmpty(string(sw.ImageState))),
+			"armed":      llx.BoolDataPtr(parseSoftwareArmed(sw.RawData)),
 		})
 		if err != nil {
 			return nil, err
@@ -219,6 +319,24 @@ func (r *mqlRedfish) firmware() ([]any, error) {
 		res = append(res, o)
 	}
 	return res, nil
+}
+
+// parseSoftwareArmed returns the Armed property of a SoftwareInventory
+// document, or nil when the controller leaves it out. gofish decodes it as a
+// plain bool, which reports an image on a controller that predates the
+// property as one that is not armed.
+func parseSoftwareArmed(raw []byte) *bool {
+	if len(raw) == 0 {
+		return nil
+	}
+	var doc struct {
+		Armed *bool `json:"Armed"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		log.Debug().Err(err).Msg("redfish: could not decode a software inventory item")
+		return nil
+	}
+	return doc.Armed
 }
 
 // trustedModuleDicts maps the trusted modules of a system. A value the
@@ -249,14 +367,85 @@ func emptyStringToNil(s string) any {
 }
 
 // mqlRedfishSystemInternal caches the source system so sub-collections can be
-// resolved without re-fetching the parent, and the Secure Boot resource, which
-// three fields read.
+// resolved without re-fetching the parent, the Secure Boot resource, which
+// four fields read, and the password status of the BIOS resource, which two
+// fields read.
 type mqlRedfishSystemInternal struct {
-	sys *schemas.ComputerSystem
+	sys      *schemas.ComputerSystem
+	biosLink string
 
 	secureBootOnce   sync.Once
 	secureBoot       *schemas.SecureBoot
 	secureBootLoaded bool
+
+	biosOnce      sync.Once
+	biosPasswords *biosPasswordsJSON
+	biosErr       error
+}
+
+// loadBiosPasswords fetches the BIOS resource of the system once and decodes
+// its password status. The result is nil when the system links no BIOS
+// resource or the controller does not serve it, so both password fields
+// resolve to null rather than to a password that is not set.
+func (r *mqlRedfishSystem) loadBiosPasswords() (*biosPasswordsJSON, error) {
+	r.biosOnce.Do(func() {
+		if r.biosLink == "" {
+			return
+		}
+		raw, err := redfishConn(r.MqlRuntime).GetRaw(r.biosLink)
+		if errors.Is(err, connection.ErrNotFound) {
+			log.Debug().Err(err).Msg("redfish: system serves no bios resource")
+			return
+		}
+		if err != nil {
+			r.biosErr = err
+			return
+		}
+		var doc biosPasswordsJSON
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			r.biosErr = err
+			return
+		}
+		r.biosPasswords = &doc
+	})
+	return r.biosPasswords, r.biosErr
+}
+
+func (r *mqlRedfishSystem) biosSetupPasswordSet() (bool, error) {
+	bios, err := r.loadBiosPasswords()
+	if err != nil {
+		return false, err
+	}
+	set := bios.setupSet()
+	if set == nil {
+		r.BiosSetupPasswordSet.State = plugin.StateIsNull | plugin.StateIsSet
+		return false, nil
+	}
+	return *set, nil
+}
+
+func (r *mqlRedfishSystem) biosBootPasswordSet() (bool, error) {
+	bios, err := r.loadBiosPasswords()
+	if err != nil {
+		return false, err
+	}
+	set := bios.bootSet()
+	if set == nil {
+		r.BiosBootPasswordSet.State = plugin.StateIsNull | plugin.StateIsSet
+		return false, nil
+	}
+	return *set, nil
+}
+
+// secureBootDesiredMode reports the Secure Boot mode the system switches to at
+// its next reset.
+func (r *mqlRedfishSystem) secureBootDesiredMode() (string, error) {
+	sb, ok := r.loadSecureBoot()
+	if !ok || sb.SecureBootDesiredMode == "" {
+		r.SecureBootDesiredMode.State = plugin.StateIsNull | plugin.StateIsSet
+		return "", nil
+	}
+	return string(sb.SecureBootDesiredMode), nil
 }
 
 // loadSecureBoot fetches the Secure Boot resource of the system once. loaded
@@ -338,6 +527,8 @@ func (r *mqlRedfishSystem) processors() ([]any, error) {
 			"totalCores":     llx.IntDataPtr(p.TotalCores),
 			"totalThreads":   llx.IntDataPtr(p.TotalThreads),
 			"maxSpeedMHz":    llx.IntDataPtr(p.MaxSpeedMHz),
+
+			"hardwareSecurityVersion": llx.StringDataPtr(nonEmpty(p.HardwareSecurityVersion)),
 		})
 		if err != nil {
 			return nil, err
@@ -439,6 +630,106 @@ func (r *mqlRedfishManager) networkProtocol() (any, error) {
 		},
 	}
 	return result, nil
+}
+
+// hostInterfaceJSON is the subset of a HostInterface document the provider
+// surfaces. gofish decodes the booleans as plain values, which reports a
+// setting the controller never described as one that is switched off, so the
+// provider decodes the document itself with pointers.
+type hostInterfaceJSON struct {
+	Name                    string   `json:"Name"`
+	HostInterfaceType       string   `json:"HostInterfaceType"`
+	InterfaceEnabled        *bool    `json:"InterfaceEnabled"`
+	ExternallyAccessible    *bool    `json:"ExternallyAccessible"`
+	AuthenticationModes     []string `json:"AuthenticationModes"`
+	AuthNoneRoleID          string   `json:"AuthNoneRoleId"`
+	FirmwareAuthEnabled     *bool    `json:"FirmwareAuthEnabled"`
+	FirmwareAuthRoleID      string   `json:"FirmwareAuthRoleId"`
+	KernelAuthEnabled       *bool    `json:"KernelAuthEnabled"`
+	KernelAuthRoleID        string   `json:"KernelAuthRoleId"`
+	CredentialBootstrapping *struct {
+		Enabled                 *bool  `json:"Enabled"`
+		EnableAfterReset        *bool  `json:"EnableAfterReset"`
+		RoleID                  string `json:"RoleId"`
+		ExpirationWindowEnabled *bool  `json:"ExpirationWindowEnabled"`
+		ExpirationWindowMinutes *int64 `json:"ExpirationWindowMinutes"`
+	} `json:"CredentialBootstrapping"`
+}
+
+// parseHostInterface decodes a HostInterface document. A document that does not
+// decode still yields the interface, under the name gofish read, with every
+// other property unreported: dropping it would hide an interface that may
+// accept AuthNone, and failing would hide every other interface with it.
+func parseHostInterface(raw []byte, name string) *hostInterfaceJSON {
+	var hi hostInterfaceJSON
+	if err := json.Unmarshal(raw, &hi); err != nil {
+		log.Debug().Err(err).Str("name", name).Msg("redfish: could not decode a host interface, reporting its properties as null")
+		return &hostInterfaceJSON{Name: name}
+	}
+	return &hi
+}
+
+// hostInterfaceArgs maps a decoded host interface onto the resource fields. A
+// credential bootstrapping block the controller leaves out resolves every
+// bootstrapping field to null rather than to bootstrapping being disabled.
+func hostInterfaceArgs(id string, hi *hostInterfaceJSON) map[string]*llx.RawData {
+	var authModes *llx.RawData = llx.NilData
+	if hi.AuthenticationModes != nil {
+		modes := make([]any, 0, len(hi.AuthenticationModes))
+		for _, m := range hi.AuthenticationModes {
+			modes = append(modes, m)
+		}
+		authModes = llx.ArrayData(modes, types.String)
+	}
+
+	args := map[string]*llx.RawData{
+		"__id":                 llx.StringData(id),
+		"name":                 llx.StringData(hi.Name),
+		"hostInterfaceType":    llx.StringDataPtr(nonEmpty(hi.HostInterfaceType)),
+		"interfaceEnabled":     llx.BoolDataPtr(hi.InterfaceEnabled),
+		"externallyAccessible": llx.BoolDataPtr(hi.ExternallyAccessible),
+		"authenticationModes":  authModes,
+		"authNoneRoleId":       llx.StringDataPtr(nonEmpty(hi.AuthNoneRoleID)),
+		"firmwareAuthEnabled":  llx.BoolDataPtr(hi.FirmwareAuthEnabled),
+		"firmwareAuthRoleId":   llx.StringDataPtr(nonEmpty(hi.FirmwareAuthRoleID)),
+		"kernelAuthEnabled":    llx.BoolDataPtr(hi.KernelAuthEnabled),
+		"kernelAuthRoleId":     llx.StringDataPtr(nonEmpty(hi.KernelAuthRoleID)),
+
+		"credentialBootstrappingEnabled":                 llx.NilData,
+		"credentialBootstrappingEnableAfterReset":        llx.NilData,
+		"credentialBootstrappingRoleId":                  llx.NilData,
+		"credentialBootstrappingExpirationWindowEnabled": llx.NilData,
+		"credentialBootstrappingExpirationWindowMinutes": llx.NilData,
+	}
+	if cb := hi.CredentialBootstrapping; cb != nil {
+		args["credentialBootstrappingEnabled"] = llx.BoolDataPtr(cb.Enabled)
+		args["credentialBootstrappingEnableAfterReset"] = llx.BoolDataPtr(cb.EnableAfterReset)
+		args["credentialBootstrappingRoleId"] = llx.StringDataPtr(nonEmpty(cb.RoleID))
+		args["credentialBootstrappingExpirationWindowEnabled"] = llx.BoolDataPtr(cb.ExpirationWindowEnabled)
+		args["credentialBootstrappingExpirationWindowMinutes"] = llx.IntDataPtr(cb.ExpirationWindowMinutes)
+	}
+	return args
+}
+
+func (r *mqlRedfishManager) hostInterfaces() ([]any, error) {
+	if r.mgr == nil {
+		return nil, errors.New("redfish.manager is missing its source manager reference")
+	}
+	interfaces, err := r.mgr.HostInterfaces()
+	if err != nil {
+		return nil, err
+	}
+
+	res := make([]any, 0, len(interfaces))
+	for _, h := range interfaces {
+		hi := parseHostInterface(h.RawData, h.Name)
+		o, err := CreateResource(r.MqlRuntime, "redfish.hostInterface", hostInterfaceArgs(h.ODataID, hi))
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, o)
+	}
+	return res, nil
 }
 
 // hpeManagerOem is the subset of the HPE manager OEM block we surface. Older

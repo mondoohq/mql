@@ -55,13 +55,16 @@ func initDigitaloceanAccount(runtime *plugin.Runtime, args map[string]*llx.RawDa
 		return nil, nil, errors.New("the DigitalOcean API returned no account")
 	}
 	args["email"] = llx.StringData(acct.Email)
+	args["name"] = llx.StringData(acct.Name)
 	args["uuid"] = llx.StringData(acct.UUID)
 	args["dropletLimit"] = llx.IntData(int64(acct.DropletLimit))
 	args["floatingIpLimit"] = llx.IntData(int64(acct.FloatingIPLimit))
+	args["reservedIpLimit"] = llx.IntData(int64(acct.ReservedIPLimit))
 	args["volumeLimit"] = llx.IntData(int64(acct.VolumeLimit))
 	args["emailVerified"] = llx.BoolData(acct.EmailVerified)
 	args["status"] = llx.StringData(acct.Status)
 	args["statusMessage"] = llx.StringData(acct.StatusMessage)
+	args["isTrial"] = llx.BoolData(acct.IsTrial)
 	teamUuid, teamName := "", ""
 	if acct.Team != nil {
 		teamUuid = acct.Team.UUID
@@ -128,6 +131,9 @@ type mqlDigitaloceanDropletInternal struct {
 	// cacheVPCUUID holds the UUID of the VPC the droplet is attached to so
 	// the typed vpc() accessor can resolve it without a refetch.
 	cacheVPCUUID string
+	// cacheSubnetUUID holds the UUID of the VPC subnet the droplet is placed
+	// in so the typed subnet() accessor can resolve it without a refetch.
+	cacheSubnetUUID string
 }
 
 func (r *mqlDigitalocean) droplets() ([]any, error) {
@@ -243,6 +249,7 @@ func (r *mqlDigitalocean) droplets() ([]any, error) {
 		mqlDroplet.image = d.Image
 		mqlDroplet.size = d.Size
 		mqlDroplet.cacheVPCUUID = d.VPCUUID
+		mqlDroplet.cacheSubnetUUID = d.SubnetUUID
 		mqlDroplet.cacheVolumeIDs = d.VolumeIDs
 		mqlDroplet.cacheSnapshotIDs = d.SnapshotIDs
 		mqlDroplet.cacheBackupIDs = d.BackupIDs
@@ -501,6 +508,9 @@ type mqlDigitaloceanLoadBalancerInternal struct {
 	// droplets() accessors can resolve them without a refetch.
 	cacheVPCUUID    string
 	cacheDropletIDs []any
+	// cacheSubnetUUID holds the VPC subnet the load balancer is placed in, so
+	// the typed subnet() accessor can resolve it without a refetch.
+	cacheSubnetUUID string
 	// cacheForwardingRules holds the port mappings the load balancer accepts
 	// connections on, so listeners() can build one resource per rule.
 	cacheForwardingRules []godo.ForwardingRule

@@ -169,16 +169,62 @@ func (r *mqlOllama) dnsRebindingProtected() (bool, error) {
 	return classifyForeignHostProbe(obs.ControlStatus, obs.ForeignStatus)
 }
 
-func (r *mqlOllama) cloudEnabled() (bool, error) {
+type mqlOllamaInternal struct {
+	// statusFetched is read outside statusLock on fetchStatus's fast path, so
+	// it is atomic. status is written before statusFetched is stored.
+	statusFetched atomic.Bool
+	// status is nil when the instance does not serve the status endpoint.
+	status     *api.StatusResponse
+	statusLock sync.Mutex
+}
+
+// fetchStatus returns the instance's /api/status answer, shared by every field
+// that reads it. It returns nil, nil when the instance does not serve the
+// endpoint.
+func (r *mqlOllama) fetchStatus() (*api.StatusResponse, error) {
+	if r.statusFetched.Load() {
+		return r.status, nil
+	}
+	r.statusLock.Lock()
+	defer r.statusLock.Unlock()
+	if r.statusFetched.Load() {
+		return r.status, nil
+	}
 	status, err := ollamaConn(r.MqlRuntime).Client().CloudStatusExperimental(context.Background())
 	if err != nil {
-		if isEndpointUnavailable(err) {
-			r.CloudEnabled.State = plugin.StateIsSet | plugin.StateIsNull
-			return false, nil
+		if !isEndpointUnavailable(err) {
+			return nil, err
 		}
+		status = nil
+	}
+	r.status = status
+	r.statusFetched.Store(true)
+	return r.status, nil
+}
+
+func (r *mqlOllama) cloudEnabled() (bool, error) {
+	status, err := r.fetchStatus()
+	if err != nil {
 		return false, err
 	}
+	if status == nil {
+		r.CloudEnabled.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
 	return !status.Cloud.Disabled, nil
+}
+
+func (r *mqlOllama) cloudDisabledSource() (string, error) {
+	status, err := r.fetchStatus()
+	if err != nil {
+		return "", err
+	}
+	// A server that predates the field answers without a source.
+	if status == nil || status.Cloud.Source == "" {
+		r.CloudDisabledSource.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return status.Cloud.Source, nil
 }
 
 func (r *mqlOllama) cloudAccount() (*mqlOllamaAccount, error) {
@@ -382,6 +428,8 @@ func (r *mqlOllama) runningModels() ([]any, error) {
 			"digest":        llx.StringData(m.Digest),
 			"expiresAt":     llx.TimeData(m.ExpiresAt),
 			"sizeVram":      llx.IntData(m.SizeVRAM),
+			"size":          llx.IntData(m.Size),
+			"runner":        optionalString(m.Runner),
 			"contextLength": llx.IntData(int64(m.ContextLength)),
 		})
 		if err != nil {
@@ -563,6 +611,55 @@ func (r *mqlOllamaModel) parser() (string, error) {
 		return "", err
 	}
 	return show.Parser, nil
+}
+
+func (r *mqlOllamaModel) requires() (string, error) {
+	show, err := r.fetchShow()
+	if err != nil {
+		return "", err
+	}
+	if show.Requires == "" {
+		r.Requires.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return show.Requires, nil
+}
+
+func (r *mqlOllamaModel) messages() ([]any, error) {
+	show, err := r.fetchShow()
+	if err != nil {
+		return nil, err
+	}
+
+	res := make([]any, 0, len(show.Messages))
+	for i, m := range show.Messages {
+		msg, err := CreateResource(r.MqlRuntime, "ollama.model.message", modelMessageArgs(r.Name.Data, i, m))
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, msg)
+	}
+	return res, nil
+}
+
+// modelMessageArgs builds the resource arguments for the message at index i of
+// a model's seeded conversation. The index keeps two identical messages of one
+// model apart.
+func modelMessageArgs(modelName string, i int, m api.Message) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":    llx.StringData(modelName + "/message/" + strconv.Itoa(i)),
+		"role":    llx.StringData(m.Role),
+		"content": llx.StringData(m.Content),
+	}
+}
+
+// optionalString returns a null for a value the server left out, so an absent
+// answer is not reported as an empty string.
+func optionalString(s string) *llx.RawData {
+	if s == "" {
+		return llx.NilData
+	}
+	return llx.StringData(s)
 }
 
 func (r *mqlOllamaModel) info() (*mqlOllamaModelInfo, error) {

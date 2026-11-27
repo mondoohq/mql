@@ -254,34 +254,43 @@ func (a *mqlMicrosoftRolemanagementRoledefinition) assignments() ([]any, error) 
 
 	res := []any{}
 	for _, row := range rows {
-		roleAssignment := row.assignment
-		directoryPrincipal := row.principal
-		principal, err := convert.JsonToDict(newDirectoryPrincipal(directoryPrincipal))
+		mqlRoleAssignment, err := newMqlDirectoryRoleAssignment(a.MqlRuntime, row)
 		if err != nil {
 			return nil, err
-		}
-		principalType, principalName := directoryPrincipalInfo(directoryPrincipal)
-		mqlResource, err := CreateResource(a.MqlRuntime, "microsoft.rolemanagement.roleassignment",
-			map[string]*llx.RawData{
-				"id":               llx.StringDataPtr(roleAssignment.GetId()),
-				"principalId":      llx.StringDataPtr(roleAssignment.GetPrincipalId()),
-				"principalType":    llx.StringData(principalType),
-				"principalName":    llx.StringData(principalName),
-				"principal":        llx.DictData(principal),
-				"directoryScopeId": llx.StringDataPtr(roleAssignment.GetDirectoryScopeId()),
-				"appScopeId":       llx.StringDataPtr(roleAssignment.GetAppScopeId()),
-				"condition":        llx.StringDataPtr(roleAssignment.GetCondition()),
-			})
-		if err != nil {
-			return nil, err
-		}
-		mqlRoleAssignment := mqlResource.(*mqlMicrosoftRolemanagementRoleassignment)
-		if roleDefinitionID := roleAssignment.GetRoleDefinitionId(); roleDefinitionID != nil {
-			mqlRoleAssignment.cacheRoleDefinitionID = *roleDefinitionID
 		}
 		res = append(res, mqlRoleAssignment)
 	}
 	return res, nil
+}
+
+// newMqlDirectoryRoleAssignment builds a directory role assignment resource
+// from an assignment and its principal, which is nil for a deleted principal.
+func newMqlDirectoryRoleAssignment(runtime *plugin.Runtime, row roleAssignmentRow) (*mqlMicrosoftRolemanagementRoleassignment, error) {
+	roleAssignment := row.assignment
+	principal, err := convert.JsonToDict(newDirectoryPrincipal(row.principal))
+	if err != nil {
+		return nil, err
+	}
+	principalType, principalName := directoryPrincipalInfo(row.principal)
+	mqlResource, err := CreateResource(runtime, "microsoft.rolemanagement.roleassignment",
+		map[string]*llx.RawData{
+			"id":               llx.StringDataPtr(roleAssignment.GetId()),
+			"principalId":      llx.StringDataPtr(roleAssignment.GetPrincipalId()),
+			"principalType":    llx.StringData(principalType),
+			"principalName":    llx.StringData(principalName),
+			"principal":        llx.DictData(principal),
+			"directoryScopeId": llx.StringDataPtr(roleAssignment.GetDirectoryScopeId()),
+			"appScopeId":       llx.StringDataPtr(roleAssignment.GetAppScopeId()),
+			"condition":        llx.StringDataPtr(roleAssignment.GetCondition()),
+		})
+	if err != nil {
+		return nil, err
+	}
+	mqlRoleAssignment := mqlResource.(*mqlMicrosoftRolemanagementRoleassignment)
+	if roleDefinitionID := roleAssignment.GetRoleDefinitionId(); roleDefinitionID != nil {
+		mqlRoleAssignment.cacheRoleDefinitionID = *roleDefinitionID
+	}
+	return mqlRoleAssignment, nil
 }
 
 // roleAssignmentRow is one role assignment with its principal, which is nil

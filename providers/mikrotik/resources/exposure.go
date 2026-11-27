@@ -229,3 +229,125 @@ func (r *mqlMikrotik) romon() (*mqlMikrotikToolRomon, error) {
 func initMikrotikToolRomon(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	return singletonInit(runtime, "/tool/romon", args, romonArgs)
 }
+
+// --- tool.bandwidthServer ---
+
+func bandwidthServerArgs(row map[string]string) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":                 llx.StringData("mikrotik.tool.bandwidthServer"),
+		"enabled":              boolField(row, "enabled"),
+		"authenticate":         boolField(row, "authenticate"),
+		"allowedAddresses4":    listField(row, "allowed-addresses4"),
+		"allowedAddresses6":    listField(row, "allowed-addresses6"),
+		"maxSessions":          intField(row, "max-sessions"),
+		"allocateUdpPortsFrom": intField(row, "allocate-udp-ports-from"),
+	}
+}
+
+func (r *mqlMikrotik) bandwidthServer() (*mqlMikrotikToolBandwidthServer, error) {
+	res, ok, err := singletonAccessor[*mqlMikrotikToolBandwidthServer](
+		r.MqlRuntime, "/tool/bandwidth-server", "mikrotik.tool.bandwidthServer", bandwidthServerArgs)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		r.BandwidthServer.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return res, nil
+}
+
+func initMikrotikToolBandwidthServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	return singletonInit(runtime, "/tool/bandwidth-server", args, bandwidthServerArgs)
+}
+
+// --- ip.socks ---
+
+func socksArgs(row map[string]string) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":                  llx.StringData("mikrotik.ip.socks"),
+		"enabled":               boolField(row, "enabled"),
+		"authMethod":            stringField(row, "auth-method"),
+		"port":                  intField(row, "port"),
+		"version":               intField(row, "version"),
+		"maxConnections":        intField(row, "max-connections"),
+		"connectionIdleTimeout": stringField(row, "connection-idle-timeout"),
+	}
+}
+
+func (r *mqlMikrotik) socks() (*mqlMikrotikIpSocks, error) {
+	res, ok, err := singletonAccessor[*mqlMikrotikIpSocks](
+		r.MqlRuntime, "/ip/socks", "mikrotik.ip.socks", socksArgs)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		r.Socks.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return res, nil
+}
+
+func initMikrotikIpSocks(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	return singletonInit(runtime, "/ip/socks", args, socksArgs)
+}
+
+// --- ip.proxy ---
+
+func webProxyArgs(row map[string]string) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":                 llx.StringData("mikrotik.ip.proxy"),
+		"enabled":              boolField(row, "enabled"),
+		"ports":                intListField(row, "port"),
+		"anonymous":            boolField(row, "anonymous"),
+		"parentProxy":          stringField(row, "parent-proxy"),
+		"parentProxyPort":      intField(row, "parent-proxy-port"),
+		"srcAddress":           stringField(row, "src-address"),
+		"maxClientConnections": intField(row, "max-client-connections"),
+	}
+}
+
+func (r *mqlMikrotik) webProxy() (*mqlMikrotikIpProxy, error) {
+	res, ok, err := singletonAccessor[*mqlMikrotikIpProxy](
+		r.MqlRuntime, "/ip/proxy", "mikrotik.ip.proxy", webProxyArgs)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		r.WebProxy.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return res, nil
+}
+
+func initMikrotikIpProxy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	return singletonInit(runtime, "/ip/proxy", args, webProxyArgs)
+}
+
+// --- ip.upnp ---
+
+func upnpArgs(row map[string]string) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":                          llx.StringData("mikrotik.ip.upnp"),
+		"enabled":                       boolField(row, "enabled"),
+		"allowDisableExternalInterface": boolField(row, "allow-disable-external-interface"),
+		"showDummyRule":                 boolField(row, "show-dummy-rule"),
+	}
+}
+
+func (r *mqlMikrotik) upnp() (*mqlMikrotikIpUpnp, error) {
+	res, ok, err := singletonAccessor[*mqlMikrotikIpUpnp](
+		r.MqlRuntime, "/ip/upnp", "mikrotik.ip.upnp", upnpArgs)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		r.Upnp.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return res, nil
+}
+
+func initMikrotikIpUpnp(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	return singletonInit(runtime, "/ip/upnp", args, upnpArgs)
+}

@@ -119,3 +119,51 @@ func srvURL(r *http.Request) string {
 	}
 	return scheme + "://" + r.Host
 }
+
+// Synthetic: version and runner_group_id as the runner list documents them.
+func TestListRunnersRawVersionAndGroup(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"total_count": 2, "runners": [
+			{"id": 1, "name": "a", "runner_group_id": 7, "version": "2.329.0"},
+			{"id": 2, "name": "b"}
+		]}`)
+	}))
+	defer srv.Close()
+
+	got, err := listRunnersRaw(context.Background(), newTestGithubClient(t, srv), "orgs/test-org/actions/runners")
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+
+	require.NotNil(t, got[0].Version)
+	assert.Equal(t, "2.329.0", *got[0].Version)
+	require.NotNil(t, got[0].RunnerGroupID)
+	assert.Equal(t, int64(7), *got[0].RunnerGroupID)
+
+	assert.Nil(t, got[1].Version, "an unreported version stays null")
+	assert.Nil(t, got[1].RunnerGroupID)
+}
+
+// Synthetic: the listing scopes runnersToMql receives.
+func TestRunnerScopeOwner(t *testing.T) {
+	assert.Equal(t, "acme", runnerScopeOwner("orgs/acme"))
+	assert.Equal(t, "acme", runnerScopeOwner("repos/acme/widgets"))
+	assert.Equal(t, "", runnerScopeOwner("users/acme"))
+	assert.Equal(t, "", runnerScopeOwner("orgs"))
+	assert.Equal(t, "", runnerScopeOwner(""))
+}
+
+// Synthetic: a runner the listing reported no group for has no group to
+// resolve, and must not reach for the organization.
+func TestRunnerGroupWithoutGroupID(t *testing.T) {
+	runtime := prefetchRuntime()
+	res, err := runnersToMql(runtime, "orgs/acme", []*ghRunnerExt{{ID: github.Ptr(int64(5)), Name: github.Ptr("a")}})
+	require.NoError(t, err)
+	require.Len(t, res, 1)
+
+	runner := res[0].(*mqlGithubRunner)
+	group, err := runner.runnerGroup()
+	require.NoError(t, err)
+	assert.Nil(t, group)
+	assert.True(t, runner.RunnerGroup.IsNull())
+}

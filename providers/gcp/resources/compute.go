@@ -7,7 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -789,10 +791,11 @@ func (g *mqlGcpProjectComputeServiceAttachedDisk) source() (*mqlGcpProjectComput
 }
 
 type mqlGcpProjectComputeServiceInstanceInternal struct {
-	instanceMachineType       string
-	cacheNetworkUrls          []string
-	cacheSubnetworkUrls       []string
-	cacheServiceAccountEmails []string
+	instanceMachineType        string
+	cacheNetworkUrls           []string
+	cacheSubnetworkUrls        []string
+	cacheServiceAccountEmails  []string
+	cacheSourceMachineImageUrl string
 }
 
 func newMqlComputeServiceInstance(projectId string, zone *mqlGcpProjectComputeServiceZone, runtime *plugin.Runtime, instance *compute.Instance) (*mqlGcpProjectComputeServiceInstance, error) {
@@ -825,6 +828,8 @@ func newMqlComputeServiceInstance(projectId string, zone *mqlGcpProjectComputeSe
 	if instance.ResourceStatus != nil {
 		physicalHost = instance.ResourceStatus.PhysicalHost
 	}
+	effective := effectiveInstanceMetadataArgs(instance.ResourceStatus)
+	upcomingMaintenance := upcomingMaintenanceToDict(instance.ResourceStatus)
 
 	var enableIntegrityMonitoring bool
 	var enableSecureBoot bool
@@ -978,7 +983,7 @@ func newMqlComputeServiceInstance(projectId string, zone *mqlGcpProjectComputeSe
 		tagsItems = instance.Tags.Items
 	}
 
-	entry, err := CreateResource(runtime, "gcp.project.computeService.instance", map[string]*llx.RawData{
+	args := map[string]*llx.RawData{
 		"id":                              llx.StringData(instanceId),
 		"projectId":                       llx.StringData(projectId),
 		"name":                            llx.StringData(instance.Name),
@@ -1027,11 +1032,20 @@ func newMqlComputeServiceInstance(projectId string, zone *mqlGcpProjectComputeSe
 		"sourceMachineImageEncryptionKey": llx.DictData(mqlSourceMachineImageEncryptionKey),
 		"sourceMachineImageEncryption":    sourceMachineImageEncryption,
 		"advancedMachineFeatures":         llx.DictData(mqlAdvancedMachineFeatures),
-	})
+	}
+	for k, v := range effective {
+		args[k] = v
+	}
+	args["upcomingMaintenance"] = llx.NilData
+	if upcomingMaintenance != nil {
+		args["upcomingMaintenance"] = llx.DictData(upcomingMaintenance)
+	}
+	entry, err := CreateResource(runtime, "gcp.project.computeService.instance", args)
 	if err != nil {
 		return nil, err
 	}
 	mqlR := entry.(*mqlGcpProjectComputeServiceInstance)
+	mqlR.cacheSourceMachineImageUrl = instance.SourceMachineImage
 	mqlR.instanceMachineType = instance.MachineType
 	mqlR.cacheNetworkUrls = networkUrls
 	mqlR.cacheSubnetworkUrls = subnetworkUrls
@@ -1883,6 +1897,7 @@ type mqlGcpProjectComputeServiceImageInternal struct {
 	cacheSourceImageUrl    string
 	cacheSourceSnapshotUrl string
 	cacheKmsKeyName        string
+	cacheReplacementUrl    string
 }
 
 func (g *mqlGcpProjectComputeServiceImage) kmsKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
@@ -2043,6 +2058,7 @@ func (g *mqlGcpProjectComputeService) images() ([]any, error) {
 			if err != nil {
 				return err
 			}
+			dep := imageDeprecation(image.Deprecated)
 			mqlImage, err := CreateResource(g.MqlRuntime, "gcp.project.computeService.image", map[string]*llx.RawData{
 				"id":                           llx.StringData(strconv.FormatUint(image.Id, 10)),
 				"projectId":                    llx.StringData(projectId),
@@ -2063,11 +2079,18 @@ func (g *mqlGcpProjectComputeService) images() ([]any, error) {
 				"imageEncryptionKey":           llx.DictData(customerEncryptionKeyToDict(image.ImageEncryptionKey)),
 				"imageEncryption":              imageEncryption,
 				"shieldedInstanceInitialState": llx.DictData(shieldedInitialState),
+				"deprecationState":             llx.StringData(dep.state),
+				"deprecatedAt":                 llx.TimeDataPtr(parseTime(dep.deprecated)),
+				"obsoleteAt":                   llx.TimeDataPtr(parseTime(dep.obsolete)),
+				"deletedAt":                    llx.TimeDataPtr(parseTime(dep.deleted)),
+				"guestOsFeatures":              llx.ArrayData(guestOsFeatureTypes(image.GuestOsFeatures), types.String),
+				"licenseCodes":                 llx.ArrayData(int64sToInterface(image.LicenseCodes), types.Int),
 			})
 			if err != nil {
 				return err
 			}
 			mqlI := mqlImage.(*mqlGcpProjectComputeServiceImage)
+			mqlI.cacheReplacementUrl = dep.replacement
 			mqlI.cacheSourceDiskUrl = image.SourceDisk
 			mqlI.cacheSourceImageUrl = image.SourceImage
 			mqlI.cacheSourceSnapshotUrl = image.SourceSnapshot
@@ -3244,6 +3267,13 @@ func (g *mqlGcpProjectComputeService) addresses() ([]any, error) {
 	return mqlAddresses, nil
 }
 
+func (g *mqlGcpProjectComputeServiceAddress) isExternal() (bool, error) {
+	if g.AddressType.Error != nil {
+		return false, g.AddressType.Error
+	}
+	return g.AddressType.Data == "EXTERNAL", nil
+}
+
 func (g *mqlGcpProjectComputeServiceAddress) network() (*mqlGcpProjectComputeServiceNetwork, error) {
 	networkUrl := g.cacheNetworkUrl
 	net, err := getNetworkByUrl(networkUrl, g.MqlRuntime)
@@ -4336,16 +4366,7 @@ func (g *mqlGcpProjectComputeServiceFirewall) openToInternet() (bool, error) {
 	if g.SourceRanges.Error != nil {
 		return false, g.SourceRanges.Error
 	}
-	for _, r := range g.SourceRanges.Data {
-		s, ok := r.(string)
-		if !ok {
-			continue
-		}
-		if s == "0.0.0.0/0" || s == "::/0" {
-			return true, nil
-		}
-	}
-	return false, nil
+	return firewallSourceRangesContainPublic(g.SourceRanges.Data), nil
 }
 
 func (g *mqlGcpProjectComputeServiceSnapshot) iamPolicy() ([]any, error) {
@@ -4607,17 +4628,135 @@ func (g *mqlGcpProjectComputeServiceNetwork) legacy() (bool, error) {
 	return g.Mode.Data == "legacy", nil
 }
 
+// firewallSourceRangesContainPublic reports whether a firewall rule's source
+// ranges admit a large part of the internet, in either address family. See
+// internetSourceFamilies for the rule.
 func firewallSourceRangesContainPublic(ranges []any) bool {
+	v4, v6 := internetSourceFamilies(ranges)
+	return v4 || v6
+}
+
+// internetSourceFamilies reports which address families a rule's source ranges
+// open to the internet.
+//
+// 0.0.0.0/0 and ::/0 are the common case, but 0.0.0.0/1 plus 128.0.0.0/1,
+// 2000::/3, or 256 adjacent /8s admit every internet host just the same, and so
+// does a list of many narrow ranges whose union covers most of the address
+// space. The verdict therefore depends on the union of the source ranges, not on
+// how they are written. A family is open when that union, restricted to the
+// space internet hosts send from (IPv4 outside 224.0.0.0/3, IPv6 inside
+// 2000::/3), either:
+//
+//   - contains an aligned IPv4 /7 or IPv6 /11, the next size up from the blocks
+//     IANA allocates to the regional registries, or
+//   - covers at least half of that space, however it is scattered.
+//
+// Private ranges never qualify on the first test: 10.0.0.0/8 is not a /7, and
+// fc00::/7 lies outside 2000::/3. IPv6 ranges longer than /64 are ignored, since
+// no realistic number of them adds up to either threshold. An entry that does
+// not parse is skipped.
+func internetSourceFamilies(ranges []any) (v4 bool, v6 bool) {
+	var spans4, spans6 []addrSpan
 	for _, r := range ranges {
 		s, ok := r.(string)
 		if !ok {
 			continue
 		}
-		if s == "0.0.0.0/0" || s == "::/0" {
+		p, err := netip.ParsePrefix(strings.TrimSpace(s))
+		if err != nil {
+			continue
+		}
+		span, ok := prefixSpan(p)
+		if !ok {
+			continue
+		}
+		if p.Addr().Is4() {
+			spans4 = append(spans4, span)
+		} else {
+			spans6 = append(spans6, span)
+		}
+	}
+	return ipv4InternetSpace.admittedBy(spans4), ipv6InternetSpace.admittedBy(spans6)
+}
+
+// addrSpan is an inclusive range of addresses. IPv4 spans hold the 32-bit
+// address; IPv6 spans hold the top 64 bits, so one unit is a /64.
+type addrSpan struct{ lo, hi uint64 }
+
+// prefixSpan converts a prefix to the span it covers. An IPv6 prefix longer than
+// /64 reports false.
+func prefixSpan(p netip.Prefix) (addrSpan, bool) {
+	p = p.Masked()
+	if p.Addr().Is4() {
+		b := p.Addr().As4()
+		lo := uint64(b[0])<<24 | uint64(b[1])<<16 | uint64(b[2])<<8 | uint64(b[3])
+		return addrSpan{lo, lo + (uint64(1) << (32 - p.Bits())) - 1}, true
+	}
+	if p.Bits() > 64 {
+		return addrSpan{}, false
+	}
+	b := p.Addr().As16()
+	var lo uint64
+	for _, x := range b[:8] {
+		lo = lo<<8 | uint64(x)
+	}
+	if p.Bits() == 0 {
+		return addrSpan{0, ^uint64(0)}, true
+	}
+	return addrSpan{lo, lo + (uint64(1) << (64 - p.Bits())) - 1}, true
+}
+
+// mergeSpans returns the union of spans as sorted, disjoint, non-adjacent spans.
+func mergeSpans(spans []addrSpan) []addrSpan {
+	sorted := slices.Clone(spans)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].lo < sorted[j].lo })
+	out := []addrSpan{}
+	for _, sp := range sorted {
+		if n := len(out); n > 0 && (sp.lo <= out[n-1].hi || sp.lo-out[n-1].hi == 1) {
+			if sp.hi > out[n-1].hi {
+				out[n-1].hi = sp.hi
+			}
+			continue
+		}
+		out = append(out, sp)
+	}
+	return out
+}
+
+// internetSpace is the part of an address family internet hosts send from, in
+// addrSpan units, with the block size whose presence alone counts as open.
+type internetSpace struct {
+	lo, hi uint64
+	block  uint64
+}
+
+var (
+	// IPv4 outside 224.0.0.0/3 (multicast plus the reserved 240.0.0.0/4); the
+	// block is a /7.
+	ipv4InternetSpace = internetSpace{lo: 0, hi: 224<<24 - 1, block: 1 << 25}
+	// IPv6 2000::/3, the space routed on the internet, in /64 units; the block
+	// is a /11.
+	ipv6InternetSpace = internetSpace{lo: 0x2000 << 48, hi: 0x3fff_ffff_ffff_ffff, block: 1 << 53}
+)
+
+// admittedBy reports whether the union of spans opens this space to the
+// internet: it contains an aligned block, or covers at least half the space.
+func (s internetSpace) admittedBy(spans []addrSpan) bool {
+	var total uint64
+	for _, sp := range mergeSpans(spans) {
+		lo, hi := max(sp.lo, s.lo), min(sp.hi, s.hi)
+		if lo > hi {
+			continue
+		}
+		total += hi - lo + 1
+		// s.lo is block-aligned, so the first aligned block at or after lo
+		// starts here.
+		start := (lo + s.block - 1) / s.block * s.block
+		if start <= hi && hi-start >= s.block-1 {
 			return true
 		}
 	}
-	return false
+	return total >= (s.hi-s.lo+1)/2
 }
 
 func allowedRulePermitsPort(rule map[string]any, port int) bool {
@@ -4741,4 +4880,81 @@ func (g *mqlGcpProjectComputeServiceBackendService) loggingEnabled() (bool, erro
 	}
 	enabled, _ := logMap["enable"].(bool)
 	return enabled, nil
+}
+
+func (g *mqlGcpProjectComputeServiceInstance) iamPolicy() ([]any, error) {
+	if g.ProjectId.Error != nil {
+		return nil, g.ProjectId.Error
+	}
+	if g.Name.Error != nil {
+		return nil, g.Name.Error
+	}
+	zone := g.GetZone()
+	if zone.Error != nil {
+		return nil, zone.Error
+	}
+	if zone.Data == nil {
+		return nil, errors.New("instance has no zone")
+	}
+	zoneName := zone.Data.GetName()
+	if zoneName.Error != nil {
+		return nil, zoneName.Error
+	}
+	projectId := g.ProjectId.Data
+	name := g.Name.Data
+
+	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
+	client, err := conn.Client(cloudresourcemanager.CloudPlatformReadOnlyScope, iam.CloudPlatformScope, compute.CloudPlatformScope)
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	svc, err := compute.NewService(ctx, option.WithHTTPClient(client))
+	if err != nil {
+		return nil, err
+	}
+	policy, err := svc.Instances.GetIamPolicy(projectId, zoneName.Data, name).OptionsRequestedPolicyVersion(3).Context(ctx).Do()
+	if err != nil {
+		if rerr := classifyRefusal(err, "compute.instances.getIamPolicy"); rerr != nil {
+			return nil, rerr
+		}
+		return nil, err
+	}
+	return computeIamBindingsToResources(g.MqlRuntime,
+		"gcp.project.computeService.instance/"+projectId+"/"+zoneName.Data+"/"+name, policy.Bindings)
+}
+
+func (g *mqlGcpProjectComputeServiceSubnetwork) iamPolicy() ([]any, error) {
+	if g.ProjectId.Error != nil {
+		return nil, g.ProjectId.Error
+	}
+	if g.Name.Error != nil {
+		return nil, g.Name.Error
+	}
+	region := RegionNameFromRegionUrl(g.cacheRegionUrl)
+	if region == "" {
+		return nil, errors.New("subnetwork has no region")
+	}
+	projectId := g.ProjectId.Data
+	name := g.Name.Data
+
+	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
+	client, err := conn.Client(cloudresourcemanager.CloudPlatformReadOnlyScope, iam.CloudPlatformScope, compute.CloudPlatformScope)
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	svc, err := compute.NewService(ctx, option.WithHTTPClient(client))
+	if err != nil {
+		return nil, err
+	}
+	policy, err := svc.Subnetworks.GetIamPolicy(projectId, region, name).OptionsRequestedPolicyVersion(3).Context(ctx).Do()
+	if err != nil {
+		if rerr := classifyRefusal(err, "compute.subnetworks.getIamPolicy"); rerr != nil {
+			return nil, rerr
+		}
+		return nil, err
+	}
+	return computeIamBindingsToResources(g.MqlRuntime,
+		"gcp.project.computeService.subnetwork/"+projectId+"/"+region+"/"+name, policy.Bindings)
 }

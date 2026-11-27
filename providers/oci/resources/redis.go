@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/oracle/oci-go-sdk/v65/redis"
@@ -83,6 +84,7 @@ func (o *mqlOciRedis) clusters() ([]any, error) {
 					"discoveryFqdn":              llx.StringDataPtr(c.DiscoveryFqdn),
 					"discoveryEndpointIpAddress": llx.StringDataPtr(c.DiscoveryEndpointIpAddress),
 					"state":                      llx.StringData(string(c.LifecycleState)),
+					"lifecycleDetails":           llx.StringDataPtr(c.LifecycleDetails),
 					"created":                    llx.TimeDataPtr(created),
 					"timeUpdated":                llx.TimeDataPtr(updated),
 					"freeformTags":               llx.MapData(strMapToAny(c.FreeformTags), types.String),
@@ -97,6 +99,7 @@ func (o *mqlOciRedis) clusters() ([]any, error) {
 				mqlClusterTyped.cacheNsgIDs = c.NsgIds
 				mqlClusterTyped.cacheRegion = region
 				mqlClusterTyped.cachePrimaryClusterID = stringValue(c.PrimaryClusterId)
+				mqlClusterTyped.cacheSecurityAttributes = definedTagsToAny(c.SecurityAttributes)
 				res = append(res, mqlClusterTyped)
 			}
 
@@ -110,6 +113,10 @@ type mqlOciRedisClusterInternal struct {
 	cacheNsgIDs           []string
 	cacheRegion           string
 	cachePrimaryClusterID string
+	// cacheSecurityAttributes holds the Zero Trust Packet Routing attributes
+	// from the listing, in the namespace-keyed shape the applied-attribute
+	// resolver and the exposure take.
+	cacheSecurityAttributes map[string]any
 }
 
 // redisClusterRole maps the cross-region replication role to a nullable
@@ -181,17 +188,27 @@ func (o *mqlOciRedisCluster) primaryCluster() (*mqlOciRedisCluster, error) {
 }
 
 func (o *mqlOciRedisCluster) subnet() (*mqlOciNetworkSubnet, error) {
-	if o.cacheSubnetID == "" {
-		o.Subnet.State = plugin.StateIsSet | plugin.StateIsNull
+	return ociRedisClusterSubnet(o.State.Data, func() *plugin.TValue[[]any] {
+		obj, err := CreateResource(o.MqlRuntime, "oci.network", nil)
+		if err != nil {
+			return &plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet}
+		}
+		return obj.(*mqlOciNetwork).GetSubnets()
+	}, o.cacheSubnetID, &o.Subnet)
+}
+
+// ociRedisClusterSubnet resolves a cache cluster's subnet through the subnet
+// listing. The listing keeps reporting a cluster for a while after it is
+// DELETED, and its subnet is often deleted with it. Both are an absence, not
+// a failure: a DELETED cluster has no subnet, and a subnet the listing does
+// not hold reads as null instead of the not-found error the subnet init
+// raises. The listing is not read for a DELETED cluster.
+func ociRedisClusterSubnet(state string, subnets func() *plugin.TValue[[]any], id string, field *plugin.TValue[*mqlOciNetworkSubnet]) (*mqlOciNetworkSubnet, error) {
+	if id == "" || state == string(redis.RedisClusterLifecycleStateDeleted) {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	mqlSubnet, err := NewResource(o.MqlRuntime, "oci.network.subnet", map[string]*llx.RawData{
-		"id": llx.StringData(o.cacheSubnetID),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return mqlSubnet.(*mqlOciNetworkSubnet), nil
+	return ociListedRef(subnets(), id, field)
 }
 
 func (o *mqlOciRedisCluster) networkSecurityGroups() ([]any, error) {
@@ -212,4 +229,254 @@ func (o *mqlOciRedisCluster) networkSecurityGroups() ([]any, error) {
 		res = append(res, mqlNsg)
 	}
 	return res, nil
+}
+
+func (o *mqlOciRedisCluster) region() (*mqlOciRegion, error) {
+	return resolveOciRegionByKey(o.MqlRuntime, o.cacheRegion, &o.Region)
+}
+
+func (o *mqlOciRedisCluster) appliedSecurityAttributes() ([]any, error) {
+	return ociAppliedSecurityAttributes(o.MqlRuntime, o.Id.Data, o.cacheSecurityAttributes)
+}
+
+// exposure breaks down whether the cluster's endpoints are reachable from the
+// internet. OCI Cache gives a cluster private endpoint addresses only, so
+// hasPublicIp is false and so is internetReachable; the subnet, security list
+// and network security group parts are still reported.
+func (o *mqlOciRedisCluster) exposure() (*mqlOciNetworkExposure, error) {
+	// A DELETED cluster stays in the listing for a while but has no
+	// endpoints left to expose, and its subnet is usually gone with it.
+	if o.State.Data == string(redis.RedisClusterLifecycleStateDeleted) {
+		o.Exposure.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	subnet := o.GetSubnet()
+	if subnet.Error != nil {
+		return nil, subnet.Error
+	}
+	nsgs := o.GetNetworkSecurityGroups()
+	if nsgs.Error != nil {
+		return nil, nsgs.Error
+	}
+	return ociSubnetEndpointExposure(o.MqlRuntime,
+		"oci.redis.cluster/"+o.Id.Data+"/exposure",
+		false, subnet.Data, nsgs.Data, o.cacheSecurityAttributes)
+}
+
+// users lists the cache users attached to the cluster. The attachment call
+// returns only user OCIDs, which are resolved against the cache user listing
+// rather than read one by one.
+func (o *mqlOciRedisCluster) users() ([]any, error) {
+	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
+	svc, err := conn.RedisClusterClient(o.cacheRegion)
+	if err != nil {
+		return nil, err
+	}
+
+	attached, err := ociPaginate(context.Background(), func(ctx context.Context, page *string) ([]redis.AttachedOciCacheUser, *string, error) {
+		response, err := svc.ListAttachedOciCacheUsers(ctx, redis.ListAttachedOciCacheUsersRequest{
+			RedisClusterId: new(o.Id.Data),
+			Page:           page,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		return response.Items, response.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	res := make([]any, 0, len(attached))
+	for _, a := range attached {
+		id := stringValue(a.OciCacheUserId)
+		if id == "" {
+			continue
+		}
+		user, err := NewResource(o.MqlRuntime, "oci.redis.user", map[string]*llx.RawData{
+			"id": llx.StringData(id),
+		})
+		if err != nil {
+			// A user in a compartment the scan does not reach cannot be
+			// resolved; keep the ones that can.
+			log.Debug().Err(err).Str("user", id).Msg("skipping unresolvable oci cache user")
+			continue
+		}
+		res = append(res, user)
+	}
+	return res, nil
+}
+
+func (o *mqlOciRedis) users() ([]any, error) {
+	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
+
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			svc, err := conn.OciCacheUserClient(region)
+			if err != nil {
+				return nil, err
+			}
+
+			users, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]redis.OciCacheUserSummary, *string, error) {
+				response, err := svc.ListOciCacheUsers(ctx, redis.ListOciCacheUsersRequest{
+					CompartmentId: new(compartmentID),
+					Page:          page,
+				})
+				if err != nil {
+					return nil, nil, err
+				}
+				return response.Items, response.OpcNextPage, nil
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			res := make([]any, 0, len(users))
+			for i := range users {
+				u := users[i]
+				if conn.Filters.IsFilteredOutByTags(u.FreeformTags, u.DefinedTags) {
+					continue
+				}
+				mqlUser, err := createOciResourceInCompartment(o.MqlRuntime, "oci.redis.user", stringValue(u.CompartmentId), map[string]*llx.RawData{
+					"id":                 llx.StringDataPtr(u.Id),
+					"name":               llx.StringDataPtr(u.Name),
+					"description":        llx.StringDataPtr(u.Description),
+					"authenticationType": llx.StringData(string(u.AuthenticationType)),
+					"status":             llx.StringData(string(u.Status)),
+					"state":              llx.StringData(string(u.LifecycleState)),
+					"created":            sdkTimeData(u.TimeCreated),
+					"freeformTags":       llx.MapData(strMapToAny(u.FreeformTags), types.String),
+					"definedTags":        llx.MapData(definedTagsToAny(u.DefinedTags), types.Any),
+					"systemTags":         llx.MapData(definedTagsToAny(u.SystemTags), types.Dict),
+				})
+				if err != nil {
+					return nil, err
+				}
+				typed := mqlUser.(*mqlOciRedisUser)
+				typed.cacheRegion = region
+				res = append(res, typed)
+			}
+			return res, nil
+		})
+}
+
+type mqlOciRedisUserInternal struct {
+	ociCompartmentRef
+	cacheRegion string
+	detail      ociRetryLazy[*redis.OciCacheUser]
+}
+
+func (o *mqlOciRedisUser) id() (string, error) {
+	return "oci.redis.user/" + o.Id.Data, nil
+}
+
+func initOciRedisUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	id, resolve := ociInitArgs(args)
+	if !resolve {
+		return args, nil, nil
+	}
+	items, err := ociServiceCollection(runtime, "oci.redis", func(r plugin.Resource) *plugin.TValue[[]any] {
+		return r.(*mqlOciRedis).GetUsers()
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return ociResolveByID(args, "oci.redis.user", id, items)
+}
+
+// aclString reads the user's access control list, which only the detail call
+// returns. The detail also carries the password hashes of a PASSWORD user;
+// those are never read out of it.
+func (o *mqlOciRedisUser) aclString() (string, error) {
+	u, err := o.detail.get(func() (*redis.OciCacheUser, error) {
+		conn := o.MqlRuntime.Connection.(*connection.OciConnection)
+		svc, err := conn.OciCacheUserClient(o.cacheRegion)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := svc.GetOciCacheUser(context.Background(), redis.GetOciCacheUserRequest{
+			OciCacheUserId: new(o.Id.Data),
+		})
+		if err != nil {
+			return nil, err
+		}
+		return &resp.OciCacheUser, nil
+	})
+	if err != nil || u == nil {
+		return "", err
+	}
+	return ociRedactRedisACL(stringValue(u.AclString)), nil
+}
+
+// ociRedisACLKeywords are the Redis ACL rules that are a bare keyword and
+// carry no value.
+var ociRedisACLKeywords = map[string]bool{
+	"on": true, "off": true, "nopass": true, "resetpass": true, "reset": true,
+	"resetkeys": true, "resetchannels": true, "allkeys": true, "allchannels": true,
+	"allcommands": true, "nocommands": true, "sanitize-payload": true,
+	"skip-sanitize-payload": true, "clearselectors": true,
+}
+
+// ociRedisACLRuleKnown reports whether a token is a Redis ACL rule that
+// carries no credential: a keyword, a key pattern (`~`, or `%R~`, `%W~`,
+// `%RW~` with permissions), a channel pattern (`&`), or a command or
+// category rule (`+`, `-`). Selector parentheses are stripped first, so the
+// rules inside `(~key* +get)` are judged one by one.
+func ociRedisACLRuleKnown(token string) bool {
+	core := strings.TrimSuffix(strings.TrimPrefix(token, "("), ")")
+	if core == "" {
+		return token != ""
+	}
+	if ociRedisACLKeywords[strings.ToLower(core)] {
+		return true
+	}
+	switch core[0] {
+	case '~', '&', '+', '-':
+		return true
+	}
+	for _, p := range []string{"%R~", "%W~", "%RW~"} {
+		if strings.HasPrefix(core, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// ociRedisACLIsCredential reports whether a token is a password or password
+// hash rule, with or without the opening parenthesis of a selector.
+func ociRedisACLIsCredential(token string) bool {
+	core := strings.TrimPrefix(token, "(")
+	return core != "" && strings.ContainsRune("><#!", rune(core[0]))
+}
+
+// ociRedactRedisACL masks the credentials in a Redis ACL and fails closed.
+//
+// The ACL syntax lets a rule carry a credential inline: `>password` and
+// `<password` add and remove a plaintext password, `#hash` and `!hash` a
+// SHA-256 hash of one. Nothing in the OCI Cache API documents that such rules
+// are rejected or redacted in aclString. A password sent as a single argument
+// may contain spaces and parentheses and may itself look like a rule, so no
+// token after a credential can be trusted, not even a selector's closing
+// parenthesis. The first credential, inside a selector or not, is kept as its
+// prefix followed by `***`, and every token after it is dropped. Before it, a
+// token is kept only when it is a rule known to carry no credential; any other
+// token becomes `***`.
+func ociRedactRedisACL(acl string) string {
+	out := []string{}
+	for _, token := range strings.Fields(acl) {
+		if ociRedisACLIsCredential(token) {
+			prefix := ""
+			if strings.HasPrefix(token, "(") {
+				prefix = "("
+			}
+			out = append(out, prefix+strings.TrimPrefix(token, "(")[:1]+"***")
+			break
+		}
+		if ociRedisACLRuleKnown(token) {
+			out = append(out, token)
+		} else {
+			out = append(out, "***")
+		}
+	}
+	return strings.Join(out, " ")
 }

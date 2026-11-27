@@ -10,6 +10,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	emrtypes "github.com/aws/aws-sdk-go-v2/service/emr/types"
 	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
@@ -602,6 +603,22 @@ func ec2InstanceIsDiscoverable(state string) bool {
 	}
 }
 
+// emrClusterIsDiscoverable reports whether an aws.emr.cluster status dict
+// describes a cluster that still exists. ListClusters keeps returning
+// terminated clusters for up to two months.
+func emrClusterIsDiscoverable(status any) bool {
+	m, ok := status.(map[string]any)
+	if !ok {
+		return true
+	}
+	switch m["State"] {
+	case string(emrtypes.ClusterStateTerminated), string(emrtypes.ClusterStateTerminatedWithErrors):
+		return false
+	default:
+		return true
+	}
+}
+
 func mapEc2InstanceStateCode(state string) inventory.State {
 	switch state {
 	case string(types.InstanceStateNameRunning):
@@ -638,6 +655,16 @@ func getInstanceName(id string, labels map[string]string) string {
 		name = labelName
 	}
 	return name
+}
+
+// regionalAssetName appends the region to a name that is only unique within
+// one account and region, such as the "primary" Athena workgroup AWS creates
+// in every region.
+func regionalAssetName(name, region string) string {
+	if region == "" {
+		return name
+	}
+	return name + " (" + region + ")"
 }
 
 func addConnectionInfoToSSMAsset(instance *mqlAwsSsmInstance, accountId string, conn *connection.AwsConnection) *inventory.Asset {

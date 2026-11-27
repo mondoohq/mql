@@ -7,9 +7,7 @@ import (
 	"sync"
 
 	"github.com/rs/zerolog/log"
-	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
-	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/detector/crowdstrike"
@@ -82,17 +80,21 @@ func (e *mqlEdr) detect() ([]any, error) {
 		return e.cacheProducts, nil
 	}
 
-	platform := edrPlatform(e.MqlRuntime)
+	platform := agentPlatform(e.MqlRuntime)
 	if platform == "" {
 		e.cacheResolved = true
 		e.cacheProducts = []any{}
 		return e.cacheProducts, nil
 	}
 
-	inv := e.inventory(platform)
+	inv := readAgentInventory(e.MqlRuntime, platform, edr.Catalog)
+	e.cachePackages = inv.packages
+	e.cacheServices = inv.services
+	e.cacheProcesses = inv.processes
+	e.cacheSysExts = inv.sysExts
 
 	products := []any{}
-	for _, d := range edr.Detect(inv) {
+	for _, d := range edr.Detect(inv.Inventory) {
 		product, err := e.newProduct(d)
 		if err != nil {
 			return nil, err
@@ -103,198 +105,6 @@ func (e *mqlEdr) detect() ([]any, error) {
 	e.cacheProducts = products
 	e.cacheResolved = true
 	return e.cacheProducts, nil
-}
-
-// edrPlatform maps the asset's platform onto the catalog's platform keys. An
-// asset that is none of the three has no catalog entries and is not scanned.
-func edrPlatform(runtime *plugin.Runtime) string {
-	conn, ok := runtime.Connection.(shared.Connection)
-	if !ok {
-		return ""
-	}
-	asset := conn.Asset()
-	if asset == nil || asset.Platform == nil {
-		return ""
-	}
-	switch {
-	case asset.Platform.IsFamily(inventory.FAMILY_WINDOWS):
-		return edr.PlatformWindows
-	case asset.Platform.IsFamily(inventory.FAMILY_DARWIN):
-		return edr.PlatformMacOS
-	case asset.Platform.IsFamily(inventory.FAMILY_LINUX):
-		return edr.PlatformLinux
-	}
-	return ""
-}
-
-// inventory gathers the asset state the catalog reads. Each source is fetched
-// once for every product, and a source that cannot be read leaves its slice
-// empty rather than failing the resource: a missing service manager must not
-// hide the agents that packages and paths still prove are installed.
-func (e *mqlEdr) inventory(platform string) edr.Inventory {
-	inv := edr.Inventory{
-		Platform:   platform,
-		Packages:   e.packageInventory(),
-		Services:   e.serviceInventory(),
-		PathExists: pathExistsFunc(e.MqlRuntime),
-	}
-
-	// Processes and system extensions are only read when a catalog entry for
-	// this platform asks for them, since listing processes is not free.
-	if catalogNeedsProcesses(platform) {
-		inv.Processes = e.processInventory()
-	}
-	if catalogNeedsSystemExtensions(platform) {
-		inv.SystemExtensions = e.systemExtensionInventory()
-	}
-
-	return inv
-}
-
-func (e *mqlEdr) packageInventory() []edr.Package {
-	raw, err := CreateResource(e.MqlRuntime, "packages", map[string]*llx.RawData{})
-	if err != nil {
-		log.Debug().Err(err).Msg("mql[edr]> could not read packages")
-		return nil
-	}
-	list := raw.(*mqlPackages).GetList()
-	if list.Error != nil {
-		log.Debug().Err(list.Error).Msg("mql[edr]> could not read package list")
-		return nil
-	}
-
-	e.cachePackages = list.Data
-	packages := make([]edr.Package, 0, len(list.Data))
-	for i := range list.Data {
-		pkg, ok := list.Data[i].(*mqlPackage)
-		if !ok {
-			continue
-		}
-		packages = append(packages, edr.Package{
-			Name:    pkg.Name.Data,
-			Version: pkg.Version.Data,
-		})
-	}
-	return packages
-}
-
-func (e *mqlEdr) serviceInventory() []edr.Service {
-	raw, err := CreateResource(e.MqlRuntime, "services", map[string]*llx.RawData{})
-	if err != nil {
-		log.Debug().Err(err).Msg("mql[edr]> could not read services")
-		return nil
-	}
-	list := raw.(*mqlServices).GetList()
-	if list.Error != nil {
-		log.Debug().Err(list.Error).Msg("mql[edr]> could not read service list")
-		return nil
-	}
-
-	e.cacheServices = list.Data
-	services := make([]edr.Service, 0, len(list.Data))
-	for i := range list.Data {
-		svc, ok := list.Data[i].(*mqlService)
-		if !ok {
-			continue
-		}
-		services = append(services, edr.Service{
-			Name:      svc.Name.Data,
-			Installed: svc.Installed.Data,
-			Running:   svc.Running.Data,
-			Enabled:   svc.Enabled.Data,
-		})
-	}
-	return services
-}
-
-func (e *mqlEdr) processInventory() []edr.Process {
-	raw, err := CreateResource(e.MqlRuntime, "processes", map[string]*llx.RawData{})
-	if err != nil {
-		log.Debug().Err(err).Msg("mql[edr]> could not read processes")
-		return nil
-	}
-	list := raw.(*mqlProcesses).GetList()
-	if list.Error != nil {
-		log.Debug().Err(list.Error).Msg("mql[edr]> could not read process list")
-		return nil
-	}
-
-	e.cacheProcesses = list.Data
-	processes := make([]edr.Process, 0, len(list.Data))
-	for i := range list.Data {
-		proc, ok := list.Data[i].(*mqlProcess)
-		if !ok {
-			continue
-		}
-		processes = append(processes, edr.Process{
-			Executable: proc.GetExecutable().Data,
-			State:      proc.GetState().Data,
-		})
-	}
-	return processes
-}
-
-func (e *mqlEdr) systemExtensionInventory() []edr.SystemExtension {
-	raw, err := CreateResource(e.MqlRuntime, "macos", map[string]*llx.RawData{})
-	if err != nil {
-		log.Debug().Err(err).Msg("mql[edr]> could not read macos")
-		return nil
-	}
-	list := raw.(*mqlMacos).GetSystemExtensions()
-	if list.Error != nil {
-		log.Debug().Err(list.Error).Msg("mql[edr]> could not read system extensions")
-		return nil
-	}
-
-	e.cacheSysExts = list.Data
-	extensions := make([]edr.SystemExtension, 0, len(list.Data))
-	for i := range list.Data {
-		ext, ok := list.Data[i].(*mqlMacosSystemExtension)
-		if !ok {
-			continue
-		}
-		extensions = append(extensions, edr.SystemExtension{
-			Identifier: ext.Identifier.Data,
-			Version:    ext.Version.Data,
-			Enabled:    ext.GetEnabled().Data,
-			Active:     ext.GetActive().Data,
-		})
-	}
-	return extensions
-}
-
-func pathExistsFunc(runtime *plugin.Runtime) func(string) bool {
-	conn, ok := runtime.Connection.(shared.Connection)
-	if !ok {
-		return func(string) bool { return false }
-	}
-	afs := &afero.Afero{Fs: conn.FileSystem()}
-	return func(path string) bool {
-		exists, err := afs.Exists(path)
-		if err != nil {
-			log.Debug().Err(err).Str("path", path).Msg("mql[edr]> could not stat path")
-			return false
-		}
-		return exists
-	}
-}
-
-func catalogNeedsProcesses(platform string) bool {
-	for i := range edr.Catalog {
-		if sig, ok := edr.Catalog[i].Platforms[platform]; ok && sig.ProcessPattern != nil {
-			return true
-		}
-	}
-	return false
-}
-
-func catalogNeedsSystemExtensions(platform string) bool {
-	for i := range edr.Catalog {
-		if sig, ok := edr.Catalog[i].Platforms[platform]; ok && len(sig.SystemExtensions) > 0 {
-			return true
-		}
-	}
-	return false
 }
 
 func (e *mqlEdr) newProduct(d edr.Detection) (*mqlEdrProduct, error) {
@@ -451,16 +261,6 @@ func applyDefenderIdentity(id *defender.Identity, args map[string]*llx.RawData) 
 	if id.OrgID != "" {
 		args["tenantId"] = llx.StringData(id.OrgID)
 	}
-}
-
-func pickResources(all []any, idx []int) []any {
-	picked := make([]any, 0, len(idx))
-	for _, i := range idx {
-		if i >= 0 && i < len(all) {
-			picked = append(picked, all[i])
-		}
-	}
-	return picked
 }
 
 func (p *mqlEdrProduct) id() (string, error) {

@@ -310,6 +310,23 @@ func (v *mqlAristaEosNtp) id() (string, error) {
 	return "arista.eos.ntp", nil
 }
 
+// initAristaEosNtp fills status when the resource is created on its own.
+// arista.eos.ntp is a public resource with the same name as the root field
+// that returns it, so the dotted path `arista.eos.ntp.status` builds the
+// resource directly rather than calling that field, and without this the
+// status would never be set.
+func initAristaEosNtp(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if _, ok := args["status"]; ok {
+		return args, nil, nil
+	}
+	ntp, err := aristaClient(runtime).NtpStatus()
+	if err != nil {
+		return nil, nil, err
+	}
+	args["status"] = llx.StringData(ntp.Status)
+	return args, nil, nil
+}
+
 func (a *mqlAristaEos) snmp() (*mqlAristaEosSnmpSetting, error) {
 	eos := aristaClient(a.MqlRuntime)
 
@@ -1001,6 +1018,22 @@ func (a *mqlAristaEos) bgp() (*mqlAristaEosBgp, error) {
 func (a *mqlAristaEosBgp) vrfs() ([]any, error) {
 	eosClient := aristaClient(a.MqlRuntime)
 
+	// The operational view says whether a session is up; the configured view
+	// says whether it is protected. Both are needed to describe a peer.
+	rc, err := fetchRunningConfig(a.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+
+	// A device without a `router bgp` block has no BGP VRFs. From EOS 4.31
+	// on, `show ip bgp summary vrf all` fails on such a device ("BGP
+	// inactive") instead of returning no VRFs, which made this field, and
+	// every check that reads it, an error on every switch that does not run
+	// BGP.
+	if !eos.ParseBlockAdminState(rc, "router bgp ").Configured {
+		return []any{}, nil
+	}
+
 	summary, err := eosClient.BGPSummary()
 	if err != nil {
 		return nil, err
@@ -1012,12 +1045,6 @@ func (a *mqlAristaEosBgp) vrfs() ([]any, error) {
 		neighbors = nil
 	}
 
-	// The operational view says whether a session is up; the configured view
-	// says whether it is protected. Both are needed to describe a peer.
-	rc, err := fetchRunningConfig(a.MqlRuntime)
-	if err != nil {
-		return nil, err
-	}
 	configuredPeers := map[string]eos.BgpNeighborConfig{}
 	for _, n := range eos.ParseBgpConfig(rc).Neighbors {
 		configuredPeers[n.VRF+"/"+n.PeerAddress] = n
@@ -1134,57 +1161,34 @@ func (v *mqlAristaEosMlag) id() (string, error) {
 	return "arista.eos.mlag", nil
 }
 
-type mqlAristaEosMlagInternal struct {
-	configFetched bool
-	mlagConfig    *module.MlagConfig
-	lock          sync.Mutex
-}
-
-func (a *mqlAristaEosMlag) fetchConfig() *module.MlagConfig {
-	if a.configFetched {
-		return a.mlagConfig
+// parsedConfig reads the peering settings from the running-config. See
+// eos.ParseMlagConfig for why goeapi's parse of the same block is not used.
+func (a *mqlAristaEosMlag) parsedConfig() (eos.MlagConfig, error) {
+	rc, err := fetchRunningConfig(a.MqlRuntime)
+	if err != nil {
+		return eos.MlagConfig{}, err
 	}
-	a.lock.Lock()
-	defer a.lock.Unlock()
-	if a.configFetched {
-		return a.mlagConfig
-	}
-	eosClient := aristaClient(a.MqlRuntime)
-	a.mlagConfig = eosClient.MlagConfig()
-	a.configFetched = true
-	return a.mlagConfig
+	return eos.ParseMlagConfig(rc), nil
 }
 
 func (a *mqlAristaEosMlag) domainId() (string, error) {
-	cfg := a.fetchConfig()
-	if cfg == nil {
-		return "", nil
-	}
-	return cfg.DomainID(), nil
+	cfg, err := a.parsedConfig()
+	return cfg.DomainID, err
 }
 
 func (a *mqlAristaEosMlag) localInterface() (string, error) {
-	cfg := a.fetchConfig()
-	if cfg == nil {
-		return "", nil
-	}
-	return cfg.LocalInterface(), nil
+	cfg, err := a.parsedConfig()
+	return cfg.LocalInterface, err
 }
 
 func (a *mqlAristaEosMlag) peerAddress() (string, error) {
-	cfg := a.fetchConfig()
-	if cfg == nil {
-		return "", nil
-	}
-	return cfg.PeerAddress(), nil
+	cfg, err := a.parsedConfig()
+	return cfg.PeerAddress, err
 }
 
 func (a *mqlAristaEosMlag) peerLink() (string, error) {
-	cfg := a.fetchConfig()
-	if cfg == nil {
-		return "", nil
-	}
-	return cfg.PeerLink(), nil
+	cfg, err := a.parsedConfig()
+	return cfg.PeerLink, err
 }
 
 // shutdown reports whether MLAG is administratively down. See bgp.enabled for

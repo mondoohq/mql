@@ -5,10 +5,13 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/system"
 	"github.com/moby/moby/client"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
@@ -16,6 +19,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/dockerclient"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/id/containerid"
 	"go.mondoo.com/mql/types"
 )
 
@@ -111,49 +115,255 @@ func (p *mqlDocker) containers() ([]any, error) {
 	}
 
 	containers := make([]any, len(dContainers))
-
 	for i, dContainer := range dContainers {
-		labels := make(map[string]any)
-		for key := range dContainer.Labels {
-			labels[key] = dContainer.Labels[key]
-		}
-
-		names := []any{}
-		for i := range dContainer.Names {
-			name := dContainer.Names[i]
-			name = strings.TrimPrefix(name, "/")
-			names = append(names, name)
-		}
-
-		/*
-			FIXME: ??? not used?
-			conn, err := connection.NewDockerEngineContainer(dContainer.ID)
-			if err != nil {
-				return nil, err
-			}
-		*/
-
-		o, err := CreateResource(p.MqlRuntime, "docker.container", map[string]*llx.RawData{
-			"id":      llx.StringData(dContainer.ID),
-			"image":   llx.StringData(dContainer.Image),
-			"imageid": llx.StringData(dContainer.ImageID),
-			"command": llx.StringData(dContainer.Command),
-			"state":   llx.StringData(string(dContainer.State)),
-			"status":  llx.StringData(dContainer.Status),
-			"labels":  llx.MapData(labels, types.String),
-			"names":   llx.ArrayData(names, types.String),
-		})
+		c, err := newDockerContainer(p.MqlRuntime, dContainer)
 		if err != nil {
 			return nil, err
 		}
-
-		c := o.(*mqlDockerContainer)
-		c.endpoints = dockerContainerEndpoints(dContainer)
-		c.volumeNames = dockerContainerVolumeNames(dContainer)
 		containers[i] = c
 	}
 
 	return containers, nil
+}
+
+// newDockerContainer creates the docker.container for one entry of the
+// daemon's container listing.
+func newDockerContainer(runtime *plugin.Runtime, dContainer container.Summary) (*mqlDockerContainer, error) {
+	labels := make(map[string]any, len(dContainer.Labels))
+	for key, value := range dContainer.Labels {
+		labels[key] = value
+	}
+
+	names := []any{}
+	for _, name := range dContainer.Names {
+		names = append(names, strings.TrimPrefix(name, "/"))
+	}
+
+	o, err := CreateResource(runtime, "docker.container", map[string]*llx.RawData{
+		"id":      llx.StringData(dContainer.ID),
+		"image":   llx.StringData(dContainer.Image),
+		"imageid": llx.StringData(dContainer.ImageID),
+		"command": llx.StringData(dContainer.Command),
+		"state":   llx.StringData(string(dContainer.State)),
+		"status":  llx.StringData(dContainer.Status),
+		"labels":  llx.MapData(labels, types.String),
+		"names":   llx.ArrayData(names, types.String),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	c := o.(*mqlDockerContainer)
+	c.endpoints = dockerContainerEndpoints(dContainer)
+	c.volumeNames = dockerContainerVolumeNames(dContainer)
+	return c, nil
+}
+
+// initDockerContainer resolves `docker.container` with no argument to the
+// container being scanned, and `docker.container(id)` to the container with
+// that ID, unique ID prefix, or name.
+func initDockerContainer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	// A listing creates the resource with all its fields.
+	if len(args) > 1 {
+		return args, nil, nil
+	}
+
+	var want string
+	if len(args) == 1 {
+		raw, ok := args["id"]
+		if !ok {
+			return args, nil, nil
+		}
+		id, ok := raw.Value.(string)
+		if !ok || strings.TrimSpace(id) == "" {
+			return nil, nil, errors.New("docker.container needs a container ID or name")
+		}
+		want = strings.TrimSpace(id)
+	} else {
+		want = scannedDockerContainerID(runtime)
+		if want == "" {
+			return nil, nil, llx.NotApplicable(errors.New("docker.container needs a container ID or name unless the asset is a Docker container"))
+		}
+	}
+
+	d, err := NewResource(runtime, "docker", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, nil, err
+	}
+	all := d.(*mqlDocker).GetContainers()
+	if all.Error != nil {
+		return nil, nil, all.Error
+	}
+	containers := make([]*mqlDockerContainer, 0, len(all.Data))
+	for _, x := range all.Data {
+		if c, ok := x.(*mqlDockerContainer); ok {
+			containers = append(containers, c)
+		}
+	}
+	c, err := matchDockerContainer(containers, want)
+	if err != nil {
+		return nil, nil, err
+	}
+	return nil, c, nil
+}
+
+// matchDockerContainer finds the container with this ID, else the only one
+// whose ID starts with it, else the one with this name, as the docker CLI
+// does.
+func matchDockerContainer(containers []*mqlDockerContainer, want string) (*mqlDockerContainer, error) {
+	for _, c := range containers {
+		if c.Id.Data == want {
+			return c, nil
+		}
+	}
+	var prefixed []*mqlDockerContainer
+	for _, c := range containers {
+		if strings.HasPrefix(c.Id.Data, want) {
+			prefixed = append(prefixed, c)
+		}
+	}
+	if len(prefixed) == 1 {
+		return prefixed[0], nil
+	}
+	if len(prefixed) > 1 {
+		return nil, fmt.Errorf("docker.container %q matches %d containers", want, len(prefixed))
+	}
+	for _, c := range containers {
+		for _, n := range c.Names.Data {
+			if n == want {
+				return c, nil
+			}
+		}
+	}
+	return nil, llx.NotFound(fmt.Errorf("docker.container %q not found", want))
+}
+
+// scannedDockerContainerID is the ID of the container the asset is, when the
+// scan reaches a Docker container, running or exported; else "".
+func scannedDockerContainerID(runtime *plugin.Runtime) string {
+	conn, ok := runtime.Connection.(shared.Connection)
+	if !ok {
+		return ""
+	}
+	switch conn.Type() {
+	case shared.Type_DockerContainer, shared.Type_DockerSnapshot:
+	default:
+		return ""
+	}
+	for _, pid := range conn.Asset().GetPlatformIds() {
+		if id, ok := containerid.ContainerIDFromPlatformID(pid); ok {
+			return id
+		}
+	}
+	return ""
+}
+
+type mqlDockerEngineInternal struct {
+	lock        sync.Mutex
+	infoFetched bool
+	infoVal     system.Info
+	infoErr     error
+}
+
+// initDockerEngine resolves a bare `docker.engine` through docker's accessor,
+// which fills it.
+func initDockerEngine(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 0 {
+		return args, nil, nil
+	}
+	d, err := NewResource(runtime, "docker", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, nil, err
+	}
+	e := d.(*mqlDocker).GetEngine()
+	if e.Error != nil {
+		return nil, nil, e.Error
+	}
+	return nil, e.Data, nil
+}
+
+// engine reads the daemon's version information.
+func (p *mqlDocker) engine() (*mqlDockerEngine, error) {
+	cl, err := dockerClient(p.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	defer cl.Close()
+
+	v, err := cl.ServerVersion(context.Background(), client.ServerVersionOptions{})
+	if err != nil {
+		return nil, classifyDockerError(err)
+	}
+	componentNames := make([]string, 0, len(v.Components))
+	for _, c := range v.Components {
+		componentNames = append(componentNames, c.Name)
+	}
+	o, err := CreateResource(p.MqlRuntime, "docker.engine", map[string]*llx.RawData{
+		"name":       llx.StringData(dockerEngineName(componentNames)),
+		"version":    llx.StringData(v.Version),
+		"apiVersion": llx.StringData(v.APIVersion),
+		"os":         llx.StringData(v.Os),
+		"arch":       llx.StringData(v.Arch),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return o.(*mqlDockerEngine), nil
+}
+
+func (e *mqlDockerEngine) hostname() (string, error) {
+	info, err := e.info()
+	if err != nil {
+		return "", err
+	}
+	return info.Name, nil
+}
+
+func (e *mqlDockerEngine) operatingSystem() (string, error) {
+	info, err := e.info()
+	if err != nil {
+		return "", err
+	}
+	return info.OperatingSystem, nil
+}
+
+// info reads the engine's system information, once.
+func (e *mqlDockerEngine) info() (system.Info, error) {
+	e.lock.Lock()
+	defer e.lock.Unlock()
+	if e.infoFetched {
+		return e.infoVal, e.infoErr
+	}
+	e.infoFetched = true
+	cl, err := dockerClient(e.MqlRuntime)
+	if err != nil {
+		e.infoErr = err
+		return e.infoVal, e.infoErr
+	}
+	defer cl.Close()
+	res, err := cl.Info(context.Background(), client.InfoOptions{})
+	if err != nil {
+		e.infoErr = classifyDockerError(err)
+		return e.infoVal, e.infoErr
+	}
+	e.infoVal = res.Info
+	return e.infoVal, nil
+}
+
+// id is fixed: a docker resource reaches one engine.
+func (e *mqlDockerEngine) id() (string, error) {
+	return "docker.engine", nil
+}
+
+// dockerEngineName names the engine from the components its version lists:
+// Podman's Docker-compatible API reports a "Podman Engine" component.
+func dockerEngineName(components []string) string {
+	for _, c := range components {
+		if strings.HasPrefix(strings.ToLower(c), "podman") {
+			return "Podman"
+		}
+	}
+	return "Docker"
 }
 
 // running is the anchor for the container as its own asset (ADR 031).

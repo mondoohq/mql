@@ -165,11 +165,12 @@ func (r *mqlClaudeOrganization) rbacRoles() ([]any, error) {
 	res := make([]any, 0, len(roles))
 	for _, role := range roles {
 		mqlRole, err := CreateResource(r.MqlRuntime, "claude.organization.rbacRole", map[string]*llx.RawData{
-			"__id":      llx.StringData(role.ID),
-			"id":        llx.StringData(role.ID),
-			"name":      llx.StringData(role.DisplayName),
-			"createdAt": llx.TimeDataPtr(nullableTime(role.CreatedAt)),
-			"updatedAt": llx.TimeDataPtr(nullableTime(role.UpdatedAt)),
+			"__id":       llx.StringData(role.ID),
+			"id":         llx.StringData(role.ID),
+			"name":       llx.StringData(role.DisplayName),
+			"sourceType": llx.StringDataPtr(nullableString(role.Source.Type)),
+			"createdAt":  llx.TimeDataPtr(nullableTime(role.CreatedAt)),
+			"updatedAt":  llx.TimeDataPtr(nullableTime(role.UpdatedAt)),
 		})
 		if err != nil {
 			return nil, err

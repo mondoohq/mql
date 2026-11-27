@@ -209,6 +209,22 @@ github.organization @defaults("login name") @root {
   membersCanViewDependencyInsights bool
   // Default branch name for new repositories
   defaultRepositoryBranch string
+  // Whether deploy keys can be added to and used by repositories in the organization
+  //
+  // Null when the token lacks organization owner access.
+  deployKeysEnabledForRepositories bool
+  // Whether contributors blocked by secret scanning push protection are shown a custom link
+  //
+  // Null when the token lacks organization owner access.
+  secretScanningPushProtectionCustomLinkEnabled bool
+  // Link shown to contributors blocked by secret scanning push protection
+  //
+  // Null when no custom link is set or the token lacks organization owner access.
+  secretScanningPushProtectionCustomLink string
+  // Time the organization was archived
+  //
+  // Null when the organization is not archived.
+  archivedAt time
   // GitHub Actions settings for this organization
   actionsSettings() github.organizationActionsSettings
   // SAML SSO configuration for the organization (requires GitHub Enterprise Cloud)
@@ -297,6 +313,64 @@ github.organization @defaults("login name") @root {
   // can be skipped where the account does not include it rather than reported
   // as a finding.
   features() github.organization.features
+  // Code security configurations available to the organization
+  //
+  // Each configuration bundles the GitHub Advanced Security, Dependabot,
+  // secret scanning and code scanning settings that GitHub applies to every
+  // repository attached to it, which is how GHAS is enabled across an
+  // organization. Includes the configurations GitHub provides as well as the
+  // organization's own. Null when the configurations cannot be read, for
+  // example without organization admin access.
+  codeSecurityConfigurations() []github.codeSecurityConfiguration
+  // Secret scanning custom patterns defined at the organization level
+  //
+  // Patterns the organization adds to secret scanning to detect credentials
+  // GitHub has no provider pattern for. Null when the patterns cannot be read.
+  secretScanningCustomPatterns() []github.secretScanningCustomPattern
+  // Push protection settings and detection statistics for each secret scanning pattern
+  //
+  // One entry per provider pattern and per custom pattern, reporting whether
+  // push protection blocks it in this organization and how often it raised an
+  // alert, was a false positive or was bypassed. Null when the settings cannot
+  // be read.
+  secretScanningPatternConfigurations() []github.secretScanningPatternConfiguration
+  // Repository security advisories across the organization's repositories
+  //
+  // Advisories maintainers drafted, published or closed for vulnerabilities in
+  // the organization's own code. Null when the advisories cannot be read, for
+  // example without the security manager role or organization admin access.
+  securityAdvisories() []github.repositorySecurityAdvisory
+  // Codespaces secrets configured at the organization level
+  //
+  // Credentials exposed as environment variables inside the organization's
+  // codespaces. Names, scope and timestamps only, never the values. A separate
+  // store from the GitHub Actions, Dependabot and Copilot cloud agent secrets.
+  codespacesSecrets() []github.codespacesSecret
+  // GitHub-hosted larger runners provisioned for the organization
+  //
+  // Runners GitHub hosts on the organization's behalf, with their machine
+  // size, image and whether they are given static public IP addresses. Null
+  // when the runners cannot be read, for example without organization admin
+  // access.
+  hostedRunners() []github.hostedRunner
+  // Hosted compute network configurations of the organization
+  //
+  // Configurations that place GitHub-hosted runners or codespaces in a private
+  // Azure virtual network. Null when the configurations cannot be read.
+  networkConfigurations() []github.networkConfiguration
+  // Private registries configured for the organization
+  //
+  // Package registries Dependabot and other GitHub features authenticate to
+  // with organization credentials. Registry type, URL, authentication method
+  // and repository access only, never the credential. Null when the registries
+  // cannot be read.
+  privateRegistries() []github.privateRegistry
+  // Codespaces belonging to the organization
+  //
+  // Every codespace created from one of the organization's repositories,
+  // whoever owns it. Null when the codespaces cannot be read, for example
+  // without organization admin access.
+  codespaces() []github.codespace
 }
 
 // GitHub Organization Subscription
@@ -389,8 +463,12 @@ private github.organization.runnerGroup @defaults("name visibility allowsPublicR
   selectedWorkflows []string
   // Whether the workflow restrictions are managed by the enterprise and cannot be changed
   workflowRestrictionsReadOnly bool
-  // ID of the network configuration the group's runners use, empty when none is set
-  networkConfigurationId string
+  // ID of the network configuration the group's runners use
+  //
+  // Deprecated in favor of networkConfiguration.
+  networkConfigurationId @maturity("deprecated") @replaced_by("github.organization.runnerGroup.networkConfiguration") string
+  // Network configuration the group's runners use, null when none is set
+  networkConfiguration() github.networkConfiguration
   // Repositories allowed to use the group when visibility is selected
   selectedRepositories() []github.repository
   // Self-hosted runners belonging to the group
@@ -872,6 +950,35 @@ private github.team @defaults("id name") {
   repositories() []github.repository
   // Team organization
   organization github.organization
+  // Notification setting for team mentions
+  //
+  // One of notifications_enabled or notifications_disabled.
+  notificationSetting string
+  // Parent team
+  //
+  // Members of a child team inherit the repository access of its parent, so
+  // access granted to the parent reaches every team below it. Null for a
+  // top-level team.
+  parent() github.team
+  // Teams nested directly under this team
+  childTeams() []github.team
+  // Number of members on the team
+  membersCount() int
+  // Number of repositories the team can access
+  reposCount() int
+  // External groups from the identity provider connected to the team
+  //
+  // Groups whose members Enterprise Managed Users provisioning keeps in sync
+  // with the team's membership. Empty when the team is not connected to a
+  // group. Null when the organization does not use Enterprise Managed Users or
+  // the groups cannot be read.
+  externalGroups() []github.team.externalGroup
+  // Identity provider groups mapped to the team by team synchronization
+  //
+  // Groups whose members team synchronization adds to and removes from the
+  // team. Empty when no group is mapped. Null when the organization does not
+  // use team synchronization or the mappings cannot be read.
+  idpGroups() []github.team.idpGroup
 }
 
 // Team access grant on a repository
@@ -1246,6 +1353,64 @@ github.repository @defaults("fullName") @root {
   // repository. Names and timestamps only, never the values. Organization
   // agent secrets shared with the repository are reported on the organization.
   agentSecrets() []github.agentSecret
+  // Repository this fork was created from
+  //
+  // Null when the repository is not a fork.
+  parent() github.repository
+  // Repository at the root of the fork network
+  //
+  // Differs from parent when this repository is a fork of a fork. Null when
+  // the repository is not a fork.
+  source() github.repository
+  // Template the repository was generated from
+  //
+  // Null when the repository was not generated from a template.
+  templateRepository() github.repository
+  // Whether head branches are deleted automatically after a pull request merges
+  //
+  // Null when the token lacks the access GitHub requires to report the
+  // repository's merge settings.
+  deleteBranchOnMerge() bool
+  // Whether pull request authors are offered to update a head branch that is behind its base
+  //
+  // Null when the token lacks the access GitHub requires to report the
+  // repository's merge settings.
+  allowUpdateBranch() bool
+  // Code security configuration attached to the repository
+  //
+  // The configuration that sets the repository's GitHub Advanced Security,
+  // Dependabot, secret scanning and code scanning features.
+  // codeSecurityConfigurationState reports whether the attachment took effect.
+  // Null when no configuration is attached or it cannot be read.
+  codeSecurityConfiguration() github.codeSecurityConfiguration
+  // State of the repository's code security configuration attachment
+  //
+  // One of attached, attaching, detached, removed, enforced, failed, updating,
+  // or removed_by_enterprise. Null when no configuration is attached or it
+  // cannot be read.
+  codeSecurityConfigurationState() string
+  // Secret scanning custom patterns defined on the repository
+  //
+  // Patterns defined on the repository itself. Organization patterns also
+  // apply to the repository and are reported on the organization. Null when
+  // the patterns cannot be read.
+  secretScanningCustomPatterns() []github.secretScanningCustomPattern
+  // Security advisories drafted, published or closed for the repository
+  //
+  // Null when the advisories cannot be read, for example without admin access
+  // or the security manager role.
+  securityAdvisories() []github.repositorySecurityAdvisory
+  // Codespaces secrets configured at the repository level
+  //
+  // Credentials exposed as environment variables inside codespaces for this
+  // repository. Names and timestamps only, never the values.
+  codespacesSecrets() []github.codespacesSecret
+  // Invitations to collaborate on the repository that have not been accepted
+  //
+  // A pending invitation is a standing grant of the permission it carries.
+  // Null when the invitations cannot be read, for example without admin
+  // access to the repository.
+  pendingInvitations() []github.repository.invitation
 }
 
 // Copilot coding agent configuration for a repository
@@ -1368,6 +1533,11 @@ private github.deployKey @defaults("id title readOnly") {
   ageInDays int
   // The repository this key is configured on
   repository() github.repository
+  // Whether the key is enabled
+  //
+  // A key stays disabled while the organization does not allow deploy keys.
+  // Null when GitHub does not report it.
+  enabled bool
 }
 
 // GitHub user public SSH key
@@ -1627,6 +1797,40 @@ private github.repositoryActionsSettings @defaults("allowedActions") {
   //
   // Null when allowedActions is not selected.
   verifiedAllowed() bool
+  // Which outside contributors need approval before their fork pull request workflows run
+  //
+  // One of first_time_contributors_new_to_github, first_time_contributors, or
+  // all_external_contributors. The broader the policy, the fewer workflow runs
+  // from untrusted forks start without a maintainer looking first. Null when
+  // the policy cannot be read or does not apply.
+  forkPrApprovalPolicy() string
+  // Whether workflows run on pull requests from forks of private repositories
+  //
+  // Null when the setting cannot be read or does not apply.
+  // A public repository has no such setting and reports null.
+  forkPrWorkflowsEnabled() bool
+  // Whether workflows on fork pull requests of private repositories receive a write token
+  //
+  // A fork pull request author controls the code those workflows run, so a
+  // write-scoped `GITHUB_TOKEN` hands them write access. Null when the setting
+  // cannot be read or does not apply.
+  forkPrWriteTokens() bool
+  // Whether workflows on fork pull requests of private repositories can read secrets and variables
+  //
+  // Null when the setting cannot be read or does not apply.
+  forkPrSecretsAndVariables() bool
+  // Whether workflows on fork pull requests of private repositories need approval to run
+  //
+  // Null when the setting cannot be read or does not apply.
+  forkPrRequireApproval() bool
+  // Days workflow artifacts and logs are kept
+  //
+  // Null when the setting cannot be read.
+  artifactRetentionDays() int
+  // Longest retention, in days, that can be set for workflow artifacts and logs
+  //
+  // Null when the setting cannot be read.
+  artifactRetentionMaxDays() int
 }
 
 // GitHub Actions settings for an organization
@@ -1664,6 +1868,49 @@ private github.organizationActionsSettings @defaults("allowedActions") {
   //
   // Null when allowedActions is not selected.
   verifiedAllowed() bool
+  // Which outside contributors need approval before their fork pull request workflows run
+  //
+  // One of first_time_contributors_new_to_github, first_time_contributors, or
+  // all_external_contributors. The broader the policy, the fewer workflow runs
+  // from untrusted forks start without a maintainer looking first. Null when
+  // the policy cannot be read or does not apply.
+  forkPrApprovalPolicy() string
+  // Whether workflows run on pull requests from forks of private repositories
+  //
+  // Null when the setting cannot be read or does not apply.
+  forkPrWorkflowsEnabled() bool
+  // Whether workflows on fork pull requests of private repositories receive a write token
+  //
+  // A fork pull request author controls the code those workflows run, so a
+  // write-scoped `GITHUB_TOKEN` hands them write access. Null when the setting
+  // cannot be read or does not apply.
+  forkPrWriteTokens() bool
+  // Whether workflows on fork pull requests of private repositories can read secrets and variables
+  //
+  // Null when the setting cannot be read or does not apply.
+  forkPrSecretsAndVariables() bool
+  // Whether workflows on fork pull requests of private repositories need approval to run
+  //
+  // Null when the setting cannot be read or does not apply.
+  forkPrRequireApproval() bool
+  // Days workflow artifacts and logs are kept
+  //
+  // Null when the setting cannot be read.
+  artifactRetentionDays() int
+  // Longest retention, in days, that can be set for workflow artifacts and logs
+  //
+  // Null when the setting cannot be read.
+  artifactRetentionMaxDays() int
+  // Which repositories may use self-hosted runners
+  //
+  // One of all, selected, or none. Null when the setting cannot be read.
+  selfHostedRunnersEnabledRepositories() string
+  // Repositories allowed to use self-hosted runners
+  //
+  // The list in force when selfHostedRunnersEnabledRepositories is selected.
+  // Null for any other setting, where no list applies, or when the list
+  // cannot be read.
+  selfHostedRunnersSelectedRepositories() []github.repository
 }
 
 // GitHub repository file
@@ -1727,6 +1974,56 @@ private github.release @defaults("name tagName") {
   publishedAt time
   // Release author
   author github.user
+  // Whether the release is a draft
+  //
+  // Drafts are visible only to users with push access.
+  draft bool
+  // Whether the release is immutable
+  //
+  // An immutable release's tag and assets cannot change after publication.
+  // Null when GitHub does not report it.
+  immutable bool
+  // Branch or commit the release tag is created from when the tag does not exist yet
+  targetCommitish string
+  // Release update time
+  updatedAt time
+  // Files attached to the release
+  assets []github.releaseAsset
+}
+
+// GitHub release asset
+//
+// File attached to a release, such as a binary or a checksum file. The
+// `digest` field carries the SHA-256 of the uploaded content, `uploader` the
+// account that uploaded it, and `downloadCount` how often it was fetched.
+private github.releaseAsset @defaults("name size") {
+  // Asset ID
+  id int
+  // File name
+  name string
+  // Label shown in place of the file name
+  label string
+  // MIME type of the asset
+  contentType string
+  // Upload state
+  //
+  // One of uploaded or open.
+  state string
+  // Size in bytes
+  size int
+  // Number of downloads
+  downloadCount int
+  // Digest of the uploaded content
+  //
+  // Prefixed with the algorithm, for example `sha256:`. Null for assets
+  // uploaded before GitHub started recording digests.
+  digest string
+  // Upload time
+  createdAt time
+  // Update time
+  updatedAt time
+  // User who uploaded the asset
+  uploader github.user
 }
 
 // GitHub webhook
@@ -1858,12 +2155,61 @@ private github.branch @defaults("name") {
   headCommitSha string
   // Repository branch protection rules
   protectionRules() github.branchprotection
+  // Rules that apply to the branch from every active ruleset (repository and organization)
+  //
+  // Unlike `protectionRules`, which is classic branch protection only, these
+  // are the repository rules GitHub enforces on the branch, merged across the
+  // rulesets that target it. A branch protected only by rulesets reports
+  // `isProtected` false but has its requirements here.
+  rules() github.branchRules
   // Repository branch repository name
   repoName string
   // Repository branch owner
   owner github.user
   // Whether the branch is the default branch
   isDefault bool
+}
+
+// Repository rules in effect on a GitHub branch
+//
+// The rules of every active ruleset that targets the branch, merged: a rule is
+// required when any ruleset requires it, and the approval count is the highest
+// any ruleset asks for. `rulesetIds` lists the rulesets they come from.
+private github.branchRules @defaults("requiresPullRequest requiredApprovingReviewCount blocksForcePushes") {
+  // Whether changes must be made through a pull request
+  requiresPullRequest bool
+  // Approving reviews a pull request needs, the highest any ruleset requires
+  requiredApprovingReviewCount int
+  // Whether a code owner must approve changes to files they own
+  requireCodeOwnerReview bool
+  // Whether a new push dismisses earlier approvals
+  dismissStaleReviewsOnPush bool
+  // Whether the most recent push must be approved by someone other than its author
+  requireLastPushApproval bool
+  // Whether every review thread must be resolved before merging
+  requiredReviewThreadResolution bool
+  // Whether status checks must pass before merging
+  requiresStatusChecks bool
+  // Status checks that must pass, by context name
+  requiredStatusChecks []string
+  // Whether commits must be signed
+  requiresSignatures bool
+  // Whether merge commits are blocked (linear history)
+  requiresLinearHistory bool
+  // Whether force pushes are blocked
+  blocksForcePushes bool
+  // Whether deleting the branch is blocked
+  blocksDeletions bool
+  // Whether only users who can bypass the rules may push to the branch
+  restrictsUpdates bool
+  // Whether changes must deploy to environments before merging
+  requiresDeployments bool
+  // Whether code scanning results must pass before merging
+  requiresCodeScanning bool
+  // Whether pull requests merge through a merge queue
+  requiresMergeQueue bool
+  // IDs of the rulesets the rules come from
+  rulesetIds []int
 }
 
 // GitHub branch protection rule
@@ -2085,6 +2431,25 @@ private github.mergeRequest @defaults("id state") {
   stackBaseBranch string
   // Commit SHA the whole stack targets
   stackBaseSha string
+  // How the author relates to the repository
+  //
+  // One of OWNER, MEMBER, COLLABORATOR, CONTRIBUTOR, FIRST_TIME_CONTRIBUTOR,
+  // FIRST_TIMER, MANNEQUIN, or NONE.
+  authorAssociation string
+  // Whether the pull request is a draft
+  draft bool
+  // Repository the pull request's changes come from
+  //
+  // The fork for a pull request opened from a fork. Null when that repository
+  // was deleted.
+  headRepository github.repository
+  // Teams requested to review this pull request
+  requestedTeams []github.team
+  // SHA of the merge commit
+  //
+  // For an open pull request, the test merge commit GitHub created. Null when
+  // GitHub has not created one.
+  mergeCommitSha string
 }
 
 // GitHub pull request review
@@ -2412,6 +2777,22 @@ private github.secretScanningAlert @defaults("number state") {
   providerSlug string
   // Metadata GitHub attaches to the alert, keyed by name
   metadata() map[string]string
+  // Comment the requester gave when asking to bypass push protection
+  pushProtectionBypassRequestComment string
+  // User who reviewed the request to bypass push protection
+  pushProtectionBypassRequestReviewer github.user
+  // Comment the reviewer gave on the request to bypass push protection
+  pushProtectionBypassRequestReviewerComment string
+  // Where the secret was first detected
+  //
+  // Keys `path`, `startLine`, `endLine`, `startColumn`, `endColumn`,
+  // `blobSha` and `commitSha` describe a secret found in a commit. A secret
+  // found elsewhere, such as in an issue or a pull request comment, carries
+  // none of those, and `pullRequestCommentUrl` is set for a pull request
+  // comment. Null when GitHub reports no location.
+  firstLocationDetected dict
+  // Whether the secret was detected in more than one location
+  hasMoreLocations bool
 }
 
 // GitHub code scanning alert
@@ -2563,6 +2944,17 @@ private github.runner @defaults("id name os status") {
   architecture string
   // Labels assigned to the runner
   labels []github.runnerLabel
+  // Version of the runner application
+  //
+  // Runners update themselves unless that was turned off, so an old version
+  // points at a runner that no longer updates. Null when GitHub does not
+  // report it.
+  version string
+  // Runner group the runner belongs to
+  //
+  // Null when the runner is in no organization runner group, or when the
+  // organization's runner groups cannot be read.
+  runnerGroup() github.organization.runnerGroup
 }
 
 // GitHub Actions runner label
@@ -2618,6 +3010,50 @@ private github.environment @defaults("name id") {
   secrets() []github.actionsSecret
   // GitHub Actions variables configured at the environment level
   variables() []github.actionsVariable
+  // Branch and tag name patterns allowed to deploy to the environment
+  //
+  // The patterns in force when customBranchPolicies is true. Empty when no
+  // custom policy applies. Null when the policies cannot be read.
+  deploymentBranchPolicies() []github.environmentBranchPolicy
+  // GitHub App deployment protection rules on the environment
+  //
+  // Rules that hand the decision whether a deployment proceeds to a GitHub
+  // App, such as an external change-management or monitoring check. Null when
+  // the rules cannot be read.
+  customProtectionRules() []github.environmentCustomProtectionRule
+}
+
+// GitHub environment deployment branch policy
+//
+// Name pattern deciding which branches or tags can deploy to an environment.
+// The `type` field says whether `name` matches branches or tags, and `name`
+// is a pattern in the syntax of Ruby's `File.fnmatch`, so `release/*` admits
+// every branch under release.
+private github.environmentBranchPolicy @defaults("name type") {
+  // Policy ID
+  id int
+  // Branch or tag name pattern
+  name string
+  // What the pattern matches
+  //
+  // One of branch or tag.
+  type string
+}
+
+// GitHub environment custom deployment protection rule
+//
+// GitHub App enabled as a deployment protection rule on an environment. A
+// deployment waits until the app approves or rejects it. The `enabled` field
+// reports whether the rule is in force.
+private github.environmentCustomProtectionRule @defaults("appSlug enabled") {
+  // Rule ID
+  id int
+  // Whether the rule is enabled
+  enabled bool
+  // ID of the GitHub App that decides the rule
+  appId int
+  // Slug of the GitHub App that decides the rule
+  appSlug string
 }
 
 // GitHub environment protection rule
@@ -2983,4 +3419,504 @@ github.metadata @defaults("enterpriseServer version") {
   // reports a release, and on an installation that does not answer with a
   // version.
   version string
+}
+
+// Code security configuration
+//
+// A named set of GitHub Advanced Security, Dependabot, secret scanning and
+// code scanning settings that an organization attaches to its repositories.
+// Each feature field is one of enabled, disabled, or not_set, where not_set
+// leaves the repository's own setting in place. `enforcement` reports whether
+// repository administrators can change the attached settings, and
+// `defaultForNewRepos` whether the configuration is applied to new
+// repositories automatically. `repositories` lists the repositories it is
+// attached to.
+private github.codeSecurityConfiguration @defaults("name targetType enforcement") {
+  // Configuration ID
+  id int
+  // Configuration name
+  name string
+  // Configuration description
+  description string
+  // Owner of the configuration
+  //
+  // One of global (provided by GitHub), organization, or enterprise.
+  targetType string
+  // Whether repository administrators are blocked from changing the attached settings
+  //
+  // One of enforced or unenforced.
+  enforcement string
+  // GitHub Advanced Security setting
+  //
+  // One of enabled, disabled, code_security, or secret_protection.
+  advancedSecurity string
+  // GitHub Code Security setting
+  codeSecurity string
+  // GitHub Secret Protection setting
+  secretProtection string
+  // Dependency graph setting
+  dependencyGraph string
+  // Automatic dependency submission setting
+  dependencyGraphAutosubmitAction string
+  // Whether automatic dependency submission runs on runners labeled `dependency-submission`
+  dependencyGraphAutosubmitActionLabeledRunners bool
+  // Dependabot alerts setting
+  dependabotAlerts string
+  // Dependabot security updates setting
+  dependabotSecurityUpdates string
+  // Delegated dismissal setting for Dependabot alerts
+  dependabotDelegatedAlertDismissal string
+  // Code scanning default setup setting
+  codeScanningDefaultSetup string
+  // Type of runner code scanning default setup uses
+  //
+  // One of standard, labeled, or not_set.
+  codeScanningDefaultSetupRunnerType string
+  // Runner label code scanning default setup uses when the runner type is labeled
+  codeScanningDefaultSetupRunnerLabel string
+  // Whether repositories with code scanning advanced setup keep it when the configuration is applied
+  codeScanningAllowAdvanced bool
+  // Delegated dismissal setting for code scanning alerts
+  codeScanningDelegatedAlertDismissal string
+  // Secret scanning setting
+  secretScanning string
+  // Secret scanning push protection setting
+  secretScanningPushProtection string
+  // Delegated bypass setting for secret scanning push protection
+  //
+  // When enabled, a contributor blocked by push protection must request a
+  // bypass that a reviewer in `secretScanningDelegatedBypassReviewers`
+  // approves, instead of bypassing the block alone.
+  secretScanningDelegatedBypass string
+  // Reviewers who can approve a push protection bypass request
+  //
+  // Each entry has `reviewerId` and `reviewerType`, which is TEAM for a team
+  // or ROLE for an organization role.
+  secretScanningDelegatedBypassReviewers []dict
+  // Teams that can approve a push protection bypass request
+  secretScanningDelegatedBypassTeams() []github.team
+  // Secret scanning validity checks setting
+  secretScanningValidityChecks string
+  // Secret scanning non-provider patterns setting
+  secretScanningNonProviderPatterns string
+  // Copilot secret scanning generic secret detection setting
+  secretScanningGenericSecrets string
+  // Delegated dismissal setting for secret scanning alerts
+  secretScanningDelegatedAlertDismissal string
+  // Secret scanning extended metadata setting
+  secretScanningExtendedMetadata string
+  // Private vulnerability reporting setting
+  privateVulnerabilityReporting string
+  // Time the configuration was created
+  createdAt time
+  // Time the configuration was last updated
+  updatedAt time
+  // Repositories GitHub applies the configuration to automatically when they are created
+  //
+  // One of all, none, private_and_internal, or public. Null when the default
+  // configurations cannot be read.
+  defaultForNewRepos() string
+  // Repositories the configuration is attached to, with the status of each attachment
+  repositories() []github.codeSecurityConfigurationRepository
+}
+
+// Repository attached to a code security configuration
+private github.codeSecurityConfigurationRepository @defaults("repository.fullName status") {
+  // Attached repository
+  repository github.repository
+  // Attachment status
+  //
+  // One of attached, attaching, detached, removed, enforced, failed,
+  // updating, or removed_by_enterprise.
+  status string
+}
+
+// Secret scanning custom pattern
+//
+// Regular expression an organization or repository adds to secret scanning
+// to detect a credential format that GitHub has no provider pattern for.
+// `state` reports whether the pattern is published and raising alerts, and
+// `pushProtectionEnabled` whether a push containing a match is blocked.
+private github.secretScanningCustomPattern @defaults("name state pushProtectionEnabled") {
+  // Pattern ID
+  id int
+  // Pattern name
+  name string
+  // Pattern slug
+  slug string
+  // Regular expression the secret matches
+  pattern string
+  // Pattern state
+  //
+  // One of published or unpublished.
+  state string
+  // Whether push protection blocks pushes containing a match
+  pushProtectionEnabled bool
+  // Regular expression that must precede the secret
+  startDelimiter string
+  // Regular expression that must follow the secret
+  endDelimiter string
+  // Additional regular expressions the secret must match
+  mustMatch []string
+  // Regular expressions the secret must not match
+  mustNotMatch []string
+  // Scope the pattern is defined in (organization, repository)
+  scope string
+  // Time the pattern was created
+  createdAt time
+  // Time the pattern was last updated
+  updatedAt time
+}
+
+// Secret scanning pattern configuration
+//
+// Push protection setting and alert statistics for a single secret scanning
+// pattern in an organization. `kind` separates GitHub's provider patterns from
+// the organization's custom patterns. `setting` is the organization's own
+// choice and `defaultSetting` what GitHub applies when the organization makes
+// none, so a pattern with `setting == "disabled"` is one the organization
+// opted out of blocking.
+private github.secretScanningPatternConfiguration @defaults("displayName kind setting") {
+  // Kind of pattern (provider, custom)
+  kind string
+  // Token type the pattern detects
+  tokenType string
+  // Pattern slug
+  slug string
+  // Display name of the pattern
+  displayName string
+  // Version of a custom pattern, empty for a provider pattern
+  customPatternVersion string
+  // Push protection setting chosen by the organization
+  //
+  // One of not-set, disabled, or enabled.
+  setting string
+  // Push protection setting GitHub applies when the organization sets none
+  //
+  // One of disabled or enabled.
+  defaultSetting string
+  // Push protection setting chosen by the enterprise
+  //
+  // One of not-set, disabled, or enabled.
+  enterpriseSetting string
+  // Number of alerts the pattern raised
+  alertTotal int
+  // Share of all alerts raised by the pattern, in percent
+  alertTotalPercentage int
+  // Number of alerts closed as false positives
+  falsePositives int
+  // Share of the pattern's alerts closed as false positives, in percent
+  falsePositiveRate int
+  // Share of the pattern's push protection blocks that were bypassed, in percent
+  bypassRate int
+}
+
+// Repository security advisory
+//
+// Advisory a repository's maintainers draft to coordinate the fix and
+// disclosure of a vulnerability in their own code. `state` reports where the
+// advisory is in that process, and a draft or triage advisory names an
+// unpublished vulnerability. `collaboratingUsers` and `collaboratingTeams`
+// can read the advisory and its private fork, which holds the unreleased fix.
+private github.repositorySecurityAdvisory @defaults("ghsaId severity state") {
+  // GitHub Security Advisory ID
+  ghsaId string
+  // CVE ID, empty when none is assigned
+  cveId string
+  // Short summary of the advisory
+  summary string
+  // Detailed description of the advisory
+  description string
+  // Advisory state
+  //
+  // One of published, closed, withdrawn, draft, or triage.
+  state string
+  // Severity of the vulnerability
+  //
+  // One of critical, high, medium, or low.
+  severity string
+  // CVSS base score
+  cvssScore float
+  // CVSS vector string
+  cvssVector string
+  // CWE IDs the vulnerability is classified under
+  cweIds []string
+  // Time the advisory was created
+  createdAt time
+  // Time the advisory was last updated
+  updatedAt time
+  // Time the advisory was published, null while it is unpublished
+  publishedAt time
+  // Time the advisory was closed, null while it is open
+  closedAt time
+  // Time the advisory was withdrawn, null unless it was withdrawn
+  withdrawnAt time
+  // Account that created the advisory
+  author() github.user
+  // Account that published the advisory, null while it is unpublished
+  publisher() github.user
+  // Accounts given access to collaborate on the advisory
+  collaboratingUsers() []github.user
+  // Teams given access to collaborate on the advisory
+  collaboratingTeams() []github.team
+  // Temporary private fork where the fix is developed, null when none exists
+  privateFork() github.repository
+}
+
+// Codespaces secret
+//
+// Credential exposed as an environment variable inside a codespace. Only the
+// name, scope, visibility and timestamps are reported, never the value.
+// Codespaces keeps its own secret store, separate from GitHub Actions, so a
+// secret here is not readable by a workflow run. For an organization secret,
+// `visibility` controls which repositories' codespaces receive it and
+// `selectedRepositories` resolves the allowed set when visibility is selected.
+private github.codespacesSecret @defaults("name scope visibility") {
+  // Secret name
+  name string
+  // Scope of the secret (organization, repository)
+  scope string
+  // Owning organization login (set for organization scope)
+  organizationName string
+  // Owning repository name (set for repository scope)
+  repositoryName string
+  // Owning repository owner login (set for repository scope)
+  repositoryOwner string
+  // Secret create time
+  createdAt time
+  // Secret last update time
+  updatedAt time
+  // Visibility of an organization secret (all, private, selected); empty for repository scope
+  visibility string
+  // Repositories that have access to this organization secret (only when visibility is "selected")
+  selectedRepositories() []github.repository
+}
+
+// GitHub-hosted larger runner
+//
+// Runner that GitHub hosts and scales on an organization's behalf, with the
+// machine size and image it runs. `publicIpEnabled` reports whether the
+// runner is given static public IP addresses, listed in `publicIps`, which is
+// what lets a firewall allow-list traffic from the organization's workflows.
+// `runnerGroup` decides which repositories and workflows can use it.
+private github.hostedRunner @defaults("name platform status") {
+  // Runner ID
+  id int
+  // Runner name
+  name string
+  // Operating system and architecture of the runner
+  //
+  // For example, linux-x64 or win-x64.
+  platform string
+  // Runner status
+  //
+  // One of Ready, Provisioning, Shutdown, Deleting, or Stuck.
+  status string
+  // ID of the image the runner runs
+  imageId string
+  // Display name of the image
+  imageDisplayName string
+  // Provider of the image
+  //
+  // One of github, partner, or custom.
+  imageSource string
+  // Version of the image
+  imageVersion string
+  // Size of the image, in gigabytes
+  imageSizeGb int
+  // Whether custom image generation is enabled for the runner
+  imageGen bool
+  // Machine size of the runner
+  //
+  // For example, 8-core.
+  machineSize string
+  // Number of CPU cores of the machine size
+  cpuCores int
+  // Memory of the machine size, in gigabytes
+  memoryGb int
+  // SSD storage of the machine size, in gigabytes
+  storageGb int
+  // Maximum number of runners the pool scales to
+  maximumRunners int
+  // Whether the runner is given static public IP addresses
+  publicIpEnabled bool
+  // Static public IP ranges assigned to the runner, in CIDR notation
+  publicIps []string
+  // Time the runner last ran a job
+  lastActiveOn time
+  // Runner group the runner belongs to
+  runnerGroup() github.organization.runnerGroup
+}
+
+// Hosted compute network configuration
+//
+// Configuration that connects GitHub-hosted runners or codespaces to a
+// private Azure virtual network, so they reach internal resources without
+// crossing the internet. `computeService` reports which service uses it.
+private github.networkConfiguration @defaults("name computeService") {
+  // Network configuration ID
+  id string
+  // Network configuration name
+  name string
+  // Service the configuration applies to
+  //
+  // One of none, actions, or codespaces.
+  computeService string
+  // IDs of the Azure network settings resources the configuration uses
+  networkSettingsIds []string
+  // Time the configuration was created
+  createdOn time
+}
+
+// Organization private registry
+//
+// Package registry that Dependabot and other GitHub features authenticate to
+// with credentials the organization stores. The credential itself is never
+// reported. `authType` says how GitHub authenticates, where the OIDC types
+// exchange a short-lived token with the cloud account the remaining fields
+// name instead of storing a long-lived secret. `visibility` controls which
+// repositories can use the registry.
+private github.privateRegistry @defaults("name registryType visibility") {
+  // Name of the secret that holds the registry credential
+  name string
+  // Registry type
+  //
+  // For example, npm_registry, maven_repository, docker_registry, or
+  // python_index.
+  registryType string
+  // Registry URL
+  url string
+  // How GitHub authenticates to the registry
+  //
+  // One of token, username_password, oidc_azure, oidc_aws, or oidc_jfrog.
+  authType string
+  // Username GitHub authenticates as, empty when the registry takes none
+  username string
+  // Whether the registry replaces the public registry of its ecosystem
+  replacesBase bool
+  // Which repositories can use the registry
+  //
+  // One of all, private, or selected.
+  visibility string
+  // Azure tenant ID used for OIDC authentication
+  azureTenantId string
+  // Azure application client ID used for OIDC authentication
+  azureClientId string
+  // AWS region used for OIDC authentication
+  awsRegion string
+  // AWS account ID used for OIDC authentication
+  awsAccountId string
+  // AWS IAM role name assumed with OIDC
+  awsRoleName string
+  // AWS CodeArtifact domain
+  codeArtifactDomain string
+  // AWS account that owns the CodeArtifact domain
+  codeArtifactDomainOwner string
+  // JFrog OIDC provider name
+  jfrogOidcProviderName string
+  // JFrog identity mapping name
+  jfrogIdentityMappingName string
+  // Audience of the OIDC token
+  oidcAudience string
+  // Time the registry was created
+  createdAt time
+  // Time the registry was last updated
+  updatedAt time
+  // Repositories that can use the registry (only when visibility is "selected")
+  selectedRepositories() []github.repository
+}
+
+// Codespace
+//
+// Cloud development environment created from one of an organization's
+// repositories. `state` reports whether it is running, and `lastUsedAt` and
+// `retentionExpiresAt` how long an unused codespace, with the repository
+// content and any credentials it holds, is kept.
+private github.codespace @defaults("name state owner.login") {
+  // Codespace ID
+  id int
+  // Codespace name
+  name string
+  // Display name of the codespace
+  displayName string
+  // Codespace state
+  //
+  // For example, Available, Shutdown, Starting, or Archived.
+  state string
+  // Machine type name
+  machineName string
+  // Machine type display name
+  machineDisplayName string
+  // Operating system of the machine type
+  machineOperatingSystem string
+  // Number of CPUs of the machine type
+  machineCpus int
+  // Memory of the machine type, in bytes
+  machineMemoryInBytes int
+  // Storage of the machine type, in bytes
+  machineStorageInBytes int
+  // Path of the dev container definition the codespace was built from
+  devcontainerPath string
+  // Whether the codespace was created from a prebuild
+  prebuild bool
+  // Minutes of inactivity after which the codespace stops
+  idleTimeoutMinutes int
+  // Minutes a stopped codespace is kept before it is deleted
+  retentionPeriodMinutes int
+  // Time the stopped codespace will be deleted, null while it is running
+  retentionExpiresAt time
+  // Time the codespace was created
+  createdAt time
+  // Time the codespace was last updated
+  updatedAt time
+  // Time the codespace was last used
+  lastUsedAt time
+  // Account that owns the codespace
+  owner() github.user
+  // Account billed for the codespace
+  billableOwner() github.user
+  // Repository the codespace was created from
+  repository() github.repository
+}
+
+// Repository collaborator invitation
+//
+// Invitation to collaborate on a repository that has been sent but not yet
+// accepted. Until it expires, the invitee can accept it at any time and take
+// up the `permissions` it grants.
+private github.repository.invitation @defaults("invitee.login permissions expired") {
+  // Invitation ID
+  id int
+  // Permission the invitation grants
+  //
+  // One of read, triage, write, maintain, or admin.
+  permissions string
+  // Time the invitation was created
+  createdAt time
+  // Whether the invitation has expired
+  expired bool
+  // Account invited to collaborate
+  invitee() github.user
+  // Account that sent the invitation
+  inviter() github.user
+}
+
+// External group connected to a team
+private github.team.externalGroup @defaults("name") {
+  // Group ID
+  id int
+  // Group name
+  name string
+  // Time the group was last updated
+  updatedAt time
+}
+
+// Identity provider group mapped to a team
+private github.team.idpGroup @defaults("name") {
+  // Group ID
+  id string
+  // Group name
+  name string
+  // Group description
+  description string
 }

@@ -3,7 +3,12 @@
 
 package resources
 
-import "testing"
+import (
+	"errors"
+	"testing"
+
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+)
 
 func TestNicsHavePublicIp(t *testing.T) {
 	cases := []struct {
@@ -250,5 +255,49 @@ func TestFlexInstanceReachable(t *testing.T) {
 				t.Errorf("flexInstanceReachable(%v) = %v, want %v", c.acl, got, c.want)
 			}
 		})
+	}
+}
+
+func TestFlexScopedReachable(t *testing.T) {
+	public, sna, lower := "PUBLIC", "SNA", "public"
+	open := []any{"0.0.0.0/0"}
+	restricted := []any{"10.0.0.0/8"}
+	cases := []struct {
+		name  string
+		scope *string
+		acl   []any
+		want  bool
+	}{
+		// Synthetic: v3 accessScope values as documented on the field; no live instance was checked.
+		{"public scope with open acl", &public, open, true},
+		{"public scope with restricted acl", &public, restricted, false},
+		{"network area scope with open acl is not internet-reachable", &sna, open, false},
+		{"scope compared case-insensitively", &lower, open, true},
+		// Synthetic: the service reported no scope; the ACL alone decides, as before.
+		{"unknown scope falls back to the acl", nil, open, true},
+		{"unknown scope with restricted acl", nil, restricted, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := flexScopedReachable(c.scope, c.acl); got != c.want {
+				t.Errorf("flexScopedReachable(%v, %v) = %v, want %v", c.scope, c.acl, got, c.want)
+			}
+		})
+	}
+}
+
+func TestKnownAccessScope(t *testing.T) {
+	// Synthetic: field states the accessScope accessor produces.
+	set := &plugin.TValue[string]{Data: "SNA", State: plugin.StateIsSet}
+	if got := knownAccessScope(set); got == nil || *got != "SNA" {
+		t.Errorf("set scope: got %v, want SNA", got)
+	}
+	null := &plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull}
+	if got := knownAccessScope(null); got != nil {
+		t.Errorf("null scope: got %v, want nil", *got)
+	}
+	failed := &plugin.TValue[string]{Error: errors.New("forbidden")}
+	if got := knownAccessScope(failed); got != nil {
+		t.Errorf("failed scope read: got %v, want nil", *got)
 	}
 }

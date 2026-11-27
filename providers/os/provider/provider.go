@@ -414,7 +414,7 @@ func (s *Service) Connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 			return nil, err
 		}
 	case shared.Type_Local.String(), shared.Type_DockerContainer.String():
-		inv, err = s.discoverLocalContainers(conn.Asset().Connections[0])
+		inv, err = s.discoverLocalContainers(conn)
 		if err != nil {
 			return nil, err
 		}
@@ -756,7 +756,8 @@ func (s *Service) discoverEc2Tags(conf *inventory.Config, platformIds []string) 
 	return m, nil
 }
 
-func (s *Service) discoverLocalContainers(conf *inventory.Config) (*inventory.Inventory, error) {
+func (s *Service) discoverLocalContainers(conn shared.Connection) (*inventory.Inventory, error) {
+	conf := conn.Asset().Connections[0]
 	if conf == nil || conf.Discover == nil {
 		return nil, nil
 	}
@@ -765,7 +766,13 @@ func (s *Service) discoverLocalContainers(conf *inventory.Config) (*inventory.In
 		return nil, nil
 	}
 
-	resolvedAssets, err := docker_engine.DiscoverDockerEngineAssets(conf)
+	// A local scan is of the machine the daemon runs on, so its containers
+	// name it as their host. A scan of a container is not of that machine.
+	var host *inventory.Asset
+	if conn.Type() == shared.Type_Local {
+		host = conn.Asset()
+	}
+	resolvedAssets, err := docker_engine.DiscoverDockerEngineAssets(conf, host)
 	if err != nil {
 		return nil, err
 	}

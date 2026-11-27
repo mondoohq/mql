@@ -1295,6 +1295,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"k8s.pod.context": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sPod).GetContext()).ToDataRes(types.Resource("k8s.context"))
 	},
+	"k8s.deployment.serviceAccountName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sDeployment).GetServiceAccountName()).ToDataRes(types.String)
+	},
 	"k8s.deployment.automountServiceAccountToken": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sDeployment).GetAutomountServiceAccountToken()).ToDataRes(types.Bool)
 	},
@@ -1505,6 +1508,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"k8s.deployment.context": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sDeployment).GetContext()).ToDataRes(types.Resource("k8s.context"))
 	},
+	"k8s.daemonset.serviceAccountName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sDaemonset).GetServiceAccountName()).ToDataRes(types.String)
+	},
 	"k8s.daemonset.automountServiceAccountToken": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sDaemonset).GetAutomountServiceAccountToken()).ToDataRes(types.Bool)
 	},
@@ -1711,6 +1717,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"k8s.daemonset.context": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sDaemonset).GetContext()).ToDataRes(types.Resource("k8s.context"))
+	},
+	"k8s.statefulset.serviceAccountName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sStatefulset).GetServiceAccountName()).ToDataRes(types.String)
 	},
 	"k8s.statefulset.automountServiceAccountToken": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sStatefulset).GetAutomountServiceAccountToken()).ToDataRes(types.Bool)
@@ -1934,6 +1943,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"k8s.statefulset.context": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sStatefulset).GetContext()).ToDataRes(types.Resource("k8s.context"))
 	},
+	"k8s.replicaset.serviceAccountName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sReplicaset).GetServiceAccountName()).ToDataRes(types.String)
+	},
 	"k8s.replicaset.automountServiceAccountToken": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sReplicaset).GetAutomountServiceAccountToken()).ToDataRes(types.Bool)
 	},
@@ -2125,6 +2137,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"k8s.replicaset.context": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sReplicaset).GetContext()).ToDataRes(types.Resource("k8s.context"))
+	},
+	"k8s.job.serviceAccountName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sJob).GetServiceAccountName()).ToDataRes(types.String)
 	},
 	"k8s.job.automountServiceAccountToken": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sJob).GetAutomountServiceAccountToken()).ToDataRes(types.Bool)
@@ -2350,6 +2365,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"k8s.job.context": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sJob).GetContext()).ToDataRes(types.Resource("k8s.context"))
+	},
+	"k8s.cronjob.serviceAccountName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sCronjob).GetServiceAccountName()).ToDataRes(types.String)
 	},
 	"k8s.cronjob.automountServiceAccountToken": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sCronjob).GetAutomountServiceAccountToken()).ToDataRes(types.Bool)
@@ -3235,6 +3253,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"k8s.ingress.tls": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sIngress).GetTls()).ToDataRes(types.Array(types.Resource("k8s.ingresstls")))
+	},
+	"k8s.ingress.tlsHosts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sIngress).GetTlsHosts()).ToDataRes(types.Array(types.String))
 	},
 	"k8s.ingress.ingressClassName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sIngress).GetIngressClassName()).ToDataRes(types.String)
@@ -6885,6 +6906,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlK8sDeployment).__id, ok = v.Value.(string)
 		return
 	},
+	"k8s.deployment.serviceAccountName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sDeployment).ServiceAccountName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"k8s.deployment.automountServiceAccountToken": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlK8sDeployment).AutomountServiceAccountToken, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
@@ -7169,6 +7194,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlK8sDaemonset).__id, ok = v.Value.(string)
 		return
 	},
+	"k8s.daemonset.serviceAccountName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sDaemonset).ServiceAccountName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"k8s.daemonset.automountServiceAccountToken": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlK8sDaemonset).AutomountServiceAccountToken, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
@@ -7447,6 +7476,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"k8s.statefulset.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlK8sStatefulset).__id, ok = v.Value.(string)
+		return
+	},
+	"k8s.statefulset.serviceAccountName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sStatefulset).ServiceAccountName, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"k8s.statefulset.automountServiceAccountToken": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -7749,6 +7782,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlK8sReplicaset).__id, ok = v.Value.(string)
 		return
 	},
+	"k8s.replicaset.serviceAccountName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sReplicaset).ServiceAccountName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"k8s.replicaset.automountServiceAccountToken": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlK8sReplicaset).AutomountServiceAccountToken, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
@@ -8007,6 +8044,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"k8s.job.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlK8sJob).__id, ok = v.Value.(string)
+		return
+	},
+	"k8s.job.serviceAccountName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sJob).ServiceAccountName, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"k8s.job.automountServiceAccountToken": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -8311,6 +8352,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"k8s.cronjob.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlK8sCronjob).__id, ok = v.Value.(string)
+		return
+	},
+	"k8s.cronjob.serviceAccountName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sCronjob).ServiceAccountName, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"k8s.cronjob.automountServiceAccountToken": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -9547,6 +9592,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"k8s.ingress.tls": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlK8sIngress).Tls, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.ingress.tlsHosts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sIngress).TlsHosts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"k8s.ingress.ingressClassName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -16392,6 +16441,7 @@ type mqlK8sDeployment struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlK8sDeploymentInternal
+	ServiceAccountName           plugin.TValue[string]
 	AutomountServiceAccountToken plugin.TValue[bool]
 	HostNetwork                  plugin.TValue[bool]
 	HostPID                      plugin.TValue[bool]
@@ -16499,6 +16549,12 @@ func (c *mqlK8sDeployment) MqlName() string {
 
 func (c *mqlK8sDeployment) MqlID() string {
 	return c.__id
+}
+
+func (c *mqlK8sDeployment) GetServiceAccountName() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ServiceAccountName, func() (string, error) {
+		return c.serviceAccountName()
+	})
 }
 
 func (c *mqlK8sDeployment) GetAutomountServiceAccountToken() *plugin.TValue[bool] {
@@ -16992,6 +17048,7 @@ type mqlK8sDaemonset struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlK8sDaemonsetInternal
+	ServiceAccountName           plugin.TValue[string]
 	AutomountServiceAccountToken plugin.TValue[bool]
 	HostNetwork                  plugin.TValue[bool]
 	HostPID                      plugin.TValue[bool]
@@ -17098,6 +17155,12 @@ func (c *mqlK8sDaemonset) MqlName() string {
 
 func (c *mqlK8sDaemonset) MqlID() string {
 	return c.__id
+}
+
+func (c *mqlK8sDaemonset) GetServiceAccountName() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ServiceAccountName, func() (string, error) {
+		return c.serviceAccountName()
+	})
 }
 
 func (c *mqlK8sDaemonset) GetAutomountServiceAccountToken() *plugin.TValue[bool] {
@@ -17585,6 +17648,7 @@ type mqlK8sStatefulset struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlK8sStatefulsetInternal
+	ServiceAccountName                   plugin.TValue[string]
 	AutomountServiceAccountToken         plugin.TValue[bool]
 	HostNetwork                          plugin.TValue[bool]
 	HostPID                              plugin.TValue[bool]
@@ -17696,6 +17760,12 @@ func (c *mqlK8sStatefulset) MqlName() string {
 
 func (c *mqlK8sStatefulset) MqlID() string {
 	return c.__id
+}
+
+func (c *mqlK8sStatefulset) GetServiceAccountName() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ServiceAccountName, func() (string, error) {
+		return c.serviceAccountName()
+	})
 }
 
 func (c *mqlK8sStatefulset) GetAutomountServiceAccountToken() *plugin.TValue[bool] {
@@ -18213,6 +18283,7 @@ type mqlK8sReplicaset struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlK8sReplicasetInternal
+	ServiceAccountName           plugin.TValue[string]
 	AutomountServiceAccountToken plugin.TValue[bool]
 	HostNetwork                  plugin.TValue[bool]
 	HostPID                      plugin.TValue[bool]
@@ -18314,6 +18385,12 @@ func (c *mqlK8sReplicaset) MqlName() string {
 
 func (c *mqlK8sReplicaset) MqlID() string {
 	return c.__id
+}
+
+func (c *mqlK8sReplicaset) GetServiceAccountName() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ServiceAccountName, func() (string, error) {
+		return c.serviceAccountName()
+	})
 }
 
 func (c *mqlK8sReplicaset) GetAutomountServiceAccountToken() *plugin.TValue[bool] {
@@ -18771,6 +18848,7 @@ type mqlK8sJob struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlK8sJobInternal
+	ServiceAccountName           plugin.TValue[string]
 	AutomountServiceAccountToken plugin.TValue[bool]
 	HostNetwork                  plugin.TValue[bool]
 	HostPID                      plugin.TValue[bool]
@@ -18883,6 +18961,12 @@ func (c *mqlK8sJob) MqlName() string {
 
 func (c *mqlK8sJob) MqlID() string {
 	return c.__id
+}
+
+func (c *mqlK8sJob) GetServiceAccountName() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ServiceAccountName, func() (string, error) {
+		return c.serviceAccountName()
+	})
 }
 
 func (c *mqlK8sJob) GetAutomountServiceAccountToken() *plugin.TValue[bool] {
@@ -19396,6 +19480,7 @@ type mqlK8sCronjob struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlK8sCronjobInternal
+	ServiceAccountName           plugin.TValue[string]
 	AutomountServiceAccountToken plugin.TValue[bool]
 	HostNetwork                  plugin.TValue[bool]
 	HostPID                      plugin.TValue[bool]
@@ -19498,6 +19583,12 @@ func (c *mqlK8sCronjob) MqlName() string {
 
 func (c *mqlK8sCronjob) MqlID() string {
 	return c.__id
+}
+
+func (c *mqlK8sCronjob) GetServiceAccountName() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ServiceAccountName, func() (string, error) {
+		return c.serviceAccountName()
+	})
 }
 
 func (c *mqlK8sCronjob) GetAutomountServiceAccountToken() *plugin.TValue[bool] {
@@ -21912,6 +22003,7 @@ type mqlK8sIngress struct {
 	Manifest            plugin.TValue[any]
 	Rules               plugin.TValue[[]any]
 	Tls                 plugin.TValue[[]any]
+	TlsHosts            plugin.TValue[[]any]
 	IngressClassName    plugin.TValue[string]
 	IngressClass        plugin.TValue[*mqlK8sIngressclass]
 	LoadBalancerIngress plugin.TValue[[]any]
@@ -22052,6 +22144,12 @@ func (c *mqlK8sIngress) GetTls() *plugin.TValue[[]any] {
 		}
 
 		return c.tls()
+	})
+}
+
+func (c *mqlK8sIngress) GetTlsHosts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TlsHosts, func() ([]any, error) {
+		return c.tlsHosts()
 	})
 }
 

@@ -5,6 +5,7 @@ package resources
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	together "github.com/togethercomputer/together-go"
@@ -17,7 +18,16 @@ import (
 // deployment list is addressed by project and endpoint, and the project
 // accessor resolves it against the project list.
 type mqlTogetherEndpointInternal struct {
-	cacheProjectID string
+	cacheProjectID    string
+	cacheTrafficSplit []together.EndpointTrafficSplitEntry
+}
+
+// mqlTogetherEndpointTrafficSplitEntryInternal keeps the endpoint the entry
+// belongs to and the deployment it names, which the deployment accessor
+// resolves against the endpoint's deployment list.
+type mqlTogetherEndpointTrafficSplitEntryInternal struct {
+	cacheEndpoint     *mqlTogetherEndpoint
+	cacheDeploymentID string
 }
 
 // endpointArgs maps an endpoint from the project endpoint list onto
@@ -47,26 +57,47 @@ func endpointTypeName(t string) string {
 }
 
 func (r *mqlTogetherEndpoint) project() (*mqlTogetherProject, error) {
-	if r.cacheProjectID == "" {
-		r.Project.State = plugin.StateIsSet | plugin.StateIsNull
-		return nil, nil
-	}
-
-	obj, err := CreateResource(r.MqlRuntime, "together", map[string]*llx.RawData{})
+	p, err := listedProject(r.MqlRuntime, r.cacheProjectID)
 	if err != nil {
 		return nil, err
 	}
-	projects := obj.(*mqlTogether).GetProjects()
-	if projects.Error != nil {
-		return nil, projects.Error
+	if p == nil {
+		r.Project.State = plugin.StateIsSet | plugin.StateIsNull
 	}
-	for _, p := range projects.Data {
-		if project := p.(*mqlTogetherProject); project.Id.Data == r.cacheProjectID {
-			return project, nil
+	return p, nil
+}
+
+func (r *mqlTogetherEndpoint) trafficSplit() ([]any, error) {
+	res := make([]any, 0, len(r.cacheTrafficSplit))
+	for _, entry := range r.cacheTrafficSplit {
+		obj, err := CreateResource(r.MqlRuntime, "together.endpoint.trafficSplitEntry", map[string]*llx.RawData{
+			"__id":   llx.StringData(r.Id.Data + "/trafficSplit/" + entry.DeploymentID),
+			"weight": llx.FloatData(entry.Weight),
+		})
+		if err != nil {
+			return nil, err
+		}
+		split := obj.(*mqlTogetherEndpointTrafficSplitEntry)
+		split.cacheEndpoint = r
+		split.cacheDeploymentID = entry.DeploymentID
+		res = append(res, split)
+	}
+	return res, nil
+}
+
+func (r *mqlTogetherEndpointTrafficSplitEntry) deployment() (*mqlTogetherEndpointDeployment, error) {
+	if r.cacheEndpoint != nil && r.cacheDeploymentID != "" {
+		deployments := r.cacheEndpoint.GetDeployments()
+		if deployments.Error != nil {
+			return nil, deployments.Error
+		}
+		for _, raw := range deployments.Data {
+			if d, ok := raw.(*mqlTogetherEndpointDeployment); ok && d.Id.Data == r.cacheDeploymentID {
+				return d, nil
+			}
 		}
 	}
-
-	r.Project.State = plugin.StateIsSet | plugin.StateIsNull
+	r.Deployment.State = plugin.StateIsSet | plugin.StateIsNull
 	return nil, nil
 }
 
@@ -114,9 +145,30 @@ func endpointDeploymentArgs(d together.EndpointDeployment) map[string]*llx.RawDa
 		"hipaaRequired":    llx.BoolDataPtr(placement.hipaa),
 		"placementProfile": llx.StringDataPtr(placement.profile),
 		"placementRegions": regions,
-		"createdAt":        llx.TimeDataPtr(timeOrNil(d.CreatedAt)),
-		"updatedAt":        llx.TimeDataPtr(timeOrNil(d.UpdatedAt)),
+		// The API omits zero values, so an absent bound is a zero bound.
+		"autoscalingMinReplicas":          llx.IntData(d.Autoscaling.MinReplicas),
+		"autoscalingMaxReplicas":          llx.IntData(d.Autoscaling.MaxReplicas),
+		"maxConcurrentRequestsPerReplica": llx.IntDataPtr(parseConcurrencyLimit(d.MaxConcurrentRequestsPerReplica)),
+		"speculator":                      llx.StringDataPtr(nonEmpty(d.Speculator)),
+		"createdAt":                       llx.TimeDataPtr(timeOrNil(d.CreatedAt)),
+		"updatedAt":                       llx.TimeDataPtr(timeOrNil(d.UpdatedAt)),
 	}
+}
+
+// parseConcurrencyLimit reads the per-replica concurrency limit, which the API
+// serializes as a decimal string. An omitted limit is not zero: zero means
+// unlimited, while an omitted one leaves the platform default in force, so it
+// is nil. An unreadable value is nil as well.
+func parseConcurrencyLimit(s string) *int64 {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil || n < 0 {
+		return nil
+	}
+	return &n
 }
 
 // deploymentPlacement is what a deployment's placement reports about where it

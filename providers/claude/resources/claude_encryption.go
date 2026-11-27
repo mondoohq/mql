@@ -125,8 +125,7 @@ func (r *mqlClaudeOrganizationWorkspace) externalKey() (*mqlClaudeOrganizationEx
 	return key, nil
 }
 
-// complianceApiState reads the organization's Compliance Settings, which hold
-// a single state.
+// complianceApiState reads the organization's Compliance Settings state.
 func (r *mqlClaudeOrganization) complianceApiState() (string, error) {
 	client, err := adminSDKClient(r.MqlRuntime)
 	if err != nil {
@@ -142,4 +141,41 @@ func (r *mqlClaudeOrganization) complianceApiState() (string, error) {
 		return "", nil
 	}
 	return settings.State.Type, nil
+}
+
+// accessTransparencyEnabled reads Access Transparency from the beta Compliance
+// Settings, which return it only to requests carrying the efs-2026-10-01 beta
+// value. With that value the read fails when the status cannot be determined,
+// so it uses a call of its own and leaves complianceApiState unaffected.
+func (r *mqlClaudeOrganization) accessTransparencyEnabled() (bool, error) {
+	client, err := adminSDKClient(r.MqlRuntime)
+	if err != nil {
+		return false, err
+	}
+
+	settings, err := client.Beta.Organization.ComplianceSettings.Get(context.Background(),
+		anthropic.BetaOrganizationComplianceSettingGetParams{Betas: []anthropic.AnthropicBeta{anthropic.AnthropicBetaEfs2026_10_01}})
+	if err != nil {
+		return false, classifyAdminError(fmt.Errorf("reading access transparency: %w", err), endpointUnavailable)
+	}
+
+	enabled, ok := enabledDisabled(string(settings.AccessTransparency.Type))
+	if !ok {
+		r.AccessTransparencyEnabled.State = plugin.StateIsNull | plugin.StateIsSet
+		return false, nil
+	}
+	return enabled, nil
+}
+
+// enabledDisabled reads an enabled/disabled setting. Any other value, the
+// empty one the API sends when it omits the setting included, is not a
+// known state, so ok is false and the field reads as null.
+func enabledDisabled(v string) (enabled, ok bool) {
+	switch v {
+	case "enabled":
+		return true, true
+	case "disabled":
+		return false, true
+	}
+	return false, false
 }

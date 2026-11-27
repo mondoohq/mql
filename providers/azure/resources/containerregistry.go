@@ -1449,3 +1449,8 @@ func (a *mqlAzureSubscriptionContainerRegistryServiceRegistryConnectedRegistry) 
 func (a *mqlAzureSubscriptionContainerRegistryServiceRegistryConnectedRegistry) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
 	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
+
+func (a *mqlAzureSubscriptionContainerRegistryServiceRegistry) diagnosticSettings() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
+}

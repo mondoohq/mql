@@ -6,7 +6,9 @@ package resources
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/oracle/oci-go-sdk/v65/containerengine"
@@ -376,6 +378,57 @@ func (o *mqlOciOkeCluster) fetchCluster() (*containerengine.Cluster, error) {
 	})
 }
 
+// okeSupportedKubernetesVersions returns the versions OKE offers for new
+// clusters, which is the set it supports. Nil options yield an empty list, so
+// a cluster's version is never found in it by accident.
+func okeSupportedKubernetesVersions(opts *containerengine.ClusterOptions) []any {
+	if opts == nil {
+		return []any{}
+	}
+	return stringsToAny(opts.KubernetesVersions)
+}
+
+// The cluster options are the same for every cluster in a region, so they are
+// fetched once per connection and region rather than once per cluster. The
+// mutex guards the map only; the per-region ociRetryLazy serializes the fetch
+// and does not cache a failure.
+var (
+	okeSupportedVersionsCache   = map[string]*ociRetryLazy[[]any]{}
+	okeSupportedVersionsCacheMu sync.Mutex
+)
+
+func okeSupportedVersionsEntry(key string) *ociRetryLazy[[]any] {
+	okeSupportedVersionsCacheMu.Lock()
+	defer okeSupportedVersionsCacheMu.Unlock()
+
+	entry, ok := okeSupportedVersionsCache[key]
+	if !ok {
+		entry = &ociRetryLazy[[]any]{}
+		okeSupportedVersionsCache[key] = entry
+	}
+	return entry
+}
+
+func (o *mqlOciOkeCluster) supportedKubernetesVersions() ([]any, error) {
+	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
+	entry := okeSupportedVersionsEntry(fmt.Sprintf("%d/%s", conn.ID(), o.cacheRegion))
+
+	return entry.get(func() ([]any, error) {
+		svc, err := conn.ContainerEngineClient(o.cacheRegion)
+		if err != nil {
+			return nil, err
+		}
+
+		resp, err := svc.GetClusterOptions(context.Background(), containerengine.GetClusterOptionsRequest{
+			ClusterOptionId: new("all"),
+		})
+		if err != nil {
+			return nil, err
+		}
+		return okeSupportedKubernetesVersions(&resp.ClusterOptions), nil
+	})
+}
+
 func (o *mqlOciOkeCluster) kmsKey() (*mqlOciKmsKey, error) {
 	cluster, err := o.fetchCluster()
 	if err != nil {
@@ -600,4 +653,35 @@ func (o *mqlOciOkeNodePool) networkSecurityGroups() ([]any, error) {
 		res = append(res, mqlNsg)
 	}
 	return res, nil
+}
+
+func (o *mqlOciOkeCluster) region() (*mqlOciRegion, error) {
+	return resolveOciRegionByKey(o.MqlRuntime, o.cacheRegion, &o.Region)
+}
+
+// exposure breaks down whether the cluster's Kubernetes API endpoint is
+// reachable from the internet: a public IP on the endpoint, a subnet that
+// permits internet ingress and routes to an internet gateway, and an ingress
+// rule in the endpoint's network security groups or the subnet's security
+// lists that admits any address.
+func (o *mqlOciOkeCluster) exposure() (*mqlOciNetworkExposure, error) {
+	public := o.GetIsPublicEndpointEnabled()
+	if public.Error != nil {
+		return nil, public.Error
+	}
+	subnet := o.GetEndpointSubnet()
+	if subnet.Error != nil {
+		return nil, subnet.Error
+	}
+	nsgs := o.GetEndpointSecurityGroups()
+	if nsgs.Error != nil {
+		return nil, nsgs.Error
+	}
+	var attributes map[string]any
+	if sa := o.GetSecurityAttributes(); sa.Error == nil {
+		attributes = sa.Data
+	}
+	return ociSubnetEndpointExposure(o.MqlRuntime,
+		"oci.oke.cluster/"+o.Id.Data+"/exposure",
+		public.Data, subnet.Data, nsgs.Data, attributes)
 }

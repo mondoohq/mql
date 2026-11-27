@@ -5,6 +5,7 @@ package eos
 
 import (
 	"bufio"
+	"slices"
 	"strings"
 )
 
@@ -125,6 +126,13 @@ func ParseScheduledTasks(runningConfig string) []ScheduledTask {
 		}
 		fields := strings.Fields(rest)
 		if len(fields) == 0 {
+			continue
+		}
+
+		// `schedule config ...` sets options for every schedule
+		// (max-concurrent-jobs, prepend-hostname-logfile); it is not a task.
+		// Every task names its command, so a line without one is skipped.
+		if !slices.Contains(fields, "command") {
 			continue
 		}
 

@@ -17,7 +17,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/stackitcloud/stackit-sdk-go/core/config"
 	alb "github.com/stackitcloud/stackit-sdk-go/services/alb/v2api"
-	albwaf "github.com/stackitcloud/stackit-sdk-go/services/albwaf/v1betaapi"
+	albwaf "github.com/stackitcloud/stackit-sdk-go/services/albwaf/v1api"
 	authorization "github.com/stackitcloud/stackit-sdk-go/services/authorization/v2api"
 	cdn "github.com/stackitcloud/stackit-sdk-go/services/cdn/v1api"
 	certificates "github.com/stackitcloud/stackit-sdk-go/services/certificates/v2api"
@@ -51,6 +51,7 @@ import (
 	sqlserverflexv3 "github.com/stackitcloud/stackit-sdk-go/services/sqlserverflex/v3api"
 	telemetrylink "github.com/stackitcloud/stackit-sdk-go/services/telemetrylink/v1betaapi"
 	telemetryrouter "github.com/stackitcloud/stackit-sdk-go/services/telemetryrouter/v1betaapi"
+	ufw "github.com/stackitcloud/stackit-sdk-go/services/ufw/v1api"
 	valkey "github.com/stackitcloud/stackit-sdk-go/services/valkey/v2api"
 	vpn "github.com/stackitcloud/stackit-sdk-go/services/vpn/v1api"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
@@ -89,6 +90,9 @@ type StackitConnection struct {
 	routingTablesOnce sync.Once
 	routingTables     map[string]iaas.RoutingTable
 	routingTablesErr  error
+	// routingTableAreas maps each routing table ID to the network area that
+	// holds it, filled by the same walk; listing a table's routes needs it.
+	routingTableAreas map[string]string
 
 	securityGroupsOnce sync.Once
 	securityGroups     map[string]iaas.SecurityGroup
@@ -210,6 +214,9 @@ type StackitConnection struct {
 	vpnOnce              sync.Once
 	vpnClient            *vpn.APIClient
 	vpnErr               error
+	ufwOnce              sync.Once
+	ufwClient            *ufw.APIClient
+	ufwErr               error
 }
 
 func NewStackitConnection(id uint32, asset *inventory.Asset, conf *inventory.Config) (*StackitConnection, error) {
@@ -471,6 +478,10 @@ func (c *StackitConnection) loadNetworkAreaRoutingTables(ctx context.Context) (m
 		for _, table := range tables.GetItems() {
 			if id := table.GetId(); id != "" {
 				out[id] = table
+				if c.routingTableAreas == nil {
+					c.routingTableAreas = map[string]string{}
+				}
+				c.routingTableAreas[id] = areaID
 			}
 		}
 	}
@@ -714,6 +725,28 @@ func (c *StackitConnection) Vpn() (*vpn.APIClient, error) {
 		c.vpnClient, c.vpnErr = vpn.NewAPIClient(c.configOptsGlobal...)
 	})
 	return c.vpnClient, c.vpnErr
+}
+
+// RoutingTableArea returns the organization and network area that hold the
+// given routing table, as found by NetworkAreaRoutingTables. Both are empty
+// when the table was not found on any area the walk could read.
+func (c *StackitConnection) RoutingTableArea(ctx context.Context, tableID string) (organizationID, areaID string, err error) {
+	if _, err := c.NetworkAreaRoutingTables(ctx); err != nil {
+		return "", "", err
+	}
+	areaID = c.routingTableAreas[tableID]
+	if areaID == "" {
+		return "", "", nil
+	}
+	return c.projectParent, areaID, nil
+}
+
+func (c *StackitConnection) Ufw() (*ufw.APIClient, error) {
+	c.ufwOnce.Do(func() {
+		// The Unified Firewall API takes the region as a per-call parameter.
+		c.ufwClient, c.ufwErr = ufw.NewAPIClient(c.configOptsGlobal...)
+	})
+	return c.ufwClient, c.ufwErr
 }
 
 // The clients below serve global endpoints; every method takes the region

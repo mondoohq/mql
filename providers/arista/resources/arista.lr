@@ -1506,13 +1506,19 @@ private arista.eos.aaa.serverGroup @defaults("name protocol") {
 private arista.eos.sshSettings {
   // Whether the SSH service is enabled (no shutdown)
   enabled bool
-  // Configured SSH protocol version (typically "2")
+  // SSH protocol version the server speaks
+  //
+  // The configured `protocol version` where the running-config renders
+  // one, otherwise "2": the device's OpenSSH server speaks SSH-2 only.
   protocolVersion string
   // Idle timeout in minutes (0 = no timeout)
   idleTimeout int
   // TCP server port (default 22)
   serverPort int
-  // Authentication mode (e.g. "keyboard-interactive", "password")
+  // Authentication protocols the server accepts, space-separated
+  //
+  // For example "keyboard-interactive public-key", from
+  // `authentication protocol` (or `authentication mode` on older releases).
   authenticationMode string
   // Allowed cipher algorithms
   ciphers []string
@@ -1520,7 +1526,10 @@ private arista.eos.sshSettings {
   keyExchange []string
   // Allowed MAC algorithms
   macs []string
-  // Configured host key algorithms (raw lines after `hostkey`)
+  // Host key algorithms the server is configured to offer, one per entry
+  //
+  // For example ["ecdsa-nistp521", "ed25519", "rsa"] from
+  // `hostkey server ecdsa-nistp521 ed25519 rsa`.
   hostkeyAlgorithms []string
   // Whether `fips restrictions` is enabled on the SSH service
   fipsRestrictions bool
@@ -1562,12 +1571,15 @@ private arista.eos.sshSettings {
   // Seconds between keepalive probes sent to an unresponsive client
   //
   // Paired with clientAliveCountMax, this is what ends a session whose peer
-  // has gone away without closing it. 0 when unset.
-  clientAliveInterval int
+  // has gone away without closing it. When the block leaves it at its
+  // default, this is the value the device's SSH daemon runs with (200 on
+  // EOS 4.33).
+  clientAliveInterval() int
   // Unanswered keepalive probes tolerated before the session is closed
   //
-  // 0 when unset.
-  clientAliveCountMax int
+  // When the block leaves it at its default, this is the value the device's
+  // SSH daemon runs with (3 on EOS 4.33).
+  clientAliveCountMax() int
 }
 
 // Arista EOS SNMPv1/v2c community string configuration
@@ -1669,6 +1681,10 @@ private arista.eos.passwordPolicy {
   // Configured `password policy <name>` (empty = no policy block)
   policyName string
   // Minimum password length (0 = unset)
+  //
+  // From `password minimum length` under `management security`, which applies
+  // to every local secret. When that is unset, the `minimum length` of the
+  // policy named in policyName.
   minimumLength int
   // Minimum digit characters required
   minimumDigits int
@@ -1705,7 +1721,7 @@ private arista.eos.ntpAuthKey @defaults("id hashAlgo trusted") {
 // underlying arista.eos.acl resources so audits can inspect the rules
 // actually enforced.
 arista.eos.controlPlanePolicer {
-  // Whether a `control-plane` block exists in the running-config
+  // Whether a `system control-plane` block exists in the running-config
   configured bool
   // Whether a `service-policy input <name>` is applied
   policyApplied bool

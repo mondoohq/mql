@@ -4,6 +4,7 @@
 package providers
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -107,4 +108,55 @@ func TestExtensibleSchema(t *testing.T) {
 		assert.Equal(t, "go.mondoo.com/mql/v9/providers/eternity-dep", deps["eternity-dep"].Id)
 		assert.Len(t, deps, len(baseline.AllDependencies())+1)
 	})
+}
+
+// A builtin provider's schema is added again every time a runtime asks for
+// the provider, and it is the same object every time. That must not rebuild
+// the aggregate: with many assets it was rebuilt once per asset.
+func TestExtensibleSchema_AddingTheSameSchemaAgain(t *testing.T) {
+	s := newExtensibleSchema()
+	s.coordinator = newCoordinator()
+	aggregate := func() uintptr { return reflect.ValueOf(s.AllResources()).Pointer() }
+
+	first := &resources.Schema{Resources: map[string]*resources.ResourceInfo{
+		"eternity": {Fields: map[string]*resources.Field{"iii": {Provider: "first"}}, Provider: "first"},
+	}}
+	s.Add("first", first)
+	built := aggregate()
+	require.NotNil(t, s.Lookup("eternity"))
+
+	s.Add("first", first)
+	assert.Equal(t, built, aggregate(), "the same schema again leaves the aggregate as it is")
+
+	// Another schema under another name is a change, as is another object
+	// under the same name, whatever its content.
+	s.Add("second", &resources.Schema{Resources: map[string]*resources.ResourceInfo{
+		"moment": {Fields: map[string]*resources.Field{"v": {Provider: "second"}}, Provider: "second"},
+	}})
+	rebuilt := aggregate()
+	assert.NotEqual(t, built, rebuilt)
+	require.NotNil(t, s.Lookup("moment"))
+
+	s.Add("first", &resources.Schema{Resources: map[string]*resources.ResourceInfo{
+		"aeon": {Fields: map[string]*resources.Field{"x": {Provider: "first"}}, Provider: "first"},
+	}})
+	assert.NotEqual(t, rebuilt, aggregate())
+	assert.NotNil(t, s.Lookup("aeon"))
+	assert.Nil(t, s.Lookup("eternity"), "what the replaced schema had is gone")
+}
+
+func TestCoordinator_BuiltinProviderDoesNotRebuildTheSchema(t *testing.T) {
+	c := newCoordinator()
+	aggregate := func() uintptr { return reflect.ValueOf(c.schema.AllResources()).Pointer() }
+
+	_, err := c.GetRunningProvider(BuiltinCoreID, UpdateProvidersConfig{})
+	require.NoError(t, err)
+	built := aggregate()
+	require.NotEmpty(t, c.schema.AllResources())
+
+	for range 3 {
+		_, err = c.GetRunningProvider(BuiltinCoreID, UpdateProvidersConfig{})
+		require.NoError(t, err)
+	}
+	assert.Equal(t, built, aggregate())
 }

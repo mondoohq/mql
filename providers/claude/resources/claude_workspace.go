@@ -7,7 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
+	"maps"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
@@ -140,24 +140,32 @@ func rawJSONToDict(raw string) (any, error) {
 	return res, nil
 }
 
-// parseFamily derives the model family from the model id, because the Models
-// API does not return one. The family follows the `claude-` prefix, either
-// directly (`claude-sonnet-5`) or after a version in the older scheme
-// (`claude-3-5-sonnet-20241022`), so it is the first segment that does not
-// start with a digit. Deriving the value instead of matching a fixed list of
-// families keeps a newly released one from silently reporting as empty.
-func parseFamily(id string) string {
-	rest, ok := strings.CutPrefix(id, "claude-")
-	if !ok {
-		return ""
+// modelArgs maps a Models API entry onto claude.model arguments. The family is
+// the API's model line, which is null for a model in no line; the API asks
+// clients not to infer it from the id. The lifecycle timestamps decode a JSON
+// null into the zero time, so they go through nullableTime.
+func modelArgs(m anthropic.ModelInfo) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":                       llx.StringData(m.ID),
+		"id":                         llx.StringData(m.ID),
+		"displayName":                llx.StringData(m.DisplayName),
+		"vendor":                     llx.StringData("Anthropic"),
+		"family":                     llx.StringDataPtr(nullableString(string(m.Line))),
+		"type":                       llx.StringData("model"),
+		"createdAt":                  llx.TimeData(m.CreatedAt),
+		"maxInputTokens":             llx.IntData(m.MaxInputTokens),
+		"maxTokens":                  llx.IntData(m.MaxTokens),
+		"batchSupported":             llx.BoolData(m.Capabilities.Batch.Supported),
+		"citationsSupported":         llx.BoolData(m.Capabilities.Citations.Supported),
+		"codeExecutionSupported":     llx.BoolData(m.Capabilities.CodeExecution.Supported),
+		"imageInputSupported":        llx.BoolData(m.Capabilities.ImageInput.Supported),
+		"pdfInputSupported":          llx.BoolData(m.Capabilities.PDFInput.Supported),
+		"structuredOutputsSupported": llx.BoolData(m.Capabilities.StructuredOutputs.Supported),
+		"thinkingSupported":          llx.BoolData(m.Capabilities.Thinking.Supported),
+		"lifecycle":                  llx.StringDataPtr(nullableString(string(m.Lifecycle))),
+		"deprecatedAt":               llx.TimeDataPtr(nullableTime(m.DeprecatedAt)),
+		"retiresAt":                  llx.TimeDataPtr(nullableTime(m.RetiresAt)),
 	}
-	for seg := range strings.SplitSeq(rest, "-") {
-		if seg == "" || (seg[0] >= '0' && seg[0] <= '9') {
-			continue
-		}
-		return seg
-	}
-	return ""
 }
 
 // claude
@@ -178,26 +186,7 @@ func (r *mqlClaude) models() ([]any, error) {
 
 	var res []any
 	for pager.Next() {
-		m := pager.Current()
-
-		mqlModel, err := CreateResource(r.MqlRuntime, "claude.model", map[string]*llx.RawData{
-			"__id":                       llx.StringData(m.ID),
-			"id":                         llx.StringData(m.ID),
-			"displayName":                llx.StringData(m.DisplayName),
-			"vendor":                     llx.StringData("Anthropic"),
-			"family":                     llx.StringData(parseFamily(m.ID)),
-			"type":                       llx.StringData("model"),
-			"createdAt":                  llx.TimeData(m.CreatedAt),
-			"maxInputTokens":             llx.IntData(m.MaxInputTokens),
-			"maxTokens":                  llx.IntData(m.MaxTokens),
-			"batchSupported":             llx.BoolData(m.Capabilities.Batch.Supported),
-			"citationsSupported":         llx.BoolData(m.Capabilities.Citations.Supported),
-			"codeExecutionSupported":     llx.BoolData(m.Capabilities.CodeExecution.Supported),
-			"imageInputSupported":        llx.BoolData(m.Capabilities.ImageInput.Supported),
-			"pdfInputSupported":          llx.BoolData(m.Capabilities.PDFInput.Supported),
-			"structuredOutputsSupported": llx.BoolData(m.Capabilities.StructuredOutputs.Supported),
-			"thinkingSupported":          llx.BoolData(m.Capabilities.Thinking.Supported),
-		})
+		mqlModel, err := CreateResource(r.MqlRuntime, "claude.model", modelArgs(pager.Current()))
 		if err != nil {
 			return nil, err
 		}
@@ -233,22 +222,7 @@ func initClaudeModel(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 		return nil, nil, fmt.Errorf("getting model %q: %w", id, err)
 	}
 
-	args["__id"] = llx.StringData(m.ID)
-	args["id"] = llx.StringData(m.ID)
-	args["displayName"] = llx.StringData(m.DisplayName)
-	args["vendor"] = llx.StringData("Anthropic")
-	args["family"] = llx.StringData(parseFamily(m.ID))
-	args["type"] = llx.StringData("model")
-	args["createdAt"] = llx.TimeData(m.CreatedAt)
-	args["maxInputTokens"] = llx.IntData(m.MaxInputTokens)
-	args["maxTokens"] = llx.IntData(m.MaxTokens)
-	args["batchSupported"] = llx.BoolData(m.Capabilities.Batch.Supported)
-	args["citationsSupported"] = llx.BoolData(m.Capabilities.Citations.Supported)
-	args["codeExecutionSupported"] = llx.BoolData(m.Capabilities.CodeExecution.Supported)
-	args["imageInputSupported"] = llx.BoolData(m.Capabilities.ImageInput.Supported)
-	args["pdfInputSupported"] = llx.BoolData(m.Capabilities.PDFInput.Supported)
-	args["structuredOutputsSupported"] = llx.BoolData(m.Capabilities.StructuredOutputs.Supported)
-	args["thinkingSupported"] = llx.BoolData(m.Capabilities.Thinking.Supported)
+	maps.Copy(args, modelArgs(*m))
 
 	return args, nil, nil
 }

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	emrtypes "github.com/aws/aws-sdk-go-v2/service/emr/types"
 	"github.com/stretchr/testify/assert"
 
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
@@ -60,4 +61,36 @@ func TestEc2InstanceIsDiscoverableAgreesWithStateMapping(t *testing.T) {
 				"state %q is dropped from discovery but does not map to terminated", state)
 		}
 	}
+}
+
+func TestEmrClusterIsDiscoverable(t *testing.T) {
+	cases := []struct {
+		name   string
+		status any
+		want   bool
+	}{
+		{"starting", map[string]any{"State": string(emrtypes.ClusterStateStarting)}, true},
+		{"running", map[string]any{"State": string(emrtypes.ClusterStateRunning)}, true},
+		{"waiting", map[string]any{"State": string(emrtypes.ClusterStateWaiting)}, true},
+		{"terminating", map[string]any{"State": string(emrtypes.ClusterStateTerminating)}, true},
+		{"terminated", map[string]any{"State": string(emrtypes.ClusterStateTerminated)}, false},
+		{"terminated with errors", map[string]any{"State": string(emrtypes.ClusterStateTerminatedWithErrors)}, false},
+		{"no state", map[string]any{}, true},
+		{"nil status", nil, true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, emrClusterIsDiscoverable(tc.status))
+		})
+	}
+}
+
+func TestRegionalAssetName(t *testing.T) {
+	// Synthetic: AWS creates a "primary" Athena workgroup in every region, so the
+	// region is what tells two of them apart.
+	assert.Equal(t, "primary (us-east-1)", regionalAssetName("primary", "us-east-1"))
+	assert.Equal(t, "primary (eu-west-1)", regionalAssetName("primary", "eu-west-1"))
+	// Synthetic: no region known, the name is left as is rather than "name ()".
+	assert.Equal(t, "primary", regionalAssetName("primary", ""))
 }

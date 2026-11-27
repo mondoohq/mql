@@ -7,8 +7,31 @@
       "id": "pr-001",
       "status": "active",
       "priority": 1,
-      "targets": [],
-      "actions": [],
+      "targets": [
+        {
+          "target": "url",
+          "constraint": {
+            "operator": "matches",
+            "value": "*example.com/images/*"
+          }
+        }
+      ],
+      "actions": [
+        {
+          "id": "always_use_https"
+        },
+        {
+          "id": "ssl",
+          "value": "flexible"
+        },
+        {
+          "id": "forwarding_url",
+          "value": {
+            "url": "https://www.example.com/$1",
+            "status_code": 301
+          }
+        }
+      ],
       "created_on": "2024-01-05T09:00:00Z",
       "modified_on": "2024-01-06T10:00:00Z"
     }

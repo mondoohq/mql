@@ -371,6 +371,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"claude.model.thinkingSupported": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeModel).GetThinkingSupported()).ToDataRes(types.Bool)
 	},
+	"claude.model.lifecycle": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeModel).GetLifecycle()).ToDataRes(types.String)
+	},
+	"claude.model.deprecatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeModel).GetDeprecatedAt()).ToDataRes(types.Time)
+	},
+	"claude.model.retiresAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeModel).GetRetiresAt()).ToDataRes(types.Time)
+	},
 	"claude.agent.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeAgent).GetId()).ToDataRes(types.String)
 	},
@@ -791,6 +800,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"claude.organization.complianceApiState": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeOrganization).GetComplianceApiState()).ToDataRes(types.String)
 	},
+	"claude.organization.accessTransparencyEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeOrganization).GetAccessTransparencyEnabled()).ToDataRes(types.Bool)
+	},
 	"claude.organization.rbacGroups": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeOrganization).GetRbacGroups()).ToDataRes(types.Array(types.Resource("claude.organization.rbacGroup")))
 	},
@@ -859,6 +871,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"claude.organization.workspace.allowedInferenceGeos": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeOrganizationWorkspace).GetAllowedInferenceGeos()).ToDataRes(types.Array(types.String))
+	},
+	"claude.organization.workspace.humanReviewEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeOrganizationWorkspace).GetHumanReviewEnabled()).ToDataRes(types.Bool)
+	},
+	"claude.organization.workspace.safeguardsStorageType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeOrganizationWorkspace).GetSafeguardsStorageType()).ToDataRes(types.String)
+	},
+	"claude.organization.workspace.transcriptsStorageType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeOrganizationWorkspace).GetTranscriptsStorageType()).ToDataRes(types.String)
 	},
 	"claude.organization.workspace.externalKeyId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeOrganizationWorkspace).GetExternalKeyId()).ToDataRes(types.String)
@@ -1289,6 +1310,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"claude.organization.rbacRole.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeOrganizationRbacRole).GetName()).ToDataRes(types.String)
 	},
+	"claude.organization.rbacRole.sourceType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeOrganizationRbacRole).GetSourceType()).ToDataRes(types.String)
+	},
 	"claude.organization.rbacRole.permissions": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeOrganizationRbacRole).GetPermissions()).ToDataRes(types.Array(types.Resource("claude.organization.rbacRole.permission")))
 	},
@@ -1594,6 +1618,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"claude.model.thinkingSupported": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClaudeModel).ThinkingSupported, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"claude.model.lifecycle": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeModel).Lifecycle, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.model.deprecatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeModel).DeprecatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"claude.model.retiresAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeModel).RetiresAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"claude.agent.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -2220,6 +2256,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlClaudeOrganization).ComplianceApiState, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"claude.organization.accessTransparencyEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeOrganization).AccessTransparencyEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"claude.organization.rbacGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClaudeOrganization).RbacGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -2318,6 +2358,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"claude.organization.workspace.allowedInferenceGeos": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClaudeOrganizationWorkspace).AllowedInferenceGeos, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"claude.organization.workspace.humanReviewEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeOrganizationWorkspace).HumanReviewEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"claude.organization.workspace.safeguardsStorageType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeOrganizationWorkspace).SafeguardsStorageType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.organization.workspace.transcriptsStorageType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeOrganizationWorkspace).TranscriptsStorageType, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"claude.organization.workspace.externalKeyId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -2952,6 +3004,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlClaudeOrganizationRbacRole).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"claude.organization.rbacRole.sourceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeOrganizationRbacRole).SourceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"claude.organization.rbacRole.permissions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClaudeOrganizationRbacRole).Permissions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -3481,6 +3537,9 @@ type mqlClaudeModel struct {
 	PdfInputSupported          plugin.TValue[bool]
 	StructuredOutputsSupported plugin.TValue[bool]
 	ThinkingSupported          plugin.TValue[bool]
+	Lifecycle                  plugin.TValue[string]
+	DeprecatedAt               plugin.TValue[*time.Time]
+	RetiresAt                  plugin.TValue[*time.Time]
 }
 
 // createClaudeModel creates a new instance of this resource
@@ -3573,6 +3632,18 @@ func (c *mqlClaudeModel) GetStructuredOutputsSupported() *plugin.TValue[bool] {
 
 func (c *mqlClaudeModel) GetThinkingSupported() *plugin.TValue[bool] {
 	return &c.ThinkingSupported
+}
+
+func (c *mqlClaudeModel) GetLifecycle() *plugin.TValue[string] {
+	return &c.Lifecycle
+}
+
+func (c *mqlClaudeModel) GetDeprecatedAt() *plugin.TValue[*time.Time] {
+	return &c.DeprecatedAt
+}
+
+func (c *mqlClaudeModel) GetRetiresAt() *plugin.TValue[*time.Time] {
+	return &c.RetiresAt
 }
 
 // mqlClaudeAgent for the claude.agent resource
@@ -4873,28 +4944,29 @@ func (c *mqlClaudeUserProfileEnforcementAction) GetExpiresAt() *plugin.TValue[*t
 type mqlClaudeOrganization struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlClaudeOrganizationInternal it will be used here
-	Id                   plugin.TValue[string]
-	Name                 plugin.TValue[string]
-	Workspaces           plugin.TValue[[]any]
-	Members              plugin.TValue[[]any]
-	Invites              plugin.TValue[[]any]
-	ApiKeys              plugin.TValue[[]any]
-	RateLimits           plugin.TValue[[]any]
-	UsageReport          plugin.TValue[[]any]
-	CostReport           plugin.TValue[[]any]
-	Activities           plugin.TValue[[]any]
-	ServiceAccounts      plugin.TValue[[]any]
-	FederationIssuers    plugin.TValue[[]any]
-	FederationRules      plugin.TValue[[]any]
-	ExternalKeys         plugin.TValue[[]any]
-	ComplianceApiState   plugin.TValue[string]
-	RbacGroups           plugin.TValue[[]any]
-	RbacRoles            plugin.TValue[[]any]
-	EffectiveSpendLimits plugin.TValue[[]any]
-	Plugins              plugin.TValue[[]any]
-	PluginMarketplaces   plugin.TValue[[]any]
-	Webhooks             plugin.TValue[[]any]
+	mqlClaudeOrganizationInternal
+	Id                        plugin.TValue[string]
+	Name                      plugin.TValue[string]
+	Workspaces                plugin.TValue[[]any]
+	Members                   plugin.TValue[[]any]
+	Invites                   plugin.TValue[[]any]
+	ApiKeys                   plugin.TValue[[]any]
+	RateLimits                plugin.TValue[[]any]
+	UsageReport               plugin.TValue[[]any]
+	CostReport                plugin.TValue[[]any]
+	Activities                plugin.TValue[[]any]
+	ServiceAccounts           plugin.TValue[[]any]
+	FederationIssuers         plugin.TValue[[]any]
+	FederationRules           plugin.TValue[[]any]
+	ExternalKeys              plugin.TValue[[]any]
+	ComplianceApiState        plugin.TValue[string]
+	AccessTransparencyEnabled plugin.TValue[bool]
+	RbacGroups                plugin.TValue[[]any]
+	RbacRoles                 plugin.TValue[[]any]
+	EffectiveSpendLimits      plugin.TValue[[]any]
+	Plugins                   plugin.TValue[[]any]
+	PluginMarketplaces        plugin.TValue[[]any]
+	Webhooks                  plugin.TValue[[]any]
 }
 
 // createClaudeOrganization creates a new instance of this resource
@@ -5135,6 +5207,12 @@ func (c *mqlClaudeOrganization) GetComplianceApiState() *plugin.TValue[string] {
 	})
 }
 
+func (c *mqlClaudeOrganization) GetAccessTransparencyEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AccessTransparencyEnabled, func() (bool, error) {
+		return c.accessTransparencyEnabled()
+	})
+}
+
 func (c *mqlClaudeOrganization) GetRbacGroups() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.RbacGroups, func() ([]any, error) {
 		if c.MqlRuntime.HasRecording {
@@ -5320,21 +5398,24 @@ type mqlClaudeOrganizationWorkspace struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlClaudeOrganizationWorkspaceInternal
-	Id                   plugin.TValue[string]
-	Name                 plugin.TValue[string]
-	DisplayColor         plugin.TValue[string]
-	CreatedAt            plugin.TValue[*time.Time]
-	ArchivedAt           plugin.TValue[*time.Time]
-	WorkspaceGeo         plugin.TValue[string]
-	DefaultInferenceGeo  plugin.TValue[string]
-	AllowedInferenceGeos plugin.TValue[[]any]
-	ExternalKeyId        plugin.TValue[string]
-	ExternalKey          plugin.TValue[*mqlClaudeOrganizationExternalKey]
-	CompartmentId        plugin.TValue[string]
-	Tags                 plugin.TValue[map[string]any]
-	UserProfile          plugin.TValue[*mqlClaudeUserProfile]
-	Members              plugin.TValue[[]any]
-	RateLimits           plugin.TValue[[]any]
+	Id                     plugin.TValue[string]
+	Name                   plugin.TValue[string]
+	DisplayColor           plugin.TValue[string]
+	CreatedAt              plugin.TValue[*time.Time]
+	ArchivedAt             plugin.TValue[*time.Time]
+	WorkspaceGeo           plugin.TValue[string]
+	DefaultInferenceGeo    plugin.TValue[string]
+	AllowedInferenceGeos   plugin.TValue[[]any]
+	HumanReviewEnabled     plugin.TValue[bool]
+	SafeguardsStorageType  plugin.TValue[string]
+	TranscriptsStorageType plugin.TValue[string]
+	ExternalKeyId          plugin.TValue[string]
+	ExternalKey            plugin.TValue[*mqlClaudeOrganizationExternalKey]
+	CompartmentId          plugin.TValue[string]
+	Tags                   plugin.TValue[map[string]any]
+	UserProfile            plugin.TValue[*mqlClaudeUserProfile]
+	Members                plugin.TValue[[]any]
+	RateLimits             plugin.TValue[[]any]
 }
 
 // createClaudeOrganizationWorkspace creates a new instance of this resource
@@ -5399,6 +5480,24 @@ func (c *mqlClaudeOrganizationWorkspace) GetDefaultInferenceGeo() *plugin.TValue
 
 func (c *mqlClaudeOrganizationWorkspace) GetAllowedInferenceGeos() *plugin.TValue[[]any] {
 	return &c.AllowedInferenceGeos
+}
+
+func (c *mqlClaudeOrganizationWorkspace) GetHumanReviewEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.HumanReviewEnabled, func() (bool, error) {
+		return c.humanReviewEnabled()
+	})
+}
+
+func (c *mqlClaudeOrganizationWorkspace) GetSafeguardsStorageType() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SafeguardsStorageType, func() (string, error) {
+		return c.safeguardsStorageType()
+	})
+}
+
+func (c *mqlClaudeOrganizationWorkspace) GetTranscriptsStorageType() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.TranscriptsStorageType, func() (string, error) {
+		return c.transcriptsStorageType()
+	})
 }
 
 func (c *mqlClaudeOrganizationWorkspace) GetExternalKeyId() *plugin.TValue[string] {
@@ -6988,6 +7087,7 @@ type mqlClaudeOrganizationRbacRole struct {
 	// optional: if you define mqlClaudeOrganizationRbacRoleInternal it will be used here
 	Id          plugin.TValue[string]
 	Name        plugin.TValue[string]
+	SourceType  plugin.TValue[string]
 	Permissions plugin.TValue[[]any]
 	Groups      plugin.TValue[[]any]
 	CreatedAt   plugin.TValue[*time.Time]
@@ -7032,6 +7132,10 @@ func (c *mqlClaudeOrganizationRbacRole) GetId() *plugin.TValue[string] {
 
 func (c *mqlClaudeOrganizationRbacRole) GetName() *plugin.TValue[string] {
 	return &c.Name
+}
+
+func (c *mqlClaudeOrganizationRbacRole) GetSourceType() *plugin.TValue[string] {
+	return &c.SourceType
 }
 
 func (c *mqlClaudeOrganizationRbacRole) GetPermissions() *plugin.TValue[[]any] {

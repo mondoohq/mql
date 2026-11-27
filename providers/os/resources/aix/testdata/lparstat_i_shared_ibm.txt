@@ -1,0 +1,24 @@
+Node Name                                  : lou162
+Partition Name                             : LPAR2
+Partition Number                           : 2
+Type                                       : Shared-SMT
+Mode                                       : Capped
+Entitled Capacity                          : 0.50
+Partition Group-ID                         : 32770
+Shared Pool ID                             : 0
+Online Virtual CPUs                        : 1
+Maximum Virtual CPUs                       : 2
+Minimum Virtual CPUs                       : 1
+Online Memory                              : 1280 MB
+Maximum Memory                             : 1536 MB
+Minimum Memory                             : 1024 MB
+Variable Capacity Weight                   : 0
+Minimum Capacity                           : 0.10
+Maximum Capacity                           : 1.00
+Capacity Increment                         : 0.01
+Maximum Physical CPUs in system            : 2
+Active Physical CPUs in system             : 2
+Active CPUs in Pool                        : 2
+Unallocated Capacity                       : 0.00
+Physical CPU Percentage                    : 50.00%
+Unallocated Weight                         : 0

@@ -84,3 +84,53 @@ func (a *mqlAwsDocumentdbCluster) transitEncryptionEnabled() (bool, error) {
 	}
 	return parameterGroupEnforcesTLS(pg.Data.GetParameters())
 }
+
+// rdsInstanceTLSParameter returns the instance parameter that makes an RDS
+// engine refuse unencrypted client connections, or "" for engines that have
+// none at the instance level. Aurora sets it in the cluster parameter group,
+// Oracle enables TLS through an option group, and Db2 and RDS Custom have no
+// such parameter.
+func rdsInstanceTLSParameter(engine string) string {
+	e := strings.ToLower(strings.TrimSpace(engine))
+	switch {
+	case e == "postgres":
+		return "rds.force_ssl"
+	case e == "mysql", e == "mariadb":
+		return "require_secure_transport"
+	case strings.HasPrefix(e, "sqlserver-"):
+		return "rds.force_ssl"
+	}
+	return ""
+}
+
+func (a *mqlAwsRdsDbinstance) transitEncryptionEnabled() (bool, error) {
+	paramName := rdsInstanceTLSParameter(a.Engine.Data)
+	if paramName == "" {
+		a.TransitEncryptionEnabled.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	groups := a.GetParameterGroups()
+	if groups.Error != nil {
+		return false, groups.Error
+	}
+	for _, raw := range groups.Data {
+		pg, ok := raw.(*mqlAwsRdsParameterGroup)
+		if !ok {
+			continue
+		}
+		params := pg.GetParameters()
+		if params.Error != nil {
+			return false, params.Error
+		}
+		for _, p := range params.Data {
+			param, ok := p.(*mqlAwsRdsParameterGroupParameter)
+			if !ok || param.Name.Data != paramName {
+				continue
+			}
+			if paramIndicatesTLS(param.Name.Data, param.Value.Data) {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}

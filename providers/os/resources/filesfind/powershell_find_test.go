@@ -73,7 +73,7 @@ $SearchName = @'
 
 $items = @(Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue)
 if ($items.Count -eq 1 -and $items[0].PSIsContainer) {
-  $items += @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse)
+  $items += @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Filter $SearchName -Recurse)
 }
 $items = $items | Where-Object { $_.Name -like $SearchName }
 $items | Select-Object -ExpandProperty FullName
@@ -190,7 +190,7 @@ $SearchName = @'
 
 $items = @(Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue)
 if ($items.Count -eq 1 -and $items[0].PSIsContainer) {
-  $items += @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse -Depth 4)
+  $items += @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Filter $SearchName -Recurse -Depth 4)
 }
 $items = $items | Where-Object { !$_.PSIsContainer -and $_.Name -like $SearchName }
 $items | Select-Object -ExpandProperty FullName
@@ -218,7 +218,7 @@ $RegexPattern = @'
 
 $items = @(Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue)
 if ($items.Count -eq 1 -and $items[0].PSIsContainer) {
-  $items += @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue)
+  $items += @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Filter $SearchName)
 }
 $items = $items | Where-Object { !$_.PSIsContainer -and $_.Name -like $SearchName -and $_.FullName -match $RegexPattern -and $_.IsReadOnly -eq $false }
 $items | Select-Object -ExpandProperty FullName
@@ -292,9 +292,52 @@ $RegexPattern = @'
 
 $items = @(Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue)
 if ($items.Count -eq 1 -and $items[0].PSIsContainer) {
-  $items += @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse)
+  $items += @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Filter $SearchName -Recurse)
 }
 $items = $items | Where-Object { $_.Name -like $SearchName -and $_.FullName -match $RegexPattern }
+$items | Select-Object -ExpandProperty FullName
+`,
+		},
+		{
+			// Synthetic: -Filter has no [] ranges, so only -like may match this name.
+			TestTitle: "name with a bracket range is matched by -like alone",
+			From:      "C:\\Logs",
+			Search:    "app[0-9].log",
+			ExpectedCmd: `$Path = @'
+C:\Logs
+'@
+
+$SearchName = @'
+app[0-9].log
+'@
+
+$items = @(Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue)
+if ($items.Count -eq 1 -and $items[0].PSIsContainer) {
+  $items += @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse)
+}
+$items = $items | Where-Object { $_.Name -like $SearchName }
+$items | Select-Object -ExpandProperty FullName
+`,
+		},
+		{
+			// Synthetic: a ` escape means nothing to -Filter.
+			TestTitle: "name with a backtick escape is matched by -like alone",
+			From:      "C:\\Data",
+			Search:    "a`*b.txt",
+			Depth:     &depth1,
+			ExpectedCmd: `$Path = @'
+C:\Data
+'@
+
+$SearchName = @'
+a` + "`" + `*b.txt
+'@
+
+$items = @(Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue)
+if ($items.Count -eq 1 -and $items[0].PSIsContainer) {
+  $items += @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue)
+}
+$items = $items | Where-Object { $_.Name -like $SearchName }
 $items | Select-Object -ExpandProperty FullName
 `,
 		},

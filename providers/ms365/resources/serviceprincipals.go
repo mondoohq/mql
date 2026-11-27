@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	abstractions "github.com/microsoft/kiota-abstractions-go"
 	msgraphsdkgo "github.com/microsoftgraph/msgraph-sdk-go"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/microsoftgraph/msgraph-sdk-go/serviceprincipals"
@@ -716,18 +717,21 @@ func (m *mqlMicrosoft) buildServicePrincipalPermissions(
 		}
 
 		assignment, err := CreateResource(m.MqlRuntime, "microsoft.application.permission", map[string]*llx.RawData{
-			"__id":        llx.StringDataPtr(assignmentID),
-			"appId":       llx.StringData(spId.String()),
-			"appName":     llx.StringDataPtr(roleAssignment.GetResourceDisplayName()),
-			"description": llx.StringData(role.desc),
-			"id":          llx.StringData(roleId.String()),
-			"name":        llx.StringData(role.permission),
-			"type":        llx.StringData("application"),
-			"status":      llx.StringData("granted"),
+			"__id":            llx.StringDataPtr(assignmentID),
+			"appId":           llx.StringData(spId.String()),
+			"appName":         llx.StringDataPtr(roleAssignment.GetResourceDisplayName()),
+			"description":     llx.StringData(role.desc),
+			"id":              llx.StringData(roleId.String()),
+			"name":            llx.StringData(role.permission),
+			"type":            llx.StringData("application"),
+			"status":          llx.StringData("granted"),
+			"grantedDateTime": graphTimeData(roleAssignment.GetCreatedDateTime()),
+			"consentType":     llx.StringData(""),
 		})
 		if err != nil {
 			return nil, err
 		}
+		assignment.(*mqlMicrosoftApplicationPermission).cacheResourceID = spId.String()
 		list = append(list, assignment)
 	}
 
@@ -743,18 +747,21 @@ func (m *mqlMicrosoft) buildServicePrincipalPermissions(
 			grantedRoleKeys[key] = true // also dedupes repeated roles
 
 			assignment, err := CreateResource(m.MqlRuntime, "microsoft.application.permission", map[string]*llx.RawData{
-				"__id":        llx.StringData(key + "/available"),
-				"appId":       llx.StringData(resourceSpId),
-				"appName":     llx.StringData(resourceName),
-				"description": llx.StringData(role.desc),
-				"id":          llx.StringData(role.id),
-				"name":        llx.StringData(role.permission),
-				"type":        llx.StringData("application"),
-				"status":      llx.StringData("available"),
+				"__id":            llx.StringData(key + "/available"),
+				"appId":           llx.StringData(resourceSpId),
+				"appName":         llx.StringData(resourceName),
+				"description":     llx.StringData(role.desc),
+				"id":              llx.StringData(role.id),
+				"name":            llx.StringData(role.permission),
+				"type":            llx.StringData("application"),
+				"status":          llx.StringData("available"),
+				"grantedDateTime": llx.NilData,
+				"consentType":     llx.StringData(""),
 			})
 			if err != nil {
 				return nil, err
 			}
+			assignment.(*mqlMicrosoftApplicationPermission).cacheResourceID = resourceSpId
 			list = append(list, assignment)
 		}
 	}
@@ -787,18 +794,21 @@ func (m *mqlMicrosoft) buildServicePrincipalPermissions(
 			}
 
 			assignment, err := CreateResource(m.MqlRuntime, "microsoft.application.permission", map[string]*llx.RawData{
-				"__id":        llx.StringData(id + "/" + scopeEntry),
-				"appId":       llx.StringDataPtr(spId),
-				"appName":     llx.StringData(appName),
-				"description": llx.StringData(desc),
-				"id":          llx.StringData(id),
-				"name":        llx.StringData(scopeEntry),
-				"type":        llx.StringData("delegated"),
-				"status":      llx.StringData("granted"),
+				"__id":            llx.StringData(id + "/" + scopeEntry),
+				"appId":           llx.StringDataPtr(spId),
+				"appName":         llx.StringData(appName),
+				"description":     llx.StringData(desc),
+				"id":              llx.StringData(id),
+				"name":            llx.StringData(scopeEntry),
+				"type":            llx.StringData("delegated"),
+				"status":          llx.StringData("granted"),
+				"grantedDateTime": llx.NilData,
+				"consentType":     llx.StringDataPtr(roleAssignment.GetConsentType()),
 			})
 			if err != nil {
 				return nil, err
 			}
+			assignment.(*mqlMicrosoftApplicationPermission).cacheResourceID = *spId
 			list = append(list, assignment)
 		}
 	}
@@ -875,4 +885,134 @@ func (a *mqlMicrosoftServiceprincipal) appManagementPolicies() ([]any, error) {
 		return nil, classifyGraphError(err, "Application.Read.All", "Policy.Read.All")
 	}
 	return newMqlAppManagementPolicies(a.MqlRuntime, policies)
+}
+
+// servicePrincipalIDs returns the ids of the service principals Graph returned,
+// skipping entries without one.
+func servicePrincipalIDs(sps []models.ServicePrincipalable) []string {
+	res := make([]string, 0, len(sps))
+	for _, sp := range sps {
+		if sp == nil || sp.GetId() == nil || *sp.GetId() == "" {
+			continue
+		}
+		res = append(res, *sp.GetId())
+	}
+	return res
+}
+
+// servicePrincipalsFromCollection pages a service principal collection and
+// resolves each entry through the tenant's service principal list, so the
+// returned resources carry every field the list selects.
+func servicePrincipalsFromCollection(ctx context.Context, runtime *plugin.Runtime, graphClient *msgraphsdkgo.GraphServiceClient, resp models.ServicePrincipalCollectionResponseable) ([]any, error) {
+	sps, err := iterate[models.ServicePrincipalable](ctx, resp, graphClient.GetAdapter(), models.CreateServicePrincipalCollectionResponseFromDiscriminatorValue)
+	if err != nil {
+		return nil, transformError(err)
+	}
+	return newResourcesByID(runtime, ResourceMicrosoftServiceprincipal, servicePrincipalIDs(sps))
+}
+
+func (a *mqlMicrosoftServiceprincipal) ownerServicePrincipals() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
+	graphClient, err := conn.GraphClient()
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	resp, err := graphClient.ServicePrincipals().ByServicePrincipalId(a.Id.Data).Owners().GraphServicePrincipal().Get(ctx,
+		&serviceprincipals.ItemOwnersGraphServicePrincipalRequestBuilderGetRequestConfiguration{
+			QueryParameters: &serviceprincipals.ItemOwnersGraphServicePrincipalRequestBuilderGetQueryParameters{Select: []string{"id"}},
+		})
+	if err != nil {
+		return nil, classifyGraphError(err, "Application.Read.All")
+	}
+	return servicePrincipalsFromCollection(ctx, a.MqlRuntime, graphClient, resp)
+}
+
+type mqlMicrosoftApplicationPermissionInternal struct {
+	// cacheResourceID is the object id of the API's service principal.
+	cacheResourceID string
+}
+
+func (a *mqlMicrosoftApplicationPermission) resource() (*mqlMicrosoftServiceprincipal, error) {
+	if a.cacheResourceID == "" {
+		a.Resource.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, ResourceMicrosoftServiceprincipal, map[string]*llx.RawData{
+		"id": llx.StringData(a.cacheResourceID),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlMicrosoftServiceprincipal), nil
+}
+
+func (a *mqlMicrosoftServiceprincipal) memberOf() ([]any, error) {
+	return a.groupMemberships(false)
+}
+
+func (a *mqlMicrosoftServiceprincipal) transitiveMemberOf() ([]any, error) {
+	return a.groupMemberships(true)
+}
+
+// groupMemberships resolves the service principal's direct or transitive
+// groups through a cache shared with the service principals listed alongside
+// it, so a query over every service principal batches the lookups.
+func (a *mqlMicrosoftServiceprincipal) groupMemberships(transitive bool) ([]any, error) {
+	ms, err := a.microsoftParent()
+	if err != nil {
+		return nil, err
+	}
+	cache := &ms.spBatches.memberOf
+	if transitive {
+		cache = &ms.spBatches.transitiveOf
+	}
+	v, err := cache.resolve(a.Id.Data, a.batchPeerIDs, func(ids []string) (map[string]any, map[string]error, error) {
+		conn := ms.MqlRuntime.Connection.(*connection.Ms365Connection)
+		graphClient, err := conn.GraphClient()
+		if err != nil {
+			return nil, nil, err
+		}
+		groups, errs, err := fetchServicePrincipalGroupMemberships(context.Background(), graphClient, ids, transitive)
+		if err != nil {
+			return nil, nil, err
+		}
+		data := make(map[string]any, len(groups))
+		for id, g := range groups {
+			data[id] = g
+		}
+		return data, errs, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	groups, _ := v.([]models.Groupable)
+	res := make([]any, 0, len(groups))
+	for _, g := range groups {
+		r, err := newMqlMicrosoftGroup(a.MqlRuntime, g)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, r)
+	}
+	return res, nil
+}
+
+// fetchServicePrincipalGroupMemberships reads the direct or transitive groups
+// of the given service principals in batched Graph requests.
+func fetchServicePrincipalGroupMemberships(ctx context.Context, graphClient *msgraphsdkgo.GraphServiceClient, ids []string, transitive bool) (map[string][]models.Groupable, map[string]error, error) {
+	top := userGroupPageSize
+	build := func(id string) (*abstractions.RequestInformation, error) {
+		if transitive {
+			return graphClient.ServicePrincipals().ByServicePrincipalId(id).TransitiveMemberOf().GraphGroup().ToGetRequestInformation(ctx,
+				&serviceprincipals.ItemTransitiveMemberOfGraphGroupRequestBuilderGetRequestConfiguration{
+					QueryParameters: &serviceprincipals.ItemTransitiveMemberOfGraphGroupRequestBuilderGetQueryParameters{Top: &top},
+				})
+		}
+		return graphClient.ServicePrincipals().ByServicePrincipalId(id).MemberOf().GraphGroup().ToGetRequestInformation(ctx,
+			&serviceprincipals.ItemMemberOfGraphGroupRequestBuilderGetRequestConfiguration{
+				QueryParameters: &serviceprincipals.ItemMemberOfGraphGroupRequestBuilderGetQueryParameters{Top: &top},
+			})
+	}
+	return fetchGroupMemberships(ctx, graphClient, ids, build)
 }

@@ -5,6 +5,7 @@ package resources
 
 import (
 	"errors"
+	"io"
 	"os"
 	"path"
 	"regexp"
@@ -16,6 +17,8 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
+	"go.mondoo.com/mql/providers/os/resources/windows"
 	"go.mondoo.com/mql/types"
 )
 
@@ -74,6 +77,23 @@ func (s *mqlOsRootCertificates) id() (string, error) {
 func initOsRootCertificates(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	conn := runtime.Connection.(shared.Connection)
 	platform := conn.Asset().Platform
+
+	// Windows keeps its roots in a certificate store, not in a file, so there
+	// are no files and the content comes straight from the store. macOS is in
+	// the bsd family and reads /etc/ssl/cert.pem below.
+	if platform.IsFamily("windows") {
+		bundle, err := windowsRootCertificates(conn)
+		if err != nil {
+			return nil, nil, err
+		}
+		content := []any{}
+		if strings.TrimSpace(bundle) != "" {
+			content = append(content, bundle)
+		}
+		args["files"] = llx.ArrayData([]any{}, types.Resource("file"))
+		args["content"] = llx.ArrayData(content, types.String)
+		return args, nil, nil
+	}
 
 	var paths []string
 	// Solaris keeps its bundle under /etc/certs, which no other path names.
@@ -138,6 +158,28 @@ func initOsRootCertificates(runtime *plugin.Runtime, args map[string]*llx.RawDat
 	args["files"] = llx.ArrayData(files, types.Resource("file"))
 
 	return args, nil, nil
+}
+
+// windowsRootCertificates reads the LocalMachine\Root store and returns it as
+// one PEM bundle, empty when the store holds nothing.
+func windowsRootCertificates(conn shared.Connection) (string, error) {
+	cmd, err := conn.RunCommand(powershell.Encode(windows.RootCertificatesScript))
+	if err != nil {
+		return "", err
+	}
+	if cmd.ExitStatus != 0 {
+		stderr, err := io.ReadAll(cmd.Stderr)
+		if err != nil {
+			return "", err
+		}
+		return "", errors.New("failed to read the Windows Root certificate store: " + strings.TrimSpace(string(stderr)))
+	}
+
+	certs, err := windows.ParseCertificates(cmd.Stdout)
+	if err != nil {
+		return "", err
+	}
+	return windows.PemBundle(certs), nil
 }
 
 func (s *mqlOsRootCertificates) content(files []any) ([]any, error) {

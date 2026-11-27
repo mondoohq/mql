@@ -41,6 +41,12 @@ func TestSshSettingsArgsCoverEverySchemaField(t *testing.T) {
 	args := sshSettingsArgs(&eos.SshSettings{})
 
 	for _, field := range schemaFields(&mqlAristaEosSshSettings{}) {
+		if sshSettingsComputedFields[field] {
+			if _, ok := args[field]; ok {
+				t.Errorf("arista.eos.sshSettings.%s is computed but also passed as an argument", field)
+			}
+			continue
+		}
 		if _, ok := args[field]; !ok {
 			t.Errorf("arista.eos.sshSettings.%s is declared in the schema but never populated", field)
 		}
@@ -58,8 +64,6 @@ func TestSshSettingsArgsCarryTheParsedValues(t *testing.T) {
 		ConnectionPerHostLimit: 5,
 		EmptyPasswords:         "deny",
 		LogLevel:               "verbose",
-		ClientAliveInterval:    60,
-		ClientAliveCountMax:    3,
 	}
 	args := sshSettingsArgs(s)
 
@@ -69,8 +73,6 @@ func TestSshSettingsArgsCarryTheParsedValues(t *testing.T) {
 		"connectionPerHostLimit": int64(5),
 		"emptyPasswords":         "deny",
 		"logLevel":               "verbose",
-		"clientAliveInterval":    int64(60),
-		"clientAliveCountMax":    int64(3),
 	} {
 		if got := args[field].Value; got != want {
 			t.Errorf("%s = %v, want %v", field, got, want)
@@ -80,5 +82,21 @@ func TestSshSettingsArgsCarryTheParsedValues(t *testing.T) {
 	vrfs, ok := args["vrfs"].Value.([]any)
 	if !ok || len(vrfs) != 1 || vrfs[0] != "MGMT" {
 		t.Errorf("vrfs = %v, want [MGMT]", args["vrfs"].Value)
+	}
+}
+
+// TestSshSettingsClientAliveConfigured pins that a value the block sets is
+// reported as is, without reading the device's sshd configuration.
+func TestSshSettingsClientAliveConfigured(t *testing.T) {
+	r := &mqlAristaEosSshSettings{}
+	r.parsed = eos.ParseSshSettings("management ssh\n   client-alive interval 60\n   client-alive count-max 5\n!\n")
+
+	interval, err := r.clientAliveInterval()
+	if err != nil || interval != 60 {
+		t.Errorf("clientAliveInterval = %d, %v; want 60", interval, err)
+	}
+	countMax, err := r.clientAliveCountMax()
+	if err != nil || countMax != 5 {
+		t.Errorf("clientAliveCountMax = %d, %v; want 5", countMax, err)
 	}
 }

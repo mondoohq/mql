@@ -8,6 +8,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	ecstypes "github.com/aws/aws-sdk-go-v2/service/ecs/types"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -161,4 +162,20 @@ func TestEcsTaskDefinitionIsolationMode(t *testing.T) {
 	_, err = plain.isolationMode()
 	require.NoError(t, err)
 	require.True(t, plain.IsolationMode.IsNull())
+}
+
+func TestEcsContainerTaskArn(t *testing.T) {
+	got, err := ecsContainerTaskArn("arn:aws:ecs:us-east-1:123456789012:container/web/0123456789abcdef0123456789abcdef/1a2b3c4d-1111-2222-3333-444455556666")
+	require.NoError(t, err)
+	assert.Equal(t, "arn:aws:ecs:us-east-1:123456789012:task/web/0123456789abcdef0123456789abcdef", got)
+
+	got, err = ecsContainerTaskArn("arn:aws-us-gov:ecs:us-gov-west-1:123456789012:container/batch/abc/def")
+	require.NoError(t, err)
+	assert.Equal(t, "arn:aws-us-gov:ecs:us-gov-west-1:123456789012:task/batch/abc", got)
+
+	// The old format carries neither cluster nor task.
+	_, err = ecsContainerTaskArn("arn:aws:ecs:us-east-1:123456789012:container/1a2b3c4d-1111-2222-3333-444455556666")
+	assert.Error(t, err)
+	_, err = ecsContainerTaskArn("arn:aws:s3:::bucket")
+	assert.Error(t, err)
 }

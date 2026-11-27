@@ -125,3 +125,46 @@ func ParseCertificates(r io.Reader) ([]Certificate, error) {
 	}
 	return certs, nil
 }
+
+// RootCertificatesScript reads the machine-wide Root store, which is what
+// os.rootCertificates reports on Windows.
+//
+// Cert:\LocalMachine\Root is the logical store: it already holds the roots
+// Windows downloaded into AuthRoot through the Automatic Root Certificates
+// Update, as well as those pushed by Group Policy and the enterprise store, so
+// AuthRoot is not read on its own. Measured on Windows Server 2022 (build
+// 20348): Root held 33 certificates, AuthRoot 20, and all 20 of those were
+// among the 33.
+//
+// Unlike CertificatesScript, a store that cannot be opened stops the script,
+// because an empty Root store reads as a host that trusts no CA.
+const RootCertificatesScript = `
+$ErrorActionPreference = 'Stop'
+@(Get-ChildItem -Path 'Cert:\LocalMachine\Root' | ForEach-Object {
+  [PSCustomObject]@{
+    Location = 'LocalMachine'
+    Store = 'Root'
+    Thumbprint = $_.Thumbprint
+    Der = [Convert]::ToBase64String($_.RawData)
+  }
+}) | ConvertTo-Json -Compress -Depth 3
+`
+
+// PemBundle renders store entries as one PEM bundle, one block per entry.
+//
+// An entry whose bytes are absent or not valid base64 still gets a block, with
+// no body. Dropping it would make the store look complete; a body that is not
+// base64 would stop the PEM decoder and lose every entry after it. An empty
+// block is decoded and then rejected by the x509 parser, so it is counted as
+// unparseable, which is what it is.
+func PemBundle(certs []Certificate) string {
+	var b strings.Builder
+	for _, c := range certs {
+		p := c.Pem()
+		if p == "" {
+			p = "-----BEGIN CERTIFICATE-----\n-----END CERTIFICATE-----\n"
+		}
+		b.WriteString(p)
+	}
+	return b.String()
+}

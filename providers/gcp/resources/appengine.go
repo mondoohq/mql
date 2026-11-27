@@ -123,11 +123,12 @@ func (g *mqlGcpProjectAppEngineService) services() ([]any, error) {
 			}
 
 			mqlService, err := CreateResource(g.MqlRuntime, "gcp.project.appEngineService.service", map[string]*llx.RawData{
-				"projectId": llx.StringData(projectId),
-				"id":        llx.StringData(s.Id),
-				"name":      llx.StringData(s.Name),
-				"labels":    llx.MapData(convert.MapToInterfaceMap(s.Labels), types.String),
-				"split":     llx.DictData(split),
+				"projectId":             llx.StringData(projectId),
+				"id":                    llx.StringData(s.Id),
+				"name":                  llx.StringData(s.Name),
+				"labels":                llx.MapData(convert.MapToInterfaceMap(s.Labels), types.String),
+				"split":                 llx.DictData(split),
+				"ingressTrafficAllowed": llx.StringData(appEngineIngressTrafficAllowed(s.NetworkSettings)),
 			})
 			if err != nil {
 				return err
@@ -480,4 +481,15 @@ func appEngineConvertVpcConnector(vc *appengine.VpcAccessConnector) (map[string]
 		Name:          vc.Name,
 		EgressSetting: vc.EgressSetting,
 	})
+}
+
+// appEngineIngressTrafficAllowed returns the service's ingress setting. The
+// API omits networkSettings on a service that never set it, and App Engine
+// then allows all traffic, so an absent or unspecified setting reports
+// INGRESS_TRAFFIC_ALLOWED_ALL.
+func appEngineIngressTrafficAllowed(ns *appengine.NetworkSettings) string {
+	if ns == nil || ns.IngressTrafficAllowed == "" || ns.IngressTrafficAllowed == "INGRESS_TRAFFIC_ALLOWED_UNSPECIFIED" {
+		return "INGRESS_TRAFFIC_ALLOWED_ALL"
+	}
+	return ns.IngressTrafficAllowed
 }

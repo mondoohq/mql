@@ -110,6 +110,32 @@ func TestZoneSettings_alreadyFetchedExtras(t *testing.T) {
 	assert.Equal(t, 1, calls, "the extra settings must not cost another API call")
 }
 
+// Synthetic: a settings response carrying sha1_support, and one without it;
+// no live account was checked. Like the sibling on/off settings, an absent
+// setting reads as an empty string.
+func TestZoneSettingsSha1Support(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+		want string
+	}{
+		{name: "on", body: `[{"id":"sha1_support","value":"on"},{"id":"ssl","value":"full"}]`, want: "on"},
+		{name: "absent", body: `[{"id":"ssl","value":"full"}]`, want: ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := setupTestEnv(t)
+			zone := createTestZone(t, env)
+			env.Mux.HandleFunc(fmt.Sprintf("/zones/%s/settings", testZoneID), func(w http.ResponseWriter, r *http.Request) {
+				jsonResponse(w, `{"success":true,"result":`+tc.body+`}`)
+			})
+
+			s, err := zone.settings()
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, s.Sha1Support.Data)
+		})
+	}
+}
+
 func TestExtractSettingStrList(t *testing.T) {
 	tests := []struct {
 		name     string

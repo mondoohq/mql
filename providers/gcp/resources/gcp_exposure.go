@@ -4,7 +4,7 @@
 package resources
 
 import (
-	"slices"
+	"net/netip"
 	"strconv"
 	"strings"
 
@@ -12,26 +12,13 @@ import (
 	"go.mondoo.com/mql/types"
 )
 
-// openCIDRs are the source ranges that mean "the entire internet".
-var openCIDRs = map[string]struct{}{
-	"0.0.0.0/0": {},
-	"::/0":      {},
-}
-
-// isOpenCIDR reports whether a CIDR string represents the whole internet
-// (IPv4 0.0.0.0/0 or IPv6 ::/0). Surrounding whitespace is tolerated.
-func isOpenCIDR(cidr string) bool {
-	_, ok := openCIDRs[strings.TrimSpace(cidr)]
-	return ok
-}
-
 // gkeControlPlaneInternetReachable derives whether a GKE cluster's control
 // plane (Kubernetes API server) is reachable from the public internet.
 //
 // It is reachable when the public IP endpoint is enabled AND either:
 //   - master authorized networks is NOT enforced (any source IP may connect), or
-//   - the authorized-networks allowlist itself contains an open CIDR
-//     (0.0.0.0/0 or ::/0), which whitelists the entire internet.
+//   - the authorized-networks allowlist admits the internet: 0.0.0.0/0, ::/0,
+//     or ranges that together cover most of it (see internetSourceFamilies).
 //
 // When the public endpoint is disabled the control plane is private and never
 // internet-reachable, regardless of the authorized-networks configuration.
@@ -42,7 +29,12 @@ func gkeControlPlaneInternetReachable(publicEndpointEnabled, authorizedNetworksE
 	if !authorizedNetworksEnforced {
 		return true
 	}
-	return slices.ContainsFunc(authorizedCIDRs, isOpenCIDR)
+	ranges := make([]any, 0, len(authorizedCIDRs))
+	for _, c := range authorizedCIDRs {
+		ranges = append(ranges, c)
+	}
+	v4, v6 := internetSourceFamilies(ranges)
+	return v4 || v6
 }
 
 func (g *mqlGcpProjectGkeServiceCluster) controlPlaneInternetReachable() (bool, error) {
@@ -71,8 +63,8 @@ func (g *mqlGcpProjectGkeServiceCluster) controlPlaneInternetReachable() (bool, 
 }
 
 // firewallRuleOpenIngress reports whether a firewall rule admits inbound traffic
-// from any address — an enabled INGRESS rule whose source ranges include
-// 0.0.0.0/0 or ::/0.
+// from the internet — an enabled INGRESS rule whose source ranges include
+// 0.0.0.0/0, ::/0, or another range broad enough to count as the same thing.
 func firewallRuleOpenIngress(isAllow bool, direction string, disabled bool, sourceRanges []any) bool {
 	// A GCP VPC firewall rule is exclusively an allow rule or a deny rule. Only
 	// allow rules can open ingress; a broad-source INGRESS deny rule (a common
@@ -195,12 +187,7 @@ func policyRuleOpenIngress(action, direction string, disabled bool, srcIpRanges 
 	if disabled || !strings.EqualFold(direction, "INGRESS") || !strings.EqualFold(action, "allow") {
 		return false
 	}
-	for _, s := range srcIpRanges {
-		if cidr, ok := s.(string); ok && isOpenCIDR(cidr) {
-			return true
-		}
-	}
-	return false
+	return firewallSourceRangesContainPublic(srcIpRanges)
 }
 
 // policyRuleTargetsInstance reports whether a policy rule's targeting applies to
@@ -417,26 +404,50 @@ func (t firewallTraffic) covers(other firewallTraffic) bool {
 	return t.ports.covers(other.ports)
 }
 
-// openSourceFamilies reports which address families a rule's source ranges open
-// to the whole internet.
+// openSourceFamilies reports which address families an allow rule's source
+// ranges open to the internet.
 //
-// Only the two all-address blocks count. A set of narrower ranges that together
-// span the internet is not recognized, which leaves an allow rule counted as
-// open and a deny rule counted as not covering: both err toward reporting an
+// A family counts when its ranges, taken together, admit a large part of the
+// internet (see internetSourceFamilies): 0.0.0.0/0 and ::/0, but also
+// 0.0.0.0/1 plus 128.0.0.0/1, 2000::/3, or many narrow ranges whose union
+// covers most of the address space. Erring wide here errs toward reporting an
 // instance reachable.
 func openSourceFamilies(sourceRanges []any) (v4 bool, v6 bool) {
+	return internetSourceFamilies(sourceRanges)
+}
+
+// coveredSourceFamilies reports which address families a deny rule's source
+// ranges block entirely.
+//
+// A deny shadows an allow only for traffic it actually covers, so the test is
+// the opposite of openSourceFamilies: IPv4 counts when the ranges together span
+// all of 0.0.0.0/0, such as 0.0.0.0/1 plus 128.0.0.0/1, and IPv6 counts only
+// for a zero-length prefix. A deny on 0.0.0.0/1 alone leaves half the internet
+// allowed, so it covers nothing.
+func coveredSourceFamilies(sourceRanges []any) (v4 bool, v6 bool) {
+	spans := []addrSpan{}
 	for _, s := range sourceRanges {
 		cidr, ok := s.(string)
 		if !ok {
 			continue
 		}
-		switch strings.TrimSpace(cidr) {
-		case "0.0.0.0/0":
-			v4 = true
-		case "::/0":
-			v6 = true
+		p, err := netip.ParsePrefix(strings.TrimSpace(cidr))
+		if err != nil {
+			continue
+		}
+		if !p.Addr().Is4() {
+			if p.Bits() == 0 {
+				v6 = true
+			}
+			continue
+		}
+		// prefixSpan masks host bits itself.
+		if span, ok := prefixSpan(p); ok {
+			spans = append(spans, span)
 		}
 	}
+	merged := mergeSpans(spans)
+	v4 = len(merged) == 1 && merged[0].lo == 0 && merged[0].hi == 0xFFFFFFFF
 	return v4, v6
 }
 
@@ -463,7 +474,13 @@ func ingressFromInternet(direction string, disabled bool, sourceRanges []any) bo
 // nothing. Both directions keep an input that could not be read from reporting
 // an instance as protected.
 func ingressTraffic(sourceRanges []any, protocols map[string]any, widenUnreadable bool) []firewallTraffic {
+	// widenUnreadable is true for allow rules and false for deny rules, which
+	// is also the split between "admits part of the internet" and "blocks all
+	// of it".
 	v4, v6 := openSourceFamilies(sourceRanges)
+	if !widenUnreadable {
+		v4, v6 = coveredSourceFamilies(sourceRanges)
+	}
 	families := []bool{}
 	if v4 {
 		families = append(families, false)
@@ -803,8 +820,8 @@ func (g *mqlGcpProjectComputeServiceInstance) exposure() (*mqlGcpProjectComputeS
 }
 
 // internetReachable reports whether the Cloud SQL instance is reachable from the
-// internet: it has a public IP and an authorized network that admits any address
-// (0.0.0.0/0). Reuses the existing publicIpEnabled and hasOpenAuthorizedNetworks
+// internet: it has a public IP and authorized networks that admit the internet
+// (see sqlAuthorizedNetworksOpen). Reuses the existing publicIpEnabled and hasOpenAuthorizedNetworks
 // signals.
 func (g *mqlGcpProjectSqlServiceInstance) internetReachable() (bool, error) {
 	public := g.GetPublicIpEnabled()

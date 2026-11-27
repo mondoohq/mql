@@ -90,6 +90,42 @@ redfish.system @defaults("model powerState") {
   // changed since the last reset. Null when the system exposes no Secure Boot
   // resource or the controller does not report the value.
   secureBootCurrentBoot() string
+  // Secure Boot mode the system switches to at its next reset
+  //
+  // One of SetupMode, UserMode, AuditMode, or DeployedMode. A value that
+  // differs from `secureBootMode` is a pending mode change, so an audit can
+  // catch a switch to SetupMode before it takes effect. Null when the system
+  // exposes no Secure Boot resource or the controller does not report the
+  // value.
+  secureBootDesiredMode() string
+  // Whether a BIOS setup password is configured
+  //
+  // Without a setup password anyone at the console can change the boot order,
+  // disable Secure Boot, or reset the firmware settings. The provider reads
+  // only whether the password is set, never the password. Null when the system
+  // exposes no BIOS resource or the controller does not report the password.
+  biosSetupPasswordSet() bool
+  // Whether a BIOS boot password is configured
+  //
+  // A boot password must be entered before the system boots an operating
+  // system. Null when the system exposes no BIOS resource or the controller
+  // does not report the password.
+  biosBootPasswordSet() bool
+  // Whether the processors provide hardware offload for virtualization
+  //
+  // Null when the controller does not report virtualization capabilities.
+  virtualizationCpuOffload bool
+  // Whether the system isolates devices from direct memory access across virtual machines
+  //
+  // True when the system enforces hardware isolation, such as an IOMMU, that
+  // stops a device assigned to one virtual machine from reading the memory of
+  // another. Null when the controller does not report virtualization
+  // capabilities.
+  virtualizationDeviceIsolation bool
+  // Date the system was manufactured
+  //
+  // Null when the controller does not report the date.
+  productionDate time
   // Trusted Platform Modules installed in the system
   //
   // One entry per installed module, with the keys `interfaceType` (TPM1_2,
@@ -146,6 +182,12 @@ redfish.processor @defaults("model totalCores") {
   totalThreads int
   // Maximum clock speed in MHz
   maxSpeedMHz int
+  // Security version of the processor hardware
+  //
+  // The manufacturer raises this version when a hardware revision fixes a
+  // security flaw, so an audit can require a minimum revision. Null when the
+  // controller does not report it.
+  hardwareSecurityVersion string
 }
 
 // Memory module
@@ -256,6 +298,68 @@ redfish.manager @defaults("model firmwareVersion") {
   // which out-of-band management protocols are exposed and on which ports (for
   // example flagging cleartext `http`, `snmp`, or `ipmi` that should be disabled).
   networkProtocol() @maturity("deprecated") dict
+  // In-band interfaces through which the host reaches the controller
+  hostInterfaces() []redfish.hostInterface
+}
+
+// Host interface of a management controller
+//
+// In-band interface, such as the Redfish host interface over a USB network
+// device, through which software on the host reaches the management
+// controller without crossing the network. Covers whether the interface is
+// enabled, the authentication modes it accepts, the role granted to
+// unauthenticated, firmware, and kernel callers, and credential bootstrapping,
+// which lets the host create a controller account with no prior login. An
+// audit can flag an interface that accepts AuthNone or that keeps credential
+// bootstrapping enabled after the operating system starts.
+redfish.hostInterface @defaults("name interfaceEnabled credentialBootstrappingEnabled") {
+  // Display name of the interface
+  name string
+  // Kind of interface, such as NetworkHostInterface
+  hostInterfaceType string
+  // Whether the interface is enabled
+  //
+  // Every boolean of this resource is null when the controller does not
+  // report the property, so an audit can tell an unreported setting apart from
+  // one that is switched off.
+  interfaceEnabled bool
+  // Whether the interface can be reached from outside the host
+  externallyAccessible bool
+  // Authentication modes the interface accepts
+  //
+  // Each entry is one of AuthNone, BasicAuth, RedfishSessionAuth, or OemAuth.
+  // AuthNone lets any software on the host use the interface without
+  // credentials, with the privileges of the role in `authNoneRoleId`.
+  authenticationModes []string
+  // Role granted to callers that use the AuthNone mode
+  authNoneRoleId string
+  // Whether system firmware authentication is enabled on the interface
+  firmwareAuthEnabled bool
+  // Role granted to system firmware that authenticates on the interface
+  firmwareAuthRoleId string
+  // Whether operating system kernel authentication is enabled on the interface
+  kernelAuthEnabled bool
+  // Role granted to an operating system kernel that authenticates on the interface
+  kernelAuthRoleId string
+  // Whether credential bootstrapping is enabled
+  //
+  // While enabled, software on the host can ask the controller to create an
+  // account through the interface without presenting any credential, with
+  // the privileges of the role in `credentialBootstrappingRoleId`.
+  credentialBootstrappingEnabled bool
+  // Whether the controller enables credential bootstrapping again after every reset
+  credentialBootstrappingEnableAfterReset bool
+  // Role granted to an account created through credential bootstrapping
+  credentialBootstrappingRoleId string
+  // Whether credential bootstrapping turns itself off after a time window
+  //
+  // When true, the controller disables credential bootstrapping once
+  // `credentialBootstrappingExpirationWindowMinutes` have passed after the
+  // system firmware hands over to the operating system. When false or null,
+  // bootstrapping stays available to the running operating system.
+  credentialBootstrappingExpirationWindowEnabled bool
+  // Minutes credential bootstrapping stays enabled after the operating system starts
+  credentialBootstrappingExpirationWindowMinutes int
 }
 
 // Physical chassis
@@ -278,6 +382,10 @@ redfish.chassisEnclosure @defaults("model chassisType") {
   sku string
   // Current power state of the chassis
   powerState string
+  // Date the chassis was manufactured
+  //
+  // Null when the controller does not report the date.
+  productionDate time
 }
 
 // Management controller user account
@@ -411,6 +519,27 @@ redfish.accountService @defaults("minPasswordLength accountLockoutThreshold http
   // One of Token, KerberosKeytab, UsernameAndPassword, or OEM. The provider
   // reads the method only, never the shared secret.
   tacacsPlusAuthenticationType() string
+  // Whether the credential for the LDAP authentication method is configured
+  //
+  // Reads the flag that matches `ldapAuthenticationType`: whether the password
+  // is set for UsernameAndPassword, the token for Token, or the keytab for
+  // KerberosKeytab. False means the controller is set to bind to the directory
+  // with a credential it does not hold. The provider never reads the
+  // credential. Null when the controller does not report the flag or the
+  // method is OEM.
+  ldapCredentialSet() bool
+  // Whether the credential for the Active Directory authentication method is configured
+  //
+  // Reads the flag that matches `activeDirectoryAuthenticationType`, as
+  // `ldapCredentialSet` does for LDAP. Null when the controller does not
+  // report the flag or the method is OEM.
+  activeDirectoryCredentialSet() bool
+  // Whether the credential for the TACACS+ authentication method is configured
+  //
+  // Reads the flag that matches `tacacsPlusAuthenticationType`, as
+  // `ldapCredentialSet` does for LDAP. Null when the controller does not
+  // report the flag or the method is OEM.
+  tacacsPlusCredentialSet() bool
 }
 
 // Management network protocol settings
@@ -471,6 +600,13 @@ redfish.networkProtocol @defaults("hostName ipmiEnabled telnetEnabled") {
   kvmipEnabled bool
   // TCP port of the KVM over IP console
   kvmipPort int
+  // SSH authentication methods the controller permits, in order of preference
+  //
+  // Each entry is one of Password, PublicKey, or KeyboardInteractive. A method
+  // that is not listed is not permitted, so an audit can require key-based
+  // login by checking that Password is absent. Null when the controller does
+  // not report the SSH methods.
+  sshPreferredAuthentications []string
 }
 
 // Management controller TLS certificate
@@ -565,6 +701,12 @@ redfish.session @defaults("userName clientOriginIPAddress") {
   expirationTime time
   // Redfish roles that carry the privileges of the session
   roles []string
+  // Service that authenticated the user of the session
+  //
+  // `/redfish/v1/AccountService` for a local account, or the address of the
+  // external account provider, such as an LDAP server, that authenticated the
+  // user. Null when the controller does not report it.
+  userAuthenticationSource string
 }
 
 // Firmware or software inventory item
@@ -587,6 +729,17 @@ redfish.softwareInventory @defaults("name version") {
   releaseDate string
   // Lowest version the component can be downgraded to
   lowestSupportedVersion string
+  // Activation state of the image
+  //
+  // One of Active, Staged, Armed, TargetSpecific, or OEM. Only an Active image
+  // is running. A Staged or Armed image is installed but not yet in effect, so
+  // an audit of firmware versions should read the Active entries. Null when
+  // the controller does not report the state.
+  imageState string
+  // Whether the image becomes active at the next reset or trigger
+  //
+  // Null when the controller does not report it.
+  armed bool
 }
 
 // HPE iLO extensions

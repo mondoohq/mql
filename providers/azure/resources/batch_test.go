@@ -212,3 +212,39 @@ func TestBatchPoolDataConversion(t *testing.T) {
 		assert.Nil(t, rawData["provisioningState"].Value)
 	})
 }
+
+func TestBatchNetworkAccessFields(t *testing.T) {
+	t.Run("no network profile", func(t *testing.T) {
+		// Synthetic: an account without a network profile.
+		got := batchNetworkAccessFields(nil)
+		assert.Nil(t, got.accountDefaultAction)
+		assert.Equal(t, []any{}, got.accountIPRules)
+		assert.Nil(t, got.nodeManagementDefaultAction)
+		assert.Equal(t, []any{}, got.nodeManagementIPRules)
+	})
+	t.Run("account endpoint restricted, node management unset", func(t *testing.T) {
+		// Synthetic: one endpoint with rules (including empty entries), the
+		// other without a profile.
+		got := batchNetworkAccessFields(&armbatch.NetworkProfile{
+			AccountAccess: &armbatch.EndpointAccessProfile{
+				DefaultAction: ptr(armbatch.EndpointAccessDefaultActionDeny),
+				IPRules: []*armbatch.IPRule{
+					{Action: ptr("Allow"), Value: ptr("203.0.113.0/24")},
+					nil,
+					{Action: ptr("Allow")},
+					{Action: ptr("Allow"), Value: ptr("198.51.100.7")},
+				},
+			},
+		})
+		assert.Equal(t, "Deny", *got.accountDefaultAction)
+		assert.Equal(t, []any{"203.0.113.0/24", "198.51.100.7"}, got.accountIPRules)
+		assert.Nil(t, got.nodeManagementDefaultAction)
+		assert.Equal(t, []any{}, got.nodeManagementIPRules)
+	})
+}
+
+func TestBatchIdentityType(t *testing.T) {
+	// Synthetic: identity block present and absent.
+	assert.Nil(t, batchIdentityType(nil))
+	assert.Equal(t, "SystemAssigned", *batchIdentityType(&armbatch.AccountIdentity{Type: ptr(armbatch.ResourceIdentityTypeSystemAssigned)}))
+}

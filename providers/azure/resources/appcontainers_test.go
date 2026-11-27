@@ -6,6 +6,7 @@ package resources
 import (
 	"testing"
 
+	apps "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appcontainers/armappcontainers/v5"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -91,4 +92,30 @@ func TestResourceGroupAndName(t *testing.T) {
 			assert.Equal(t, tc.wantLeaf, leaf)
 		})
 	}
+}
+
+func TestAcaSecretSourceOf(t *testing.T) {
+	// Synthetic: a stored secret, a Key Vault reference read with the
+	// system-assigned identity, and one read with a user-assigned identity.
+	assert.Equal(t, acaSecretSource{}, acaSecretSourceOf(nil))
+	stored := acaSecretSourceOf(&apps.Secret{Name: ptr("db-password")})
+	assert.Empty(t, stored.keyVaultURL)
+	assert.Empty(t, stored.identity)
+	kvURL := "https://kv1.vault.azure.net/secrets/db-password"
+	sys := acaSecretSourceOf(&apps.Secret{Name: ptr("db-password"), KeyVaultURL: &kvURL, Identity: ptr("system")})
+	assert.Equal(t, kvURL, sys.keyVaultURL)
+	assert.Equal(t, "system", sys.identity)
+	uami := "/subscriptions/s/resourceGroups/rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/app"
+	user := acaSecretSourceOf(&apps.Secret{Name: ptr("db-password"), KeyVaultURL: &kvURL, Identity: &uami})
+	assert.Equal(t, uami, user.identity)
+}
+
+func TestAcaEnvironmentIDFromCertificateID(t *testing.T) {
+	// Synthetic: ARM ID shapes of an environment certificate and a managed
+	// certificate.
+	env := "/subscriptions/s/resourceGroups/rg/providers/Microsoft.App/managedEnvironments/env1"
+	assert.Equal(t, env, acaEnvironmentIDFromCertificateID(env+"/certificates/cert1"))
+	assert.Empty(t, acaEnvironmentIDFromCertificateID(env+"/managedCertificates/mc1"))
+	assert.Empty(t, acaEnvironmentIDFromCertificateID("/subscriptions/s/resourceGroups/rg/providers/Microsoft.Web/certificates/c"))
+	assert.Empty(t, acaEnvironmentIDFromCertificateID(""))
 }

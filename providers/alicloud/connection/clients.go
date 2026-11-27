@@ -14,7 +14,7 @@ import (
 	casclient "github.com/alibabacloud-go/cas-20200407/v4/client"
 	cbnclient "github.com/alibabacloud-go/cbn-20170912/v2/client"
 	cloudapiclient "github.com/alibabacloud-go/cloudapi-20160714/v5/client"
-	cloudfwclient "github.com/alibabacloud-go/cloudfw-20171207/v11/client"
+	cloudfwclient "github.com/alibabacloud-go/cloudfw-20171207/v12/client"
 	cloudssoclient "github.com/alibabacloud-go/cloudsso-20210515/client"
 	configclient "github.com/alibabacloud-go/config-20200907/v4/client"
 	crclient "github.com/alibabacloud-go/cr-20181201/v3/client"

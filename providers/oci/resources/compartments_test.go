@@ -246,3 +246,53 @@ func TestOciCollectCompartmentJobs(t *testing.T) {
 		assert.Empty(t, res)
 	})
 }
+
+func TestOciNearestByCompartment(t *testing.T) {
+	// Synthetic: root -> parent -> child -> grandchild.
+	parents := map[string]string{"grandchild": "child", "child": "parent", "parent": "root"}
+	parentOf := func(id string) (string, error) { return parents[id], nil }
+
+	byCompartment := map[string]any{"parent": "zone-parent"}
+	got, err := ociNearestByCompartment("grandchild", byCompartment, parentOf)
+	require.NoError(t, err)
+	assert.Equal(t, "zone-parent", got)
+
+	byCompartment["child"] = "zone-child"
+	got, err = ociNearestByCompartment("grandchild", byCompartment, parentOf)
+	require.NoError(t, err)
+	assert.Equal(t, "zone-child", got)
+
+	got, err = ociNearestByCompartment("root", byCompartment, parentOf)
+	require.NoError(t, err)
+	assert.Nil(t, got)
+
+	// A cycle in a malformed tree ends the walk instead of looping.
+	loop := func(id string) (string, error) { return map[string]string{"a": "b", "b": "a"}[id], nil }
+	got, err = ociNearestByCompartment("a", map[string]any{}, loop)
+	require.NoError(t, err)
+	assert.Nil(t, got)
+
+	_, err = ociNearestByCompartment("a", map[string]any{}, func(string) (string, error) { return "", errors.New("tree unavailable") })
+	assert.Error(t, err)
+}
+
+func TestOciCloudGuardTargetsByCompartment(t *testing.T) {
+	target := func(typ, id string) *mqlOciCloudGuardTarget {
+		return &mqlOciCloudGuardTarget{
+			TargetResourceType: plugin.TValue[string]{Data: typ, State: plugin.StateIsSet},
+			TargetResourceId:   plugin.TValue[string]{Data: id, State: plugin.StateIsSet},
+		}
+	}
+	// Measured: a SECURITY_ZONE target keyed by the zone's compartment.
+	zone := target("SECURITY_ZONE", "ocid1.compartment.oc1..zone")
+	// Synthetic: the same compartment also carrying its own target, in both orders.
+	own := target("COMPARTMENT", "ocid1.compartment.oc1..zone")
+	other := target("ERPCLOUD", "ocid1.compartment.oc1..erp")
+
+	got := ociCloudGuardTargetsByCompartment([]any{zone, other})
+	assert.Same(t, zone, got["ocid1.compartment.oc1..zone"])
+	assert.NotContains(t, got, "ocid1.compartment.oc1..erp")
+
+	assert.Same(t, own, ociCloudGuardTargetsByCompartment([]any{zone, own})["ocid1.compartment.oc1..zone"])
+	assert.Same(t, own, ociCloudGuardTargetsByCompartment([]any{own, zone})["ocid1.compartment.oc1..zone"])
+}

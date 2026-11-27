@@ -50,6 +50,16 @@ type mqlMicrosoftInternal struct {
 	keyEscrow keyEscrowCache
 	// the tenant's subscribed SKUs, fetched once
 	subscribedSkus subscribedSkuCache
+	// the tenant's application credential sign-in activity report, fetched once
+	credentialSignIns credentialSignInCache
+	// the tenant's directory role assignments and eligibilities, indexed by
+	// the principals they apply to
+	directoryRoles directoryRoleIndex
+	// the PIM policies assigned to directory roles at the tenant scope, read
+	// once and indexed both ways
+	pimPolicies pimPolicyIndex
+	// the tenant's service principal sign-in activity report, fetched once
+	spSignInActivity spSignInActivityCache
 	// per-user licenseDetails, fetched for users whose servicePlans are queried
 	userLicenseDetails userLicenseDetailsCache
 }
@@ -62,13 +72,17 @@ type userBatchCaches struct {
 	signInActivity batchFieldCache
 	authMethods    batchFieldCache
 	authRequires   batchFieldCache
+	memberOf       batchFieldCache
+	transitiveOf   batchFieldCache
 }
 
 // spBatchCaches holds one cache per per-service-principal field resolved
 // through the Graph $batch endpoint, working the same way as userBatchCaches.
 type spBatchCaches struct {
-	permissions batchFieldCache
-	assignments batchFieldCache
+	permissions  batchFieldCache
+	assignments  batchFieldCache
+	memberOf     batchFieldCache
+	transitiveOf batchFieldCache
 }
 
 // auditlogBatchCaches holds one cache per per-user audit-log field resolved

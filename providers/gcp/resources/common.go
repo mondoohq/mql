@@ -769,3 +769,54 @@ func walkSecretFields(m protoreflect.Message, redact bool) bool {
 	}
 	return found
 }
+
+// projectOfResourceName returns the project to list when resolving a
+// location-scoped resource name of the shape
+// projects/{project}/locations/{location}/{kind}/{name}. A project number is
+// replaced by defaultProject, because the collections are listed and cached
+// by project ID. Returns "" when the name has a different shape.
+func projectOfResourceName(name, kind, defaultProject string) string {
+	parts := strings.Split(name, "/")
+	if len(parts) != 6 || parts[0] != "projects" || parts[2] != "locations" || parts[4] != kind {
+		return ""
+	}
+	if parts[1] == "" || parts[3] == "" || parts[5] == "" {
+		return ""
+	}
+	if isProjectNumber(parts[1]) && defaultProject != "" {
+		return defaultProject
+	}
+	return parts[1]
+}
+
+// sameLocationScopedName compares two names of the shape
+// projects/{project}/locations/{location}/{kind}/{name}. The project segment
+// is ignored when either side carries a project number, since APIs report a
+// reference with whichever form it was configured with.
+func sameLocationScopedName(a, b string) bool {
+	if a == b {
+		return a != ""
+	}
+	pa, pb := strings.Split(a, "/"), strings.Split(b, "/")
+	if len(pa) != 6 || len(pb) != 6 {
+		return false
+	}
+	for _, i := range []int{0, 2, 3, 4, 5} {
+		if pa[i] != pb[i] {
+			return false
+		}
+	}
+	return isProjectNumber(pa[1]) || isProjectNumber(pb[1])
+}
+
+func isProjectNumber(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}

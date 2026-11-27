@@ -1030,38 +1030,126 @@ func (n *mqlOciNetworkLoadBalancerLoadBalancer) exposure() (*mqlOciNetworkExposu
 }
 
 // internetReachable reports whether the autonomous database listener is
-// reachable from the public internet: it has a public endpoint (no private
-// endpoint) and either access control is disabled or its allow-list admits any
-// address. mTLS may still be required to connect, but the endpoint is reachable.
+// reachable from the public internet: it has a public endpoint and either
+// access control is disabled or its allow-list admits any address. mTLS may
+// still be required to connect, but the endpoint is reachable.
 func (a *mqlOciDatabaseAutonomousDatabase) internetReachable() (bool, error) {
 	privateEndpoint := a.GetPrivateEndpointIp()
 	if privateEndpoint.Error != nil {
 		return false, privateEndpoint.Error
 	}
-	// A private endpoint means the database is only reachable inside the VCN.
-	if strings.TrimSpace(privateEndpoint.Data) != "" {
-		return false, nil
-	}
-
-	// isAccessControlEnabled governs only Exadata Cloud@Customer databases; for
-	// Autonomous Database Serverless - the default, and the great majority of
-	// deployments - OCI ignores it and enforces whitelistedIps instead. Gating
-	// on the flag first therefore reported every correctly restricted serverless
-	// database as reachable from anywhere, without ever reading its allow list.
-	// So the allow list decides whenever there is one, for either platform.
 	whitelist := a.GetWhitelistedIps()
 	if whitelist.Error != nil {
 		return false, whitelist.Error
 	}
-	if len(whitelist.Data) > 0 {
-		return ociWhitelistOpensInternet(whitelist.Data), nil
-	}
-
 	accessControl := a.GetIsAccessControlEnabled()
 	if accessControl.Error != nil {
 		return false, accessControl.Error
 	}
+	publicAccess := a.cachePublicEndpoint != "" || a.cachePublicConnectionUrls != nil
+	return adbInternetReachable(privateEndpoint.Data, publicAccess, whitelist.Data, accessControl.Data), nil
+}
+
+// adbInternetReachable decides autonomous database reachability from its
+// network settings.
+//
+// A private endpoint database is reachable only inside the VCN unless public
+// access is also allowed on it, in which case OCI publishes a public endpoint
+// and the allow-list governs that endpoint exactly as it does for a public
+// database. Reading every private endpoint database as closed missed one whose
+// public access list admits any address.
+//
+// isAccessControlEnabled governs only Exadata Cloud@Customer databases; for
+// Autonomous Database Serverless - the default, and the great majority of
+// deployments - OCI ignores it and enforces whitelistedIps instead. So the
+// allow list decides whenever there is one, for either platform.
+func adbInternetReachable(privateEndpointIp string, publicAccess bool, whitelist []any, accessControlEnabled bool) bool {
+	if strings.TrimSpace(privateEndpointIp) != "" {
+		return publicAccess && ociWhitelistOpensInternet(whitelist)
+	}
+	if len(whitelist) > 0 {
+		return ociWhitelistOpensInternet(whitelist)
+	}
 	// An empty allow list means "no ACL at all" on serverless (reachable), but
 	// on Exadata Cloud@Customer with access control enabled it denies everyone.
-	return !accessControl.Data, nil
+	return !accessControlEnabled
+}
+
+// ociSubnetEndpointExposure builds the exposure for an endpoint that sits on
+// one subnet behind a set of network security groups and listens without a
+// separately modeled listener, such as a Kubernetes API endpoint or a cache
+// cluster. It is reachable when it has a public IP and its subnet permits
+// internet ingress, routes to an internet gateway, and admits any address
+// through the network security groups or the subnet's own security lists.
+func ociSubnetEndpointExposure(
+	runtime *plugin.Runtime,
+	id string,
+	hasPublicIp bool,
+	subnet *mqlOciNetworkSubnet,
+	nsgs []any,
+	securityAttributes map[string]any,
+) (*mqlOciNetworkExposure, error) {
+	nsgInternetRules, nsgOpenRules, securityGroupAllowsIngress, err := ociCollectOpenNsgRules(nsgs)
+	if err != nil {
+		return nil, err
+	}
+	openRules := append([]any{}, nsgOpenRules...)
+	internetRules := append([]any{}, nsgInternetRules...)
+
+	gates := make([]ociSubnetGate, 0, 1)
+	hasRouteToInternet := false
+	securityListAllowsIngress := false
+	if subnet != nil {
+		prohibit := subnet.GetProhibitInternetIngress()
+		if prohibit.Error != nil {
+			return nil, prohibit.Error
+		}
+		reaches, err := ociSubnetReachesInternet(subnet)
+		if err != nil {
+			return nil, err
+		}
+		hasRouteToInternet = reaches
+
+		sls := subnet.GetSecurityLists()
+		if sls.Error != nil {
+			return nil, sls.Error
+		}
+		slInternetRules, slOpenRules, slAllows, err := ociCollectOpenSecurityListRules(sls.Data)
+		if err != nil {
+			return nil, err
+		}
+		openRules = append(openRules, slOpenRules...)
+		internetRules = append(internetRules, slInternetRules...)
+		securityListAllowsIngress = slAllows
+
+		gates = append(gates, ociSubnetGate{
+			prohibitsIngress:   prohibit.Data,
+			routesToInternet:   reaches,
+			securityListAllows: slAllows,
+		})
+	}
+
+	internetReachable := hasPublicIp && ociAnySubnetAdmitsInternet(gates, len(nsgInternetRules))
+
+	if securityAttributes == nil {
+		securityAttributes = map[string]any{}
+	}
+	res, err := CreateResource(runtime, "oci.network.exposure", ociExposureFields(
+		runtime,
+		id,
+		map[string]*llx.RawData{
+			"internetReachable":          llx.BoolData(internetReachable),
+			"hasPublicIp":                llx.BoolData(hasPublicIp),
+			"securityGroupAllowsIngress": llx.BoolData(securityGroupAllowsIngress),
+			"securityListAllowsIngress":  llx.BoolData(securityListAllowsIngress),
+			"hasRouteToInternet":         llx.BoolData(hasRouteToInternet),
+		},
+		openRules,
+		internetRules,
+		&plugin.TValue[map[string]any]{Data: securityAttributes, State: plugin.StateIsSet},
+	))
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlOciNetworkExposure), nil
 }

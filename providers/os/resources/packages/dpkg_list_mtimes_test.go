@@ -4,6 +4,8 @@
 package packages
 
 import (
+	"maps"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -133,23 +135,34 @@ func TestApplyDpkgListMtimes(t *testing.T) {
 	assert.True(t, pkgs[4].InstallDate.IsZero(), "no file list, no date")
 }
 
-func TestDpkgListMtimesFromFS(t *testing.T) {
+// Synthetic: the filesystem listing used where no command can run; no target
+// showed a zero mtime.
+func TestDpkgInfoListsFromFS(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	mtime := time.Date(2025, 9, 14, 3, 44, 22, 751402384, time.UTC)
-	for _, f := range []string{"curl.list", "libc6:amd64.list", "curl.md5sums"} {
+	for _, f := range []string{"curl.list", "libc6:amd64.list", "curl.md5sums", "zeroed.list"} {
 		p := dpkgInfoDir + "/" + f
 		require.NoError(t, afero.WriteFile(fs, p, []byte("/.\n"), 0o644))
 		require.NoError(t, fs.Chtimes(p, mtime, mtime))
 	}
+	require.NoError(t, fs.Chtimes(dpkgInfoDir+"/zeroed.list", time.Time{}, time.Time{}))
 	require.NoError(t, fs.MkdirAll(dpkgInfoDir+"/dir.list", 0o755))
 
-	m := dpkgListMtimesFromFS(fs)
+	lists, ok := dpkgInfoListsFromFS(fs)
+	require.True(t, ok)
 	assert.Equal(t, DpkgListMtimes{
 		"curl":        mtime.Truncate(time.Second),
 		"libc6:amd64": mtime.Truncate(time.Second),
-	}, m)
+	}, lists.mtimes)
+	assert.True(t, lists.has("curl"))
+	assert.True(t, lists.has("libc6:amd64"))
+	assert.True(t, lists.has("zeroed"), "a list without a time still exists")
+	assert.False(t, lists.has("curl.md5sums"), "only .list files are file lists")
+	assert.False(t, lists.has("dir"), "a directory is not a file list")
 
-	assert.Empty(t, dpkgListMtimesFromFS(afero.NewMemMapFs()), "no info directory, no times")
+	lists, ok = dpkgInfoListsFromFS(afero.NewMemMapFs())
+	assert.False(t, ok, "no info directory, so the lists cannot be told apart from missing ones")
+	assert.Empty(t, lists.mtimes, "no info directory, no times")
 }
 
 func TestDebPkgManagerListDatesFromFileLists(t *testing.T) {
@@ -196,4 +209,19 @@ func TestDebPkgManagerListDatesFromFileLists(t *testing.T) {
 	pkgs, err = newMgr(t, nil).List()
 	require.NoError(t, err)
 	assert.Empty(t, dates(pkgs))
+}
+
+// Synthetic: lines no target showed. A list whose time is the epoch or does
+// not parse is undated but still exists.
+func TestParseDpkgInfoListsKeepsUndatedLists(t *testing.T) {
+	lists := parseDpkgInfoLists(strings.NewReader(strings.Join([]string{
+		"1789359862.7514023840 curl.list",
+		"0.0000000000 zeroed.list",
+		"x libc6:amd64.list",
+		"1789359862 curl.md5sums",
+		"no-space.list",
+		"1789359862 .list",
+	}, "\n")))
+	assert.Equal(t, map[string]struct{}{"curl": {}, "zeroed": {}, "libc6:amd64": {}}, lists.names)
+	assert.Equal(t, []string{"curl"}, slices.Collect(maps.Keys(lists.mtimes)))
 }

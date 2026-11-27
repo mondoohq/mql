@@ -12,8 +12,9 @@ import (
 )
 
 type mqlHetznerPrimaryIpInternal struct {
-	cacheLocation *hcloud.Location
-	cacheServerID int64
+	cacheLocation       *hcloud.Location
+	cacheServerID       int64
+	cacheLoadBalancerID int64
 }
 
 func (r *mqlHetznerPrimaryIp) id() (string, error) {
@@ -61,10 +62,28 @@ func newMqlHetznerPrimaryIp(runtime *plugin.Runtime, p *hcloud.PrimaryIP) (*mqlH
 	}
 	m := res.(*mqlHetznerPrimaryIp)
 	m.cacheLocation = p.Location
-	if p.AssigneeType == "server" {
-		m.cacheServerID = p.AssigneeID
-	}
+	m.cacheServerID, m.cacheLoadBalancerID = primaryIPAssignee(p)
 	return m, nil
+}
+
+// Hetzner's assignee_type values for a Primary IP. hcloud-go carries the field
+// as a plain string without constants.
+const (
+	primaryIPAssigneeServer       = "server"
+	primaryIPAssigneeLoadBalancer = "load_balancer"
+)
+
+// primaryIPAssignee splits a Primary IP's assignee into the server or load
+// balancer that holds it. At most one is non-zero; both are zero when the IP
+// is unassigned.
+func primaryIPAssignee(p *hcloud.PrimaryIP) (serverID, loadBalancerID int64) {
+	switch p.AssigneeType {
+	case primaryIPAssigneeServer:
+		return p.AssigneeID, 0
+	case primaryIPAssigneeLoadBalancer:
+		return 0, p.AssigneeID
+	}
+	return 0, 0
 }
 
 func initHetznerPrimaryIp(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -101,4 +120,50 @@ func (m *mqlHetznerPrimaryIp) server() (*mqlHetznerServer, error) {
 		return nil, err
 	}
 	return ref.(*mqlHetznerServer), nil
+}
+
+// loadBalancer resolves the load balancer holding this Primary IP. The API
+// documents the Primary IP's assignee type as only server or unassigned, while
+// a load balancer names the Primary IP it holds in its public network. So the
+// link is read from the load balancer side, by scanning the project's load
+// balancer list, unless the assignee type itself names a load balancer.
+func (m *mqlHetznerPrimaryIp) loadBalancer() (*mqlHetznerLoadBalancer, error) {
+	if m.cacheLoadBalancerID != 0 {
+		return loadBalancerRef(m.MqlRuntime, &m.LoadBalancer, m.cacheLoadBalancerID)
+	}
+	if m.cacheServerID != 0 {
+		m.LoadBalancer.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	root, err := CreateResource(m.MqlRuntime, "hetzner", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	lbs := root.(*mqlHetzner).GetLoadBalancers()
+	if lbs.Error != nil {
+		return nil, lbs.Error
+	}
+	if lb := loadBalancerHoldingPrimaryIP(lbs.Data, m.Id.Data); lb != nil {
+		return lb, nil
+	}
+	m.LoadBalancer.State = plugin.StateIsSet | plugin.StateIsNull
+	return nil, nil
+}
+
+// loadBalancerHoldingPrimaryIP finds the load balancer whose public IPv4 or
+// IPv6 address is the Primary IP with the given ID.
+func loadBalancerHoldingPrimaryIP(list []any, primaryIPID int64) *mqlHetznerLoadBalancer {
+	if primaryIPID == 0 {
+		return nil
+	}
+	for _, entry := range list {
+		lb, ok := entry.(*mqlHetznerLoadBalancer)
+		if !ok {
+			continue
+		}
+		if lb.cachePublicNet.IPv4.ID == primaryIPID || lb.cachePublicNet.IPv6.ID == primaryIPID {
+			return lb
+		}
+	}
+	return nil
 }

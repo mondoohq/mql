@@ -80,3 +80,68 @@ func TestSkeAutoUpdateNilCluster(t *testing.T) {
 		t.Fatalf("skeAutoUpdate(nil) = (%v, %v), want (null, null)", kubernetes, machineImage)
 	}
 }
+
+func TestSkeAutoUpdateWindowWithoutAutoUpdate(t *testing.T) {
+	// Synthetic: a maintenance window that carries no autoUpdate object; no live account was checked.
+	c := decodeCluster(t, `{"name":"c1","kubernetes":{"version":"1.30.5"},"nodepools":[],`+
+		`"maintenance":{"timeWindow":{"start":"2026-01-01T01:00:00Z","end":"2026-01-01T03:00:00Z"}}}`)
+	kubernetes, machineImage := skeAutoUpdate(c)
+	if kubernetes != nil || machineImage != nil {
+		t.Fatalf("got (%v, %v), want (null, null)", kubernetes, machineImage)
+	}
+}
+
+func TestSkeMaintenanceWindow(t *testing.T) {
+	// Synthetic: a window from 01:00 to 03:00 UTC; no live account was checked.
+	c := decodeCluster(t, `{"name":"c1","kubernetes":{"version":"1.30.5"},"nodepools":[],`+
+		`"maintenance":{"timeWindow":{"start":"0000-01-01T01:00:00Z","end":"0000-01-01T03:00:00Z"},"autoUpdate":{}}}`)
+	start, end := skeMaintenanceWindow(c)
+	if start == nil || end == nil {
+		t.Fatalf("got (%v, %v), want both set", start, end)
+	}
+	if start.Hour() != 1 || end.Hour() != 3 {
+		t.Fatalf("got start %v end %v, want 01:00 and 03:00", start, end)
+	}
+
+	// Synthetic: no maintenance window; no live account was checked.
+	start, end = skeMaintenanceWindow(decodeCluster(t, `{"name":"c1","kubernetes":{"version":"1.30.5"},"nodepools":[]}`))
+	if start != nil || end != nil {
+		t.Fatalf("no window: got (%v, %v), want (null, null)", start, end)
+	}
+}
+
+func TestSkeHibernated(t *testing.T) {
+	// Synthetic: status shapes after the SDK's ClusterStatus model; no live account was checked.
+	got := skeHibernated(decodeCluster(t, `{"name":"c1","kubernetes":{"version":"1.30.5"},"nodepools":[],"status":{"hibernated":true}}`))
+	assertBoolPtr(t, "hibernated", got, new(true))
+	got = skeHibernated(decodeCluster(t, `{"name":"c1","kubernetes":{"version":"1.30.5"},"nodepools":[],"status":{"hibernated":false}}`))
+	assertBoolPtr(t, "hibernated", got, new(false))
+	got = skeHibernated(decodeCluster(t, `{"name":"c1","kubernetes":{"version":"1.30.5"},"nodepools":[],"status":{"aggregated":"STATE_HEALTHY"}}`))
+	assertBoolPtr(t, "hibernated", got, nil)
+}
+
+func TestSkeClusterStatusErrors(t *testing.T) {
+	// Synthetic: two errors on one cluster; no live account was checked.
+	runtime, _ := fakeRuntime(t, nil)
+	c := decodeCluster(t, `{"name":"c1","kubernetes":{"version":"1.30.5"},"nodepools":[],"status":{"errors":[`+
+		`{"code":"SKE_INFRA_SNA_NETWORK_NOT_FOUND","message":"network gone"},{"code":"SKE_QUOTA_EXCEEDED"}]}}`)
+	res, err := buildSkeCluster(runtime, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	errs := res.(*mqlStackitSkeCluster).GetErrors()
+	if errs.Error != nil {
+		t.Fatal(errs.Error)
+	}
+	if len(errs.Data) != 2 {
+		t.Fatalf("got %d errors, want 2", len(errs.Data))
+	}
+	first := errs.Data[0].(*mqlStackitSkeClusterStatusError)
+	second := errs.Data[1].(*mqlStackitSkeClusterStatusError)
+	if first.Code.Data != "SKE_INFRA_SNA_NETWORK_NOT_FOUND" || first.Message.Data != "network gone" {
+		t.Fatalf("first error = %q %q", first.Code.Data, first.Message.Data)
+	}
+	if second.Code.Data != "SKE_QUOTA_EXCEEDED" {
+		t.Fatalf("second error code = %q, the two errors collided", second.Code.Data)
+	}
+}

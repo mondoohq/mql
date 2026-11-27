@@ -70,12 +70,16 @@ func findByID[T azureListedResource](list []any, id string) (T, bool) {
 
 func (a *mqlAzureSubscriptionWebServiceAppsite) appServicePlan() (*mqlAzureSubscriptionWebServiceAppServicePlan, error) {
 	props, _ := a.Properties.Data.(map[string]any)
+	return siteAppServicePlan(a.MqlRuntime, props, &a.AppServicePlan)
+}
+
+func siteAppServicePlan(runtime *plugin.Runtime, props map[string]any, field *plugin.TValue[*mqlAzureSubscriptionWebServiceAppServicePlan]) (*mqlAzureSubscriptionWebServiceAppServicePlan, error) {
 	planID := appsiteServerFarmID(props)
 	if planID == "" {
-		a.AppServicePlan.State = plugin.StateIsSet | plugin.StateIsNull
+		field.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	svc, err := webServiceFor(a.MqlRuntime)
+	svc, err := webServiceFor(runtime)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +89,7 @@ func (a *mqlAzureSubscriptionWebServiceAppsite) appServicePlan() (*mqlAzureSubsc
 	}
 	plan, ok := findByID[*mqlAzureSubscriptionWebServiceAppServicePlan](plans.Data, planID)
 	if !ok {
-		a.AppServicePlan.State = plugin.StateIsSet | plugin.StateIsNull
+		field.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	return plan, nil
@@ -93,12 +97,16 @@ func (a *mqlAzureSubscriptionWebServiceAppsite) appServicePlan() (*mqlAzureSubsc
 
 func (a *mqlAzureSubscriptionWebServiceAppsite) hostingEnvironment() (*mqlAzureSubscriptionWebServiceHostingEnvironment, error) {
 	props, _ := a.Properties.Data.(map[string]any)
+	return siteHostingEnvironment(a.MqlRuntime, props, &a.HostingEnvironment)
+}
+
+func siteHostingEnvironment(runtime *plugin.Runtime, props map[string]any, field *plugin.TValue[*mqlAzureSubscriptionWebServiceHostingEnvironment]) (*mqlAzureSubscriptionWebServiceHostingEnvironment, error) {
 	envID := appsiteHostingEnvironmentID(props)
 	if envID == "" {
-		a.HostingEnvironment.State = plugin.StateIsSet | plugin.StateIsNull
+		field.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	svc, err := webServiceFor(a.MqlRuntime)
+	svc, err := webServiceFor(runtime)
 	if err != nil {
 		return nil, err
 	}
@@ -109,10 +117,10 @@ func (a *mqlAzureSubscriptionWebServiceAppsite) hostingEnvironment() (*mqlAzureS
 	env, ok := findByID[*mqlAzureSubscriptionWebServiceHostingEnvironment](envs.Data, envID)
 	if !ok {
 		// A tag filter may have left the environment out of the list.
-		if filtered, ok := tagFilteredOut(a.MqlRuntime, ResourceAzureSubscriptionWebServiceHostingEnvironment, envID).(*mqlAzureSubscriptionWebServiceHostingEnvironment); ok {
+		if filtered, ok := tagFilteredOut(runtime, ResourceAzureSubscriptionWebServiceHostingEnvironment, envID).(*mqlAzureSubscriptionWebServiceHostingEnvironment); ok {
 			return filtered, nil
 		}
-		a.HostingEnvironment.State = plugin.StateIsSet | plugin.StateIsNull
+		field.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	return env, nil

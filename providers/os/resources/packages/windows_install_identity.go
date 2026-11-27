@@ -496,8 +496,12 @@ func applyInstallIdentityQualifiers(pkgs []Package, upgradeCodes map[string]stri
 		parsed.Qualifiers = list
 		p.PUrl = parsed.ToString()
 	}
-	// Spent: the identity now lives in the purl.
+	// Spent: the identity now lives in the purl. The key name stays for
+	// SourceResolver (winget's catalog joins on it).
 	for i := range pkgs {
+		if id := pkgs[i].installIdentity; id != nil {
+			pkgs[i].uninstallKey = id.uninstallKey
+		}
 		pkgs[i].installIdentity = nil
 	}
 }

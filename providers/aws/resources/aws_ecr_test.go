@@ -407,3 +407,18 @@ func TestEcrRepositoriesMatchingTags(t *testing.T) {
 		assert.False(t, ok, "a denied tag read must not be seeded as an empty tag set")
 	})
 }
+
+// Synthetic: delete replication on and absent; no target showed this.
+func TestEcrReplicationConfigurationDeleteReplication(t *testing.T) {
+	got := ecrReplicationConfigurationToDict(&ecrtypes.ReplicationConfiguration{
+		Rules: []ecrtypes.ReplicationRule{
+			{DeleteReplication: &ecrtypes.DeleteReplication{Enabled: true}},
+			{},
+		},
+	})
+	rules := got["rules"].([]any)
+	require.Len(t, rules, 2)
+	assert.Equal(t, true, rules[0].(map[string]any)["deleteReplicationEnabled"])
+	// AWS documents an absent setting as not replicating deletions.
+	assert.Equal(t, false, rules[1].(map[string]any)["deleteReplicationEnabled"])
+}

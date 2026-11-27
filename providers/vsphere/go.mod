@@ -2,7 +2,7 @@ module go.mondoo.com/mql/providers/vsphere
 
 replace go.mondoo.com/mql => ../..
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/facebookincubator/nvdtools v0.1.5

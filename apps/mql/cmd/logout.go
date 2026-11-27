@@ -6,6 +6,7 @@ package cmd
 import (
 	"context"
 	"os"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
@@ -21,6 +22,7 @@ import (
 func init() {
 	rootCmd.AddCommand(LogoutCmd)
 	LogoutCmd.Flags().Bool("force", false, "Force the logout without confirmation")
+	LogoutCmd.Flags().Bool("insecure", false, "Allow revoking a login session over unencrypted http to a non-loopback server")
 }
 
 var LogoutCmd = &cobra.Command{
@@ -46,6 +48,13 @@ ensure the credentials cannot be used in the future.
 
 		// print the used config to the user
 		config.DisplayUsedConfig()
+
+		// A short-lived interactive login session has no registered client to
+		// unregister: revoke it and drop the credential.
+		if opts.IsOAuthSession() {
+			insecure, _ := cmd.Flags().GetBool("insecure")
+			return logoutSession(opts, insecure)
+		}
 
 		// check valid client authentication
 		serviceAccount := opts.GetServiceCredential()
@@ -124,4 +133,49 @@ ensure the credentials cannot be used in the future.
 		log.Info().Msgf("Bye bye, space cat. Client %s unregistered successfully", credentials.Mrn)
 		return nil
 	},
+}
+
+// logoutSession revokes an interactive login session on the server (best
+// effort) and removes its credential from the config.
+func logoutSession(opts *config.Config, insecure bool) error {
+	// The session is the user's own: name them, not a client.
+	who := opts.Authentication.UserEmail
+	if who == "" {
+		who = opts.ServiceAccountMrn
+	}
+
+	// Revocation goes to the login server the session came from.
+	issuer := sessionIssuer(opts)
+	httpClient, err := opts.GetHttpClient()
+	if err != nil {
+		log.Warn().Err(err).Msg("could not create http client, the session is only removed locally")
+	} else {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		// The revocation endpoint must use https, or http to a loopback
+		// server, unless --insecure is set.
+		err = revokeSession(insecure)(ctx, httpClient, issuer, opts.Token)
+		cancel()
+		if err != nil {
+			log.Warn().Err(err).Msg("could not revoke the session on the server, it expires on its own")
+		} else {
+			log.Debug().Str("user", who).Msg("session revoked")
+		}
+	}
+
+	path := viper.ConfigFileUsed()
+	if fi, err := os.Stat(path); err == nil {
+		opts.ClearCredentials()
+		data, marshalErr := config.MarshalConfig(path, opts)
+		if marshalErr != nil {
+			log.Error().Err(marshalErr).Msg("could not update Mondoo config")
+			return cli_errors.ExitCode1WithoutError
+		}
+		if writeErr := os.WriteFile(path, data, fi.Mode()); writeErr != nil {
+			log.Error().Err(writeErr).Msg("could not update Mondoo config")
+			return cli_errors.ExitCode1WithoutError
+		}
+	}
+
+	log.Info().Msgf("Logged out. The login session of %s is removed", who)
+	return nil
 }

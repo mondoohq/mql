@@ -133,7 +133,7 @@ func init() {
 			Create: createAristaEosStormControl,
 		},
 		"arista.eos.ntp": {
-			// to override args, implement: initAristaEosNtp(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initAristaEosNtp,
 			Create: createAristaEosNtp,
 		},
 		"arista.eos.ntp.server": {
@@ -7518,7 +7518,7 @@ func (c *mqlAristaEosPrefixListEntry) GetLe() *plugin.TValue[int64] {
 type mqlAristaEosMlag struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	mqlAristaEosMlagInternal
+	// optional: if you define mqlAristaEosMlagInternal it will be used here
 	DomainId       plugin.TValue[string]
 	LocalInterface plugin.TValue[string]
 	PeerAddress    plugin.TValue[string]
@@ -8688,7 +8688,7 @@ func (c *mqlAristaEosAaaServerGroup) GetServers() *plugin.TValue[[]any] {
 type mqlAristaEosSshSettings struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlAristaEosSshSettingsInternal it will be used here
+	mqlAristaEosSshSettingsInternal
 	Enabled                plugin.TValue[bool]
 	ProtocolVersion        plugin.TValue[string]
 	IdleTimeout            plugin.TValue[int64]
@@ -8811,11 +8811,15 @@ func (c *mqlAristaEosSshSettings) GetLogLevel() *plugin.TValue[string] {
 }
 
 func (c *mqlAristaEosSshSettings) GetClientAliveInterval() *plugin.TValue[int64] {
-	return &c.ClientAliveInterval
+	return plugin.GetOrCompute[int64](&c.ClientAliveInterval, func() (int64, error) {
+		return c.clientAliveInterval()
+	})
 }
 
 func (c *mqlAristaEosSshSettings) GetClientAliveCountMax() *plugin.TValue[int64] {
-	return &c.ClientAliveCountMax
+	return plugin.GetOrCompute[int64](&c.ClientAliveCountMax, func() (int64, error) {
+		return c.clientAliveCountMax()
+	})
 }
 
 // mqlAristaEosSnmpCommunity for the arista.eos.snmpCommunity resource

@@ -15,6 +15,12 @@ type SshdLine struct {
 	args string
 }
 
+// Key is the line's keyword as written, empty for a blank or comment line.
+func (l SshdLine) Key() string { return l.key }
+
+// Args is the line's argument string, with quoting removed.
+func (l SshdLine) Args() string { return l.args }
+
 // sshd_config keywords are case-insensitive, and ParseLine sees the raw
 // keyword before it is canonicalized to its mixed-case form, so the lookup
 // keys are stored lowercased and compared against the lowercased keyword.

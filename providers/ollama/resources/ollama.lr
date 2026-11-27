@@ -87,6 +87,13 @@ ollama @defaults("host version") @root {
   // instance and are processed by Ollama Cloud. Null on instances that do not
   // report a cloud status.
   cloudEnabled() bool
+  // Where the setting that disables Ollama Cloud is made
+  //
+  // One of env (the OLLAMA_NO_CLOUD environment variable), config (the
+  // server configuration file), both, or none when cloud is not disabled.
+  // A value of env means the opt-out holds only while the variable stays
+  // set on the server process. Null on instances that do not report it.
+  cloudDisabledSource() string
   // Ollama Cloud account the instance is signed in to
   //
   // Null when the instance is not signed in, in which case it cannot reach
@@ -225,8 +232,30 @@ ollama.model @defaults("name family parameterSize") {
   // including tool calls and thinking segments, for example harmony. Empty for
   // a model whose output needs no parsing beyond plain text.
   parser() string
+  // Minimum Ollama version the model requires
+  //
+  // The server version the model declares it needs, for example 0.12.0.
+  // Null when the model declares no minimum.
+  requires() string
+  // Conversation messages baked into the model
+  //
+  // The MESSAGE instructions of the model's Modelfile, in order. The server
+  // places them ahead of every conversation with the model, so they are part
+  // of the effective prompt alongside system. Empty for a model without
+  // seeded messages.
+  messages() []ollama.model.message
   // Structured GGUF metadata extracted from the model's configuration
   info() ollama.model.info
+}
+
+// Conversation message baked into an Ollama model
+private ollama.model.message @defaults("role") {
+  // Message role
+  //
+  // One of system, user, or assistant.
+  role string
+  // Message text
+  content string
 }
 
 // Ollama model GGUF metadata
@@ -313,6 +342,16 @@ ollama.runningModel @defaults("name") {
   expiresAt time
   // VRAM usage in bytes
   sizeVram int
+  // Total memory the loaded model occupies, in bytes
+  //
+  // Includes the part held in VRAM. A size larger than sizeVram means part
+  // of the model runs from system memory on the CPU.
+  size int
+  // Inference engine running the model
+  //
+  // For example llamacpp, ggml, or mlx. Null on instances that do not report
+  // it.
+  runner string
   // Active context window length in tokens
   contextLength int
 }

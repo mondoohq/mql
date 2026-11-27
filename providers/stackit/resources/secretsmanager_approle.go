@@ -60,7 +60,7 @@ func ttlSeconds(ttl string) *int64 {
 // sentinel. The API models "this credential may authenticate any number of
 // times" as a count of zero, which a query comparing counts cannot tell apart
 // from an exhausted credential.
-func usesUnlimited(numUses int32) bool {
+func usesUnlimited(numUses int64) bool {
 	return numUses == 0
 }
 
@@ -105,7 +105,7 @@ func approleArgs(instanceId string, role *secretsmanager.Approle) map[string]*ll
 		"write":                 llx.BoolData(role.GetWrite()),
 		"secretIdTtl":           llx.StringDataPtr(nonEmpty(ttl)),
 		"secretIdTtlSeconds":    llx.IntDataPtr(ttlSeconds(ttl)),
-		"secretIdNumUses":       llx.IntData(int64(numUses)),
+		"secretIdNumUses":       llx.IntData(numUses),
 		"secretIdUsesUnlimited": llx.BoolData(usesUnlimited(numUses)),
 	}
 }
@@ -166,12 +166,12 @@ func approleSecretIdArgs(instanceId, roleId string, secret *secretsmanager.Appro
 		// a version number is only unique within its approle, which is itself
 		// only unique within its instance
 		"__id": llx.StringData(qualifiedId("stackit.secretsManager.approle.secretId",
-			instanceId+"/"+roleId, strconv.FormatInt(int64(version), 10))),
-		"version":       llx.IntData(int64(version)),
+			instanceId+"/"+roleId, strconv.FormatInt(version, 10))),
+		"version":       llx.IntData(version),
 		"description":   llx.StringData(secret.GetDescription()),
 		"ttl":           llx.StringDataPtr(nonEmpty(ttl)),
 		"ttlSeconds":    llx.IntDataPtr(ttlSeconds(ttl)),
-		"numUses":       llx.IntData(int64(numUses)),
+		"numUses":       llx.IntData(numUses),
 		"usesUnlimited": llx.BoolData(usesUnlimited(numUses)),
 	}
 }

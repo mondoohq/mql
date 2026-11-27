@@ -175,6 +175,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"vllm.model.permissions": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlVllmModel).GetPermissions()).ToDataRes(types.Array(types.Resource("vllm.model.permission")))
 	},
+	"vllm.model.baseModel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmModel).GetBaseModel()).ToDataRes(types.Resource("vllm.model"))
+	},
+	"vllm.model.adapters": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmModel).GetAdapters()).ToDataRes(types.Array(types.Resource("vllm.model")))
+	},
 	"vllm.model.permission.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlVllmModelPermission).GetId()).ToDataRes(types.String)
 	},
@@ -333,6 +339,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"vllm.serverInfo.serverDevMode": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlVllmServerInfo).GetServerDevMode()).ToDataRes(types.Bool)
+	},
+	"vllm.serverInfo.allowedLocalMediaPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetAllowedLocalMediaPath()).ToDataRes(types.String)
+	},
+	"vllm.serverInfo.allowedMediaDomains": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetAllowedMediaDomains()).ToDataRes(types.Array(types.String))
+	},
+	"vllm.serverInfo.revision": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetRevision()).ToDataRes(types.String)
+	},
+	"vllm.serverInfo.codeRevision": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetCodeRevision()).ToDataRes(types.String)
+	},
+	"vllm.serverInfo.tokenizerRevision": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetTokenizerRevision()).ToDataRes(types.String)
+	},
+	"vllm.serverInfo.loadFormat": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetLoadFormat()).ToDataRes(types.String)
+	},
+	"vllm.serverInfo.downloadDir": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetDownloadDir()).ToDataRes(types.String)
 	},
 	"vllm.tokenizerInfo.exposed": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlVllmTokenizerInfo).GetExposed()).ToDataRes(types.Bool)
@@ -495,6 +522,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"vllm.model.permissions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlVllmModel).Permissions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"vllm.model.baseModel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmModel).BaseModel, ok = plugin.RawToTValue[*mqlVllmModel](v.Value, v.Error)
+		return
+	},
+	"vllm.model.adapters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmModel).Adapters, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"vllm.model.permission.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -719,6 +754,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"vllm.serverInfo.serverDevMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlVllmServerInfo).ServerDevMode, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.allowedLocalMediaPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).AllowedLocalMediaPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.allowedMediaDomains": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).AllowedMediaDomains, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.revision": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).Revision, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.codeRevision": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).CodeRevision, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.tokenizerRevision": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).TokenizerRevision, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.loadFormat": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).LoadFormat, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.downloadDir": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).DownloadDir, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"vllm.tokenizerInfo.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1038,6 +1101,8 @@ type mqlVllmModel struct {
 	Created     plugin.TValue[*time.Time]
 	OwnedBy     plugin.TValue[string]
 	Permissions plugin.TValue[[]any]
+	BaseModel   plugin.TValue[*mqlVllmModel]
+	Adapters    plugin.TValue[[]any]
 }
 
 // createVllmModel creates a new instance of this resource
@@ -1114,6 +1179,38 @@ func (c *mqlVllmModel) GetPermissions() *plugin.TValue[[]any] {
 		}
 
 		return c.permissions()
+	})
+}
+
+func (c *mqlVllmModel) GetBaseModel() *plugin.TValue[*mqlVllmModel] {
+	return plugin.GetOrCompute[*mqlVllmModel](&c.BaseModel, func() (*mqlVllmModel, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("vllm.model", c.__id, "baseModel")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlVllmModel), nil
+			}
+		}
+
+		return c.baseModel()
+	})
+}
+
+func (c *mqlVllmModel) GetAdapters() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Adapters, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("vllm.model", c.__id, "adapters")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.adapters()
 	})
 }
 
@@ -1410,6 +1507,13 @@ type mqlVllmServerInfo struct {
 	LoggingIterationDetailsEnabled plugin.TValue[bool]
 	AllowRuntimeLoraUpdating       plugin.TValue[bool]
 	ServerDevMode                  plugin.TValue[bool]
+	AllowedLocalMediaPath          plugin.TValue[string]
+	AllowedMediaDomains            plugin.TValue[[]any]
+	Revision                       plugin.TValue[string]
+	CodeRevision                   plugin.TValue[string]
+	TokenizerRevision              plugin.TValue[string]
+	LoadFormat                     plugin.TValue[string]
+	DownloadDir                    plugin.TValue[string]
 }
 
 // createVllmServerInfo creates a new instance of this resource
@@ -1590,6 +1694,48 @@ func (c *mqlVllmServerInfo) GetAllowRuntimeLoraUpdating() *plugin.TValue[bool] {
 func (c *mqlVllmServerInfo) GetServerDevMode() *plugin.TValue[bool] {
 	return plugin.GetOrCompute[bool](&c.ServerDevMode, func() (bool, error) {
 		return c.serverDevMode()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetAllowedLocalMediaPath() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.AllowedLocalMediaPath, func() (string, error) {
+		return c.allowedLocalMediaPath()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetAllowedMediaDomains() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AllowedMediaDomains, func() ([]any, error) {
+		return c.allowedMediaDomains()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetRevision() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Revision, func() (string, error) {
+		return c.revision()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetCodeRevision() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.CodeRevision, func() (string, error) {
+		return c.codeRevision()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetTokenizerRevision() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.TokenizerRevision, func() (string, error) {
+		return c.tokenizerRevision()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetLoadFormat() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.LoadFormat, func() (string, error) {
+		return c.loadFormat()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetDownloadDir() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.DownloadDir, func() (string, error) {
+		return c.downloadDir()
 	})
 }
 

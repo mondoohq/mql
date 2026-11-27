@@ -39,8 +39,10 @@ vllm @root {
 // the model. The `root` field is the underlying model path, and
 // `maxModelLen` is the context window length in tokens configured for
 // this deployment. Auditing served models reveals which weights are
-// exposed, whether LoRA adapters are attached (via `parent`), and the
-// context window each deployment allows.
+// exposed, whether LoRA adapters are attached (via `adapters`), and the
+// context window each deployment allows. For a LoRA adapter, `baseModel` is
+// the served model it extends, and `adapters` lists the adapters served on top
+// of a base model.
 vllm.model @defaults("id maxModelLen") {
   // Model identifier
   id string
@@ -51,9 +53,9 @@ vllm.model @defaults("id maxModelLen") {
   root string
   // Parent model identifier
   //
-  // Set for LoRA adapters to reference the base model they extend.
-  // Empty for base models.
-  parent string
+  // Deprecated in favor of `baseModel`. Set for LoRA adapters to reference the
+  // base model they extend. Empty for base models.
+  parent @maturity("deprecated") string
   // Maximum context window length in tokens
   maxModelLen int
   // Model creation timestamp as reported by the server
@@ -62,6 +64,16 @@ vllm.model @defaults("id maxModelLen") {
   ownedBy string
   // Permission entries the server advertises for this model
   permissions() []vllm.model.permission
+  // Base model this LoRA adapter extends
+  //
+  // Null for a base model, and null for an adapter whose base model is not
+  // among the models the server lists.
+  baseModel() vllm.model
+  // LoRA adapters served on top of this model
+  //
+  // Every listed model whose base model is this one. Empty for a model with no
+  // adapters attached and for an adapter.
+  adapters() []vllm.model
 }
 
 // Permission entry advertised for a vLLM served model
@@ -287,6 +299,48 @@ vllm.serverInfo @defaults("exposed trustRemoteCode model tokenizerMode") {
   // collective-RPC, and engine-configuration routes that a production
   // deployment does not carry.
   serverDevMode() bool
+  // Local directory API requests may read media files from
+  //
+  // When set, a multimodal request can name a file under this directory on
+  // the server's own filesystem and the server reads it, so the directory is
+  // readable by anyone who can send a request. Null when unset, in which case
+  // the server refuses requests for local files.
+  allowedLocalMediaPath() string
+  // Domains media URLs in a request may point to
+  //
+  // When set, the server fetches multimodal input only from URLs whose host is
+  // in this list. Null when the list is unset or empty, which vLLM treats as no
+  // restriction: the server fetches media from any HTTP or HTTPS host a caller
+  // names.
+  allowedMediaDomains() []string
+  // Model revision the server loaded
+  //
+  // A branch name, tag name, or commit ID on the model hub. Null when unset,
+  // in which case the server loads the repository's default branch as it
+  // stands at startup.
+  revision() string
+  // Revision of the model code the server loaded
+  //
+  // A branch name, tag name, or commit ID for the custom modeling code that
+  // runs when `trustRemoteCode` is true. Null when unset, in which case the
+  // server runs the code from the repository's default branch as it stands at
+  // startup.
+  codeRevision() string
+  // Tokenizer revision the server loaded
+  //
+  // A branch name, tag name, or commit ID on the model hub. Null when unset.
+  tokenizerRevision() string
+  // Format the model weights are loaded in
+  //
+  // Values such as auto, pt, safetensors, npcache, dummy, tensorizer,
+  // runai_streamer, sharded_state, or mistral, and plugins can add others. The
+  // pt format loads pickled PyTorch checkpoints.
+  loadFormat() string
+  // Directory the server downloads and loads weights from
+  //
+  // Null when unset, in which case the server uses the default model hub
+  // cache directory.
+  downloadDir() string
 }
 
 // vLLM tokenizer and chat template

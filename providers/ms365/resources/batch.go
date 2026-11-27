@@ -235,11 +235,16 @@ func batchEach[T serialization.Parsable](
 			}
 			inFlight++
 			go func() {
+				// The result is posted even when Send panics, since the loop
+				// below waits for one result per chunk in flight.
+				res := chunkResult{idToKey: idToKey, sentAt: sentAt}
+				defer func() { results <- res }()
+				defer recoverAsError("sending a Graph $batch", &res.err)
 				resp, sendErr := batch.Send(ctx, adapter)
 				if sendErr != nil {
 					sendErr = transformError(sendErr)
 				}
-				results <- chunkResult{idToKey: idToKey, sentAt: sentAt, resp: resp, err: sendErr}
+				res.resp, res.err = resp, sendErr
 			}()
 		}
 

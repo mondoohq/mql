@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/oracle/oci-go-sdk/v65/cloudguard"
@@ -599,8 +600,7 @@ type mqlOciCloudGuardDetectorRecipeInternal struct {
 	ociCompartmentRef
 }
 
-// securityZones is one subtree call for the whole tenancy, narrowed to the
-// compartments the filters admit.
+// securityZones lists the zones in every compartment the filters admit.
 func (o *mqlOciCloudGuard) securityZones() ([]any, error) {
 	items, err := o.listSecurityZones()
 	return ociKeepAdmitted(o.MqlRuntime, items, err)
@@ -619,28 +619,29 @@ func (o *mqlOciCloudGuard) listSecurityZones() ([]any, error) {
 		return nil, err
 	}
 
-	ctx := context.Background()
-	zones, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]cloudguard.SecurityZoneSummary, *string, error) {
-		// Security zones are attached to compartments and practically never to
-		// the tenancy root, so without the subtree flag a correctly zoned
-		// tenancy reported none at all.
-		response, err := client.ListSecurityZones(ctx, cloudguard.ListSecurityZonesRequest{
-			CompartmentId:                    new(conn.TenantID()),
-			IsRequiredSecurityZonesInSubtree: new(true),
-			Page:                             page,
-		})
+	// ListSecurityZones returns only the zones attached to the compartment it
+	// is given. IsRequiredSecurityZonesInSubtree does not widen that: asked at
+	// the tenancy root with the flag set, it returns nothing for a zone on a
+	// child compartment. Zones practically never sit on the root, so every
+	// compartment is asked, in Cloud Guard's reporting region only.
+	items, err := ociCollectGlobal(o.MqlRuntime, func(ctx context.Context, compartmentID string) ([]any, error) {
+		zones, err := ociListSecurityZones(ctx, client, compartmentID)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
-		return response.Items, response.OpcNextPage, nil
+		out := make([]any, 0, len(zones))
+		for i := range zones {
+			out = append(out, zones[i])
+		}
+		return out, nil
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	res := make([]any, 0, len(zones))
-	for i := range zones {
-		zone := zones[i]
+	res := make([]any, 0, len(items))
+	for i := range items {
+		zone := items[i].(cloudguard.SecurityZoneSummary)
 
 		var created *time.Time
 		if zone.TimeCreated != nil {
@@ -667,6 +668,20 @@ func (o *mqlOciCloudGuard) listSecurityZones() ([]any, error) {
 	}
 
 	return res, nil
+}
+
+// ociListSecurityZones lists the security zones attached to one compartment.
+func ociListSecurityZones(ctx context.Context, client *cloudguard.CloudGuardClient, compartmentID string) ([]cloudguard.SecurityZoneSummary, error) {
+	return ociPaginate(ctx, func(ctx context.Context, page *string) ([]cloudguard.SecurityZoneSummary, *string, error) {
+		response, err := client.ListSecurityZones(ctx, cloudguard.ListSecurityZonesRequest{
+			CompartmentId: new(compartmentID),
+			Page:          page,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		return response.Items, response.OpcNextPage, nil
+	})
 }
 
 func (o *mqlOciCloudGuard) securityZoneRecipes() ([]any, error) {
@@ -953,4 +968,48 @@ func (o *mqlOciCloudGuardDetectorRecipe) newDetectorConfigurations(ruleID string
 		res = append(res, mqlConfig)
 	}
 	return res, nil
+}
+
+func (o *mqlOciCloudGuard) findingsRegion() (*mqlOciRegion, error) {
+	cfg, err := o.getConfig()
+	if err != nil {
+		return nil, err
+	}
+	name := ""
+	if cfg != nil {
+		name = stringValue(cfg.ReportingRegion)
+	}
+	return resolveOciRegionByName(o.MqlRuntime, name, &o.FindingsRegion)
+}
+
+// targetCompartment resolves the monitored compartment for a target whose
+// resource type is COMPARTMENT. Other target types monitor something that is
+// not a compartment, so they report null.
+func (o *mqlOciCloudGuardTarget) targetCompartment() (*mqlOciCompartment, error) {
+	id := ociCloudGuardTargetCompartmentID(o.TargetResourceType.Data, o.TargetResourceId.Data)
+	if id == "" {
+		o.TargetCompartment.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return resolveOciCompartment(o.MqlRuntime, id, &o.TargetCompartment)
+}
+
+// ociCloudGuardTargetCompartmentID reports the compartment a Cloud Guard
+// target monitors, or "" when it monitors something else.
+//
+// A COMPARTMENT target names its compartment. So does the SECURITY_ZONE
+// target Cloud Guard creates with each security zone: its resource is the
+// zone's compartment, not the zone, and its detector recipes run on that
+// compartment and the ones beneath it. The OCID prefix is checked rather than
+// trusted, so a target type that names some other resource reads as none.
+func ociCloudGuardTargetCompartmentID(resourceType, resourceID string) string {
+	switch resourceType {
+	case "COMPARTMENT", "SECURITY_ZONE":
+	default:
+		return ""
+	}
+	if strings.HasPrefix(resourceID, "ocid1.compartment.") || strings.HasPrefix(resourceID, "ocid1.tenancy.") {
+		return resourceID
+	}
+	return ""
 }

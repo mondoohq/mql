@@ -22,17 +22,23 @@ const (
 	maxErrorBodySize    = 64 << 10 // 64 KB
 )
 
+// defaultInferenceEndpointsBaseURL is the Inference Endpoints API, which is
+// served from its own host rather than the Hub's.
+const defaultInferenceEndpointsBaseURL = "https://api.endpoints.huggingface.cloud"
+
 type API struct {
-	baseURL    string
-	httpClient *http.Client
-	token      string
+	baseURL          string
+	endpointsBaseURL string
+	httpClient       *http.Client
+	token            string
 }
 
 func NewAPI(baseURL string, httpClient *http.Client, token string) *API {
 	return &API{
-		baseURL:    baseURL,
-		httpClient: httpClient,
-		token:      token,
+		baseURL:          baseURL,
+		endpointsBaseURL: defaultInferenceEndpointsBaseURL,
+		httpClient:       httpClient,
+		token:            token,
 	}
 }
 
@@ -400,9 +406,41 @@ func (a *API) ListSpaces(ctx context.Context, opts *models.SpaceListOptions) (*m
 	return &spaceList, nil
 }
 
+// ListInferenceEndpoints returns every inference endpoint in the namespace.
+// The list paginates with a nextCursor in the body, which alone decides
+// whether another page follows: an empty page can still carry one. A cursor
+// seen twice, or more pages than any namespace holds, stops the walk with an
+// error instead of returning a partial list.
 func (a *API) ListInferenceEndpoints(ctx context.Context, namespace string) (*models.InferenceEndpointList, error) {
-	u := fmt.Sprintf("https://api.endpoints.huggingface.cloud/v2/endpoint/%s", url.PathEscape(namespace))
+	const maxPages = 1000
+	base := fmt.Sprintf("%s/v2/endpoint/%s", a.endpointsBaseURL, url.PathEscape(namespace))
 
+	all := &models.InferenceEndpointList{}
+	seen := map[string]bool{}
+	cursor := ""
+	for range maxPages {
+		u := base
+		if cursor != "" {
+			u += "?cursor=" + url.QueryEscape(cursor)
+		}
+		page, err := a.getInferenceEndpointPage(ctx, u)
+		if err != nil {
+			return nil, err
+		}
+		all.Endpoints = append(all.Endpoints, page.Endpoints...)
+		if page.NextCursor == nil || *page.NextCursor == "" {
+			return all, nil
+		}
+		cursor = *page.NextCursor
+		if seen[cursor] {
+			return nil, fmt.Errorf("inference endpoint list returned cursor %q twice", cursor)
+		}
+		seen[cursor] = true
+	}
+	return nil, fmt.Errorf("inference endpoint list exceeded %d pages", maxPages)
+}
+
+func (a *API) getInferenceEndpointPage(ctx context.Context, u string) (*models.InferenceEndpointList, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -423,11 +461,11 @@ func (a *API) ListInferenceEndpoints(ctx context.Context, namespace string) (*mo
 		return nil, fmt.Errorf("API error: %s (status: %d)", string(bodyBytes), resp.StatusCode)
 	}
 
-	var endpointList models.InferenceEndpointList
-	if err := json.NewDecoder(resp.Body).Decode(&endpointList); err != nil {
+	var page models.InferenceEndpointList
+	if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
-	return &endpointList, nil
+	return &page, nil
 }
 
 func (a *API) ListWebhooks(ctx context.Context, opts *models.WebhookListOptions) ([]models.Webhook, error) {
@@ -475,6 +513,74 @@ func (a *API) ListWebhooks(ctx context.Context, opts *models.WebhookListOptions)
 		next = nextURL
 	}
 	return []models.Webhook(webhookList), nil
+}
+
+// listAllPages walks a Hub list that returns a JSON array per page and names
+// the next page in an RFC 8288 Link header. A next link seen before stops the
+// walk, so a server pointing back at a page it already served cannot loop it.
+func listAllPages[T any](ctx context.Context, a *API, endpoint string) ([]T, error) {
+	var all []T
+	next := endpoint
+	seen := map[string]bool{}
+	for next != "" && !seen[next] {
+		seen[next] = true
+		var page []T
+		nextURL, err := a.getPaged(ctx, next, &page)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, page...)
+		next = nextURL
+	}
+	return all, nil
+}
+
+// ListOrgMembers returns every member of an organization. External
+// collaborators are requested too; the Hub honors that only for organization
+// administrators.
+func (a *API) ListOrgMembers(ctx context.Context, org string) ([]models.OrgMember, error) {
+	params := url.Values{}
+	params.Set("limit", "1000")
+	params.Set("includeExternal", "true")
+	endpoint := fmt.Sprintf("organizations/%s/members?%s", url.PathEscape(org), params.Encode())
+	return listAllPages[models.OrgMember](ctx, a, endpoint)
+}
+
+// GetOrgNetworkSecurity reads an organization's network security settings
+// (Team and Enterprise plans).
+func (a *API) GetOrgNetworkSecurity(ctx context.Context, org string) (*models.OrgNetworkSecurity, error) {
+	var ns models.OrgNetworkSecurity
+	err := a.request(ctx, http.MethodGet, fmt.Sprintf("organizations/%s/settings/network-security", url.PathEscape(org)), nil, &ns)
+	if err != nil {
+		return nil, err
+	}
+	return &ns, nil
+}
+
+// ListOrgMemberTokens returns the access tokens of an organization's members
+// (Team and Enterprise plans). The Hub's default filter leaves revoked tokens
+// out.
+func (a *API) ListOrgMemberTokens(ctx context.Context, org string) ([]models.OrgMemberToken, error) {
+	endpoint := fmt.Sprintf("organizations/%s/settings/tokens?limit=100", url.PathEscape(org))
+	return listAllPages[models.OrgMemberToken](ctx, a, endpoint)
+}
+
+// ListTrustedPublishers returns the trusted publishers configured on one
+// repository. The endpoint does not paginate.
+func (a *API) ListTrustedPublishers(ctx context.Context, repoType models.RepoType, repoID string) ([]models.TrustedPublisher, error) {
+	var pubs []models.TrustedPublisher
+	err := a.request(ctx, http.MethodGet, fmt.Sprintf("%s/%s/settings/trusted-publishers", repoType, escapeRepoID(repoID)), nil, &pubs)
+	if err != nil {
+		return nil, err
+	}
+	return pubs, nil
+}
+
+// ListAccessRequests returns the access requests with one status on a gated
+// model or dataset.
+func (a *API) ListAccessRequests(ctx context.Context, repoType models.RepoType, repoID string, status models.AccessRequestStatus) ([]models.AccessRequest, error) {
+	endpoint := fmt.Sprintf("%s/%s/user-access-request/%s?limit=1000", repoType, escapeRepoID(repoID), url.PathEscape(string(status)))
+	return listAllPages[models.AccessRequest](ctx, a, endpoint)
 }
 
 func (a *API) WhoAmI(ctx context.Context) (*models.User, error) {

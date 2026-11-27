@@ -98,6 +98,26 @@ no sflow run
 	assert.Equal(t, "10.0.0.51", c.Destinations[0].Address)
 }
 
+func TestParseSflowConfig_SampleSubcommands(t *testing.T) {
+	// `show running-config all` renders the rate next to other `sflow sample`
+	// settings, after it. They must not overwrite the rate (EOS 4.37).
+	cfg := `sflow sample 1048576
+sflow sample truncate size 128
+sflow polling-interval 2
+sflow sample output interface
+no sflow sample input subinterface
+`
+	c := ParseSflowConfig(cfg)
+	assert.Equal(t, 1048576, c.SampleRate)
+	assert.Equal(t, 2, c.PollingInterval)
+}
+
+func TestParseSflowConfig_SampleDangerous(t *testing.T) {
+	// A rate below the safe minimum is configured with `dangerous`.
+	c := ParseSflowConfig("sflow sample dangerous 100\n")
+	assert.Equal(t, 100, c.SampleRate)
+}
+
 func TestParseSflowConfig_None(t *testing.T) {
 	c := ParseSflowConfig("interface Ethernet1\n")
 	assert.False(t, c.Enabled)

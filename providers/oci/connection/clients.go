@@ -314,6 +314,10 @@ func (c *OciConnection) RedisClusterClient(region string) (*redis.RedisClusterCl
 	return regionalClient(c, "redis", region, redis.NewRedisClusterClientWithConfigurationProvider)
 }
 
+func (c *OciConnection) OciCacheUserClient(region string) (*redis.OciCacheUserClient, error) {
+	return regionalClient(c, "redis-cacheuser", region, redis.NewOciCacheUserClientWithConfigurationProvider)
+}
+
 func (c *OciConnection) GoldenGateClient(region string) (*goldengate.GoldenGateClient, error) {
 	return regionalClient(c, "goldengate", region, goldengate.NewGoldenGateClientWithConfigurationProvider)
 }

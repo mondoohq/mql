@@ -240,7 +240,7 @@ func (p *mqlPorts) processesBySocket() (map[int64]*mqlProcess, error) {
 	}
 	processes := obj.(*mqlProcesses)
 
-	err = processes.refreshCache(nil)
+	bySocket, err := processes.bySocket()
 	if err != nil {
 		p.processes2ports = plugin.TValue[map[int64]*mqlProcess]{
 			State: plugin.StateIsSet,
@@ -250,10 +250,10 @@ func (p *mqlPorts) processesBySocket() (map[int64]*mqlProcess, error) {
 	}
 
 	p.processes2ports = plugin.TValue[map[int64]*mqlProcess]{
-		Data:  processes.BySocketID,
+		Data:  bySocket,
 		State: plugin.StateIsSet,
 	}
-	return processes.BySocketID, err
+	return bySocket, nil
 }
 
 // portUser is a port's user, or null when the socket's uid has no user entry,

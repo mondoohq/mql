@@ -812,6 +812,62 @@ func (t *mqlAwsEcsTask) containers() ([]any, error) {
 	return containers, nil
 }
 
+// initAwsEcsContainer resolves a container from its ARN, or from the scanned
+// asset's ARN on an aws-ecs-container asset. A container ARN
+// (arn:aws:ecs:<region>:<account>:container/<cluster>/<task-id>/<container-id>)
+// names its task, so only that task is described.
+func initAwsEcsContainer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+	if len(args) == 0 {
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformEcsContainer); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
+		}
+	}
+	if args["arn"] == nil {
+		return nil, nil, errors.New("arn required to fetch ecs container")
+	}
+	containerArn, ok := args["arn"].Value.(string)
+	if !ok || containerArn == "" {
+		return nil, nil, errors.New("arn required to fetch ecs container")
+	}
+
+	taskArn, err := ecsContainerTaskArn(containerArn)
+	if err != nil {
+		return nil, nil, err
+	}
+	task, err := NewResource(runtime, "aws.ecs.task", map[string]*llx.RawData{"arn": llx.StringData(taskArn)})
+	if err != nil {
+		return nil, nil, err
+	}
+	containers := task.(*mqlAwsEcsTask).GetContainers()
+	if containers.Error != nil {
+		return nil, nil, containers.Error
+	}
+	for _, c := range containers.Data {
+		if container := c.(*mqlAwsEcsContainer); container.Arn.Data == containerArn {
+			return args, container, nil
+		}
+	}
+	return nil, nil, errors.Newf("ecs container %q not found", containerArn)
+}
+
+// ecsContainerTaskArn is the ARN of the task a container runs in. Only the
+// current ARN format, which carries the cluster, names the task.
+func ecsContainerTaskArn(containerArn string) (string, error) {
+	parsed, err := validateAndParseARN(containerArn, "ecs")
+	if err != nil {
+		return "", err
+	}
+	parts := strings.Split(parsed.Resource, "/")
+	if len(parts) != 4 || parts[0] != "container" {
+		return "", errors.Newf("ecs container arn %q does not name its cluster and task", containerArn)
+	}
+	parsed.Resource = "task/" + parts[1] + "/" + parts[2]
+	return parsed.String(), nil
+}
+
 type mqlAwsEcsContainerInternal struct {
 	cacheTaskArn                  string
 	cacheTaskDefinitionArn        string
@@ -3181,4 +3237,38 @@ func ecsIamRoleRef(runtime *plugin.Runtime, arnPtr *string, field *plugin.TValue
 type mqlAwsEcsTaskSetInternal struct {
 	cacheClusterArn string
 	cacheServiceArn string
+}
+
+func (a *mqlAwsEcsCluster) associatedCapacityProviders() ([]any, error) {
+	res := []any{}
+	names := a.CapacityProviders.Data
+	if len(names) == 0 {
+		return res, nil
+	}
+	obj, err := CreateResource(a.MqlRuntime, ResourceAwsEcs, map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	all := obj.(*mqlAwsEcs).GetCapacityProviders()
+	if all.Error != nil {
+		return nil, all.Error
+	}
+	byName := map[string]*mqlAwsEcsCapacityProvider{}
+	for _, raw := range all.Data {
+		cp, ok := raw.(*mqlAwsEcsCapacityProvider)
+		if ok && cp.Region.Data == a.Region.Data {
+			byName[cp.Name.Data] = cp
+		}
+	}
+	for _, n := range names {
+		name, _ := n.(string)
+		cp, ok := byName[name]
+		if !ok {
+			log.Debug().Str("cluster", a.Arn.Data).Str("capacityProvider", name).
+				Msg("capacity provider associated with the cluster is not in the capacity provider list, skipping it")
+			continue
+		}
+		res = append(res, cp)
+	}
+	return res, nil
 }

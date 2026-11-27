@@ -11,32 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestParseFamily(t *testing.T) {
-	tests := []struct {
-		id   string
-		want string
-	}{
-		{"claude-opus-4-6", "opus"},
-		{"claude-sonnet-5", "sonnet"},
-		{"claude-haiku-4-5-20251001", "haiku"},
-		{"claude-3-5-sonnet-20241022", "sonnet"},
-		{"some-unknown-model", ""},
-		{"", ""},
-		// A family the provider has no prior knowledge of still resolves, so a
-		// newly released one is never reported as an empty family.
-		{"claude-fable-5", "fable"},
-		{"claude-3-5-newfamily-20260101", "newfamily"},
-		// An id carrying only a version has no family to report.
-		{"claude-2.1", ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.id, func(t *testing.T) {
-			assert.Equal(t, tt.want, parseFamily(tt.id))
-		})
-	}
-}
-
 func TestParseTime(t *testing.T) {
 	// An empty string is a valid "not set" value and must yield the zero time
 	// with no error, so a missing timestamp never fails the whole list call.

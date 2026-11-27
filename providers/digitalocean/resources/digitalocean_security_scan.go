@@ -91,11 +91,21 @@ func (r *mqlDigitalocean) latestSecurityScan() (*mqlDigitaloceanSecurityScan, er
 		}
 		return nil, err
 	}
-	if scan == nil {
+	// An account that has never enabled CSPM gets a placeholder scan with an
+	// empty ID and the status CSPM_NOT_ENABLED. There is no scan behind it, and
+	// its findings cannot be fetched without an ID, so it is reported as null
+	// like an account with no scan.
+	if !isRealScan(scan) {
 		r.LatestSecurityScan.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	return newMqlSecurityScan(r.MqlRuntime, scan)
+}
+
+// isRealScan reports whether the latest-scan API returned a scan that ran. The
+// CSPM_NOT_ENABLED placeholder carries no ID.
+func isRealScan(scan *godo.Scan) bool {
+	return scan != nil && scan.ID != ""
 }
 
 // findings fetches the scan's findings via GetScan. The scan list API

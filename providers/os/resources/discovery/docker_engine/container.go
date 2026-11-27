@@ -78,12 +78,26 @@ func (e *dockerEngineDiscovery) ContainerInfo(name string) (ContainerInfo, error
 	// fetch docker specific metadata
 	labels := map[string]string{}
 	labels["docker.io/container-id"] = cdata.ID
-	labels["docker.io/image-name"] = cdata.Image
+	labels["docker.io/image-name"] = dockerContainerImageName(cdata)
 	labels["docker.io/names"] = cName
+	// Inspect's Image is the ID of the image the container runs.
+	if strings.HasPrefix(cdata.Image, "sha256:") {
+		labels["mondoo.com/image-id"] = cdata.Image
+	}
 
 	ci.Labels = labels
 
 	return ci, nil
+}
+
+// dockerContainerImageName is the image reference the container was created
+// from (nginx:1.27), which inspect keeps in Config.Image; its Image field is
+// the image ID.
+func dockerContainerImageName(c container.InspectResponse) string {
+	if c.Config != nil && c.Config.Image != "" {
+		return c.Config.Image
+	}
+	return c.Image
 }
 
 type ImageInfo struct {
@@ -130,12 +144,19 @@ func (e *dockerEngineDiscovery) ImageInfo(name string) (ImageInfo, error) {
 	return ii, nil
 }
 
-func (e *dockerEngineDiscovery) ListContainer() ([]*inventory.Asset, error) {
+// ListContainer lists the running containers as assets to connect to. host is
+// the asset the containers were found on; when it is set and the daemon is on
+// that machine, each container carries a relationship back to it, anchored on
+// the docker.container resource that lists it (ADR 030). The host is named by
+// all of its platform IDs, so it is found even when the daemon's host name is
+// not the one the host's own scan recorded.
+func (e *dockerEngineDiscovery) ListContainer(host *inventory.Asset) ([]*inventory.Asset, error) {
 	dContainers, err := e.containerList()
 	if err != nil {
 		return nil, err
 	}
 
+	hostRef := e.localHostRef(host)
 	container := make([]*inventory.Asset, len(dContainers))
 	for i, dContainer := range dContainers {
 		asset := &inventory.Asset{
@@ -145,12 +166,48 @@ func (e *dockerEngineDiscovery) ListContainer() ([]*inventory.Asset, error) {
 					Host: dContainer.ID,
 				},
 			},
+			Relationships: containerHostRelationships(hostRef, dContainer.ID),
 		}
 		log.Debug().Str("container", dContainer.ID).Msg("discovered container")
 
 		container[i] = asset
 	}
 	return container, nil
+}
+
+// localHostRef is the identity of host for a relationship, or nil when there
+// is no host with platform IDs or the daemon is not on it: DOCKER_HOST or a
+// docker context can point the client at another machine, whose containers do
+// not run on the scanned host.
+func (e *dockerEngineDiscovery) localHostRef(host *inventory.Asset) *inventory.Asset {
+	if host == nil || len(host.GetPlatformIds()) == 0 || e.Client == nil || !isLocalDaemon(e.Client.DaemonHost()) {
+		return nil
+	}
+	return &inventory.Asset{
+		Id:          host.GetId(),
+		Mrn:         host.GetMrn(),
+		PlatformIds: host.GetPlatformIds(),
+	}
+}
+
+// isLocalDaemon is whether the daemon address is on this machine: a unix
+// socket or a Windows named pipe. A tcp or ssh address may be another machine.
+func isLocalDaemon(daemonHost string) bool {
+	return strings.HasPrefix(daemonHost, "unix://") || strings.HasPrefix(daemonHost, "npipe://")
+}
+
+// containerHostRelationships is the edge from a container back to the host
+// that runs it, anchored on the host's docker.container resource for it, whose
+// ID is the container's full ID. None without a host.
+func containerHostRelationships(hostRef *inventory.Asset, containerID string) []*inventory.AssetRelationship {
+	if hostRef == nil || containerID == "" {
+		return nil
+	}
+	return []*inventory.AssetRelationship{{
+		Asset:        hostRef,
+		ResourceType: "docker.container",
+		ResourceId:   containerID,
+	}}
 }
 
 // DockerDisplayNames removes the leading slash of the internal docker name

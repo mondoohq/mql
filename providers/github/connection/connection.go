@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -59,6 +60,10 @@ type GithubConnection struct {
 	// Base URL the connection was pointed at, empty for GitHub.com and GitHub
 	// Enterprise Cloud.
 	enterpriseURL string
+
+	// Web host of a <name>.ghe.com enterprise URL, empty for every other
+	// host. The platform ids of a connection to such a host carry it.
+	host string
 
 	// The installed release cannot change under a running scan, so it is read
 	// once and shared: both github.metadata and every organization's feature
@@ -122,11 +127,13 @@ func NewGithubConnection(id uint32, asset *inventory.Asset) (*GithubConnection, 
 	connectionOpts := connectionOptionsFromConfigOptions(asset.Connections[0])
 
 	var clientOpts []github.ClientOptionsFunc
+	var host string
 	if connectionOpts.EnterpriseURL != "" {
 		parsedUrl, err := url.Parse(connectionOpts.EnterpriseURL)
 		if err != nil {
 			return nil, err
 		}
+		host = enterpriseHost(parsedUrl)
 
 		baseUrl := parsedUrl.JoinPath("api/v3/")
 		uploadUrl := parsedUrl.JoinPath("api/uploads/")
@@ -160,8 +167,22 @@ func NewGithubConnection(id uint32, asset *inventory.Asset) (*GithubConnection, 
 		client:        client,
 		ctx:           ctx,
 		enterpriseURL: connectionOpts.EnterpriseURL,
+		host:          host,
 		OptionsHash:   hash,
 	}, nil
+}
+
+// enterpriseHost returns the host that goes into the platform ids, or "" when
+// the ids carry no host. Only GitHub Enterprise Cloud with data residency
+// (<name>.ghe.com) gets a host: its web host in lower case. A leading "api."
+// label is the API form of the same host (api.<name>.ghe.com) and is dropped.
+// github.com and GitHub Enterprise Server keep the ids without a host.
+func enterpriseHost(enterpriseURL *url.URL) string {
+	host := strings.ToLower(enterpriseURL.Host)
+	if !strings.HasSuffix(host, ".ghe.com") {
+		return ""
+	}
+	return strings.TrimPrefix(host, "api.")
 }
 
 // EnterpriseVersion reports the release a GitHub Enterprise Server

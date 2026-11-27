@@ -5,6 +5,8 @@ package resources
 
 import (
 	"fmt"
+	"net/netip"
+	"slices"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
@@ -114,17 +116,112 @@ func buildNetworkExposure(runtime *plugin.Runtime, id string, publiclyAccessible
 		internetReachableData = llx.BoolData(internetReachable)
 	}
 
+	return newNetworkExposure(runtime, id, publiclyAccessibleData, internetReachableData, openRules)
+}
+
+// buildAllowListExposure creates an aws.network.exposure for an endpoint whose
+// public side is gated by its own source allow-list rather than by security
+// groups. internetReachable is the public toggle combined with whether that
+// allow-list admits the whole internet. The security groups are still reported
+// through securityGroupAllowsIngress and openIngressRules, but do not change the
+// verdict. A null public-access toggle stays null, as in buildNetworkExposure.
+func buildAllowListExposure(runtime *plugin.Runtime, id string, publiclyAccessible *plugin.TValue[bool], allowListOpen bool, sgs *plugin.TValue[[]any]) (*mqlAwsNetworkExposure, error) {
+	openRules, err := openIngressRulesFromSecurityGroups(sgs)
+	if err != nil {
+		return nil, err
+	}
+
+	publiclyAccessibleData := llx.NilData
+	internetReachableData := llx.NilData
+	if !publicAccessIsUnknown(publiclyAccessible) {
+		publiclyAccessibleData = llx.BoolData(publiclyAccessible.Data)
+		internetReachableData = llx.BoolData(publiclyAccessible.Data && allowListOpen)
+	}
+
+	return newNetworkExposure(runtime, id, publiclyAccessibleData, internetReachableData, openRules)
+}
+
+func newNetworkExposure(runtime *plugin.Runtime, id string, publiclyAccessible, internetReachable *llx.RawData, openRules []any) (*mqlAwsNetworkExposure, error) {
 	res, err := CreateResource(runtime, "aws.network.exposure", map[string]*llx.RawData{
 		"__id":                       llx.StringData(id),
-		"internetReachable":          internetReachableData,
-		"publiclyAccessible":         publiclyAccessibleData,
-		"securityGroupAllowsIngress": llx.BoolData(sgAllows),
+		"internetReachable":          internetReachable,
+		"publiclyAccessible":         publiclyAccessible,
+		"securityGroupAllowsIngress": llx.BoolData(len(openRules) > 0),
 		"openIngressRules":           llx.ArrayData(openRules, types.Resource("aws.ec2.securitygroup.ippermission")),
 	})
 	if err != nil {
 		return nil, err
 	}
 	return res.(*mqlAwsNetworkExposure), nil
+}
+
+// cidrsAdmitInternet reports whether a source allow-list admits any internet
+// source: the IPv4 entries together cover 0.0.0.0/0, or the IPv6 entries
+// together cover ::/0. Split ranges such as 0.0.0.0/1 plus 128.0.0.0/1 count
+// as open. A broad prefix that leaves any address out, such as a /8, does not.
+//
+// An entry that does not parse as a prefix counts as open, so a value this
+// function cannot read never reads as restricted. An empty list also counts as
+// open: EKS applies 0.0.0.0/0 when no public access CIDRs are given, and
+// describe-cluster returns that value rather than an empty list.
+func cidrsAdmitInternet(cidrs []any) bool {
+	if len(cidrs) == 0 {
+		return true
+	}
+	var v4, v6 []netip.Prefix
+	for _, c := range cidrs {
+		s, ok := c.(string)
+		if !ok {
+			return true
+		}
+		p, err := netip.ParsePrefix(strings.TrimSpace(s))
+		if err != nil {
+			return true
+		}
+		p = p.Masked()
+		if p.Addr().Is4In6() && p.Bits() >= 96 {
+			p = netip.PrefixFrom(p.Addr().Unmap(), p.Bits()-96)
+		}
+		if p.Addr().Is4() {
+			v4 = append(v4, p)
+		} else {
+			v6 = append(v6, p)
+		}
+	}
+	return prefixesCoverAll(v4, netip.IPv4Unspecified()) ||
+		prefixesCoverAll(v6, netip.IPv6Unspecified())
+}
+
+// prefixesCoverAll reports whether the union of prefixes, all of one address
+// family starting at first, covers that family's whole address space.
+func prefixesCoverAll(prefixes []netip.Prefix, first netip.Addr) bool {
+	slices.SortFunc(prefixes, func(a, b netip.Prefix) int {
+		return a.Addr().Compare(b.Addr())
+	})
+	next := first
+	for _, p := range prefixes {
+		if next.Less(p.Addr()) {
+			return false
+		}
+		last := lastAddr(p)
+		if !last.Less(next) {
+			if !last.Next().IsValid() {
+				return true
+			}
+			next = last.Next()
+		}
+	}
+	return false
+}
+
+// lastAddr returns the highest address in a masked prefix.
+func lastAddr(p netip.Prefix) netip.Addr {
+	b := p.Addr().AsSlice()
+	for i := p.Bits(); i < len(b)*8; i++ {
+		b[i/8] |= 0x80 >> (i % 8)
+	}
+	a, _ := netip.AddrFromSlice(b)
+	return a
 }
 
 // buildNetworkExposureFromGroups is buildNetworkExposure for callers holding
@@ -252,9 +349,9 @@ func (a *mqlAwsDocumentdbCluster) exposure() (*mqlAwsNetworkExposure, error) {
 }
 
 // exposure reports the internet exposure of the cluster's Kubernetes API server
-// endpoint. publicAccessCidrs can narrow a public endpoint to specific source
-// ranges; it is left on the cluster rather than folded in here, so a caller sees
-// both the verdict and the allow-list.
+// endpoint. The public endpoint is gated by publicAccessCidrs alone; security
+// groups apply only to the private endpoint, so they are reported but do not
+// decide internetReachable.
 func (a *mqlAwsEksCluster) exposure() (*mqlAwsNetworkExposure, error) {
 	arn := a.GetArn()
 	if arn.Error != nil {
@@ -264,7 +361,12 @@ func (a *mqlAwsEksCluster) exposure() (*mqlAwsNetworkExposure, error) {
 	if publicAccess.Error != nil {
 		return nil, publicAccess.Error
 	}
-	return buildNetworkExposure(a.MqlRuntime, arn.Data+"/exposure", publicAccess, a.GetClusterSecurityGroups())
+	cidrs := a.GetPublicAccessCidrs()
+	if cidrs.Error != nil {
+		return nil, cidrs.Error
+	}
+	return buildAllowListExposure(a.MqlRuntime, arn.Data+"/exposure", publicAccess,
+		cidrsAdmitInternet(cidrs.Data), a.GetClusterSecurityGroups())
 }
 
 // exposure reports the internet exposure of tasks the service runs.

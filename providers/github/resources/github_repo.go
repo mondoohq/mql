@@ -321,7 +321,7 @@ func initGithubRepository(runtime *plugin.Runtime, args map[string]*llx.RawData)
 		if err != nil {
 			return nil, nil, err
 		}
-		r, err := newMqlGithubRepository(runtime, ghRepo)
+		r, err := newMqlGithubRepositoryFromGet(runtime, ghRepo)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -439,6 +439,10 @@ func (g *mqlGithubRepository) getMergeRequests(state string) ([]any, error) {
 		listOpts.Page = resp.NextPage
 	}
 
+	// Requested teams belong to the repository's organization, resolved once
+	// on the first pull request that names one.
+	var teamOrg *llx.RawData
+
 	res := []any{}
 	for i := range allPulls {
 		pr := allPulls[i]
@@ -492,6 +496,32 @@ func (g *mqlGithubRepository) getMergeRequests(state string) ([]any, error) {
 			requestedReviewers = append(requestedReviewers, r)
 		}
 
+		headRepository := llx.NilData
+		if head := pr.GetHead(); head != nil && head.Repo != nil && head.Repo.ID != nil {
+			r, err := newMqlGithubRepository(g.MqlRuntime, head.Repo)
+			if err != nil {
+				return nil, err
+			}
+			headRepository = llx.ResourceData(r, "github.repository")
+		}
+
+		requestedTeams := make([]any, 0, len(pr.RequestedTeams))
+		if len(pr.RequestedTeams) > 0 {
+			if teamOrg == nil {
+				teamOrg = organizationResource(g.MqlRuntime, ownerLogin)
+			}
+			for _, team := range pr.RequestedTeams {
+				if team == nil || team.ID == nil {
+					continue
+				}
+				t, err := newMqlGithubTeam(g.MqlRuntime, team, teamOrg, false)
+				if err != nil {
+					return nil, err
+				}
+				requestedTeams = append(requestedTeams, t)
+			}
+		}
+
 		var mergedBy any
 		if pr.MergedBy != nil {
 			r, err := NewResource(g.MqlRuntime, "github.user", map[string]*llx.RawData{
@@ -522,6 +552,11 @@ func (g *mqlGithubRepository) getMergeRequests(state string) ([]any, error) {
 			"merged":             llx.BoolDataPtr(pr.Merged),
 			"mergedAt":           llx.TimeDataPtr(githubTimestamp(pr.MergedAt)),
 			"mergedBy":           llx.AnyData(mergedBy),
+			"authorAssociation":  llx.StringDataPtr(pr.AuthorAssociation),
+			"draft":              llx.BoolDataPtr(pr.Draft),
+			"headRepository":     headRepository,
+			"requestedTeams":     llx.ArrayData(requestedTeams, types.Resource("github.team")),
+			"mergeCommitSha":     llx.StringDataPtr(pr.MergeCommitSHA),
 		}
 		maps.Copy(args, pullRequestStackFields(pr))
 
@@ -1328,6 +1363,52 @@ func (g *mqlGithubRepository) adminCollaborators() ([]any, error) {
 	return res, nil
 }
 
+func (g *mqlGithubReleaseAsset) id() (string, error) {
+	return g.__id, nil
+}
+
+// releaseAssetID keys an asset by its id, which GitHub assigns globally.
+func releaseAssetID(asset *github.ReleaseAsset, releaseURL string, idx int) string {
+	if asset.ID != nil {
+		return "github.releaseAsset/" + strconv.FormatInt(*asset.ID, 10)
+	}
+	return "github.releaseAsset/" + releaseURL + "/" + strconv.Itoa(idx)
+}
+
+// releaseAssetsToMql converts the assets a release listing carries. The
+// listing returns every asset with its release, so no further call is made.
+func releaseAssetsToMql(runtime *plugin.Runtime, releaseURL string, assets []*github.ReleaseAsset) ([]any, error) {
+	res := make([]any, 0, len(assets))
+	for idx, asset := range assets {
+		if asset == nil {
+			continue
+		}
+		uploader, err := alertUser(runtime, asset.Uploader)
+		if err != nil {
+			return nil, err
+		}
+		r, err := CreateResource(runtime, "github.releaseAsset", map[string]*llx.RawData{
+			"__id":          llx.StringData(releaseAssetID(asset, releaseURL, idx)),
+			"id":            llx.IntDataPtr(asset.ID),
+			"name":          llx.StringDataPtr(asset.Name),
+			"label":         llx.StringDataPtr(asset.Label),
+			"contentType":   llx.StringDataPtr(asset.ContentType),
+			"state":         llx.StringDataPtr(asset.State),
+			"size":          llx.IntDataPtr(asset.Size),
+			"downloadCount": llx.IntDataPtr(asset.DownloadCount),
+			"digest":        llx.StringDataPtr(asset.Digest),
+			"createdAt":     llx.TimeDataPtr(githubTimestamp(asset.CreatedAt)),
+			"updatedAt":     llx.TimeDataPtr(githubTimestamp(asset.UpdatedAt)),
+			"uploader":      llx.AnyData(uploader),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, r)
+	}
+	return res, nil
+}
+
 func (g *mqlGithubRepository) releases() ([]any, error) {
 	conn := g.MqlRuntime.Connection.(*connection.GithubConnection)
 
@@ -1371,14 +1452,24 @@ func (g *mqlGithubRepository) releases() ([]any, error) {
 			}
 		}
 
+		assets, err := releaseAssetsToMql(g.MqlRuntime, r.HTMLURL, r.Assets)
+		if err != nil {
+			return nil, err
+		}
+
 		mqlRelease, err := CreateResource(g.MqlRuntime, "github.release", map[string]*llx.RawData{
-			"url":         llx.StringData(r.HTMLURL),
-			"name":        llx.StringDataPtr(r.Name),
-			"tagName":     llx.StringData(r.TagName),
-			"preRelease":  llx.BoolData(r.Prerelease),
-			"createdAt":   llx.TimeDataPtr(githubTimestamp(&r.CreatedAt)),
-			"publishedAt": llx.TimeDataPtr(githubTimestamp(r.PublishedAt)),
-			"author":      llx.AnyData(author),
+			"url":             llx.StringData(r.HTMLURL),
+			"name":            llx.StringDataPtr(r.Name),
+			"tagName":         llx.StringData(r.TagName),
+			"preRelease":      llx.BoolData(r.Prerelease),
+			"createdAt":       llx.TimeDataPtr(githubTimestamp(&r.CreatedAt)),
+			"publishedAt":     llx.TimeDataPtr(githubTimestamp(r.PublishedAt)),
+			"author":          llx.AnyData(author),
+			"draft":           llx.BoolData(r.Draft),
+			"immutable":       llx.BoolDataPtr(r.Immutable),
+			"targetCommitish": llx.StringData(r.TargetCommitish),
+			"updatedAt":       llx.TimeDataPtr(githubTimestamp(r.UpdatedAt)),
+			"assets":          llx.ArrayData(assets, types.Resource("github.releaseAsset")),
 		})
 		if err != nil {
 			return nil, err
@@ -2183,6 +2274,110 @@ type mqlGithubRepositoryInternal struct {
 	defaultSetupOnce sync.Once
 	defaultSetup     *github.DefaultSetupConfiguration
 	defaultSetupErr  error
+
+	// detail is the repository as Repositories.Get returns it. Listings return
+	// a reduced representation that leaves out the fork and template links and
+	// the merge settings, so those fields read from this one response, fetched
+	// once and shared, or recorded outright when the repository was built from
+	// that response in the first place.
+	detailOnce sync.Once
+	detail     *github.Repository
+	detailErr  error
+
+	// codeSecurityConfig is the repository's code security configuration
+	// attachment, read once for the two fields that report it.
+	codeSecurityConfig repoCodeSecurityConfig
+}
+
+// newMqlGithubRepositoryFromGet builds a repository from a
+// Repositories.Get response and keeps that response as the repository's
+// detail, so the fields that need it make no second call.
+func newMqlGithubRepositoryFromGet(runtime *plugin.Runtime, repo *github.Repository) (*mqlGithubRepository, error) {
+	r, err := newMqlGithubRepository(runtime, repo)
+	if err != nil {
+		return nil, err
+	}
+	r.detailOnce.Do(func() { r.detail = repo })
+	return r, nil
+}
+
+// repoDetail returns the repository as Repositories.Get reports it, fetching
+// it at most once. A refused or missing repository leaves the detail nil,
+// which the fields render as null.
+func (g *mqlGithubRepository) repoDetail() (*github.Repository, error) {
+	g.detailOnce.Do(func() {
+		ownerLogin, repoName, err := repoOwnerAndName(g)
+		if err != nil {
+			g.detailErr = err
+			return
+		}
+		conn := g.MqlRuntime.Connection.(*connection.GithubConnection)
+		repo, _, err := conn.Client().Repositories.Get(conn.Context(), ownerLogin, repoName)
+		if err != nil {
+			if isAccessDeniedOrNotFound(err) {
+				log.Debug().Err(err).Str("owner", ownerLogin).Str("repo", repoName).
+					Msg("repository details are not accessible")
+				return
+			}
+			g.detailErr = err
+			return
+		}
+		g.detail = repo
+	})
+	return g.detail, g.detailErr
+}
+
+// linkedRepository renders a repository the detail links to, or null.
+func (g *mqlGithubRepository) linkedRepository(pick func(*github.Repository) *github.Repository, field *plugin.TValue[*mqlGithubRepository]) (*mqlGithubRepository, error) {
+	detail, err := g.repoDetail()
+	if err != nil {
+		return nil, err
+	}
+	var linked *github.Repository
+	if detail != nil {
+		linked = pick(detail)
+	}
+	if linked == nil || linked.ID == nil {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return newMqlGithubRepository(g.MqlRuntime, linked)
+}
+
+func (g *mqlGithubRepository) parent() (*mqlGithubRepository, error) {
+	return g.linkedRepository(func(r *github.Repository) *github.Repository { return r.Parent }, &g.Parent)
+}
+
+func (g *mqlGithubRepository) source() (*mqlGithubRepository, error) {
+	return g.linkedRepository(func(r *github.Repository) *github.Repository { return r.Source }, &g.Source)
+}
+
+func (g *mqlGithubRepository) templateRepository() (*mqlGithubRepository, error) {
+	return g.linkedRepository(func(r *github.Repository) *github.Repository { return r.TemplateRepository }, &g.TemplateRepository)
+}
+
+func (g *mqlGithubRepository) deleteBranchOnMerge() (bool, error) {
+	detail, err := g.repoDetail()
+	if err != nil {
+		return false, err
+	}
+	var v *bool
+	if detail != nil {
+		v = detail.DeleteBranchOnMerge
+	}
+	return allowlistBool(v, &g.DeleteBranchOnMerge)
+}
+
+func (g *mqlGithubRepository) allowUpdateBranch() (bool, error) {
+	detail, err := g.repoDetail()
+	if err != nil {
+		return false, err
+	}
+	var v *bool
+	if detail != nil {
+		v = detail.AllowUpdateBranch
+	}
+	return allowlistBool(v, &g.AllowUpdateBranch)
 }
 
 // defaultSetupConfig returns the repository's code scanning default setup,
@@ -2475,34 +2670,43 @@ func (g *mqlGithubRepository) secretScanningAlerts() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		bypassRequestReviewer, err := alertUser(g.MqlRuntime, alert.PushProtectionBypassRequestReviewer)
+		if err != nil {
+			return nil, err
+		}
 
 		mqlAlert, err := CreateResource(g.MqlRuntime, "github.secretScanningAlert", map[string]*llx.RawData{
-			"__id":                          llx.StringData(alertID("github.secretScanningAlert", ownerLogin, repoName, int64(alert.GetNumber()))),
-			"number":                        llx.IntData(int64(alert.GetNumber())),
-			"state":                         llx.StringData(alert.GetState()),
-			"resolution":                    llx.StringData(alert.GetResolution()),
-			"secretType":                    llx.StringData(alert.GetSecretType()),
-			"secretTypeDisplayName":         llx.StringData(alert.GetSecretTypeDisplayName()),
-			"secret":                        llx.StringData(alert.GetSecret()),
-			"validity":                      llx.StringData(alert.GetValidity()),
-			"publiclyLeaked":                llx.BoolData(alert.GetPubliclyLeaked()),
-			"multiRepo":                     llx.BoolData(alert.GetMultiRepo()),
-			"url":                           llx.StringData(alert.GetURL()),
-			"htmlUrl":                       llx.StringData(alert.GetHTMLURL()),
-			"createdAt":                     llx.TimeDataPtr(githubTimestamp(alert.CreatedAt)),
-			"updatedAt":                     llx.TimeDataPtr(githubTimestamp(alert.UpdatedAt)),
-			"resolvedAt":                    llx.TimeDataPtr(githubTimestamp(alert.ResolvedAt)),
-			"resolvedBy":                    llx.AnyData(resolvedBy),
-			"pushProtectionBypassed":        llx.BoolData(alert.GetPushProtectionBypassed()),
-			"pushProtectionBypassedBy":      llx.AnyData(pushProtectionBypassedBy),
-			"pushProtectionBypassedAt":      llx.TimeDataPtr(githubTimestamp(alert.PushProtectionBypassedAt)),
-			"resolutionComment":             llx.StringData(alert.GetResolutionComment()),
-			"assignedTo":                    llx.AnyData(assignedTo),
-			"closureRequestComment":         llx.StringDataPtr(alert.ClosureRequestComment),
-			"closureRequestReviewer":        llx.AnyData(closureRequestReviewer),
-			"closureRequestReviewerComment": llx.StringDataPtr(alert.ClosureRequestReviewerComment),
-			"provider":                      llx.StringDataPtr(alert.Provider),
-			"providerSlug":                  llx.StringDataPtr(alert.ProviderSlug),
+			"__id":                                llx.StringData(alertID("github.secretScanningAlert", ownerLogin, repoName, int64(alert.GetNumber()))),
+			"number":                              llx.IntData(int64(alert.GetNumber())),
+			"state":                               llx.StringData(alert.GetState()),
+			"resolution":                          llx.StringData(alert.GetResolution()),
+			"secretType":                          llx.StringData(alert.GetSecretType()),
+			"secretTypeDisplayName":               llx.StringData(alert.GetSecretTypeDisplayName()),
+			"secret":                              llx.StringData(alert.GetSecret()),
+			"validity":                            llx.StringData(alert.GetValidity()),
+			"publiclyLeaked":                      llx.BoolData(alert.GetPubliclyLeaked()),
+			"multiRepo":                           llx.BoolData(alert.GetMultiRepo()),
+			"url":                                 llx.StringData(alert.GetURL()),
+			"htmlUrl":                             llx.StringData(alert.GetHTMLURL()),
+			"createdAt":                           llx.TimeDataPtr(githubTimestamp(alert.CreatedAt)),
+			"updatedAt":                           llx.TimeDataPtr(githubTimestamp(alert.UpdatedAt)),
+			"resolvedAt":                          llx.TimeDataPtr(githubTimestamp(alert.ResolvedAt)),
+			"resolvedBy":                          llx.AnyData(resolvedBy),
+			"pushProtectionBypassed":              llx.BoolData(alert.GetPushProtectionBypassed()),
+			"pushProtectionBypassedBy":            llx.AnyData(pushProtectionBypassedBy),
+			"pushProtectionBypassedAt":            llx.TimeDataPtr(githubTimestamp(alert.PushProtectionBypassedAt)),
+			"resolutionComment":                   llx.StringData(alert.GetResolutionComment()),
+			"assignedTo":                          llx.AnyData(assignedTo),
+			"closureRequestComment":               llx.StringDataPtr(alert.ClosureRequestComment),
+			"closureRequestReviewer":              llx.AnyData(closureRequestReviewer),
+			"closureRequestReviewerComment":       llx.StringDataPtr(alert.ClosureRequestReviewerComment),
+			"provider":                            llx.StringDataPtr(alert.Provider),
+			"providerSlug":                        llx.StringDataPtr(alert.ProviderSlug),
+			"pushProtectionBypassRequestComment":  llx.StringDataPtr(alert.PushProtectionBypassRequestComment),
+			"pushProtectionBypassRequestReviewer": llx.AnyData(bypassRequestReviewer),
+			"pushProtectionBypassRequestReviewerComment": llx.StringDataPtr(alert.PushProtectionBypassRequestReviewerComment),
+			"firstLocationDetected":                      secretLocationData(alert.FirstLocationDetected),
+			"hasMoreLocations":                           llx.BoolDataPtr(alert.HasMoreLocations),
 		})
 		if err != nil {
 			return nil, err
@@ -2519,6 +2723,37 @@ func (g *mqlGithubRepository) secretScanningAlerts() ([]any, error) {
 type mqlGithubSecretScanningAlertInternal struct {
 	ownerLogin string
 	repoName   string
+}
+
+// secretLocationData renders where a secret scanning alert's secret was
+// found. The keys are fixed so a policy can address them on every alert; a
+// key GitHub did not report for this kind of location is null.
+func secretLocationData(loc *github.SecretScanningAlertLocationDetails) *llx.RawData {
+	if loc == nil {
+		return llx.NilData
+	}
+	optString := func(v *string) any {
+		if v == nil {
+			return nil
+		}
+		return *v
+	}
+	optInt := func(v *int) any {
+		if v == nil {
+			return nil
+		}
+		return int64(*v)
+	}
+	return llx.DictData(map[string]any{
+		"path":                  optString(loc.Path),
+		"startLine":             optInt(loc.Startline),
+		"endLine":               optInt(loc.EndLine),
+		"startColumn":           optInt(loc.StartColumn),
+		"endColumn":             optInt(loc.EndColumn),
+		"blobSha":               optString(loc.BlobSHA),
+		"commitSha":             optString(loc.CommitSHA),
+		"pullRequestCommentUrl": optString(loc.PullRequestCommentURL),
+	})
 }
 
 // alertUser resolves a user an alert refers to, or nil when the alert names

@@ -283,18 +283,13 @@ func newMqlHetznerFirewallRule(fw *mqlHetznerFirewall, index int, r hcloud.Firew
 }
 
 // firewallRuleAdmitsAnySource reports whether a rule is an inbound rule whose
-// source admits any address, the same verdict firewallRuleOpenToInternet gives
+// source admits the internet, the same verdict firewallRuleOpenToInternet gives
 // for the rule's dict form.
 func firewallRuleAdmitsAnySource(r hcloud.FirewallRule) bool {
 	if r.Direction != hcloud.FirewallRuleDirectionIn {
 		return false
 	}
-	for _, ip := range r.SourceIPs {
-		if ones, _ := ip.Mask.Size(); ones == 0 && ip.IP.IsUnspecified() {
-			return true
-		}
-	}
-	return false
+	return sourcesAdmitInternet(r.SourceIPs)
 }
 
 // parseFirewallPortRange turns a Hetzner firewall port ("22", "1024-5000", or

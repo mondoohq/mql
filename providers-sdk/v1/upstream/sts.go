@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -93,7 +94,7 @@ func ExchangeExternalToken(apiEndpoint, audience, issuerURI, jwtToken string, to
 		JwtToken:  jwtToken,
 	}
 	if tokenResponse {
-		request.ResponseType = "TOKEN"
+		request.ResponseFormat = ExchangeExternalTokenResponseFormat_TOKEN
 	}
 	resp, err := stsClient.ExchangeExternalToken(context.Background(), request)
 	if err != nil {
@@ -105,51 +106,39 @@ func ExchangeExternalToken(apiEndpoint, audience, issuerURI, jwtToken string, to
 	if err != nil {
 		return nil, err
 	}
+	return decodeExchangedCredentials(credBytes)
+}
 
-	if tokenResponse {
-		var tokenCreds struct {
-			Mrn         string `json:"mrn"`
-			SpaceMrn    string `json:"space_mrn"`
-			Token       string `json:"token"`
-			ApiEndpoint string `json:"api_endpoint"`
-		}
-		if err := json.Unmarshal(credBytes, &tokenCreds); err != nil {
-			return nil, err
-		}
-		return &ServiceAccountCredentials{
-			Mrn:         tokenCreds.Mrn,
-			ParentMrn:   tokenCreds.SpaceMrn,
-			ScopeMrn:    tokenCreds.SpaceMrn,
-			Token:       tokenCreds.Token,
-			ApiEndpoint: tokenCreds.ApiEndpoint,
-		}, nil
-	}
-
-	// First unmarshal to a temporary structure to handle the field name mismatch
-	var tempCreds struct {
+// decodeExchangedCredentials reads the credential an external token exchange
+// returned. What the credential holds decides how it is used, not what was
+// asked for: a server that does not know the TOKEN response format ignores the
+// request field and sends a private key.
+func decodeExchangedCredentials(credBytes []byte) (*ServiceAccountCredentials, error) {
+	var exchanged struct {
 		Mrn         string `json:"mrn"`
-		ParentMrn   string `json:"parent_mrn"`
 		SpaceMrn    string `json:"space_mrn"`
+		Token       string `json:"token"`
 		PrivateKey  string `json:"private_key"`
 		Certificate string `json:"certificate"`
 		ApiEndpoint string `json:"api_endpoint"`
 	}
-
-	if err := json.Unmarshal(credBytes, &tempCreds); err != nil {
+	if err := json.Unmarshal(credBytes, &exchanged); err != nil {
 		return nil, err
 	}
-
-	// Create the ServiceAccountCredentials with the correct field mapping
-	creds := ServiceAccountCredentials{
-		Mrn:         tempCreds.Mrn,
-		ParentMrn:   tempCreds.SpaceMrn,
-		ScopeMrn:    tempCreds.SpaceMrn, // Map SpaceMrn to ScopeMrn
-		PrivateKey:  tempCreds.PrivateKey,
-		Certificate: tempCreds.Certificate,
-		ApiEndpoint: tempCreds.ApiEndpoint,
+	if exchanged.Token == "" && exchanged.PrivateKey == "" {
+		return nil, errors.New("the exchanged credential has neither a token nor a private key")
 	}
 
-	return &creds, nil
+	// The exchange names the scope space_mrn, also for an organization.
+	return &ServiceAccountCredentials{
+		Mrn:         exchanged.Mrn,
+		ParentMrn:   exchanged.SpaceMrn,
+		ScopeMrn:    exchanged.SpaceMrn,
+		Token:       exchanged.Token,
+		PrivateKey:  exchanged.PrivateKey,
+		Certificate: exchanged.Certificate,
+		ApiEndpoint: exchanged.ApiEndpoint,
+	}, nil
 }
 
 // signClaims implements claims signing with ssh.Signer

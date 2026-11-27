@@ -320,6 +320,62 @@ func (s *mqlVllmServerInfo) serverDevMode() (bool, error) {
 	return boolField(&s.ServerDevMode, info.ServerDevMode)
 }
 
+func (s *mqlVllmServerInfo) allowedLocalMediaPath() (string, error) {
+	info := s.info()
+	if info == nil {
+		return stringField(&s.AllowedLocalMediaPath, nil)
+	}
+	return stringField(&s.AllowedLocalMediaPath, info.AllowedLocalMediaPath)
+}
+
+func (s *mqlVllmServerInfo) allowedMediaDomains() ([]any, error) {
+	info := s.info()
+	if info == nil {
+		return stringListField(&s.AllowedMediaDomains, nil)
+	}
+	return stringListField(&s.AllowedMediaDomains, info.AllowedMediaDomains)
+}
+
+func (s *mqlVllmServerInfo) revision() (string, error) {
+	info := s.info()
+	if info == nil {
+		return stringField(&s.Revision, nil)
+	}
+	return stringField(&s.Revision, info.Revision)
+}
+
+func (s *mqlVllmServerInfo) codeRevision() (string, error) {
+	info := s.info()
+	if info == nil {
+		return stringField(&s.CodeRevision, nil)
+	}
+	return stringField(&s.CodeRevision, info.CodeRevision)
+}
+
+func (s *mqlVllmServerInfo) tokenizerRevision() (string, error) {
+	info := s.info()
+	if info == nil {
+		return stringField(&s.TokenizerRevision, nil)
+	}
+	return stringField(&s.TokenizerRevision, info.TokenizerRevision)
+}
+
+func (s *mqlVllmServerInfo) loadFormat() (string, error) {
+	info := s.info()
+	if info == nil {
+		return stringField(&s.LoadFormat, nil)
+	}
+	return stringField(&s.LoadFormat, info.LoadFormat)
+}
+
+func (s *mqlVllmServerInfo) downloadDir() (string, error) {
+	info := s.info()
+	if info == nil {
+		return stringField(&s.DownloadDir, nil)
+	}
+	return stringField(&s.DownloadDir, info.DownloadDir)
+}
+
 func (t *mqlVllmTokenizerInfo) id() (string, error) {
 	conn, err := vllmConnection(t.MqlRuntime)
 	if err != nil {

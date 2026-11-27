@@ -319,11 +319,18 @@ func vmToMql(runtime *plugin.Runtime, vm compute.VirtualMachine) (*mqlAzureSubsc
 		return nil, err
 	}
 
+	placement := vmPlacementFields(vm.Properties)
+	vmArgs["vmSize"] = llx.StringDataPtr(placement.vmSize)
+	vmArgs["priority"] = llx.StringDataPtr(placement.priority)
+	vmArgs["evictionPolicy"] = llx.StringDataPtr(placement.evictionPolicy)
+
 	res, err := CreateResource(runtime, "azure.subscription.computeService.vm", vmArgs)
 	if err != nil {
 		return nil, err
 	}
 	mqlVm := res.(*mqlAzureSubscriptionComputeServiceVm)
+	mqlVm.cacheDedicatedHostId = placement.dedicatedHostID
+	mqlVm.cacheDedicatedHostGroupId = placement.dedicatedHostGroupID
 	mqlVm.cacheSystemData = systemDataDict
 	mqlVm.cacheUserAssignedIdentityIds = userAssignedIdentityIds
 	mqlVm.cacheCertificateSourceVaultIds = guestAccess.certificateSourceVaultIDs
@@ -417,6 +424,8 @@ type mqlAzureSubscriptionComputeServiceVmInternal struct {
 
 	cacheCertificateSourceVaultIds []string
 	cacheEncryptionIdentityId      string
+	cacheDedicatedHostId           string
+	cacheDedicatedHostGroupId      string
 }
 
 func (a *mqlAzureSubscriptionComputeServiceVm) fetchExtensions() ([]*compute.VirtualMachineExtension, error) {

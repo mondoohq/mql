@@ -5,25 +5,13 @@ package resources
 
 import "testing"
 
-func TestIsOpenCIDR(t *testing.T) {
-	tests := []struct {
-		cidr string
-		want bool
-	}{
-		{"0.0.0.0/0", true},
-		{"::/0", true},
-		{" 0.0.0.0/0 ", true},
-		{"10.0.0.0/8", false},
-		{"192.168.1.0/24", false},
-		{"0.0.0.0/32", false},
-		{"", false},
-		{"2001:db8::/32", false},
+// anyStrings converts a list of CIDR strings held as []any to []string.
+func anyStrings(list []any) []string {
+	out := make([]string, 0, len(list))
+	for _, v := range list {
+		out = append(out, v.(string))
 	}
-	for _, tt := range tests {
-		if got := isOpenCIDR(tt.cidr); got != tt.want {
-			t.Errorf("isOpenCIDR(%q) = %v, want %v", tt.cidr, got, tt.want)
-		}
-	}
+	return out
 }
 
 func TestGkeControlPlaneInternetReachable(t *testing.T) {
@@ -75,6 +63,41 @@ func TestGkeControlPlaneInternetReachable(t *testing.T) {
 			manEnforced:    true,
 			cidrs:          []string{"::/0"},
 			want:           true,
+		},
+		{
+			name:           "public endpoint with ipv4 halves in allowlist is reachable",
+			publicEndpoint: true,
+			manEnforced:    true,
+			cidrs:          []string{"0.0.0.0/1", "128.0.0.0/1"},
+			want:           true,
+		},
+		{
+			name:           "public endpoint with 256 /8s in allowlist is reachable",
+			publicEndpoint: true,
+			manEnforced:    true,
+			cidrs:          anyStrings(v4Slash8s(0, 255, 1)),
+			want:           true,
+		},
+		{
+			name:           "public endpoint with /9s covering 0-223 in allowlist is reachable",
+			publicEndpoint: true,
+			manEnforced:    true,
+			cidrs:          anyStrings(v4Slash9s(0, 223)),
+			want:           true,
+		},
+		{
+			name:           "public endpoint with ipv6 /12s forming a /11 is reachable",
+			publicEndpoint: true,
+			manEnforced:    true,
+			cidrs:          []string{"203.0.113.0/24", "2000::/12", "2010::/12"},
+			want:           true,
+		},
+		{
+			name:           "public endpoint with scattered /8s under half is not reachable",
+			publicEndpoint: true,
+			manEnforced:    true,
+			cidrs:          anyStrings(v4Slash8s(1, 221, 2)),
+			want:           false,
 		},
 		{
 			name:           "public endpoint with empty enforced allowlist is not reachable",
@@ -346,7 +369,13 @@ func TestOpenSourceFamilies(t *testing.T) {
 		{"scoped range", fwSources("10.0.0.0/8"), false, false},
 		{"empty", nil, false, false},
 		{"non-string entries", []any{42, nil}, false, false},
-		{"halves of the v4 internet are not recognized", fwSources("0.0.0.0/1", "128.0.0.0/1"), false, false},
+		{"halves of the v4 internet", fwSources("0.0.0.0/1", "128.0.0.0/1"), true, false},
+		{"one v4 half", fwSources("128.0.0.0/1"), true, false},
+		{"v6 global unicast", fwSources("2000::/3"), false, true},
+		{"v6 unique local", fwSources("fc00::/7"), false, false},
+		{"256 /8s together", v4Slash8s(0, 255, 1), true, false},
+		{"/9s covering everything but 224.0.0.0/3", v4Slash9s(0, 223), true, false},
+		{"/8s with too many gaps", v4Slash8s(1, 221, 2), false, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -423,6 +452,29 @@ func TestUnshadowedOpenIngressFirewalls(t *testing.T) {
 				expoRule(1000, true, fwProtocols("tcp", "22"), fwSources("0.0.0.0/0")),
 			},
 			want: []int{},
+		},
+		{
+			name: "allow from the v4 halves is open",
+			rules: []firewallIngressRule{
+				expoRule(1000, true, fwProtocols("tcp", "22"), fwSources("0.0.0.0/1", "128.0.0.0/1")),
+			},
+			want: []int{0},
+		},
+		{
+			name: "deny on the v4 halves shadows an allow from anywhere",
+			rules: []firewallIngressRule{
+				expoRule(500, false, fwProtocols("tcp", "22"), fwSources("0.0.0.0/1", "128.0.0.0/1")),
+				expoRule(1000, true, fwProtocols("tcp", "22"), fwSources("0.0.0.0/0")),
+			},
+			want: []int{},
+		},
+		{
+			name: "deny on one v4 half does not shadow",
+			rules: []firewallIngressRule{
+				expoRule(500, false, fwProtocols("tcp", "22"), fwSources("0.0.0.0/1")),
+				expoRule(1000, true, fwProtocols("tcp", "22"), fwSources("0.0.0.0/0")),
+			},
+			want: []int{1},
 		},
 		{
 			name: "allow survives a higher-numbered deny",
@@ -622,6 +674,34 @@ func TestUnshadowedOpenIngressFirewalls(t *testing.T) {
 				if got[i] != c.want[i] {
 					t.Fatalf("unshadowedOpenIngressFirewalls() = %v, want %v", got, c.want)
 				}
+			}
+		})
+	}
+}
+
+func TestCoveredSourceFamilies(t *testing.T) {
+	cases := []struct {
+		name    string
+		sources []any
+		wantV4  bool
+		wantV6  bool
+	}{
+		{"any v4", fwSources("0.0.0.0/0"), true, false},
+		{"any v6", fwSources("::/0"), false, true},
+		{"halves of the v4 internet", fwSources("128.0.0.0/1", "0.0.0.0/1"), true, false},
+		{"quarters with overlap", fwSources("0.0.0.0/2", "64.0.0.0/2", "100.0.0.0/8", "128.0.0.0/1"), true, false},
+		{"one v4 half", fwSources("0.0.0.0/1"), false, false},
+		{"gap between ranges", fwSources("0.0.0.0/2", "128.0.0.0/1"), false, false},
+		{"256 /8s together", v4Slash8s(0, 255, 1), true, false},
+		{"/9s leaving out 224.0.0.0/3", v4Slash9s(0, 223), false, false},
+		{"v6 global unicast is not all of v6", fwSources("2000::/3"), false, false},
+		{"empty", nil, false, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			v4, v6 := coveredSourceFamilies(c.sources)
+			if v4 != c.wantV4 || v6 != c.wantV6 {
+				t.Errorf("coveredSourceFamilies(%v) = (%v, %v), want (%v, %v)", c.sources, v4, v6, c.wantV4, c.wantV6)
 			}
 		})
 	}

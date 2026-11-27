@@ -2,7 +2,7 @@ module go.mondoo.com/mql/providers/elasticsearch
 
 replace go.mondoo.com/mql => ../..
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/elastic/elastic-transport-go/v8 v8.11.0

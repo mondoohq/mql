@@ -1,7 +1,7 @@
 {
   "provider": "gcp",
-  "version": "14.7.4",
-  "generated_at": "2026-11-06T12:47:06-08:00",
+  "version": "14.11.0",
+  "generated_at": "2026-11-23T12:39:01-08:00",
   "permissions": [
     "accessapproval.settings.get",
     "agentidentity.authProviders.getIamPolicy",
@@ -84,6 +84,7 @@
     "cloudasset.assets.searchAllIamPolicies",
     "cloudasset.assets.searchAllResources",
     "cloudbuild.builds.list",
+    "cloudbuild.locations.list",
     "cloudbuild.workerpools.list",
     "clouddeploy.deliveryPipelines.list",
     "clouddeploy.releases.list",
@@ -124,6 +125,7 @@
     "compute.instanceGroupManagers.list",
     "compute.instanceGroups.list",
     "compute.instanceTemplates.list",
+    "compute.instances.getIamPolicy",
     "compute.instances.list",
     "compute.interconnectAttachments.list",
     "compute.interconnects.list",
@@ -152,6 +154,7 @@
     "compute.sslCertificates.list",
     "compute.sslPolicies.list",
     "compute.storagePools.list",
+    "compute.subnetworks.getIamPolicy",
     "compute.targetHttpProxies.list",
     "compute.targetHttpsProxies.list",
     "compute.targetPools.list",
@@ -162,8 +165,10 @@
     "compute.vpnTunnels.list",
     "compute.zones.get",
     "compute.zones.list",
+    "container.clusters.get",
     "container.clusters.list",
     "containeranalysis.occurrences.list",
+    "dataflow.jobs.get",
     "dataflow.jobs.list",
     "dataplex.assets.list",
     "dataplex.lakes.list",
@@ -840,6 +845,12 @@
       "source_file": "cloudbuild.go"
     },
     {
+      "permission": "cloudbuild.locations.list",
+      "service": "cloudbuild",
+      "action": "Locations.List",
+      "source_file": "cloudbuild.go"
+    },
+    {
       "permission": "cloudbuild.workerpools.list",
       "service": "cloudbuild",
       "action": "ListWorkerPools",
@@ -1104,6 +1115,12 @@
       "source_file": "compute_instance_templates.go"
     },
     {
+      "permission": "compute.instances.getIamPolicy",
+      "service": "compute",
+      "action": "Instances.GetIamPolicy",
+      "source_file": "compute.go"
+    },
+    {
       "permission": "compute.instances.list",
       "service": "compute",
       "action": "Instances.AggregatedList",
@@ -1302,6 +1319,12 @@
       "source_file": "compute.go"
     },
     {
+      "permission": "compute.subnetworks.getIamPolicy",
+      "service": "compute",
+      "action": "Subnetworks.GetIamPolicy",
+      "source_file": "compute.go"
+    },
+    {
       "permission": "compute.targetHttpProxies.list",
       "service": "compute",
       "action": "TargetHttpProxies.AggregatedList",
@@ -1380,6 +1403,12 @@
       "source_file": "osconfig.go"
     },
     {
+      "permission": "container.clusters.get",
+      "service": "container",
+      "action": "FetchClusterUpgradeInfo",
+      "source_file": "gke.go"
+    },
+    {
       "permission": "container.clusters.list",
       "service": "container",
       "action": "ListClusters",
@@ -1390,6 +1419,12 @@
       "service": "containeranalysis",
       "action": "GetGrafeasClient",
       "source_file": "container_analysis.go"
+    },
+    {
+      "permission": "dataflow.jobs.get",
+      "service": "dataflow",
+      "action": "Jobs.Get",
+      "source_file": "dataflow.go"
     },
     {
       "permission": "dataflow.jobs.list",

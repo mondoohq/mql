@@ -4,10 +4,16 @@
 package resources
 
 import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/github/connection"
 )
 
@@ -205,4 +211,64 @@ func TestDiscoverUserAsset(t *testing.T) {
 	t.Run("an unrelated target does not emit it", func(t *testing.T) {
 		assert.False(t, discoverUserAsset([]string{connection.DiscoveryOrganization}))
 	})
+}
+
+// gheTransport sends every request to a test server, whatever host the
+// request names. A test cannot serve a <name>.ghe.com host in another way.
+type gheTransport struct {
+	server *url.URL
+	base   http.RoundTripper
+}
+
+func (g gheTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	r = r.Clone(r.Context())
+	r.URL.Scheme = g.server.Scheme
+	r.URL.Host = g.server.Host
+	return g.base.RoundTrip(r)
+}
+
+// A repository on a <name>.ghe.com host must not share its platform id with a
+// repository of the same owner and name on github.com.
+func TestRepoDiscoveryOnGheComQualifiesPlatformID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v3/orgs/acme":
+			fmt.Fprint(w, `{"id": 1, "login": "acme"}`)
+		case "/api/v3/repos/acme/app":
+			fmt.Fprint(w, `{"id": 2, "name": "app", "full_name": "acme/app", "owner": {"id": 1, "login": "acme"}}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	serverURL, err := url.Parse(server.URL)
+	require.NoError(t, err)
+
+	// The token client of the connection uses http.DefaultTransport.
+	defaultTransport := http.DefaultTransport
+	http.DefaultTransport = gheTransport{server: serverURL, base: defaultTransport}
+	defer func() { http.DefaultTransport = defaultTransport }()
+
+	asset := &inventory.Asset{
+		Connections: []*inventory.Config{{
+			Options: map[string]string{
+				connection.OPTION_TOKEN:          "token",
+				connection.OPTION_ENTERPRISE_URL: "https://acme.ghe.com",
+				"owner":                          "acme",
+				"repository":                     "app",
+			},
+		}},
+	}
+	conn, err := connection.NewGithubConnection(1, asset)
+	require.NoError(t, err)
+	runtime := plugin.NewRuntime(conn, nil, false, CreateResource, NewResource, GetData, SetData, nil)
+
+	assets, err := repo(runtime, "app", "acme", conn, []string{connection.DiscoveryRepos})
+	require.NoError(t, err)
+	require.Len(t, assets, 1)
+
+	assert.Equal(t,
+		[]string{"//platformid.api.mondoo.app/runtime/github/host/acme.ghe.com/owner/acme/repository/app"},
+		assets[0].PlatformIds)
 }

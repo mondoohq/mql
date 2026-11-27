@@ -23,6 +23,7 @@ func TestAnyAddressInList(t *testing.T) {
 		{"any-address IPv6", []any{"::/0"}, true},
 		{"non-string entries are skipped", []any{42, nil, "0.0.0.0/0"}, true},
 		{"only non-string entries", []any{42, nil}, false},
+		{"split IPv4 halves", []any{"0.0.0.0/1", "128.0.0.0/1"}, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

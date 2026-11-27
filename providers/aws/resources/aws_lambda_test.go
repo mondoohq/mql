@@ -598,3 +598,13 @@ func TestEventSourceMappingArgsKafka(t *testing.T) {
 		assert.Equal(t, []any{}, args["sourceAccessTypes"].Value)
 	})
 }
+
+func TestLambdaDeadLetterService(t *testing.T) {
+	// Synthetic: the two target types a function's DeadLetterConfig accepts.
+	assert.Equal(t, "sqs", lambdaDeadLetterService("arn:aws:sqs:us-east-1:123456789012:fn-dlq"))
+	assert.Equal(t, "sns", lambdaDeadLetterService("arn:aws:sns:us-east-1:123456789012:fn-dlq-topic"))
+	// Synthetic: anything else dispatches to neither accessor.
+	assert.Equal(t, "", lambdaDeadLetterService("arn:aws:lambda:us-east-1:123456789012:function:other"))
+	assert.Equal(t, "", lambdaDeadLetterService("not-an-arn"))
+	assert.Equal(t, "", lambdaDeadLetterService(""))
+}

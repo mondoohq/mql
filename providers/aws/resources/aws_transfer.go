@@ -823,3 +823,275 @@ func (a *mqlAwsTransferWorkflow) tags() (map[string]any, error) {
 	}
 	return transferTagsToMap(resp.Workflow.Tags), nil
 }
+
+func (a *mqlAwsTransferServer) endpointDetails() (*transfertypes.EndpointDetails, error) {
+	resp, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	return resp.Server.EndpointDetails, nil
+}
+
+func (a *mqlAwsTransferServer) identityProviderDetails() (*transfertypes.IdentityProviderDetails, error) {
+	resp, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	return resp.Server.IdentityProviderDetails, nil
+}
+
+func (a *mqlAwsTransferServer) protocolDetails() (*transfertypes.ProtocolDetails, error) {
+	resp, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	return resp.Server.ProtocolDetails, nil
+}
+
+func (a *mqlAwsTransferServer) vpc() (*mqlAwsVpc, error) {
+	ed, err := a.endpointDetails()
+	if err != nil {
+		return nil, err
+	}
+	if ed == nil || convert.ToValue(ed.VpcId) == "" {
+		a.Vpc.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	mqlVpc, err := NewResource(a.MqlRuntime, ResourceAwsVpc,
+		map[string]*llx.RawData{"arn": llx.StringData(fmt.Sprintf(vpcArnPattern, a.Region.Data, conn.AccountId(), *ed.VpcId))})
+	if err != nil {
+		return nil, err
+	}
+	return mqlVpc.(*mqlAwsVpc), nil
+}
+
+func (a *mqlAwsTransferServer) subnets() ([]any, error) {
+	ed, err := a.endpointDetails()
+	if err != nil {
+		return nil, err
+	}
+	if ed == nil {
+		return []any{}, nil
+	}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return resolveSubnetRefs(a.MqlRuntime, a.Region.Data, conn.AccountId(), ed.SubnetIds), nil
+}
+
+func (a *mqlAwsTransferServer) securityGroups() ([]any, error) {
+	ed, err := a.endpointDetails()
+	if err != nil {
+		return nil, err
+	}
+	if ed == nil {
+		return []any{}, nil
+	}
+	// DescribeServer does not echo the security groups given at creation; they
+	// live on the VPC endpoint the service creates for the server.
+	if len(ed.SecurityGroupIds) == 0 {
+		ep := a.GetVpcEndpoint()
+		if ep.Error != nil {
+			return nil, ep.Error
+		}
+		if ep.Data == nil {
+			return []any{}, nil
+		}
+		sgs := ep.Data.GetSecurityGroups()
+		if sgs.Error != nil {
+			return nil, sgs.Error
+		}
+		return sgs.Data, nil
+	}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	arns := make([]string, 0, len(ed.SecurityGroupIds))
+	for _, id := range ed.SecurityGroupIds {
+		arns = append(arns, NewSecurityGroupArn(a.Region.Data, conn.AccountId(), id))
+	}
+	h := securityGroupIdHandler{}
+	h.setSecurityGroupArns(arns)
+	return h.newSecurityGroupResources(a.MqlRuntime)
+}
+
+func (a *mqlAwsTransferServer) vpcEndpoint() (*mqlAwsVpcEndpoint, error) {
+	ed, err := a.endpointDetails()
+	if err != nil {
+		return nil, err
+	}
+	if ed == nil || convert.ToValue(ed.VpcEndpointId) == "" {
+		a.VpcEndpoint.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	eps, err := vpcEndpointsByIds(a.MqlRuntime, a.Region.Data, []string{*ed.VpcEndpointId})
+	if err != nil {
+		return nil, err
+	}
+	if len(eps) == 0 {
+		a.VpcEndpoint.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return eps[0].(*mqlAwsVpcEndpoint), nil
+}
+
+func (a *mqlAwsTransferServer) identityProviderFunction() (*mqlAwsLambdaFunction, error) {
+	idp, err := a.identityProviderDetails()
+	if err != nil {
+		return nil, err
+	}
+	if idp == nil || convert.ToValue(idp.Function) == "" {
+		a.IdentityProviderFunction.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	fn, err := NewResource(a.MqlRuntime, ResourceAwsLambdaFunction,
+		map[string]*llx.RawData{"arn": llx.StringData(*idp.Function)})
+	if err != nil {
+		return nil, err
+	}
+	return fn.(*mqlAwsLambdaFunction), nil
+}
+
+func (a *mqlAwsTransferServer) invocationRole() (*mqlAwsIamRole, error) {
+	idp, err := a.identityProviderDetails()
+	if err != nil {
+		return nil, err
+	}
+	if idp == nil || convert.ToValue(idp.InvocationRole) == "" {
+		a.InvocationRole.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	role, err := NewResource(a.MqlRuntime, ResourceAwsIamRole,
+		map[string]*llx.RawData{"arn": llx.StringData(*idp.InvocationRole)})
+	if err != nil {
+		return nil, err
+	}
+	return role.(*mqlAwsIamRole), nil
+}
+
+func (a *mqlAwsTransferServer) directory() (*mqlAwsDirectoryserviceDirectory, error) {
+	idp, err := a.identityProviderDetails()
+	if err != nil {
+		return nil, err
+	}
+	if idp == nil || convert.ToValue(idp.DirectoryId) == "" {
+		a.Directory.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	dir, err := NewResource(a.MqlRuntime, ResourceAwsDirectoryserviceDirectory,
+		map[string]*llx.RawData{"directoryId": llx.StringData(*idp.DirectoryId)})
+	if err != nil {
+		return nil, err
+	}
+	return dir.(*mqlAwsDirectoryserviceDirectory), nil
+}
+
+func (a *mqlAwsTransferServer) identityProviderUrl() (string, error) {
+	idp, err := a.identityProviderDetails()
+	if err != nil || idp == nil {
+		return "", err
+	}
+	return convert.ToValue(idp.Url), nil
+}
+
+func (a *mqlAwsTransferServer) sftpAuthenticationMethods() (string, error) {
+	idp, err := a.identityProviderDetails()
+	if err != nil || idp == nil {
+		return "", err
+	}
+	return string(idp.SftpAuthenticationMethods), nil
+}
+
+func (a *mqlAwsTransferServer) hostKeyFingerprint() (string, error) {
+	resp, err := a.fetchDetail()
+	if err != nil {
+		return "", err
+	}
+	return convert.ToValue(resp.Server.HostKeyFingerprint), nil
+}
+
+func (a *mqlAwsTransferServer) preAuthenticationLoginBanner() (string, error) {
+	resp, err := a.fetchDetail()
+	if err != nil {
+		return "", err
+	}
+	return convert.ToValue(resp.Server.PreAuthenticationLoginBanner), nil
+}
+
+func (a *mqlAwsTransferServer) postAuthenticationLoginBanner() (string, error) {
+	resp, err := a.fetchDetail()
+	if err != nil {
+		return "", err
+	}
+	return convert.ToValue(resp.Server.PostAuthenticationLoginBanner), nil
+}
+
+func (a *mqlAwsTransferServer) passiveIp() (string, error) {
+	pd, err := a.protocolDetails()
+	if err != nil || pd == nil {
+		return "", err
+	}
+	return convert.ToValue(pd.PassiveIp), nil
+}
+
+func (a *mqlAwsTransferServer) tlsSessionResumptionMode() (string, error) {
+	pd, err := a.protocolDetails()
+	if err != nil || pd == nil {
+		return "", err
+	}
+	return string(pd.TlsSessionResumptionMode), nil
+}
+
+// transferWorkflowIds returns the ids of the workflows a server runs on full and
+// partial uploads, each once, in the order the server lists them.
+func transferWorkflowIds(wd *transfertypes.WorkflowDetails) []string {
+	if wd == nil {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	ids := []string{}
+	for _, list := range [][]transfertypes.WorkflowDetail{wd.OnUpload, wd.OnPartialUpload} {
+		for _, w := range list {
+			id := convert.ToValue(w.WorkflowId)
+			if id == "" {
+				continue
+			}
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+func (a *mqlAwsTransferServer) workflows() ([]any, error) {
+	resp, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	ids := transferWorkflowIds(resp.Server.WorkflowDetails)
+	if len(ids) == 0 {
+		return []any{}, nil
+	}
+	obj, err := CreateResource(a.MqlRuntime, ResourceAwsTransfer, map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	all := obj.(*mqlAwsTransfer).GetWorkflows()
+	if all.Error != nil {
+		return nil, all.Error
+	}
+	byId := map[string]*mqlAwsTransferWorkflow{}
+	for _, raw := range all.Data {
+		w, ok := raw.(*mqlAwsTransferWorkflow)
+		if ok && w.Region.Data == a.Region.Data {
+			byId[w.WorkflowId.Data] = w
+		}
+	}
+	res := []any{}
+	for _, id := range ids {
+		if w, ok := byId[id]; ok {
+			res = append(res, w)
+		}
+	}
+	return res, nil
+}

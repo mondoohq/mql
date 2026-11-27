@@ -13,13 +13,11 @@ import (
 )
 
 type OSProcess struct {
-	Pid               int64
-	Command           string
-	Executable        string
-	State             string
-	Uid               int64
-	SocketInodes      []int64
-	SocketInodesError error
+	Pid        int64
+	Command    string
+	Executable string
+	State      string
+	Uid        int64
 }
 
 type OSProcessManager interface {
@@ -27,6 +25,9 @@ type OSProcessManager interface {
 	Exists(pid int64) (bool, error)
 	Process(pid int64) (*OSProcess, error)
 	List() ([]*OSProcess, error)
+	// ListSocketInodesByProcess returns the inodes of the sockets each process
+	// holds open, keyed by pid. It is separate from List because only ports
+	// needs it, and it is the expensive part.
 	ListSocketInodesByProcess() (map[int64]plugin.TValue[[]int64], error)
 }
 

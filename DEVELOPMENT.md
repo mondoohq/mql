@@ -243,6 +243,7 @@ use (
    ./mql/providers/cloudflare
    ./mql/providers/cloudformation
    ./mql/providers/cockroachdb
+   ./mql/providers/codesphere
    ./mql/providers/databricks
    ./mql/providers/datadog
    ./mql/providers/depsdev

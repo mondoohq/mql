@@ -2,7 +2,7 @@ module go.mondoo.com/mql/providers/terraform
 
 replace go.mondoo.com/mql => ../..
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/go-git/go-git/v5 v5.19.3

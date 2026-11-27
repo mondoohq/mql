@@ -64,7 +64,9 @@ func TestFirewallTablesAgreeOnAbsentAttributes(t *testing.T) {
 			args := firewallRuleArgs(prefix, row)
 			assert.Equal(t, prefix+"*1", args["__id"].Value)
 			assert.Equal(t, "input", args["chain"].Value)
-			absentMeansNull(t, args, "log", "dynamic", "invalid", "disabled", "bytes", "packets")
+			absentMeansNull(t, args, "log", "dynamic", "invalid", "bytes", "packets")
+			// RouterOS omits `disabled` on a rule that was never disabled.
+			assert.Equal(t, false, args["disabled"].Value)
 		})
 	}
 }

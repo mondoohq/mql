@@ -208,3 +208,48 @@ func TestAuthoritativeNameserversClimbsPastAnUnresolvableDelegation(t *testing.T
 	assert.Equal(t, []string{"ns1.corp.example.test", "ns1.example.test", "ns2.example.test"}, asked,
 		"the unresolvable delegation should be tried first, then the walk continues to the parent")
 }
+
+// A record sweep sends one query per type, dozens at once. Each lost reply used
+// to become a gap in the list, because the failure is reported inside the
+// returned record and the retry only looked at the error.
+func TestQueryRetriesALostReply(t *testing.T) {
+	f := &flakyResolver{dropName: "example.test.", dropFirst: 1}
+	config := f.serve(t)
+
+	client := &DnsClient{fqdn: "example.test", config: config}
+	records, err := client.Query("NS")
+	require.NoError(t, err)
+
+	require.Contains(t, records, "NS")
+	assert.NoError(t, records["NS"].Error)
+	assert.Equal(t, []string{"ns1.example.test."}, records["NS"].RData)
+
+	_, dropped := f.counts()
+	assert.Equal(t, 1, dropped)
+}
+
+// The authoritative sweep tries each nameserver once, so a lost reply from one
+// must move on to the next rather than end the lookup.
+func TestQueryDnsTypeWithFailoverTriesTheNextServer(t *testing.T) {
+	f := &flakyResolver{dropName: "example.test.", dropFirst: 1}
+	config := f.serve(t)
+	servers := []string{config.Servers[0], config.Servers[0]}
+
+	client := &DnsClient{fqdn: "example.test", config: config}
+	records, err := client.queryDnsTypeWithFailover(servers, 1, false, "NS")
+	require.NoError(t, err)
+	assert.False(t, lookupFailed(records))
+	assert.Equal(t, []string{"ns1.example.test."}, records["NS"].RData)
+}
+
+// When no server answers, the failure is still returned as a record, so the
+// sweep reports a gap for that type rather than an empty answer.
+func TestQueryDnsTypeWithFailoverReturnsTheFailure(t *testing.T) {
+	config := deadResolverConfig(t, 2, 1)
+
+	client := &DnsClient{fqdn: "example.test", config: config}
+	records, err := client.queryDnsTypeWithFailover(config.Servers, 1, true, "NS")
+	require.NoError(t, err)
+	require.True(t, lookupFailed(records))
+	assert.NotEmpty(t, records["NS"].ErrorMessage)
+}

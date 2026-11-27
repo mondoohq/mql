@@ -5,7 +5,10 @@ package resources
 
 import (
 	"testing"
+	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/llx"
@@ -97,4 +100,73 @@ func TestIsServiceLinkedRolePath(t *testing.T) {
 			assert.Equal(t, tc.want, isServiceLinkedRolePath(tc.path))
 		})
 	}
+}
+
+func TestVirtualMfaDeviceArgsUserArn(t *testing.T) {
+	enabled := time.Date(2023, 1, 8, 9, 25, 27, 0, time.UTC)
+
+	t.Run("assigned to root", func(t *testing.T) {
+		// Root device: ListVirtualMFADevices reports the root user by ARN with no
+		// UserName. Account ID and serial number are placeholders.
+		args := virtualMfaDeviceArgs(iamtypes.VirtualMFADevice{
+			SerialNumber: aws.String("arn:aws:iam::123456789012:mfa/authenticator"),
+			EnableDate:   aws.Time(enabled),
+			User:         &iamtypes.User{Arn: aws.String("arn:aws:iam::123456789012:root")},
+		})
+		assert.Equal(t, "arn:aws:iam::123456789012:root", args["userArn"].Value)
+	})
+
+	t.Run("assigned to an IAM user", func(t *testing.T) {
+		// IAM user device: the response carries both the ARN and the UserName.
+		// Account ID and names are placeholders.
+		args := virtualMfaDeviceArgs(iamtypes.VirtualMFADevice{
+			SerialNumber: aws.String("arn:aws:iam::123456789012:mfa/alice"),
+			EnableDate:   aws.Time(enabled),
+			User: &iamtypes.User{
+				Arn:      aws.String("arn:aws:iam::123456789012:user/alice"),
+				UserName: aws.String("alice"),
+			},
+		})
+		assert.Equal(t, "arn:aws:iam::123456789012:user/alice", args["userArn"].Value)
+	})
+
+	t.Run("unassigned", func(t *testing.T) {
+		// A device created but never enabled has no User. Placeholder serial number.
+		args := virtualMfaDeviceArgs(iamtypes.VirtualMFADevice{
+			SerialNumber: aws.String("arn:aws:iam::123456789012:mfa/spare"),
+		})
+		assert.Nil(t, args["userArn"].Value)
+	})
+}
+
+// Synthetic: SAML key hash entries; no target showed this.
+func TestSamlKeyHashesToMap(t *testing.T) {
+	t.Run("hashes are grouped by issuer", func(t *testing.T) {
+		got := samlKeyHashesToMap([]iamtypes.SAMLKeyHashEntry{
+			{IssuerURL: aws.String("https://idp-a.example.com"), KeyHashes: []string{"h1", "h2"}},
+			{IssuerURL: aws.String("https://idp-b.example.com"), KeyHashes: []string{"h3"}},
+			{IssuerURL: aws.String("https://idp-a.example.com"), KeyHashes: []string{"h4"}},
+		})
+		assert.Equal(t, map[string]any{
+			"https://idp-a.example.com": []any{"h1", "h2", "h4"},
+			"https://idp-b.example.com": []any{"h3"},
+		}, got)
+	})
+
+	t.Run("no entries is an empty map", func(t *testing.T) {
+		assert.Empty(t, samlKeyHashesToMap(nil))
+	})
+}
+
+// Synthetic: context provider key definitions; no target showed this.
+func TestContextProviderKeyMappings(t *testing.T) {
+	got := contextProviderKeyMappings([]iamtypes.ContextProviderKeyDefinition{
+		{SourceKey: aws.String("email"), TargetKey: aws.String("user_email")},
+		{SourceKey: aws.String("dept")},
+		{TargetKey: aws.String("orphan")},
+	})
+	assert.Equal(t, map[string]any{
+		"email": "user_email",
+		"dept":  "",
+	}, got)
 }

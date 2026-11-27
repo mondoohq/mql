@@ -112,6 +112,29 @@ type Package struct {
 	// windows_install_identity.go). Unexported: it only becomes purl
 	// qualifiers, and is never serialized on its own.
 	installIdentity *installIdentity
+
+	// uninstallKey is the name of the Windows Uninstall subkey this package
+	// was read from, as Windows spells it. It outlives installIdentity, which
+	// List clears once the identity is in the purl, because the purl keeps
+	// only a normalized form and winget's catalog joins on the raw name.
+	// Unexported and never serialized.
+	uninstallKey string
+
+	// source is where the package came from, when the backend learned it
+	// while listing at no extra cost (an AppX package's signature kind is in
+	// the same query). Everything else is resolved later, and only when a
+	// query asks, through SourceResolver. Unexported: it reaches MQL through
+	// package.osProvided and package.source.
+	source *Source
+
+	// pacmanValidation is how pacman checked the package when it installed
+	// it, from %VALIDATION% of the local database: "pgp", "sha256", "md5" or
+	// "none". Unexported: source resolution reads it.
+	pacmanValidation string
+	// pacmanBuildDate is %BUILDDATE% of the local database record: when the
+	// installed package was built. The sync database lists the same value for
+	// the same build.
+	pacmanBuildDate string
 }
 
 // MacOSApp describes a macOS application bundle.
@@ -184,6 +207,14 @@ type OperatingSystemPkgManager interface {
 	Files(name string, version string, arch string) ([]FileRecord, error)
 }
 
+// UpdatesUnknown is implemented by a package manager whose packages no update
+// check can answer for: nothing on the host offers their newer versions, so
+// available and outdated are null rather than "no newer version". Managers
+// that have always reported no newer version without a check keep doing so.
+type UpdatesUnknown interface {
+	UpdatesUnknown() bool
+}
+
 // this will find the right package manager for the operating system
 func ResolveSystemPkgManagers(conn shared.Connection) ([]OperatingSystemPkgManager, error) {
 	var pms []OperatingSystemPkgManager
@@ -239,6 +270,11 @@ func ResolveSystemPkgManagers(conn shared.Connection) ([]OperatingSystemPkgManag
 		pms = append(pms, &MacOSPkgManager{conn: conn, platform: asset.Platform})
 	case asset.Platform.Name == "windows":
 		pms = append(pms, &WinPkgManager{conn: conn, platform: asset.Platform})
+		// GooGet installs the Compute Engine guest environment, which has no
+		// Add/Remove Programs entry for the registry reader to find.
+		if hasGooGet(conn.FileSystem()) {
+			pms = append(pms, &GooGetPkgManager{conn: conn})
+		}
 	// Flatcar Container Linux is the continuation of CoreOS Container Linux
 	// and keeps its design: /usr is immutable and the image ships no package
 	// manager and no package database at all (verified on a live
@@ -329,6 +365,27 @@ func ResolveSystemPkgManagers(conn shared.Connection) ([]OperatingSystemPkgManag
 				break
 			}
 		}
+
+		// BusyBox images (busybox:latest and the many images built on it) ship
+		// no package manager and no package database: no /var/lib/dpkg, rpm,
+		// apk or opkg state, and /var/lib may not exist at all. Detection
+		// finds them by /bin/busybox alone, so the platform name says nothing
+		// about packages. The BusyBox binary does carry dpkg and rpm applets,
+		// though, so a custom image can hold a real database; that is why this
+		// runs after the probe above and only when it found nothing. No
+		// package database on disk means the empty inventory is the truth.
+		if len(pms) == 0 && asset.Platform.Name == "busybox" {
+			pms = append(pms, &ScratchPkgManager{conn: conn})
+		}
+	}
+
+	// Oracle Database homes (unzip + runInstaller, RAC, Grid Infrastructure)
+	// are in no package database and no Add/Remove Programs list. Every
+	// non-container platform that can host one is probed; the probe is a Stat
+	// of oraInst.loc/oratab on Unix and a registry read on Windows (see
+	// oracle_packages.go).
+	if pm := resolveOraclePkgManager(conn, asset.Platform); pm != nil {
+		pms = append(pms, pm)
 	}
 
 	// Nix can be installed on any Linux or macOS system.

@@ -155,3 +155,30 @@ func TestPropertiesStayOnTheirOwnComponent(t *testing.T) {
 	assert.Equal(t, "glibc", pkg.Origin)
 	assert.Equal(t, "amd64", pkg.Architecture)
 }
+
+// Where a package came from survives a CycloneDX round trip, and an unknown
+// osProvided stays unknown rather than turning into false.
+func TestCycloneDXKeepsPackageSourceThroughRoundTrip(t *testing.T) {
+	bom := sampleBom()
+	no := false
+	bom.Packages = append(bom.Packages,
+		&Package{Name: "nginx", Version: "1.30.5-1~bookworm", Type: "deb", Architecture: "amd64",
+			Purl:       "pkg:deb/debian/nginx@1.30.5-1~bookworm?arch=amd64&distro=debian-12",
+			OsProvided: &no,
+			Source:     &PackageSource{Channel: "vendor-repository", Name: "nginx", Url: "http://nginx.org/packages/debian"}},
+		&Package{Name: "busybox", Version: "1.36.1-r31", Type: "apk",
+			Purl: "pkg:apk/alpine/busybox@1.36.1-r31?arch=aarch64"})
+
+	out := roundTrip(t, bom)
+	nginx := findPkg(t, out, "nginx")
+	require.NotNil(t, nginx.OsProvided)
+	assert.False(t, *nginx.OsProvided)
+	require.NotNil(t, nginx.Source)
+	assert.Equal(t, "vendor-repository", nginx.Source.Channel)
+	assert.Equal(t, "nginx", nginx.Source.Name)
+	assert.Equal(t, "http://nginx.org/packages/debian", nginx.Source.Url)
+
+	busybox := findPkg(t, out, "busybox")
+	assert.Nil(t, busybox.OsProvided, "a package the scan could not attribute stays unattributed")
+	assert.Nil(t, busybox.Source)
+}

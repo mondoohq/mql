@@ -84,7 +84,10 @@ func findFileOwner(pms []OperatingSystemPkgManager, absPath string) string {
 // installers often symlink a launcher into ~/.local/bin while the package
 // database records the canonical file. Returns "" when the binary is not
 // found or no package owns it.
-func FindPackageOwningBinary(conn shared.Connection, binaryName string) (string, error) {
+//
+// managers returns the platform's package managers. It is only called once
+// the binary is found, so a target without one never resolves them.
+func FindPackageOwningBinary(conn shared.Connection, binaryName string, managers func() ([]OperatingSystemPkgManager, error)) (string, error) {
 	if binaryName == "" || !safeBinaryName.MatchString(binaryName) {
 		return "", nil
 	}
@@ -99,7 +102,7 @@ func FindPackageOwningBinary(conn shared.Connection, binaryName string) (string,
 
 	// Resolve the platform's package managers once and reuse them across every
 	// candidate path — platform detection + manager instantiation is not free.
-	pms, err := ResolveSystemPkgManagers(conn)
+	pms, err := managers()
 	if err != nil {
 		return "", err
 	}

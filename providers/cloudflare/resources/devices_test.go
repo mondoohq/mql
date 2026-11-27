@@ -62,6 +62,37 @@ func TestDevicePostureRules(t *testing.T) {
 	assert.Equal(t, "1h", rule.Schedule.Data)
 }
 
+// Synthetic: a disabled file check limited to two platforms, and a rule that
+// reports neither enabled, input nor match; no live account was checked.
+func TestDevicePostureRuleInputAndPlatforms(t *testing.T) {
+	env := setupTestEnv(t)
+	one := createTestOne(t, env)
+
+	env.Mux.HandleFunc(fmt.Sprintf("/accounts/%s/devices/posture", testAccountID), func(w http.ResponseWriter, r *http.Request) {
+		jsonResponse(w, `{"success":true,"result":[
+			{"id":"p-file","name":"Agent present","type":"file","enabled":false,
+			 "input":{"path":"/opt/agent/bin/agent","exists":true,"sha256":"abc123"},
+			 "match":[{"platform":"linux"},{"platform":"mac"}]},
+			{"id":"p-bare","name":"Bare","type":"firewall"}
+		]}`)
+	})
+
+	result, err := one.devicePostureRules()
+	require.NoError(t, err)
+	require.Len(t, result, 2)
+
+	file := result[0].(*mqlCloudflareOneDevicePostureRule)
+	assert.False(t, file.Enabled.IsNull())
+	assert.False(t, file.Enabled.Data)
+	assert.Equal(t, map[string]any{"path": "/opt/agent/bin/agent", "exists": true, "sha256": "abc123"}, file.Input.Data)
+	assert.Equal(t, []any{"linux", "mac"}, file.Platforms.Data)
+
+	bare := result[1].(*mqlCloudflareOneDevicePostureRule)
+	assert.True(t, bare.Enabled.IsNull())
+	assert.True(t, bare.Input.IsNull())
+	assert.True(t, bare.Platforms.IsNull())
+}
+
 func TestDevicePostureIntegrations(t *testing.T) {
 	env := setupTestEnv(t)
 	one := createTestOne(t, env)

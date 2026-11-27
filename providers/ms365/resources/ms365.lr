@@ -140,6 +140,86 @@ private microsoft.identityAndAccess.accessReviewDefinition @defaults("id display
   reviewerScopes []microsoft.identityAndAccess.accessReviewDefinition.reviewerScope
   // The settings for an access review series, see type definition below
   settings microsoft.identityAndAccess.accessReviewDefinition.accessReviewScheduleSettings
+  // Runs of the access review
+  //
+  // One entry per period the review has run for, each with the decisions
+  // its reviewers made. A recurring review has one per recurrence.
+  // Requires the AccessReview.Read.All permission.
+  instances() []microsoft.identityAndAccess.accessReviewInstance
+}
+
+// Access review instance
+//
+// One run of an access review: the period it covers, its status, and the
+// decisions reviewers made in it, for example
+// `instances.where(status == "Completed") { decisions.where(decision == "NotReviewed") }`.
+private microsoft.identityAndAccess.accessReviewInstance @defaults("startDateTime endDateTime status") {
+  // Instance ID
+  id string
+  // Status of the instance
+  //
+  // One of NotStarted, InProgress, Completed, AutoReviewing, or AutoReviewed.
+  status string
+  // Start of the period the instance reviews
+  startDateTime time
+  // End of the period the instance reviews
+  endDateTime time
+  // Decisions made on each principal under review in this instance
+  decisions() []microsoft.identityAndAccess.accessReviewDecision
+}
+
+// Access review decision
+//
+// The outcome of reviewing one principal's access in an access review
+// instance: the decision, who made it and why, the system recommendation,
+// and whether the result was applied. Kept as evidence that a review
+// happened and what it decided.
+private microsoft.identityAndAccess.accessReviewDecision @defaults("principalDisplayName decision") {
+  // Decision ID
+  id string
+  // Decision taken
+  //
+  // One of Approve, Deny, NotReviewed, or DontKnow.
+  decision string
+  // System recommendation based on the principal's activity
+  //
+  // One of Approve, Deny, or NoInfoAvailable.
+  recommendation string
+  // Reviewer's justification
+  justification string
+  // When the decision was recorded; null when nobody has reviewed yet
+  reviewedDateTime time
+  // User who made the decision
+  //
+  // Null when nobody has reviewed yet or when the system decided.
+  reviewedBy() microsoft.user
+  // When the decision was applied to the resource; null until applied
+  appliedDateTime time
+  // Result of applying the decision
+  //
+  // One of New, AppliedSuccessfully, AppliedWithUnknownFailure,
+  // AppliedSuccessfullyButObjectNotFound, or ApplyNotSupported.
+  applyResult string
+  // ID of the principal whose access is reviewed
+  principalId string
+  // Type of the principal whose access is reviewed
+  //
+  // One of user or servicePrincipal; empty for other identity types.
+  principalType string
+  // Display name of the principal whose access is reviewed
+  principalDisplayName string
+  // Principal whose access is reviewed, when it is a user
+  principalUser() microsoft.user
+  // Principal whose access is reviewed, when it is a service principal
+  principalServicePrincipal() microsoft.serviceprincipal
+  // ID of the resource the access is to
+  resourceId string
+  // Type of the resource the access is to, for example group or application
+  resourceType string
+  // Display name of the resource the access is to
+  resourceDisplayName string
+  // Resource the access is to, when it is a group
+  resourceGroup() microsoft.group
 }
 
 // Reviewer scope of an access review
@@ -684,8 +764,10 @@ private microsoft.serviceHealthIssue @defaults("id title status") {
 // optional `filter` (OData property filter) and `search` (keyword search)
 // parameters to narrow results. Each entry is a `microsoft.user` exposing
 // account status, contact details, job information, MFA state, assigned
-// licenses, sign-in history, and authentication method registration, and
-// `count` reports the total number of users.
+// licenses, sign-in history, and authentication method registration.
+// `count`, `memberCount`, and `guestCount` report how many users there are
+// without listing them, for example
+// `microsoft.users(filter: "accountEnabled eq true").guestCount`.
 microsoft.users {
   []microsoft.user
 
@@ -694,8 +776,24 @@ microsoft.users {
   filter string
   // Search users by search phrases
   search string
-  // Total number of Microsoft Entra ID users
+  // Number of Microsoft Entra ID users
+  //
+  // All users in the tenant. When `filter` or `search` is set, only the
+  // matching users are counted.
   count() int
+  // Number of member users
+  //
+  // Users whose `userType` is Member, the type an organization's own accounts
+  // carry. When `filter` or `search` is set, only the matching users are
+  // counted. An account with no `userType` is in neither `memberCount` nor
+  // `guestCount`.
+  memberCount() int
+  // Number of guest users
+  //
+  // Users whose `userType` is Guest, the type invited external accounts carry
+  // by default. When `filter` or `search` is set, only the matching users are
+  // counted.
+  guestCount() int
 }
 
 // Microsoft Entra identity and access management
@@ -1410,6 +1508,17 @@ private microsoft.identityAndAccess.roleEligibilityScheduleInstance @defaults("m
   id string
   // The identifier of the principal (user, group, or service principal) that has the role eligibility
   principalId string
+  // Type of the eligible principal
+  //
+  // One of user, group, or servicePrincipal. Empty when the principal no
+  // longer exists in the directory.
+  principalType string
+  // Eligible principal when it is a user
+  principalUser() microsoft.user
+  // Eligible principal when it is a group
+  principalGroup() microsoft.group
+  // Eligible principal when it is a service principal
+  principalServicePrincipal() microsoft.serviceprincipal
   // Role definition the eligibility grants
   roleDefinition() microsoft.rolemanagement.roledefinition
   // The identifier of the directory object representing the scope of the role eligibility
@@ -1585,14 +1694,67 @@ private microsoft.identityAndAccess.privilegedIdentityManagement.policy @default
   lastModifiedBy dict
   // The collection of rules that are part of the policy
   rules() []microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule
+  // Directory role the policy governs
+  //
+  // Null when the policy is not assigned to a directory role at the tenant
+  // scope.
+  roleDefinition() microsoft.rolemanagement.roledefinition
 }
 
 // A rule defined for a PIM role management policy
-private microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule @defaults("id") {
+private microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule @defaults("id type") {
   // The unique identifier for the rule
   id string
   // Defines details of scope that's targeted by role management policy rule
   target microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.target
+  // Kind of rule
+  //
+  // One of `enablement`, `approval`, `expiration`, `authenticationContext`, or
+  // `notification`. Decides which of the other fields the rule sets; the rest
+  // are null.
+  type string
+  // Requirements a user must meet to activate or be assigned the role
+  //
+  // Set on `enablement` rules. Contains any of `MultiFactorAuthentication`,
+  // `Justification`, and `Ticketing`. The `Enablement_EndUser_Assignment` rule
+  // governs activation.
+  enabledRules []string
+  // Whether an assignment or activation must expire
+  //
+  // Set on `expiration` rules.
+  isExpirationRequired bool
+  // Longest an assignment or activation may last
+  //
+  // Set on `expiration` rules, as an ISO 8601 duration such as `PT8H` or
+  // `P365D`.
+  maximumDuration string
+  // Whether a request needs approval
+  //
+  // Set on `approval` rules. The `Approval_EndUser_Assignment` rule governs
+  // activation.
+  isApprovalRequired bool
+  // Whether extending an assignment needs approval
+  //
+  // Set on `approval` rules.
+  isApprovalRequiredForExtension bool
+  // Whether the requestor must give a justification for approval
+  //
+  // Set on `approval` rules.
+  isRequestorJustificationRequired bool
+  // How approval stages run
+  //
+  // Set on `approval` rules: `SingleStage`, `Serial`, `Parallel`, or
+  // `NoApproval`.
+  approvalMode string
+  // Whether activation requires a Conditional Access authentication context
+  //
+  // Set on `authenticationContext` rules.
+  authenticationContextEnabled bool
+  // Authentication context the activation requires
+  //
+  // Set on `authenticationContext` rules, for example `c1`. Null when none is
+  // required.
+  authenticationContextClaimValue string
 }
 
 // Defines details of the scope that's targeted by role management policy rule
@@ -2058,7 +2220,8 @@ private microsoft.user @defaults("id displayName userPrincipalName") {
   //
   // True when the user is directly assigned at least one active Microsoft
   // Entra directory role. Roles held only through group membership or as
-  // not-yet-activated PIM-eligible assignments are not reflected.
+  // not-yet-activated PIM-eligible assignments are not reflected; see
+  // directoryRoleAssignments and directoryRoleEligibilities for those.
   isAdministrator() bool
   // User city
   city string
@@ -2139,6 +2302,36 @@ private microsoft.user @defaults("id displayName userPrincipalName") {
   // successful sign-in). Useful for finding stale or dormant accounts.
   // Requires the AuditLog.Read.All permission.
   signInActivity() dict
+  // Groups the user is a direct member of
+  //
+  // Only groups; directory roles and administrative units the user belongs
+  // to are not included. Requires the GroupMember.Read.All or
+  // Directory.Read.All permission.
+  memberOf() []microsoft.group
+  // Groups the user is a member of, directly or through nested groups
+  //
+  // Every group whose membership reaches the user, so access granted to
+  // a group (an Entra role, an Azure role assignment, an app assignment)
+  // can be traced to the people who hold it, for example
+  // `transitiveMemberOf.where(isAssignableToRole)`. Only groups; directory
+  // roles and administrative units are not included. Requires the
+  // GroupMember.Read.All or Directory.Read.All permission.
+  transitiveMemberOf() []microsoft.group
+  // Active Microsoft Entra directory role assignments that apply to this user
+  //
+  // Assignments made to the user itself and to every role-assignable group
+  // it is a direct member of. Role-assignable groups cannot contain other
+  // groups, so this is every active directory role the user holds, for
+  // example `directoryRoleAssignments.any(roleDefinition.isPrivileged)`.
+  // Requires the RoleManagement.Read.Directory permission.
+  directoryRoleAssignments() []microsoft.rolemanagement.roleassignment
+  // PIM eligibilities for Microsoft Entra directory roles that apply to this user
+  //
+  // Eligibilities made to the user itself and to every role-assignable
+  // group it is a direct member of: roles it can activate without holding
+  // them now. Requires the RoleEligibilitySchedule.Read.Directory
+  // permission and Microsoft Entra ID P2.
+  directoryRoleEligibilities() []microsoft.identityAndAccess.roleEligibilityScheduleInstance
 }
 
 // Microsoft user authentication method states
@@ -2469,8 +2662,28 @@ private microsoft.group @defaults("id displayName") {
   // membership list from users who are not members and is supported only on
   // Microsoft 365 groups.
   visibility string
-  // List of group members
+  // Users that are direct members of the group
+  //
+  // Only users. Nested groups are in memberGroups, service principals in
+  // memberServicePrincipals, and every user reached through nesting in
+  // transitiveMemberUsers.
   members() []microsoft.user
+  // Groups that are direct members of the group
+  //
+  // Every member of a nested group also holds what this group grants.
+  memberGroups() []microsoft.group
+  // Service principals that are direct members of the group
+  //
+  // A service principal in a role-assignable group holds the group's
+  // directory roles without a role assignment of its own.
+  memberServicePrincipals() []microsoft.serviceprincipal
+  // Users that are members of the group, directly or through nested groups
+  //
+  // Everyone who holds what this group grants, for example
+  // `microsoft.groups.list.where(isAssignableToRole) { transitiveMemberUsers }`.
+  transitiveMemberUsers() []microsoft.user
+  // Service principals that are members of the group, directly or through nested groups
+  transitiveMemberServicePrincipals() []microsoft.serviceprincipal
   // List of group owners
   owners() []microsoft.group.owner
   // Group types indicating membership and classification
@@ -2512,6 +2725,17 @@ private microsoft.group @defaults("id displayName") {
   preferredLanguage string
   // The preferred data location for the group (e.g., a geo region)
   preferredDataLocation string
+  // Active Microsoft Entra directory role assignments made to this group
+  //
+  // Only role-assignable groups (isAssignableToRole) can hold directory
+  // roles; every member holds them too. Requires the
+  // RoleManagement.Read.Directory permission.
+  directoryRoleAssignments() []microsoft.rolemanagement.roleassignment
+  // PIM eligibilities for Microsoft Entra directory roles made to this group
+  //
+  // Requires the RoleEligibilitySchedule.Read.Directory permission and
+  // Microsoft Entra ID P2.
+  directoryRoleEligibilities() []microsoft.identityAndAccess.roleEligibilityScheduleInstance
 }
 
 // Group owner (can be a user or service principal)
@@ -2983,8 +3207,17 @@ microsoft.application @defaults("id name hasExpiredCredentials") {
   certificates []microsoft.keyCredential
   // Whether the credentials have expired
   hasExpiredCredentials() bool
-  // Application owner
+  // Users who own the application
+  //
+  // Owners that are service principals are in ownerServicePrincipals.
   owners() []microsoft.user
+  // Service principals that own the application
+  //
+  // An owner can add a secret or certificate to the application and then
+  // sign in as it, so a service principal owner can act with every
+  // permission the application holds. Common for applications created by
+  // automation.
+  ownerServicePrincipals() []microsoft.serviceprincipal
   // Managed application in local directory
   servicePrincipal() microsoft.serviceprincipal
   // Federated identity credentials trusted by the application
@@ -3113,6 +3346,15 @@ private microsoft.keyCredential @defaults("thumbprint description expires keyId"
   expired bool
   // Certificate validity start date
   startDateTime time
+  // Most recent sign-in made with this credential
+  //
+  // From the tenant's application credential sign-in activity report, which
+  // Microsoft refreshes periodically, so it can trail the latest sign-ins.
+  // Null when the report holds no sign-in for the credential, which marks a
+  // secret or certificate that can be revoked without breaking anything.
+  // Requires the AuditLog.Read.All permission and a Microsoft Entra ID P1
+  // or P2 license.
+  lastSignInDateTime() time
 }
 
 // Microsoft Entra AD Application secrets
@@ -3141,6 +3383,15 @@ private microsoft.passwordCredential @defaults("description expires keyId") {
   expired bool
   // Secret validity start date
   startDateTime time
+  // Most recent sign-in made with this credential
+  //
+  // From the tenant's application credential sign-in activity report, which
+  // Microsoft refreshes periodically, so it can trail the latest sign-ins.
+  // Null when the report holds no sign-in for the credential, which marks a
+  // secret or certificate that can be revoked without breaking anything.
+  // Requires the AuditLog.Read.All permission and a Microsoft Entra ID P1
+  // or P2 license.
+  lastSignInDateTime() time
 }
 
 // Microsoft Entra federated identity credential
@@ -3287,8 +3538,13 @@ microsoft.serviceprincipal @defaults("name") {
   //
   // Owners can manage the service principal, including adding credentials to
   // it, without holding an administrator role. Owners that are themselves
-  // service principals are not included.
+  // service principals are in ownerServicePrincipals.
   owners() []microsoft.user
+  // Service principals that own the service principal
+  //
+  // An owner can add credentials to this service principal and sign in as
+  // it, so a service principal owner can act with every permission it holds.
+  ownerServicePrincipals() []microsoft.serviceprincipal
   // Federated identity credentials trusted by the service principal
   //
   // External identities that can sign in as this service principal with a
@@ -3310,6 +3566,68 @@ microsoft.serviceprincipal @defaults("name") {
   claimsMappingPolicies() []microsoft.policies.claimsMappingPolicy
   // Home realm discovery policies assigned to this service principal
   homeRealmDiscoveryPolicies() []microsoft.policies.homeRealmDiscoveryPolicy
+  // Groups the service principal is a direct member of
+  //
+  // Only groups; directory roles and administrative units are not
+  // included. Requires the GroupMember.Read.All or Directory.Read.All
+  // permission.
+  memberOf() []microsoft.group
+  // Groups the service principal is a member of, directly or through nested groups
+  //
+  // Access granted to any of these groups (an Entra role, an Azure role
+  // assignment, an app assignment) is access this workload identity holds,
+  // for example `transitiveMemberOf.where(isAssignableToRole)`. Requires the
+  // GroupMember.Read.All or Directory.Read.All permission.
+  transitiveMemberOf() []microsoft.group
+  // Most recent sign-in of any kind involving this service principal
+  //
+  // From the tenant's service principal sign-in activity report, which
+  // Microsoft refreshes periodically, so it can trail the latest sign-ins
+  // by days. Null when the report holds no sign-in for the application,
+  // which marks a workload identity nobody uses, for example
+  // `microsoft.serviceprincipals.where(lastSignInDateTime == null || lastSignInDateTime < time.today - 90*time.day)`.
+  // Requires the AuditLog.Read.All permission and a Microsoft Entra ID P1
+  // or P2 license.
+  lastSignInDateTime() time
+  // Most recent sign-in where the application authenticated as itself to get a token
+  //
+  // Application-only (client credentials) sign-ins, made with the
+  // application's own secret, certificate, or federated credential. Null
+  // when the report holds none. Same permission and license as
+  // lastSignInDateTime.
+  lastAppOnlyClientSignInDateTime() time
+  // Most recent sign-in where the application signed in on behalf of a user to get a token
+  //
+  // Delegated sign-ins with the application as the client. Null when the
+  // report holds none. Same permission and license as lastSignInDateTime.
+  lastDelegatedClientSignInDateTime() time
+  // Most recent sign-in where another application, as itself, got a token for this one
+  //
+  // Application-only sign-ins with this service principal as the resource
+  // (the API being called). Null when the report holds none. Same
+  // permission and license as lastSignInDateTime.
+  lastAppOnlyResourceSignInDateTime() time
+  // Most recent sign-in where another application, on behalf of a user, got a token for this one
+  //
+  // Delegated sign-ins with this service principal as the resource. Null
+  // when the report holds none. Same permission and license as
+  // lastSignInDateTime.
+  lastDelegatedResourceSignInDateTime() time
+  // Active Microsoft Entra directory role assignments that apply to this service principal
+  //
+  // Assignments made to the service principal itself and to every role-assignable group
+  // it is a direct member of. Role-assignable groups cannot contain other
+  // groups, so this is every active directory role the service principal holds, for
+  // example `directoryRoleAssignments.any(roleDefinition.isPrivileged)`.
+  // Requires the RoleManagement.Read.Directory permission.
+  directoryRoleAssignments() []microsoft.rolemanagement.roleassignment
+  // PIM eligibilities for Microsoft Entra directory roles that apply to this service principal
+  //
+  // Eligibilities made to the service principal itself and to every role-assignable
+  // group it is a direct member of: roles it can activate without holding
+  // them now. Requires the RoleEligibilitySchedule.Read.Directory
+  // permission and Microsoft Entra ID P2.
+  directoryRoleEligibilities() []microsoft.identityAndAccess.roleEligibilityScheduleInstance
 }
 
 // Microsoft Service Principal Assignment
@@ -3324,7 +3642,11 @@ private microsoft.serviceprincipal.assignment @defaults("id") {
 
 // Microsoft Service Principal Permission
 private microsoft.application.permission @defaults("appName name type status") {
-  // ID of the API
+  // Object ID of the API's service principal
+  //
+  // Despite the name, this is the directory object ID of the service
+  // principal that publishes the permission (the API), not its application
+  // (client) ID. The resource field resolves it.
   appId string
   // Name of the API
   appName string
@@ -3338,6 +3660,23 @@ private microsoft.application.permission @defaults("appName name type status") {
   type string
   // Permission grant status (e.g., `granted` for consented permissions, `available` for app roles the application could request but has not been granted)
   status string
+  // Service principal of the API that publishes the permission
+  //
+  // For example the Microsoft Graph service principal for
+  // `RoleManagement.ReadWrite.Directory`.
+  resource() microsoft.serviceprincipal
+  // When the application permission was granted
+  //
+  // Set for granted application permissions. Null for delegated
+  // permissions, whose grants carry no creation time, and for available
+  // ones.
+  grantedDateTime time
+  // Who consented to a delegated permission
+  //
+  // AllPrincipals when an administrator consented for every user in the
+  // tenant, Principal when one user consented for themselves. Empty for
+  // application permissions.
+  consentType string
 }
 
 // Microsoft Entra ID OAuth2 Permission Grant
@@ -3930,7 +4269,16 @@ microsoft.policies {
   // NONE, ADMINSANDGUESTINVITERS, ADMINSGUESTINVITERSANDALLMEMBERS, EVERYONE,
   // UNKNOWNFUTUREVALUE), `blockMsolPowerShell`, `defaultUserRolePermissions`,
   // `guestUserRoleId`, `displayName`, `description`, and `id`.
-  authorizationPolicy() dict
+  // Deprecated in favor of tenantAuthorizationPolicy, which carries the same
+  // settings as typed fields.
+  authorizationPolicy() @maturity("deprecated") @replaced_by("microsoft.policies.tenantAuthorizationPolicy") dict
+  // Tenant authorization policy
+  //
+  // What every user and guest may do by default: create applications,
+  // security groups, or tenants, consent to applications, invite guests,
+  // and read other users. Each setting left open lets a normal user create
+  // an identity or grant data access without review.
+  tenantAuthorizationPolicy() microsoft.policies.tenantAuthorizationPolicy
   // Identity security default enforcement policy
   //
   // Security defaults enforcement state for the tenant. Keys: `isEnabled`
@@ -4029,6 +4377,57 @@ microsoft.policies {
   // features, such as password hash sync or pass-through authentication,
   // ahead of the whole organization.
   featureRolloutPolicies() []microsoft.policies.featureRolloutPolicy
+}
+
+// Tenant authorization policy
+//
+// The tenant's default permissions for users and guests. The defaultUser
+// fields apply to every member user that holds no administrator role, for
+// example `microsoft.policies.tenantAuthorizationPolicy.defaultUserAllowedToCreateApps == false`.
+private microsoft.policies.tenantAuthorizationPolicy @defaults("allowInvitesFrom defaultUserAllowedToCreateApps") {
+  // Policy ID
+  id string
+  // Display name
+  displayName string
+  // Description
+  description string
+  // Who can invite guests
+  //
+  // One of none, adminsAndGuestInviters, adminsGuestInvitersAndAllMembers,
+  // or everyone.
+  allowInvitesFrom string
+  // Whether users can sign up for email-based self-service subscriptions
+  allowedToSignUpEmailBasedSubscriptions bool
+  // Whether users can use self-service password reset
+  allowedToUseSSPR bool
+  // Whether users with a verified email address can join the tenant
+  allowEmailVerifiedUsersToJoinOrganization bool
+  // Whether users can consent to applications Microsoft flags as risky
+  allowUserConsentForRiskyApps bool
+  // Whether the legacy MSOnline PowerShell module is blocked
+  blockMsolPowerShell bool
+  // Role that guests get
+  //
+  // a0b1b346-4d3e-4e8b-98f8-753987be4970 for the same access as members,
+  // 10dae51f-b6af-4016-8d66-8c2a99b929b3 for limited guest access, or
+  // 2af84b1e-32c8-42b7-82bc-daa82404023b for restricted guest access, the
+  // most restrictive.
+  guestUserRoleId string
+  // Whether default users can register applications
+  defaultUserAllowedToCreateApps bool
+  // Whether default users can create security groups
+  defaultUserAllowedToCreateSecurityGroups bool
+  // Whether default users can create tenants
+  defaultUserAllowedToCreateTenants bool
+  // Whether default users can read the BitLocker keys of devices they own
+  defaultUserAllowedToReadBitlockerKeysForOwnedDevice bool
+  // Whether default users can read other users
+  defaultUserAllowedToReadOtherUsers bool
+  // Permission grant policies that set which applications default users can consent to
+  //
+  // IDs such as `ManagePermissionGrantsForSelf.microsoft-user-default-low`.
+  // Empty when users cannot consent to applications at all.
+  defaultUserPermissionGrantPoliciesAssigned []string
 }
 
 // Entra device registration policy
@@ -5086,6 +5485,19 @@ private microsoft.rolemanagement.roledefinition @defaults("id displayName") {
   version string
   // List of role definition assignments
   assignments() []microsoft.rolemanagement.roleassignment
+  // Whether Microsoft classifies the role as privileged
+  //
+  // Microsoft's own classification: a privileged role can manage identities,
+  // credentials, authentication, or other roles, so holding it can lead to
+  // control of the tenant. Null when Microsoft Graph does not classify the
+  // role.
+  isPrivileged() bool
+  // PIM policy that governs the role at the tenant scope
+  //
+  // Its rules set what activating or being assigned the role requires, for
+  // example multifactor authentication or approval. Null when no policy is
+  // assigned to the role.
+  pimPolicy() microsoft.identityAndAccess.privilegedIdentityManagement.policy
 }
 
 // Microsoft role assignment

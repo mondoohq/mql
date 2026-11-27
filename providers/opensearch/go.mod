@@ -2,7 +2,7 @@ module go.mondoo.com/mql/providers/opensearch
 
 replace go.mondoo.com/mql => ../..
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/opensearch-project/opensearch-go/v5 v5.2.0

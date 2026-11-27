@@ -4,8 +4,11 @@
 package resources
 
 import (
+	"strings"
+
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 // firewallRuleArgs maps the chain, action, match conditions, counters, and
@@ -30,11 +33,66 @@ func firewallRuleArgs(prefix string, row map[string]string) map[string]*llx.RawD
 		"logPrefix":      llx.StringData(row["log-prefix"]),
 		"bytes":          intField(row, "bytes"),
 		"packets":        intField(row, "packets"),
-		"disabled":       boolField(row, "disabled"),
+		"disabled":       firewallRuleDisabled(row),
 		"dynamic":        boolField(row, "dynamic"),
 		"invalid":        boolField(row, "invalid"),
 		"comment":        llx.StringData(row["comment"]),
 	}
+}
+
+// firewallRuleProperties are the filter rule properties that do not narrow
+// which packets a rule applies to: its place, its action and the action's
+// arguments, logging, counters, and state flags. Every other property in a
+// reply row is a match condition. The list is closed on purpose, so a
+// property RouterOS adds later counts as a condition until it is named here,
+// and a rule is never reported as unconditional because of an unknown key.
+var firewallRuleProperties = map[string]bool{
+	"chain":                true,
+	"action":               true,
+	"comment":              true,
+	"disabled":             true,
+	"dynamic":              true,
+	"invalid":              true,
+	"bytes":                true,
+	"packets":              true,
+	"log":                  true,
+	"log-prefix":           true,
+	"reject-with":          true,
+	"jump-target":          true,
+	"address-list":         true,
+	"address-list-timeout": true,
+	"hw-offload":           true,
+}
+
+// firewallMatchers returns every match condition a filter rule carries,
+// keyed by its RouterOS property name. RouterOS has several dozen of them,
+// most with no field of their own (in-interface-list, dst-address-type,
+// src-mac-address, tcp-flags, time, limit, ...), and a rule that sets any one
+// of them no longer applies to every packet in its chain.
+func firewallMatchers(row map[string]string) *llx.RawData {
+	out := map[string]any{}
+	for k, v := range row {
+		if v == "" || strings.HasPrefix(k, ".") || firewallRuleProperties[k] {
+			continue
+		}
+		out[k] = v
+	}
+	return llx.MapData(out, types.String)
+}
+
+// firewallRuleDisabled reports whether a firewall rule is disabled. RouterOS
+// omits `disabled` from the print reply of a rule that has never been
+// disabled, and reports "true" or "false" once it has been toggled; this holds
+// for filter, NAT, mangle, and raw rules on IPv4 and IPv6 (observed on 7.23.2
+// and 7.25.1). An absent attribute on a real reply row, one carrying the
+// ".id" handle, therefore means the rule is enabled. A row without ".id" was
+// not read from a device, so it keeps reporting null rather than a
+// fabricated false.
+func firewallRuleDisabled(row map[string]string) *llx.RawData {
+	if _, ok := row["disabled"]; !ok && row[".id"] != "" {
+		return llx.BoolData(false)
+	}
+	return boolField(row, "disabled")
 }
 
 // --- ip.firewall.mangle ---
@@ -81,6 +139,7 @@ func newMikrotikIpv6FirewallFilter(runtime *plugin.Runtime, row map[string]strin
 	args := firewallRuleArgs("mikrotik.ipv6.firewall.filter/", row)
 	args["connectionState"] = llx.StringData(row["connection-state"])
 	args["icmpOptions"] = llx.StringData(row["icmp-options"])
+	args["matchers"] = firewallMatchers(row)
 	return CreateResource(runtime, "mikrotik.ipv6.firewall.filter", args)
 }
 

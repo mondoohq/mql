@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
 )
 
 func TestScopedObject(t *testing.T) {
@@ -198,5 +199,30 @@ func TestRegionsWithEndpoint(t *testing.T) {
 		got := regionsWithEndpoint(nil, endpoints)
 		assert.NotNil(t, got)
 		assert.Empty(t, got)
+	})
+}
+
+func TestVaultSecrets(t *testing.T) {
+	t.Run("no vault credentials keeps the environment values", func(t *testing.T) {
+		secret, token := vaultSecrets(nil, "env-secret", "env-token")
+		assert.Equal(t, "env-secret", secret)
+		assert.Equal(t, "env-token", token)
+	})
+
+	t.Run("vault credentials override the environment", func(t *testing.T) {
+		creds := []*vault.Credential{
+			vault.NewPasswordCredential("", "flag-secret"),
+			{Type: vault.CredentialType_bearer, Secret: []byte("flag-token")},
+		}
+		secret, token := vaultSecrets(creds, "env-secret", "env-token")
+		assert.Equal(t, "flag-secret", secret)
+		assert.Equal(t, "flag-token", token)
+	})
+
+	t.Run("empty and nil credentials are ignored", func(t *testing.T) {
+		creds := []*vault.Credential{nil, {Type: vault.CredentialType_bearer}}
+		secret, token := vaultSecrets(creds, "env-secret", "env-token")
+		assert.Equal(t, "env-secret", secret)
+		assert.Equal(t, "env-token", token)
 	})
 }

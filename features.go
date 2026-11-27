@@ -138,9 +138,19 @@ const (
 	// status: new
 	WindowsNative Feature = 25
 
+	// The client retries an upstream call that the server refuses with ResourceExhausted, waiting the server's RetryInfo delay. A server may only refuse calls from clients that advertise this feature.
+	// start:  v14.x
+	// status: new
+	RateLimitRetry Feature = 26
+
+	// When an assessment (.all, .any, .none, .one) fails, record for each failing item only the fields its predicate compares, not the default fields of every resource the predicate passes through. For example, users.all(authMethods.registrationDetails != empty) no longer records authMethods' default fields, which can cost a provider call per item. The failing items' own default fields are still recorded. Changes the compiled code, and so the code IDs, of assessments whose predicate goes through a resource-typed field.
+	// start:  v14.x
+	// status: new
+	AssessmentLeafFields Feature = 27
+
 	// Placeholder to indicate how many feature flags exist. This number
 	// is changing with every new feature and cannot be used as a featureflag itself.
-	MAX_FEATURES byte = 26
+	MAX_FEATURES byte = 28
 )
 
 var FeaturesValue = map[string]Feature{
@@ -169,6 +179,8 @@ var FeaturesValue = map[string]Feature{
 	"RootedNamespace":              RootedNamespace,
 	"StructuredErrors":             StructuredErrors,
 	"WindowsNative":                WindowsNative,
+	"RateLimitRetry":               RateLimitRetry,
+	"AssessmentLeafFields":         AssessmentLeafFields,
 }
 
 // DefaultFeatures are a set of default flags that are active
@@ -194,4 +206,6 @@ var AvailableFeatures = Features{
 	byte(RootedNamespace),
 	byte(StructuredErrors),
 	byte(WindowsNative),
+	byte(RateLimitRetry),
+	byte(AssessmentLeafFields),
 }

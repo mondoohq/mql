@@ -1022,3 +1022,7 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) tables() ([]any, error) {
 	}
 	return res, nil
 }
+
+func (a *mqlAzureSubscriptionStorageServiceAccount) networkRuleSubnets() ([]any, error) {
+	return azureResourceRefsByID(a.MqlRuntime, ResourceAzureSubscriptionNetworkServiceSubnet, anyStrings(a.NetworkRuleVirtualNetworkSubnetIds.Data))
+}

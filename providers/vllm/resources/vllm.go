@@ -21,12 +21,13 @@ type mqlVllmEndpointInternal struct {
 	obs  connection.EndpointObservation
 }
 
-// mqlVllmModelInternal carries the permission array from the /v1/models
-// response that produced the model, so reading vllm.model.permissions does not
-// re-list the models.
+// mqlVllmModelInternal carries the permission array and the parent model id
+// from the /v1/models response that produced the model, so reading
+// vllm.model.permissions or resolving baseModel does not re-list the models.
 type mqlVllmModelInternal struct {
 	once            sync.Once
 	permissionCards []connection.ModelPermission
+	cacheParentID   string
 }
 
 func (r *mqlVllm) id() (string, error) {
@@ -112,28 +113,101 @@ func (r *mqlVllm) models() ([]any, error) {
 
 	res := make([]any, 0, len(cards))
 	for _, c := range cards {
-		mqlModel, err := CreateResource(r.MqlRuntime, "vllm.model", map[string]*llx.RawData{
-			"__id":        llx.StringData(conn.BaseURL() + "/model/" + c.ID),
-			"id":          llx.StringData(c.ID),
-			"root":        llx.StringData(c.Root),
-			"parent":      llx.StringData(c.Parent),
-			"maxModelLen": llx.IntData(c.MaxModelLen),
-			"created":     llx.TimeDataPtr(modelCreatedTime(c.Created)),
-			"ownedBy":     llx.StringData(c.OwnedBy),
-		})
+		mqlModel, err := CreateResource(r.MqlRuntime, "vllm.model", modelArgs(conn.BaseURL(), c))
 		if err != nil {
 			return nil, err
 		}
 		if m, ok := mqlModel.(*mqlVllmModel); ok {
 			primed := c.Permission
+			parentID := c.Parent
 			m.once.Do(func() {
 				m.permissionCards = primed
+				m.cacheParentID = parentID
 			})
 		}
 		res = append(res, mqlModel)
 	}
 
 	return res, nil
+}
+
+// modelArgs builds the resource arguments for one /v1/models card.
+func modelArgs(baseURL string, c connection.ModelCard) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":        llx.StringData(baseURL + "/model/" + c.ID),
+		"id":          llx.StringData(c.ID),
+		"root":        llx.StringData(c.Root),
+		"parent":      llx.StringData(c.Parent),
+		"maxModelLen": llx.IntData(c.MaxModelLen),
+		"created":     llx.TimeDataPtr(modelCreatedTime(c.Created)),
+		"ownedBy":     llx.StringData(c.OwnedBy),
+	}
+}
+
+// servedModels returns the models list of the vllm root resource. The root and
+// its list are cached by the runtime, so this does not re-request /v1/models
+// once the list has been read.
+func servedModels(runtime *plugin.Runtime) ([]any, error) {
+	root, err := CreateResource(runtime, "vllm", nil)
+	if err != nil {
+		return nil, err
+	}
+	list := root.(*mqlVllm).GetModels()
+	if list.Error != nil {
+		return nil, list.Error
+	}
+	return list.Data, nil
+}
+
+func (m *mqlVllmModel) baseModel() (*mqlVllmModel, error) {
+	if m.cacheParentID == "" {
+		m.BaseModel.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	models, err := servedModels(m.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	base := findModelByID(models, m.cacheParentID)
+	if base == nil {
+		m.BaseModel.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return base, nil
+}
+
+func (m *mqlVllmModel) adapters() ([]any, error) {
+	models, err := servedModels(m.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	return adaptersOf(models, m.Id.Data), nil
+}
+
+// findModelByID returns the listed model whose id is the given one. vLLM sets
+// an adapter's parent to the served name of its base model, which is that
+// model's id in the list.
+func findModelByID(models []any, id string) *mqlVllmModel {
+	for _, item := range models {
+		if candidate, ok := item.(*mqlVllmModel); ok && candidate.Id.Data == id {
+			return candidate
+		}
+	}
+	return nil
+}
+
+// adaptersOf returns the listed models whose parent is the given model id.
+func adaptersOf(models []any, id string) []any {
+	out := []any{}
+	if id == "" {
+		return out
+	}
+	for _, item := range models {
+		if candidate, ok := item.(*mqlVllmModel); ok && candidate.cacheParentID == id {
+			out = append(out, candidate)
+		}
+	}
+	return out
 }
 
 func (m *mqlVllmModel) permissions() ([]any, error) {

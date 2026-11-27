@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRowID(t *testing.T) {
@@ -171,4 +172,78 @@ func TestConnectionTrackingArgsAbsentMenu(t *testing.T) {
 	assert.Nil(t, args["looseTcpTracking"].Value)
 	assert.Nil(t, args["totalEntries"].Value)
 	assert.Nil(t, args["maxEntries"].Value)
+}
+
+// TestFirewallRuleDisabledAbsent covers RouterOS omitting `disabled` from a
+// rule that was never disabled. Every row in the captured filter fixture is
+// enabled and none carries the attribute.
+func TestFirewallRuleDisabledAbsent(t *testing.T) {
+	rows := liveRows(t, "ip-firewall-filter.json")
+	require.NotEmpty(t, rows)
+	for _, row := range rows {
+		_, has := row["disabled"]
+		require.False(t, has, "fixture row %s carries disabled", row[".id"])
+		assert.Equal(t, false, firewallRuleDisabled(row).Value, row[".id"])
+	}
+
+	assert.Equal(t, true, firewallRuleDisabled(map[string]string{".id": "*1", "disabled": "true"}).Value)
+	assert.Equal(t, false, firewallRuleDisabled(map[string]string{".id": "*1", "disabled": "false"}).Value)
+	// not read from a device: stays null
+	assert.Nil(t, firewallRuleDisabled(map[string]string{}).Value)
+}
+
+// TestFirewallMatchers covers the rows captured from rules that use every
+// action argument RouterOS has and a spread of conditions with no field of
+// their own, so the split between "narrows the rule" and "does not" is held
+// against real reply rows.
+func TestFirewallMatchers(t *testing.T) {
+	byComment := map[string]map[string]any{}
+	byID := map[string]map[string]any{}
+	for _, row := range liveRows(t, "ip-firewall-filter-matchers-7.25.json") {
+		m, ok := firewallMatchers(row).Value.(map[string]any)
+		require.True(t, ok, row[".id"])
+		byID[row[".id"]] = m
+		if row["comment"] != "" {
+			byComment[row["comment"]] = m
+		}
+	}
+
+	// Action arguments, logging, counters, and flags are not conditions:
+	// reject-with, jump-target, address-list(-timeout), and a bare passthrough
+	// all leave a rule that applies to every packet.
+	assert.Empty(t, byID["*4"], "reject-with is an action argument")
+	assert.Empty(t, byID["*6"], "jump-target is an action argument")
+	assert.Empty(t, byID["*7"], "address-list is an action argument")
+	assert.Empty(t, byID["*8"])
+	assert.Equal(t, map[string]any{"protocol": "tcp"}, byComment["c1"], "log and log-prefix are not conditions")
+	assert.Equal(t, map[string]any{"src-address": "10.0.2.0/24"}, byID["*3"])
+
+	// Conditions without a field of their own are all reported.
+	assert.Equal(t, map[string]any{
+		"connection-nat-state": "dstnat",
+		"dst-address-type":     "local",
+		"in-interface-list":    "all",
+		"limit":                "10,5:packet",
+		"port":                 "22",
+		"protocol":             "tcp",
+		"src-mac-address":      "00:11:22:33:44:55",
+		"tcp-flags":            "syn",
+		"time":                 "0s-1h,sun",
+	}, byComment["allmatch"])
+	assert.Equal(t, map[string]any{
+		"connection-limit": "10,32",
+		"icmp-options":     "8:0",
+		"packet-size":      "100-200",
+		"protocol":         "icmp",
+		"src-address-type": "unicast",
+		"ttl":              "equal:64",
+	}, byComment["allmatch2"])
+
+	// A property the list does not know counts as a condition, so a rule is
+	// never mistaken for an unconditional one.
+	m := firewallMatchers(map[string]string{".id": "*1", "chain": "input", "action": "drop", "future-matcher": "x"}).Value.(map[string]any)
+	assert.Equal(t, map[string]any{"future-matcher": "x"}, m)
+	// Negation is kept verbatim.
+	m = firewallMatchers(map[string]string{"chain": "input", "action": "drop", "in-interface-list": "!LAN"}).Value.(map[string]any)
+	assert.Equal(t, map[string]any{"in-interface-list": "!LAN"}, m)
 }

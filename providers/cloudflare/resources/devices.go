@@ -11,6 +11,7 @@ import (
 	"github.com/cloudflare/cloudflare-go/v7/zero_trust"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers/cloudflare/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (c *mqlCloudflareOneDevice) id() (string, error) {
@@ -109,6 +110,9 @@ func (c *mqlCloudflareOne) devicePostureRules() ([]any, error) {
 			"description": llx.StringData(rec.Description),
 			"schedule":    llx.StringData(rec.Schedule),
 			"expiration":  llx.StringData(rec.Expiration),
+			"enabled":     boolOrNil(rec.Enabled, rec.JSON.Enabled.IsNull()),
+			"input":       rawJSONDict(rec.JSON.Input.Raw()),
+			"platforms":   devicePostureRulePlatforms(rec),
 		})
 		if err != nil {
 			return nil, err
@@ -121,6 +125,21 @@ func (c *mqlCloudflareOne) devicePostureRules() ([]any, error) {
 	}
 
 	return result, nil
+}
+
+// devicePostureRulePlatforms lists the operating systems a posture rule
+// matches, or null when the rule reports no match list.
+func devicePostureRulePlatforms(rec zero_trust.DevicePostureRule) *llx.RawData {
+	if rec.JSON.Match.IsNull() {
+		return llx.NilData
+	}
+	out := make([]any, 0, len(rec.Match))
+	for _, m := range rec.Match {
+		if m.Platform != "" {
+			out = append(out, string(m.Platform))
+		}
+	}
+	return llx.ArrayData(out, types.String)
 }
 
 func (c *mqlCloudflareOneDevicePostureIntegration) id() (string, error) {

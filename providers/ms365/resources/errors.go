@@ -6,6 +6,7 @@ package resources
 import (
 	"fmt"
 	"net/http"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -14,8 +15,26 @@ import (
 	abstractions "github.com/microsoft/kiota-abstractions-go"
 	betaodataerrors "github.com/microsoftgraph/msgraph-beta-sdk-go/models/odataerrors"
 	"github.com/microsoftgraph/msgraph-sdk-go/models/odataerrors"
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 )
+
+// recoverAsError turns a panic into an error stored in *err, so a fault in
+// one list or one worker fails that piece of work instead of the provider
+// process. The plugin SDK recovers panics on the request goroutine only; a
+// goroutine the provider starts itself takes the whole process down unless it
+// recovers on its own. Defer it directly (`defer recoverAsError(op, &err)`):
+// recover only stops a panic when the deferred function calls it itself.
+func recoverAsError(op string, err *error) {
+	if r := recover(); r != nil {
+		log.Error().
+			Str("op", op).
+			Interface("panic", r).
+			Str("stack", string(debug.Stack())).
+			Msg("ms365> recovered panic")
+		*err = fmt.Errorf("%s: recovered panic: %v", op, r)
+	}
+}
 
 // graphErrorCode returns the Microsoft Graph error code carried by an
 // ODataError -- "Request_ResourceNotFound", "Authorization_RequestDenied" and

@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/oracle/oci-go-sdk/v65/identity"
@@ -120,6 +121,8 @@ func (o *mqlOciIdentity) getUsers(conn *connection.OciConnection) []*jobpool.Job
 				"email":              llx.StringDataPtr(user.Email),
 				"emailVerified":      llx.BoolData(boolValue(user.EmailVerified)),
 				"externalIdentifier": llx.StringDataPtr(user.ExternalIdentifier),
+				"dbUserName":         llx.StringDataPtr(user.DbUserName),
+				"inactiveStatus":     llx.IntDataPtr(user.InactiveStatus),
 				"capabilities":       llx.MapData(capabilities, types.Bool),
 				"lastLogin":          llx.TimeDataPtr(lastLogin),
 				"previousLogin":      llx.TimeDataPtr(previousLogin),
@@ -544,15 +547,16 @@ func (o *mqlOciIdentity) policiesIn(ctx context.Context, conn *connection.OciCon
 			}
 
 			mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.identity.policy", stringValue(policy.CompartmentId), map[string]*llx.RawData{
-				"id":           llx.StringDataPtr(policy.Id),
-				"name":         llx.StringDataPtr(policy.Name),
-				"description":  llx.StringDataPtr(policy.Description),
-				"created":      llx.TimeDataPtr(created),
-				"state":        llx.StringData(string(policy.LifecycleState)),
-				"statements":   llx.ArrayData(convert.SliceAnyToInterface(policy.Statements), types.String),
-				"versionDate":  llx.TimeDataPtr(versionDate),
-				"freeformTags": llx.MapData(strMapToAny(policy.FreeformTags), types.String),
-				"definedTags":  llx.MapData(definedTagsToAny(policy.DefinedTags), types.Any),
+				"id":             llx.StringDataPtr(policy.Id),
+				"name":           llx.StringDataPtr(policy.Name),
+				"description":    llx.StringDataPtr(policy.Description),
+				"created":        llx.TimeDataPtr(created),
+				"state":          llx.StringData(string(policy.LifecycleState)),
+				"inactiveStatus": llx.IntDataPtr(policy.InactiveStatus),
+				"statements":     llx.ArrayData(convert.SliceAnyToInterface(policy.Statements), types.String),
+				"versionDate":    llx.TimeDataPtr(versionDate),
+				"freeformTags":   llx.MapData(strMapToAny(policy.FreeformTags), types.String),
+				"definedTags":    llx.MapData(definedTagsToAny(policy.DefinedTags), types.Any),
 			})
 			if err != nil {
 				return nil, err
@@ -1169,4 +1173,134 @@ type mqlOciIdentityIdentityProviderInternal struct {
 
 type mqlOciIdentityNetworkSourceInternal struct {
 	ociCompartmentRef
+}
+
+// policies lists the policies with a statement granting to this group,
+// matched by parsing the statements of the listed policies.
+func (o *mqlOciIdentityGroup) policies() ([]any, error) {
+	items, err := ociServiceCollection(o.MqlRuntime, "oci.identity", func(r plugin.Resource) *plugin.TValue[[]any] {
+		return r.(*mqlOciIdentity).GetPolicies()
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ociPoliciesGrantingGroups(items, []ociGroupRef{{id: o.Id.Data, name: o.Name.Data}}), nil
+}
+
+// policies lists the policies with a statement granting to any of the user's
+// groups.
+func (o *mqlOciIdentityUser) policies() ([]any, error) {
+	groups := o.GetGroups()
+	if groups.Error != nil {
+		return nil, groups.Error
+	}
+	refs := make([]ociGroupRef, 0, len(groups.Data))
+	for _, raw := range groups.Data {
+		if g, ok := raw.(*mqlOciIdentityGroup); ok {
+			refs = append(refs, ociGroupRef{id: g.Id.Data, name: g.Name.Data})
+		}
+	}
+	if len(refs) == 0 {
+		return []any{}, nil
+	}
+
+	items, err := ociServiceCollection(o.MqlRuntime, "oci.identity", func(r plugin.Resource) *plugin.TValue[[]any] {
+		return r.(*mqlOciIdentity).GetPolicies()
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ociPoliciesGrantingGroups(items, refs), nil
+}
+
+// ociGroupRef identifies a group the way a policy statement may name it.
+type ociGroupRef struct {
+	id   string
+	name string
+}
+
+// ociPoliciesGrantingGroups keeps the policies with at least one statement
+// whose subject names one of the groups.
+func ociPoliciesGrantingGroups(policies []any, groups []ociGroupRef) []any {
+	res := []any{}
+	for _, raw := range policies {
+		policy, ok := raw.(*mqlOciIdentityPolicy)
+		if !ok {
+			continue
+		}
+		if ociStatementsGrantToGroups(policy.Statements.Data, groups) {
+			res = append(res, policy)
+		}
+	}
+	return res
+}
+
+// ociStatementsGrantToGroups reports whether any statement's subject is a
+// group clause naming one of the groups.
+func ociStatementsGrantToGroups(statements []any, groups []ociGroupRef) bool {
+	for _, raw := range statements {
+		text, ok := raw.(string)
+		if !ok {
+			continue
+		}
+		stmt := parseOciPolicyStatement(text)
+		if stmt.SubjectType != "group" {
+			continue
+		}
+		for _, subject := range stmt.SubjectNames {
+			for _, g := range groups {
+				if ociPolicySubjectNamesGroup(subject, g) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// ociPolicySubjectNamesGroup reports whether one principal from a statement's
+// group clause names the group. A principal is an OCID, a bare name, or in a
+// tenancy with identity domains a name qualified by its domain, written
+// 'Default'/'Admins'. Groups listed through the IAM API belong to the Default
+// domain, so a principal qualified by another domain names a different group.
+// Names compare case-insensitively, as OCI compares them.
+func ociPolicySubjectNamesGroup(subject string, g ociGroupRef) bool {
+	subject = strings.TrimSpace(subject)
+	if ociPolicyStatementIsOCID(subject) {
+		return subject == g.id
+	}
+	if domain, name, ok := strings.Cut(subject, "/"); ok {
+		if !strings.EqualFold(strings.Trim(domain, `'"`), "Default") {
+			return false
+		}
+		subject = name
+	}
+	subject = strings.Trim(subject, `'"`)
+	return g.name != "" && strings.EqualFold(subject, g.name)
+}
+
+func (o *mqlOciIdentityAuthenticationPolicy) compartment() (*mqlOciCompartment, error) {
+	return resolveOciCompartment(o.MqlRuntime, o.CompartmentID.Data, &o.Compartment)
+}
+
+// networkSources resolves the policy's network source OCIDs against the
+// network source listing. The network source resource has no init, so the
+// listed instances are the only fully populated ones.
+func (o *mqlOciIdentityAuthenticationPolicy) networkSources() ([]any, error) {
+	if len(o.NetworkSourceIds.Data) == 0 {
+		return []any{}, nil
+	}
+	items, err := ociServiceCollection(o.MqlRuntime, "oci.identity", func(r plugin.Resource) *plugin.TValue[[]any] {
+		return r.(*mqlOciIdentity).GetNetworkSources()
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ociMatchPolicyPrincipals(o.NetworkSourceIds.Data, items, func(raw any) (id, name string, ok bool) {
+		ns, ok := raw.(*mqlOciIdentityNetworkSource)
+		if !ok {
+			return "", "", false
+		}
+		return ns.Id.Data, "", true
+	}), nil
 }

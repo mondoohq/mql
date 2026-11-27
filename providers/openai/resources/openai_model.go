@@ -133,3 +133,23 @@ func resolveModel(runtime *plugin.Runtime, modelID string) (*mqlOpenaiModel, err
 	}
 	return nil, nil
 }
+
+// fineTuningJob resolves the job that produced a fine-tuned model from the
+// cached fine-tuning job list. A base model has no job, so the job list is not
+// read for one.
+func (r *mqlOpenaiModel) fineTuningJob() (*mqlOpenaiFineTuningJob, error) {
+	if !strings.HasPrefix(r.Id.Data, "ft:") {
+		r.FineTuningJob.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	jobs, err := openaiFineTuningJobList(r.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	job := jobProducingModel(jobs, r.Id.Data)
+	if job == nil {
+		r.FineTuningJob.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return job, nil
+}

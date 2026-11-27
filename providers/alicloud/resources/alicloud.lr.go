@@ -72,9 +72,12 @@ const (
 	ResourceAlicloudRds                           string = "alicloud.rds"
 	ResourceAlicloudRdsInstance                   string = "alicloud.rds.instance"
 	ResourceAlicloudRedis                         string = "alicloud.redis"
+	ResourceAlicloudRedisAiGateway                string = "alicloud.redis.aiGateway"
 	ResourceAlicloudRedisInstance                 string = "alicloud.redis.instance"
 	ResourceAlicloudMongodb                       string = "alicloud.mongodb"
 	ResourceAlicloudMongodbInstance               string = "alicloud.mongodb.instance"
+	ResourceAlicloudMongodbInstanceAccount        string = "alicloud.mongodb.instance.account"
+	ResourceAlicloudMongodbInstanceRole           string = "alicloud.mongodb.instance.role"
 	ResourceAlicloudPolardb                       string = "alicloud.polardb"
 	ResourceAlicloudPolardbCluster                string = "alicloud.polardb.cluster"
 	ResourceAlicloudPolardbApplication            string = "alicloud.polardb.application"
@@ -435,6 +438,10 @@ func init() {
 			// to override args, implement: initAlicloudRedis(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAlicloudRedis,
 		},
+		"alicloud.redis.aiGateway": {
+			Init:   initAlicloudRedisAiGateway,
+			Create: createAlicloudRedisAiGateway,
+		},
 		"alicloud.redis.instance": {
 			Init:   initAlicloudRedisInstance,
 			Create: createAlicloudRedisInstance,
@@ -446,6 +453,14 @@ func init() {
 		"alicloud.mongodb.instance": {
 			Init:   initAlicloudMongodbInstance,
 			Create: createAlicloudMongodbInstance,
+		},
+		"alicloud.mongodb.instance.account": {
+			// to override args, implement: initAlicloudMongodbInstanceAccount(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAlicloudMongodbInstanceAccount,
+		},
+		"alicloud.mongodb.instance.role": {
+			// to override args, implement: initAlicloudMongodbInstanceRole(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAlicloudMongodbInstanceRole,
 		},
 		"alicloud.polardb": {
 			// to override args, implement: initAlicloudPolardb(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -2274,6 +2289,39 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"alicloud.ess.scalingGroup.modificationTime": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudEssScalingGroup).GetModificationTime()).ToDataRes(types.Time)
 	},
+	"alicloud.ess.scalingGroup.warmPoolCapacity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEssScalingGroup).GetWarmPoolCapacity()).ToDataRes(types.Int)
+	},
+	"alicloud.ess.scalingGroup.warmPoolStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEssScalingGroup).GetWarmPoolStatus()).ToDataRes(types.String)
+	},
+	"alicloud.ess.scalingGroup.warmPoolInstanceState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEssScalingGroup).GetWarmPoolInstanceState()).ToDataRes(types.String)
+	},
+	"alicloud.ess.scalingGroup.warmPoolMinCapacity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEssScalingGroup).GetWarmPoolMinCapacity()).ToDataRes(types.Int)
+	},
+	"alicloud.ess.scalingGroup.warmPoolPreparedCapacity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEssScalingGroup).GetWarmPoolPreparedCapacity()).ToDataRes(types.Int)
+	},
+	"alicloud.ess.scalingGroup.warmPoolReuseOnScaleIn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEssScalingGroup).GetWarmPoolReuseOnScaleIn()).ToDataRes(types.Bool)
+	},
+	"alicloud.ess.scalingGroup.zoneShiftImpairedZoneIds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEssScalingGroup).GetZoneShiftImpairedZoneIds()).ToDataRes(types.Array(types.String))
+	},
+	"alicloud.ess.scalingGroup.zoneShiftExpiresAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEssScalingGroup).GetZoneShiftExpiresAt()).ToDataRes(types.Time)
+	},
+	"alicloud.ess.scalingGroup.zoneShiftImpairedZoneHealthCheck": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEssScalingGroup).GetZoneShiftImpairedZoneHealthCheck()).ToDataRes(types.String)
+	},
+	"alicloud.ess.scalingGroup.zoneShiftScaleInBlockedRuleTypes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEssScalingGroup).GetZoneShiftScaleInBlockedRuleTypes()).ToDataRes(types.Array(types.String))
+	},
+	"alicloud.ess.scalingGroup.zoneShiftScaleOutHealthyZonesOnly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEssScalingGroup).GetZoneShiftScaleOutHealthyZonesOnly()).ToDataRes(types.Bool)
+	},
 	"alicloud.ess.scalingGroup.vpc": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudEssScalingGroup).GetVpc()).ToDataRes(types.Resource("alicloud.vpc.network"))
 	},
@@ -2300,6 +2348,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"alicloud.ess.scalingConfiguration.instanceType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudEssScalingConfiguration).GetInstanceType()).ToDataRes(types.String)
+	},
+	"alicloud.ess.scalingConfiguration.secondaryEniVSwitchConstraint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEssScalingConfiguration).GetSecondaryEniVSwitchConstraint()).ToDataRes(types.String)
 	},
 	"alicloud.ess.scalingConfiguration.userData": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudEssScalingConfiguration).GetUserData()).ToDataRes(types.String)
@@ -2793,6 +2844,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"alicloud.vpc.vswitch.enabledIpv6": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudVpcVswitch).GetEnabledIpv6()).ToDataRes(types.Bool)
 	},
+	"alicloud.vpc.vswitch.ipv6Only": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcVswitch).GetIpv6Only()).ToDataRes(types.Bool)
+	},
 	"alicloud.vpc.vswitch.status": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudVpcVswitch).GetStatus()).ToDataRes(types.String)
 	},
@@ -3170,6 +3224,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"alicloud.vpc.eipAddress.eipBandwidth": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudVpcEipAddress).GetEipBandwidth()).ToDataRes(types.String)
+	},
+	"alicloud.vpc.eipAddress.commonBandwidthPackageIpBandwidth": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcEipAddress).GetCommonBandwidthPackageIpBandwidth()).ToDataRes(types.String)
 	},
 	"alicloud.vpc.eipAddress.bizType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudVpcEipAddress).GetBizType()).ToDataRes(types.String)
@@ -3867,6 +3924,63 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"alicloud.redis.instances": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudRedis).GetInstances()).ToDataRes(types.Array(types.Resource("alicloud.redis.instance")))
 	},
+	"alicloud.redis.aiGateways": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRedis).GetAiGateways()).ToDataRes(types.Array(types.Resource("alicloud.redis.aiGateway")))
+	},
+	"alicloud.redis.aiGateway.instanceId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRedisAiGateway).GetInstanceId()).ToDataRes(types.String)
+	},
+	"alicloud.redis.aiGateway.instanceName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRedisAiGateway).GetInstanceName()).ToDataRes(types.String)
+	},
+	"alicloud.redis.aiGateway.instanceStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRedisAiGateway).GetInstanceStatus()).ToDataRes(types.String)
+	},
+	"alicloud.redis.aiGateway.instanceType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRedisAiGateway).GetInstanceType()).ToDataRes(types.String)
+	},
+	"alicloud.redis.aiGateway.instanceClass": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRedisAiGateway).GetInstanceClass()).ToDataRes(types.String)
+	},
+	"alicloud.redis.aiGateway.chargeType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRedisAiGateway).GetChargeType()).ToDataRes(types.String)
+	},
+	"alicloud.redis.aiGateway.networkType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRedisAiGateway).GetNetworkType()).ToDataRes(types.String)
+	},
+	"alicloud.redis.aiGateway.regionId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRedisAiGateway).GetRegionId()).ToDataRes(types.String)
+	},
+	"alicloud.redis.aiGateway.zoneId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRedisAiGateway).GetZoneId()).ToDataRes(types.String)
+	},
+	"alicloud.redis.aiGateway.createTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRedisAiGateway).GetCreateTime()).ToDataRes(types.Time)
+	},
+	"alicloud.redis.aiGateway.endTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRedisAiGateway).GetEndTime()).ToDataRes(types.Time)
+	},
+	"alicloud.redis.aiGateway.resourceGroupId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRedisAiGateway).GetResourceGroupId()).ToDataRes(types.String)
+	},
+	"alicloud.redis.aiGateway.resourceGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRedisAiGateway).GetResourceGroup()).ToDataRes(types.Resource("alicloud.resourceManager.resourceGroup"))
+	},
+	"alicloud.redis.aiGateway.vpc": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRedisAiGateway).GetVpc()).ToDataRes(types.Resource("alicloud.vpc.network"))
+	},
+	"alicloud.redis.aiGateway.vswitch": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRedisAiGateway).GetVswitch()).ToDataRes(types.Resource("alicloud.vpc.vswitch"))
+	},
+	"alicloud.redis.aiGateway.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRedisAiGateway).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"alicloud.redis.aiGateway.parameters": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRedisAiGateway).GetParameters()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"alicloud.redis.aiGateway.pluginSwitches": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudRedisAiGateway).GetPluginSwitches()).ToDataRes(types.Map(types.String, types.String))
+	},
 	"alicloud.redis.instance.instanceId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudRedisInstance).GetInstanceId()).ToDataRes(types.String)
 	},
@@ -4121,6 +4235,39 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"alicloud.mongodb.instance.auditPolicyEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudMongodbInstance).GetAuditPolicyEnabled()).ToDataRes(types.Bool)
+	},
+	"alicloud.mongodb.instance.accounts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudMongodbInstance).GetAccounts()).ToDataRes(types.Array(types.Resource("alicloud.mongodb.instance.account")))
+	},
+	"alicloud.mongodb.instance.roles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudMongodbInstance).GetRoles()).ToDataRes(types.Array(types.Resource("alicloud.mongodb.instance.role")))
+	},
+	"alicloud.mongodb.instance.databases": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudMongodbInstance).GetDatabases()).ToDataRes(types.Array(types.String))
+	},
+	"alicloud.mongodb.instance.account.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudMongodbInstanceAccount).GetName()).ToDataRes(types.String)
+	},
+	"alicloud.mongodb.instance.account.dbName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudMongodbInstanceAccount).GetDbName()).ToDataRes(types.String)
+	},
+	"alicloud.mongodb.instance.account.characterType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudMongodbInstanceAccount).GetCharacterType()).ToDataRes(types.String)
+	},
+	"alicloud.mongodb.instance.account.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudMongodbInstanceAccount).GetStatus()).ToDataRes(types.String)
+	},
+	"alicloud.mongodb.instance.account.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudMongodbInstanceAccount).GetDescription()).ToDataRes(types.String)
+	},
+	"alicloud.mongodb.instance.account.roles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudMongodbInstanceAccount).GetRoles()).ToDataRes(types.Array(types.Resource("alicloud.mongodb.instance.role")))
+	},
+	"alicloud.mongodb.instance.role.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudMongodbInstanceRole).GetName()).ToDataRes(types.String)
+	},
+	"alicloud.mongodb.instance.role.dbName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudMongodbInstanceRole).GetDbName()).ToDataRes(types.String)
 	},
 	"alicloud.polardb.clusters": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudPolardb).GetClusters()).ToDataRes(types.Array(types.Resource("alicloud.polardb.cluster")))
@@ -6752,6 +6899,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"alicloud.cloudFirewall.edition": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudCloudFirewall).GetEdition()).ToDataRes(types.Int)
+	},
+	"alicloud.cloudFirewall.agenticEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudCloudFirewall).GetAgenticEnabled()).ToDataRes(types.Bool)
 	},
 	"alicloud.cloudFirewall.controlPolicies": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudCloudFirewall).GetControlPolicies()).ToDataRes(types.Array(types.Resource("alicloud.cloudFirewall.controlPolicy")))
@@ -11175,6 +11325,50 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAlicloudEssScalingGroup).ModificationTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
+	"alicloud.ess.scalingGroup.warmPoolCapacity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEssScalingGroup).WarmPoolCapacity, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.ess.scalingGroup.warmPoolStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEssScalingGroup).WarmPoolStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.ess.scalingGroup.warmPoolInstanceState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEssScalingGroup).WarmPoolInstanceState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.ess.scalingGroup.warmPoolMinCapacity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEssScalingGroup).WarmPoolMinCapacity, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.ess.scalingGroup.warmPoolPreparedCapacity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEssScalingGroup).WarmPoolPreparedCapacity, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.ess.scalingGroup.warmPoolReuseOnScaleIn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEssScalingGroup).WarmPoolReuseOnScaleIn, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.ess.scalingGroup.zoneShiftImpairedZoneIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEssScalingGroup).ZoneShiftImpairedZoneIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.ess.scalingGroup.zoneShiftExpiresAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEssScalingGroup).ZoneShiftExpiresAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"alicloud.ess.scalingGroup.zoneShiftImpairedZoneHealthCheck": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEssScalingGroup).ZoneShiftImpairedZoneHealthCheck, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.ess.scalingGroup.zoneShiftScaleInBlockedRuleTypes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEssScalingGroup).ZoneShiftScaleInBlockedRuleTypes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.ess.scalingGroup.zoneShiftScaleOutHealthyZonesOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEssScalingGroup).ZoneShiftScaleOutHealthyZonesOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"alicloud.ess.scalingGroup.vpc": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAlicloudEssScalingGroup).Vpc, ok = plugin.RawToTValue[*mqlAlicloudVpcNetwork](v.Value, v.Error)
 		return
@@ -11213,6 +11407,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"alicloud.ess.scalingConfiguration.instanceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAlicloudEssScalingConfiguration).InstanceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.ess.scalingConfiguration.secondaryEniVSwitchConstraint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEssScalingConfiguration).SecondaryEniVSwitchConstraint, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"alicloud.ess.scalingConfiguration.userData": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -11903,6 +12101,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAlicloudVpcVswitch).EnabledIpv6, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"alicloud.vpc.vswitch.ipv6Only": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcVswitch).Ipv6Only, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"alicloud.vpc.vswitch.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAlicloudVpcVswitch).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -12429,6 +12631,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"alicloud.vpc.eipAddress.eipBandwidth": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAlicloudVpcEipAddress).EipBandwidth, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.vpc.eipAddress.commonBandwidthPackageIpBandwidth": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcEipAddress).CommonBandwidthPackageIpBandwidth, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"alicloud.vpc.eipAddress.bizType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -13419,6 +13625,86 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAlicloudRedis).Instances, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"alicloud.redis.aiGateways": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRedis).AiGateways, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.redis.aiGateway.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRedisAiGateway).__id, ok = v.Value.(string)
+		return
+	},
+	"alicloud.redis.aiGateway.instanceId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRedisAiGateway).InstanceId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.redis.aiGateway.instanceName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRedisAiGateway).InstanceName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.redis.aiGateway.instanceStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRedisAiGateway).InstanceStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.redis.aiGateway.instanceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRedisAiGateway).InstanceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.redis.aiGateway.instanceClass": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRedisAiGateway).InstanceClass, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.redis.aiGateway.chargeType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRedisAiGateway).ChargeType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.redis.aiGateway.networkType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRedisAiGateway).NetworkType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.redis.aiGateway.regionId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRedisAiGateway).RegionId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.redis.aiGateway.zoneId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRedisAiGateway).ZoneId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.redis.aiGateway.createTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRedisAiGateway).CreateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"alicloud.redis.aiGateway.endTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRedisAiGateway).EndTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"alicloud.redis.aiGateway.resourceGroupId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRedisAiGateway).ResourceGroupId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.redis.aiGateway.resourceGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRedisAiGateway).ResourceGroup, ok = plugin.RawToTValue[*mqlAlicloudResourceManagerResourceGroup](v.Value, v.Error)
+		return
+	},
+	"alicloud.redis.aiGateway.vpc": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRedisAiGateway).Vpc, ok = plugin.RawToTValue[*mqlAlicloudVpcNetwork](v.Value, v.Error)
+		return
+	},
+	"alicloud.redis.aiGateway.vswitch": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRedisAiGateway).Vswitch, ok = plugin.RawToTValue[*mqlAlicloudVpcVswitch](v.Value, v.Error)
+		return
+	},
+	"alicloud.redis.aiGateway.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRedisAiGateway).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.redis.aiGateway.parameters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRedisAiGateway).Parameters, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.redis.aiGateway.pluginSwitches": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudRedisAiGateway).PluginSwitches, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
 	"alicloud.redis.instance.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAlicloudRedisInstance).__id, ok = v.Value.(string)
 		return
@@ -13769,6 +14055,58 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"alicloud.mongodb.instance.auditPolicyEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAlicloudMongodbInstance).AuditPolicyEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.mongodb.instance.accounts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudMongodbInstance).Accounts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.mongodb.instance.roles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudMongodbInstance).Roles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.mongodb.instance.databases": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudMongodbInstance).Databases, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.mongodb.instance.account.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudMongodbInstanceAccount).__id, ok = v.Value.(string)
+		return
+	},
+	"alicloud.mongodb.instance.account.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudMongodbInstanceAccount).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.mongodb.instance.account.dbName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudMongodbInstanceAccount).DbName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.mongodb.instance.account.characterType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudMongodbInstanceAccount).CharacterType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.mongodb.instance.account.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudMongodbInstanceAccount).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.mongodb.instance.account.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudMongodbInstanceAccount).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.mongodb.instance.account.roles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudMongodbInstanceAccount).Roles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.mongodb.instance.role.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudMongodbInstanceRole).__id, ok = v.Value.(string)
+		return
+	},
+	"alicloud.mongodb.instance.role.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudMongodbInstanceRole).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.mongodb.instance.role.dbName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudMongodbInstanceRole).DbName, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"alicloud.polardb.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -17529,6 +17867,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"alicloud.cloudFirewall.edition": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAlicloudCloudFirewall).Edition, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.cloudFirewall.agenticEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudCloudFirewall).AgenticEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"alicloud.cloudFirewall.controlPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -25245,35 +25587,46 @@ type mqlAlicloudEssScalingGroup struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAlicloudEssScalingGroupInternal
-	ScalingGroupId             plugin.TValue[string]
-	Name                       plugin.TValue[string]
-	RegionId                   plugin.TValue[string]
-	LifecycleState             plugin.TValue[string]
-	GroupType                  plugin.TValue[string]
-	MinSize                    plugin.TValue[int64]
-	MaxSize                    plugin.TValue[int64]
-	DesiredCapacity            plugin.TValue[int64]
-	TotalCapacity              plugin.TValue[int64]
-	ActiveCapacity             plugin.TValue[int64]
-	DefaultCooldown            plugin.TValue[int64]
-	HealthCheckType            plugin.TValue[string]
-	MultiAZPolicy              plugin.TValue[string]
-	ScalingPolicy              plugin.TValue[string]
-	GroupDeletionProtection    plugin.TValue[bool]
-	SuspendedProcesses         plugin.TValue[[]any]
-	SystemSuspended            plugin.TValue[bool]
-	MaxInstanceLifetime        plugin.TValue[int64]
-	ResourceGroupId            plugin.TValue[string]
-	ResourceGroup              plugin.TValue[*mqlAlicloudResourceManagerResourceGroup]
-	LaunchTemplateId           plugin.TValue[string]
-	LaunchTemplateVersion      plugin.TValue[string]
-	LaunchTemplate             plugin.TValue[*mqlAlicloudEcsLaunchTemplate]
-	CreationTime               plugin.TValue[*time.Time]
-	ModificationTime           plugin.TValue[*time.Time]
-	Vpc                        plugin.TValue[*mqlAlicloudVpcNetwork]
-	Vswitches                  plugin.TValue[[]any]
-	ActiveScalingConfiguration plugin.TValue[*mqlAlicloudEssScalingConfiguration]
-	ScalingConfigurations      plugin.TValue[[]any]
+	ScalingGroupId                    plugin.TValue[string]
+	Name                              plugin.TValue[string]
+	RegionId                          plugin.TValue[string]
+	LifecycleState                    plugin.TValue[string]
+	GroupType                         plugin.TValue[string]
+	MinSize                           plugin.TValue[int64]
+	MaxSize                           plugin.TValue[int64]
+	DesiredCapacity                   plugin.TValue[int64]
+	TotalCapacity                     plugin.TValue[int64]
+	ActiveCapacity                    plugin.TValue[int64]
+	DefaultCooldown                   plugin.TValue[int64]
+	HealthCheckType                   plugin.TValue[string]
+	MultiAZPolicy                     plugin.TValue[string]
+	ScalingPolicy                     plugin.TValue[string]
+	GroupDeletionProtection           plugin.TValue[bool]
+	SuspendedProcesses                plugin.TValue[[]any]
+	SystemSuspended                   plugin.TValue[bool]
+	MaxInstanceLifetime               plugin.TValue[int64]
+	ResourceGroupId                   plugin.TValue[string]
+	ResourceGroup                     plugin.TValue[*mqlAlicloudResourceManagerResourceGroup]
+	LaunchTemplateId                  plugin.TValue[string]
+	LaunchTemplateVersion             plugin.TValue[string]
+	LaunchTemplate                    plugin.TValue[*mqlAlicloudEcsLaunchTemplate]
+	CreationTime                      plugin.TValue[*time.Time]
+	ModificationTime                  plugin.TValue[*time.Time]
+	WarmPoolCapacity                  plugin.TValue[int64]
+	WarmPoolStatus                    plugin.TValue[string]
+	WarmPoolInstanceState             plugin.TValue[string]
+	WarmPoolMinCapacity               plugin.TValue[int64]
+	WarmPoolPreparedCapacity          plugin.TValue[int64]
+	WarmPoolReuseOnScaleIn            plugin.TValue[bool]
+	ZoneShiftImpairedZoneIds          plugin.TValue[[]any]
+	ZoneShiftExpiresAt                plugin.TValue[*time.Time]
+	ZoneShiftImpairedZoneHealthCheck  plugin.TValue[string]
+	ZoneShiftScaleInBlockedRuleTypes  plugin.TValue[[]any]
+	ZoneShiftScaleOutHealthyZonesOnly plugin.TValue[bool]
+	Vpc                               plugin.TValue[*mqlAlicloudVpcNetwork]
+	Vswitches                         plugin.TValue[[]any]
+	ActiveScalingConfiguration        plugin.TValue[*mqlAlicloudEssScalingConfiguration]
+	ScalingConfigurations             plugin.TValue[[]any]
 }
 
 // createAlicloudEssScalingGroup creates a new instance of this resource
@@ -25437,6 +25790,50 @@ func (c *mqlAlicloudEssScalingGroup) GetModificationTime() *plugin.TValue[*time.
 	return &c.ModificationTime
 }
 
+func (c *mqlAlicloudEssScalingGroup) GetWarmPoolCapacity() *plugin.TValue[int64] {
+	return &c.WarmPoolCapacity
+}
+
+func (c *mqlAlicloudEssScalingGroup) GetWarmPoolStatus() *plugin.TValue[string] {
+	return &c.WarmPoolStatus
+}
+
+func (c *mqlAlicloudEssScalingGroup) GetWarmPoolInstanceState() *plugin.TValue[string] {
+	return &c.WarmPoolInstanceState
+}
+
+func (c *mqlAlicloudEssScalingGroup) GetWarmPoolMinCapacity() *plugin.TValue[int64] {
+	return &c.WarmPoolMinCapacity
+}
+
+func (c *mqlAlicloudEssScalingGroup) GetWarmPoolPreparedCapacity() *plugin.TValue[int64] {
+	return &c.WarmPoolPreparedCapacity
+}
+
+func (c *mqlAlicloudEssScalingGroup) GetWarmPoolReuseOnScaleIn() *plugin.TValue[bool] {
+	return &c.WarmPoolReuseOnScaleIn
+}
+
+func (c *mqlAlicloudEssScalingGroup) GetZoneShiftImpairedZoneIds() *plugin.TValue[[]any] {
+	return &c.ZoneShiftImpairedZoneIds
+}
+
+func (c *mqlAlicloudEssScalingGroup) GetZoneShiftExpiresAt() *plugin.TValue[*time.Time] {
+	return &c.ZoneShiftExpiresAt
+}
+
+func (c *mqlAlicloudEssScalingGroup) GetZoneShiftImpairedZoneHealthCheck() *plugin.TValue[string] {
+	return &c.ZoneShiftImpairedZoneHealthCheck
+}
+
+func (c *mqlAlicloudEssScalingGroup) GetZoneShiftScaleInBlockedRuleTypes() *plugin.TValue[[]any] {
+	return &c.ZoneShiftScaleInBlockedRuleTypes
+}
+
+func (c *mqlAlicloudEssScalingGroup) GetZoneShiftScaleOutHealthyZonesOnly() *plugin.TValue[bool] {
+	return &c.ZoneShiftScaleOutHealthyZonesOnly
+}
+
 func (c *mqlAlicloudEssScalingGroup) GetVpc() *plugin.TValue[*mqlAlicloudVpcNetwork] {
 	return plugin.GetOrCompute[*mqlAlicloudVpcNetwork](&c.Vpc, func() (*mqlAlicloudVpcNetwork, error) {
 		if c.MqlRuntime.HasRecording {
@@ -25506,34 +25903,35 @@ type mqlAlicloudEssScalingConfiguration struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAlicloudEssScalingConfigurationInternal
-	ScalingConfigurationId      plugin.TValue[string]
-	Name                        plugin.TValue[string]
-	RegionId                    plugin.TValue[string]
-	LifecycleState              plugin.TValue[string]
-	InstanceType                plugin.TValue[string]
-	UserData                    plugin.TValue[string]
-	ImageOwnerAlias             plugin.TValue[string]
-	MetadataHttpTokens          plugin.TValue[string]
-	MetadataEndpointEnabled     plugin.TValue[bool]
-	PasswordInherit             plugin.TValue[bool]
-	PasswordSet                 plugin.TValue[bool]
-	SecurityEnhancementStrategy plugin.TValue[string]
-	InternetMaxBandwidthIn      plugin.TValue[int64]
-	InternetMaxBandwidthOut     plugin.TValue[int64]
-	SystemDiskEncrypted         plugin.TValue[bool]
-	SystemDiskCategory          plugin.TValue[string]
-	SystemDiskSize              plugin.TValue[int64]
-	DeletionProtection          plugin.TValue[bool]
-	SpotStrategy                plugin.TValue[string]
-	Tenancy                     plugin.TValue[string]
-	ConfidentialComputingMode   plugin.TValue[string]
-	CreationTime                plugin.TValue[*time.Time]
-	ScalingGroup                plugin.TValue[*mqlAlicloudEssScalingGroup]
-	RamRole                     plugin.TValue[*mqlAlicloudRamRole]
-	SecurityGroups              plugin.TValue[[]any]
-	Image                       plugin.TValue[*mqlAlicloudEcsImage]
-	KeyPair                     plugin.TValue[*mqlAlicloudEcsKeypair]
-	SystemDiskKmsKey            plugin.TValue[*mqlAlicloudKmsKey]
+	ScalingConfigurationId        plugin.TValue[string]
+	Name                          plugin.TValue[string]
+	RegionId                      plugin.TValue[string]
+	LifecycleState                plugin.TValue[string]
+	InstanceType                  plugin.TValue[string]
+	SecondaryEniVSwitchConstraint plugin.TValue[string]
+	UserData                      plugin.TValue[string]
+	ImageOwnerAlias               plugin.TValue[string]
+	MetadataHttpTokens            plugin.TValue[string]
+	MetadataEndpointEnabled       plugin.TValue[bool]
+	PasswordInherit               plugin.TValue[bool]
+	PasswordSet                   plugin.TValue[bool]
+	SecurityEnhancementStrategy   plugin.TValue[string]
+	InternetMaxBandwidthIn        plugin.TValue[int64]
+	InternetMaxBandwidthOut       plugin.TValue[int64]
+	SystemDiskEncrypted           plugin.TValue[bool]
+	SystemDiskCategory            plugin.TValue[string]
+	SystemDiskSize                plugin.TValue[int64]
+	DeletionProtection            plugin.TValue[bool]
+	SpotStrategy                  plugin.TValue[string]
+	Tenancy                       plugin.TValue[string]
+	ConfidentialComputingMode     plugin.TValue[string]
+	CreationTime                  plugin.TValue[*time.Time]
+	ScalingGroup                  plugin.TValue[*mqlAlicloudEssScalingGroup]
+	RamRole                       plugin.TValue[*mqlAlicloudRamRole]
+	SecurityGroups                plugin.TValue[[]any]
+	Image                         plugin.TValue[*mqlAlicloudEcsImage]
+	KeyPair                       plugin.TValue[*mqlAlicloudEcsKeypair]
+	SystemDiskKmsKey              plugin.TValue[*mqlAlicloudKmsKey]
 }
 
 // createAlicloudEssScalingConfiguration creates a new instance of this resource
@@ -25591,6 +25989,10 @@ func (c *mqlAlicloudEssScalingConfiguration) GetLifecycleState() *plugin.TValue[
 
 func (c *mqlAlicloudEssScalingConfiguration) GetInstanceType() *plugin.TValue[string] {
 	return &c.InstanceType
+}
+
+func (c *mqlAlicloudEssScalingConfiguration) GetSecondaryEniVSwitchConstraint() *plugin.TValue[string] {
+	return &c.SecondaryEniVSwitchConstraint
 }
 
 func (c *mqlAlicloudEssScalingConfiguration) GetUserData() *plugin.TValue[string] {
@@ -27087,6 +27489,7 @@ type mqlAlicloudVpcVswitch struct {
 	CidrBlock               plugin.TValue[string]
 	Ipv6CidrBlock           plugin.TValue[string]
 	EnabledIpv6             plugin.TValue[bool]
+	Ipv6Only                plugin.TValue[bool]
 	Status                  plugin.TValue[string]
 	Vpc                     plugin.TValue[*mqlAlicloudVpcNetwork]
 	ZoneId                  plugin.TValue[string]
@@ -27162,6 +27565,12 @@ func (c *mqlAlicloudVpcVswitch) GetIpv6CidrBlock() *plugin.TValue[string] {
 
 func (c *mqlAlicloudVpcVswitch) GetEnabledIpv6() *plugin.TValue[bool] {
 	return &c.EnabledIpv6
+}
+
+func (c *mqlAlicloudVpcVswitch) GetIpv6Only() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Ipv6Only, func() (bool, error) {
+		return c.ipv6Only()
+	})
 }
 
 func (c *mqlAlicloudVpcVswitch) GetStatus() *plugin.TValue[string] {
@@ -28013,43 +28422,44 @@ type mqlAlicloudVpcEipAddress struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAlicloudVpcEipAddressInternal
-	AllocationId              plugin.TValue[string]
-	Name                      plugin.TValue[string]
-	Description               plugin.TValue[string]
-	IpAddress                 plugin.TValue[string]
-	Status                    plugin.TValue[string]
-	Bandwidth                 plugin.TValue[string]
-	InternetChargeType        plugin.TValue[string]
-	ChargeType                plugin.TValue[string]
-	Isp                       plugin.TValue[string]
-	InstanceId                plugin.TValue[string]
-	InstanceType              plugin.TValue[string]
-	InstanceRegionId          plugin.TValue[string]
-	PrivateIpAddress          plugin.TValue[string]
-	AllocationTime            plugin.TValue[*time.Time]
-	ExpiredTime               plugin.TValue[*time.Time]
-	HdMonitorStatus           plugin.TValue[string]
-	DeletionProtection        plugin.TValue[bool]
-	HasReservationData        plugin.TValue[string]
-	Netmode                   plugin.TValue[string]
-	PublicIpAddressPoolId     plugin.TValue[string]
-	RegionId                  plugin.TValue[string]
-	ResourceGroupId           plugin.TValue[string]
-	ResourceGroup             plugin.TValue[*mqlAlicloudResourceManagerResourceGroup]
-	Vpc                       plugin.TValue[*mqlAlicloudVpcNetwork]
-	Zone                      plugin.TValue[string]
-	BandwidthPackageId        plugin.TValue[string]
-	BandwidthPackageType      plugin.TValue[string]
-	BandwidthPackageBandwidth plugin.TValue[string]
-	EipBandwidth              plugin.TValue[string]
-	BizType                   plugin.TValue[string]
-	BusinessStatus            plugin.TValue[string]
-	Mode                      plugin.TValue[string]
-	SecondLimited             plugin.TValue[bool]
-	SegmentInstanceId         plugin.TValue[string]
-	SecurityProtectionTypes   plugin.TValue[[]any]
-	ServiceManaged            plugin.TValue[int64]
-	Tags                      plugin.TValue[map[string]any]
+	AllocationId                      plugin.TValue[string]
+	Name                              plugin.TValue[string]
+	Description                       plugin.TValue[string]
+	IpAddress                         plugin.TValue[string]
+	Status                            plugin.TValue[string]
+	Bandwidth                         plugin.TValue[string]
+	InternetChargeType                plugin.TValue[string]
+	ChargeType                        plugin.TValue[string]
+	Isp                               plugin.TValue[string]
+	InstanceId                        plugin.TValue[string]
+	InstanceType                      plugin.TValue[string]
+	InstanceRegionId                  plugin.TValue[string]
+	PrivateIpAddress                  plugin.TValue[string]
+	AllocationTime                    plugin.TValue[*time.Time]
+	ExpiredTime                       plugin.TValue[*time.Time]
+	HdMonitorStatus                   plugin.TValue[string]
+	DeletionProtection                plugin.TValue[bool]
+	HasReservationData                plugin.TValue[string]
+	Netmode                           plugin.TValue[string]
+	PublicIpAddressPoolId             plugin.TValue[string]
+	RegionId                          plugin.TValue[string]
+	ResourceGroupId                   plugin.TValue[string]
+	ResourceGroup                     plugin.TValue[*mqlAlicloudResourceManagerResourceGroup]
+	Vpc                               plugin.TValue[*mqlAlicloudVpcNetwork]
+	Zone                              plugin.TValue[string]
+	BandwidthPackageId                plugin.TValue[string]
+	BandwidthPackageType              plugin.TValue[string]
+	BandwidthPackageBandwidth         plugin.TValue[string]
+	EipBandwidth                      plugin.TValue[string]
+	CommonBandwidthPackageIpBandwidth plugin.TValue[string]
+	BizType                           plugin.TValue[string]
+	BusinessStatus                    plugin.TValue[string]
+	Mode                              plugin.TValue[string]
+	SecondLimited                     plugin.TValue[bool]
+	SegmentInstanceId                 plugin.TValue[string]
+	SecurityProtectionTypes           plugin.TValue[[]any]
+	ServiceManaged                    plugin.TValue[int64]
+	Tags                              plugin.TValue[map[string]any]
 }
 
 // createAlicloudVpcEipAddress creates a new instance of this resource
@@ -28227,6 +28637,10 @@ func (c *mqlAlicloudVpcEipAddress) GetBandwidthPackageBandwidth() *plugin.TValue
 
 func (c *mqlAlicloudVpcEipAddress) GetEipBandwidth() *plugin.TValue[string] {
 	return &c.EipBandwidth
+}
+
+func (c *mqlAlicloudVpcEipAddress) GetCommonBandwidthPackageIpBandwidth() *plugin.TValue[string] {
+	return &c.CommonBandwidthPackageIpBandwidth
 }
 
 func (c *mqlAlicloudVpcEipAddress) GetBizType() *plugin.TValue[string] {
@@ -30457,7 +30871,8 @@ type mqlAlicloudRedis struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlAlicloudRedisInternal it will be used here
-	Instances plugin.TValue[[]any]
+	Instances  plugin.TValue[[]any]
+	AiGateways plugin.TValue[[]any]
 }
 
 // createAlicloudRedis creates a new instance of this resource
@@ -30510,6 +30925,196 @@ func (c *mqlAlicloudRedis) GetInstances() *plugin.TValue[[]any] {
 		}
 
 		return c.instances()
+	})
+}
+
+func (c *mqlAlicloudRedis) GetAiGateways() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AiGateways, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.redis", c.__id, "aiGateways")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.aiGateways()
+	})
+}
+
+// mqlAlicloudRedisAiGateway for the alicloud.redis.aiGateway resource
+type mqlAlicloudRedisAiGateway struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAlicloudRedisAiGatewayInternal
+	InstanceId      plugin.TValue[string]
+	InstanceName    plugin.TValue[string]
+	InstanceStatus  plugin.TValue[string]
+	InstanceType    plugin.TValue[string]
+	InstanceClass   plugin.TValue[string]
+	ChargeType      plugin.TValue[string]
+	NetworkType     plugin.TValue[string]
+	RegionId        plugin.TValue[string]
+	ZoneId          plugin.TValue[string]
+	CreateTime      plugin.TValue[*time.Time]
+	EndTime         plugin.TValue[*time.Time]
+	ResourceGroupId plugin.TValue[string]
+	ResourceGroup   plugin.TValue[*mqlAlicloudResourceManagerResourceGroup]
+	Vpc             plugin.TValue[*mqlAlicloudVpcNetwork]
+	Vswitch         plugin.TValue[*mqlAlicloudVpcVswitch]
+	Tags            plugin.TValue[map[string]any]
+	Parameters      plugin.TValue[map[string]any]
+	PluginSwitches  plugin.TValue[map[string]any]
+}
+
+// createAlicloudRedisAiGateway creates a new instance of this resource
+func createAlicloudRedisAiGateway(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAlicloudRedisAiGateway{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("alicloud.redis.aiGateway", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAlicloudRedisAiGateway) MqlName() string {
+	return "alicloud.redis.aiGateway"
+}
+
+func (c *mqlAlicloudRedisAiGateway) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAlicloudRedisAiGateway) GetInstanceId() *plugin.TValue[string] {
+	return &c.InstanceId
+}
+
+func (c *mqlAlicloudRedisAiGateway) GetInstanceName() *plugin.TValue[string] {
+	return &c.InstanceName
+}
+
+func (c *mqlAlicloudRedisAiGateway) GetInstanceStatus() *plugin.TValue[string] {
+	return &c.InstanceStatus
+}
+
+func (c *mqlAlicloudRedisAiGateway) GetInstanceType() *plugin.TValue[string] {
+	return &c.InstanceType
+}
+
+func (c *mqlAlicloudRedisAiGateway) GetInstanceClass() *plugin.TValue[string] {
+	return &c.InstanceClass
+}
+
+func (c *mqlAlicloudRedisAiGateway) GetChargeType() *plugin.TValue[string] {
+	return &c.ChargeType
+}
+
+func (c *mqlAlicloudRedisAiGateway) GetNetworkType() *plugin.TValue[string] {
+	return &c.NetworkType
+}
+
+func (c *mqlAlicloudRedisAiGateway) GetRegionId() *plugin.TValue[string] {
+	return &c.RegionId
+}
+
+func (c *mqlAlicloudRedisAiGateway) GetZoneId() *plugin.TValue[string] {
+	return &c.ZoneId
+}
+
+func (c *mqlAlicloudRedisAiGateway) GetCreateTime() *plugin.TValue[*time.Time] {
+	return &c.CreateTime
+}
+
+func (c *mqlAlicloudRedisAiGateway) GetEndTime() *plugin.TValue[*time.Time] {
+	return &c.EndTime
+}
+
+func (c *mqlAlicloudRedisAiGateway) GetResourceGroupId() *plugin.TValue[string] {
+	return &c.ResourceGroupId
+}
+
+func (c *mqlAlicloudRedisAiGateway) GetResourceGroup() *plugin.TValue[*mqlAlicloudResourceManagerResourceGroup] {
+	return plugin.GetOrCompute[*mqlAlicloudResourceManagerResourceGroup](&c.ResourceGroup, func() (*mqlAlicloudResourceManagerResourceGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.redis.aiGateway", c.__id, "resourceGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAlicloudResourceManagerResourceGroup), nil
+			}
+		}
+
+		return c.resourceGroup()
+	})
+}
+
+func (c *mqlAlicloudRedisAiGateway) GetVpc() *plugin.TValue[*mqlAlicloudVpcNetwork] {
+	return plugin.GetOrCompute[*mqlAlicloudVpcNetwork](&c.Vpc, func() (*mqlAlicloudVpcNetwork, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.redis.aiGateway", c.__id, "vpc")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAlicloudVpcNetwork), nil
+			}
+		}
+
+		return c.vpc()
+	})
+}
+
+func (c *mqlAlicloudRedisAiGateway) GetVswitch() *plugin.TValue[*mqlAlicloudVpcVswitch] {
+	return plugin.GetOrCompute[*mqlAlicloudVpcVswitch](&c.Vswitch, func() (*mqlAlicloudVpcVswitch, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.redis.aiGateway", c.__id, "vswitch")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAlicloudVpcVswitch), nil
+			}
+		}
+
+		return c.vswitch()
+	})
+}
+
+func (c *mqlAlicloudRedisAiGateway) GetTags() *plugin.TValue[map[string]any] {
+	return &c.Tags
+}
+
+func (c *mqlAlicloudRedisAiGateway) GetParameters() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Parameters, func() (map[string]any, error) {
+		return c.parameters()
+	})
+}
+
+func (c *mqlAlicloudRedisAiGateway) GetPluginSwitches() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.PluginSwitches, func() (map[string]any, error) {
+		return c.pluginSwitches()
 	})
 }
 
@@ -30917,6 +31522,9 @@ type mqlAlicloudMongodbInstance struct {
 	WhitelistAllowsAllAddresses plugin.TValue[bool]
 	SecurityGroups              plugin.TValue[[]any]
 	AuditPolicyEnabled          plugin.TValue[bool]
+	Accounts                    plugin.TValue[[]any]
+	Roles                       plugin.TValue[[]any]
+	Databases                   plugin.TValue[[]any]
 }
 
 // createAlicloudMongodbInstance creates a new instance of this resource
@@ -31230,6 +31838,162 @@ func (c *mqlAlicloudMongodbInstance) GetAuditPolicyEnabled() *plugin.TValue[bool
 	return plugin.GetOrCompute[bool](&c.AuditPolicyEnabled, func() (bool, error) {
 		return c.auditPolicyEnabled()
 	})
+}
+
+func (c *mqlAlicloudMongodbInstance) GetAccounts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Accounts, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.mongodb.instance", c.__id, "accounts")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.accounts()
+	})
+}
+
+func (c *mqlAlicloudMongodbInstance) GetRoles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Roles, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.mongodb.instance", c.__id, "roles")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.roles()
+	})
+}
+
+func (c *mqlAlicloudMongodbInstance) GetDatabases() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Databases, func() ([]any, error) {
+		return c.databases()
+	})
+}
+
+// mqlAlicloudMongodbInstanceAccount for the alicloud.mongodb.instance.account resource
+type mqlAlicloudMongodbInstanceAccount struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAlicloudMongodbInstanceAccountInternal it will be used here
+	Name          plugin.TValue[string]
+	DbName        plugin.TValue[string]
+	CharacterType plugin.TValue[string]
+	Status        plugin.TValue[string]
+	Description   plugin.TValue[string]
+	Roles         plugin.TValue[[]any]
+}
+
+// createAlicloudMongodbInstanceAccount creates a new instance of this resource
+func createAlicloudMongodbInstanceAccount(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAlicloudMongodbInstanceAccount{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("alicloud.mongodb.instance.account", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAlicloudMongodbInstanceAccount) MqlName() string {
+	return "alicloud.mongodb.instance.account"
+}
+
+func (c *mqlAlicloudMongodbInstanceAccount) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAlicloudMongodbInstanceAccount) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAlicloudMongodbInstanceAccount) GetDbName() *plugin.TValue[string] {
+	return &c.DbName
+}
+
+func (c *mqlAlicloudMongodbInstanceAccount) GetCharacterType() *plugin.TValue[string] {
+	return &c.CharacterType
+}
+
+func (c *mqlAlicloudMongodbInstanceAccount) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlAlicloudMongodbInstanceAccount) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlAlicloudMongodbInstanceAccount) GetRoles() *plugin.TValue[[]any] {
+	return &c.Roles
+}
+
+// mqlAlicloudMongodbInstanceRole for the alicloud.mongodb.instance.role resource
+type mqlAlicloudMongodbInstanceRole struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAlicloudMongodbInstanceRoleInternal it will be used here
+	Name   plugin.TValue[string]
+	DbName plugin.TValue[string]
+}
+
+// createAlicloudMongodbInstanceRole creates a new instance of this resource
+func createAlicloudMongodbInstanceRole(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAlicloudMongodbInstanceRole{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("alicloud.mongodb.instance.role", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAlicloudMongodbInstanceRole) MqlName() string {
+	return "alicloud.mongodb.instance.role"
+}
+
+func (c *mqlAlicloudMongodbInstanceRole) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAlicloudMongodbInstanceRole) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAlicloudMongodbInstanceRole) GetDbName() *plugin.TValue[string] {
+	return &c.DbName
 }
 
 // mqlAlicloudPolardb for the alicloud.polardb resource
@@ -40152,6 +40916,7 @@ type mqlAlicloudCloudFirewall struct {
 	mqlAlicloudCloudFirewallInternal
 	Enabled            plugin.TValue[bool]
 	Edition            plugin.TValue[int64]
+	AgenticEnabled     plugin.TValue[bool]
 	ControlPolicies    plugin.TValue[[]any]
 	LogDeliveryEnabled plugin.TValue[bool]
 	LogProjectName     plugin.TValue[string]
@@ -40209,6 +40974,12 @@ func (c *mqlAlicloudCloudFirewall) GetEnabled() *plugin.TValue[bool] {
 func (c *mqlAlicloudCloudFirewall) GetEdition() *plugin.TValue[int64] {
 	return plugin.GetOrCompute[int64](&c.Edition, func() (int64, error) {
 		return c.edition()
+	})
+}
+
+func (c *mqlAlicloudCloudFirewall) GetAgenticEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AgenticEnabled, func() (bool, error) {
+		return c.agenticEnabled()
 	})
 }
 

@@ -36,6 +36,31 @@ digitalocean @root {
   // (github and gitlab). The API has no endpoint that lists every provider a
   // team has connected.
   hostedAgentConnections() []digitalocean.hostedAgentConnection
+  // Action Gateway connections (end users' authorizations to external tool providers) held by the team
+  actionGatewayConnections() []digitalocean.actionGatewayConnection
+  // Action Gateway provider credentials (OAuth clients and API keys registered for tool providers)
+  //
+  // Metadata only: the API never returns the API key, client ID, or client
+  // secret of a credential.
+  actionGatewayProviderCredentials() []digitalocean.actionGatewayProviderCredential
+  // MCP servers registered with the Action Gateway
+  actionGatewayMcpServers() []digitalocean.actionGatewayMcpServer
+  // Insights alert rules that notify on metric thresholds
+  insightsAlertRules() []digitalocean.insights.alertRule
+  // Insights notification channels (email, Slack, and webhook destinations) that alert rules deliver to
+  insightsNotificationChannels() []digitalocean.insights.notificationChannel
+  // Agent Data Services workspaces in every region the service is offered in
+  agentDataWorkspaces() []digitalocean.agentData.workspace
+  // Agent Data Services access tokens in every region the service is offered in
+  //
+  // Metadata only: a token's value is returned once, when it is created,
+  // and is never listed.
+  agentDataTokens() []digitalocean.agentData.token
+  // Whether the team consents to Signals collecting serverless inference traffic
+  //
+  // Team-wide consent for serverless inference. Null when the team has no
+  // inference consent record.
+  inferenceSignalsConsentEnabled() bool
   // Firewalls
   firewalls() []digitalocean.firewall
   // Managed databases
@@ -136,12 +161,16 @@ digitalocean @root {
 digitalocean.account @defaults("email status") {
   // Account email
   email string
+  // Display name of the account owner
+  name string
   // Account UUID
   uuid string
   // Droplet limit
   dropletLimit int
   // Floating IP limit
   floatingIpLimit int
+  // Reserved IP limit
+  reservedIpLimit int
   // Volume limit
   volumeLimit int
   // Email verified
@@ -154,6 +183,8 @@ digitalocean.account @defaults("email status") {
   teamUuid string
   // Display name of the team that owns this account; empty when the API token is not scoped to a team
   teamName string
+  // Whether the account is a trial account
+  isTrial bool
 }
 
 // DigitalOcean Droplet
@@ -207,6 +238,8 @@ digitalocean.droplet @defaults("id name status") {
   tags []string
   // VPC the droplet is attached to
   vpc() digitalocean.vpc
+  // VPC subnet the droplet is placed in; null when the droplet is not placed in a subnet
+  subnet() digitalocean.vpc.subnet
   // Features (e.g., monitoring, backups)
   features []string
   // Backup enabled
@@ -354,6 +387,30 @@ digitalocean.microDroplet @defaults("id name region state networking") {
   createdAt time
   // Checkpoints captured from this instance
   checkpoints() []digitalocean.microDroplet.checkpoint
+  // Access tokens that authorize requests to the instance's public endpoint
+  //
+  // Metadata only: a token's value is returned once, when it is created,
+  // and is never listed.
+  accessTokens() []digitalocean.microDroplet.accessToken
+}
+
+// MicroDroplet access token
+//
+// Bearer token that authorizes requests to a MicroDroplet's public
+// endpoint. Reports the token's `name`, when it was created, and when it
+// expires; `expiresAt` is null for a token that never expires, which makes
+// long-lived credentials the query
+// `digitalocean.microDroplets { accessTokens.where(expiresAt == null) }`.
+// The token value is never returned.
+private digitalocean.microDroplet.accessToken @defaults("name createdAt expiresAt") {
+  // Access token ID
+  id string
+  // Access token name, unique among the instance's live tokens
+  name string
+  // Time the access token was created
+  createdAt time
+  // Time the access token expires; null when it never expires
+  expiresAt time
 }
 
 // MicroDroplet checkpoint
@@ -440,6 +497,10 @@ private digitalocean.hostedAgentConfig @defaults("id name createdBy") {
   // provider (the external service it authenticates to, when set). Secret
   // values are never returned.
   credentials() []dict
+  // Whether the team consents to Signals collecting telemetry from agents started from this config
+  //
+  // Null when the team has no consent record for the config.
+  signalsConsentEnabled() bool
 }
 
 // Hosted agent trigger
@@ -524,6 +585,259 @@ private digitalocean.hostedAgentConnection @defaults("provider status actorId") 
   updatedAt time
 }
 
+// Action Gateway connection
+//
+// An end user's authorization to an external tool provider, through which
+// Action Gateway tools act on that user's behalf. `status` reports whether
+// the connection is usable and `revokedAt` when it was revoked, `scopes`
+// and `grantedAt` describe the grant it holds, `credentialKind` and
+// `providerCredential` name the team credential the authorization was
+// made with, and `vpc` with `vpcDestinations` describe the private
+// endpoints the connection may reach. Tokens, API keys, and connection
+// parameters are never exposed.
+private digitalocean.actionGatewayConnection @defaults("provider userId status") {
+  // Connection ID
+  id string
+  // External provider key, such as github
+  provider string
+  // Display name of the external provider
+  providerDisplayName string
+  // End-user identifier the connection was created for
+  //
+  // An identifier chosen by the application that created the connection,
+  // not a DigitalOcean user ID.
+  userId string
+  // Connection status, such as pending, active, or revoked
+  status string
+  // Kind of credential the connection authorizes with
+  credentialKind string
+  // Team provider credential the connection was authorized with; null when it uses none
+  providerCredential() digitalocean.actionGatewayProviderCredential
+  // Scopes granted to the connection; empty when none are reported
+  scopes []string
+  // Time the grant was made; null when no grant is reported
+  grantedAt time
+  // Time the connection was revoked; null while it is not revoked
+  revokedAt time
+  // UUID of the DigitalOcean user that owns the connection
+  owningUserUuid string
+  // VPC whose private endpoints the connection may reach; null when it reaches none
+  vpc() digitalocean.vpc
+  // Private endpoints in the VPC that the connection may reach
+  //
+  // Each entry is a dict with keys: host, port, and allowedIpCidrs (the
+  // address ranges the endpoint may resolve to). Empty when the
+  // connection reaches no VPC.
+  vpcDestinations []dict
+  // Time the connection was created
+  createdAt time
+  // Time the connection was last updated
+  updatedAt time
+}
+
+// Action Gateway provider credential
+//
+// OAuth client or API key a team registers for a tool provider, which
+// connections authorize through. `kind` names the credential type,
+// `status` whether it is active, and `reusableByTeam` whether every team
+// member's connections may use it rather than only its owner's.
+// `discoveryStatus` reports whether tool discovery for a team-scoped MCP
+// server has been authorized. The API returns metadata only: never an API
+// key, a client ID, or a client secret.
+private digitalocean.actionGatewayProviderCredential @defaults("provider kind status") {
+  // Credential ID
+  id string
+  // Tool provider the credential is registered for
+  provider string
+  // Display name of the credential
+  displayName string
+  // Credential kind
+  //
+  // One of PROVIDER_CREDENTIAL_KIND_OAUTH_CLIENT,
+  // PROVIDER_CREDENTIAL_KIND_API_KEY, or PROVIDER_CREDENTIAL_KIND_NONE.
+  kind string
+  // Credential status
+  //
+  // One of PROVIDER_CREDENTIAL_STATUS_ACTIVE,
+  // PROVIDER_CREDENTIAL_STATUS_DISABLED, or
+  // PROVIDER_CREDENTIAL_STATUS_DELETED.
+  status string
+  // Whether connections of every team member may use the credential, rather than only its owner's
+  reusableByTeam bool
+  // OAuth scope the credential requests; empty when none is set
+  scope string
+  // Base URL of the provider's API; empty when the provider default applies
+  baseUrl string
+  // UUID of the DigitalOcean user that owns the credential
+  owningUserUuid string
+  // Status of the authorization to discover a team-scoped MCP server's tools; empty when none is reported
+  discoveryStatus string
+  // Time the tool-discovery authorization was given; null when none is reported
+  discoveryConsentedAt time
+  // Time the credential was created
+  createdAt time
+  // Time the credential was last updated
+  updatedAt time
+}
+
+// Action Gateway MCP server
+//
+// Model Context Protocol server registered with the Action Gateway, whose
+// tools agents can call. `name` is the server reference, `endpoint` and
+// `transport` say where and how the gateway reaches it,
+// `credentialRefSource` where its credential comes from, and `oauthScopes`
+// what an OAuth authorization to it grants. `syncStatus`, `toolCount`, and
+// `lastSyncedAt` report the most recent tool discovery. Credentials are
+// never exposed.
+private digitalocean.actionGatewayMcpServer @defaults("name transport syncStatus") {
+  // Server reference, unique within the team
+  name string
+  // Description of the server
+  description string
+  // URL the gateway reaches the server on, with any embedded password removed
+  endpoint string
+  // Transport the gateway speaks to the server
+  transport string
+  // Where the server's credential comes from
+  credentialRefSource string
+  // OAuth scopes an authorization to the server grants; empty when the server uses no OAuth
+  oauthScopes []string
+  // Lifetime of an OAuth authorization to the server, in seconds; null when none is set
+  oauthAuthorizationTtlSeconds int
+  // Status of the most recent tool discovery
+  syncStatus string
+  // Error the most recent tool discovery reported; empty when it succeeded
+  syncError string
+  // Time tools were last discovered; null when they never were
+  lastSyncedAt time
+  // MCP protocol version the server negotiated
+  protocolVersion string
+  // Number of tools discovered on the server
+  toolCount int
+  // Time the server was registered
+  createdAt time
+  // Time the server was last updated
+  updatedAt time
+}
+
+// Insights alert rule
+//
+// Rule that evaluates an Insights metric against warning and critical
+// thresholds and notifies its channels when one is crossed. `status`
+// reports whether the rule is active or paused, `metric` names what it
+// watches, `reAlertDuration` how often a firing rule notifies again, and
+// `channels` the destinations it delivers to, which makes a rule that
+// notifies nobody the query
+// `digitalocean.insightsAlertRules.where(channels.length == 0)`.
+private digitalocean.insights.alertRule @defaults("name status metric") {
+  // Alert rule ID
+  id string
+  // Alert rule name
+  name string
+  // Alert rule status
+  //
+  // One of ALERT_RULE_STATUS_ACTIVE or ALERT_RULE_STATUS_PAUSED.
+  status string
+  // Metric the rule evaluates
+  metric string
+  // Interval after which a still-firing rule notifies again; empty when it notifies once
+  reAlertDuration string
+  // Notification channels the rule delivers to
+  channels() []digitalocean.insights.notificationChannel
+  // Time the rule was created
+  createdAt time
+  // Time the rule was last updated
+  updatedAt time
+}
+
+// Insights notification channel
+//
+// Reusable destination Insights alert rules deliver notifications to.
+// `type` is email, Slack, or webhook. For email, `emailTo` lists the
+// recipients; for Slack, `slackChannel` names the channel; for a webhook,
+// `webhookScheme` reports whether deliveries travel over https, and
+// `webhookHasSignature` and `webhookHasAuth` whether the receiver can
+// authenticate them. `ruleCount` reports how many alert rules use the
+// channel. Webhook URLs, Slack webhook URLs, and credentials are never
+// exposed.
+private digitalocean.insights.notificationChannel @defaults("name type ruleCount") {
+  // Notification channel ID
+  id string
+  // Notification channel name
+  name string
+  // Channel type
+  //
+  // One of CHANNEL_TYPE_EMAIL, CHANNEL_TYPE_SLACK, or CHANNEL_TYPE_WEBHOOK.
+  type string
+  // Recipient addresses of an email channel; empty for other types
+  emailTo []string
+  // Slack channel a Slack channel posts to; empty for other types
+  slackChannel string
+  // URL scheme of a webhook channel's endpoint, such as https; empty for other types
+  webhookScheme string
+  // Whether deliveries of a webhook channel are signed with a shared secret; null for other types
+  webhookHasSignature bool
+  // Whether deliveries of a webhook channel carry basic or bearer authentication; null for other types
+  webhookHasAuth bool
+  // Number of alert rules that use the channel; null when the API reports no usage
+  ruleCount int
+  // Time the channel was created
+  createdAt time
+  // Time the channel was last updated
+  updatedAt time
+}
+
+// Agent Data Services workspace
+//
+// Regional workspace that holds an Agent Data Services query engine. The
+// `status` field reports where it is in its lifecycle, `queryEndpoint`
+// the host clients query, and `queryInstanceSize` the engine size.
+// `secretKeys` lists the names of the secrets stored in the workspace;
+// secret values are never returned.
+private digitalocean.agentData.workspace @defaults("name region status") {
+  // Workspace UUID
+  id string
+  // Workspace name
+  name string
+  // Region slug the workspace runs in
+  region string
+  // Workspace status, such as pending, provisioning, active, or errored
+  status string
+  // Host clients send queries to
+  queryEndpoint string
+  // Query engine size, such as small, medium, or large
+  queryInstanceSize string
+  // UUID of the DigitalOcean user that owns the workspace
+  ownerUuid string
+  // Names of the secrets stored in the workspace
+  secretKeys() []string
+}
+
+// Agent Data Services access token
+//
+// Regional token that grants access to Agent Data Services workspaces.
+// `purpose` names what the token may do, `workspaces` the workspaces it
+// is bound to, and `queryHosts` the hosts it may query. `expiresAt` is
+// null for a token that never expires. The token value is never returned.
+private digitalocean.agentData.token @defaults("name purpose expiresAt") {
+  // Token ID
+  id string
+  // Token name
+  name string
+  // Region slug the token was issued in
+  region string
+  // What the token grants, such as TOKEN_PURPOSE_QUERY
+  purpose string
+  // Query hosts the token may be used against
+  queryHosts []string
+  // Workspaces the token is bound to
+  workspaces() []digitalocean.agentData.workspace
+  // Time the token was created
+  createdAt time
+  // Time the token expires; null when it never expires
+  expiresAt time
+}
+
 // DigitalOcean firewall
 //
 // Cloud-firewall rule set governing traffic to and from a group of
@@ -531,7 +845,7 @@ private digitalocean.hostedAgentConnection @defaults("provider status actorId") 
 // succeeded, failed). The `ingressRules` and `egressRules` control
 // incoming and outgoing traffic, each rule exposing protocol, ports, and
 // the `openToInternet` predicate that flags rules reachable from any
-// address (0.0.0.0/0 or ::/0), plus references to the droplets, load
+// address (0.0.0.0/0, ::/0, or ranges that together cover most of the internet), plus references to the droplets, load
 // balancers, and Kubernetes clusters it targets. The `tags` select
 // protected droplets by tag, and `droplets` resolves the full set
 // covered by the firewall (by direct ID or matching tag).
@@ -584,7 +898,8 @@ private digitalocean.firewall.pendingChange @defaults("status removing") {
 // range like "8000-9000", or "0"/"all" for every port). `action` is
 // allow or deny. `openToInternet` is true when the rule admits traffic
 // from any address, that is, when it is an allow rule and
-// `sourceAddresses` contains 0.0.0.0/0 or ::/0, which makes auditing
+// `sourceAddresses` together cover most of the internet, as 0.0.0.0/0 or
+// ::/0 or as ranges such as 0.0.0.0/1 plus 128.0.0.0/1, which makes auditing
 // publicly reachable ports a single predicate. The source is otherwise
 // described by `sourceAddresses` (CIDRs), `sourceTags`, and the
 // `sourceDroplets`, `sourceLoadBalancers`, and `sourceKubernetesClusters`
@@ -604,8 +919,13 @@ private digitalocean.firewall.ingressRule @defaults("protocol ports openToIntern
   action string
   // Whether the rule admits traffic from any address
   //
-  // True for an allow rule whose source addresses include 0.0.0.0/0 or
-  // ::/0. A deny rule over those ranges blocks traffic and is not open.
+  // True for an allow rule whose source addresses, taken together, admit
+  // the internet. The ranges are merged per address family and limited to
+  // IPv4 outside 224.0.0.0/3 and IPv6 inside 2000::/3. The rule counts when
+  // that union contains an aligned IPv4 /7 or IPv6 /11, or covers at least
+  // half of that space: 0.0.0.0/0, ::/0, 0.0.0.0/1 plus 128.0.0.0/1,
+  // 2000::/3, and 256 /8s all count. A deny rule over those ranges blocks
+  // traffic and is not open.
   openToInternet bool
   // Source address CIDRs trusted by this rule
   sourceAddresses []string
@@ -644,7 +964,8 @@ private digitalocean.network.exposure @defaults("internetReachable hasPublicIp")
 // range like "8000-9000", or "0"/"all" for every port). `action` is
 // allow or deny. `openToInternet` is true when the rule permits traffic
 // to any address, that is, when it is an allow rule and
-// `destinationAddresses` contains 0.0.0.0/0 or ::/0. The destination is
+// `destinationAddresses` together cover most of the internet, as 0.0.0.0/0
+// or ::/0 or as ranges that add up to it. The destination is
 // otherwise described by `destinationAddresses` (CIDRs), `destinationTags`,
 // and the `destinationDroplets`, `destinationLoadBalancers`, and
 // `destinationKubernetesClusters` the rule allows.
@@ -663,8 +984,10 @@ private digitalocean.firewall.egressRule @defaults("protocol ports openToInterne
   action string
   // Whether the rule permits traffic to any address
   //
-  // True for an allow rule whose destination addresses include 0.0.0.0/0
-  // or ::/0. A deny rule over those ranges blocks traffic and is not open.
+  // True for an allow rule whose destination addresses, taken together,
+  // cover most of the internet, by the same rule as the ingress rule's
+  // openToInternet: 0.0.0.0/0, ::/0, or ranges that add up to it. A deny
+  // rule over those ranges blocks traffic and is not open.
   openToInternet bool
   // Destination address CIDRs allowed by this rule
   destinationAddresses []string
@@ -699,6 +1022,19 @@ digitalocean.database @defaults("id name engine") {
   engine string
   // Database engine version
   version string
+  // Date DigitalOcean stops supporting the cluster's engine version
+  //
+  // The end-of-life date DigitalOcean publishes for this engine and
+  // version. After it, the version no longer receives updates and
+  // clusters still on it are upgraded or retired. Null when no date is
+  // published for the version.
+  versionEndOfLife() time
+  // Date DigitalOcean stops offering the cluster's engine version for new clusters
+  //
+  // The end-of-availability date DigitalOcean publishes for this engine
+  // and version. After it, new clusters can no longer be created on the
+  // version. Null when no date is published for the version.
+  versionEndOfAvailability() time
   // Number of nodes
   numNodes int
   // Size slug
@@ -734,7 +1070,7 @@ digitalocean.database @defaults("id name engine") {
   firewallRules() []dict
   // Whether the cluster is reachable from the internet
   //
-  // True when the cluster has a public connection endpoint and its trusted-source firewall rules admit any address (an ip_addr rule of 0.0.0.0/0 or ::/0), or when no trusted-source rules are configured at all, which leaves the public endpoint open to every address.
+  // True when the cluster has a public connection endpoint and its trusted-source firewall rules admit any address (ip_addr rules that together cover most of the internet, such as 0.0.0.0/1 plus 128.0.0.0/1), or when no trusted-source rules are configured at all, which leaves the public endpoint open to every address.
   internetReachable() bool
   // Public connection host
   connectionHost string
@@ -772,7 +1108,7 @@ digitalocean.database @defaults("id name engine") {
   users() []digitalocean.database.user
   // Database replicas
   replicas() []digitalocean.database.replica
-  // Connection pools
+  // Connection pools (PostgreSQL and PostgreSQL Advanced Edition only; empty for other engines)
   pools() []digitalocean.database.pool
   // Automated backups currently retained for the cluster
   backups() []digitalocean.database.backup
@@ -814,9 +1150,12 @@ digitalocean.database @defaults("id name engine") {
   // keyed by the API setting name (for example `redis_ssl`,
   // `enable_security_audit`, `sql_require_primary_key`, or
   // `log_min_duration_statement`). Only settings the operator or the
-  // platform has set are present. Null for engines without a
-  // configuration endpoint. Setting names that look like credentials
-  // are never included.
+  // platform has set are present. On PostgreSQL and MySQL Advanced
+  // Edition clusters (engines advanced_pg and advanced_mysql) the API
+  // reports every parameter with its value as a string, exactly as the
+  // engine prints it (for example `"ON"` or `"1"`). Null for engines
+  // without a configuration endpoint. Setting names that look like
+  // credentials are never included.
   engineConfig() dict
   // Whether clients must connect over TLS (Redis and Valkey only)
   //
@@ -856,11 +1195,16 @@ digitalocean.database @defaults("id name engine") {
   autoCreateTopicsEnabled() bool
   // Whether the slow query log is enabled (MySQL only)
   //
-  // Null for other engines and when the setting is not reported.
+  // On MySQL Advanced Edition the `slow_query_log` parameter is read as a
+  // boolean when it holds ON, OFF, 1, 0, true, or false. Null for other
+  // engines and when the setting is not reported or holds any other value.
   slowQueryLogEnabled() bool
   // Whether every table must have a primary key (MySQL only)
   //
-  // Null for other engines and when the setting is not reported.
+  // On MySQL Advanced Edition the `sql_require_primary_key` parameter is
+  // read as a boolean when it holds ON, OFF, 1, 0, true, or false. Null
+  // for other engines and when the setting is not reported or holds any
+  // other value.
   requirePrimaryKey() bool
   // Topics hosted on the cluster (Kafka only)
   //
@@ -1026,6 +1370,26 @@ private digitalocean.database.replica @defaults("name status") {
   size string
   // Tags applied to the replica
   tags []string
+  // Storage allocated to the replica, in mebibytes; null when the API reports none
+  storageSizeMib int
+  // VPC the replica's private endpoint is placed in; null when the API reports none
+  vpc() digitalocean.vpc
+  // Whether the replica's public endpoint enforces TLS/SSL
+  //
+  // Null when the replica publishes no public endpoint.
+  sslEnabled bool
+  // Hostname of the replica's public endpoint; null when the replica publishes no public endpoint
+  host string
+  // Port of the replica's public endpoint; null when the replica publishes no public endpoint
+  port int
+  // Whether the replica's private endpoint enforces TLS/SSL
+  //
+  // Null when the replica publishes no private endpoint.
+  privateSslEnabled bool
+  // Hostname of the replica's private endpoint reachable within the VPC; null when the replica publishes no private endpoint
+  privateHost string
+  // Port of the replica's private endpoint reachable within the VPC; null when the replica publishes no private endpoint
+  privatePort int
 }
 
 // DigitalOcean database connection pool
@@ -1266,10 +1630,18 @@ digitalocean.loadBalancer @defaults("id name status") {
   enableBackendKeepalive bool
   // VPC the load balancer is attached to
   vpc() digitalocean.vpc
+  // VPC subnet the load balancer is placed in; null when the load balancer is not placed in a subnet
+  subnet() digitalocean.vpc.subnet
   // Droplets attached to this load balancer
   droplets() []digitalocean.droplet
   // Tags
   tags []string
+  // Droplet tag that selects the load balancer's backends
+  //
+  // Every droplet carrying this tag receives the load balancer's traffic.
+  // This is distinct from `tags`, which label the load balancer itself.
+  // Empty when the backends are listed by droplet ID instead.
+  backendTag string
   // Listeners the load balancer accepts connections on
   //
   // One entry per forwarding rule, carrying the protocol and port traffic
@@ -1380,6 +1752,40 @@ digitalocean.vpc @defaults("id name region") {
   // Resources placed inside the VPC
   members() []digitalocean.vpc.member
   // Routes directing traffic out of the VPC
+  routes() []digitalocean.vpc.route
+  // Subnets the VPC's address range is divided into
+  subnets() []digitalocean.vpc.subnet
+}
+
+// DigitalOcean VPC subnet
+//
+// Address range carved out of a VPC that droplets, load balancers, and
+// Kubernetes worker nodes are placed in. Reports the subnet's `name`,
+// `ipRange`, `type`, `region`, and `urn`, whether it is the VPC's
+// `default` subnet, the `vpc` it belongs to, and the `routes` that apply
+// to it, which include the VPC's own routes as well as routes scoped to
+// the subnet. Read `routes` to see where traffic from the subnet leaves the
+// network.
+private digitalocean.vpc.subnet @defaults("name ipRange region") {
+  // Subnet ID
+  id string
+  // Subnet name
+  name string
+  // IP range (CIDR) of the subnet
+  ipRange string
+  // Subnet type
+  type string
+  // Region slug the subnet is placed in
+  region string
+  // Whether this is the VPC's default subnet
+  default bool
+  // Uniform resource name (URN) identifying the subnet across DigitalOcean APIs
+  urn string
+  // Time the subnet was created; null when the API reports no creation time
+  createdAt time
+  // VPC the subnet belongs to
+  vpc() digitalocean.vpc
+  // Routes in effect for the subnet, including routes the VPC applies to every subnet
   routes() []digitalocean.vpc.route
 }
 
@@ -1542,7 +1948,11 @@ digitalocean.kubernetes.cluster @defaults("id name version") {
   // Whether the peer-to-peer OCI registry add-on is enabled; null when unset
   p2pOciRegistryEnabled bool
   // UUID of the VPC subnet the cluster's worker nodes are placed in
-  workerSubnetUuid string
+  //
+  // Deprecated in favor of workerSubnet.
+  workerSubnetUuid @maturity("deprecated") string
+  // VPC subnet the cluster's worker nodes are placed in; null when the cluster names no worker subnet
+  workerSubnet() digitalocean.vpc.subnet
   // Whether worker nodes are cut off from the public internet
   //
   // When enabled the worker nodes hold no public addresses and egress
@@ -1578,7 +1988,8 @@ digitalocean.kubernetes.cluster @defaults("id name version") {
   // control-plane firewall is enabled and its allowed source addresses
   // exclude the whole internet. hasPublicIp reflects the published
   // endpoint, and firewallAllowsIngress is true when the firewall is off
-  // or admits 0.0.0.0/0 or ::/0. openIngressRules stays empty because the
+  // or its allowed addresses together cover every IPv4 or IPv6 address.
+  // openIngressRules stays empty because the
   // control-plane firewall is a source address list rather than a set of
   // cloud-firewall rules.
   exposure() digitalocean.network.exposure

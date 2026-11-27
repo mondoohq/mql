@@ -374,23 +374,20 @@ func lastInstalledWindows(runtime *plugin.Runtime) (*updates.LastInstalledUpdate
 		return nil, nil
 	}
 
-	var newest time.Time
+	candidates := make([]windows.OSUpdateCandidate, 0, len(installed.Data))
 	for i := range installed.Data {
 		entry, ok := installed.Data[i].(*mqlWindowsUpdateEntry)
 		if !ok {
 			continue
 		}
-		if !windows.IsOperatingSystemUpdate(entryCategories(entry), entry.Classification.Data, entry.Title.Data) {
-			continue
-		}
-		date := entry.Date.Data
-		if date == nil || date.IsZero() {
-			continue
-		}
-		if date.After(newest) {
-			newest = *date
-		}
+		candidates = append(candidates, windows.OSUpdateCandidate{
+			Categories:     entryCategories(entry),
+			Classification: entry.Classification.Data,
+			Title:          entry.Title.Data,
+			Date:           entry.Date.Data,
+		})
 	}
+	newest := windows.NewestOperatingSystemUpdate(candidates)
 
 	if newest.IsZero() {
 		return nil, nil

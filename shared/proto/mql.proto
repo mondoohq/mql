@@ -24,7 +24,13 @@ message RunQueryConfig {
   bool incognito = 10;
   string output = 11;
   string input = 12;
+
+  // Renaming would change the generated Go field and the JSON name.
+  // protolint:disable UNDERSCORE
+
   bool exit_1_on_failure = 14;
+
+  // protolint:enable UNDERSCORE
 
   // Compile under ADR 043 strict mode: every link in an MQL chain must resolve,
   // and `?` marks one optional.
