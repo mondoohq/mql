@@ -9,6 +9,7 @@ import (
 	"github.com/databricks/databricks-sdk-go/service/catalog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/utils/syncx"
 )
@@ -164,4 +165,19 @@ func TestSplitFunctionName(t *testing.T) {
 		_, _, _, ok := splitFunctionName(bad)
 		assert.False(t, ok, bad)
 	}
+}
+
+func TestDatabricksCatalogByNameReusesListedCatalog(t *testing.T) {
+	// Synthetic: a catalog the scan already listed. The test runtime has no
+	// connection, so falling through to the catalog's init would fail.
+	runtime := newTablesTestRuntime()
+	listed, err := CreateResource(runtime, "databricks.catalog", map[string]*llx.RawData{
+		"__id": llx.StringData("databricks.catalog/main"),
+		"name": llx.StringData("main"),
+	})
+	require.NoError(t, err)
+
+	got, err := databricksCatalogByName(runtime, "main")
+	require.NoError(t, err)
+	assert.Same(t, listed.(*mqlDatabricksCatalog), got)
 }

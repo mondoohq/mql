@@ -161,8 +161,21 @@ func (r *mqlDatabricksTable) catalog() (*mqlDatabricksCatalog, error) {
 		r.Catalog.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	c, err := NewResource(r.MqlRuntime, "databricks.catalog", map[string]*llx.RawData{
-		"name": llx.StringData(r.CatalogName.Data),
+	return databricksCatalogByName(r.MqlRuntime, r.CatalogName.Data)
+}
+
+// databricksCatalogByName returns the catalog resource for name, reusing one
+// the scan already created. NewResource runs the catalog's init, a
+// GetByName call, before it looks at the cache, so without this every table
+// of a schema would fetch its catalog again.
+func databricksCatalogByName(runtime *plugin.Runtime, name string) (*mqlDatabricksCatalog, error) {
+	if cached, ok := runtime.Resources.Get("databricks.catalog\x00databricks.catalog/" + name); ok {
+		if c, ok := cached.(*mqlDatabricksCatalog); ok {
+			return c, nil
+		}
+	}
+	c, err := NewResource(runtime, "databricks.catalog", map[string]*llx.RawData{
+		"name": llx.StringData(name),
 	})
 	if err != nil {
 		return nil, err
