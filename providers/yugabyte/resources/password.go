@@ -35,6 +35,8 @@ func ysqlPasswordMatches(hash, role, password string) bool {
 	case strings.HasPrefix(hash, "SCRAM-SHA-256$"):
 		return scramMatches(hash, password)
 	case strings.HasPrefix(hash, "md5") && len(hash) == 35:
+		// MD5 is the format YSQL stores these hashes in; this checks one, it protects nothing.
+		// nosemgrep: go-weak-hash
 		sum := md5.Sum([]byte(password + role)) //nolint:gosec
 		want := hex.EncodeToString(sum[:])
 		return subtle.ConstantTimeCompare([]byte(hash[3:]), []byte(want)) == 1

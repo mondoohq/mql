@@ -320,9 +320,13 @@ func (c *YugabyteConnection) tlsConfig(serverName string) (*tls.Config, error) {
 	}
 	switch {
 	case c.tlsInsecure || c.sslmode == "require":
+		// The user asked for it with --tls-insecure or --sslmode require.
+		// nosemgrep: go-disabled-cert-validation
 		cfg.InsecureSkipVerify = true //nolint:gosec // asked for with --tls-insecure or --sslmode require
 	case c.sslmode == "verify-ca":
 		// Go verifies the host name with the chain; check the chain alone.
+		// verify-ca skips only the host name; verifyChain checks the chain.
+		// nosemgrep: go-disabled-cert-validation
 		cfg.InsecureSkipVerify = true //nolint:gosec // the chain is verified below
 		cfg.VerifyPeerCertificate = verifyChain(cfg.RootCAs)
 	}
