@@ -1,0 +1,29 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<registrySnapshot xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <user>S-1-5-18</user>
+  <keys>
+    <key installerType="Msi" displayName="PuTTY release 0.85 (64-bit)" displayVersion="0.85.0.0">
+      <RegistryView>Registry64</RegistryView>
+      <KeyPath>HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{3B0346D3-155D-43E5-9561-B9BE51CF2EB6}</KeyPath>
+      <DefaultValue />
+      <InstallLocation><![CDATA[]]></InstallLocation>
+      <UninstallString><![CDATA[MsiExec.exe /X{3B0346D3-155D-43E5-9561-B9BE51CF2EB6}]]></UninstallString>
+      <HasQuietUninstall>false</HasQuietUninstall>
+      <Publisher><![CDATA[Simon Tatham]]></Publisher>
+      <InstallDate>20261127</InstallDate>
+      <InstallSource><![CDATA[C:\ProgramData\chocolatey\lib\putty.install\tools\]]></InstallSource>
+      <Language>1033</Language>
+      <Version>5570560</Version>
+      <VersionMajor>0</VersionMajor>
+      <VersionMinor>85</VersionMinor>
+      <SystemComponent>false</SystemComponent>
+      <WindowsInstaller>true</WindowsInstaller>
+      <NoRemove>false</NoRemove>
+      <NoModify>true</NoModify>
+      <NoRepair>false</NoRepair>
+      <ReleaseType />
+      <ParentKeyName />
+      <LocalPackage><![CDATA[C:\Windows\Installer\1ea45.msi]]></LocalPackage>
+    </key>
+  </keys>
+</registrySnapshot>

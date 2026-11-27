@@ -91,11 +91,14 @@ func appxSignatureKind(raw json.RawMessage) int {
 //   - edge: the uninstall commands of the Edge Update applications that record
 //     Windows as their install source, which Edge and WebView2 do when they
 //     came with Windows.
+//   - chocolatey: where Chocolatey is installed, when its environment variable
+//     says so.
 //   - appx: how each AppX package is signed and packaged. The package list's
 //     own query does not ask for it, so a plain inventory never pays for it.
 const windowsSourceQuery = `$o = @{}
 $o.appx = @(Get-AppxPackage -AllUsers | Select Name, Version, PackageFamilyName, SignatureKind, IsFramework)
 $o.provisioned = @(Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Applications' -ErrorAction SilentlyContinue | ForEach-Object { $_.PSChildName })
+$o.chocolatey = $env:ChocolateyInstall
 $o.edge = @(Get-ChildItem 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\ClientState','HKLM:\SOFTWARE\Microsoft\EdgeUpdate\ClientState' -ErrorAction SilentlyContinue | ForEach-Object { $p = Get-ItemProperty $_.PSPath; if ($p.InstallSource -eq 'windows' -or $p.brand -eq 'INBX') { $p.UninstallString } })
 $o | ConvertTo-Json -Compress`
 
@@ -112,6 +115,12 @@ type windowsSourceFacts struct {
 	// winget indexes what winget's tracking catalogs say, by lower-cased
 	// Uninstall key name. Empty when no catalog was read.
 	winget wingetIndex
+	// chocolatey indexes what Chocolatey's package records say, by lower-cased
+	// Uninstall key name. Empty when none was read.
+	chocolatey chocolateyIndex
+	// chocolateyInstall is the ChocolateyInstall environment variable, "" when
+	// unknown.
+	chocolateyInstall string
 }
 
 func (w *WinPkgManager) readWindowsSourceFacts() windowsSourceFacts {
@@ -130,10 +139,12 @@ func parseWindowsSourceFacts(data []byte) windowsSourceFacts {
 		Provisioned json.RawMessage `json:"provisioned"`
 		Edge        json.RawMessage `json:"edge"`
 		Appx        json.RawMessage `json:"appx"`
+		Chocolatey  string          `json:"chocolatey"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return facts
 	}
+	facts.chocolateyInstall = strings.TrimSpace(raw.Chocolatey)
 	var appx []struct {
 		Name          string          `json:"Name"`
 		Version       string          `json:"Version"`
@@ -216,13 +227,15 @@ func (w *WinPkgManager) Sources(pkgs []Package) ([]Source, error) {
 	if needQuery {
 		facts = w.readWindowsSourceFacts()
 	}
-	// winget's catalogs only say anything about Uninstall entries
+	// winget's catalogs and Chocolatey's package records only say anything
+	// about Uninstall entries
 	if hasApp {
 		toFsPath := nativeWindowsPath
 		if t := w.conn.Type(); t == shared.Type_FileSystem || t == shared.Type_Device {
 			toFsPath = mountedSystemDrivePath
 		}
 		facts.winget = readWingetCatalogs(w.conn.FileSystem(), toFsPath)
+		facts.chocolatey = readChocolateyRecords(w.conn.FileSystem(), toFsPath, facts.chocolateyInstall)
 	}
 	out := make([]Source, len(pkgs))
 	for i := range pkgs {
@@ -245,7 +258,10 @@ func (w *WinPkgManager) Sources(pkgs []Package) ([]Source, error) {
 // whether it came with Windows only for Edge and WebView2, through Edge
 // Update; for everything else osProvided stays null. A program winget
 // installed is the exception: winget's tracking catalog names it, so its
-// channel is "winget" and its name the winget package identifier.
+// channel is "winget" and its name the winget package identifier. The same goes
+// for a program a Chocolatey package's installer created: Chocolatey's package
+// record names its Uninstall key, so its channel is "chocolatey" and its name
+// the Chocolatey package id.
 func windowsPackageSource(pkg Package, facts windowsSourceFacts) Source {
 	if pkg.source != nil {
 		return *pkg.source
@@ -287,7 +303,7 @@ func windowsPackageSource(pkg Package, facts windowsSourceFacts) Source {
 		if isInboxEdge(pkg, facts.edgeDirs) {
 			return osSource
 		}
-		if src, ok := facts.winget.source(pkg); ok {
+		if src, ok := managerSource(pkg, facts); ok {
 			return src
 		}
 		return Source{Channel: ChannelInstaller, Name: windowsProductCode(pkg)}
@@ -413,16 +429,30 @@ type wingetIndex map[string][]wingetEntry
 // older version than the registry (a later upgrade by another account), and
 // that still says who installed the program.
 func (idx wingetIndex) source(pkg Package) (Source, bool) {
-	key := pkg.uninstallKey
-	if key == "" && pkg.installIdentity != nil {
-		key = pkg.installIdentity.uninstallKey
-	}
-	if len(idx) == 0 || key == "" {
+	best, ok := idx.best(pkg)
+	if !ok {
 		return Source{}, false
+	}
+	return best.source(), true
+}
+
+// source is the package source a tracked manifest stands for.
+func (e wingetEntry) source() Source {
+	if e.sourceDir == wingetMsStoreDir {
+		return Source{OSProvided: osProvided(false), Channel: ChannelAppStore, Name: "microsoft-store"}
+	}
+	return Source{OSProvided: osProvided(false), Channel: ChannelWinget, Name: e.id}
+}
+
+// best returns the manifest that decides the package's source.
+func (idx wingetIndex) best(pkg Package) (wingetEntry, bool) {
+	key := uninstallKeyOf(pkg)
+	if len(idx) == 0 || key == "" {
+		return wingetEntry{}, false
 	}
 	entries := idx[strings.ToLower(key)]
 	if len(entries) == 0 {
-		return Source{}, false
+		return wingetEntry{}, false
 	}
 	best := entries[0]
 	for _, e := range entries[1:] {
@@ -431,10 +461,46 @@ func (idx wingetIndex) source(pkg Package) (Source, bool) {
 			best = e
 		}
 	}
-	if best.sourceDir == wingetMsStoreDir {
-		return Source{OSProvided: osProvided(false), Channel: ChannelAppStore, Name: "microsoft-store"}, true
+	return best, true
+}
+
+// uninstallKeyOf is the Uninstall subkey name of an Uninstall entry, "" when
+// the package has none.
+func uninstallKeyOf(pkg Package) string {
+	if pkg.uninstallKey == "" && pkg.installIdentity != nil {
+		return pkg.installIdentity.uninstallKey
 	}
-	return Source{OSProvided: osProvided(false), Channel: ChannelWinget, Name: best.id}, true
+	return pkg.uninstallKey
+}
+
+// managerSource decides between the package managers that claim an Uninstall
+// entry. winget and Chocolatey can both have installed the same program, one
+// after the other, and the entry keeps its key. The manager whose record is
+// for the installed version wins; when both or neither are, the more recently
+// written record does (winget: when it tracked the manifest; Chocolatey: when
+// it wrote the package record).
+func managerSource(pkg Package, facts windowsSourceFacts) (Source, bool) {
+	w, wok := facts.winget.best(pkg)
+	c, cok := facts.chocolatey.best(pkg)
+	switch {
+	case !wok && !cok:
+		return Source{}, false
+	case !cok:
+		return w.source(), true
+	case !wok:
+		return c.source(), true
+	}
+	wMatch, cMatch := w.version == pkg.Version, c.versionMatches(pkg)
+	if wMatch != cMatch {
+		if cMatch {
+			return c.source(), true
+		}
+		return w.source(), true
+	}
+	if c.written > w.written {
+		return c.source(), true
+	}
+	return w.source(), true
 }
 
 // wingetCatalogPaths lists the installed.db files of every account, as
