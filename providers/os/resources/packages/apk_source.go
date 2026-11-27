@@ -550,6 +550,7 @@ func parseApkIndex(data []byte, osKeys apkOSKeys, installed map[string]struct{})
 	if err != nil {
 		return nil, err
 	}
+	defer gz.Close()
 	// a reader that is not buffered is read exactly to the end of the stream,
 	// which tells where the next one starts
 	gz.Multistream(false)
