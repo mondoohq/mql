@@ -3669,7 +3669,46 @@ private aws.iam.accessAnalyzer.finding @defaults("resourceType region type statu
   // Region where the finding exists
   region string
   // Analyzer ARN
-  analyzerArn string
+  //
+  // Deprecated in favor of analyzer, which returns the analyzer resource.
+  analyzerArn @maturity("deprecated") string
+  // Analyzer that produced the finding
+  analyzer() aws.iam.accessAnalyzer.analyzer
+  // Principal outside the zone of trust that has access
+  //
+  // Principal kind to value, for example {"AWS": "arn:aws:iam::111122223333:root"},
+  // {"AWS": "*"} or {"Service": "cloudfront.amazonaws.com"}. Reported for
+  // ExternalAccess findings; null for every other finding type.
+  principal() map[string]string
+  // Whether the access is public
+  //
+  // True when anyone, including anonymous principals, has the access. Reported
+  // for ExternalAccess findings; null for every other finding type.
+  isPublic() bool
+  // Actions the external principal can perform
+  //
+  // Action names from the policy statement that grants the access, for example
+  // s3:GetObject. Empty for findings that are not ExternalAccess findings.
+  actions() []string
+  // Conditions that limit the access
+  //
+  // Condition key to value from the policy statement that grants the access, for
+  // example aws:SourceVpce. Empty when the statement has no condition, and null
+  // for findings that are not ExternalAccess findings.
+  condition() map[string]string
+  // How the access is granted
+  //
+  // Each entry has `type` (POLICY, BUCKET_ACL, S3_ACCESS_POINT or
+  // S3_ACCESS_POINT_ACCOUNT), and `accessPointArn` and `accessPointAccount` when
+  // the access comes through an access point. Reported for S3 bucket findings.
+  // Empty for findings that are not ExternalAccess findings.
+  sources() []dict
+  // Whether a resource control policy restricts the access
+  //
+  // For example APPLICABLE, APPLIED, NOT_APPLICABLE or FAILED_TO_EVALUATE_RCP; the
+  // set is not closed. Empty when the analyzer reports none, and null for
+  // findings that are not ExternalAccess findings.
+  resourceControlPolicyRestriction() string
   // When the unused role, credential, or permission was last used
   //
   // Reported for the unused-access finding types (UnusedIAMRole,

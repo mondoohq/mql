@@ -16,6 +16,7 @@ import (
 	aatypes "github.com/aws/aws-sdk-go-v2/service/accessanalyzer/types"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
 	"go.mondoo.com/mql/providers/aws/connection"
@@ -29,26 +30,46 @@ func (a *mqlAwsIamAccessAnalyzerAnalyzer) id() (string, error) {
 // mqlAwsIamAccessAnalyzerFindingInternal caches the unused-access detail of a
 // finding. ListFindingsV2 returns a summary without it, so the detail costs one
 // GetFindingV2 call per finding and is shared by the four fields that read it.
+//
+// The external-access detail is cached the same way, once per finding, from the
+// per-analyzer memo on aws.iam.accessAnalyzer (see detailsForAnalyzer).
 type mqlAwsIamAccessAnalyzerFindingInternal struct {
 	unusedFetched               atomic.Bool
 	unusedLock                  sync.Mutex
+	unusedErr                   error
 	cacheUnusedLastAccessed     *time.Time
 	cacheUnusedServiceNamespace string
 	cacheUnusedActions          []any
 	cacheUnusedAccessKeyId      string
+
+	externalOnce     sync.Once
+	cacheExternal    externalAccessDetail
+	cacheExternalOK  bool
+	cacheExternalErr error
+}
+
+// mqlAwsIamAccessAnalyzerInternal holds the external-access details of each
+// analyzer's findings, keyed by analyzer ARN. There is one aws.iam.accessAnalyzer
+// resource per scan, so every finding of the scan shares these memos.
+type mqlAwsIamAccessAnalyzerInternal struct {
+	detailMemos sync.Map // analyzer ARN -> *externalDetailMemo
 }
 
 // fetchUnusedAccessDetails resolves the unused-access detail of the finding.
 // Findings of any other type carry no such detail, so they resolve to empty
 // values without an API call.
+//
+// A refused GetFindingV2 is cached: with structured errors it is returned as
+// Forbidden by every field that reads the detail, without them the fields read
+// empty as they always did.
 func (a *mqlAwsIamAccessAnalyzerFinding) fetchUnusedAccessDetails() error {
 	if a.unusedFetched.Load() {
-		return nil
+		return a.unusedErr
 	}
 	a.unusedLock.Lock()
 	defer a.unusedLock.Unlock()
 	if a.unusedFetched.Load() {
-		return nil
+		return a.unusedErr
 	}
 
 	if !strings.HasPrefix(a.Type.Data, "Unused") {
@@ -64,10 +85,14 @@ func (a *mqlAwsIamAccessAnalyzerFinding) fetchUnusedAccessDetails() error {
 	})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
-			log.Warn().Str("finding", a.Id.Data).Str("region", a.Region.Data).
-				Msg("no permission to read access analyzer finding detail")
+			if plugin.StructuredErrors() {
+				a.unusedErr = llx.Forbidden(err, llx.WithPermissions(permGetFinding))
+			} else {
+				log.Warn().Str("finding", a.Id.Data).Str("region", a.Region.Data).
+					Msg("no permission to read access analyzer finding detail")
+			}
 			a.unusedFetched.Store(true)
-			return nil
+			return a.unusedErr
 		}
 		return err
 	}
@@ -144,6 +169,271 @@ func (a *mqlAwsIamAccessAnalyzerFinding) unusedAccessKeyId() (string, error) {
 		return "", err
 	}
 	return a.cacheUnusedAccessKeyId, nil
+}
+
+// IAM actions named by the refusals of this file. ListFindingsV2 and
+// GetFindingV2 are authorized by the same actions as their v1 operations.
+const (
+	permListFindings = "access-analyzer:ListFindings"
+	permGetFinding   = "access-analyzer:GetFinding"
+)
+
+// externalAccessDetail is the decoded external-access member of a finding: who
+// outside the zone of trust has access, to what, and how.
+type externalAccessDetail struct {
+	principal   map[string]any
+	isPublic    *bool
+	actions     []any
+	condition   map[string]any
+	sources     []any // dicts
+	rcpRestrict string
+}
+
+// newExternalAccessDetail builds the detail from the fields the v1
+// FindingSummary and the v2 ExternalAccessDetails share.
+func newExternalAccessDetail(principal map[string]string, isPublic *bool, action []string,
+	condition map[string]string, sources []aatypes.FindingSource, rcp aatypes.ResourceControlPolicyRestriction,
+) externalAccessDetail {
+	res := externalAccessDetail{
+		principal:   make(map[string]any, len(principal)),
+		isPublic:    isPublic,
+		actions:     make([]any, 0, len(action)),
+		condition:   make(map[string]any, len(condition)),
+		sources:     make([]any, 0, len(sources)),
+		rcpRestrict: string(rcp),
+	}
+	for k, v := range principal {
+		res.principal[k] = v
+	}
+	for _, act := range action {
+		res.actions = append(res.actions, act)
+	}
+	for k, v := range condition {
+		res.condition[k] = v
+	}
+	for _, src := range sources {
+		entry := map[string]any{"type": string(src.Type)}
+		if src.Detail != nil {
+			if src.Detail.AccessPointArn != nil {
+				entry["accessPointArn"] = *src.Detail.AccessPointArn
+			}
+			if src.Detail.AccessPointAccount != nil {
+				entry["accessPointAccount"] = *src.Detail.AccessPointAccount
+			}
+		}
+		res.sources = append(res.sources, entry)
+	}
+	return res
+}
+
+// decodeFindingSummaryV1 reads the external-access detail out of a ListFindings
+// summary. ListFindings serves external-access analyzers only, so every summary
+// it returns describes external access.
+func decodeFindingSummaryV1(s aatypes.FindingSummary) externalAccessDetail {
+	return newExternalAccessDetail(s.Principal, s.IsPublic, s.Action, s.Condition, s.Sources, s.ResourceControlPolicyRestriction)
+}
+
+// decodeExternalAccessDetails picks the external-access member out of a
+// GetFindingV2 detail union. It reports false when the finding carries none.
+func decodeExternalAccessDetails(details []aatypes.FindingDetails) (externalAccessDetail, bool) {
+	for _, detail := range details {
+		if typed, ok := detail.(*aatypes.FindingDetailsMemberExternalAccessDetails); ok {
+			v := typed.Value
+			return newExternalAccessDetail(v.Principal, v.IsPublic, v.Action, v.Condition, v.Sources, v.ResourceControlPolicyRestriction), true
+		}
+	}
+	return externalAccessDetail{}, false
+}
+
+// externalDetailMemo holds one analyzer's external-access details, filled by
+// one paged ListFindings pass.
+type externalDetailMemo struct {
+	once sync.Once
+	byID map[string]externalAccessDetail
+	err  error
+}
+
+// detailsForAnalyzer returns the external-access details of every finding of
+// the analyzer, keyed by finding id. The first call per analyzer lists them
+// with ListFindings, whose summary carries the detail that the ListFindingsV2
+// summary lacks; later calls read the memo. A refusal is cached as Forbidden.
+func (a *mqlAwsIamAccessAnalyzer) detailsForAnalyzer(region, analyzerArn string) (map[string]externalAccessDetail, error) {
+	v, _ := a.detailMemos.LoadOrStore(analyzerArn, &externalDetailMemo{})
+	memo := v.(*externalDetailMemo)
+	memo.once.Do(func() {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.AccessAnalyzer(region)
+		ctx := context.Background()
+		byID := map[string]externalAccessDetail{}
+		paginator := accessanalyzer.NewListFindingsPaginator(svc, &accessanalyzer.ListFindingsInput{
+			AnalyzerArn: aws.String(analyzerArn),
+		})
+		for paginator.HasMorePages() {
+			page, err := paginator.NextPage(ctx)
+			if err != nil {
+				if Is400AccessDeniedError(err) {
+					memo.err = llx.Forbidden(err, llx.WithPermissions(permListFindings))
+				} else {
+					memo.err = err
+				}
+				return
+			}
+			for _, summary := range page.Findings {
+				if summary.Id == nil {
+					continue
+				}
+				byID[*summary.Id] = decodeFindingSummaryV1(summary)
+			}
+		}
+		memo.byID = byID
+	})
+	return memo.byID, memo.err
+}
+
+// accessAnalyzerRoot returns the scan's aws.iam.accessAnalyzer resource.
+func accessAnalyzerRoot(runtime *plugin.Runtime) (*mqlAwsIamAccessAnalyzer, error) {
+	obj, err := CreateResource(runtime, ResourceAwsIamAccessAnalyzer, map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	return obj.(*mqlAwsIamAccessAnalyzer), nil
+}
+
+// fetchExternalAccessDetail resolves the external-access detail of the finding.
+// Findings of any other type carry none and report false without an API call.
+// The detail comes from the analyzer's memo; a finding the memo does not hold
+// (created after the memo was filled) reads it with GetFindingV2.
+func (a *mqlAwsIamAccessAnalyzerFinding) fetchExternalAccessDetail() (externalAccessDetail, bool, error) {
+	a.externalOnce.Do(func() {
+		if a.Type.Data != string(aatypes.FindingTypeExternalAccess) {
+			return
+		}
+		root, err := accessAnalyzerRoot(a.MqlRuntime)
+		if err != nil {
+			a.cacheExternalErr = err
+			return
+		}
+		byID, err := root.detailsForAnalyzer(a.Region.Data, a.AnalyzerArn.Data)
+		if err != nil {
+			a.cacheExternalErr = err
+			return
+		}
+		if d, ok := byID[a.Id.Data]; ok {
+			a.cacheExternal, a.cacheExternalOK = d, true
+			return
+		}
+
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.AccessAnalyzer(a.Region.Data)
+		finding, err := svc.GetFindingV2(context.Background(), &accessanalyzer.GetFindingV2Input{
+			AnalyzerArn: aws.String(a.AnalyzerArn.Data),
+			Id:          aws.String(a.Id.Data),
+		})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				a.cacheExternalErr = llx.Forbidden(err, llx.WithPermissions(permGetFinding))
+			} else {
+				a.cacheExternalErr = err
+			}
+			return
+		}
+		a.cacheExternal, a.cacheExternalOK = decodeExternalAccessDetails(finding.FindingDetails)
+	})
+	return a.cacheExternal, a.cacheExternalOK, a.cacheExternalErr
+}
+
+func (a *mqlAwsIamAccessAnalyzerFinding) principal() (map[string]any, error) {
+	d, ok, err := a.fetchExternalAccessDetail()
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		a.Principal.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return d.principal, nil
+}
+
+func (a *mqlAwsIamAccessAnalyzerFinding) isPublic() (bool, error) {
+	d, ok, err := a.fetchExternalAccessDetail()
+	if err != nil {
+		return false, err
+	}
+	if !ok || d.isPublic == nil {
+		a.IsPublic.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return *d.isPublic, nil
+}
+
+func (a *mqlAwsIamAccessAnalyzerFinding) actions() ([]any, error) {
+	d, ok, err := a.fetchExternalAccessDetail()
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return []any{}, nil
+	}
+	return d.actions, nil
+}
+
+func (a *mqlAwsIamAccessAnalyzerFinding) condition() (map[string]any, error) {
+	d, ok, err := a.fetchExternalAccessDetail()
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		a.Condition.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return d.condition, nil
+}
+
+func (a *mqlAwsIamAccessAnalyzerFinding) sources() ([]any, error) {
+	d, ok, err := a.fetchExternalAccessDetail()
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return []any{}, nil
+	}
+	return d.sources, nil
+}
+
+func (a *mqlAwsIamAccessAnalyzerFinding) resourceControlPolicyRestriction() (string, error) {
+	d, ok, err := a.fetchExternalAccessDetail()
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		a.ResourceControlPolicyRestriction.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return d.rcpRestrict, nil
+}
+
+// analyzer resolves the finding's analyzer against the already-listed
+// analyzers, so it costs no API call of its own.
+func (a *mqlAwsIamAccessAnalyzerFinding) analyzer() (*mqlAwsIamAccessAnalyzerAnalyzer, error) {
+	if a.AnalyzerArn.Data == "" {
+		a.Analyzer.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	root, err := accessAnalyzerRoot(a.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	analyzers := root.GetAnalyzers()
+	if analyzers.Error != nil {
+		return nil, analyzers.Error
+	}
+	for _, x := range analyzers.Data {
+		if analyzer, ok := x.(*mqlAwsIamAccessAnalyzerAnalyzer); ok && analyzer.Arn.Data == a.AnalyzerArn.Data {
+			return analyzer, nil
+		}
+	}
+	a.Analyzer.State = plugin.StateIsSet | plugin.StateIsNull
+	return nil, nil
 }
 
 func (a *mqlAwsIamAccessAnalyzer) analyzers() ([]any, error) {
