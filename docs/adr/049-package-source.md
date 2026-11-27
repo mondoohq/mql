@@ -555,6 +555,39 @@ above it is a few seconds on a 20 Mbit link, which is the cost the dpkg
 section avoided by filtering on the host; a command that filters the indexes
 on the host is the next step if this proves slow.
 
+Guards both readers apply, so that a read that went wrong never becomes
+`direct`. An index or database that is cut short, damaged, larger than its cap
+or in a format the reader does not know counts as not read, and every answer
+that needed it stays null. The list of repositories is complete only when every
+line was placed: apk also reads `*.list` files in `/etc/apk/repositories.d` and
+`/lib/apk/repositories.d` (apk-tools 3 has those paths; the 2.14 binary on
+`alpine:3.21` has none), and a line that is neither `<url>` nor `@<tag> <url>`,
+or more repositories than the cap of 64, makes the list incomplete. An
+`APKINDEX.*` file in the cache that no configured repository explains (the
+index of `apk add -X <url>`, or of a repository since removed) makes it
+incomplete too: its address is unknown, so it is not read, and a package may
+have come from it. pacman is incomplete for an `Include` outside a repository
+section (the file may define repositories), for more repositories than the cap,
+and for a `sync/*.db` file no repository of `pacman.conf` names (the stale
+`community.db` of `manjarolinux/base` is one). A pacman package whose
+`%BUILDDATE%` differs from the sync entry of the same name, version and
+architecture is a rebuild by another repository and reads null, as an apk
+checksum mismatch does. `%VALIDATION%` can list several methods; `pgp` among
+them counts as a checked signature. Keys listed in the keyring package's
+`*-revoked` file (fingerprints, one per line) are not the operating system's.
+For apk, only the second gzip stream of an index is read when a signature
+stream precedes it: an `APKINDEX` entry in the first stream is outside the
+signature and is ignored, and an index of a single stream is unsigned and never
+`os`. The signature stream is read through a 1 MB cap and at most 16
+signatures.
+
+Two behaviours are kept as they are. A package that missed an update reads `os`
+when the name is only in OS-signed indexes, whether or not every repository has
+an index, as for dpkg. And pacman's signature match is by the issuer in the
+sync database's `%PGPSIG%`, which is not tied to the installed file, the same
+trade-off as for rpm: pacman verified the file when it installed it, and the
+database is what names the repository.
+
 ### Files, not commands
 
 As in ADR 044, every answer is read from files:

@@ -5,11 +5,11 @@ package packages
 
 import (
 	"archive/tar"
-	"bufio"
 	"bytes"
 	"compress/bzip2"
 	"compress/gzip"
 	"encoding/base64"
+	"errors"
 	"io"
 	"path"
 	"strings"
@@ -73,6 +73,10 @@ type pacmanRepo struct {
 type pacmanConfig struct {
 	repos  []pacmanRepo
 	dbPath string
+	// incomplete is true when the configuration names repositories this
+	// reader did not place: an Include outside a repository section, whose
+	// file may define sections of its own, or more repositories than the cap.
+	incomplete bool
 }
 
 // parsePacmanConf reads pacman.conf. read returns the content of an included
@@ -100,8 +104,12 @@ func parsePacmanConf(data []byte, read func(p string) []byte) pacmanConfig {
 		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
 			finish()
 			section = line[1 : len(line)-1]
-			if section != "options" && section != "" && len(cfg.repos) < pacmanMaxRepos {
-				cur = &pacmanRepo{name: section}
+			if section != "options" && section != "" {
+				if len(cfg.repos) < pacmanMaxRepos {
+					cur = &pacmanRepo{name: section}
+				} else {
+					cfg.incomplete = true
+				}
 			}
 			continue
 		}
@@ -113,6 +121,9 @@ func parsePacmanConf(data []byte, read func(p string) []byte) pacmanConfig {
 		switch {
 		case section == "options" && key == "DBPath" && value != "":
 			cfg.dbPath = strings.TrimSuffix(value, "/") + "/"
+		case cur == nil && key == "Include":
+			// an included file can hold [repository] sections of its own
+			cfg.incomplete = true
 		case cur != nil && key == "Server" && cur.server == "":
 			cur.server = value
 		case cur != nil && key == "Include" && cur.server == "":
@@ -157,7 +168,10 @@ type pacmanSyncEntry struct {
 	// operating system's keyring. unsigned is true when the database lists no
 	// signature for it.
 	osSigned bool
-	repo     *pacmanRepoDB
+	// buildDate is %BUILDDATE% of the listed package. The package installed
+	// from this listing carries the same value.
+	buildDate string
+	repo      *pacmanRepoDB
 }
 
 // pacmanRepoDB is one repository whose sync database was read.
@@ -245,7 +259,13 @@ func readPacmanSyncDBs(files *sourceFiles, platform string, pkgs []Package) pacm
 	}
 	arch := pacmanArch(pkgs)
 
-	out.complete = true
+	out.complete = !cfg.incomplete
+	// A sync database no repository of the configuration explains belongs to a
+	// repository this reader did not place, or one since removed. A package
+	// may have come from it.
+	if pacmanUnexplainedDB(files.fs, cfg) {
+		out.complete = false
+	}
 	for _, repo := range cfg.repos {
 		dbFile := path.Join(cfg.dbPath, "sync", repo.name+".db")
 		fi, err := files.fs.Stat(dbFile)
@@ -273,6 +293,28 @@ func readPacmanSyncDBs(files *sourceFiles, platform string, pkgs []Package) pacm
 	return out
 }
 
+// pacmanUnexplainedDB reports a "*.db" file in the sync directory that no
+// repository of the configuration names.
+func pacmanUnexplainedDB(fs afero.Fs, cfg pacmanConfig) bool {
+	entries, err := afero.ReadDir(fs, path.Join(cfg.dbPath, "sync"))
+	if err != nil {
+		return false
+	}
+	known := map[string]bool{}
+	for _, r := range cfg.repos {
+		known[r.name+".db"] = true
+	}
+	for i, e := range entries {
+		if i >= 1024 {
+			return true
+		}
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".db") && !known[e.Name()] {
+			return true
+		}
+	}
+	return false
+}
+
 // readPacmanOSKeys collects the keys in the keyring files the distribution's
 // keyring packages own. The second result is false when none of them is
 // installed or none holds a key: then no package can be attributed to the
@@ -284,7 +326,7 @@ func readPacmanOSKeys(files *sourceFiles, platform string, pkgs []Package) (open
 			installed[pkgs[i].Name] = pkgs[i].Version
 		}
 	}
-	var keyringFiles []string
+	var keyringFiles, revokedFiles []string
 	for _, name := range pacmanOSKeyringPackages[platform] {
 		version, ok := installed[name]
 		if !ok {
@@ -295,19 +337,35 @@ func readPacmanOSKeys(files *sourceFiles, platform string, pkgs []Package) (open
 			continue
 		}
 		for _, f := range pacmanOwnedFiles(data) {
-			if path.Dir(f) == pacmanKeyringDir && path.Ext(f) == ".gpg" {
+			switch {
+			case path.Dir(f) != pacmanKeyringDir:
+			case path.Ext(f) == ".gpg":
 				keyringFiles = append(keyringFiles, "/"+f)
+			case strings.HasSuffix(f, "-revoked"):
+				revokedFiles = append(revokedFiles, "/"+f)
 			}
 		}
 	}
-	files.prefetch(keyringFiles)
+	files.prefetch(append(append([]string{}, keyringFiles...), revokedFiles...))
+	// The keyring package lists the fingerprints of the keys it revoked, one
+	// per line, in a "<distribution>-revoked" file next to the keyring.
+	revoked := map[string]bool{}
+	for _, f := range revokedFiles {
+		if data, err := files.read(f); err == nil && len(data) <= pacmanMaxConfFile {
+			for line := range strings.SplitSeq(string(data), "\n") {
+				if fp := strings.ToUpper(strings.TrimSpace(line)); fp != "" {
+					revoked[fp] = true
+				}
+			}
+		}
+	}
 	keys := openPGPKeys{}
 	for _, f := range keyringFiles {
 		data, err := files.read(f)
 		if err != nil || len(data) > pacmanMaxKeyringFile {
 			continue
 		}
-		keys.addKeyring(data)
+		keys.addKeyringExcept(data, revoked)
 	}
 	return keys, len(keys) > 0
 }
@@ -341,26 +399,38 @@ func readPacmanSyncDB(data []byte, installed map[string]struct{}, osKeys openPGP
 	}
 	defer closeFn()
 	out := map[string][]pacmanSyncEntry{}
-	tr := tar.NewReader(io.LimitReader(r, pacmanMaxSyncDBText))
+	tr := tar.NewReader(newLimitedReader(r, pacmanMaxSyncDBText))
 	for {
 		hdr, err := tr.Next()
-		if err != nil {
-			// io.EOF ends the archive; a database cut short keeps what it read
+		if errors.Is(err, io.EOF) {
 			break
 		}
-		if hdr.Typeflag != tar.TypeReg || path.Base(hdr.Name) != "desc" || hdr.Size > pacmanMaxConfFile {
+		if err != nil {
+			// a database cut short, damaged or too large lists packages it
+			// did not show; reading on would turn them into "listed nowhere"
+			return nil, err
+		}
+		if hdr.Typeflag != tar.TypeReg || path.Base(hdr.Name) != "desc" {
 			continue
 		}
-		fields := parsePacmanDescSections(bufio.NewReader(tr))
+		if hdr.Size > pacmanMaxConfFile {
+			return nil, errTooLarge
+		}
+		raw, err := io.ReadAll(tr)
+		if err != nil {
+			return nil, err
+		}
+		fields := parsePacmanDescSections(bytes.NewReader(raw))
 		name := fields["%NAME%"]
 		if _, ok := installed[name]; !ok {
 			continue
 		}
 		out[name] = append(out[name], pacmanSyncEntry{
-			version:  fields["%VERSION%"],
-			arch:     fields["%ARCH%"],
-			osSigned: pacmanSignedBy(fields["%PGPSIG%"], osKeys),
-			repo:     db,
+			version:   fields["%VERSION%"],
+			arch:      fields["%ARCH%"],
+			buildDate: fields["%BUILDDATE%"],
+			osSigned:  pacmanSignedBy(fields["%PGPSIG%"], osKeys),
+			repo:      db,
 		})
 	}
 	return out, nil
@@ -403,8 +473,13 @@ func pacmanDecompress(data []byte) (io.Reader, func(), error) {
 	case bytes.HasPrefix(data, []byte("BZh")):
 		return bzip2.NewReader(bytes.NewReader(data)), noop, nil
 	}
-	// an uncompressed archive
-	return bytes.NewReader(data), noop, nil
+	// an uncompressed tar archive has "ustar" at offset 257; anything else is a
+	// format this reader does not know (.lz4, .lz, .lrz, .lzo and .Z are
+	// accepted by repo-add), and must not read as an empty database
+	if len(data) >= 262 && bytes.Equal(data[257:262], []byte("ustar")) {
+		return bytes.NewReader(data), noop, nil
+	}
+	return nil, noop, errors.New("unknown sync database format")
 }
 
 // pacmanSources decides each package's source:
@@ -447,7 +522,7 @@ func pacmanSource(pkg *Package, entries []pacmanSyncEntry, complete bool) Source
 		return Source{OSProvided: osProvided(false), Channel: ChannelDirect}
 	}
 	var exactOS, exactOther *pacmanRepoDB
-	nameOS, nameOther := false, false
+	nameOS, nameOther, rebuilt := false, false, false
 	for _, e := range entries {
 		if e.osSigned {
 			nameOS = true
@@ -455,6 +530,11 @@ func pacmanSource(pkg *Package, entries []pacmanSyncEntry, complete bool) Source
 			nameOther = true
 		}
 		if e.version != pkg.Version || (e.arch != pkg.Arch && e.arch != "" && pkg.Arch != "") {
+			continue
+		}
+		if e.buildDate != "" && pkg.pacmanBuildDate != "" && e.buildDate != pkg.pacmanBuildDate {
+			// the same version built another time: a rebuild by someone else
+			rebuilt = true
 			continue
 		}
 		switch {
@@ -470,7 +550,7 @@ func pacmanSource(pkg *Package, entries []pacmanSyncEntry, complete bool) Source
 	// a signature. Anything else on a package the operating system's database
 	// lists means the package was not checked against that signature, so the
 	// listing says nothing about what is installed.
-	checked := pkg.pacmanValidation == "" || pkg.pacmanValidation == "pgp"
+	checked := pacmanChecked(pkg.pacmanValidation)
 	switch {
 	case exactOS != nil && !checked:
 		return unknownSource()
@@ -478,6 +558,8 @@ func pacmanSource(pkg *Package, entries []pacmanSyncEntry, complete bool) Source
 		return Source{OSProvided: osProvided(true), Channel: ChannelOS, Name: exactOS.name, URL: exactOS.url}
 	case exactOther != nil:
 		return Source{OSProvided: osProvided(false), Channel: ChannelVendorRepository, Name: exactOther.name, URL: exactOther.url}
+	case rebuilt:
+		return unknownSource()
 	case nameOS && !nameOther && checked:
 		// an operating system package that missed an update
 		return Source{OSProvided: osProvided(true), Channel: ChannelOS}
@@ -486,3 +568,19 @@ func pacmanSource(pkg *Package, entries []pacmanSyncEntry, complete bool) Source
 }
 
 var _ SourceResolver = (*PacmanPkgManager)(nil)
+
+// pacmanChecked reports whether pacman checked a package's signature when it
+// installed it: %VALIDATION% lists the methods, one per line ("none", "md5",
+// "sha256", "pgp"), and "pgp" among them is the signature. An absent value, as
+// from `pacman -Q`, says nothing against it.
+func pacmanChecked(validation string) bool {
+	if validation == "" {
+		return true
+	}
+	for v := range strings.SplitSeq(validation, "\n") {
+		if strings.TrimSpace(v) == "pgp" {
+			return true
+		}
+	}
+	return false
+}

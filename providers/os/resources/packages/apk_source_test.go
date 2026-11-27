@@ -14,6 +14,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
+	"io"
 	"os"
 	"path"
 	"strings"
@@ -255,7 +256,7 @@ func TestApkRepoIndexPathsLocal(t *testing.T) {
 // edge/testing with a tag and nginx.org, 2026-11-27. The comment and the
 // malformed lines are Synthetic.
 func TestParseApkRepositories(t *testing.T) {
-	repos := parseApkRepositories([]byte("https://dl-cdn.alpinelinux.org/alpine/v3.21/main\n" +
+	repos, ok := parseApkRepositories([]byte("https://dl-cdn.alpinelinux.org/alpine/v3.21/main\n" +
 		"# https://dl-cdn.alpinelinux.org/alpine/v3.21/community\n" +
 		"@testing https://dl-cdn.alpinelinux.org/alpine/edge/testing\n" +
 		"https://nginx.org/packages/alpine/v3.21/main  # vendor\n" +
@@ -265,8 +266,47 @@ func TestParseApkRepositories(t *testing.T) {
 		{tag: "testing", location: "https://dl-cdn.alpinelinux.org/alpine/edge/testing"},
 		{location: "https://nginx.org/packages/alpine/v3.21/main"},
 	}, repos)
+	assert.False(t, ok, "a line that is not a repository makes the list incomplete")
+
+	_, ok = parseApkRepositories([]byte("https://dl-cdn.alpinelinux.org/alpine/v3.21/main\n@testing https://dl-cdn.alpinelinux.org/alpine/edge/testing\n"))
+	assert.True(t, ok)
+
+	// Synthetic: more repositories than the cap
+	var many strings.Builder
+	for i := range apkMaxRepositories + 1 {
+		many.WriteString("https://r" + strings.Repeat("x", i%5) + ".example/" + string(rune('a'+i%26)) + "\n")
+	}
+	repos, ok = parseApkRepositories([]byte(many.String()))
+	assert.False(t, ok)
+	assert.Len(t, repos, apkMaxRepositories)
 }
 
+// Synthetic: apk-tools 3 reads "*.list" files from repositories.d (its library
+// carries the path; apk-tools 2.14 has none, Measured on alpine:3.21). No
+// target had such a file.
+func TestReadApkRepositoriesDirectory(t *testing.T) {
+	fs := apkTestFS(t, map[string][]byte{
+		"/etc/apk/repositories":             []byte("https://dl-cdn.alpinelinux.org/alpine/v3.21/main\n"),
+		"/etc/apk/repositories.d/corp.list": []byte("@corp https://apk.corp.example/v3.21\n"),
+		"/etc/apk/repositories.d/notes.txt": []byte("https://ignored.example/\n"),
+	})
+	repos, complete := readApkRepositories(newLocalSourceFiles(fs))
+	assert.True(t, complete)
+	assert.Equal(t, []apkRepo{
+		{location: "https://dl-cdn.alpinelinux.org/alpine/v3.21/main"},
+		{tag: "corp", location: "https://apk.corp.example/v3.21"},
+	}, repos)
+
+	fs = apkTestFS(t, map[string][]byte{
+		"/etc/apk/repositories":            []byte("https://dl-cdn.alpinelinux.org/alpine/v3.21/main\n"),
+		"/etc/apk/repositories.d/odd.list": []byte("${mirror}/main extra words\n"),
+	})
+	_, complete = readApkRepositories(newLocalSourceFiles(fs))
+	assert.False(t, complete, "a line this reader cannot place may name a repository")
+}
+
+// Measured: the repository lines and names of the alpine:3.21 container,
+// 2026-11-27; the credential and directory cases are Synthetic.
 func TestApkRepoName(t *testing.T) {
 	assert.Equal(t, "testing", apkRepo{tag: "testing", location: "https://dl-cdn.alpinelinux.org/alpine/edge/testing"}.name())
 	assert.Equal(t, "dl-cdn.alpinelinux.org/alpine/v3.21/main", apkRepo{location: "https://dl-cdn.alpinelinux.org/alpine/v3.21/main"}.name())
@@ -276,6 +316,8 @@ func TestApkRepoName(t *testing.T) {
 	assert.Equal(t, "/srv/repo", apkRepo{location: "/srv/repo"}.name())
 }
 
+// Measured: nginx.org's repository address; the credential and directory cases
+// are Synthetic.
 func TestApkRepoURL(t *testing.T) {
 	assert.Equal(t, "https://nginx.org/packages/alpine/v3.21/main", apkRepoURL(apkRepo{location: "https://nginx.org/packages/alpine/v3.21/main"}))
 	// Synthetic: credentials never leave the system
@@ -409,6 +451,22 @@ func TestApkSourcesEndToEnd(t *testing.T) {
 		assert.Equal(t, ChannelOS, got["busybox"].Channel, "the OS index still answers")
 	})
 
+	t.Run("an index no configured repository explains", func(t *testing.T) {
+		// Synthetic: `apk add -X <url> pkg` leaves the index of a repository the
+		// configuration does not name. Measured: alpine:3.21 kept two such files
+		// in /var/cache/apk after repositories were removed and added again.
+		extra := map[string][]byte{}
+		for p, data := range files {
+			extra[p] = data
+		}
+		extra["/var/cache/apk/APKINDEX.deadbeef.tar.gz"] = mainIndex
+		in := readApkIndexes(newLocalSourceFiles(apkTestFS(t, extra)), "alpine")
+		assert.False(t, in.indexes.complete)
+		got := byName(apkSources(pkgs, in))
+		assert.Nil(t, got["hello-direct"].OSProvided, "it may come from the repository whose index is unread")
+		assert.Equal(t, ChannelOS, got["busybox"].Channel)
+	})
+
 	t.Run("no index at all", func(t *testing.T) {
 		// Measured: alpine:3.21 and cgr.dev/chainguard/wolfi-base ship without an index.
 		bare := map[string][]byte{}
@@ -495,24 +553,137 @@ func TestApkChainguardKeyPattern(t *testing.T) {
 	assert.False(t, apkChainguardKey.MatchString("nginx_signing.rsa.pub"))
 }
 
+// apkSignatureOf signs the second stream of an index.
+func apkSignatureOf(t testing.TB, second []byte, key *rsa.PrivateKey) []byte {
+	t.Helper()
+	sum := sha256.Sum256(second)
+	sig, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, sum[:])
+	require.NoError(t, err)
+	return sig
+}
+
 // Synthetic: the sizes and shapes no target served.
 func TestParseApkIndexRejects(t *testing.T) {
 	_, err := parseApkIndex([]byte("not gzip"), nil, nil)
 	assert.Error(t, err)
 
-	// a signature stream followed by an archive with no APKINDEX
-	noIndex := gzipTar(t, map[string][]byte{"DESCRIPTION": []byte("x")}, []string{"DESCRIPTION"}, true)
-	_, err = parseApkIndex(noIndex, nil, nil)
-	assert.Error(t, err)
+	t.Run("a signature stream followed by an archive with no APKINDEX", func(t *testing.T) {
+		key := apkTestKey(t, 0)
+		second := gzipTar(t, map[string][]byte{"DESCRIPTION": []byte("x")}, []string{"DESCRIPTION"}, true)
+		name := ".SIGN.RSA256.k.rsa.pub"
+		first := gzipTar(t, map[string][]byte{name: apkSignatureOf(t, second, key)}, []string{name}, false)
+		_, err := parseApkIndex(append(first, second...), apkOSKeys{"k.rsa.pub": &key.PublicKey}, nil)
+		assert.Error(t, err)
+	})
 
-	// an unsigned index parses and is not the operating system's
-	idx, err := parseApkIndex(buildApkIndex(t, "C:Q1a=\nP:foo\nV:1\nA:x86_64\n\n", nil, "", ""), apkOSKeys{}, map[string]struct{}{"foo": {}})
-	require.NoError(t, err)
-	assert.False(t, idx.osSigned)
-	require.Len(t, idx.byName["foo"], 1)
+	t.Run("a single archive with no APKINDEX", func(t *testing.T) {
+		noIndex := gzipTar(t, map[string][]byte{"DESCRIPTION": []byte("x")}, []string{"DESCRIPTION"}, true)
+		_, err := parseApkIndex(noIndex, nil, nil)
+		assert.Error(t, err)
+	})
 
-	// only installed names are kept
-	idx, err = parseApkIndex(buildApkIndex(t, "P:foo\nV:1\n\nP:bar\nV:2\n", nil, "", ""), apkOSKeys{}, map[string]struct{}{"foo": {}})
+	t.Run("an unsigned index parses and is not the operating system's", func(t *testing.T) {
+		idx, err := parseApkIndex(buildApkIndex(t, "C:Q1a=\nP:foo\nV:1\nA:x86_64\n\n", nil, "", ""), apkOSKeys{}, map[string]struct{}{"foo": {}})
+		require.NoError(t, err)
+		assert.False(t, idx.osSigned)
+		require.Len(t, idx.byName["foo"], 1)
+	})
+
+	t.Run("only installed names are kept", func(t *testing.T) {
+		idx, err := parseApkIndex(buildApkIndex(t, "P:foo\nV:1\n\nP:bar\nV:2\n", nil, "", ""), apkOSKeys{}, map[string]struct{}{"foo": {}})
+		require.NoError(t, err)
+		assert.Len(t, idx.byName, 1)
+	})
+}
+
+// Synthetic: no target served an index with an entry in front of the
+// signature. An APKINDEX in the first stream is outside what the signature
+// covers; it must not be read next to a genuine, OS-signed second stream.
+func TestParseApkIndexIgnoresEntriesBeforeTheSignedStream(t *testing.T) {
+	key := apkTestKey(t, 0)
+	_, second := apkIndexStreams(t, "C:Q1ok=\nP:busybox\nV:1\nA:x86_64\n\n", key, "k.rsa.pub", "RSA256")
+	name := ".SIGN.RSA256.k.rsa.pub"
+	injected := "C:Q1evil=\nP:evil\nV:1\nA:x86_64\n\n"
+	first := gzipTar(t, map[string][]byte{name: apkSignatureOf(t, second, key), "APKINDEX": []byte(injected)}, []string{name, "APKINDEX"}, false)
+
+	idx, err := parseApkIndex(append(first, second...), apkOSKeys{"k.rsa.pub": &key.PublicKey}, map[string]struct{}{"busybox": {}, "evil": {}})
 	require.NoError(t, err)
-	assert.Len(t, idx.byName, 1)
+	assert.True(t, idx.osSigned, "the genuine second stream verifies")
+	assert.Len(t, idx.byName["busybox"], 1)
+	assert.Empty(t, idx.byName["evil"], "an entry the signature does not cover is not listed")
+}
+
+// Synthetic: damaged and oversized indexes. A read that did not reach the end
+// of the index must fail, so that what it did not list does not read as
+// "listed nowhere".
+func TestParseApkIndexIncompleteReads(t *testing.T) {
+	installed := map[string]struct{}{"foo": {}}
+	text := "C:Q1a=\nP:foo\nV:1\nA:x86_64\n\n" + strings.Repeat("C:Q1b=\nP:bar\nV:2\nA:x86_64\n\n", 2000)
+
+	t.Run("a stream cut short", func(t *testing.T) {
+		data := buildApkIndex(t, text, nil, "", "")
+		_, err := parseApkIndex(data[:len(data)-200], apkOSKeys{}, installed)
+		assert.Error(t, err)
+	})
+
+	t.Run("a damaged checksum at the end of the stream", func(t *testing.T) {
+		data := buildApkIndex(t, text, nil, "", "")
+		data[len(data)-6] ^= 0xff // the gzip CRC-32
+		_, err := parseApkIndex(data, apkOSKeys{}, installed)
+		assert.Error(t, err)
+	})
+
+	t.Run("a signature stream over the cap", func(t *testing.T) {
+		big := bytes.Repeat([]byte{'x'}, 3*apkMaxSignatureStream)
+		first := gzipTar(t, map[string][]byte{".SIGN.RSA256.k.rsa.pub": big}, []string{".SIGN.RSA256.k.rsa.pub"}, false)
+		_, second := apkIndexStreams(t, text, nil, "", "")
+		_, err := parseApkIndex(append(first, second...), apkOSKeys{}, installed)
+		assert.Error(t, err)
+	})
+
+	t.Run("an index line longer than the scanner allows", func(t *testing.T) {
+		// the scan stops with an error; the entries after it are not listed
+		long := "C:Q1a=\nP:foo\nV:1\nA:x86_64\n\nD:" + strings.Repeat("x", apkMaxLine+10) + "\n\nP:bar\nV:2\n\n"
+		key := apkTestKey(t, 0)
+		_, err := parseApkIndex(buildApkIndex(t, long, key, "k.rsa.pub", "RSA256"), apkOSKeys{"k.rsa.pub": &key.PublicKey}, installed)
+		assert.Error(t, err)
+	})
+
+	t.Run("a signature stream that ends exactly at the cap with data after it", func(t *testing.T) {
+		// Synthetic: one entry of cap-512 bytes fills the cap with its header and
+		// data blocks; the next entry lies past it
+		fill := bytes.Repeat([]byte{'x'}, apkMaxSignatureStream-512-512)
+		files := map[string][]byte{".SIGN.RSA256.a.rsa.pub": fill, ".SIGN.RSA256.b.rsa.pub": []byte("tail")}
+		first := gzipTar(t, files, []string{".SIGN.RSA256.a.rsa.pub", ".SIGN.RSA256.b.rsa.pub"}, false)
+		_, second := apkIndexStreams(t, text, nil, "", "")
+		_, err := parseApkIndex(append(first, second...), apkOSKeys{}, installed)
+		assert.Error(t, err)
+	})
+
+	t.Run("signatures beyond the cap are not read", func(t *testing.T) {
+		key := apkTestKey(t, 0)
+		_, second := apkIndexStreams(t, text, nil, "", "")
+		files := map[string][]byte{}
+		var order []string
+		for i := range apkMaxSignatures {
+			n := ".SIGN.RSA256.junk" + string(rune('a'+i)) + ".rsa.pub"
+			files[n] = []byte("x")
+			order = append(order, n)
+		}
+		good := ".SIGN.RSA256.k.rsa.pub"
+		files[good] = apkSignatureOf(t, second, key)
+		order = append(order, good)
+		first := gzipTar(t, files, order, false)
+		idx, err := parseApkIndex(append(first, second...), apkOSKeys{"k.rsa.pub": &key.PublicKey}, installed)
+		require.NoError(t, err)
+		assert.False(t, idx.osSigned, "the genuine signature is past the cap")
+	})
+
+	t.Run("the limit reader fails past its limit and ends at it", func(t *testing.T) {
+		_, err := io.ReadAll(newLimitedReader(strings.NewReader("0123456789"), 5))
+		assert.ErrorIs(t, err, errTooLarge)
+		got, err := io.ReadAll(newLimitedReader(strings.NewReader("01234"), 5))
+		require.NoError(t, err)
+		assert.Equal(t, "01234", string(got))
+	})
 }

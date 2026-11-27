@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/klauspost/compress/zstd"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
@@ -148,6 +149,9 @@ func TestPacmanValidationMeasured(t *testing.T) {
 	acl := packageFromPacmanFields(pf, parsePacmanDescSections(bytes.NewReader(readPacmanTestdata(t, "local-desc-acl-2.4.0-1.txt"))))
 	require.NotNil(t, acl)
 	assert.Equal(t, "pgp", acl.pacmanValidation)
+	assert.Equal(t, "1782738989", acl.pacmanBuildDate)
+	assert.Equal(t, acl.pacmanBuildDate, pacmanDescField(t, readPacmanTestdata(t, "sync-desc-core-acl-2.4.0-1.txt"), "%BUILDDATE%"),
+		"the sync database lists the same build date as the installed record")
 	direct := packageFromPacmanFields(pf, parsePacmanDescSections(bytes.NewReader(readPacmanTestdata(t, "local-desc-hello-direct-2.0-1.txt"))))
 	require.NotNil(t, direct)
 	assert.Equal(t, "none", direct.pacmanValidation)
@@ -223,9 +227,24 @@ func TestReadPacmanSyncDB(t *testing.T) {
 	}
 
 	t.Run("a database that is not an archive", func(t *testing.T) {
-		got, err := readPacmanSyncDB([]byte{0x1f, 0x8b, 0x00}, installed, archKeys, db)
+		_, err := readPacmanSyncDB([]byte{0x1f, 0x8b, 0x00}, installed, archKeys, db)
 		assert.Error(t, err)
-		assert.Empty(t, got)
+	})
+
+	t.Run("a format that is not known is not an empty database", func(t *testing.T) {
+		// Synthetic: repo-add also writes .lz4, .lz, .lrz, .lzo and .Z; no image used one.
+		_, err := readPacmanSyncDB(append([]byte{0x04, 0x22, 0x4d, 0x18}, bytes.Repeat([]byte{1}, 600)...), installed, archKeys, db)
+		assert.Error(t, err)
+	})
+
+	t.Run("an archive cut short", func(t *testing.T) {
+		// Synthetic: a download that stopped early
+		data := syncDB(t, descs, "")
+		_, err := readPacmanSyncDB(data[:len(data)/2+3], installed, archKeys, db)
+		assert.Error(t, err)
+		data = syncDB(t, descs, "gz")
+		_, err = readPacmanSyncDB(data[:len(data)-12], installed, archKeys, db)
+		assert.Error(t, err)
 	})
 }
 
@@ -273,6 +292,29 @@ func TestPacmanSource(t *testing.T) {
 		})
 	}
 
+	t.Run("the same version built another time is not the listed package", func(t *testing.T) {
+		// Synthetic: a repository ahead of core rebuilds acl 2.4.0-1 and signs it with its own key
+		pkg := pacmanTestPkg("acl", "2.4.0-1", "x86_64", "pgp")
+		pkg.pacmanBuildDate = "1782738989"
+		coreEntry := e("2.4.0-1", true, core)
+		coreEntry.buildDate = "1700000000"
+		got := pacmanSource(&pkg, []pacmanSyncEntry{coreEntry}, true)
+		assert.Nil(t, got.OSProvided)
+		assert.Equal(t, ChannelUnknown, got.Channel)
+
+		// listed by the rebuilding repository too: that listing is the match
+		rebuild := e("2.4.0-1", false, vendor)
+		rebuild.buildDate = "1782738989"
+		got = pacmanSource(&pkg, []pacmanSyncEntry{coreEntry, rebuild}, true)
+		assert.Equal(t, osProvided(false), got.OSProvided)
+		assert.Equal(t, "vendor", got.Name)
+
+		// the same build date is the same build
+		coreEntry.buildDate = "1782738989"
+		got = pacmanSource(&pkg, []pacmanSyncEntry{coreEntry}, true)
+		assert.Equal(t, osProvided(true), got.OSProvided)
+	})
+
 	t.Run("address", func(t *testing.T) {
 		pkg := pacmanTestPkg("acl", "2.4.0-1", "x86_64", "pgp")
 		got := pacmanSource(&pkg, []pacmanSyncEntry{e("2.4.0-1", true, core)}, true)
@@ -292,7 +334,7 @@ func pacmanTestFS(t *testing.T, conf string, keyringPkgs map[string]string, dbs 
 		write("/var/lib/pacman/sync/"+repo+".db", data)
 	}
 	for name, version := range keyringPkgs {
-		write("/var/lib/pacman/local/"+name+"-"+version+"/files", []byte("%FILES%\nusr/share/pacman/keyrings/"+name[:strings.Index(name, "-")]+".gpg\nusr/share/pacman/keyrings/"+name[:strings.Index(name, "-")]+"-trusted\n"))
+		write("/var/lib/pacman/local/"+name+"-"+version+"/files", []byte("%FILES%\nusr/share/pacman/keyrings/"+name[:strings.Index(name, "-")]+".gpg\nusr/share/pacman/keyrings/"+name[:strings.Index(name, "-")]+"-trusted\nusr/share/pacman/keyrings/"+name[:strings.Index(name, "-")]+"-revoked\n"))
 	}
 	for p, data := range keyrings {
 		write(p, data)
@@ -349,6 +391,47 @@ func TestPacmanSourcesEndToEnd(t *testing.T) {
 		assert.Nil(t, got["hello-direct"].OSProvided, "the missing extra database could list it")
 	})
 
+	t.Run("a sync database no repository names", func(t *testing.T) {
+		// Synthetic: a repository removed from pacman.conf after its first sync.
+		// Measured: manjarolinux/base ships a stale community.db that no
+		// repository of its pacman.conf names.
+		fs := pacmanTestFS(t, conf, keyringPkgs, map[string][]byte{"core": core, "extra": extra, "vendor": vendor, "removed": vendor}, keyringFile)
+		dbs := readPacmanSyncDBs(newLocalSourceFiles(fs), "arch", pkgs)
+		require.False(t, dbs.complete)
+		got := byName(pacmanSources(pkgs, dbs))
+		assert.Nil(t, got["hello-direct"].OSProvided, "it may come from the removed repository")
+		assert.Equal(t, ChannelOS, got["acl"].Channel)
+	})
+
+	t.Run("a repository added through an Include outside a repository section", func(t *testing.T) {
+		// Synthetic
+		fs := pacmanTestFS(t, "Include = /etc/pacman.d/extra-repos.conf\n"+conf, keyringPkgs, map[string][]byte{"core": core, "extra": extra, "vendor": vendor}, keyringFile)
+		dbs := readPacmanSyncDBs(newLocalSourceFiles(fs), "arch", pkgs)
+		assert.False(t, dbs.complete)
+	})
+
+	t.Run("a revoked key is not the operating system's", func(t *testing.T) {
+		// Measured: archlinux-keyring ships archlinux-revoked, one fingerprint per
+		// line. Synthetic: the keyring here holds one key, and the file names it.
+		list, err := openpgp.ReadKeyRing(bytes.NewReader(readPacmanTestdata(t, "archlinux-keyring-packager-key.gpg")))
+		require.NoError(t, err)
+		fp := hexString(list[0].PrimaryKey.Fingerprint)
+		kr := map[string][]byte{
+			"/usr/share/pacman/keyrings/archlinux.gpg":     readPacmanTestdata(t, "archlinux-keyring-packager-key.gpg"),
+			"/usr/share/pacman/keyrings/archlinux-revoked": []byte("0A9DDABB64B993D82AD45E4F32EAB0A976938292\n" + fp + "\n"),
+		}
+		fs := pacmanTestFS(t, conf, keyringPkgs, map[string][]byte{"core": core, "extra": extra, "vendor": vendor}, kr)
+		for _, s := range pacmanSources(pkgs, readPacmanSyncDBs(newLocalSourceFiles(fs), "arch", pkgs)) {
+			assert.Nil(t, s.OSProvided, "no key is left to attribute a package to the operating system")
+		}
+
+		// a revoked list that names other keys leaves this one trusted
+		kr["/usr/share/pacman/keyrings/archlinux-revoked"] = []byte("0A9DDABB64B993D82AD45E4F32EAB0A976938292\n")
+		fs = pacmanTestFS(t, conf, keyringPkgs, map[string][]byte{"core": core, "extra": extra, "vendor": vendor}, kr)
+		got := byName(pacmanSources(pkgs, readPacmanSyncDBs(newLocalSourceFiles(fs), "arch", pkgs)))
+		assert.Equal(t, osProvided(true), got["acl"].OSProvided)
+	})
+
 	t.Run("no sync database at all", func(t *testing.T) {
 		fs := pacmanTestFS(t, conf, keyringPkgs, nil, keyringFile)
 		got := pacmanSources(pkgs, readPacmanSyncDBs(newLocalSourceFiles(fs), "arch", pkgs))
@@ -397,7 +480,40 @@ func TestPacmanSourcesEndToEnd(t *testing.T) {
 	})
 }
 
+// Synthetic: a %VALIDATION% record with several methods; the measured records
+// each had one.
+func TestPacmanValidationMethods(t *testing.T) {
+	fields := parsePacmanDescSections(strings.NewReader("%NAME%\nx\n\n%VALIDATION%\nsha256\npgp\n\n%ARCH%\nany\n"))
+	assert.Equal(t, "sha256\npgp", fields["%VALIDATION%"])
+	assert.True(t, pacmanChecked(fields["%VALIDATION%"]), "pgp among the methods is a checked signature")
+	assert.True(t, pacmanChecked("pgp"))
+	assert.True(t, pacmanChecked(""), "no record says nothing against it")
+	assert.False(t, pacmanChecked("none"))
+	assert.False(t, pacmanChecked("sha256\nmd5"))
+}
+
+// Synthetic: configurations that name repositories the reader did not place.
+func TestParsePacmanConfIncomplete(t *testing.T) {
+	cfg := parsePacmanConf([]byte("[options]\nInclude = /etc/pacman.d/more.conf\n[core]\nServer = https://m.example/$repo\n"), nil)
+	assert.True(t, cfg.incomplete, "an included file can define repositories")
+
+	cfg = parsePacmanConf([]byte("Include = /etc/pacman.d/more.conf\n[core]\nServer = https://m.example/$repo\n"), nil)
+	assert.True(t, cfg.incomplete)
+
+	cfg = parsePacmanConf([]byte("[core]\nInclude = /etc/pacman.d/mirrorlist\n"), func(string) []byte { return []byte("Server = https://m.example/$repo\n") })
+	assert.False(t, cfg.incomplete, "a mirror list in a repository section is the usual form")
+
+	var conf strings.Builder
+	for i := range pacmanMaxRepos + 2 {
+		conf.WriteString("[r" + string(rune('a'+i%26)) + string(rune('a'+i/26)) + "]\nServer = https://m.example/x\n")
+	}
+	cfg = parsePacmanConf([]byte(conf.String()), nil)
+	assert.True(t, cfg.incomplete)
+	assert.Len(t, cfg.repos, pacmanMaxRepos)
+}
+
 func TestPacmanArch(t *testing.T) {
+	// Synthetic: package lists; the architecture counts are made up
 	assert.Equal(t, "x86_64", pacmanArch([]Package{{Arch: "any"}, {Arch: "x86_64"}, {Arch: "x86_64"}, {Arch: "aarch64"}, {}}))
 	assert.Empty(t, pacmanArch([]Package{{Arch: "any"}}))
 }

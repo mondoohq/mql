@@ -321,6 +321,13 @@ func (k openPGPKeys) addFile(files *sourceFiles, p string) {
 
 // addKeyring adds every key of a keyring, binary or ASCII-armored.
 func (k openPGPKeys) addKeyring(data []byte) {
+	k.addKeyringExcept(data, nil)
+}
+
+// addKeyringExcept adds every key of a keyring except the keys of the entities
+// whose primary key fingerprint (upper-case hex) is in revoked, subkeys
+// included.
+func (k openPGPKeys) addKeyringExcept(data []byte, revoked map[string]bool) {
 	var entities openpgp.EntityList
 	var err error
 	if bytes.Contains(data, []byte("-----BEGIN PGP PUBLIC KEY BLOCK-----")) {
@@ -331,10 +338,13 @@ func (k openPGPKeys) addKeyring(data []byte) {
 	if err != nil && len(entities) == 0 {
 		// A keyring with a key the library cannot parse would lose every key
 		// in it; read the public key packets one by one instead.
-		k.addKeyPackets(data)
+		k.addKeyPackets(data, revoked)
 		return
 	}
 	for _, e := range entities {
+		if e.PrimaryKey != nil && revoked[hexString(e.PrimaryKey.Fingerprint)] {
+			continue
+		}
 		k.addKey(e.PrimaryKey)
 		for _, sub := range e.Subkeys {
 			k.addKey(sub.PublicKey)
@@ -342,7 +352,7 @@ func (k openPGPKeys) addKeyring(data []byte) {
 	}
 }
 
-func (k openPGPKeys) addKeyPackets(data []byte) {
+func (k openPGPKeys) addKeyPackets(data []byte, revoked map[string]bool) {
 	var r io.Reader = bytes.NewReader(data)
 	if block, err := armor.Decode(bytes.NewReader(data)); err == nil {
 		r = block.Body
@@ -356,7 +366,7 @@ func (k openPGPKeys) addKeyPackets(data []byte) {
 		if err != nil {
 			return
 		}
-		if pub, ok := p.(*packet.PublicKey); ok {
+		if pub, ok := p.(*packet.PublicKey); ok && !revoked[hexString(pub.Fingerprint)] {
 			k.addKey(pub)
 		}
 	}

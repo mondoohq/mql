@@ -131,6 +131,10 @@ type Package struct {
 	// it, from %VALIDATION% of the local database: "pgp", "sha256", "md5" or
 	// "none". Unexported: source resolution reads it.
 	pacmanValidation string
+	// pacmanBuildDate is %BUILDDATE% of the local database record: when the
+	// installed package was built. The sync database lists the same value for
+	// the same build.
+	pacmanBuildDate string
 }
 
 // MacOSApp describes a macOS application bundle.

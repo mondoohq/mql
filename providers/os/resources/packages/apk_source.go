@@ -52,6 +52,12 @@ const (
 	apkMaxRepositories = 64
 	// apkMaxSmallFile caps a key, a signature or the repositories file.
 	apkMaxSmallFile = 1024 * 1024
+	// apkMaxSignatureStream caps the stream that holds an index's signatures,
+	// which is a few kilobytes.
+	apkMaxSignatureStream = 1024 * 1024
+	// apkMaxSignatures caps the signatures read from one index. Chainguard's
+	// carries three.
+	apkMaxSignatures = 16
 )
 
 // apkOSKeyPackages are, per distribution, the packages that install the keys
@@ -175,27 +181,83 @@ type apkRepo struct {
 	location string
 }
 
-// parseApkRepositories reads /etc/apk/repositories: one repository per line,
+// parseApkRepositories reads a repositories file: one repository per line,
 // either "<url or path>" or "@<tag> <url or path>". Lines starting with # are
-// comments.
-func parseApkRepositories(data []byte) []apkRepo {
-	var repos []apkRepo
+// comments. ok is false when a line is neither, such as a keyword or a variable
+// apk-tools 3 accepts: that line names a repository this reader cannot place,
+// so the list is not complete. At most apkMaxRepositories are returned, and
+// more are not ok either.
+func parseApkRepositories(data []byte) (repos []apkRepo, ok bool) {
+	ok = true
 	for line := range strings.SplitSeq(string(data), "\n") {
 		if i := strings.IndexByte(line, '#'); i >= 0 {
 			line = line[:i]
 		}
 		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		if len(repos) >= apkMaxRepositories {
+			return repos, false
+		}
 		switch {
 		case len(fields) == 1 && !strings.HasPrefix(fields[0], "@"):
 			repos = append(repos, apkRepo{location: fields[0]})
 		case len(fields) == 2 && strings.HasPrefix(fields[0], "@"):
 			repos = append(repos, apkRepo{tag: strings.TrimPrefix(fields[0], "@"), location: fields[1]})
-		}
-		if len(repos) >= apkMaxRepositories {
-			break
+		default:
+			ok = false
 		}
 	}
-	return repos
+	return repos, ok
+}
+
+// apkRepositoriesDirs are the directories apk-tools 3 reads "*.list" files of
+// repositories from, besides /etc/apk/repositories. apk-tools 2.14 has none
+// (its binary carries no such path), so an Alpine 3.21 host has no such
+// directory.
+var apkRepositoriesDirs = []string{"/etc/apk/repositories.d", "/lib/apk/repositories.d"}
+
+// readApkRepositories collects every repository apk reads. complete is false
+// when a file could not be read or placed.
+func readApkRepositories(files *sourceFiles) (repos []apkRepo, complete bool) {
+	complete = true
+	read := func(p string, required bool) {
+		data, err := files.read(p)
+		if err != nil {
+			if required {
+				complete = false
+			}
+			return
+		}
+		if len(data) > apkMaxSmallFile {
+			complete = false
+			return
+		}
+		r, ok := parseApkRepositories(data)
+		complete = complete && ok
+		repos = append(repos, r...)
+	}
+	read(apkRepositories, true)
+	for _, dir := range apkRepositoriesDirs {
+		entries, err := afero.ReadDir(files.fs, dir)
+		if err != nil {
+			continue
+		}
+		for i, e := range entries {
+			if i >= apkMaxRepositories {
+				complete = false
+				break
+			}
+			if !e.IsDir() && strings.HasSuffix(e.Name(), ".list") {
+				read(path.Join(dir, e.Name()), true)
+			}
+		}
+	}
+	if len(repos) > apkMaxRepositories {
+		repos, complete = repos[:apkMaxRepositories], false
+	}
+	return repos, complete
 }
 
 // isRemote reports whether the repository is fetched over the network, which
@@ -301,10 +363,7 @@ func readApkIndexes(files *sourceFiles, platform string) apkSourceInput {
 		return apkSourceInput{}
 	}
 	files.prefetch([]string{apkRepositories, apkArchFile})
-	var repos []apkRepo
-	if data, err := files.read(apkRepositories); err == nil && len(data) <= apkMaxSmallFile {
-		repos = parseApkRepositories(data)
-	}
+	repos, reposComplete := readApkRepositories(files)
 	arch := apkSystemArch(files, db)
 	osKeys := readApkOSKeys(files, platform, db)
 
@@ -316,7 +375,7 @@ func readApkIndexes(files *sourceFiles, platform string) apkSourceInput {
 	out := apkSourceInput{db: db}
 	out.indexes.byName = map[string][]apkIndexEntry{}
 	out.indexes.trustKnown = len(osKeys) > 0
-	out.indexes.complete = len(repos) > 0
+	out.indexes.complete = len(repos) > 0 && reposComplete
 	for _, repo := range repos {
 		idx, ok := readApkRepoIndex(files.fs, repo, arch, osKeys, installed)
 		if !ok {
@@ -328,7 +387,41 @@ func readApkIndexes(files *sourceFiles, platform string) apkSourceInput {
 			out.indexes.byName[name] = append(out.indexes.byName[name], entries...)
 		}
 	}
+	// An index in the cache that no configured repository explains came from a
+	// repository named on a command line (`apk add -X <url> pkg`) or one since
+	// removed. Its address is unknown and it is not read: a package may have
+	// come from it, so a name no read index lists proves nothing.
+	if out.indexes.complete && apkUnexplainedIndex(files.fs, repos, arch) {
+		out.indexes.complete = false
+	}
 	return out
+}
+
+// apkUnexplainedIndex reports an APKINDEX file in a cache directory that is
+// not the cached index of one of the repositories.
+func apkUnexplainedIndex(fs afero.Fs, repos []apkRepo, arch string) bool {
+	known := map[string]bool{}
+	for _, r := range repos {
+		for _, p := range r.indexPaths(arch) {
+			known[p] = true
+		}
+	}
+	for _, dir := range apkCacheDirs {
+		entries, err := afero.ReadDir(fs, dir)
+		if err != nil {
+			continue
+		}
+		for i, e := range entries {
+			if i >= 1024 {
+				return true
+			}
+			name := e.Name()
+			if !e.IsDir() && strings.HasPrefix(name, "APKINDEX.") && !known[path.Join(dir, name)] {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // apkSystemArch is the architecture apk builds repository addresses with.
@@ -459,34 +552,57 @@ func parseApkIndex(data []byte, osKeys apkOSKeys, installed map[string]struct{})
 	// a reader that is not buffered is read exactly to the end of the stream,
 	// which tells where the next one starts
 	gz.Multistream(false)
-	idx := &apkIndex{byName: map[string][]apkIndexEntry{}}
+
+	// The first stream holds the signatures and is small. It is read through a
+	// cap, so a stream that inflates without end cannot exhaust memory.
+	first := &io.LimitedReader{R: gz, N: apkMaxSignatureStream}
 	var sigs []apkSignature
-	found := false
-	tr := tar.NewReader(gz)
+	unsigned := &apkIndex{byName: map[string][]apkIndexEntry{}}
+	foundInFirst := false
+	tr := tar.NewReader(first)
 	for {
 		hdr, err := tr.Next()
-		if err != nil {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+		if err != nil {
+			return nil, err
+		}
 		if hdr.Name == "APKINDEX" {
-			// an unsigned index is one stream holding the archive itself
-			readApkIndexText(io.LimitReader(tr, apkMaxIndexText), installed, idx)
-			found = true
+			// an index with no signature is one stream holding the archive itself
+			if err := readApkIndexText(newLimitedReader(tr, apkMaxIndexText), installed, unsigned); err != nil {
+				return nil, err
+			}
+			foundInFirst = true
 			continue
 		}
-		sig, ok := readApkSignature(hdr, tr)
-		if ok {
+		if len(sigs) >= apkMaxSignatures {
+			continue
+		}
+		if sig, ok := readApkSignature(hdr, tr); ok {
 			sigs = append(sigs, sig)
 		}
 	}
-	if _, err := io.Copy(io.Discard, gz); err != nil {
+	if _, err := io.Copy(io.Discard, first); err != nil {
 		return nil, err
 	}
-	signed := data[len(data)-br.Len():]
-	if found && len(signed) == 0 {
-		return idx, nil
+	if first.N <= 0 {
+		return nil, errors.New("the signature stream of the index is too large")
 	}
-
+	signed := data[len(data)-br.Len():]
+	if len(signed) == 0 {
+		if foundInFirst {
+			// One stream: an index nobody signed. What it lists is never the
+			// operating system's.
+			return unsigned, nil
+		}
+		return nil, errors.New("the index holds no APKINDEX")
+	}
+	// Two streams: the second is what the signatures cover, and the only
+	// stream that counts. An APKINDEX entry in the first is outside the
+	// signature and is dropped; trusting it would let anyone prepend entries
+	// to an index the operating system signed.
+	idx := &apkIndex{byName: map[string][]apkIndexEntry{}}
 	for _, s := range sigs {
 		if pub := osKeys[s.keyName]; pub != nil && s.verifies(pub, signed) {
 			idx.osSigned = true
@@ -503,13 +619,50 @@ func parseApkIndex(data []byte, osKeys apkOSKeys, installed map[string]struct{})
 	for {
 		hdr, err := tr2.Next()
 		if err != nil {
-			return nil, errors.New("the index holds no APKINDEX")
+			if errors.Is(err, io.EOF) {
+				err = errors.New("the index holds no APKINDEX")
+			}
+			return nil, err
 		}
 		if hdr.Name == "APKINDEX" {
-			readApkIndexText(io.LimitReader(tr2, apkMaxIndexText), installed, idx)
+			if err := readApkIndexText(newLimitedReader(tr2, apkMaxIndexText), installed, idx); err != nil {
+				return nil, err
+			}
 			return idx, nil
 		}
 	}
+}
+
+var errTooLarge = errors.New("larger than the limit")
+
+// limitedReader reads at most n bytes and then fails with errTooLarge, unlike
+// io.LimitReader, whose cut looks like the end of the data.
+type limitedReader struct {
+	r io.Reader
+	n int64
+}
+
+func newLimitedReader(r io.Reader, n int64) io.Reader { return &limitedReader{r: r, n: n} }
+
+func (l *limitedReader) Read(p []byte) (int, error) {
+	if l.n <= 0 {
+		// at the limit: more data is an error, none is the end
+		var one [1]byte
+		n, err := l.r.Read(one[:])
+		if n > 0 {
+			return 0, errTooLarge
+		}
+		if err != nil {
+			return 0, err
+		}
+		return 0, nil
+	}
+	if int64(len(p)) > l.n {
+		p = p[:l.n]
+	}
+	n, err := l.r.Read(p)
+	l.n -= int64(n)
+	return n, err
 }
 
 // readApkSignature reads one ".SIGN.<algorithm>.<key file name>" entry of the
@@ -562,7 +715,7 @@ func (s apkSignature) verifies(pub *rsa.PublicKey, signed []byte) bool {
 // readApkIndexText reads the APKINDEX text: blocks of "X:value" lines separated
 // by an empty line. Only the entries of installed package names are kept; the
 // text of a large index runs to tens of megabytes.
-func readApkIndexText(r io.Reader, installed map[string]struct{}, idx *apkIndex) {
+func readApkIndexText(r io.Reader, installed map[string]struct{}, idx *apkIndex) error {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(nil, apkMaxLine)
 	var cur apkIndexEntry
@@ -597,6 +750,9 @@ func readApkIndexText(r io.Reader, installed map[string]struct{}, idx *apkIndex)
 		}
 	}
 	flush()
+	// a read that stopped early leaves entries out, which would read as
+	// "listed nowhere"
+	return scanner.Err()
 }
 
 // apkSources decides each package's source:
