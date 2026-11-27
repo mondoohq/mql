@@ -76,6 +76,12 @@ snowflake.account {
   accountAdmins() []snowflake.user
   // Tags defined in the account (governance / classification)
   tags() []snowflake.tag
+  // Tag references in the account
+  //
+  // Every tag set on an object or a column of the account, one entry per tag and
+  // object, read from the account usage view of tag references. The view lags
+  // changes by up to two hours, so a tag set or removed since is not reflected yet.
+  tagReferences() []snowflake.tagReference
   // Failover/replication groups in the account
   failoverGroups() []snowflake.failoverGroup
   // Authentication policies in the account
@@ -1086,6 +1092,56 @@ snowflake.tag @defaults("name databaseName schemaName") {
   allowedValues []string
   // When the tag was created
   createdAt time
+  // Objects and columns the tag is set on
+  references() []snowflake.tagReference
+}
+
+// Snowflake tag reference
+//
+// One tag set on one object or column, keyed by the object's domain and fully
+// qualified name, the column when the tag is set on a column, and the tag.
+// `value` is the string the tag holds on that object. Read from the account
+// usage view, which lags changes by up to two hours.
+private snowflake.tagReference @defaults("tagName domain objectName columnName value") {
+  // Tag that is set
+  tag() snowflake.tag
+  // Name of the tag
+  tagName string
+  // Database that holds the tag
+  //
+  // Null when the role cannot list that database; tagQualifiedName then names it.
+  tagDatabase() snowflake.database
+  // Schema that holds the tag
+  //
+  // Null when the role cannot list that schema; tagQualifiedName then names it.
+  tagSchema() snowflake.schema
+  // Fully qualified name of the tag, DATABASE.SCHEMA.TAG, as recorded
+  tagQualifiedName string
+  // Value the tag holds on the object (empty when set without a value)
+  value string
+  // Object domain, for example TABLE, COLUMN, SCHEMA, DATABASE, WAREHOUSE, ROLE or USER
+  domain string
+  // Database of the object
+  //
+  // Null for domains outside a database (WAREHOUSE, ROLE, USER, ACCOUNT, INTEGRATION)
+  // and for a database that was dropped or that the role cannot list;
+  // objectQualifiedName then names it.
+  objectDatabase() snowflake.database
+  // Schema of the object
+  //
+  // Null for domains outside a schema and for a schema that was dropped or that the
+  // role cannot list.
+  objectSchema() snowflake.schema
+  // Name of the object, the table for a column
+  objectName string
+  // Fully qualified name of the object as recorded
+  //
+  // For example DB.SCHEMA.TABLE, DB.SCHEMA or the bare name of a warehouse, role or user.
+  objectQualifiedName string
+  // Column the tag is set on, empty for other domains
+  columnName string
+  // Table the tag is set on, or the table of the column; null for other domains
+  table() snowflake.table
 }
 
 // Snowflake Failover Group
@@ -2163,6 +2219,11 @@ snowflake.table @defaults("name schemaName rows") {
   createdAt time
   // Time the table was dropped, null while the table still exists
   droppedAt time
+  // Tag references on the table and its columns
+  //
+  // The entries of the account tagReferences whose object is this table: a tag set
+  // on the table itself (empty columnName) or on one of its columns.
+  tagReferences() []snowflake.tagReference
 }
 
 // Snowflake external table

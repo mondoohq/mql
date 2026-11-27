@@ -42,6 +42,9 @@ type mqlSnowflakeAccountInternal struct {
 
 	keySetIndex keySetIndex
 
+	// tagReferenceIndex backs tag reference fields; see tag_references.go.
+	tagReferenceIndex tagReferenceMemo
+
 	cachedDatabaseIndex  memoIndex[sdk.Database]
 	cachedSchemaIndex    memoIndex[sdk.Schema]
 	cachedWarehouseIndex memoIndex[sdk.Warehouse]

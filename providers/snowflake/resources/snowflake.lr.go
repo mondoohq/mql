@@ -33,6 +33,7 @@ const (
 	ResourceSnowflakeShare                     string = "snowflake.share"
 	ResourceSnowflakeApiIntegration            string = "snowflake.apiIntegration"
 	ResourceSnowflakeTag                       string = "snowflake.tag"
+	ResourceSnowflakeTagReference              string = "snowflake.tagReference"
 	ResourceSnowflakeFailoverGroup             string = "snowflake.failoverGroup"
 	ResourceSnowflakeDatabaseRole              string = "snowflake.databaseRole"
 	ResourceSnowflakeView                      string = "snowflake.view"
@@ -145,6 +146,10 @@ func init() {
 		"snowflake.tag": {
 			// to override args, implement: initSnowflakeTag(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createSnowflakeTag,
+		},
+		"snowflake.tagReference": {
+			// to override args, implement: initSnowflakeTagReference(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createSnowflakeTagReference,
 		},
 		"snowflake.failoverGroup": {
 			// to override args, implement: initSnowflakeFailoverGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -435,6 +440,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"snowflake.account.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSnowflakeAccount).GetTags()).ToDataRes(types.Array(types.Resource("snowflake.tag")))
+	},
+	"snowflake.account.tagReferences": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnowflakeAccount).GetTagReferences()).ToDataRes(types.Array(types.Resource("snowflake.tagReference")))
 	},
 	"snowflake.account.failoverGroups": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSnowflakeAccount).GetFailoverGroups()).ToDataRes(types.Array(types.Resource("snowflake.failoverGroup")))
@@ -1347,6 +1355,48 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"snowflake.tag.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSnowflakeTag).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"snowflake.tag.references": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnowflakeTag).GetReferences()).ToDataRes(types.Array(types.Resource("snowflake.tagReference")))
+	},
+	"snowflake.tagReference.tag": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnowflakeTagReference).GetTag()).ToDataRes(types.Resource("snowflake.tag"))
+	},
+	"snowflake.tagReference.tagName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnowflakeTagReference).GetTagName()).ToDataRes(types.String)
+	},
+	"snowflake.tagReference.tagDatabase": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnowflakeTagReference).GetTagDatabase()).ToDataRes(types.Resource("snowflake.database"))
+	},
+	"snowflake.tagReference.tagSchema": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnowflakeTagReference).GetTagSchema()).ToDataRes(types.Resource("snowflake.schema"))
+	},
+	"snowflake.tagReference.tagQualifiedName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnowflakeTagReference).GetTagQualifiedName()).ToDataRes(types.String)
+	},
+	"snowflake.tagReference.value": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnowflakeTagReference).GetValue()).ToDataRes(types.String)
+	},
+	"snowflake.tagReference.domain": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnowflakeTagReference).GetDomain()).ToDataRes(types.String)
+	},
+	"snowflake.tagReference.objectDatabase": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnowflakeTagReference).GetObjectDatabase()).ToDataRes(types.Resource("snowflake.database"))
+	},
+	"snowflake.tagReference.objectSchema": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnowflakeTagReference).GetObjectSchema()).ToDataRes(types.Resource("snowflake.schema"))
+	},
+	"snowflake.tagReference.objectName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnowflakeTagReference).GetObjectName()).ToDataRes(types.String)
+	},
+	"snowflake.tagReference.objectQualifiedName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnowflakeTagReference).GetObjectQualifiedName()).ToDataRes(types.String)
+	},
+	"snowflake.tagReference.columnName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnowflakeTagReference).GetColumnName()).ToDataRes(types.String)
+	},
+	"snowflake.tagReference.table": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnowflakeTagReference).GetTable()).ToDataRes(types.Resource("snowflake.table"))
 	},
 	"snowflake.failoverGroup.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSnowflakeFailoverGroup).GetName()).ToDataRes(types.String)
@@ -2341,6 +2391,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"snowflake.table.droppedAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSnowflakeTable).GetDroppedAt()).ToDataRes(types.Time)
 	},
+	"snowflake.table.tagReferences": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnowflakeTable).GetTagReferences()).ToDataRes(types.Array(types.Resource("snowflake.tagReference")))
+	},
 	"snowflake.externalTable.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSnowflakeExternalTable).GetName()).ToDataRes(types.String)
 	},
@@ -2980,6 +3033,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"snowflake.account.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlSnowflakeAccount).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"snowflake.account.tagReferences": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnowflakeAccount).TagReferences, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"snowflake.account.failoverGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -4256,6 +4313,66 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"snowflake.tag.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlSnowflakeTag).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"snowflake.tag.references": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnowflakeTag).References, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"snowflake.tagReference.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnowflakeTagReference).__id, ok = v.Value.(string)
+		return
+	},
+	"snowflake.tagReference.tag": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnowflakeTagReference).Tag, ok = plugin.RawToTValue[*mqlSnowflakeTag](v.Value, v.Error)
+		return
+	},
+	"snowflake.tagReference.tagName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnowflakeTagReference).TagName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"snowflake.tagReference.tagDatabase": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnowflakeTagReference).TagDatabase, ok = plugin.RawToTValue[*mqlSnowflakeDatabase](v.Value, v.Error)
+		return
+	},
+	"snowflake.tagReference.tagSchema": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnowflakeTagReference).TagSchema, ok = plugin.RawToTValue[*mqlSnowflakeSchema](v.Value, v.Error)
+		return
+	},
+	"snowflake.tagReference.tagQualifiedName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnowflakeTagReference).TagQualifiedName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"snowflake.tagReference.value": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnowflakeTagReference).Value, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"snowflake.tagReference.domain": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnowflakeTagReference).Domain, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"snowflake.tagReference.objectDatabase": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnowflakeTagReference).ObjectDatabase, ok = plugin.RawToTValue[*mqlSnowflakeDatabase](v.Value, v.Error)
+		return
+	},
+	"snowflake.tagReference.objectSchema": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnowflakeTagReference).ObjectSchema, ok = plugin.RawToTValue[*mqlSnowflakeSchema](v.Value, v.Error)
+		return
+	},
+	"snowflake.tagReference.objectName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnowflakeTagReference).ObjectName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"snowflake.tagReference.objectQualifiedName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnowflakeTagReference).ObjectQualifiedName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"snowflake.tagReference.columnName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnowflakeTagReference).ColumnName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"snowflake.tagReference.table": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnowflakeTagReference).Table, ok = plugin.RawToTValue[*mqlSnowflakeTable](v.Value, v.Error)
 		return
 	},
 	"snowflake.failoverGroup.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -5686,6 +5803,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlSnowflakeTable).DroppedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
+	"snowflake.table.tagReferences": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnowflakeTable).TagReferences, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"snowflake.externalTable.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlSnowflakeExternalTable).__id, ok = v.Value.(string)
 		return
@@ -6554,6 +6675,7 @@ type mqlSnowflakeAccount struct {
 	Grants                                        plugin.TValue[[]any]
 	AccountAdmins                                 plugin.TValue[[]any]
 	Tags                                          plugin.TValue[[]any]
+	TagReferences                                 plugin.TValue[[]any]
 	FailoverGroups                                plugin.TValue[[]any]
 	AuthenticationPolicies                        plugin.TValue[[]any]
 	MaskingPolicies                               plugin.TValue[[]any]
@@ -6914,6 +7036,22 @@ func (c *mqlSnowflakeAccount) GetTags() *plugin.TValue[[]any] {
 		}
 
 		return c.tags()
+	})
+}
+
+func (c *mqlSnowflakeAccount) GetTagReferences() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TagReferences, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("snowflake.account", c.__id, "tagReferences")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.tagReferences()
 	})
 }
 
@@ -10154,6 +10292,7 @@ type mqlSnowflakeTag struct {
 	Comment       plugin.TValue[string]
 	AllowedValues plugin.TValue[[]any]
 	CreatedAt     plugin.TValue[*time.Time]
+	References    plugin.TValue[[]any]
 }
 
 // createSnowflakeTag creates a new instance of this resource
@@ -10218,6 +10357,198 @@ func (c *mqlSnowflakeTag) GetAllowedValues() *plugin.TValue[[]any] {
 
 func (c *mqlSnowflakeTag) GetCreatedAt() *plugin.TValue[*time.Time] {
 	return &c.CreatedAt
+}
+
+func (c *mqlSnowflakeTag) GetReferences() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.References, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("snowflake.tag", c.__id, "references")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.references()
+	})
+}
+
+// mqlSnowflakeTagReference for the snowflake.tagReference resource
+type mqlSnowflakeTagReference struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlSnowflakeTagReferenceInternal
+	Tag                 plugin.TValue[*mqlSnowflakeTag]
+	TagName             plugin.TValue[string]
+	TagDatabase         plugin.TValue[*mqlSnowflakeDatabase]
+	TagSchema           plugin.TValue[*mqlSnowflakeSchema]
+	TagQualifiedName    plugin.TValue[string]
+	Value               plugin.TValue[string]
+	Domain              plugin.TValue[string]
+	ObjectDatabase      plugin.TValue[*mqlSnowflakeDatabase]
+	ObjectSchema        plugin.TValue[*mqlSnowflakeSchema]
+	ObjectName          plugin.TValue[string]
+	ObjectQualifiedName plugin.TValue[string]
+	ColumnName          plugin.TValue[string]
+	Table               plugin.TValue[*mqlSnowflakeTable]
+}
+
+// createSnowflakeTagReference creates a new instance of this resource
+func createSnowflakeTagReference(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlSnowflakeTagReference{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("snowflake.tagReference", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlSnowflakeTagReference) MqlName() string {
+	return "snowflake.tagReference"
+}
+
+func (c *mqlSnowflakeTagReference) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlSnowflakeTagReference) GetTag() *plugin.TValue[*mqlSnowflakeTag] {
+	return plugin.GetOrCompute[*mqlSnowflakeTag](&c.Tag, func() (*mqlSnowflakeTag, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("snowflake.tagReference", c.__id, "tag")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlSnowflakeTag), nil
+			}
+		}
+
+		return c.tag()
+	})
+}
+
+func (c *mqlSnowflakeTagReference) GetTagName() *plugin.TValue[string] {
+	return &c.TagName
+}
+
+func (c *mqlSnowflakeTagReference) GetTagDatabase() *plugin.TValue[*mqlSnowflakeDatabase] {
+	return plugin.GetOrCompute[*mqlSnowflakeDatabase](&c.TagDatabase, func() (*mqlSnowflakeDatabase, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("snowflake.tagReference", c.__id, "tagDatabase")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlSnowflakeDatabase), nil
+			}
+		}
+
+		return c.tagDatabase()
+	})
+}
+
+func (c *mqlSnowflakeTagReference) GetTagSchema() *plugin.TValue[*mqlSnowflakeSchema] {
+	return plugin.GetOrCompute[*mqlSnowflakeSchema](&c.TagSchema, func() (*mqlSnowflakeSchema, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("snowflake.tagReference", c.__id, "tagSchema")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlSnowflakeSchema), nil
+			}
+		}
+
+		return c.tagSchema()
+	})
+}
+
+func (c *mqlSnowflakeTagReference) GetTagQualifiedName() *plugin.TValue[string] {
+	return &c.TagQualifiedName
+}
+
+func (c *mqlSnowflakeTagReference) GetValue() *plugin.TValue[string] {
+	return &c.Value
+}
+
+func (c *mqlSnowflakeTagReference) GetDomain() *plugin.TValue[string] {
+	return &c.Domain
+}
+
+func (c *mqlSnowflakeTagReference) GetObjectDatabase() *plugin.TValue[*mqlSnowflakeDatabase] {
+	return plugin.GetOrCompute[*mqlSnowflakeDatabase](&c.ObjectDatabase, func() (*mqlSnowflakeDatabase, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("snowflake.tagReference", c.__id, "objectDatabase")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlSnowflakeDatabase), nil
+			}
+		}
+
+		return c.objectDatabase()
+	})
+}
+
+func (c *mqlSnowflakeTagReference) GetObjectSchema() *plugin.TValue[*mqlSnowflakeSchema] {
+	return plugin.GetOrCompute[*mqlSnowflakeSchema](&c.ObjectSchema, func() (*mqlSnowflakeSchema, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("snowflake.tagReference", c.__id, "objectSchema")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlSnowflakeSchema), nil
+			}
+		}
+
+		return c.objectSchema()
+	})
+}
+
+func (c *mqlSnowflakeTagReference) GetObjectName() *plugin.TValue[string] {
+	return &c.ObjectName
+}
+
+func (c *mqlSnowflakeTagReference) GetObjectQualifiedName() *plugin.TValue[string] {
+	return &c.ObjectQualifiedName
+}
+
+func (c *mqlSnowflakeTagReference) GetColumnName() *plugin.TValue[string] {
+	return &c.ColumnName
+}
+
+func (c *mqlSnowflakeTagReference) GetTable() *plugin.TValue[*mqlSnowflakeTable] {
+	return plugin.GetOrCompute[*mqlSnowflakeTable](&c.Table, func() (*mqlSnowflakeTable, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("snowflake.tagReference", c.__id, "table")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlSnowflakeTable), nil
+			}
+		}
+
+		return c.table()
+	})
 }
 
 // mqlSnowflakeFailoverGroup for the snowflake.failoverGroup resource
@@ -13323,6 +13654,7 @@ type mqlSnowflakeTable struct {
 	Comment                    plugin.TValue[string]
 	CreatedAt                  plugin.TValue[*time.Time]
 	DroppedAt                  plugin.TValue[*time.Time]
+	TagReferences              plugin.TValue[[]any]
 }
 
 // createSnowflakeTable creates a new instance of this resource
@@ -13487,6 +13819,22 @@ func (c *mqlSnowflakeTable) GetCreatedAt() *plugin.TValue[*time.Time] {
 
 func (c *mqlSnowflakeTable) GetDroppedAt() *plugin.TValue[*time.Time] {
 	return &c.DroppedAt
+}
+
+func (c *mqlSnowflakeTable) GetTagReferences() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TagReferences, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("snowflake.table", c.__id, "tagReferences")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.tagReferences()
+	})
 }
 
 // mqlSnowflakeExternalTable for the snowflake.externalTable resource
