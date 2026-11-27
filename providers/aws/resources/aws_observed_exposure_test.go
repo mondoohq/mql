@@ -125,3 +125,69 @@ func TestExistingEdgeCoverageUnderFlag(t *testing.T) {
 		assert.ErrorIs(t, key.GetExternalAccessFindings().Error, llx.ErrForbidden)
 	})
 }
+
+// Synthetic: analyzers in two regions, the findings listing refused in
+// eu-west-1 only (an SCP scoped to one region). A table in eu-west-1 must not
+// read as reachable by no one; a table in us-east-1 keeps its answer.
+func TestEdgeRefusedRegionIsForbidden(t *testing.T) {
+	enableStructuredErrors(t)
+	stub := &accessAnalyzerStub{
+		v2Findings: map[string][]aatypes.FindingSummaryV2{
+			testAnalyzerArn: {v2Finding("f-table", "ExternalAccess", testTableArn)},
+		},
+		v2Err: map[string]error{testEuAnalyzerArn: accessAnalyzerDenied("access-analyzer:ListFindings")},
+	}
+	rt := stub.runtime(t)
+	rootWithAnalyzers(t, rt,
+		testAnalyzer(testAnalyzerArn, "ACCOUNT", "ACTIVE", "us-east-1"),
+		testAnalyzer(testEuAnalyzerArn, "ACCOUNT", "ACTIVE", "eu-west-1"))
+
+	refused := &mqlAwsDynamodbTable{MqlRuntime: rt, Arn: setString("arn:aws:dynamodb:eu-west-1:111122223333:table/shared"), Region: setString("eu-west-1")}
+	err := refused.GetExternalAccessFindings().Error
+	require.Error(t, err)
+	assert.ErrorIs(t, err, llx.ErrForbidden)
+
+	readable := &mqlAwsDynamodbTable{MqlRuntime: rt, Arn: setString(testTableArn), Region: setString("us-east-1")}
+	edge := readable.GetExternalAccessFindings()
+	require.NoError(t, edge.Error)
+	assert.Equal(t, []string{"f-table"}, findingIDs(t, edge.Data))
+}
+
+// Synthetic: AWS reports a role's trust-policy grant in every region with an
+// analyzer; the role's edge returns it once, from the first region.
+func TestEdgeGlobalResourceOneRegion(t *testing.T) {
+	stub := &accessAnalyzerStub{v2Findings: map[string][]aatypes.FindingSummaryV2{
+		testAnalyzerArn:   {v2Finding("f-us", "ExternalAccess", testRoleArn)},
+		testEuAnalyzerArn: {v2Finding("f-eu", "ExternalAccess", testRoleArn)},
+	}}
+	rt := stub.runtime(t)
+	rootWithAnalyzers(t, rt,
+		testAnalyzer(testAnalyzerArn, "ACCOUNT", "ACTIVE", "us-east-1"),
+		testAnalyzer(testEuAnalyzerArn, "ACCOUNT", "ACTIVE", "eu-west-1"))
+
+	role := &mqlAwsIamRole{MqlRuntime: rt, Arn: setString(testRoleArn)}
+	edge := role.GetExternalAccessFindings()
+	require.NoError(t, edge.Error)
+	assert.Equal(t, []string{"f-eu"}, findingIDs(t, edge.Data))
+}
+
+func TestSameResourceArn(t *testing.T) {
+	cases := []struct {
+		finding, resource string
+		want              bool
+	}{
+		{testTableArn, testTableArn, true},
+		// Synthetic: mql builds DynamoDB ARNs with "aws"; in GovCloud Access
+		// Analyzer reports the real partition.
+		{"arn:aws-us-gov:dynamodb:us-gov-west-1:111122223333:table/orders", "arn:aws:dynamodb:us-gov-west-1:111122223333:table/orders", true},
+		// Synthetic: the canonical EC2 snapshot ARN has no account.
+		{"arn:aws:ec2:us-east-1::snapshot/snap-0abc", "arn:aws:ec2:us-east-1:111122223333:snapshot/snap-0abc", true},
+		{"arn:aws:dynamodb:us-east-1:111122223333:table/orders", "arn:aws:dynamodb:eu-west-1:111122223333:table/orders", false},
+		{"arn:aws:dynamodb:us-east-1:444455556666:table/orders", testTableArn, false},
+		{"arn:aws:dynamodb:us-east-1:111122223333:table/order", testTableArn, false},
+		{"not-an-arn", testTableArn, false},
+	}
+	for _, c := range cases {
+		assert.Equal(t, c.want, sameResourceArn(c.finding, c.resource), "%s vs %s", c.finding, c.resource)
+	}
+}

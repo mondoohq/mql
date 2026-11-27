@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -54,6 +55,21 @@ type mqlAwsIamAccessAnalyzerFindingInternal struct {
 // resource per scan, so every finding of the scan shares these memos.
 type mqlAwsIamAccessAnalyzerInternal struct {
 	detailMemos sync.Map // analyzer ARN -> *externalDetailMemo
+
+	// refusedLock guards externalRefused: the regions whose external-access
+	// findings listing was refused, with the refusal. Set while
+	// externalAccessFindings() computes, so it is complete once
+	// GetExternalAccessFindings returns.
+	refusedLock     sync.Mutex
+	externalRefused map[string]error
+}
+
+// externalRefusedRegion returns the refusal that kept region's external-access
+// findings from the list, or nil.
+func (a *mqlAwsIamAccessAnalyzer) externalRefusedRegion(region string) error {
+	a.refusedLock.Lock()
+	defer a.refusedLock.Unlock()
+	return a.externalRefused[region]
 }
 
 // fetchUnusedAccessDetails resolves the unused-access detail of the finding.
@@ -679,13 +695,18 @@ func (a *mqlAwsIamAccessAnalyzer) externalAccessRegions() (map[string]bool, erro
 }
 
 func (a *mqlAwsIamAccessAnalyzer) externalAccessFindings() ([]any, error) {
-	return a.listFindingsOfTypes(string(aatypes.FindingStatusActive), externalAccessAnalyzerTypes,
+	res, refused, err := a.listFindingsOfTypes(string(aatypes.FindingStatusActive), externalAccessAnalyzerTypes,
 		string(aatypes.FindingTypeExternalAccess), errNoExternalAccessAnalyzer)
+	a.refusedLock.Lock()
+	a.externalRefused = refused
+	a.refusedLock.Unlock()
+	return res, err
 }
 
-// regionFindings is what one region's listing contributes: its findings, or
-// the refusal that kept it from contributing any.
+// regionFindings is what one region's listing contributes: its findings, and
+// the refusal that kept it from contributing all of them.
 type regionFindings struct {
+	region   string
 	findings []any
 	refused  error
 }
@@ -694,14 +715,16 @@ type regionFindings struct {
 // whose type is in analyzerTypes, keeping those of findingType (empty: any).
 // It returns NotApplicable (with noAnalyzer) when no such analyzer is active and
 // Forbidden when every region's call was refused. A refusal in some regions is
-// logged, and the other regions' findings are returned.
-func (a *mqlAwsIamAccessAnalyzer) listFindingsOfTypes(status string, analyzerTypes []string, findingType string, noAnalyzer error) ([]any, error) {
+// logged, the other regions' findings are returned, and refused names the
+// regions whose list is incomplete, so a caller does not read a refused region
+// as one with nothing to report.
+func (a *mqlAwsIamAccessAnalyzer) listFindingsOfTypes(status string, analyzerTypes []string, findingType string, noAnalyzer error) (list []any, refused map[string]error, err error) {
 	byRegion, err := a.activeAnalyzersByRegion(analyzerTypes)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if len(byRegion) == 0 {
-		return nil, llx.NotApplicable(noAnalyzer)
+		return nil, nil, llx.NotApplicable(noAnalyzer)
 	}
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
@@ -710,7 +733,7 @@ func (a *mqlAwsIamAccessAnalyzer) listFindingsOfTypes(status string, analyzerTyp
 		tasks = append(tasks, jobpool.NewJob(func() (jobpool.JobResult, error) {
 			svc := conn.AccessAnalyzer(region)
 			ctx := context.Background()
-			res := regionFindings{findings: []any{}}
+			res := regionFindings{region: region, findings: []any{}}
 			for _, analyzerArn := range analyzerArns {
 				paginator := accessanalyzer.NewListFindingsV2Paginator(svc, &accessanalyzer.ListFindingsV2Input{
 					AnalyzerArn: aws.String(analyzerArn),
@@ -722,7 +745,9 @@ func (a *mqlAwsIamAccessAnalyzer) listFindingsOfTypes(status string, analyzerTyp
 						if Is400AccessDeniedError(err) {
 							log.Warn().Str("region", region).Str("analyzer", analyzerArn).
 								Msg("no permission to list access analyzer findings")
-							return regionFindings{refused: err}, nil
+							// Keep what the region's other analyzers returned.
+							res.refused = err
+							return res, nil
 						}
 						return nil, err
 					}
@@ -744,25 +769,25 @@ func (a *mqlAwsIamAccessAnalyzer) listFindingsOfTypes(status string, analyzerTyp
 	pool := jobpool.CreatePool(tasks, 5)
 	pool.Run()
 	if pool.HasErrors() {
-		return nil, pool.GetErrors()
+		return nil, nil, pool.GetErrors()
 	}
 
 	res := []any{}
-	var refused error
-	readable := 0
+	refused = map[string]error{}
 	for i := range pool.Jobs {
 		rf := pool.Jobs[i].Result.(regionFindings)
-		if rf.refused != nil {
-			refused = rf.refused
-			continue
-		}
-		readable++
 		res = append(res, rf.findings...)
+		if rf.refused != nil {
+			refused[rf.region] = rf.refused
+		}
 	}
-	if readable == 0 {
-		return nil, llx.Forbidden(refused, llx.WithPermissions(permListFindings))
+	if len(refused) == len(byRegion) {
+		// Every region refused: report the alphabetically first one, so the
+		// error does not depend on which job finished last.
+		regions := slices.Sorted(maps.Keys(refused))
+		return nil, refused, llx.Forbidden(refused[regions[0]], llx.WithPermissions(permListFindings))
 	}
-	return res, nil
+	return res, refused, nil
 }
 
 // archiveRules returns the rules that archive matching findings as they are

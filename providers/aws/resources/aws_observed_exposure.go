@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/aws/aws-sdk-go-v2/aws/arn"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
@@ -54,17 +55,68 @@ func externalAccessFindingsForArn(runtime *plugin.Runtime, arn, region string, s
 		}
 		return nil, findings.Error
 	}
+	// A region whose listing was refused has findings we could not read:
+	// "none" would be a false negative.
+	if strict && region != "" {
+		if refused := root.externalRefusedRegion(region); refused != nil {
+			return nil, llx.Forbidden(refused, llx.WithPermissions(permListFindings))
+		}
+	}
 	res := []any{}
 	for _, f := range findings.Data {
 		finding, ok := f.(*mqlAwsIamAccessAnalyzerFinding)
 		if !ok {
 			continue
 		}
-		if finding.ResourceArn.Data == arn {
+		if sameResourceArn(finding.ResourceArn.Data, arn) {
 			res = append(res, finding)
 		}
 	}
+	if region == "" {
+		res = oneRegionsFindings(res)
+	}
 	return res, nil
+}
+
+// sameResourceArn reports whether a finding's resource ARN names the same
+// resource as the ARN mql built for it. The partition is ignored: some ARNs
+// are built with "aws", which in GovCloud or China Access Analyzer reports as
+// "aws-us-gov" or "aws-cn". An empty account on either side matches any:
+// EC2 snapshot ARNs are canonically written without one.
+func sameResourceArn(findingArn, resourceArn string) bool {
+	if findingArn == resourceArn {
+		return true
+	}
+	f, err := arn.Parse(findingArn)
+	if err != nil {
+		return false
+	}
+	r, err := arn.Parse(resourceArn)
+	if err != nil {
+		return false
+	}
+	return f.Service == r.Service && f.Region == r.Region && f.Resource == r.Resource &&
+		(f.AccountID == r.AccountID || f.AccountID == "" || r.AccountID == "")
+}
+
+// oneRegionsFindings keeps, for a global resource, only the findings of one
+// region. Access Analyzer reports a global resource such as an IAM role in
+// every region with an analyzer, so without this one grant came back once per
+// region. The alphabetically first region is kept, so the answer is stable.
+func oneRegionsFindings(list []any) []any {
+	first := ""
+	for _, x := range list {
+		if r := x.(*mqlAwsIamAccessAnalyzerFinding).Region.Data; first == "" || r < first {
+			first = r
+		}
+	}
+	res := make([]any, 0, len(list))
+	for _, x := range list {
+		if x.(*mqlAwsIamAccessAnalyzerFinding).Region.Data == first {
+			res = append(res, x)
+		}
+	}
+	return res
 }
 
 func (a *mqlAwsS3Bucket) externalAccessFindings() ([]any, error) {
