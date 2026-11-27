@@ -22,6 +22,7 @@ const (
 	ResourcePostgresdbDatabase        string = "postgresdb.database"
 	ResourcePostgresdbSchema          string = "postgresdb.schema"
 	ResourcePostgresdbTable           string = "postgresdb.table"
+	ResourcePostgresdbTableColumn     string = "postgresdb.table.column"
 	ResourcePostgresdbRlsPolicy       string = "postgresdb.rlsPolicy"
 	ResourcePostgresdbFunction        string = "postgresdb.function"
 	ResourcePostgresdbPrivilege       string = "postgresdb.privilege"
@@ -63,6 +64,10 @@ func init() {
 		"postgresdb.table": {
 			// to override args, implement: initPostgresdbTable(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createPostgresdbTable,
+		},
+		"postgresdb.table.column": {
+			// to override args, implement: initPostgresdbTableColumn(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createPostgresdbTableColumn,
 		},
 		"postgresdb.rlsPolicy": {
 			// to override args, implement: initPostgresdbRlsPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -362,6 +367,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"postgresdb.table.policies": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPostgresdbTable).GetPolicies()).ToDataRes(types.Array(types.Resource("postgresdb.rlsPolicy")))
+	},
+	"postgresdb.table.columns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPostgresdbTable).GetColumns()).ToDataRes(types.Array(types.Resource("postgresdb.table.column")))
+	},
+	"postgresdb.table.column.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPostgresdbTableColumn).GetName()).ToDataRes(types.String)
+	},
+	"postgresdb.table.column.position": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPostgresdbTableColumn).GetPosition()).ToDataRes(types.Int)
+	},
+	"postgresdb.table.column.typeName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPostgresdbTableColumn).GetTypeName()).ToDataRes(types.String)
+	},
+	"postgresdb.table.column.nullable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPostgresdbTableColumn).GetNullable()).ToDataRes(types.Bool)
+	},
+	"postgresdb.table.column.comment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPostgresdbTableColumn).GetComment()).ToDataRes(types.String)
 	},
 	"postgresdb.rlsPolicy.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPostgresdbRlsPolicy).GetName()).ToDataRes(types.String)
@@ -847,6 +870,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"postgresdb.table.policies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlPostgresdbTable).Policies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"postgresdb.table.columns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPostgresdbTable).Columns, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"postgresdb.table.column.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPostgresdbTableColumn).__id, ok = v.Value.(string)
+		return
+	},
+	"postgresdb.table.column.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPostgresdbTableColumn).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"postgresdb.table.column.position": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPostgresdbTableColumn).Position, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"postgresdb.table.column.typeName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPostgresdbTableColumn).TypeName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"postgresdb.table.column.nullable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPostgresdbTableColumn).Nullable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"postgresdb.table.column.comment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPostgresdbTableColumn).Comment, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"postgresdb.rlsPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1900,6 +1951,7 @@ type mqlPostgresdbTable struct {
 	RowSecurityForced  plugin.TValue[bool]
 	Privileges         plugin.TValue[[]any]
 	Policies           plugin.TValue[[]any]
+	Columns            plugin.TValue[[]any]
 }
 
 // createPostgresdbTable creates a new instance of this resource
@@ -2004,6 +2056,86 @@ func (c *mqlPostgresdbTable) GetPolicies() *plugin.TValue[[]any] {
 
 		return c.policies()
 	})
+}
+
+func (c *mqlPostgresdbTable) GetColumns() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Columns, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("postgresdb.table", c.__id, "columns")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.columns()
+	})
+}
+
+// mqlPostgresdbTableColumn for the postgresdb.table.column resource
+type mqlPostgresdbTableColumn struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlPostgresdbTableColumnInternal it will be used here
+	Name     plugin.TValue[string]
+	Position plugin.TValue[int64]
+	TypeName plugin.TValue[string]
+	Nullable plugin.TValue[bool]
+	Comment  plugin.TValue[string]
+}
+
+// createPostgresdbTableColumn creates a new instance of this resource
+func createPostgresdbTableColumn(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlPostgresdbTableColumn{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("postgresdb.table.column", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlPostgresdbTableColumn) MqlName() string {
+	return "postgresdb.table.column"
+}
+
+func (c *mqlPostgresdbTableColumn) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlPostgresdbTableColumn) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlPostgresdbTableColumn) GetPosition() *plugin.TValue[int64] {
+	return &c.Position
+}
+
+func (c *mqlPostgresdbTableColumn) GetTypeName() *plugin.TValue[string] {
+	return &c.TypeName
+}
+
+func (c *mqlPostgresdbTableColumn) GetNullable() *plugin.TValue[bool] {
+	return &c.Nullable
+}
+
+func (c *mqlPostgresdbTableColumn) GetComment() *plugin.TValue[string] {
+	return &c.Comment
 }
 
 // mqlPostgresdbRlsPolicy for the postgresdb.rlsPolicy resource

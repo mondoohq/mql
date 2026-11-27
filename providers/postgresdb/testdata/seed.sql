@@ -35,3 +35,11 @@ CREATE USER MAPPING FOR app_admin SERVER remote_srv
 
 -- a logical-replication publication
 CREATE PUBLICATION apppub FOR ALL TABLES;
+
+-- column metadata: a dropped column (leaves a gap in attnum), a column
+-- comment, both nullability states, and a view over the table
+CREATE TABLE appschema.customers (id bigint PRIMARY KEY, email character varying(255) NOT NULL,
+  ssn text, balance numeric(10,2), legacy integer, created_at timestamp with time zone);
+ALTER TABLE appschema.customers DROP COLUMN legacy;
+COMMENT ON COLUMN appschema.customers.ssn IS 'US social security number';
+CREATE VIEW appschema.customer_emails AS SELECT id, email FROM appschema.customers;

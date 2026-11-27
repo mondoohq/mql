@@ -130,6 +130,13 @@ postgresdb.subscription.enabled 13.0.0
 postgresdb.subscription.name 13.0.0
 postgresdb.subscription.owner 13.0.0
 postgresdb.table 13.0.0
+postgresdb.table.column 14.0.16
+postgresdb.table.column.comment 14.0.16
+postgresdb.table.column.name 14.0.16
+postgresdb.table.column.nullable 14.0.16
+postgresdb.table.column.position 14.0.16
+postgresdb.table.column.typeName 14.0.16
+postgresdb.table.columns 14.0.16
 postgresdb.table.kind 13.0.0
 postgresdb.table.name 13.0.0
 postgresdb.table.oid 13.0.0
