@@ -1,4 +1,4 @@
-# ADR 055: Sigstore verification library
+# ADR 064: Sigstore verification library
 
 ## Status
 
