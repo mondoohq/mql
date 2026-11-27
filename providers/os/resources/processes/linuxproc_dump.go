@@ -14,12 +14,8 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
-// procDumpAll is the glob procDumpCommand expands to every process directory
-// of /proc.
-const procDumpAll = "[0-9]*"
-
-// procDumpCommand reads the processes whose /proc directories pids names (a
-// glob, or one pid) in one command. For each it prints
+// procDumpCommand reads the given processes, or every process when none is
+// given, in one command. For each it prints
 //
 //	P<pid>\0<cmdline in base64>\0<comm>\0<the Name and State lines of status>\0
 //
@@ -30,9 +26,19 @@ const procDumpAll = "[0-9]*"
 //
 // POSIX sh, base64, tr, sed and cat, so it runs on BusyBox as well. Without
 // base64 it exits 4, and the caller reads /proc file by file instead.
-func procDumpCommand(pids string) string {
+//
+// The pids are integers so that nothing but digits reaches the shell.
+func procDumpCommand(pids ...int64) string {
+	dirs := "[0-9]*"
+	if len(pids) > 0 {
+		names := make([]string, len(pids))
+		for i, pid := range pids {
+			names[i] = strconv.FormatInt(pid, 10)
+		}
+		dirs = strings.Join(names, " ")
+	}
 	return `command -v base64 >/dev/null 2>&1 || exit 4; cd /proc || exit 3; ` +
-		`for d in ` + pids + `; do ` +
+		`for d in ` + dirs + `; do ` +
 		`[ "$d" = "$$" ] && continue; [ -d "$d" ] || continue; ` +
 		`printf 'P%s\0' "$d"; ` +
 		`base64 < "$d/cmdline" 2>/dev/null | tr -d '\n'; printf '\0'; ` +
@@ -41,9 +47,10 @@ func procDumpCommand(pids string) string {
 		`done`
 }
 
-// dumpProcesses reads the processes pids names with procDumpCommand.
-func (lpm *LinuxProcManager) dumpProcesses(pids string) ([]*OSProcess, error) {
-	cmd, err := lpm.conn.RunCommand(procDumpCommand(pids))
+// dumpProcesses reads the given processes, or every process when none is
+// given, with procDumpCommand.
+func (lpm *LinuxProcManager) dumpProcesses(pids ...int64) ([]*OSProcess, error) {
+	cmd, err := lpm.conn.RunCommand(procDumpCommand(pids...))
 	if err != nil {
 		return nil, err
 	}

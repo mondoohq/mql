@@ -41,7 +41,7 @@ func (lpm *LinuxProcManager) readsProcByCommand() bool {
 // asks ListSocketInodesByProcess for them.
 func (lpm *LinuxProcManager) List() ([]*OSProcess, error) {
 	if lpm.readsProcByCommand() {
-		procs, err := lpm.dumpProcesses(procDumpAll)
+		procs, err := lpm.dumpProcesses()
 		if err == nil {
 			return procs, nil
 		}
@@ -208,7 +208,7 @@ func (lpm *LinuxProcManager) Process(pid int64) (*OSProcess, error) {
 	pidPath := filepath.Join("/proc", strconv.FormatInt(pid, 10))
 
 	if lpm.readsProcByCommand() {
-		procs, err := lpm.dumpProcesses(strconv.FormatInt(pid, 10))
+		procs, err := lpm.dumpProcesses(pid)
 		if err == nil {
 			if len(procs) == 0 {
 				return nil, errors.New("process " + strconv.FormatInt(pid, 10) + " does not exist: " + pidPath)

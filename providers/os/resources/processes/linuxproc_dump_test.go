@@ -62,7 +62,7 @@ func procs(list []*OSProcess) map[int64]string {
 	return res
 }
 
-// The fixtures are procDumpCommand(procDumpAll), run with docker exec in each
+// The fixtures are procDumpCommand(), run with docker exec in each
 // container (os provider not involved). The expected values are what
 // processes.list returned for the same containers, read file by file through
 // the released code path.
@@ -231,10 +231,10 @@ func TestLinuxProcManagerByCommand(t *testing.T) {
 	conn := &cmdProcConn{
 		fakeProcConn: fakeProcConn{fs: afero.NewMemMapFs()},
 		outputs: map[string]string{
-			procDumpCommand(procDumpAll): procDump,
-			procDumpCommand("17"):        procDumpEntry("17", "apache2\x00-DFOREGROUND\x00", "apache2\n", "Name:\tapache2\nState:\tS (sleeping)\n"),
-			procDumpCommand("999"):       "",
-			socketInodesDumpCommand:      readFixture(t, "sockdump-php83-apache-debian13.txt"),
+			procDumpCommand():       procDump,
+			procDumpCommand(17):     procDumpEntry("17", "apache2\x00-DFOREGROUND\x00", "apache2\n", "Name:\tapache2\nState:\tS (sleeping)\n"),
+			procDumpCommand(999):    "",
+			socketInodesDumpCommand: readFixture(t, "sockdump-php83-apache-debian13.txt"),
 		},
 	}
 	lpm := &LinuxProcManager{conn: conn}
@@ -242,7 +242,7 @@ func TestLinuxProcManagerByCommand(t *testing.T) {
 	list, err := lpm.List()
 	require.NoError(t, err)
 	assert.Len(t, list, 6)
-	assert.Equal(t, []string{procDumpCommand(procDumpAll)}, conn.commands, "one command lists every process, and no fd is read")
+	assert.Equal(t, []string{procDumpCommand()}, conn.commands, "one command lists every process, and no fd is read")
 
 	conn.commands = nil
 	p, err := lpm.Process(17)
@@ -266,8 +266,8 @@ func TestLinuxProcManagerByCommand(t *testing.T) {
 func TestLinuxProcManagerByCommandFallsBack(t *testing.T) {
 	lpm := newLinuxProcManager(t)
 	conn := &cmdProcConn{fakeProcConn: *lpm.conn.(*fakeProcConn), exit: 4, outputs: map[string]string{
-		procDumpCommand(procDumpAll): "",
-		procDumpCommand("42"):        "",
+		procDumpCommand():   "",
+		procDumpCommand(42): "",
 	}}
 	lpm.conn = conn
 
