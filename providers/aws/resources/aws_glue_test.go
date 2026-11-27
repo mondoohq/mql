@@ -4,12 +4,16 @@
 package resources
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	glue_types "github.com/aws/aws-sdk-go-v2/service/glue/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func TestRedactedGlueConnectionProperties(t *testing.T) {
@@ -65,4 +69,25 @@ func TestGlueJobAutoUpgradeFields(t *testing.T) {
 		assert.Equal(t, llx.NilData, f.targetVersion)
 		assert.Equal(t, "4.0", f.sourceVersion.Value)
 	})
+}
+
+func TestGlueTablesForbiddenUnderFlag(t *testing.T) {
+	// Synthetic: the error shape the SDK returns for a refused GetTables; no
+	// live account refused the call for this change.
+	denied := awsAPIErr(400, "AccessDeniedException", "User is not authorized to perform: glue:GetTables on resource: arn:aws:glue:us-east-1:111111111111:database/sales")
+	boom := errors.New("dial tcp: connection refused")
+
+	t.Cleanup(func() { plugin.ReadFeatures([]byte(mql.Features{byte(mql.ResourceContext)})) })
+
+	// Feature off: the raw SDK error, as in v13.
+	plugin.ReadFeatures([]byte(mql.Features{byte(mql.ResourceContext)}))
+	assert.Same(t, denied, glueTablesError(denied))
+	assert.False(t, errors.Is(glueTablesError(denied), llx.ErrForbidden))
+
+	// Feature on: Forbidden naming the permission; a transport error stays raw.
+	plugin.ReadFeatures([]byte(mql.Features{byte(mql.StructuredErrors)}))
+	err := glueTablesError(denied)
+	require.True(t, errors.Is(err, llx.ErrForbidden), "want Forbidden, got %v", err)
+	assert.Equal(t, []string{"glue:GetTables"}, llx.ErrorDetailOf(err).Permissions)
+	assert.Same(t, boom, glueTablesError(boom))
 }

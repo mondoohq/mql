@@ -750,7 +750,7 @@ func (a *mqlAwsGlueDatabase) tables() ([]any, error) {
 		tables, err = listGlueTables(ctx, svc, dbName, catalogId, "")
 	}
 	if err != nil {
-		return nil, err
+		return nil, glueTablesError(err)
 	}
 
 	res := make([]any, 0, len(tables))
@@ -759,9 +759,20 @@ func (a *mqlAwsGlueDatabase) tables() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		mqlTable.cacheDatabase = a
 		res = append(res, mqlTable)
 	}
 	return res, nil
+}
+
+// glueTablesError classifies a failed GetTables listing. A refusal is
+// Forbidden naming glue:GetTables once StructuredErrors is on; v13 returned the
+// raw SDK error, which the feature off keeps (ADR 046 §9).
+func glueTablesError(err error) error {
+	if plugin.StructuredErrors() && Is400AccessDeniedError(err) {
+		return llx.Forbidden(err, llx.WithPermissions("glue:GetTables"))
+	}
+	return err
 }
 
 func listGlueTables(ctx context.Context, svc glue.GetTablesAPIClient, dbName, catalogId string, shareType glue_types.TableResourceShareType) ([]glue_types.Table, error) {
@@ -846,7 +857,13 @@ func newMqlAwsGlueDatabaseTable(runtime *plugin.Runtime, region string, table gl
 	if err != nil {
 		return nil, err
 	}
-	return resource.(*mqlAwsGlueDatabaseTable), nil
+	mqlTable := resource.(*mqlAwsGlueDatabaseTable)
+	mqlTable.cachePartitionKeys = table.PartitionKeys
+	if sd := table.StorageDescriptor; sd != nil {
+		mqlTable.cacheColumns = sd.Columns
+		mqlTable.cacheLocation = convert.ToValue(sd.Location)
+	}
+	return mqlTable, nil
 }
 
 func (a *mqlAwsGlue) catalogEncryptionSettings() ([]any, error) {

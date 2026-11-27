@@ -856,6 +856,7 @@ const (
 	ResourceAwsGlueSecurityConfigurationEncryption                              string = "aws.glue.securityConfiguration.encryption"
 	ResourceAwsGlueDatabase                                                     string = "aws.glue.database"
 	ResourceAwsGlueDatabaseTable                                                string = "aws.glue.database.table"
+	ResourceAwsGlueDatabaseTableColumn                                          string = "aws.glue.database.table.column"
 	ResourceAwsElasticbeanstalk                                                 string = "aws.elasticbeanstalk"
 	ResourceAwsElasticbeanstalkApplication                                      string = "aws.elasticbeanstalk.application"
 	ResourceAwsElasticbeanstalkApplicationVersion                               string = "aws.elasticbeanstalk.applicationVersion"
@@ -4470,6 +4471,10 @@ func init() {
 		"aws.glue.database.table": {
 			// to override args, implement: initAwsGlueDatabaseTable(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAwsGlueDatabaseTable,
+		},
+		"aws.glue.database.table.column": {
+			// to override args, implement: initAwsGlueDatabaseTableColumn(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsGlueDatabaseTableColumn,
 		},
 		"aws.elasticbeanstalk": {
 			// to override args, implement: initAwsElasticbeanstalk(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -32921,6 +32926,33 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.glue.database.table.region": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsGlueDatabaseTable).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.glue.database.table.database": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsGlueDatabaseTable).GetDatabase()).ToDataRes(types.Resource("aws.glue.database"))
+	},
+	"aws.glue.database.table.s3Bucket": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsGlueDatabaseTable).GetS3Bucket()).ToDataRes(types.Resource("aws.s3.bucket"))
+	},
+	"aws.glue.database.table.columns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsGlueDatabaseTable).GetColumns()).ToDataRes(types.Array(types.Resource("aws.glue.database.table.column")))
+	},
+	"aws.glue.database.table.column.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsGlueDatabaseTableColumn).GetName()).ToDataRes(types.String)
+	},
+	"aws.glue.database.table.column.position": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsGlueDatabaseTableColumn).GetPosition()).ToDataRes(types.Int)
+	},
+	"aws.glue.database.table.column.typeName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsGlueDatabaseTableColumn).GetTypeName()).ToDataRes(types.String)
+	},
+	"aws.glue.database.table.column.comment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsGlueDatabaseTableColumn).GetComment()).ToDataRes(types.String)
+	},
+	"aws.glue.database.table.column.isPartitionKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsGlueDatabaseTableColumn).GetIsPartitionKey()).ToDataRes(types.Bool)
+	},
+	"aws.glue.database.table.column.parameters": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsGlueDatabaseTableColumn).GetParameters()).ToDataRes(types.Map(types.String, types.String))
 	},
 	"aws.elasticbeanstalk.applications": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsElasticbeanstalk).GetApplications()).ToDataRes(types.Array(types.Resource("aws.elasticbeanstalk.application")))
@@ -81375,6 +81407,46 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.glue.database.table.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsGlueDatabaseTable).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.glue.database.table.database": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsGlueDatabaseTable).Database, ok = plugin.RawToTValue[*mqlAwsGlueDatabase](v.Value, v.Error)
+		return
+	},
+	"aws.glue.database.table.s3Bucket": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsGlueDatabaseTable).S3Bucket, ok = plugin.RawToTValue[*mqlAwsS3Bucket](v.Value, v.Error)
+		return
+	},
+	"aws.glue.database.table.columns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsGlueDatabaseTable).Columns, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.glue.database.table.column.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsGlueDatabaseTableColumn).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.glue.database.table.column.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsGlueDatabaseTableColumn).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.glue.database.table.column.position": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsGlueDatabaseTableColumn).Position, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aws.glue.database.table.column.typeName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsGlueDatabaseTableColumn).TypeName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.glue.database.table.column.comment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsGlueDatabaseTableColumn).Comment, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.glue.database.table.column.isPartitionKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsGlueDatabaseTableColumn).IsPartitionKey, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.glue.database.table.column.parameters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsGlueDatabaseTableColumn).Parameters, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
 	"aws.elasticbeanstalk.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -197180,7 +197252,7 @@ func (c *mqlAwsGlueDatabase) GetTags() *plugin.TValue[map[string]any] {
 type mqlAwsGlueDatabaseTable struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlAwsGlueDatabaseTableInternal it will be used here
+	mqlAwsGlueDatabaseTableInternal
 	Name                          plugin.TValue[string]
 	DatabaseName                  plugin.TValue[string]
 	CatalogId                     plugin.TValue[string]
@@ -197200,6 +197272,9 @@ type mqlAwsGlueDatabaseTable struct {
 	Parameters                    plugin.TValue[map[string]any]
 	CreatedBy                     plugin.TValue[string]
 	Region                        plugin.TValue[string]
+	Database                      plugin.TValue[*mqlAwsGlueDatabase]
+	S3Bucket                      plugin.TValue[*mqlAwsS3Bucket]
+	Columns                       plugin.TValue[[]any]
 }
 
 // createAwsGlueDatabaseTable creates a new instance of this resource
@@ -197308,6 +197383,123 @@ func (c *mqlAwsGlueDatabaseTable) GetCreatedBy() *plugin.TValue[string] {
 
 func (c *mqlAwsGlueDatabaseTable) GetRegion() *plugin.TValue[string] {
 	return &c.Region
+}
+
+func (c *mqlAwsGlueDatabaseTable) GetDatabase() *plugin.TValue[*mqlAwsGlueDatabase] {
+	return plugin.GetOrCompute[*mqlAwsGlueDatabase](&c.Database, func() (*mqlAwsGlueDatabase, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.glue.database.table", c.__id, "database")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsGlueDatabase), nil
+			}
+		}
+
+		return c.database()
+	})
+}
+
+func (c *mqlAwsGlueDatabaseTable) GetS3Bucket() *plugin.TValue[*mqlAwsS3Bucket] {
+	return plugin.GetOrCompute[*mqlAwsS3Bucket](&c.S3Bucket, func() (*mqlAwsS3Bucket, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.glue.database.table", c.__id, "s3Bucket")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsS3Bucket), nil
+			}
+		}
+
+		return c.s3Bucket()
+	})
+}
+
+func (c *mqlAwsGlueDatabaseTable) GetColumns() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Columns, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.glue.database.table", c.__id, "columns")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.columns()
+	})
+}
+
+// mqlAwsGlueDatabaseTableColumn for the aws.glue.database.table.column resource
+type mqlAwsGlueDatabaseTableColumn struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAwsGlueDatabaseTableColumnInternal it will be used here
+	Name           plugin.TValue[string]
+	Position       plugin.TValue[int64]
+	TypeName       plugin.TValue[string]
+	Comment        plugin.TValue[string]
+	IsPartitionKey plugin.TValue[bool]
+	Parameters     plugin.TValue[map[string]any]
+}
+
+// createAwsGlueDatabaseTableColumn creates a new instance of this resource
+func createAwsGlueDatabaseTableColumn(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsGlueDatabaseTableColumn{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.glue.database.table.column", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsGlueDatabaseTableColumn) MqlName() string {
+	return "aws.glue.database.table.column"
+}
+
+func (c *mqlAwsGlueDatabaseTableColumn) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsGlueDatabaseTableColumn) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAwsGlueDatabaseTableColumn) GetPosition() *plugin.TValue[int64] {
+	return &c.Position
+}
+
+func (c *mqlAwsGlueDatabaseTableColumn) GetTypeName() *plugin.TValue[string] {
+	return &c.TypeName
+}
+
+func (c *mqlAwsGlueDatabaseTableColumn) GetComment() *plugin.TValue[string] {
+	return &c.Comment
+}
+
+func (c *mqlAwsGlueDatabaseTableColumn) GetIsPartitionKey() *plugin.TValue[bool] {
+	return &c.IsPartitionKey
+}
+
+func (c *mqlAwsGlueDatabaseTableColumn) GetParameters() *plugin.TValue[map[string]any] {
+	return &c.Parameters
 }
 
 // mqlAwsElasticbeanstalk for the aws.elasticbeanstalk resource
