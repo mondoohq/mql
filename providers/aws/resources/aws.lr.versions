@@ -6587,8 +6587,17 @@ aws.glue.database.parameters 11.16.1
 aws.glue.database.region 11.16.1
 aws.glue.database.table 11.16.1
 aws.glue.database.table.catalogId 11.16.1
+aws.glue.database.table.column 14.14.2
+aws.glue.database.table.column.comment 14.14.2
+aws.glue.database.table.column.isPartitionKey 14.14.2
+aws.glue.database.table.column.name 14.14.2
+aws.glue.database.table.column.parameters 14.14.2
+aws.glue.database.table.column.position 14.14.2
+aws.glue.database.table.column.typeName 14.14.2
+aws.glue.database.table.columns 14.14.2
 aws.glue.database.table.createdAt 11.16.1
 aws.glue.database.table.createdBy 11.16.1
+aws.glue.database.table.database 14.14.2
 aws.glue.database.table.databaseName 11.16.1
 aws.glue.database.table.description 11.16.1
 aws.glue.database.table.federatedTable 13.26.3
@@ -6601,6 +6610,7 @@ aws.glue.database.table.parameters 11.16.1
 aws.glue.database.table.partitionKeys 13.26.3
 aws.glue.database.table.region 11.16.1
 aws.glue.database.table.retention 11.16.1
+aws.glue.database.table.s3Bucket 14.14.2
 aws.glue.database.table.storageDescriptor 11.16.1
 aws.glue.database.table.tableType 11.16.1
 aws.glue.database.table.updatedAt 11.16.1

@@ -28413,6 +28413,36 @@ private aws.glue.database.table @defaults("name databaseName region") {
   createdBy string
   // Region where the table exists
   region string
+  // Database that contains the table
+  database() aws.glue.database
+  // S3 bucket that stores the table's data
+  //
+  // Read from the storage location, accepting the s3, s3a and s3n schemes. Null
+  // when the location is not in Amazon S3, for example for a view, a JDBC table
+  // or a federated table.
+  s3Bucket() aws.s3.bucket
+  // Columns of the table
+  //
+  // The data columns followed by the partition keys, with name, position, type
+  // and comment, as the Data Catalog returns them to the scanning role. No column
+  // value is read.
+  columns() []aws.glue.database.table.column
+}
+
+// Column of an AWS Glue Data Catalog table
+private aws.glue.database.table.column @defaults("name typeName") {
+  // Column name
+  name string
+  // Position of the column, starting at 0, data columns first and partition keys after
+  position int
+  // Declared type of the column, for example string, bigint or struct<a:int>
+  typeName string
+  // Comment on the column, empty when none is set
+  comment string
+  // Whether the column is a partition key
+  isPartitionKey bool
+  // Properties set on the column
+  parameters map[string]string
 }
 
 // AWS Elastic Beanstalk
