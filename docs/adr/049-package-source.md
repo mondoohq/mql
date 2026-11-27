@@ -399,7 +399,10 @@ because it was installed with winget; Zoom, the JRE, Mondoo and the VC++
 runtimes stay `installer`. The reader runs only when a query asks for
 `osProvided` or `source` and the list holds an Uninstall entry, through the
 connection's file system, over at most 4096 record folders and at most 1 MiB per
-`.registry`; a file it cannot read or parse is skipped.
+`.registry`; a file it cannot read or parse is skipped. Over SSH on the host
+above (9 record folders) a query for `source` took 17.9 s instead of 17.0 s
+without the Chocolatey reader (median of three), and the plain inventory of all
+185 packages stayed byte-identical; every Uninstall entry read as listed here.
 
 ### Files, not commands
 
