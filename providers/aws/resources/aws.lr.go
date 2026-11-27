@@ -8646,6 +8646,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.iam.accessAnalyzer.finding.analyzerArn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsIamAccessAnalyzerFinding).GetAnalyzerArn()).ToDataRes(types.String)
 	},
+	"aws.iam.accessAnalyzer.finding.analyzer": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsIamAccessAnalyzerFinding).GetAnalyzer()).ToDataRes(types.Resource("aws.iam.accessAnalyzer.analyzer"))
+	},
+	"aws.iam.accessAnalyzer.finding.principal": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsIamAccessAnalyzerFinding).GetPrincipal()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"aws.iam.accessAnalyzer.finding.isPublic": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsIamAccessAnalyzerFinding).GetIsPublic()).ToDataRes(types.Bool)
+	},
+	"aws.iam.accessAnalyzer.finding.actions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsIamAccessAnalyzerFinding).GetActions()).ToDataRes(types.Array(types.String))
+	},
+	"aws.iam.accessAnalyzer.finding.condition": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsIamAccessAnalyzerFinding).GetCondition()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"aws.iam.accessAnalyzer.finding.sources": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsIamAccessAnalyzerFinding).GetSources()).ToDataRes(types.Array(types.Dict))
+	},
+	"aws.iam.accessAnalyzer.finding.resourceControlPolicyRestriction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsIamAccessAnalyzerFinding).GetResourceControlPolicyRestriction()).ToDataRes(types.String)
+	},
 	"aws.iam.accessAnalyzer.finding.lastAccessedAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsIamAccessAnalyzerFinding).GetLastAccessedAt()).ToDataRes(types.Time)
 	},
@@ -46099,6 +46120,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.iam.accessAnalyzer.finding.analyzerArn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsIamAccessAnalyzerFinding).AnalyzerArn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.iam.accessAnalyzer.finding.analyzer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsIamAccessAnalyzerFinding).Analyzer, ok = plugin.RawToTValue[*mqlAwsIamAccessAnalyzerAnalyzer](v.Value, v.Error)
+		return
+	},
+	"aws.iam.accessAnalyzer.finding.principal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsIamAccessAnalyzerFinding).Principal, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aws.iam.accessAnalyzer.finding.isPublic": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsIamAccessAnalyzerFinding).IsPublic, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.iam.accessAnalyzer.finding.actions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsIamAccessAnalyzerFinding).Actions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.iam.accessAnalyzer.finding.condition": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsIamAccessAnalyzerFinding).Condition, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aws.iam.accessAnalyzer.finding.sources": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsIamAccessAnalyzerFinding).Sources, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.iam.accessAnalyzer.finding.resourceControlPolicyRestriction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsIamAccessAnalyzerFinding).ResourceControlPolicyRestriction, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.iam.accessAnalyzer.finding.lastAccessedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -106137,7 +106186,7 @@ func (c *mqlAwsIamContextProvider) GetKeyMappings() *plugin.TValue[map[string]an
 type mqlAwsIamAccessAnalyzer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlAwsIamAccessAnalyzerInternal it will be used here
+	mqlAwsIamAccessAnalyzerInternal
 	Analyzers        plugin.TValue[[]any]
 	Findings         plugin.TValue[[]any]
 	ArchivedFindings plugin.TValue[[]any]
@@ -106418,22 +106467,29 @@ type mqlAwsIamAccessAnalyzerFinding struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAwsIamAccessAnalyzerFindingInternal
-	Id                     plugin.TValue[string]
-	Error                  plugin.TValue[string]
-	ResourceArn            plugin.TValue[string]
-	ResourceOwnerAccount   plugin.TValue[string]
-	ResourceType           plugin.TValue[string]
-	Type                   plugin.TValue[string]
-	Status                 plugin.TValue[string]
-	AnalyzedAt             plugin.TValue[*time.Time]
-	CreatedAt              plugin.TValue[*time.Time]
-	UpdatedAt              plugin.TValue[*time.Time]
-	Region                 plugin.TValue[string]
-	AnalyzerArn            plugin.TValue[string]
-	LastAccessedAt         plugin.TValue[*time.Time]
-	UnusedServiceNamespace plugin.TValue[string]
-	UnusedActions          plugin.TValue[[]any]
-	UnusedAccessKeyId      plugin.TValue[string]
+	Id                               plugin.TValue[string]
+	Error                            plugin.TValue[string]
+	ResourceArn                      plugin.TValue[string]
+	ResourceOwnerAccount             plugin.TValue[string]
+	ResourceType                     plugin.TValue[string]
+	Type                             plugin.TValue[string]
+	Status                           plugin.TValue[string]
+	AnalyzedAt                       plugin.TValue[*time.Time]
+	CreatedAt                        plugin.TValue[*time.Time]
+	UpdatedAt                        plugin.TValue[*time.Time]
+	Region                           plugin.TValue[string]
+	AnalyzerArn                      plugin.TValue[string]
+	Analyzer                         plugin.TValue[*mqlAwsIamAccessAnalyzerAnalyzer]
+	Principal                        plugin.TValue[map[string]any]
+	IsPublic                         plugin.TValue[bool]
+	Actions                          plugin.TValue[[]any]
+	Condition                        plugin.TValue[map[string]any]
+	Sources                          plugin.TValue[[]any]
+	ResourceControlPolicyRestriction plugin.TValue[string]
+	LastAccessedAt                   plugin.TValue[*time.Time]
+	UnusedServiceNamespace           plugin.TValue[string]
+	UnusedActions                    plugin.TValue[[]any]
+	UnusedAccessKeyId                plugin.TValue[string]
 }
 
 // createAwsIamAccessAnalyzerFinding creates a new instance of this resource
@@ -106514,6 +106570,58 @@ func (c *mqlAwsIamAccessAnalyzerFinding) GetRegion() *plugin.TValue[string] {
 
 func (c *mqlAwsIamAccessAnalyzerFinding) GetAnalyzerArn() *plugin.TValue[string] {
 	return &c.AnalyzerArn
+}
+
+func (c *mqlAwsIamAccessAnalyzerFinding) GetAnalyzer() *plugin.TValue[*mqlAwsIamAccessAnalyzerAnalyzer] {
+	return plugin.GetOrCompute[*mqlAwsIamAccessAnalyzerAnalyzer](&c.Analyzer, func() (*mqlAwsIamAccessAnalyzerAnalyzer, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.iam.accessAnalyzer.finding", c.__id, "analyzer")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsIamAccessAnalyzerAnalyzer), nil
+			}
+		}
+
+		return c.analyzer()
+	})
+}
+
+func (c *mqlAwsIamAccessAnalyzerFinding) GetPrincipal() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Principal, func() (map[string]any, error) {
+		return c.principal()
+	})
+}
+
+func (c *mqlAwsIamAccessAnalyzerFinding) GetIsPublic() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.IsPublic, func() (bool, error) {
+		return c.isPublic()
+	})
+}
+
+func (c *mqlAwsIamAccessAnalyzerFinding) GetActions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Actions, func() ([]any, error) {
+		return c.actions()
+	})
+}
+
+func (c *mqlAwsIamAccessAnalyzerFinding) GetCondition() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Condition, func() (map[string]any, error) {
+		return c.condition()
+	})
+}
+
+func (c *mqlAwsIamAccessAnalyzerFinding) GetSources() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Sources, func() ([]any, error) {
+		return c.sources()
+	})
+}
+
+func (c *mqlAwsIamAccessAnalyzerFinding) GetResourceControlPolicyRestriction() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ResourceControlPolicyRestriction, func() (string, error) {
+		return c.resourceControlPolicyRestriction()
+	})
 }
 
 func (c *mqlAwsIamAccessAnalyzerFinding) GetLastAccessedAt() *plugin.TValue[*time.Time] {
