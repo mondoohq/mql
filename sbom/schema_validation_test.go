@@ -5,10 +5,12 @@ package sbom_test
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
+	"io"
+	"net/http"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/xeipuuv/gojsonschema"
@@ -16,12 +18,33 @@ import (
 	"go.mondoo.com/mql/sbom/generator"
 )
 
-// The schemas in testdata/schema are the official ones, unchanged:
-//
-//   - CycloneDX 1.7: bom-1.7.schema.json and the three files it refers to, from
-//     https://github.com/CycloneDX/specification/tree/1.7/schema
-//   - SPDX 2.3: spdx-2.3.schema.json, from
-//     https://github.com/spdx/spdx-spec/blob/support/2.3/schemas/spdx-schema.json
+// The tests download the official schemas. Each URL names a commit, so the
+// schema that a test reads changes only when this file changes.
+const (
+	cycloneDXSchemaURL = "https://raw.githubusercontent.com/CycloneDX/specification/4b3f59453366e27c8073fd24e98bf21ef8892c8e/schema/"
+	spdxSchemaURL      = "https://raw.githubusercontent.com/spdx/spdx-spec/6f2cb47d13db19b12c23885573b22ef32ec1ada5/schemas/spdx-schema.json"
+)
+
+var schemaDownloads sync.Map
+
+// downloadSchema returns the schema at url. It downloads each one once for the
+// test run. A failed download fails the test: a skip would let the test pass
+// when it checked nothing.
+func downloadSchema(t *testing.T, url string) []byte {
+	t.Helper()
+	if raw, ok := schemaDownloads.Load(url); ok {
+		return raw.([]byte)
+	}
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(url)
+	require.NoError(t, err, "the schema tests need network access to download %s", url)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode, "download %s", url)
+	raw, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	schemaDownloads.Store(url, raw)
+	return raw
+}
 
 // schemaBoms returns the documents the schema tests render: scan reports of
 // real systems, and one document of license values that package metadata holds
@@ -74,26 +97,21 @@ func renderForSchema(t *testing.T, format string, bom *sbom.Sbom) []byte {
 	return []byte(out.String())
 }
 
-// requireSchemaValid validates doc against a schema in testdata/schema. The
-// schemas in refs are loaded from the same directory first: a schema refers to
-// them by a URL under its "$id", and a test must not fetch them.
-func requireSchemaValid(t *testing.T, doc []byte, schemaFile string, refs ...string) {
+// requireSchemaValid validates doc against the schema at schemaURL. The schemas
+// at refs are loaded first: a schema refers to them by a URL under its "$id",
+// which is not where they are published.
+func requireSchemaValid(t *testing.T, doc []byte, schemaURL string, refs ...string) {
 	t.Helper()
-	read := func(name string) gojsonschema.JSONLoader {
-		raw, err := os.ReadFile(filepath.Join("testdata", "schema", name))
-		require.NoError(t, err)
-		return gojsonschema.NewBytesLoader(raw)
-	}
 	loader := gojsonschema.NewSchemaLoader()
 	for _, ref := range refs {
-		require.NoError(t, loader.AddSchemas(read(ref)))
+		require.NoError(t, loader.AddSchemas(gojsonschema.NewBytesLoader(downloadSchema(t, ref))))
 	}
-	schema, err := loader.Compile(read(schemaFile))
+	schema, err := loader.Compile(gojsonschema.NewBytesLoader(downloadSchema(t, schemaURL)))
 	require.NoError(t, err)
 	result, err := schema.Validate(gojsonschema.NewBytesLoader(doc))
 	require.NoError(t, err)
 	for _, e := range result.Errors() {
-		t.Errorf("%s: %s", schemaFile, e)
+		t.Errorf("%s: %s", schemaURL, e)
 	}
 }
 
@@ -103,8 +121,11 @@ func requireSchemaValid(t *testing.T, doc []byte, schemaFile string, refs ...str
 func TestCycloneDXIsSchemaValid(t *testing.T) {
 	for name, bom := range schemaBoms(t) {
 		t.Run(name, func(t *testing.T) {
-			requireSchemaValid(t, renderForSchema(t, sbom.FormatCycloneDxJSON, bom), "bom-1.7.schema.json",
-				"spdx.schema.json", "jsf-0.82.schema.json", "cryptography-defs.schema.json")
+			requireSchemaValid(t, renderForSchema(t, sbom.FormatCycloneDxJSON, bom),
+				cycloneDXSchemaURL+"bom-1.7.schema.json",
+				cycloneDXSchemaURL+"spdx.schema.json",
+				cycloneDXSchemaURL+"jsf-0.82.schema.json",
+				cycloneDXSchemaURL+"cryptography-defs.schema.json")
 		})
 	}
 }
@@ -119,9 +140,7 @@ func TestSPDXIsSchemaValid(t *testing.T) {
 	var listed struct {
 		Enum []string `json:"enum"`
 	}
-	list, err := os.ReadFile(filepath.Join("testdata", "schema", "spdx.schema.json"))
-	require.NoError(t, err)
-	require.NoError(t, json.Unmarshal(list, &listed))
+	require.NoError(t, json.Unmarshal(downloadSchema(t, cycloneDXSchemaURL+"spdx.schema.json"), &listed))
 	onList := map[string]bool{}
 	for _, id := range listed.Enum {
 		onList[strings.ToLower(id)] = true
@@ -130,7 +149,7 @@ func TestSPDXIsSchemaValid(t *testing.T) {
 	for name, bom := range schemaBoms(t) {
 		t.Run(name, func(t *testing.T) {
 			raw := renderForSchema(t, sbom.FormatSpdxJSON, bom)
-			requireSchemaValid(t, raw, "spdx-2.3.schema.json")
+			requireSchemaValid(t, raw, spdxSchemaURL)
 
 			var doc struct {
 				Packages []struct {
