@@ -7,9 +7,11 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/spf13/afero"
@@ -257,7 +259,7 @@ func TestWingetSources(t *testing.T) {
 		{"Notepad++", uninstallEntry("Notepad++ (x64)", "8.9.9.1", "{A23B657D-838B-4C9B-8F9D-386E50C1A76B}"), "Notepad++.Notepad++"},
 		// HKU of the user who ran winget, tracked in that user's catalog
 		{"Visual Studio Code", uninstallEntry("Microsoft Visual Studio Code (User)", "1.139.0", "{771FD6B0-FA20-440A-A002-3B3BAC16DC50}_is1"), "Microsoft.VisualStudioCode"},
-		// portable: the key is "<id>_<source>_<family>", under HKU\S-1-5-18
+		// portable: the key is "<id>_<source identifier>", under HKU\S-1-5-18
 		{"jq", uninstallEntry("jq 1.8.2", "1.8.2", "jqlang.jq_Microsoft.Winget.Source_8wekyb3d8bbwe"), "jqlang.jq"},
 	}
 	for _, tc := range measured {
@@ -360,6 +362,19 @@ func TestWingetBadCatalogsAreSkipped(t *testing.T) {
 	idx := readWingetCatalogs(fs, mountedSystemDrivePath)
 	assert.Contains(t, idx, "7-zip")
 	assert.Len(t, wingetCatalogPaths(fs, mountedSystemDrivePath), 3)
+}
+
+func TestWingetCatalogPathsKeepSystemUnderTheBound(t *testing.T) {
+	// Synthetic: more user catalogs than the bound; no target had that many
+	// profiles. SYSTEM's catalog sorts after C:\Users and must still be read.
+	fs := afero.NewMemMapFs()
+	for i := 0; i <= wingetMaxCatalogs; i++ {
+		writeWingetFile(t, fs, fmt.Sprintf("Users/u%03d/AppData/Local/Packages/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe/LocalState/%s/installed.db", i, wingetCommunity), []byte("x"))
+	}
+	writeWingetFile(t, fs, wingetSystemDir+wingetCommunity+"/installed.db", []byte("x"))
+	paths := wingetCatalogPaths(fs, mountedSystemDrivePath)
+	assert.Len(t, paths, wingetMaxCatalogs)
+	assert.Equal(t, `C:\Windows\System32\config\systemprofile\`+strings.ReplaceAll(wingetUnpackagedState, "/", `\`)+`\`+wingetCommunity+`\installed.db`, paths[0])
 }
 
 func TestWingetCatalogWithWriteAheadLog(t *testing.T) {

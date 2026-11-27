@@ -328,7 +328,7 @@ machine-scope install is tracked in the catalog of the account that ran
 winget, so the reader opens the catalogs of SYSTEM and of every profile under
 `C:\Users`. `productcodes_map` holds the Uninstall subkey name of each tracked
 manifest, lower-cased, and that is the join: the key name of the entry (a GUID,
-`7-Zip`, an Inno Setup AppId with `_is1`, or `<id>_<source>_<family>` for a
+`7-Zip`, an Inno Setup AppId with `_is1`, or `<id>_<source identifier>` for a
 portable) matched case-insensitively. Old manifests stay after an upgrade;
 when several name one key, the manifest whose version equals the installed
 version wins, then the most recently tracked one (`manifest_metadata` 7). A

@@ -11,7 +11,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	_ "github.com/glebarez/go-sqlite" // registers the "sqlite" database/sql driver
@@ -376,7 +376,7 @@ func isProductCode(key string) bool {
 //
 // The catalog joins to the Uninstall registry through productcodes: the
 // Uninstall subkey name of the program, lower-cased ("7-zip", a GUID, an Inno
-// Setup AppId with "_is1", the "<id>_<source>_<family>" key of a portable).
+// Setup AppId with "_is1", the "<id>_<source identifier>" key of a portable).
 const (
 	wingetPackagedState   = `AppData\Local\Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState`
 	wingetUnpackagedState = `AppData\Local\Microsoft\WinGet\State\defaultState`
@@ -472,7 +472,19 @@ func wingetCatalogPaths(fs afero.Fs, toFsPath func(string) (string, bool)) []str
 			}
 		}
 	}
-	sort.Strings(paths)
+	// SYSTEM's catalogs come first so the bound never drops them: they hold
+	// what Intune and other management tools installed for the whole machine
+	sysPrefix := strings.ToLower(wingetSystemProfile) + `\`
+	slices.SortStableFunc(paths, func(a, b string) int {
+		aSys, bSys := strings.HasPrefix(strings.ToLower(a), sysPrefix), strings.HasPrefix(strings.ToLower(b), sysPrefix)
+		switch {
+		case aSys && !bSys:
+			return -1
+		case bSys && !aSys:
+			return 1
+		}
+		return strings.Compare(a, b)
+	})
 	if len(paths) > wingetMaxCatalogs {
 		paths = paths[:wingetMaxCatalogs]
 	}
