@@ -275,6 +275,7 @@ func (r apkRepo) indexPaths(arch string) []string {
 	loc := strings.TrimSuffix(r.location, "/")
 	indexURL := loc + "/" + arch + "/APKINDEX.tar.gz"
 	if r.isRemote() {
+		// not a security check: SHA-1 is how apk itself names its cache files
 		sum := sha1.Sum([]byte(indexURL))
 		name := "APKINDEX." + hex.EncodeToString(sum[:4]) + ".tar.gz"
 		paths := make([]string, len(apkCacheDirs))
@@ -583,7 +584,8 @@ func parseApkIndex(data []byte, osKeys apkOSKeys, installed map[string]struct{})
 			sigs = append(sigs, sig)
 		}
 	}
-	if _, err := io.Copy(io.Discard, first); err != nil {
+	// first is already bounded; CopyN states the bound where it is consumed
+	if _, err := io.CopyN(io.Discard, first, apkMaxSignatureStream); err != nil && !errors.Is(err, io.EOF) {
 		return nil, err
 	}
 	if first.N <= 0 {
@@ -698,6 +700,9 @@ func (s apkSignature) verifies(pub *rsa.PublicKey, signed []byte) bool {
 	var digest []byte
 	switch s.hash {
 	case crypto.SHA1:
+		// apk's ".SIGN.RSA." signatures are RSA with SHA-1 by format, and
+		// Alpine still signs its indexes that way; refusing them would leave
+		// every Alpine index unverified. ".SIGN.RSA256." uses SHA-256.
 		sum := sha1.Sum(signed)
 		digest = sum[:]
 	case crypto.SHA256:

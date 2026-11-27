@@ -416,7 +416,7 @@ func readPacmanSyncDB(data []byte, installed map[string]struct{}, osKeys openPGP
 		if hdr.Size > pacmanMaxConfFile {
 			return nil, errTooLarge
 		}
-		raw, err := io.ReadAll(tr)
+		raw, err := io.ReadAll(io.LimitReader(tr, pacmanMaxConfFile))
 		if err != nil {
 			return nil, err
 		}
