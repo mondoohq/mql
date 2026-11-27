@@ -1680,7 +1680,8 @@ package @defaults("name version") {
 // The channel a package arrived through and the repository, store or
 // installer that delivered it. `channel` is one of "os" (provided by the
 // operating system vendor), "vendor-repository", "app-store", "homebrew",
-// "installer", "direct", "snap", "flatpak", "chocolatey", or "unknown".
+// "installer", "direct", "snap", "flatpak", "chocolatey", "winget", or
+// "unknown".
 private package.source @defaults("channel name") {
   // How the package reached the system, e.g. "app-store", "homebrew", "direct"
   //
@@ -1690,15 +1691,16 @@ private package.source @defaults("channel name") {
   // formula or cask. "installer" for a vendor installer package: a macOS .pkg,
   // a Windows MSI or setup program. "direct" for software copied in or
   // installed from a file: an application dragged from a disk image, a .deb or
-  // .rpm installed by hand. "snap", "flatpak" and "chocolatey" for those
-  // package managers. "unknown" when no record on the system answers.
+  // .rpm installed by hand. "snap", "flatpak", "chocolatey" and "winget" for
+  // those package managers. "unknown" when no record on the system answers.
   channel string
   // Repository, store, cask or installer that delivered the package
   //
   // The name the system itself records: the apt release's Origin ("Debian",
   // "nginx", "Docker"), the dnf repository id ("baseos", "docker-ce-stable"),
   // "mac-app-store", "microsoft-store", the Homebrew formula or cask, or the
-  // installer package identifier. Empty when the channel has none.
+  // installer package identifier, or the winget package identifier
+  // ("7zip.7zip"). Empty when the channel has none.
   name string
   // Address of the repository, without credentials
   //

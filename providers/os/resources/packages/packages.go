@@ -113,6 +113,13 @@ type Package struct {
 	// qualifiers, and is never serialized on its own.
 	installIdentity *installIdentity
 
+	// uninstallKey is the name of the Windows Uninstall subkey this package
+	// was read from, as Windows spells it. It outlives installIdentity, which
+	// List clears once the identity is in the purl, because the purl keeps
+	// only a normalized form and winget's catalog joins on the raw name.
+	// Unexported and never serialized.
+	uninstallKey string
+
 	// source is where the package came from, when the backend learned it
 	// while listing at no extra cost (an AppX package's signature kind is in
 	// the same query). Everything else is resolved later, and only when a

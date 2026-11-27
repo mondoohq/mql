@@ -5,10 +5,16 @@ package packages
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
+	"fmt"
 	"os"
+	"path"
+	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
@@ -185,4 +191,281 @@ func TestEdgeApplicationDir(t *testing.T) {
 		edgeApplicationDir(`C:\Program Files (x86)\Microsoft\Edge\Application\154.0.4258.62\Installer\setup.exe`))
 	assert.Equal(t, "", edgeApplicationDir(`C:\Program Files (x86)\Microsoft\EdgeUpdate\MicrosoftEdgeUpdate.exe`))
 	assert.Equal(t, "", edgeApplicationDir(""))
+}
+
+// testdata/winget holds winget's tracking catalogs (installed.db, VACUUMed,
+// with the random databaseIdentifier replaced by a zero GUID)
+// copied from a Windows 11 Enterprise 23H2 (22631) host with App Installer
+// 1.29.380.0, on 2026-11-27, after winget installed 7-Zip, Chrome, Acrobat
+// Reader, Notepad++, jq and Visual Studio Code:
+//
+//   - system-Microsoft.Winget.Source.db is SYSTEM's catalog of the community
+//     source, from the unpackaged state directory.
+//   - user-Microsoft.Winget.Source.db is an Entra user's catalog of the same
+//     source, from the packaged state directory.
+const wingetFixtures = "testdata/winget"
+
+const (
+	wingetSystemDir = "Windows/System32/config/systemprofile/AppData/Local/Microsoft/WinGet/State/defaultState/"
+	wingetUserDir   = "Users/entra/AppData/Local/Packages/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe/LocalState/"
+	wingetCommunity = "Microsoft.Winget.Source_8wekyb3d8bbwe"
+)
+
+func writeWingetFile(t *testing.T, fs afero.Fs, p string, data []byte) {
+	t.Helper()
+	require.NoError(t, fs.MkdirAll(path.Dir(p), 0o755))
+	require.NoError(t, afero.WriteFile(fs, p, data, 0o644))
+}
+
+func wingetFixture(t *testing.T, name string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(wingetFixtures + "/" + name)
+	require.NoError(t, err)
+	return data
+}
+
+// wingetFixtureFS is an offline Windows volume with both measured catalogs.
+func wingetFixtureFS(t *testing.T) afero.Fs {
+	t.Helper()
+	fs := afero.NewMemMapFs()
+	writeWingetFile(t, fs, wingetSystemDir+wingetCommunity+"/installed.db", wingetFixture(t, "system-Microsoft.Winget.Source.db"))
+	writeWingetFile(t, fs, wingetUserDir+wingetCommunity+"/installed.db", wingetFixture(t, "user-Microsoft.Winget.Source.db"))
+	return fs
+}
+
+// uninstallEntry builds an Uninstall entry the way List hands it to Sources:
+// after applyInstallIdentityQualifiers has moved the identity into the purl
+// and cleared installIdentity.
+func uninstallEntry(name, version, key string) Package {
+	pkgs := []Package{{Name: name, Version: version, Format: WindowsAppPkgFormat,
+		PUrl: "pkg:windows/windows/" + name + "@" + version, installIdentity: newInstallIdentity(key, false, "", "")}}
+	applyInstallIdentityQualifiers(pkgs, nil)
+	return pkgs[0]
+}
+
+func wingetSource(id string) Source {
+	return Source{OSProvided: osProvided(false), Channel: ChannelWinget, Name: id}
+}
+
+func TestWingetSources(t *testing.T) {
+	facts := windowsSourceFacts{winget: readWingetCatalogs(wingetFixtureFS(t), mountedSystemDrivePath)}
+
+	// Measured: Windows 11 23H2 22631, 2026-11-27; each program is installed by
+	// winget and its Uninstall key and DisplayVersion are what the registry shows.
+	measured := []struct {
+		name string
+		pkg  Package
+		id   string
+	}{
+		// HKLM, product code "7-zip" in three manifests (26.00, 26.02, 26.03)
+		{"7-Zip", uninstallEntry("7-Zip", "26.03", "7-Zip"), "7zip.7zip"},
+		{"Chrome", uninstallEntry("Google Chrome", "154.0.8037.58", "{C8B3A0BF-0F75-32C9-B05B-BE6FE9F5ED90}"), "Google.Chrome"},
+		// HKLM\WOW6432Node, the same GUID in two manifests
+		{"Acrobat Reader", uninstallEntry("Adobe Acrobat Reader MUI", "26.002.21931", "{AC76BA86-7AD7-FFFF-7B44-AC0F074E4100}"), "Adobe.Acrobat.Reader.32-bit"},
+		{"Notepad++", uninstallEntry("Notepad++ (x64)", "8.9.9.1", "{A23B657D-838B-4C9B-8F9D-386E50C1A76B}"), "Notepad++.Notepad++"},
+		// HKU of the user who ran winget, tracked in that user's catalog
+		{"Visual Studio Code", uninstallEntry("Microsoft Visual Studio Code (User)", "1.139.0", "{771FD6B0-FA20-440A-A002-3B3BAC16DC50}_is1"), "Microsoft.VisualStudioCode"},
+		// portable: the key is "<id>_<source identifier>", under HKU\S-1-5-18
+		{"jq", uninstallEntry("jq 1.8.2", "1.8.2", "jqlang.jq_Microsoft.Winget.Source_8wekyb3d8bbwe"), "jqlang.jq"},
+	}
+	for _, tc := range measured {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, wingetSource(tc.id), windowsPackageSource(tc.pkg, facts))
+		})
+	}
+
+	// Measured: Zoom, installed by its own MSI, is in no catalog
+	zoom := Package{Name: "Zoom (64-bit)", Version: "5.16.22807", Format: WindowsAppPkgFormat,
+		installIdentity: newInstallIdentity("{130C5F26-7D81-4285-9F6C-C18D91503887}", true, "", "MsiExec.exe /X{130C5F26-7D81-4285-9F6C-C18D91503887}")}
+	got := windowsPackageSource(zoom, facts)
+	assert.Equal(t, Source{Channel: ChannelInstaller, Name: "{130C5F26-7D81-4285-9F6C-C18D91503887}"}, got)
+	assert.Nil(t, got.OSProvided)
+
+	// Synthetic: the package has no Uninstall key; no target showed this.
+	noKey := Package{Name: "7-Zip", Version: "26.03", Format: WindowsAppPkgFormat}
+	assert.Equal(t, Source{Channel: ChannelInstaller}, windowsPackageSource(noKey, facts))
+}
+
+func TestWingetKeyIsCaseInsensitive(t *testing.T) {
+	facts := windowsSourceFacts{winget: readWingetCatalogs(wingetFixtureFS(t), mountedSystemDrivePath)}
+	// Synthetic: the catalog lower-cases keys; an installer may write them in
+	// any case. Measured keys already differ in case ("7-Zip" vs "7-zip").
+	assert.Equal(t, wingetSource("7zip.7zip"), windowsPackageSource(uninstallEntry("7-Zip", "26.03", "7-ZIP"), facts))
+}
+
+func TestWingetStaleCatalogStillAttributes(t *testing.T) {
+	// Measured: the user's catalog holds 7-Zip 26.00 while the registry says
+	// 26.03 (SYSTEM upgraded it). Only the user's catalog is present here.
+	fs := afero.NewMemMapFs()
+	writeWingetFile(t, fs, wingetUserDir+wingetCommunity+"/installed.db", wingetFixture(t, "user-Microsoft.Winget.Source.db"))
+	facts := windowsSourceFacts{winget: readWingetCatalogs(fs, mountedSystemDrivePath)}
+	assert.Equal(t, wingetSource("7zip.7zip"), windowsPackageSource(uninstallEntry("7-Zip", "26.03", "7-Zip"), facts))
+}
+
+func TestWingetCatalogLocations(t *testing.T) {
+	// Measured: the packaged path (a user) and the unpackaged path (SYSTEM)
+	// both exist on one host, and each holds programs the other does not.
+	fs := afero.NewMemMapFs()
+	writeWingetFile(t, fs, wingetUserDir+wingetCommunity+"/installed.db", wingetFixture(t, "user-Microsoft.Winget.Source.db"))
+	user := readWingetCatalogs(fs, mountedSystemDrivePath)
+	assert.Contains(t, user, "{771fd6b0-fa20-440a-a002-3b3bac16dc50}_is1")
+	assert.NotContains(t, user, "{a23b657d-838b-4c9b-8f9d-386e50c1a76b}")
+
+	fs = afero.NewMemMapFs()
+	writeWingetFile(t, fs, wingetSystemDir+wingetCommunity+"/installed.db", wingetFixture(t, "system-Microsoft.Winget.Source.db"))
+	system := readWingetCatalogs(fs, mountedSystemDrivePath)
+	assert.Contains(t, system, "{a23b657d-838b-4c9b-8f9d-386e50c1a76b}")
+	assert.NotContains(t, system, "{771fd6b0-fa20-440a-a002-3b3bac16dc50}_is1")
+
+	// Synthetic: an unpackaged user catalog under C:\Users\<u>\AppData\Local\Microsoft\WinGet; no target showed this.
+	fs = afero.NewMemMapFs()
+	writeWingetFile(t, fs, "Users/other/AppData/Local/Microsoft/WinGet/State/defaultState/"+wingetCommunity+"/installed.db", wingetFixture(t, "system-Microsoft.Winget.Source.db"))
+	assert.Contains(t, readWingetCatalogs(fs, mountedSystemDrivePath), "7-zip")
+
+	// Synthetic: a volume without winget state
+	assert.Empty(t, readWingetCatalogs(afero.NewMemMapFs(), mountedSystemDrivePath))
+}
+
+func TestWingetEntryPicksTheInstalledVersion(t *testing.T) {
+	// Synthetic: two manifests of different ids name one key; no host showed
+	// this (every measured key had one id across its manifests).
+	idx := wingetIndex{"key": {
+		{id: "Old.Id", version: "1.0", written: 10, sourceDir: "a"},
+		{id: "New.Id", version: "2.0", written: 20, sourceDir: "a"},
+	}}
+	src, ok := idx.source(uninstallEntry("x", "1.0", "KEY"))
+	require.True(t, ok)
+	assert.Equal(t, "Old.Id", src.Name, "the manifest of the installed version wins over a newer one")
+	src, _ = idx.source(uninstallEntry("x", "3.0", "KEY"))
+	assert.Equal(t, "New.Id", src.Name, "without a version match the most recently tracked one wins")
+	src, _ = idx.source(uninstallEntry("x", "2.0", "KEY"))
+	assert.Equal(t, "New.Id", src.Name)
+}
+
+func TestWingetMicrosoftStoreSource(t *testing.T) {
+	// Synthetic: no host showed an msstore Win32 install; the catalog of the
+	// msstore source lives in StoreEdgeFD.
+	fs := afero.NewMemMapFs()
+	writeWingetFile(t, fs, wingetSystemDir+"StoreEdgeFD/installed.db", wingetFixture(t, "system-Microsoft.Winget.Source.db"))
+	facts := windowsSourceFacts{winget: readWingetCatalogs(fs, mountedSystemDrivePath)}
+	assert.Equal(t, Source{OSProvided: osProvided(false), Channel: ChannelAppStore, Name: "microsoft-store"},
+		windowsPackageSource(uninstallEntry("7-Zip", "26.03", "7-Zip"), facts))
+
+	// Synthetic: a custom source directory reports winget with the package id.
+	fs = afero.NewMemMapFs()
+	writeWingetFile(t, fs, wingetSystemDir+"Contoso.Source_8wekyb3d8bbwe/installed.db", wingetFixture(t, "system-Microsoft.Winget.Source.db"))
+	facts = windowsSourceFacts{winget: readWingetCatalogs(fs, mountedSystemDrivePath)}
+	assert.Equal(t, wingetSource("7zip.7zip"), windowsPackageSource(uninstallEntry("7-Zip", "26.03", "7-Zip"), facts))
+}
+
+func TestWingetCatalogWithoutManifestMetadata(t *testing.T) {
+	// Measured: Windows 11 23H2, App Installer 1.29.380.0, 2026-11-27. The
+	// empty catalogs an older winget created (an administrator's, every StoreEdgeFD)
+	// have no manifest_metadata table. Synthetic: the measured SYSTEM catalog
+	// with that table dropped, so it still has rows to join.
+	local := filepath.Join(t.TempDir(), "installed.db")
+	require.NoError(t, os.WriteFile(local, wingetFixture(t, "system-Microsoft.Winget.Source.db"), 0o600))
+	db, err := sql.Open("sqlite", "file:"+local)
+	require.NoError(t, err)
+	_, err = db.Exec("DROP TABLE manifest_metadata")
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+	data, err := os.ReadFile(local)
+	require.NoError(t, err)
+
+	fs := afero.NewMemMapFs()
+	writeWingetFile(t, fs, wingetSystemDir+wingetCommunity+"/installed.db", data)
+	facts := windowsSourceFacts{winget: readWingetCatalogs(fs, mountedSystemDrivePath)}
+	assert.Equal(t, wingetSource("Notepad++.Notepad++"),
+		windowsPackageSource(uninstallEntry("Notepad++ (x64)", "8.9.9.1", "{A23B657D-838B-4C9B-8F9D-386E50C1A76B}"), facts))
+}
+
+func TestWingetBadCatalogsAreSkipped(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	// Synthetic: a corrupt file and a file over the size bound next to a good
+	// catalog; no target showed either.
+	writeWingetFile(t, fs, wingetUserDir+"Corrupt.Source/installed.db", []byte("this is not a sqlite database"))
+	writeWingetFile(t, fs, wingetUserDir+"Huge.Source/installed.db", make([]byte, wingetMaxCatalogBytes+1))
+	writeWingetFile(t, fs, wingetSystemDir+wingetCommunity+"/installed.db", wingetFixture(t, "system-Microsoft.Winget.Source.db"))
+	idx := readWingetCatalogs(fs, mountedSystemDrivePath)
+	assert.Contains(t, idx, "7-zip")
+	assert.Len(t, wingetCatalogPaths(fs, mountedSystemDrivePath), 3)
+}
+
+func TestWingetCatalogPathsKeepSystemUnderTheBound(t *testing.T) {
+	// Synthetic: more user catalogs than the bound; no target had that many
+	// profiles. SYSTEM's catalog sorts after C:\Users and must still be read.
+	fs := afero.NewMemMapFs()
+	for i := 0; i <= wingetMaxCatalogs; i++ {
+		writeWingetFile(t, fs, fmt.Sprintf("Users/u%03d/AppData/Local/Packages/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe/LocalState/%s/installed.db", i, wingetCommunity), []byte("x"))
+	}
+	writeWingetFile(t, fs, wingetSystemDir+wingetCommunity+"/installed.db", []byte("x"))
+	paths := wingetCatalogPaths(fs, mountedSystemDrivePath)
+	assert.Len(t, paths, wingetMaxCatalogs)
+	assert.Equal(t, `C:\Windows\System32\config\systemprofile\`+strings.ReplaceAll(wingetUnpackagedState, "/", `\`)+`\`+wingetCommunity+`\installed.db`, paths[0])
+}
+
+func TestWingetCatalogWithWriteAheadLog(t *testing.T) {
+	// Synthetic: a catalog winget holds open keeps its newest rows in the
+	// -wal file; no target showed one (winget 1.29 uses a rollback journal).
+	dir := t.TempDir()
+	local := filepath.Join(dir, "installed.db")
+	db, err := sql.Open("sqlite", "file:"+local+"?_pragma=journal_mode(wal)&_pragma=wal_autocheckpoint(0)")
+	require.NoError(t, err)
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	for _, stmt := range []string{
+		`CREATE TABLE ids(rowid INTEGER PRIMARY KEY, id TEXT)`,
+		`CREATE TABLE versions(rowid INTEGER PRIMARY KEY, version TEXT)`,
+		`CREATE TABLE productcodes(rowid INTEGER PRIMARY KEY, productcode TEXT)`,
+		`CREATE TABLE manifest(rowid INTEGER PRIMARY KEY, id INT, version INT)`,
+		`CREATE TABLE productcodes_map(manifest INT, productcode INT)`,
+		`CREATE TABLE manifest_metadata(manifest INT, metadata INT, value TEXT)`,
+		`INSERT INTO ids VALUES (1, 'Wal.Package')`,
+		`INSERT INTO versions VALUES (1, '1.0')`,
+		`INSERT INTO productcodes VALUES (1, 'wal-key')`,
+		`INSERT INTO manifest VALUES (1, 1, 1)`,
+		`INSERT INTO productcodes_map VALUES (1, 1)`,
+	} {
+		_, err := db.Exec(stmt)
+		require.NoError(t, err, stmt)
+	}
+	dbBytes, err := os.ReadFile(local)
+	require.NoError(t, err)
+	walBytes, err := os.ReadFile(local + "-wal")
+	require.NoError(t, err)
+	require.NotEmpty(t, walBytes)
+
+	fs := afero.NewMemMapFs()
+	p := wingetSystemDir + wingetCommunity + "/installed.db"
+	writeWingetFile(t, fs, p, dbBytes)
+	assert.Empty(t, readWingetCatalogs(fs, mountedSystemDrivePath), "without the log the tables are not there")
+	writeWingetFile(t, fs, p+"-wal", walBytes)
+	idx := readWingetCatalogs(fs, mountedSystemDrivePath)
+	require.Contains(t, idx, "wal-key")
+	assert.Equal(t, "Wal.Package", idx["wal-key"][0].id)
+}
+
+func TestWingetDoesNotOverrideInboxRules(t *testing.T) {
+	// Synthetic: a catalog that names the Edge and .NET Framework entries
+	// (winget can track Microsoft.Edge); the inbox rules keep precedence.
+	idx := wingetIndex{
+		"microsoft edge": {{id: "Microsoft.Edge", version: "158", sourceDir: "microsoft.winget.source_8wekyb3d8bbwe"}},
+		"dotnetfx":       {{id: "Microsoft.DotNet.Framework", version: "4.8", sourceDir: "microsoft.winget.source_8wekyb3d8bbwe"}},
+	}
+	facts := windowsSourceFacts{winget: idx, edgeDirs: []string{"c:/program files (x86)/microsoft/edge/application"}}
+	osSrc := Source{OSProvided: osProvided(true), Channel: ChannelOS, Name: "Windows"}
+
+	edge := Package{Name: "Microsoft Edge", Version: "158", Format: WindowsAppPkgFormat, Vendor: "Microsoft Corporation",
+		Files:           []FileRecord{{Path: `C:\Program Files (x86)\Microsoft\Edge\Application`}},
+		installIdentity: newInstallIdentity("Microsoft Edge", false, "", "")}
+	assert.Equal(t, osSrc, windowsPackageSource(edge, facts))
+
+	dotnet := Package{Name: dotNetFrameworkName, Version: "4.8", Format: WindowsAppPkgFormat, Vendor: "Microsoft",
+		installIdentity: newInstallIdentity("dotnetfx", false, "", "")}
+	assert.Equal(t, osSrc, windowsPackageSource(dotnet, facts))
+
+	// the same catalog still decides an Edge entry that did not come with Windows
+	facts.edgeDirs = nil
+	assert.Equal(t, wingetSource("Microsoft.Edge"), windowsPackageSource(edge, facts))
 }

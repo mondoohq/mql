@@ -225,6 +225,7 @@ One value per way software reaches a system. `os` is the channel of every
 | `installer` | a vendor installer package: macOS `.pkg`, Windows MSI or EXE setup | the package identifier |
 | `direct` | copied in by hand: an app dragged from a `.dmg` or `.zip`, a `.deb` or `.rpm` installed from a file | empty |
 | `snap`, `flatpak`, `chocolatey` | that package manager | the snap, the flatpak remote, the package |
+| `winget` | a program winget installed or took over | the winget package identifier, e.g. `7zip.7zip` |
 | `unknown` | no record answers | empty |
 
 `url` is set for the repository channels. It keeps only scheme, host and path,
@@ -313,6 +314,46 @@ image ships and carries no such marker; it is `installer` with a null
 
 These facts are read with one PowerShell query, only when a query asks for
 `osProvided` or `source`; the package list's own AppX query is unchanged.
+
+**Amendment 2026-11-27: winget.** A program winget installed reads
+`channel: "winget"`, `name: <winget package id>` (`7zip.7zip`),
+`osProvided: false`, instead of `installer`. winget keeps a tracking catalog,
+one SQLite `installed.db` per source directory and per account that ran
+winget: for the packaged winget (App Installer) under
+`<profile>\AppData\Local\Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\<source>\`,
+for the unpackaged one (SYSTEM, Intune) under
+`<profile>\AppData\Local\Microsoft\WinGet\State\defaultState\<source>\`.
+SYSTEM's profile is `C:\Windows\System32\config\systemprofile`. A
+machine-scope install is tracked in the catalog of the account that ran
+winget, so the reader opens the catalogs of SYSTEM and of every profile under
+`C:\Users`. `productcodes_map` holds the Uninstall subkey name of each tracked
+manifest, lower-cased, and that is the join: the key name of the entry (a GUID,
+`7-Zip`, an Inno Setup AppId with `_is1`, or `<id>_<source identifier>` for a
+portable) matched case-insensitively. Old manifests stay after an upgrade;
+when several name one key, the manifest whose version equals the installed
+version wins, then the most recently tracked one (`manifest_metadata` 7). A
+catalog can hold an older version than the registry and still names the
+installer. The Edge/WebView2 and .NET Framework rules keep precedence. A
+catalog of the `StoreEdgeFD` source directory (msstore) reads `app-store`,
+`microsoft-store`; another source directory reads `winget` with the id.
+
+Measured on Windows 11 Enterprise 23H2 (22631), App Installer 1.29.380.0: 7-Zip,
+Chrome, Acrobat Reader, Notepad++ (SYSTEM's catalog), Visual Studio Code (a
+user's packaged catalog) and the portable jq (SYSTEM) all join; Zoom, the
+AdoptOpenJDK JRE, Mondoo, the VC++ runtimes and the Intune Management Extension
+are in no catalog and stay `installer`. The reader runs only when a query asks
+for `osProvided` or `source` and the list holds an Uninstall entry. It copies
+each `installed.db` (and a `-wal` file beside it) through the connection's file
+system to a temporary file, at most 64 files of at most 16 MiB, and skips any it
+cannot read. SYSTEM's catalogs are read first, so the bound never drops them.
+Catalogs an older winget created have no `manifest_metadata` table; they are
+read without the tracking time. Over SSH that is a directory listing per state
+directory plus one read per catalog: on the host above (8 catalogs of about
+220 KB) a query for `source` took 16.6 s instead of 15.0 s (median of three),
+and the plain inventory stayed byte-identical. SYSTEM staying first matters
+there: the catalog the Intune and remediation installs went into was SYSTEM's.
+No host showed an msstore Win32 install, so that mapping follows what AppX
+Store installs report.
 
 ### Files, not commands
 
@@ -495,9 +536,8 @@ separately. The OS signing identity is exact.
   added. (*Corrected 2026-10-05:* yum on Amazon Linux 2 and zypper are
   covered: their signatures decide `osProvided` like dnf's, and their history,
   `yumdb` and `/var/log/zypp/history`, names the repository.)
-- winget as a channel of its own. winget does keep a record: an `installed.db`
-  per user and one for SYSTEM, mapping its package IDs to Uninstall keys. A
-  winget install reads as `installer` until a reader uses it.
+- ~~winget as a channel of its own.~~ Done 2026-11-27, see the amendment under
+  "How each platform resolves it".
 - Chocolatey installs that run an installer also appear in the Uninstall
   registry, as `installer`; `C:\ProgramData\chocolatey\.chocolatey\<pkg>\.registry`
   names the key and could mark them `chocolatey`.

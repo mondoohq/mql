@@ -4,12 +4,21 @@
 package packages
 
 import (
+	"database/sql"
 	"encoding/json"
+	"fmt"
+	"io"
+	"os"
 	"path"
+	"path/filepath"
+	"slices"
 	"strings"
 
+	_ "github.com/glebarez/go-sqlite" // registers the "sqlite" database/sql driver
 	"github.com/package-url/packageurl-go"
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/afero"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/powershell"
 )
 
@@ -100,6 +109,9 @@ type windowsSourceFacts struct {
 	// edgeDirs are the application directories of Edge Update applications
 	// that came with Windows, lower case.
 	edgeDirs []string
+	// winget indexes what winget's tracking catalogs say, by lower-cased
+	// Uninstall key name. Empty when no catalog was read.
+	winget wingetIndex
 }
 
 func (w *WinPkgManager) readWindowsSourceFacts() windowsSourceFacts {
@@ -190,13 +202,27 @@ func edgeApplicationDir(uninstall string) string {
 // Sources says where each Windows package came from (ADR 049).
 func (w *WinPkgManager) Sources(pkgs []Package) ([]Source, error) {
 	var facts windowsSourceFacts
+	needQuery, hasApp := false, false
 	for i := range pkgs {
 		// only AppX and Edge decisions need the query; skip it for a
 		// package list without either
-		if pkgs[i].Format == WindowsAppxPkgFormat || pkgs[i].Format == WindowsAppPkgFormat {
-			facts = w.readWindowsSourceFacts()
-			break
+		switch pkgs[i].Format {
+		case WindowsAppxPkgFormat:
+			needQuery = true
+		case WindowsAppPkgFormat:
+			needQuery, hasApp = true, true
 		}
+	}
+	if needQuery {
+		facts = w.readWindowsSourceFacts()
+	}
+	// winget's catalogs only say anything about Uninstall entries
+	if hasApp {
+		toFsPath := nativeWindowsPath
+		if t := w.conn.Type(); t == shared.Type_FileSystem || t == shared.Type_Device {
+			toFsPath = mountedSystemDrivePath
+		}
+		facts.winget = readWingetCatalogs(w.conn.FileSystem(), toFsPath)
 	}
 	out := make([]Source, len(pkgs))
 	for i := range pkgs {
@@ -217,7 +243,9 @@ func (w *WinPkgManager) Sources(pkgs []Package) ([]Source, error) {
 // A program in the Uninstall registry was put there by an installer, so its
 // channel is "installer"; an MSI is named by its ProductCode. Windows records
 // whether it came with Windows only for Edge and WebView2, through Edge
-// Update; for everything else osProvided stays null.
+// Update; for everything else osProvided stays null. A program winget
+// installed is the exception: winget's tracking catalog names it, so its
+// channel is "winget" and its name the winget package identifier.
 func windowsPackageSource(pkg Package, facts windowsSourceFacts) Source {
 	if pkg.source != nil {
 		return *pkg.source
@@ -258,6 +286,9 @@ func windowsPackageSource(pkg Package, facts windowsSourceFacts) Source {
 		}
 		if isInboxEdge(pkg, facts.edgeDirs) {
 			return osSource
+		}
+		if src, ok := facts.winget.source(pkg); ok {
+			return src
 		}
 		return Source{Channel: ChannelInstaller, Name: windowsProductCode(pkg)}
 	}
@@ -333,4 +364,246 @@ func isProductCode(key string) bool {
 		}
 	}
 	return true
+}
+
+// winget keeps a tracking catalog of what it installed or took over: one SQLite
+// file, installed.db, per source directory and per account that ran winget.
+// The packaged winget (App Installer) keeps them in the account's package
+// data; the unpackaged one, which SYSTEM uses (Intune, scripts), under
+// WinGet\State. A machine-scope install is tracked in the catalog of the
+// account that ran winget, not in a machine-wide one, so every account's
+// catalogs are read.
+//
+// The catalog joins to the Uninstall registry through productcodes: the
+// Uninstall subkey name of the program, lower-cased ("7-zip", a GUID, an Inno
+// Setup AppId with "_is1", the "<id>_<source identifier>" key of a portable).
+const (
+	wingetPackagedState   = `AppData\Local\Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState`
+	wingetUnpackagedState = `AppData\Local\Microsoft\WinGet\State\defaultState`
+	wingetCatalogFile     = "installed.db"
+	// winget's source directory of the Microsoft Store (lower case); the
+	// community repository's is "Microsoft.Winget.Source_8wekyb3d8bbwe", and a
+	// custom source has a directory of its own.
+	wingetMsStoreDir = "storeedgefd"
+
+	wingetMaxCatalogBytes = 16 << 20
+	wingetMaxCatalogs     = 64
+)
+
+// wingetSystemProfile is the profile of SYSTEM, which no listing of C:\Users
+// shows.
+const wingetSystemProfile = `C:\Windows\System32\config\systemprofile`
+
+// wingetEntry is one tracked manifest that names an Uninstall key.
+type wingetEntry struct {
+	id      string
+	version string
+	// written is when winget tracked it, unix seconds (manifest_metadata 7).
+	written int64
+	// sourceDir is the catalog's source directory name, lower case.
+	sourceDir string
+}
+
+// wingetIndex maps a lower-cased Uninstall key name to the manifests that name it.
+type wingetIndex map[string][]wingetEntry
+
+// source decides the package's source from the catalog. Old manifests stay
+// after an upgrade, so one key can name several; the one for the installed
+// version wins, then the most recently tracked one. A catalog can hold an
+// older version than the registry (a later upgrade by another account), and
+// that still says who installed the program.
+func (idx wingetIndex) source(pkg Package) (Source, bool) {
+	key := pkg.uninstallKey
+	if key == "" && pkg.installIdentity != nil {
+		key = pkg.installIdentity.uninstallKey
+	}
+	if len(idx) == 0 || key == "" {
+		return Source{}, false
+	}
+	entries := idx[strings.ToLower(key)]
+	if len(entries) == 0 {
+		return Source{}, false
+	}
+	best := entries[0]
+	for _, e := range entries[1:] {
+		eMatch, bestMatch := e.version == pkg.Version, best.version == pkg.Version
+		if (eMatch && !bestMatch) || (eMatch == bestMatch && e.written > best.written) {
+			best = e
+		}
+	}
+	if best.sourceDir == wingetMsStoreDir {
+		return Source{OSProvided: osProvided(false), Channel: ChannelAppStore, Name: "microsoft-store"}, true
+	}
+	return Source{OSProvided: osProvided(false), Channel: ChannelWinget, Name: best.id}, true
+}
+
+// wingetCatalogPaths lists the installed.db files of every account, as
+// Windows paths. Nothing here fails: a directory that is not there is skipped.
+func wingetCatalogPaths(fs afero.Fs, toFsPath func(string) (string, bool)) []string {
+	listDirs := func(dir string) []string {
+		fp, ok := toFsPath(dir)
+		if !ok {
+			return nil
+		}
+		infos, err := afero.ReadDir(fs, fp)
+		if err != nil {
+			return nil
+		}
+		var names []string
+		for _, fi := range infos {
+			if fi.IsDir() {
+				names = append(names, fi.Name())
+			}
+		}
+		return names
+	}
+
+	profiles := []string{wingetSystemProfile}
+	for _, name := range listDirs(`C:\Users`) {
+		profiles = append(profiles, `C:\Users\`+name)
+	}
+	var paths []string
+	for _, profile := range profiles {
+		for _, state := range []string{wingetPackagedState, wingetUnpackagedState} {
+			base := profile + `\` + state
+			for _, sourceDir := range listDirs(base) {
+				db := base + `\` + sourceDir + `\` + wingetCatalogFile
+				if fp, ok := toFsPath(db); ok {
+					if fi, err := fs.Stat(fp); err == nil && !fi.IsDir() {
+						paths = append(paths, db)
+					}
+				}
+			}
+		}
+	}
+	// SYSTEM's catalogs come first so the bound never drops them: they hold
+	// what Intune and other management tools installed for the whole machine
+	sysPrefix := strings.ToLower(wingetSystemProfile) + `\`
+	slices.SortStableFunc(paths, func(a, b string) int {
+		aSys, bSys := strings.HasPrefix(strings.ToLower(a), sysPrefix), strings.HasPrefix(strings.ToLower(b), sysPrefix)
+		switch {
+		case aSys && !bSys:
+			return -1
+		case bSys && !aSys:
+			return 1
+		}
+		return strings.Compare(a, b)
+	})
+	if len(paths) > wingetMaxCatalogs {
+		paths = paths[:wingetMaxCatalogs]
+	}
+	return paths
+}
+
+// readWingetCatalogs reads every account's winget catalogs into one index. A
+// catalog that cannot be read is skipped.
+func readWingetCatalogs(fs afero.Fs, toFsPath func(string) (string, bool)) wingetIndex {
+	idx := wingetIndex{}
+	for _, p := range wingetCatalogPaths(fs, toFsPath) {
+		fp, _ := toFsPath(p)
+		dir := p[:strings.LastIndex(p, `\`)]
+		sourceDir := strings.ToLower(dir[strings.LastIndex(dir, `\`)+1:])
+		rows, err := readWingetCatalog(fs, fp, sourceDir)
+		if err != nil {
+			log.Debug().Err(err).Str("path", p).Msg("mql[packages]> could not read winget catalog")
+			continue
+		}
+		for _, r := range rows {
+			idx[r.key] = append(idx[r.key], r.wingetEntry)
+		}
+	}
+	return idx
+}
+
+// wingetRow is a product code with the manifest that holds it.
+type wingetRow struct {
+	key string
+	wingetEntry
+}
+
+// copyWingetFile copies one catalog file to a local file, refusing a file over
+// the size bound.
+func copyWingetFile(fs afero.Fs, src, dst string) error {
+	fi, err := fs.Stat(src)
+	if err != nil {
+		return err
+	}
+	if fi.Size() > wingetMaxCatalogBytes {
+		return fmt.Errorf("%s is larger than %d bytes", src, wingetMaxCatalogBytes)
+	}
+	in, err := fs.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, io.LimitReader(in, wingetMaxCatalogBytes+1)); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
+}
+
+// readWingetCatalog copies one installed.db to a local temp file (SQLite needs
+// a local path) and reads its product codes.
+func readWingetCatalog(fs afero.Fs, fsPath, sourceDir string) ([]wingetRow, error) {
+	tmpDir, err := os.MkdirTemp("", "mondoo-winget")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tmpDir)
+
+	local := filepath.Join(tmpDir, wingetCatalogFile)
+	if err := copyWingetFile(fs, fsPath, local); err != nil {
+		return nil, err
+	}
+	dsn := "file:" + local + "?mode=ro&immutable=1"
+	// a catalog winget has open holds recent writes in its write-ahead log,
+	// which an immutable open ignores
+	if _, err := fs.Stat(fsPath + "-wal"); err == nil {
+		if err := copyWingetFile(fs, fsPath+"-wal", local+"-wal"); err == nil {
+			dsn = "file:" + local + "?mode=rw"
+		}
+	}
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	// manifest_metadata (schema 1.7 and later) holds when winget tracked a
+	// manifest; a catalog created by an older winget has no such table
+	written := "0"
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'manifest_metadata'`).Scan(&n); err != nil {
+		return nil, err
+	}
+	if n > 0 {
+		written = "(SELECT CAST(mm.value AS INTEGER) FROM manifest_metadata mm WHERE mm.manifest = m.rowid AND mm.metadata = 7)"
+	}
+	rows, err := db.Query(`SELECT pc.productcode, i.id, v.version, COALESCE(` + written + `, 0)
+FROM productcodes_map pm
+JOIN productcodes pc ON pc.rowid = pm.productcode
+JOIN manifest m ON m.rowid = pm.manifest
+JOIN ids i ON i.rowid = m.id
+JOIN versions v ON v.rowid = m.version`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []wingetRow
+	for rows.Next() {
+		var r wingetRow
+		if err := rows.Scan(&r.key, &r.id, &r.version, &r.written); err != nil {
+			return nil, err
+		}
+		r.key = strings.ToLower(r.key)
+		r.sourceDir = sourceDir
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }
