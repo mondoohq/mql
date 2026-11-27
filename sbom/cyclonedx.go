@@ -572,7 +572,11 @@ func cycloneDXLicenseList(licenses []*License) *cyclonedx.Licenses {
 		var choice cyclonedx.LicenseChoice
 		switch {
 		case strings.TrimSpace(l.GetExpression()) != "":
-			choice = cyclonedx.LicenseChoice{Expression: strings.TrimSpace(l.GetExpression())}
+			expression := cycloneDXExpression(l.GetExpression())
+			if expression == "" {
+				continue
+			}
+			choice = cyclonedx.LicenseChoice{Expression: expression}
 		case strings.TrimSpace(l.GetSpdxId()) != "":
 			choice = cyclonedx.LicenseChoice{
 				License: cycloneDXLicenseByID(strings.TrimSpace(l.GetSpdxId())),
@@ -681,9 +685,21 @@ func cycloneDXLicenses(license string) *cyclonedx.Licenses {
 		return nil
 	}
 	if isSPDXExpression(license) {
+		if license = cycloneDXExpression(license); license == "" {
+			return nil
+		}
 		return &cyclonedx.Licenses{{Expression: license}}
 	}
 	return &cyclonedx.Licenses{{License: cycloneDXLicenseByID(license)}}
+}
+
+// cycloneDXExpression renders a license expression. The schema accepts any
+// string there, but the specification requires a valid SPDX expression, so the
+// operands follow the same rules as in the SPDX renderer: an operand that is
+// not on the SPDX license list becomes a LicenseRef-*. The result is "" when
+// the expression cannot be made valid.
+func cycloneDXExpression(expression string) string {
+	return spdxListedExpression(strings.TrimSpace(expression), extractedLicenseSet{})
 }
 
 // cycloneDXLicenseByID renders a license that is not an expression.

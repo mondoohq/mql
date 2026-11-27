@@ -705,12 +705,16 @@ func spdxLicense(licenses []*License, fallback string, extracted extractedLicens
 	}
 	parts := make([]string, 0, len(licenses))
 	for _, l := range licenses {
-		if v := strings.TrimSpace(l.GetExpression()); v != "" {
-			parts = append(parts, spdxListedExpression(v, extracted))
-			continue
+		v := strings.TrimSpace(l.GetExpression())
+		if v == "" {
+			v = strings.TrimSpace(l.GetSpdxId())
 		}
-		if v := strings.TrimSpace(l.GetSpdxId()); v != "" {
-			parts = append(parts, spdxListedExpression(v, extracted))
+		if v != "" {
+			// An entry that cannot be written as a valid expression is left
+			// out. One missing license is better than an invalid field.
+			if v = spdxListedExpression(v, extracted); v != "" {
+				parts = append(parts, v)
+			}
 			continue
 		}
 		// A free-form name is not a legal operand: "see LICENSE" has a space in
@@ -761,12 +765,16 @@ func spdxLicense(licenses []*License, fallback string, extracted extractedLicens
 // These stay as written: the operators, the exception after WITH, a
 // LicenseRef-* or DocumentRef-*, a listed identifier in any letter case, a
 // listed identifier with the "+" suffix, and NONE and NOASSERTION.
+//
+// The result is "" when an operand has no letter or digit, because there is no
+// identifier to build for it.
 func spdxListedExpression(expr string, extracted extractedLicenseSet) string {
 	if expr == "NONE" || expr == spdxNoAssertionValue {
 		return expr
 	}
 	var out, word strings.Builder
-	exception := false
+	exception, invalid := false, false
+	refs := map[string]string{}
 	flush := func() {
 		w := word.String()
 		word.Reset()
@@ -787,10 +795,10 @@ func spdxListedExpression(expr string, extracted extractedLicenseSet) string {
 		default:
 			ref := spdxLicenseRef(w)
 			if ref == "" {
-				out.WriteString(w)
+				invalid = true
 				return
 			}
-			extracted.addNamed(ref, w)
+			refs[ref] = w
 			out.WriteString(ref)
 		}
 	}
@@ -804,6 +812,12 @@ func spdxListedExpression(expr string, extracted extractedLicenseSet) string {
 		}
 	}
 	flush()
+	if invalid {
+		return ""
+	}
+	for ref, name := range refs {
+		extracted.addNamed(ref, name)
+	}
 	return out.String()
 }
 

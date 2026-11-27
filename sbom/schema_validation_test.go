@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/github/go-spdx/v2/spdxexp"
 	"github.com/stretchr/testify/require"
 	"github.com/xeipuuv/gojsonschema"
 	"go.mondoo.com/mql/sbom"
@@ -80,6 +81,8 @@ func schemaBoms(t *testing.T) map[string]*sbom.Sbom {
 			declared("license-ref", "LicenseRef-Acme"),
 			declared("none", "NONE"),
 			declared("noassertion", "NOASSERTION"),
+			declared("no-identifier", "-"),
+			declared("no-identifier-operand", "MIT AND -"),
 			{Name: "scalar-unknown", Version: "1.0", Purl: "pkg:npm/scalar-unknown@1.0", License: "UNKNOWN"},
 			{Name: "scalar-free-text", Version: "1.0", Purl: "pkg:npm/scalar-free-text@1.0", License: "GPLv2+ and MIT"},
 			{Name: "undeclared", Version: "1.0", Purl: "pkg:npm/undeclared@1.0"},
@@ -116,36 +119,56 @@ func requireSchemaValid(t *testing.T, doc []byte, schemaURL string, refs ...stri
 }
 
 // TestCycloneDXIsSchemaValid validates rendered documents against the official
-// CycloneDX 1.7 schema. The schema restricts license.id to the SPDX license
-// list, which a value such as "UNLICENSED" is not on.
+// CycloneDX 1.7 schema, and then validates each license expression. The schema
+// restricts license.id to the SPDX license list, which a value such as
+// "UNLICENSED" is not on.
 func TestCycloneDXIsSchemaValid(t *testing.T) {
 	for name, bom := range schemaBoms(t) {
 		t.Run(name, func(t *testing.T) {
-			requireSchemaValid(t, renderForSchema(t, sbom.FormatCycloneDxJSON, bom),
+			raw := renderForSchema(t, sbom.FormatCycloneDxJSON, bom)
+			requireSchemaValid(t, raw,
 				cycloneDXSchemaURL+"bom-1.7.schema.json",
 				cycloneDXSchemaURL+"spdx.schema.json",
 				cycloneDXSchemaURL+"jsf-0.82.schema.json",
 				cycloneDXSchemaURL+"cryptography-defs.schema.json")
+
+			// The schema accepts any string as an expression. The specification
+			// requires a valid SPDX expression.
+			var doc struct {
+				Components []struct {
+					Name     string `json:"name"`
+					Licenses []struct {
+						Expression string `json:"expression"`
+					} `json:"licenses"`
+				} `json:"components"`
+			}
+			require.NoError(t, json.Unmarshal(raw, &doc))
+			for _, c := range doc.Components {
+				for _, l := range c.Licenses {
+					if l.Expression != "" {
+						requireValidExpression(t, c.Name+" expression", l.Expression)
+					}
+				}
+			}
 		})
 	}
 }
 
-// TestSPDXIsSchemaValid validates rendered documents against the official SPDX
-// 2.3 schema, and then checks what the schema cannot.
-//
-// The schema types a license field as a string, so it accepts any value. The
-// specification does not: each operand of the expression must be an identifier
-// on the SPDX license list or a LicenseRef-* that the document defines.
-func TestSPDXIsSchemaValid(t *testing.T) {
-	var listed struct {
-		Enum []string `json:"enum"`
+// requireValidExpression validates a license expression with GitHub's SPDX
+// expression library: the grammar, and each identifier against the SPDX license
+// list. A JSON schema cannot do this, because it types the field as a string.
+func requireValidExpression(t *testing.T, where, expression string) {
+	t.Helper()
+	if valid, _ := spdxexp.ValidateLicenses([]string{expression}); !valid {
+		t.Errorf("%s: %q is not a valid SPDX license expression", where, expression)
 	}
-	require.NoError(t, json.Unmarshal(downloadSchema(t, cycloneDXSchemaURL+"spdx.schema.json"), &listed))
-	onList := map[string]bool{}
-	for _, id := range listed.Enum {
-		onList[strings.ToLower(id)] = true
-	}
+}
 
+// TestSPDXIsSchemaValid validates rendered documents against the official SPDX
+// 2.3 schema, and then validates what the schema cannot: every license field
+// holds a valid SPDX expression, NONE or NOASSERTION, and the document defines
+// every LicenseRef-* that it uses.
+func TestSPDXIsSchemaValid(t *testing.T) {
 	for name, bom := range schemaBoms(t) {
 		t.Run(name, func(t *testing.T) {
 			raw := renderForSchema(t, sbom.FormatSpdxJSON, bom)
@@ -174,22 +197,12 @@ func TestSPDXIsSchemaValid(t *testing.T) {
 					if value == "NONE" || value == "NOASSERTION" {
 						continue
 					}
-					exception := false
+					requireValidExpression(t, p.Name+" "+field, value)
 					for _, operand := range strings.FieldsFunc(value, func(r rune) bool {
 						return r == ' ' || r == '(' || r == ')'
 					}) {
-						switch {
-						case operand == "AND" || operand == "OR":
-						case operand == "WITH":
-							exception = true
-						case exception:
-							exception = false
-						case strings.HasPrefix(operand, "LicenseRef-"):
-							if !defined[operand] {
-								t.Errorf("%s %s = %q: %s is not in hasExtractedLicensingInfos", p.Name, field, value, operand)
-							}
-						case !onList[strings.ToLower(strings.TrimSuffix(operand, "+"))]:
-							t.Errorf("%s %s = %q: %s is not on the SPDX license list", p.Name, field, value, operand)
+						if strings.HasPrefix(operand, "LicenseRef-") && !defined[operand] {
+							t.Errorf("%s %s = %q: %s is not in hasExtractedLicensingInfos", p.Name, field, value, operand)
 						}
 					}
 				}

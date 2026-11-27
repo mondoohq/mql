@@ -616,6 +616,8 @@ func TestSPDXListedExpression(t *testing.T) {
 		"LicenseRef-Acme": "LicenseRef-Acme",
 		"GPL-2.0-only WITH Classpath-exception-2.0": "GPL-2.0-only WITH Classpath-exception-2.0",
 		"(MIT OR Apache-2.0) AND BSD-3-Clause":      "(MIT OR Apache-2.0) AND BSD-3-Clause",
+		"-":                                         "",
+		"MIT AND -":                                 "",
 		"UNLICENSED":                                "LicenseRef-UNLICENSED",
 		"MIT AND UNKNOWN":                           "MIT AND LicenseRef-UNKNOWN",
 		"(GPLv2+ OR MIT)":                           "(LicenseRef-GPLv2 OR MIT)",
@@ -625,7 +627,7 @@ func TestSPDXListedExpression(t *testing.T) {
 			t.Errorf("spdxListedExpression(%q) = %q, want %q", in, got, want)
 		}
 		for ref := range extracted {
-			if !strings.Contains(want, ref) {
+			if want == "" || !strings.Contains(want, ref) {
 				t.Errorf("spdxListedExpression(%q) registered %q, which the result does not use", in, ref)
 			}
 		}
