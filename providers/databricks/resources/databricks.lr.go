@@ -35,6 +35,8 @@ const (
 	ResourceDatabricksWarehouse                    string = "databricks.warehouse"
 	ResourceDatabricksCatalog                      string = "databricks.catalog"
 	ResourceDatabricksSchema                       string = "databricks.schema"
+	ResourceDatabricksTable                        string = "databricks.table"
+	ResourceDatabricksTableColumn                  string = "databricks.table.column"
 	ResourceDatabricksSoftwareArtifact             string = "databricks.softwareArtifact"
 	ResourceDatabricksSoftwareArtifactVersion      string = "databricks.softwareArtifact.version"
 	ResourceDatabricksFunction                     string = "databricks.function"
@@ -159,6 +161,14 @@ func init() {
 		"databricks.schema": {
 			Init:   initDatabricksSchema,
 			Create: createDatabricksSchema,
+		},
+		"databricks.table": {
+			Init:   initDatabricksTable,
+			Create: createDatabricksTable,
+		},
+		"databricks.table.column": {
+			// to override args, implement: initDatabricksTableColumn(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatabricksTableColumn,
 		},
 		"databricks.softwareArtifact": {
 			// to override args, implement: initDatabricksSoftwareArtifact(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -1072,8 +1082,65 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"databricks.schema.functions": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricksSchema).GetFunctions()).ToDataRes(types.Array(types.Resource("databricks.function")))
 	},
+	"databricks.schema.tables": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksSchema).GetTables()).ToDataRes(types.Array(types.Resource("databricks.table")))
+	},
 	"databricks.schema.softwareArtifacts": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricksSchema).GetSoftwareArtifacts()).ToDataRes(types.Array(types.Resource("databricks.softwareArtifact")))
+	},
+	"databricks.table.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksTable).GetName()).ToDataRes(types.String)
+	},
+	"databricks.table.fullName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksTable).GetFullName()).ToDataRes(types.String)
+	},
+	"databricks.table.catalogName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksTable).GetCatalogName()).ToDataRes(types.String)
+	},
+	"databricks.table.schemaName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksTable).GetSchemaName()).ToDataRes(types.String)
+	},
+	"databricks.table.catalog": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksTable).GetCatalog()).ToDataRes(types.Resource("databricks.catalog"))
+	},
+	"databricks.table.schema": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksTable).GetSchema()).ToDataRes(types.Resource("databricks.schema"))
+	},
+	"databricks.table.owner": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksTable).GetOwner()).ToDataRes(types.String)
+	},
+	"databricks.table.tableType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksTable).GetTableType()).ToDataRes(types.String)
+	},
+	"databricks.table.dataSourceFormat": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksTable).GetDataSourceFormat()).ToDataRes(types.String)
+	},
+	"databricks.table.storageLocation": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksTable).GetStorageLocation()).ToDataRes(types.String)
+	},
+	"databricks.table.comment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksTable).GetComment()).ToDataRes(types.String)
+	},
+	"databricks.table.columns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksTable).GetColumns()).ToDataRes(types.Array(types.Resource("databricks.table.column")))
+	},
+	"databricks.table.column.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksTableColumn).GetName()).ToDataRes(types.String)
+	},
+	"databricks.table.column.typeName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksTableColumn).GetTypeName()).ToDataRes(types.String)
+	},
+	"databricks.table.column.position": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksTableColumn).GetPosition()).ToDataRes(types.Int)
+	},
+	"databricks.table.column.nullable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksTableColumn).GetNullable()).ToDataRes(types.Bool)
+	},
+	"databricks.table.column.comment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksTableColumn).GetComment()).ToDataRes(types.String)
+	},
+	"databricks.table.column.mask": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksTableColumn).GetMask()).ToDataRes(types.Resource("databricks.function"))
 	},
 	"databricks.softwareArtifact.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricksSoftwareArtifact).GetName()).ToDataRes(types.String)
@@ -3609,8 +3676,92 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDatabricksSchema).Functions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"databricks.schema.tables": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSchema).Tables, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"databricks.schema.softwareArtifacts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDatabricksSchema).SoftwareArtifacts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"databricks.table.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksTable).__id, ok = v.Value.(string)
+		return
+	},
+	"databricks.table.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksTable).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.table.fullName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksTable).FullName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.table.catalogName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksTable).CatalogName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.table.schemaName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksTable).SchemaName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.table.catalog": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksTable).Catalog, ok = plugin.RawToTValue[*mqlDatabricksCatalog](v.Value, v.Error)
+		return
+	},
+	"databricks.table.schema": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksTable).Schema, ok = plugin.RawToTValue[*mqlDatabricksSchema](v.Value, v.Error)
+		return
+	},
+	"databricks.table.owner": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksTable).Owner, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.table.tableType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksTable).TableType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.table.dataSourceFormat": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksTable).DataSourceFormat, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.table.storageLocation": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksTable).StorageLocation, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.table.comment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksTable).Comment, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.table.columns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksTable).Columns, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"databricks.table.column.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksTableColumn).__id, ok = v.Value.(string)
+		return
+	},
+	"databricks.table.column.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksTableColumn).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.table.column.typeName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksTableColumn).TypeName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.table.column.position": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksTableColumn).Position, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"databricks.table.column.nullable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksTableColumn).Nullable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"databricks.table.column.comment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksTableColumn).Comment, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.table.column.mask": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksTableColumn).Mask, ok = plugin.RawToTValue[*mqlDatabricksFunction](v.Value, v.Error)
 		return
 	},
 	"databricks.softwareArtifact.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -8482,6 +8633,7 @@ type mqlDatabricksSchema struct {
 	Grants            plugin.TValue[[]any]
 	Volumes           plugin.TValue[[]any]
 	Functions         plugin.TValue[[]any]
+	Tables            plugin.TValue[[]any]
 	SoftwareArtifacts plugin.TValue[[]any]
 }
 
@@ -8605,6 +8757,22 @@ func (c *mqlDatabricksSchema) GetFunctions() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlDatabricksSchema) GetTables() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tables, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("databricks.schema", c.__id, "tables")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.tables()
+	})
+}
+
 func (c *mqlDatabricksSchema) GetSoftwareArtifacts() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.SoftwareArtifacts, func() ([]any, error) {
 		if c.MqlRuntime.HasRecording {
@@ -8618,6 +8786,222 @@ func (c *mqlDatabricksSchema) GetSoftwareArtifacts() *plugin.TValue[[]any] {
 		}
 
 		return c.softwareArtifacts()
+	})
+}
+
+// mqlDatabricksTable for the databricks.table resource
+type mqlDatabricksTable struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlDatabricksTableInternal
+	Name             plugin.TValue[string]
+	FullName         plugin.TValue[string]
+	CatalogName      plugin.TValue[string]
+	SchemaName       plugin.TValue[string]
+	Catalog          plugin.TValue[*mqlDatabricksCatalog]
+	Schema           plugin.TValue[*mqlDatabricksSchema]
+	Owner            plugin.TValue[string]
+	TableType        plugin.TValue[string]
+	DataSourceFormat plugin.TValue[string]
+	StorageLocation  plugin.TValue[string]
+	Comment          plugin.TValue[string]
+	Columns          plugin.TValue[[]any]
+}
+
+// createDatabricksTable creates a new instance of this resource
+func createDatabricksTable(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatabricksTable{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("databricks.table", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatabricksTable) MqlName() string {
+	return "databricks.table"
+}
+
+func (c *mqlDatabricksTable) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatabricksTable) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDatabricksTable) GetFullName() *plugin.TValue[string] {
+	return &c.FullName
+}
+
+func (c *mqlDatabricksTable) GetCatalogName() *plugin.TValue[string] {
+	return &c.CatalogName
+}
+
+func (c *mqlDatabricksTable) GetSchemaName() *plugin.TValue[string] {
+	return &c.SchemaName
+}
+
+func (c *mqlDatabricksTable) GetCatalog() *plugin.TValue[*mqlDatabricksCatalog] {
+	return plugin.GetOrCompute[*mqlDatabricksCatalog](&c.Catalog, func() (*mqlDatabricksCatalog, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("databricks.table", c.__id, "catalog")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatabricksCatalog), nil
+			}
+		}
+
+		return c.catalog()
+	})
+}
+
+func (c *mqlDatabricksTable) GetSchema() *plugin.TValue[*mqlDatabricksSchema] {
+	return plugin.GetOrCompute[*mqlDatabricksSchema](&c.Schema, func() (*mqlDatabricksSchema, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("databricks.table", c.__id, "schema")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatabricksSchema), nil
+			}
+		}
+
+		return c.schema()
+	})
+}
+
+func (c *mqlDatabricksTable) GetOwner() *plugin.TValue[string] {
+	return &c.Owner
+}
+
+func (c *mqlDatabricksTable) GetTableType() *plugin.TValue[string] {
+	return &c.TableType
+}
+
+func (c *mqlDatabricksTable) GetDataSourceFormat() *plugin.TValue[string] {
+	return &c.DataSourceFormat
+}
+
+func (c *mqlDatabricksTable) GetStorageLocation() *plugin.TValue[string] {
+	return &c.StorageLocation
+}
+
+func (c *mqlDatabricksTable) GetComment() *plugin.TValue[string] {
+	return &c.Comment
+}
+
+func (c *mqlDatabricksTable) GetColumns() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Columns, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("databricks.table", c.__id, "columns")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.columns()
+	})
+}
+
+// mqlDatabricksTableColumn for the databricks.table.column resource
+type mqlDatabricksTableColumn struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlDatabricksTableColumnInternal
+	Name     plugin.TValue[string]
+	TypeName plugin.TValue[string]
+	Position plugin.TValue[int64]
+	Nullable plugin.TValue[bool]
+	Comment  plugin.TValue[string]
+	Mask     plugin.TValue[*mqlDatabricksFunction]
+}
+
+// createDatabricksTableColumn creates a new instance of this resource
+func createDatabricksTableColumn(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatabricksTableColumn{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("databricks.table.column", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatabricksTableColumn) MqlName() string {
+	return "databricks.table.column"
+}
+
+func (c *mqlDatabricksTableColumn) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatabricksTableColumn) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDatabricksTableColumn) GetTypeName() *plugin.TValue[string] {
+	return &c.TypeName
+}
+
+func (c *mqlDatabricksTableColumn) GetPosition() *plugin.TValue[int64] {
+	return &c.Position
+}
+
+func (c *mqlDatabricksTableColumn) GetNullable() *plugin.TValue[bool] {
+	return &c.Nullable
+}
+
+func (c *mqlDatabricksTableColumn) GetComment() *plugin.TValue[string] {
+	return &c.Comment
+}
+
+func (c *mqlDatabricksTableColumn) GetMask() *plugin.TValue[*mqlDatabricksFunction] {
+	return plugin.GetOrCompute[*mqlDatabricksFunction](&c.Mask, func() (*mqlDatabricksFunction, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("databricks.table.column", c.__id, "mask")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatabricksFunction), nil
+			}
+		}
+
+		return c.mask()
 	})
 }
 
