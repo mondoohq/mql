@@ -485,6 +485,43 @@ func groupsToDicts(groups []*gitlab.Group) []any {
 // unique within a project. Keying on the name alone made every project in a
 // `gitlab.group.projects { protectedBranches }` query resolve to the first
 // project's branch settings.
+// isDefaultProtectedBranch reports whether a protection rule's name covers the
+// project's default branch. GitLab allows wildcards in protected branch names
+// ('*' matches any run of characters, '?' one character), so a rule such as
+// `*` or `ma*` protects the default branch even though the names differ.
+func isDefaultProtectedBranch(ruleName, defaultBranch string) bool {
+	return ruleName == defaultBranch || wildcardBranchMatches(ruleName, defaultBranch)
+}
+
+// wildcardBranchMatches matches branch against a GitLab wildcard pattern.
+func wildcardBranchMatches(pattern, branch string) bool {
+	p := []rune(pattern)
+	b := []rune(branch)
+	pi, bi := 0, 0
+	star, mark := -1, 0
+	for bi < len(b) {
+		switch {
+		case pi < len(p) && (p[pi] == '?' || p[pi] == b[bi]):
+			pi++
+			bi++
+		case pi < len(p) && p[pi] == '*':
+			star = pi
+			mark = bi
+			pi++
+		case star != -1:
+			pi = star + 1
+			mark++
+			bi = mark
+		default:
+			return false
+		}
+	}
+	for pi < len(p) && p[pi] == '*' {
+		pi++
+	}
+	return pi == len(p)
+}
+
 func newMqlProtectedBranch(runtime *plugin.Runtime, projectID int64, projectPath string, b *gitlab.ProtectedBranch, defaultBranchName string) (plugin.Resource, error) {
 	prefix := projectScopedID("gitlab.project.protectedBranch", projectID, b.Name)
 
@@ -505,7 +542,7 @@ func newMqlProtectedBranch(runtime *plugin.Runtime, projectID int64, projectPath
 		"__id":                  llx.StringData(prefix),
 		"name":                  llx.StringData(b.Name),
 		"allowForcePush":        llx.BoolData(b.AllowForcePush),
-		"defaultBranch":         llx.BoolData(b.Name == defaultBranchName),
+		"defaultBranch":         llx.BoolData(isDefaultProtectedBranch(b.Name, defaultBranchName)),
 		"codeOwnerApproval":     llx.BoolData(b.CodeOwnerApprovalRequired),
 		"pushAccessLevels":      llx.ArrayData(push, types.Resource("gitlab.protectedBranch.accessLevel")),
 		"mergeAccessLevels":     llx.ArrayData(merge, types.Resource("gitlab.protectedBranch.accessLevel")),
