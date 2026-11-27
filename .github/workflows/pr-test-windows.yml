@@ -8,6 +8,8 @@ on:
       - "providers-sdk/v1/plugin/**"
       # system proxy detection calls WinHTTP; its smoke tests only run here
       - "utils/sysproxy/**"
+      # the config writers set Windows access lists on credentials files
+      - "cli/config/**"
       - ".github/workflows/pr-test-windows.yml"
 
 concurrency:
@@ -44,7 +46,7 @@ jobs:
           # or carrying a windows build constraint (windows_routes_native_test.go
           # has one but not the name, so a name filter alone never ran it).
           $repoRoot = (Get-Location).Path -replace '\\','/'
-          $packages = Get-ChildItem -Path providers/os, providers-sdk/v1/plugin, utils/sysproxy -Recurse -Filter "*_test.go" |
+          $packages = Get-ChildItem -Path providers/os, providers-sdk/v1/plugin, utils/sysproxy, cli/config -Recurse -Filter "*_test.go" |
             Where-Object { $_.Name -like "*_windows_test.go" -or (Select-String -Path $_.FullName -Pattern '^//go:build .*(?<![!\w])windows\b' -Quiet) } |
             ForEach-Object {
               $rel = ($_.DirectoryName -replace '\\','/').Replace($repoRoot + '/', '')
