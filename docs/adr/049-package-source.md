@@ -355,6 +355,55 @@ there: the catalog the Intune and remediation installs went into was SYSTEM's.
 No host showed an msstore Win32 install, so that mapping follows what AppX
 Store installs report.
 
+**Amendment 2026-11-27: Chocolatey.** A program a Chocolatey package's
+installer created reads `channel: "chocolatey"`, `name: <Chocolatey package
+id>` (`git.install`), `url: <feed>`, `osProvided: false`, instead of
+`installer`. Chocolatey's own packages stay in `chocolatey.packages`, not in
+`packages`. Chocolatey keeps one record folder per installed package version,
+`<root>\.chocolatey\<id>.<version>\`, with the root from `ChocolateyInstall`
+(read in the same PowerShell query as the other facts) or
+`C:\ProgramData\chocolatey`. `.registry` is XML and lists the Uninstall keys
+the installer created (`KeyPath`, `displayVersion`, and the `user` that ran
+choco); a meta package, a portable package or an extension has none.
+`.sourceInstalledFrom` holds the feed, with a UTF-8 byte order mark and padding
+spaces, and is missing from the record of an upgraded package; the `url` is
+then empty and is not borrowed from another record. The join is the last
+segment of `KeyPath`, matched case-insensitively to the entry's key name, and
+the hive of `KeyPath` has to fit the entry's scope: `HKEY_LOCAL_MACHINE` only a
+machine-scope entry, `HKEY_CURRENT_USER` and `HKEY_USERS\<sid>` only a user's
+(SYSTEM's own hive is machine scope, as in the package listing). The package id
+is the record folder name without its version suffix. The 32-bit and 64-bit
+registry views are not told apart: the package does not keep which view it was
+read from, so a key name used in both views joins to the same record.
+
+Upgrades leave the old versions' folders behind. When several records name one
+key, the one whose `displayVersion` equals the entry's version wins, then the
+newest version in the folder name, then the most recently written record. winget
+and Chocolatey can claim one key (a program one installed and the other
+upgraded), and the same rule decides between them: the manager whose record is
+for the installed version wins; when both or neither are, the record written
+last wins (winget: `manifest_metadata` 7; Chocolatey: the `.registry` file's
+modification time). The Edge/WebView2 and .NET Framework rules keep precedence.
+
+Measured on Windows 11 Enterprise 23H2 (22631), Chocolatey 2.7.5 installed as
+SYSTEM: `git.install` 2.56.1 (Inno Setup, key `Git_is1`), `putty.install` 0.85.0
+(MSI, a ProductCode), `vlc.install` 3.0.24 (key `VLC media player`) and
+`7zip.install` (key `7-Zip`) join; `vlc` (the meta package), `Wget` (portable)
+and the extensions have no `.registry`. 7-Zip was installed by winget (26.03 in
+its catalog), then by Chocolatey as 25.01 and upgraded to 26.06; both record
+folders name `7-Zip`, the entry says 26.06, so the 26.6.0 record wins over the
+25.1.0 one and over winget's 26.03 manifest, with an empty `url`. Notepad++,
+Chrome and Acrobat Reader stay `winget`; "Chocolatey (Install Only)", the MSI of
+the Chocolatey installer, is in winget's catalog (`Chocolatey.Chocolatey`)
+because it was installed with winget; Zoom, the JRE, Mondoo and the VC++
+runtimes stay `installer`. The reader runs only when a query asks for
+`osProvided` or `source` and the list holds an Uninstall entry, through the
+connection's file system, over at most 4096 record folders and at most 1 MiB per
+`.registry`; a file it cannot read or parse is skipped. Over SSH on the host
+above (9 record folders) a query for `source` took 17.9 s instead of 17.0 s
+without the Chocolatey reader (median of three), and the plain inventory of all
+185 packages stayed byte-identical; every Uninstall entry read as listed here.
+
 ### Files, not commands
 
 As in ADR 044, every answer is read from files:
@@ -538,9 +587,8 @@ separately. The OS signing identity is exact.
   `yumdb` and `/var/log/zypp/history`, names the repository.)
 - ~~winget as a channel of its own.~~ Done 2026-11-27, see the amendment under
   "How each platform resolves it".
-- Chocolatey installs that run an installer also appear in the Uninstall
-  registry, as `installer`; `C:\ProgramData\chocolatey\.chocolatey\<pkg>\.registry`
-  names the key and could mark them `chocolatey`.
+- ~~Chocolatey installs that run an installer.~~ Done 2026-11-27, see the
+  "Chocolatey" amendment under "How each platform resolves it".
 - Language packages (npm, PyPI, Maven). They are third-party by construction.
 - Whether an OS package came with the image or was installed later. The
   filter does not need it, so it is left for later.

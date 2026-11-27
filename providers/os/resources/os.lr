@@ -1699,14 +1699,16 @@ private package.source @defaults("channel name") {
   // The name the system itself records: the apt release's Origin ("Debian",
   // "nginx", "Docker"), the dnf repository id ("baseos", "docker-ce-stable"),
   // "mac-app-store", "microsoft-store", the Homebrew formula or cask, or the
-  // installer package identifier, or the winget package identifier
-  // ("7zip.7zip"). Empty when the channel has none.
+  // installer package identifier, the winget package identifier ("7zip.7zip"),
+  // or the Chocolatey package id ("git.install"). Empty when the channel has
+  // none.
   name string
   // Address of the repository, without credentials
   //
-  // Scheme, host and path of the apt or dnf repository the package came from,
-  // e.g. "http://nginx.org/packages/debian". User names, passwords, tokens and
-  // query strings are removed. Empty for channels that are not a repository.
+  // Scheme, host and path of the apt or dnf repository, or the Chocolatey feed,
+  // the package came from, e.g. "http://nginx.org/packages/debian". User names,
+  // passwords, tokens and query strings are removed. Empty for channels that are
+  // not a repository, and for a Chocolatey package whose feed is not recorded.
   url string
 }
 

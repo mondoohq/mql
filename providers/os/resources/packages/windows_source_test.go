@@ -342,6 +342,47 @@ func TestWingetEntryPicksTheInstalledVersion(t *testing.T) {
 	assert.Equal(t, "New.Id", src.Name)
 }
 
+func TestManagerSourcePrecedence(t *testing.T) {
+	const key = "7-zip"
+	wingetE := func(version string, written int64) wingetIndex {
+		return wingetIndex{key: {{id: "7zip.7zip", version: version, written: written, sourceDir: wingetCommunity}}}
+	}
+	chocoR := func(display string, written int64) chocolateyIndex {
+		return chocolateyIndex{key: {{id: "7zip.install", version: "26.6.0", displayVersion: display, scope: installScopeMachine, written: written}}}
+	}
+	pick := func(pkgVersion string, w wingetIndex, c chocolateyIndex) string {
+		src, ok := managerSource(uninstallEntry("7-Zip", pkgVersion, "7-Zip"), windowsSourceFacts{winget: w, chocolatey: c})
+		require.True(t, ok)
+		return src.Channel
+	}
+
+	// Synthetic: the manager whose record is for the installed version wins,
+	// whichever wrote last; no target showed the reverse (the measured host
+	// has Chocolatey matching and written last, see TestChocolateySources).
+	assert.Equal(t, ChannelChocolatey, pick("26.06", wingetE("26.03", 100), chocoR("26.06", 200)))
+	assert.Equal(t, ChannelChocolatey, pick("26.06", wingetE("26.03", 300), chocoR("26.06", 200)), "a newer winget record for another version does not win")
+	assert.Equal(t, ChannelWinget, pick("26.03", wingetE("26.03", 100), chocoR("26.06", 200)), "winget's record is for the installed version")
+	// both match: the record written last wins
+	assert.Equal(t, ChannelChocolatey, pick("26.03", wingetE("26.03", 100), chocoR("26.03", 200)))
+	assert.Equal(t, ChannelWinget, pick("26.03", wingetE("26.03", 300), chocoR("26.03", 200)))
+	// neither matches: the record written last wins
+	assert.Equal(t, ChannelChocolatey, pick("27.00", wingetE("26.03", 100), chocoR("26.06", 200)))
+	assert.Equal(t, ChannelWinget, pick("27.00", wingetE("26.03", 300), chocoR("26.06", 200)))
+
+	// only one manager claims the key
+	assert.Equal(t, ChannelWinget, pick("26.03", wingetE("26.03", 100), nil))
+	assert.Equal(t, ChannelChocolatey, pick("26.06", nil, chocoR("26.06", 200)))
+	_, ok := managerSource(uninstallEntry("7-Zip", "26.06", "7-Zip"), windowsSourceFacts{})
+	assert.False(t, ok)
+}
+
+func TestParseWindowsSourceFactsChocolatey(t *testing.T) {
+	// Synthetic: ChocolateyInstall as PowerShell prints it, set, null and absent; no target showed a custom root.
+	assert.Equal(t, `C:\tools\choco`, parseWindowsSourceFacts([]byte(`{"chocolatey":"C:\\tools\\choco","provisioned":[]}`)).chocolateyInstall)
+	assert.Empty(t, parseWindowsSourceFacts([]byte(`{"chocolatey":null,"provisioned":[]}`)).chocolateyInstall)
+	assert.Empty(t, parseWindowsSourceFacts([]byte(`{"provisioned":[]}`)).chocolateyInstall)
+}
+
 func TestWingetMicrosoftStoreSource(t *testing.T) {
 	// Synthetic: no host showed an msstore Win32 install; the catalog of the
 	// msstore source lives in StoreEdgeFD.
