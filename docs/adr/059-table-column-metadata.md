@@ -1,4 +1,4 @@
-# ADR 057: Column metadata on Snowflake, PostgreSQL, MySQL and AWS Glue tables
+# ADR 059: Column metadata on Snowflake, PostgreSQL, MySQL and AWS Glue tables
 
 ## Status
 
@@ -57,14 +57,17 @@ postgresdb and mysqldb `14.0.15` (`providers/postgresdb/config/config.go:17`,
 | Field | Type | Meaning |
 |---|---|---|
 | `name` | `string` | column name as stored |
-| `position` | `int` | ordinal position as the source reports it (omitted where the source reports none) |
+| `position` | `int` | ordinal position, counted from 1 on every store (omitted where the source reports none) |
 | `typeName` | `string` | declared type in the source's own spelling, for example `character varying(255)`, `VARCHAR(16777216)`, `decimal(10,2)` |
 | `nullable` | `bool` | whether the column accepts null (omitted where the source has no such notion) |
 | `comment` | `string` | column comment or description, empty when none |
 
 The names follow the Databricks Unity Catalog column API (`name`, `type_name`,
 `position`), so a Databricks column resource, which the provider does not model yet, can
-use the same ones, and a query written for one store reads the same on another. No field holds
+use the same ones, and a query written for one store reads the same on another. `position`
+counts from 1, as SQL `ORDINAL_POSITION` does, whatever base a source uses (Glue reports
+none and numbers its columns in list order; a 0-based source adds 1), so
+`columns.where(position == 1)` picks the first column everywhere. No field holds
 a column value, a default expression, a statistic, a histogram or a sample. Column
 default expressions are left out on purpose: they can carry literals.
 
