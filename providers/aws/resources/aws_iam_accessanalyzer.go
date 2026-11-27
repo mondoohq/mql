@@ -6,6 +6,8 @@ package resources
 import (
 	"context"
 	"errors"
+	"maps"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -53,6 +55,21 @@ type mqlAwsIamAccessAnalyzerFindingInternal struct {
 // resource per scan, so every finding of the scan shares these memos.
 type mqlAwsIamAccessAnalyzerInternal struct {
 	detailMemos sync.Map // analyzer ARN -> *externalDetailMemo
+
+	// refusedLock guards externalRefused: the regions whose external-access
+	// findings listing was refused, with the refusal. Set while
+	// externalAccessFindings() computes, so it is complete once
+	// GetExternalAccessFindings returns.
+	refusedLock     sync.Mutex
+	externalRefused map[string]error
+}
+
+// externalRefusedRegion returns the refusal that kept region's external-access
+// findings from the list, or nil.
+func (a *mqlAwsIamAccessAnalyzer) externalRefusedRegion(region string) error {
+	a.refusedLock.Lock()
+	defer a.refusedLock.Unlock()
+	return a.externalRefused[region]
 }
 
 // fetchUnusedAccessDetails resolves the unused-access detail of the finding.
@@ -599,22 +616,7 @@ func (a *mqlAwsIamAccessAnalyzer) listFindings(conn *connection.AwsConnection, a
 						return nil, err
 					}
 					for _, finding := range findings.Findings {
-						mqlFinding, err := CreateResource(a.MqlRuntime, "aws.iam.accessAnalyzer.finding",
-							map[string]*llx.RawData{
-								"__id":                 llx.StringDataPtr(finding.Id),
-								"id":                   llx.StringDataPtr(finding.Id),
-								"error":                llx.StringDataPtr(finding.Error),
-								"resourceArn":          llx.StringDataPtr(finding.Resource),
-								"resourceOwnerAccount": llx.StringDataPtr(finding.ResourceOwnerAccount),
-								"resourceType":         llx.StringData(string(finding.ResourceType)),
-								"status":               llx.StringData(string(finding.Status)),
-								"type":                 llx.StringData(string(finding.FindingType)),
-								"createdAt":            llx.TimeDataPtr(finding.CreatedAt),
-								"updatedAt":            llx.TimeDataPtr(finding.UpdatedAt),
-								"analyzedAt":           llx.TimeDataPtr(finding.AnalyzedAt),
-								"region":               llx.StringData(region),
-								"analyzerArn":          llx.StringData(analyzerArn),
-							})
+						mqlFinding, err := a.newFinding(finding, region, analyzerArn)
 						if err != nil {
 							return nil, err
 						}
@@ -627,6 +629,165 @@ func (a *mqlAwsIamAccessAnalyzer) listFindings(conn *connection.AwsConnection, a
 		tasks = append(tasks, jobpool.NewJob(f))
 	}
 	return tasks
+}
+
+// newFinding creates the aws.iam.accessAnalyzer.finding resource of a
+// ListFindingsV2 summary. The finding id is the cache key, so a finding listed
+// by two lists is one resource.
+func (a *mqlAwsIamAccessAnalyzer) newFinding(finding aatypes.FindingSummaryV2, region, analyzerArn string) (plugin.Resource, error) {
+	return CreateResource(a.MqlRuntime, "aws.iam.accessAnalyzer.finding",
+		map[string]*llx.RawData{
+			"__id":                 llx.StringDataPtr(finding.Id),
+			"id":                   llx.StringDataPtr(finding.Id),
+			"error":                llx.StringDataPtr(finding.Error),
+			"resourceArn":          llx.StringDataPtr(finding.Resource),
+			"resourceOwnerAccount": llx.StringDataPtr(finding.ResourceOwnerAccount),
+			"resourceType":         llx.StringData(string(finding.ResourceType)),
+			"status":               llx.StringData(string(finding.Status)),
+			"type":                 llx.StringData(string(finding.FindingType)),
+			"createdAt":            llx.TimeDataPtr(finding.CreatedAt),
+			"updatedAt":            llx.TimeDataPtr(finding.UpdatedAt),
+			"analyzedAt":           llx.TimeDataPtr(finding.AnalyzedAt),
+			"region":               llx.StringData(region),
+			"analyzerArn":          llx.StringData(analyzerArn),
+		})
+}
+
+// externalAccessAnalyzerTypes are the analyzer types that report external
+// access. Their findings are of type ExternalAccess.
+var externalAccessAnalyzerTypes = []string{string(aatypes.TypeAccount), string(aatypes.TypeOrganization)}
+
+var errNoExternalAccessAnalyzer = errors.New("no external-access analyzer is active")
+
+// activeAnalyzersByRegion returns the ARNs of the ACTIVE analyzers whose type is
+// in analyzerTypes, grouped by region, from the cached analyzer list.
+func (a *mqlAwsIamAccessAnalyzer) activeAnalyzersByRegion(analyzerTypes []string) (map[string][]string, error) {
+	analyzers := a.GetAnalyzers()
+	if analyzers.Error != nil {
+		return nil, analyzers.Error
+	}
+	res := map[string][]string{}
+	for _, x := range analyzers.Data {
+		analyzer, ok := x.(*mqlAwsIamAccessAnalyzerAnalyzer)
+		if !ok {
+			return nil, errors.New("error casting to analyzer instance")
+		}
+		if analyzer.Status.Data != string(aatypes.AnalyzerStatusActive) || !slices.Contains(analyzerTypes, analyzer.Type.Data) {
+			continue
+		}
+		res[analyzer.Region.Data] = append(res[analyzer.Region.Data], analyzer.Arn.Data)
+	}
+	return res, nil
+}
+
+// externalAccessRegions returns the regions with an ACTIVE ACCOUNT or
+// ORGANIZATION analyzer.
+func (a *mqlAwsIamAccessAnalyzer) externalAccessRegions() (map[string]bool, error) {
+	byRegion, err := a.activeAnalyzersByRegion(externalAccessAnalyzerTypes)
+	if err != nil {
+		return nil, err
+	}
+	res := make(map[string]bool, len(byRegion))
+	for region := range byRegion {
+		res[region] = true
+	}
+	return res, nil
+}
+
+func (a *mqlAwsIamAccessAnalyzer) externalAccessFindings() ([]any, error) {
+	res, refused, err := a.listFindingsOfTypes(string(aatypes.FindingStatusActive), externalAccessAnalyzerTypes,
+		string(aatypes.FindingTypeExternalAccess), errNoExternalAccessAnalyzer)
+	a.refusedLock.Lock()
+	a.externalRefused = refused
+	a.refusedLock.Unlock()
+	return res, err
+}
+
+// regionFindings is what one region's listing contributes: its findings, and
+// the refusal that kept it from contributing all of them.
+type regionFindings struct {
+	region   string
+	findings []any
+	refused  error
+}
+
+// listFindingsOfTypes lists the findings with status of the ACTIVE analyzers
+// whose type is in analyzerTypes, keeping those of findingType (empty: any).
+// It returns NotApplicable (with noAnalyzer) when no such analyzer is active and
+// Forbidden when every region's call was refused. A refusal in some regions is
+// logged, the other regions' findings are returned, and refused names the
+// regions whose list is incomplete, so a caller does not read a refused region
+// as one with nothing to report.
+func (a *mqlAwsIamAccessAnalyzer) listFindingsOfTypes(status string, analyzerTypes []string, findingType string, noAnalyzer error) (list []any, refused map[string]error, err error) {
+	byRegion, err := a.activeAnalyzersByRegion(analyzerTypes)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(byRegion) == 0 {
+		return nil, nil, llx.NotApplicable(noAnalyzer)
+	}
+
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	tasks := make([]*jobpool.Job, 0, len(byRegion))
+	for region, analyzerArns := range byRegion {
+		tasks = append(tasks, jobpool.NewJob(func() (jobpool.JobResult, error) {
+			svc := conn.AccessAnalyzer(region)
+			ctx := context.Background()
+			res := regionFindings{region: region, findings: []any{}}
+			for _, analyzerArn := range analyzerArns {
+				paginator := accessanalyzer.NewListFindingsV2Paginator(svc, &accessanalyzer.ListFindingsV2Input{
+					AnalyzerArn: aws.String(analyzerArn),
+					Filter:      map[string]aatypes.Criterion{"status": {Eq: []string{status}}},
+				})
+				for paginator.HasMorePages() {
+					page, err := paginator.NextPage(ctx)
+					if err != nil {
+						if Is400AccessDeniedError(err) {
+							log.Warn().Str("region", region).Str("analyzer", analyzerArn).
+								Msg("no permission to list access analyzer findings")
+							// Keep what the region's other analyzers returned.
+							res.refused = err
+							return res, nil
+						}
+						return nil, err
+					}
+					for _, finding := range page.Findings {
+						if findingType != "" && string(finding.FindingType) != findingType {
+							continue
+						}
+						mqlFinding, err := a.newFinding(finding, region, analyzerArn)
+						if err != nil {
+							return nil, err
+						}
+						res.findings = append(res.findings, mqlFinding)
+					}
+				}
+			}
+			return res, nil
+		}))
+	}
+	pool := jobpool.CreatePool(tasks, 5)
+	pool.Run()
+	if pool.HasErrors() {
+		return nil, nil, pool.GetErrors()
+	}
+
+	res := []any{}
+	refused = map[string]error{}
+	for i := range pool.Jobs {
+		rf := pool.Jobs[i].Result.(regionFindings)
+		res = append(res, rf.findings...)
+		if rf.refused != nil {
+			refused[rf.region] = rf.refused
+		}
+	}
+	if len(refused) == len(byRegion) {
+		// Every region refused: report the alphabetically first one, so the
+		// error does not depend on which job finished last.
+		regions := slices.Sorted(maps.Keys(refused))
+		return nil, refused, llx.Forbidden(refused[regions[0]], llx.WithPermissions(permListFindings))
+	}
+	return res, refused, nil
 }
 
 // archiveRules returns the rules that archive matching findings as they are

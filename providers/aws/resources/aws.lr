@@ -2157,6 +2157,11 @@ private aws.efs.filesystem @defaults("name id region") {
   //
   // Null when the service reports no protection settings for the file system.
   protection() aws.efs.fileSystemProtection
+  // IAM Access Analyzer findings reporting external or public access to this file system
+  //
+  // Only external-access findings. Errors when no external-access analyzer is
+  // active in the region of the file system.
+  externalAccessFindings() []aws.iam.accessAnalyzer.finding
 }
 
 // Automatic backup policy of an Amazon EFS file system
@@ -2585,6 +2590,9 @@ private aws.kms.key @defaults("id region aliases description") {
   // unknown rather than false.
   isPublic() bool
   // IAM Access Analyzer findings reporting external or public access to this resource
+  //
+  // Only external-access findings. Errors when no external-access analyzer is
+  // active in the resource's region.
   externalAccessFindings() []aws.iam.accessAnalyzer.finding
   // Describes the type of key material in the key
   //
@@ -3364,6 +3372,9 @@ private aws.iam.role @defaults("arn name") {
   // Inline policies embedded in the role, including their documents
   inlinePolicyDetails() []aws.iam.inlinePolicy
   // IAM Access Analyzer findings reporting external or public access to this resource
+  //
+  // Only external-access findings. Errors when no external-access analyzer is
+  // active in the resource's region.
   externalAccessFindings() []aws.iam.accessAnalyzer.finding
   // Services the role is permitted to use, with when each was last accessed
   //
@@ -3572,6 +3583,13 @@ aws.iam.accessAnalyzer @defaults("analyzers") {
   findings() []aws.iam.accessAnalyzer.finding
   // List of all archived findings for all analyzers and regions
   archivedFindings() []aws.iam.accessAnalyzer.finding
+  // Active external-access findings
+  //
+  // The active findings of type ExternalAccess of the ACCOUNT and ORGANIZATION
+  // analyzers in every region: resources a principal outside the zone of trust
+  // can reach. Errors when no such analyzer is active, so an account without one
+  // is not read as having nothing shared.
+  externalAccessFindings() []aws.iam.accessAnalyzer.finding
 }
 
 // AWS IAM Access Analyzer configuration
@@ -6603,6 +6621,9 @@ private aws.sns.topic @defaults("arn") {
   // Whether the resource policy grants public access (a wildcard principal with no scoping conditions)
   isPublic() bool
   // IAM Access Analyzer findings reporting external or public access to this resource
+  //
+  // Only external-access findings. Errors when no external-access analyzer is
+  // active in the resource's region.
   externalAccessFindings() []aws.iam.accessAnalyzer.finding
   // Whether the topic is a FIFO topic
   fifoTopic() bool
@@ -14123,6 +14144,9 @@ private aws.s3.bucket @defaults("name location public") {
   // Inferred from the provenance tags AWS injects on managed resources (for example cloudformation, elasticbeanstalk, eks). Empty when the bucket is unmanaged or managed by a tool that leaves no recognizable tag.
   managedBy() string
   // IAM Access Analyzer findings reporting external or public access to this resource
+  //
+  // Only external-access findings. Errors when no external-access analyzer is
+  // active in the resource's region.
   externalAccessFindings() []aws.iam.accessAnalyzer.finding
 }
 
@@ -15552,6 +15576,11 @@ private aws.dynamodb.table @defaults("name region") {
   // DELETING, or ACTIVE), IndexSizeBytes, ItemCount, Backfilling, KeySchema,
   // Projection, and ProvisionedThroughput.
   globalSecondaryIndexes() []dict
+  // IAM Access Analyzer findings reporting external or public access to this table
+  //
+  // Only external-access findings. Errors when no external-access analyzer is
+  // active in the region of the table.
+  externalAccessFindings() []aws.iam.accessAnalyzer.finding
 }
 
 // Amazon Simple Queue Service (SQS)
@@ -16043,6 +16072,11 @@ private aws.rds.snapshot @defaults("id region type encrypted createdAt") {
   kmsKey() aws.kms.key
   // Whether the snapshot is shared publicly (restorable by any AWS account)
   isPublic() bool
+  // IAM Access Analyzer findings reporting external or public access to this snapshot
+  //
+  // Only external-access findings. Errors when no external-access analyzer is
+  // active in the region of the snapshot.
+  externalAccessFindings() []aws.iam.accessAnalyzer.finding
 }
 
 // Amazon RDS database instance
@@ -21789,6 +21823,11 @@ private aws.ec2.snapshot @defaults("id region volumeSize state") {
   coolOffPeriod() int
   // Time the cooling-off period ends
   coolOffPeriodExpiresAt() time
+  // IAM Access Analyzer findings reporting external or public access to this snapshot
+  //
+  // Only external-access findings. Errors when no external-access analyzer is
+  // active in the region of the snapshot.
+  externalAccessFindings() []aws.iam.accessAnalyzer.finding
 }
 
 // Amazon EC2 (EBS) volume

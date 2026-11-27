@@ -3841,6 +3841,7 @@ aws.dynamodb.table.continuousBackupsEnabled 13.39.2
 aws.dynamodb.table.createdAt 11.15.2
 aws.dynamodb.table.deletionProtectionEnabled 11.15.2
 aws.dynamodb.table.earliestRestorableDateTime 13.39.2
+aws.dynamodb.table.externalAccessFindings 14.14.2
 aws.dynamodb.table.globalSecondaryIndexes 13.6.3
 aws.dynamodb.table.globalTableVersion 11.15.2
 aws.dynamodb.table.id 11.15.2
@@ -4497,6 +4498,7 @@ aws.ec2.snapshot.createVolumePermissionUserIds 13.53.4
 aws.ec2.snapshot.dataEncryptionKeyId 13.35.2
 aws.ec2.snapshot.description 11.15.2
 aws.ec2.snapshot.encrypted 11.15.2
+aws.ec2.snapshot.externalAccessFindings 14.14.2
 aws.ec2.snapshot.id 11.15.2
 aws.ec2.snapshot.isPublic 13.2.7
 aws.ec2.snapshot.kmsKey 11.15.2
@@ -5188,6 +5190,7 @@ aws.efs.filesystem.cloudformationStack 13.39.2
 aws.efs.filesystem.createdAt 11.15.2
 aws.efs.filesystem.creationToken 13.39.2
 aws.efs.filesystem.encrypted 11.15.2
+aws.efs.filesystem.externalAccessFindings 14.14.2
 aws.efs.filesystem.fileSystemPolicy 11.15.2
 aws.efs.filesystem.fileSystemProtection 13.12.1
 aws.efs.filesystem.id 11.15.2
@@ -6860,6 +6863,7 @@ aws.iam.accessAnalyzer.archiveRule.name 13.54.1
 aws.iam.accessAnalyzer.archiveRule.region 13.54.1
 aws.iam.accessAnalyzer.archiveRule.updatedAt 13.54.1
 aws.iam.accessAnalyzer.archivedFindings 13.0.2
+aws.iam.accessAnalyzer.externalAccessFindings 14.14.2
 aws.iam.accessAnalyzer.finding 13.29.1
 aws.iam.accessAnalyzer.finding.actions 14.14.2
 aws.iam.accessAnalyzer.finding.analyzedAt 13.29.1
@@ -9581,6 +9585,7 @@ aws.rds.snapshot.createdAt 11.15.2
 aws.rds.snapshot.encrypted 11.15.2
 aws.rds.snapshot.engine 11.15.2
 aws.rds.snapshot.engineVersion 11.15.2
+aws.rds.snapshot.externalAccessFindings 14.14.2
 aws.rds.snapshot.id 11.15.2
 aws.rds.snapshot.isClusterSnapshot 11.15.2
 aws.rds.snapshot.isPublic 13.26.2

@@ -7353,6 +7353,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.efs.filesystem.protection": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEfsFilesystem).GetProtection()).ToDataRes(types.Resource("aws.efs.fileSystemProtection"))
 	},
+	"aws.efs.filesystem.externalAccessFindings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEfsFilesystem).GetExternalAccessFindings()).ToDataRes(types.Array(types.Resource("aws.iam.accessAnalyzer.finding")))
+	},
 	"aws.efs.backupPolicy.status": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEfsBackupPolicy).GetStatus()).ToDataRes(types.String)
 	},
@@ -8555,6 +8558,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.iam.accessAnalyzer.archivedFindings": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsIamAccessAnalyzer).GetArchivedFindings()).ToDataRes(types.Array(types.Resource("aws.iam.accessAnalyzer.finding")))
+	},
+	"aws.iam.accessAnalyzer.externalAccessFindings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsIamAccessAnalyzer).GetExternalAccessFindings()).ToDataRes(types.Array(types.Resource("aws.iam.accessAnalyzer.finding")))
 	},
 	"aws.iam.accessAnalyzer.analyzer.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsIamAccessAnalyzerAnalyzer).GetArn()).ToDataRes(types.String)
@@ -20349,6 +20355,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.dynamodb.table.globalSecondaryIndexes": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsDynamodbTable).GetGlobalSecondaryIndexes()).ToDataRes(types.Array(types.Dict))
 	},
+	"aws.dynamodb.table.externalAccessFindings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsDynamodbTable).GetExternalAccessFindings()).ToDataRes(types.Array(types.Resource("aws.iam.accessAnalyzer.finding")))
+	},
 	"aws.sqs.queues": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsSqs).GetQueues()).ToDataRes(types.Array(types.Resource("aws.sqs.queue")))
 	},
@@ -20864,6 +20873,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.rds.snapshot.isPublic": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsRdsSnapshot).GetIsPublic()).ToDataRes(types.Bool)
+	},
+	"aws.rds.snapshot.externalAccessFindings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRdsSnapshot).GetExternalAccessFindings()).ToDataRes(types.Array(types.Resource("aws.iam.accessAnalyzer.finding")))
 	},
 	"aws.rds.dbinstance.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsRdsDbinstance).GetArn()).ToDataRes(types.String)
@@ -26423,6 +26435,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.ec2.snapshot.coolOffPeriodExpiresAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEc2Snapshot).GetCoolOffPeriodExpiresAt()).ToDataRes(types.Time)
+	},
+	"aws.ec2.snapshot.externalAccessFindings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2Snapshot).GetExternalAccessFindings()).ToDataRes(types.Array(types.Resource("aws.iam.accessAnalyzer.finding")))
 	},
 	"aws.ec2.volume.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEc2Volume).GetArn()).ToDataRes(types.String)
@@ -44218,6 +44233,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsEfsFilesystem).Protection, ok = plugin.RawToTValue[*mqlAwsEfsFileSystemProtection](v.Value, v.Error)
 		return
 	},
+	"aws.efs.filesystem.externalAccessFindings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEfsFilesystem).ExternalAccessFindings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"aws.efs.backupPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsEfsBackupPolicy).__id, ok = v.Value.(string)
 		return
@@ -45988,6 +46007,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.iam.accessAnalyzer.archivedFindings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsIamAccessAnalyzer).ArchivedFindings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.iam.accessAnalyzer.externalAccessFindings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsIamAccessAnalyzer).ExternalAccessFindings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"aws.iam.accessAnalyzer.analyzer.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -63266,6 +63289,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsDynamodbTable).GlobalSecondaryIndexes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"aws.dynamodb.table.externalAccessFindings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsDynamodbTable).ExternalAccessFindings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"aws.sqs.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsSqs).__id, ok = v.Value.(string)
 		return
@@ -63984,6 +64011,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.rds.snapshot.isPublic": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsRdsSnapshot).IsPublic, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.rds.snapshot.externalAccessFindings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRdsSnapshot).ExternalAccessFindings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"aws.rds.dbinstance.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -71992,6 +72023,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.ec2.snapshot.coolOffPeriodExpiresAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsEc2Snapshot).CoolOffPeriodExpiresAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.snapshot.externalAccessFindings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2Snapshot).ExternalAccessFindings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"aws.ec2.volume.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -100971,6 +101006,7 @@ type mqlAwsEfsFilesystem struct {
 	ReplicationConfiguration     plugin.TValue[*mqlAwsEfsFilesystemReplicationConfiguration]
 	FileSystemProtection         plugin.TValue[any]
 	Protection                   plugin.TValue[*mqlAwsEfsFileSystemProtection]
+	ExternalAccessFindings       plugin.TValue[[]any]
 }
 
 // createAwsEfsFilesystem creates a new instance of this resource
@@ -101245,6 +101281,22 @@ func (c *mqlAwsEfsFilesystem) GetProtection() *plugin.TValue[*mqlAwsEfsFileSyste
 		}
 
 		return c.protection()
+	})
+}
+
+func (c *mqlAwsEfsFilesystem) GetExternalAccessFindings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ExternalAccessFindings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.efs.filesystem", c.__id, "externalAccessFindings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.externalAccessFindings()
 	})
 }
 
@@ -106187,9 +106239,10 @@ type mqlAwsIamAccessAnalyzer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAwsIamAccessAnalyzerInternal
-	Analyzers        plugin.TValue[[]any]
-	Findings         plugin.TValue[[]any]
-	ArchivedFindings plugin.TValue[[]any]
+	Analyzers              plugin.TValue[[]any]
+	Findings               plugin.TValue[[]any]
+	ArchivedFindings       plugin.TValue[[]any]
+	ExternalAccessFindings plugin.TValue[[]any]
 }
 
 // createAwsIamAccessAnalyzer creates a new instance of this resource
@@ -106269,6 +106322,22 @@ func (c *mqlAwsIamAccessAnalyzer) GetArchivedFindings() *plugin.TValue[[]any] {
 		}
 
 		return c.archivedFindings()
+	})
+}
+
+func (c *mqlAwsIamAccessAnalyzer) GetExternalAccessFindings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ExternalAccessFindings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.iam.accessAnalyzer", c.__id, "externalAccessFindings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.externalAccessFindings()
 	})
 }
 
@@ -152179,6 +152248,7 @@ type mqlAwsDynamodbTable struct {
 	ReplicaRegions             plugin.TValue[[]any]
 	TtlDescription             plugin.TValue[any]
 	GlobalSecondaryIndexes     plugin.TValue[[]any]
+	ExternalAccessFindings     plugin.TValue[[]any]
 }
 
 // createAwsDynamodbTable creates a new instance of this resource
@@ -152477,6 +152547,22 @@ func (c *mqlAwsDynamodbTable) GetTtlDescription() *plugin.TValue[any] {
 func (c *mqlAwsDynamodbTable) GetGlobalSecondaryIndexes() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.GlobalSecondaryIndexes, func() ([]any, error) {
 		return c.globalSecondaryIndexes()
+	})
+}
+
+func (c *mqlAwsDynamodbTable) GetExternalAccessFindings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ExternalAccessFindings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.dynamodb.table", c.__id, "externalAccessFindings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.externalAccessFindings()
 	})
 }
 
@@ -153919,6 +154005,7 @@ type mqlAwsRdsSnapshot struct {
 	OriginalCreatedAt          plugin.TValue[*time.Time]
 	KmsKey                     plugin.TValue[*mqlAwsKmsKey]
 	IsPublic                   plugin.TValue[bool]
+	ExternalAccessFindings     plugin.TValue[[]any]
 }
 
 // createAwsRdsSnapshot creates a new instance of this resource
@@ -154113,6 +154200,22 @@ func (c *mqlAwsRdsSnapshot) GetKmsKey() *plugin.TValue[*mqlAwsKmsKey] {
 func (c *mqlAwsRdsSnapshot) GetIsPublic() *plugin.TValue[bool] {
 	return plugin.GetOrCompute[bool](&c.IsPublic, func() (bool, error) {
 		return c.isPublic()
+	})
+}
+
+func (c *mqlAwsRdsSnapshot) GetExternalAccessFindings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ExternalAccessFindings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.rds.snapshot", c.__id, "externalAccessFindings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.externalAccessFindings()
 	})
 }
 
@@ -173430,6 +173533,7 @@ type mqlAwsEc2Snapshot struct {
 	LockExpiresAt                 plugin.TValue[*time.Time]
 	CoolOffPeriod                 plugin.TValue[int64]
 	CoolOffPeriodExpiresAt        plugin.TValue[*time.Time]
+	ExternalAccessFindings        plugin.TValue[[]any]
 }
 
 // createAwsEc2Snapshot creates a new instance of this resource
@@ -173686,6 +173790,22 @@ func (c *mqlAwsEc2Snapshot) GetCoolOffPeriod() *plugin.TValue[int64] {
 func (c *mqlAwsEc2Snapshot) GetCoolOffPeriodExpiresAt() *plugin.TValue[*time.Time] {
 	return plugin.GetOrCompute[*time.Time](&c.CoolOffPeriodExpiresAt, func() (*time.Time, error) {
 		return c.coolOffPeriodExpiresAt()
+	})
+}
+
+func (c *mqlAwsEc2Snapshot) GetExternalAccessFindings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ExternalAccessFindings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.ec2.snapshot", c.__id, "externalAccessFindings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.externalAccessFindings()
 	})
 }
 
