@@ -23,6 +23,10 @@ func TestIndexAgreesWithMatch(t *testing.T) {
 		{gitlabReadme, GitLab},
 		{"* @username\n!pom.xml\n[Ruby]\n*.rb @ruby-team\n!/config/**/*.rb\n[Config]\n/config/ @ops-team\n[ruby]\n/special/*.rb @x\n", GitLab},
 		{"[Documentation][2] @docs-team\ndocs/\nREADME.md\n^[Database] @database-team\nmodel/db/\nmodel/db/database-setup.md @docs-team\n*.[ch] @c\n", GitLab},
+		// Synthetic: suffix keys with multi-byte runes, and a pattern holding
+		// a byte that is not UTF-8 (the matcher reads it as U+FFFD).
+		{"*é.go @e\n*中 @zh\n*.m\xff @bad\n", GitHub},
+		{"*é.go @e\n*中 @zh\n*.m\xff @bad\n", GitLab},
 	}
 	paths := []string{
 		"README.md", "internal/README.md", "docs/a.md", "docs/build-app/troubleshooting.md",
@@ -30,6 +34,7 @@ func TestIndexAgreesWithMatch(t *testing.T) {
 		"build/logs/a", "x/logs/y/z", "pom.xml", "app/a.rb", "config/routes.rb", "special/a.rb",
 		"model/db/schema.rb", "model/db/database-setup.md", "src/a.c", "src/a.o", "main.go",
 		"scripts/deploy.sh", "notes.txt", ".github/CODEOWNERS", "",
+		"src/café.go", "src/é.go", "docs/文件中", "a/x.m\xff", "a/x.m\xfe",
 	}
 	for i, f := range files {
 		rules, _ := Parse(f.content, f.d)

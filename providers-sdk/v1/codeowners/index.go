@@ -6,6 +6,7 @@ package codeowners
 import (
 	"slices"
 	"strings"
+	"unicode/utf8"
 )
 
 // Index answers Match and MatchRules for many paths against one file. It
@@ -83,6 +84,12 @@ func literalSuffix(m *matcher) (string, bool) {
 		}
 		var b strings.Builder
 		for _, t := range s.toks[j:] {
+			// A byte that is not UTF-8 compiles to U+FFFD, whose encoding
+			// never appears in the path's raw bytes: keep such a rule in
+			// always, where the matcher decides.
+			if t.r == utf8.RuneError {
+				return "", false
+			}
 			b.WriteRune(t.r)
 		}
 		return b.String(), true
@@ -98,7 +105,10 @@ func (x *Index) candidates(segs []string) []int {
 		c = append(c, x.bySeg[s]...)
 		if len(x.bySuffix) > 0 {
 			for k := range len(s) {
-				c = append(c, x.bySuffix[s[k:]]...)
+				// Keys are whole runes, so only a rune start can begin one.
+				if utf8.RuneStart(s[k]) {
+					c = append(c, x.bySuffix[s[k:]]...)
+				}
 			}
 		}
 	}

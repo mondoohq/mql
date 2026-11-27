@@ -311,11 +311,50 @@ func matchTokens(toks []token, name string) bool {
 }
 
 // matchPath reports whether the pattern matches the path split into segs.
+//
+// Each `**` tries every split point, so without memory a pattern with many
+// `**` segments takes exponential time on a deep path that does not match
+// (`/**/a/**/a/.../b` against `a/a/.../c`), and a CODEOWNERS file is input
+// from the scanned repository. failed remembers the (pattern segment, path
+// segment) states that cannot match, which bounds the work by
+// len(m.segs)*len(segs) and the recursion depth by len(m.segs)+len(segs).
 func (m *matcher) matchPath(segs []string) bool {
-	return m.matchFrom(0, 0, segs)
+	// One `**` only scans the path once; the blowup needs two or more.
+	stars := 0
+	for i := range m.segs {
+		if m.segs[i].doubleStar {
+			stars++
+		}
+	}
+	if stars < 2 {
+		return m.matchFrom(0, 0, segs, nil)
+	}
+	var buf [256]bool
+	failed := buf[:0]
+	if n := (len(m.segs) + 1) * (len(segs) + 1); n <= len(buf) {
+		failed = buf[:n]
+	} else {
+		failed = make([]bool, n)
+	}
+	return m.matchFrom(0, 0, segs, failed)
 }
 
-func (m *matcher) matchFrom(pi, si int, segs []string) bool {
+func (m *matcher) matchFrom(pi, si int, segs []string, failed []bool) bool {
+	if failed != nil {
+		key := pi*(len(segs)+1) + si
+		if failed[key] {
+			return false
+		}
+		if m.matchStep(pi, si, segs, failed) {
+			return true
+		}
+		failed[key] = true
+		return false
+	}
+	return m.matchStep(pi, si, segs, failed)
+}
+
+func (m *matcher) matchStep(pi, si int, segs []string, failed []bool) bool {
 	if pi == len(m.segs) {
 		rest := len(segs) - si
 		if rest == 0 {
@@ -331,7 +370,7 @@ func (m *matcher) matchFrom(pi, si int, segs []string) bool {
 			}
 		}
 		for k := si; k <= len(segs); k++ {
-			if m.matchFrom(pi+1, k, segs) {
+			if m.matchFrom(pi+1, k, segs, failed) {
 				return true
 			}
 		}
@@ -340,7 +379,7 @@ func (m *matcher) matchFrom(pi, si int, segs []string) bool {
 	if si == len(segs) || !seg.match(segs[si]) {
 		return false
 	}
-	return m.matchFrom(pi+1, si+1, segs)
+	return m.matchFrom(pi+1, si+1, segs, failed)
 }
 
 // splitPath turns a repository-relative path into segments. A leading `/` or

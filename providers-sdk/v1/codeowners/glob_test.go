@@ -4,7 +4,9 @@
 package codeowners
 
 import (
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -53,5 +55,21 @@ func TestNormalizeGitLab(t *testing.T) {
 	}
 	for in, want := range cases {
 		assert.Equal(t, want, normalizeGitLab(in), in)
+	}
+}
+
+// TestDoubleStarBacktracking matches patterns with many `**` segments against
+// a deep path. Without memoization each `**` multiplies the work by the path
+// depth: 12 of them against 40 segments did not finish in minutes, so a
+// single CODEOWNERS line from a scanned repository could hang the scan.
+// Synthetic; no real CODEOWNERS file showed this.
+func TestDoubleStarBacktracking(t *testing.T) {
+	deep := strings.Repeat("a/", 40)
+	for _, d := range []Dialect{GitHub, GitLab} {
+		rules := mustParse(t, "/"+strings.Repeat("**/a/", 12)+"b @o\n", d)
+		start := time.Now()
+		assert.Empty(t, MatchRules(rules, deep+"c", d), d.String())
+		assert.Len(t, MatchRules(rules, deep+"b", d), 1, d.String())
+		assert.Less(t, time.Since(start), 2*time.Second, d.String())
 	}
 }
