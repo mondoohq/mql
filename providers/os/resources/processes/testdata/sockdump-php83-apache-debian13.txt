@@ -1,0 +1,71 @@
+P1
+total 0
+lrwx------ 1 root root 64 Nov 27 14:20 0 -> /dev/null
+l-wx------ 1 root root 64 Nov 27 14:18 1 -> pipe:[1427669]
+l-wx------ 1 root root 64 Nov 27 14:18 2 -> pipe:[1427670]
+lrwx------ 1 root root 64 Nov 27 14:20 3 -> socket:[1424795]
+lr-x------ 1 root root 64 Nov 27 14:20 4 -> pipe:[1424806]
+l-wx------ 1 root root 64 Nov 27 14:20 5 -> pipe:[1424806]
+l-wx------ 1 root root 64 Nov 27 14:20 6 -> pipe:[1427669]
+l-wx------ 1 root root 64 Nov 27 14:20 7 -> pipe:[1427669]
+lrwx------ 1 root root 64 Nov 27 14:20 8 -> /memfd:opcache_lock (deleted)
+P17
+total 0
+lrwx------ 1 root root 64 Nov 27 14:20 0
+l-wx------ 1 root root 64 Nov 27 14:20 1
+l-wx------ 1 root root 64 Nov 27 14:20 2
+lrwx------ 1 root root 64 Nov 27 14:20 3
+lr-x------ 1 root root 64 Nov 27 14:20 4
+l-wx------ 1 root root 64 Nov 27 14:20 5
+l-wx------ 1 root root 64 Nov 27 14:20 6
+l-wx------ 1 root root 64 Nov 27 14:20 7
+lrwx------ 1 root root 64 Nov 27 14:20 8
+lrwx------ 1 root root 64 Nov 27 14:20 9
+P18
+total 0
+lrwx------ 1 root root 64 Nov 27 14:20 0
+l-wx------ 1 root root 64 Nov 27 14:20 1
+l-wx------ 1 root root 64 Nov 27 14:20 2
+lrwx------ 1 root root 64 Nov 27 14:20 3
+lr-x------ 1 root root 64 Nov 27 14:20 4
+l-wx------ 1 root root 64 Nov 27 14:20 5
+l-wx------ 1 root root 64 Nov 27 14:20 6
+l-wx------ 1 root root 64 Nov 27 14:20 7
+lrwx------ 1 root root 64 Nov 27 14:20 8
+lrwx------ 1 root root 64 Nov 27 14:20 9
+P19
+total 0
+lrwx------ 1 root root 64 Nov 27 14:20 0
+l-wx------ 1 root root 64 Nov 27 14:20 1
+l-wx------ 1 root root 64 Nov 27 14:20 2
+lrwx------ 1 root root 64 Nov 27 14:20 3
+lr-x------ 1 root root 64 Nov 27 14:20 4
+l-wx------ 1 root root 64 Nov 27 14:20 5
+l-wx------ 1 root root 64 Nov 27 14:20 6
+l-wx------ 1 root root 64 Nov 27 14:20 7
+lrwx------ 1 root root 64 Nov 27 14:20 8
+lrwx------ 1 root root 64 Nov 27 14:20 9
+P20
+total 0
+lrwx------ 1 root root 64 Nov 27 14:20 0
+l-wx------ 1 root root 64 Nov 27 14:20 1
+l-wx------ 1 root root 64 Nov 27 14:20 2
+lrwx------ 1 root root 64 Nov 27 14:20 3
+lr-x------ 1 root root 64 Nov 27 14:20 4
+l-wx------ 1 root root 64 Nov 27 14:20 5
+l-wx------ 1 root root 64 Nov 27 14:20 6
+l-wx------ 1 root root 64 Nov 27 14:20 7
+lrwx------ 1 root root 64 Nov 27 14:20 8
+lrwx------ 1 root root 64 Nov 27 14:20 9
+P21
+total 0
+lrwx------ 1 root root 64 Nov 27 14:20 0
+l-wx------ 1 root root 64 Nov 27 14:20 1
+l-wx------ 1 root root 64 Nov 27 14:20 2
+lrwx------ 1 root root 64 Nov 27 14:20 3
+lr-x------ 1 root root 64 Nov 27 14:20 4
+l-wx------ 1 root root 64 Nov 27 14:20 5
+l-wx------ 1 root root 64 Nov 27 14:20 6
+l-wx------ 1 root root 64 Nov 27 14:20 7
+lrwx------ 1 root root 64 Nov 27 14:20 8
+lrwx------ 1 root root 64 Nov 27 14:20 9

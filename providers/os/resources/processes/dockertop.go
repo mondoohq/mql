@@ -54,11 +54,10 @@ func (lpm *DockerTopManager) List() ([]*OSProcess, error) {
 			continue
 		}
 		procs = append(procs, &OSProcess{
-			Pid:          int64(pid), // This will be the PID inside the container
-			Executable:   p[2],
-			Command:      p[4],
-			State:        p[3],
-			SocketInodes: nil,
+			Pid:        int64(pid), // This will be the PID inside the container
+			Executable: p[2],
+			Command:    p[4],
+			State:      p[3],
 		})
 	}
 
