@@ -23,6 +23,9 @@ const (
 	OptionHost        = "host"
 	OptionClientID    = "client-id"
 	OptionWorkspaceID = "workspace-id"
+	// OptionWarehouseID names the SQL warehouse that runs metadata statements,
+	// such as the governed-tag reads. A warehouse belongs to one workspace.
+	OptionWarehouseID = "warehouse-id"
 
 	// CredentialClientSecret tags the OAuth M2M client secret credential.
 	CredentialClientSecret = "client-secret"
@@ -161,4 +164,13 @@ func (c *DatabricksConnection) Account() *databricks.AccountClient {
 // Workspace returns the workspace client, or nil on an account connection.
 func (c *DatabricksConnection) Workspace() *databricks.WorkspaceClient {
 	return c.workspace
+}
+
+// WarehouseID returns the SQL warehouse configured for metadata statements,
+// empty when none is configured.
+func (c *DatabricksConnection) WarehouseID() string {
+	if c == nil || c.Conf == nil {
+		return ""
+	}
+	return c.Conf.Options[OptionWarehouseID]
 }

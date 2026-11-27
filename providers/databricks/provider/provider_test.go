@@ -20,6 +20,7 @@ func clearEnv(t *testing.T) {
 	for _, k := range []string{
 		"DATABRICKS_ACCOUNT_ID", "DATABRICKS_HOST",
 		"DATABRICKS_CLIENT_ID", "DATABRICKS_CLIENT_SECRET", "DATABRICKS_TOKEN",
+		"DATABRICKS_WAREHOUSE_ID",
 	} {
 		t.Setenv(k, "")
 	}
@@ -82,4 +83,44 @@ func TestParseCLI_WorkspacePlane(t *testing.T) {
 	token := credByUser(conf.Credentials, connection.CredentialToken)
 	require.NotNil(t, token, "token credential should be present")
 	assert.Equal(t, "dapi-token", string(token.Secret))
+}
+
+func TestParseCLIWarehouseID(t *testing.T) {
+	// Synthetic: the flag and the environment variable both reach the option.
+	clearEnv(t)
+	s := &Service{Service: plugin.NewService()}
+
+	res, err := s.ParseCLI(&plugin.ParseCLIReq{
+		Connector: "databricks",
+		Flags: map[string]*llx.Primitive{
+			"host":         llx.StringPrimitive("https://ws.example.com"),
+			"token":        llx.StringPrimitive("pat"),
+			"warehouse-id": llx.StringPrimitive("wh-flag"),
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "wh-flag", res.Asset.Connections[0].Options[connection.OptionWarehouseID])
+
+	t.Setenv("DATABRICKS_WAREHOUSE_ID", "wh-env")
+	res, err = s.ParseCLI(&plugin.ParseCLIReq{
+		Connector: "databricks",
+		Flags: map[string]*llx.Primitive{
+			"host":  llx.StringPrimitive("https://ws.example.com"),
+			"token": llx.StringPrimitive("pat"),
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "wh-env", res.Asset.Connections[0].Options[connection.OptionWarehouseID])
+
+	clearEnv(t)
+	res, err = s.ParseCLI(&plugin.ParseCLIReq{
+		Connector: "databricks",
+		Flags: map[string]*llx.Primitive{
+			"host":  llx.StringPrimitive("https://ws.example.com"),
+			"token": llx.StringPrimitive("pat"),
+		},
+	})
+	require.NoError(t, err)
+	_, ok := res.Asset.Connections[0].Options[connection.OptionWarehouseID]
+	assert.False(t, ok, "no option without the flag or the variable")
 }

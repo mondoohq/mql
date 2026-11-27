@@ -54,6 +54,7 @@ func (s *Service) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLIRes, error)
 	clientID := flagOrEnv("client-id", "DATABRICKS_CLIENT_ID")
 	clientSecret := flagOrEnv("client-secret", "DATABRICKS_CLIENT_SECRET")
 	token := flagOrEnv("token", "DATABRICKS_TOKEN")
+	warehouseID := flagOrEnv("warehouse-id", "DATABRICKS_WAREHOUSE_ID")
 
 	// An account id routes to the account console (which discovers workspaces);
 	// otherwise we connect a single workspace directly.
@@ -68,6 +69,9 @@ func (s *Service) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLIRes, error)
 	}
 	if clientID != "" {
 		conf.Options[connection.OptionClientID] = clientID
+	}
+	if warehouseID != "" {
+		conf.Options[connection.OptionWarehouseID] = warehouseID
 	}
 	if clientSecret != "" {
 		conf.Credentials = append(conf.Credentials, vault.NewPasswordCredential(connection.CredentialClientSecret, clientSecret))
