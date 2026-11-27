@@ -4,7 +4,9 @@
 package resources
 
 import (
+	"errors"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -23,14 +25,19 @@ import (
 //	MYSQL_TEST_USER      user name (default "root")
 //	MYSQL_TEST_PASSWORD  password (required)
 func newIntegrationRuntime(t *testing.T) *plugin.Runtime {
-	host := os.Getenv("MYSQL_TEST_HOST")
-	password := os.Getenv("MYSQL_TEST_PASSWORD")
-	if host == "" || password == "" {
-		t.Skip("set MYSQL_TEST_HOST and MYSQL_TEST_PASSWORD to run mysqldb integration tests")
-	}
 	user := os.Getenv("MYSQL_TEST_USER")
 	if user == "" {
 		user = "root"
+	}
+	return newIntegrationRuntimeAs(t, user, os.Getenv("MYSQL_TEST_PASSWORD"))
+}
+
+// newIntegrationRuntimeAs connects to the MYSQL_TEST_HOST server as the given
+// account.
+func newIntegrationRuntimeAs(t *testing.T, user, password string) *plugin.Runtime {
+	host := os.Getenv("MYSQL_TEST_HOST")
+	if host == "" || os.Getenv("MYSQL_TEST_PASSWORD") == "" {
+		t.Skip("set MYSQL_TEST_HOST and MYSQL_TEST_PASSWORD to run mysqldb integration tests")
 	}
 
 	options := map[string]string{"tls-mode": "preferred"}
@@ -128,6 +135,7 @@ func TestIntegrationResolveAll(t *testing.T) {
 		resolveList(t, name+".routines", sc.GetRoutines())
 		for _, tb := range resolveList(t, name+".tables", sc.GetTables()) {
 			resolveList(t, name+".table.privileges", tb.(*mqlMysqldbTable).GetPrivileges())
+			resolveList(t, name+".table.columns", tb.(*mqlMysqldbTable).GetColumns())
 		}
 	}
 }
@@ -199,5 +207,94 @@ func TestIntegrationSeededFixtures(t *testing.T) {
 	}
 	if !strings.Contains(secdef.GetDefiner().Data, "appuser") {
 		t.Errorf("secdef_proc definer = %q, want appuser", secdef.GetDefiner().Data)
+	}
+}
+
+// TestIntegrationTableColumns reads the columns of appdb.customers and
+// appdb.customer_emails from testdata/seed.sql and compares them with what
+// information_schema.COLUMNS shows as root, then checks that appuser, which
+// holds SELECT on appdb.* but not on *.*, is refused rather than handed the
+// columns it can see. Enable it with MYSQL_TEST_SEEDED=1 after loading the seed.
+func TestIntegrationTableColumns(t *testing.T) {
+	if os.Getenv("MYSQL_TEST_SEEDED") == "" {
+		t.Skip("set MYSQL_TEST_SEEDED=1 after loading testdata/seed.sql")
+	}
+
+	tablesOf := func(runtime *plugin.Runtime) map[string]*mqlMysqldbTable {
+		out := map[string]*mqlMysqldbTable{}
+		for _, x := range mustInstance(t, runtime).GetSchemas().Data {
+			sc := x.(*mqlMysqldbSchema)
+			if sc.GetName().Data != "appdb" {
+				continue
+			}
+			for _, tb := range sc.GetTables().Data {
+				tbl := tb.(*mqlMysqldbTable)
+				out[tbl.GetName().Data] = tbl
+			}
+		}
+		return out
+	}
+
+	rootRuntime := newIntegrationRuntime(t)
+	mariadb := mysqldbConnection(rootRuntime).IsMariaDB()
+	tables := tablesOf(rootRuntime)
+	type col struct {
+		name     string
+		position int64
+		typeName string
+		nullable bool
+		comment  string
+	}
+	read := func(name string) []col {
+		tbl := tables[name]
+		if tbl == nil {
+			t.Fatalf("appdb.%s not found", name)
+		}
+		cols := tbl.GetColumns()
+		if cols.Error != nil {
+			t.Fatalf("%s columns errored: %v", name, cols.Error)
+		}
+		out := []col{}
+		for _, x := range cols.Data {
+			c := x.(*mqlMysqldbTableColumn)
+			out = append(out, col{c.GetName().Data, c.GetPosition().Data, c.GetTypeName().Data, c.GetNullable().Data, c.GetComment().Data})
+		}
+		return out
+	}
+
+	// MariaDB reports integer display widths, MySQL 8 does not.
+	bigintType, intType := "bigint unsigned", "int unsigned"
+	if mariadb {
+		bigintType, intType = "bigint(20) unsigned", "int(10) unsigned"
+	}
+	wantCustomers := []col{
+		{"id", 1, bigintType, false, ""},
+		{"email", 2, "varchar(255)", false, "login address"},
+		{"ssn", 3, "char(11)", true, ""},
+		{"balance", 4, "decimal(10,2)", true, ""},
+		{"flags", 5, intType, true, ""},
+		{"created_at", 6, "datetime(3)", true, ""},
+	}
+	if got := read("customers"); !reflect.DeepEqual(got, wantCustomers) {
+		t.Errorf("customers columns = %v, want %v", got, wantCustomers)
+	}
+	wantView := []col{
+		{"id", 1, bigintType, false, ""},
+		{"email", 2, "varchar(255)", false, "login address"},
+	}
+	if got := read("customer_emails"); !reflect.DeepEqual(got, wantView) {
+		t.Errorf("customer_emails columns = %v, want %v", got, wantView)
+	}
+
+	// appuser sees appdb's tables through its schema grant, but not every
+	// column of every table on the server, so the read is refused.
+	appTables := tablesOf(newIntegrationRuntimeAs(t, "appuser", "Str0ng!Passw0rd2026"))
+	if appTables["customers"] == nil {
+		t.Fatal("appuser does not list appdb.customers")
+	}
+	for name, tbl := range appTables {
+		if cols := tbl.GetColumns(); !errors.Is(cols.Error, llx.ErrForbidden) {
+			t.Errorf("appuser %s columns = %d (err=%v), want Forbidden", name, len(cols.Data), cols.Error)
+		}
 	}
 }

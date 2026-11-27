@@ -86,6 +86,13 @@ mysqldb.schema.privileges 13.0.0
 mysqldb.schema.routines 13.0.0
 mysqldb.schema.tables 13.0.0
 mysqldb.table 13.0.0
+mysqldb.table.column 14.0.16
+mysqldb.table.column.comment 14.0.16
+mysqldb.table.column.name 14.0.16
+mysqldb.table.column.nullable 14.0.16
+mysqldb.table.column.position 14.0.16
+mysqldb.table.column.typeName 14.0.16
+mysqldb.table.columns 14.0.16
 mysqldb.table.encrypted 13.0.0
 mysqldb.table.engine 13.0.0
 mysqldb.table.name 13.0.0
