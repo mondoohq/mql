@@ -769,6 +769,12 @@ snowflake.table.budget 13.4.5
 snowflake.table.bytes 13.4.5
 snowflake.table.changeTracking 13.4.5
 snowflake.table.clusterBy 13.4.5
+snowflake.table.column 14.1.3
+snowflake.table.column.comment 14.1.3
+snowflake.table.column.name 14.1.3
+snowflake.table.column.nullable 14.1.3
+snowflake.table.column.typeName 14.1.3
+snowflake.table.columns 14.1.3
 snowflake.table.comment 13.4.5
 snowflake.table.createdAt 13.4.5
 snowflake.table.database 13.4.5

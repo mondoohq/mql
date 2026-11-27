@@ -59,6 +59,7 @@ const (
 	ResourceSnowflakeMcpServer                 string = "snowflake.mcpServer"
 	ResourceSnowflakeMcpServerTool             string = "snowflake.mcpServer.tool"
 	ResourceSnowflakeTable                     string = "snowflake.table"
+	ResourceSnowflakeTableColumn               string = "snowflake.table.column"
 	ResourceSnowflakeExternalTable             string = "snowflake.externalTable"
 	ResourceSnowflakeMaterializedView          string = "snowflake.materializedView"
 	ResourceSnowflakeDynamicTable              string = "snowflake.dynamicTable"
@@ -249,6 +250,10 @@ func init() {
 		"snowflake.table": {
 			Init:   initSnowflakeTable,
 			Create: createSnowflakeTable,
+		},
+		"snowflake.table.column": {
+			// to override args, implement: initSnowflakeTableColumn(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createSnowflakeTableColumn,
 		},
 		"snowflake.externalTable": {
 			// to override args, implement: initSnowflakeExternalTable(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -2340,6 +2345,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"snowflake.table.droppedAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSnowflakeTable).GetDroppedAt()).ToDataRes(types.Time)
+	},
+	"snowflake.table.columns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnowflakeTable).GetColumns()).ToDataRes(types.Array(types.Resource("snowflake.table.column")))
+	},
+	"snowflake.table.column.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnowflakeTableColumn).GetName()).ToDataRes(types.String)
+	},
+	"snowflake.table.column.typeName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnowflakeTableColumn).GetTypeName()).ToDataRes(types.String)
+	},
+	"snowflake.table.column.nullable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnowflakeTableColumn).GetNullable()).ToDataRes(types.Bool)
+	},
+	"snowflake.table.column.comment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnowflakeTableColumn).GetComment()).ToDataRes(types.String)
 	},
 	"snowflake.externalTable.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSnowflakeExternalTable).GetName()).ToDataRes(types.String)
@@ -5684,6 +5704,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"snowflake.table.droppedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlSnowflakeTable).DroppedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"snowflake.table.columns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnowflakeTable).Columns, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"snowflake.table.column.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnowflakeTableColumn).__id, ok = v.Value.(string)
+		return
+	},
+	"snowflake.table.column.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnowflakeTableColumn).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"snowflake.table.column.typeName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnowflakeTableColumn).TypeName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"snowflake.table.column.nullable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnowflakeTableColumn).Nullable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"snowflake.table.column.comment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnowflakeTableColumn).Comment, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"snowflake.externalTable.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -13323,6 +13367,7 @@ type mqlSnowflakeTable struct {
 	Comment                    plugin.TValue[string]
 	CreatedAt                  plugin.TValue[*time.Time]
 	DroppedAt                  plugin.TValue[*time.Time]
+	Columns                    plugin.TValue[[]any]
 }
 
 // createSnowflakeTable creates a new instance of this resource
@@ -13487,6 +13532,81 @@ func (c *mqlSnowflakeTable) GetCreatedAt() *plugin.TValue[*time.Time] {
 
 func (c *mqlSnowflakeTable) GetDroppedAt() *plugin.TValue[*time.Time] {
 	return &c.DroppedAt
+}
+
+func (c *mqlSnowflakeTable) GetColumns() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Columns, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("snowflake.table", c.__id, "columns")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.columns()
+	})
+}
+
+// mqlSnowflakeTableColumn for the snowflake.table.column resource
+type mqlSnowflakeTableColumn struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlSnowflakeTableColumnInternal it will be used here
+	Name     plugin.TValue[string]
+	TypeName plugin.TValue[string]
+	Nullable plugin.TValue[bool]
+	Comment  plugin.TValue[string]
+}
+
+// createSnowflakeTableColumn creates a new instance of this resource
+func createSnowflakeTableColumn(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlSnowflakeTableColumn{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("snowflake.table.column", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlSnowflakeTableColumn) MqlName() string {
+	return "snowflake.table.column"
+}
+
+func (c *mqlSnowflakeTableColumn) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlSnowflakeTableColumn) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlSnowflakeTableColumn) GetTypeName() *plugin.TValue[string] {
+	return &c.TypeName
+}
+
+func (c *mqlSnowflakeTableColumn) GetNullable() *plugin.TValue[bool] {
+	return &c.Nullable
+}
+
+func (c *mqlSnowflakeTableColumn) GetComment() *plugin.TValue[string] {
+	return &c.Comment
 }
 
 // mqlSnowflakeExternalTable for the snowflake.externalTable resource

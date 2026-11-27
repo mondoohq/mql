@@ -53,6 +53,10 @@ type mqlSnowflakeAccountInternal struct {
 	policyAttachmentsOnce      sync.Once
 	cachedPolicyAttachments    *policyAttachments
 	cachedPolicyAttachmentsErr error
+
+	// cachedSchemaColumns holds one SHOW COLUMNS IN SCHEMA answer per schema
+	// whose table columns were read; see columns.go.
+	cachedSchemaColumns schemaColumnsCache
 }
 
 // showAccountParameters fetches the account-level parameters from Snowflake,
