@@ -55,6 +55,9 @@ type mqlDatabricksInternal struct {
 	workspaceIdOnce sync.Once
 	workspaceId     string
 	workspaceIdErr  error
+
+	// tagMemo holds the governed tags read per catalog; see tags.go.
+	tagMemo tagMemo
 }
 
 // cachedAccountGroups lists the account groups at most once per scan, caching

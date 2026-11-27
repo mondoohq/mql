@@ -41,17 +41,7 @@ func Discover(runtime *plugin.Runtime, opts map[string]string) (*inventory.Inven
 		ws := workspaces[i]
 		workspaceID := strconv.FormatInt(ws.WorkspaceId, 10)
 
-		// Clone preserves the OAuth credentials and options (including client-id);
-		// we then flip the clone to the workspace plane and drop the account id so
-		// the child connects as a single workspace rather than the account.
-		wsConf := conf.Clone(inventory.WithoutDiscovery(), inventory.WithParentConnectionId(conn.ID()))
-		if wsConf.Options == nil {
-			wsConf.Options = map[string]string{}
-		}
-		wsConf.Options[connection.OptionPlane] = connection.PlaneWorkspace
-		wsConf.Options[connection.OptionHost] = workspaceHost(acc, ws)
-		wsConf.Options[connection.OptionWorkspaceID] = workspaceID
-		delete(wsConf.Options, connection.OptionAccountID)
+		wsConf := workspaceConnectionConfig(conf, conn.ID(), workspaceHost(acc, ws), workspaceID)
 
 		asset := &inventory.Asset{
 			PlatformIds: []string{connection.NewDatabricksWorkspaceIdentifier(workspaceID)},
@@ -64,6 +54,29 @@ func Discover(runtime *plugin.Runtime, opts map[string]string) (*inventory.Inven
 	}
 
 	return in, nil
+}
+
+// workspaceConnectionConfig builds the connection of a workspace discovered
+// from an account connection. Clone preserves the OAuth credentials and options
+// (including client-id); the clone is then flipped to the workspace plane, and
+// the account id is dropped so the child connects as a single workspace rather
+// than the account.
+//
+// The warehouse id is dropped too. A SQL warehouse belongs to one workspace, so
+// carrying the account connection's warehouse into every discovered workspace
+// would point their statements at a warehouse they do not have. Those
+// workspaces report the fields that need a warehouse as not applicable.
+func workspaceConnectionConfig(conf *inventory.Config, parentID uint32, host, workspaceID string) *inventory.Config {
+	wsConf := conf.Clone(inventory.WithoutDiscovery(), inventory.WithParentConnectionId(parentID))
+	if wsConf.Options == nil {
+		wsConf.Options = map[string]string{}
+	}
+	wsConf.Options[connection.OptionPlane] = connection.PlaneWorkspace
+	wsConf.Options[connection.OptionHost] = host
+	wsConf.Options[connection.OptionWorkspaceID] = workspaceID
+	delete(wsConf.Options, connection.OptionAccountID)
+	delete(wsConf.Options, connection.OptionWarehouseID)
+	return wsConf
 }
 
 // workspaceHost derives a workspace's API host from the account configuration,

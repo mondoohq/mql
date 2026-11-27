@@ -734,6 +734,11 @@ databricks.catalog @defaults("name owner isolationMode") {
   // workspaces. An OPEN catalog is reachable from every workspace attached to
   // the metastore no matter what this map contains.
   workspaceBindings() map[string]string
+  // Governed tags set on the catalog
+  //
+  // Tag key to value; a tag set without a value maps to an empty string. Read
+  // through the SQL warehouse named by the connection's warehouse-id option.
+  tags() map[string]string
 }
 
 // Unity Catalog schema
@@ -765,6 +770,11 @@ databricks.schema @defaults("fullName owner") {
   functions() []databricks.function
   // Tables and views in the schema
   tables() []databricks.table
+  // Governed tags set on the schema
+  //
+  // Tag key to value; a tag set without a value maps to an empty string. Read
+  // through the SQL warehouse named by the connection's warehouse-id option.
+  tags() map[string]string
   // Container images registered as software artifacts in the schema
   softwareArtifacts() []databricks.softwareArtifact
 }
@@ -773,8 +783,8 @@ databricks.schema @defaults("fullName owner") {
 //
 // A table or view in a Unity Catalog schema, keyed by its fully qualified name
 // (catalog.schema.table). Covers the owner, the table type and storage format,
-// the storage location of an external table, and the columns with their types
-// and column masks. Select a table by full name, for example
+// the storage location of an external table, the governed tags set on the table,
+// and the columns with their types, tags and column masks. Select a table by full name, for example
 // `databricks.catalogs.where(name == "main").schemas.where(name == "sales").tables.where(fullName == "main.sales.orders")`.
 databricks.table @defaults("fullName tableType owner") {
   // Table name relative to the parent schema
@@ -799,6 +809,11 @@ databricks.table @defaults("fullName tableType owner") {
   storageLocation string
   // Table comment
   comment string
+  // Governed tags set on the table
+  //
+  // Tag key to value; a tag set without a value maps to an empty string. Read
+  // through the SQL warehouse named by the connection's warehouse-id option.
+  tags() map[string]string
   // Columns of the table
   columns() []databricks.table.column
 }
@@ -815,6 +830,11 @@ private databricks.table.column @defaults("name typeName") {
   nullable bool
   // Comment on the column, empty when none is set
   comment string
+  // Governed tags set on the column
+  //
+  // Tag key to value; a tag set without a value maps to an empty string. Read
+  // through the SQL warehouse named by the connection's warehouse-id option.
+  tags() map[string]string
   // Column mask function
   //
   // The function that masks the column's values for readers it does not exempt.

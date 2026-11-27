@@ -42,7 +42,12 @@ Examples:
 
 Notes:
   Set DATABRICKS_ACCOUNT_ID, DATABRICKS_HOST, DATABRICKS_CLIENT_ID,
-  DATABRICKS_CLIENT_SECRET, or DATABRICKS_TOKEN to omit the matching flags.
+  DATABRICKS_CLIENT_SECRET, DATABRICKS_TOKEN, or DATABRICKS_WAREHOUSE_ID to omit
+  the matching flags.
+
+  Governed tags are read through a SQL warehouse: pass --warehouse-id when
+  connecting a single workspace. Workspaces discovered from the account console
+  report tag fields as not applicable.
 
   For Azure- or GCP-hosted Databricks, override --host with the account console
   host (accounts.azuredatabricks.net or accounts.gcp.databricks.com).
@@ -82,6 +87,12 @@ Notes:
 					Type:    plugin.FlagType_String,
 					Default: "",
 					Desc:    "Personal access token for a direct workspace connect",
+				},
+				{
+					Long:    "warehouse-id",
+					Type:    plugin.FlagType_String,
+					Default: "",
+					Desc:    "SQL warehouse id used for governed-tag reads in a directly connected workspace",
 				},
 			},
 		},

@@ -22,6 +22,10 @@
         {
           "long": "token",
           "type": "String"
+        },
+        {
+          "long": "warehouse-id",
+          "type": "String"
         }
       ]
     }

@@ -45,6 +45,7 @@ databricks.catalog.metastoreId 13.0.0
 databricks.catalog.name 13.0.0
 databricks.catalog.owner 13.0.0
 databricks.catalog.schemas 13.0.0
+databricks.catalog.tags 14.1.3
 databricks.catalog.workspaceBindings 13.1.4
 databricks.catalogs 13.0.0
 databricks.cluster 13.0.0
@@ -578,6 +579,7 @@ databricks.schema.name 13.0.0
 databricks.schema.owner 13.0.0
 databricks.schema.softwareArtifacts 14.0.12
 databricks.schema.tables 14.1.3
+databricks.schema.tags 14.1.3
 databricks.schema.volumes 13.0.1
 databricks.secretScope 13.0.0
 databricks.secretScope.acls 13.0.0
@@ -711,6 +713,7 @@ databricks.table.column.mask 14.1.3
 databricks.table.column.name 14.1.3
 databricks.table.column.nullable 14.1.3
 databricks.table.column.position 14.1.3
+databricks.table.column.tags 14.1.3
 databricks.table.column.typeName 14.1.3
 databricks.table.columns 14.1.3
 databricks.table.comment 14.1.3
@@ -722,6 +725,7 @@ databricks.table.schema 14.1.3
 databricks.table.schemaName 14.1.3
 databricks.table.storageLocation 14.1.3
 databricks.table.tableType 14.1.3
+databricks.table.tags 14.1.3
 databricks.token 13.0.0
 databricks.token.comment 13.0.0
 databricks.token.createdByUsername 13.0.0

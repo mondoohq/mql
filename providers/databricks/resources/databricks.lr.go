@@ -1052,6 +1052,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"databricks.catalog.workspaceBindings": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricksCatalog).GetWorkspaceBindings()).ToDataRes(types.Map(types.String, types.String))
 	},
+	"databricks.catalog.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksCatalog).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
 	"databricks.schema.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricksSchema).GetId()).ToDataRes(types.String)
 	},
@@ -1084,6 +1087,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"databricks.schema.tables": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricksSchema).GetTables()).ToDataRes(types.Array(types.Resource("databricks.table")))
+	},
+	"databricks.schema.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksSchema).GetTags()).ToDataRes(types.Map(types.String, types.String))
 	},
 	"databricks.schema.softwareArtifacts": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricksSchema).GetSoftwareArtifacts()).ToDataRes(types.Array(types.Resource("databricks.softwareArtifact")))
@@ -1121,6 +1127,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"databricks.table.comment": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricksTable).GetComment()).ToDataRes(types.String)
 	},
+	"databricks.table.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksTable).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
 	"databricks.table.columns": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricksTable).GetColumns()).ToDataRes(types.Array(types.Resource("databricks.table.column")))
 	},
@@ -1138,6 +1147,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"databricks.table.column.comment": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricksTableColumn).GetComment()).ToDataRes(types.String)
+	},
+	"databricks.table.column.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksTableColumn).GetTags()).ToDataRes(types.Map(types.String, types.String))
 	},
 	"databricks.table.column.mask": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricksTableColumn).GetMask()).ToDataRes(types.Resource("databricks.function"))
@@ -3632,6 +3644,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDatabricksCatalog).WorkspaceBindings, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
+	"databricks.catalog.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksCatalog).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
 	"databricks.schema.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDatabricksSchema).__id, ok = v.Value.(string)
 		return
@@ -3678,6 +3694,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"databricks.schema.tables": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDatabricksSchema).Tables, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"databricks.schema.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSchema).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
 	"databricks.schema.softwareArtifacts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -3732,6 +3752,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDatabricksTable).Comment, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"databricks.table.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksTable).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
 	"databricks.table.columns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDatabricksTable).Columns, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -3758,6 +3782,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"databricks.table.column.comment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDatabricksTableColumn).Comment, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.table.column.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksTableColumn).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
 	"databricks.table.column.mask": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -8518,6 +8546,7 @@ type mqlDatabricksCatalog struct {
 	Schemas           plugin.TValue[[]any]
 	Grants            plugin.TValue[[]any]
 	WorkspaceBindings plugin.TValue[map[string]any]
+	Tags              plugin.TValue[map[string]any]
 }
 
 // createDatabricksCatalog creates a new instance of this resource
@@ -8618,6 +8647,12 @@ func (c *mqlDatabricksCatalog) GetWorkspaceBindings() *plugin.TValue[map[string]
 	})
 }
 
+func (c *mqlDatabricksCatalog) GetTags() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Tags, func() (map[string]any, error) {
+		return c.tags()
+	})
+}
+
 // mqlDatabricksSchema for the databricks.schema resource
 type mqlDatabricksSchema struct {
 	MqlRuntime *plugin.Runtime
@@ -8634,6 +8669,7 @@ type mqlDatabricksSchema struct {
 	Volumes           plugin.TValue[[]any]
 	Functions         plugin.TValue[[]any]
 	Tables            plugin.TValue[[]any]
+	Tags              plugin.TValue[map[string]any]
 	SoftwareArtifacts plugin.TValue[[]any]
 }
 
@@ -8773,6 +8809,12 @@ func (c *mqlDatabricksSchema) GetTables() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlDatabricksSchema) GetTags() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Tags, func() (map[string]any, error) {
+		return c.tags()
+	})
+}
+
 func (c *mqlDatabricksSchema) GetSoftwareArtifacts() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.SoftwareArtifacts, func() ([]any, error) {
 		if c.MqlRuntime.HasRecording {
@@ -8805,6 +8847,7 @@ type mqlDatabricksTable struct {
 	DataSourceFormat plugin.TValue[string]
 	StorageLocation  plugin.TValue[string]
 	Comment          plugin.TValue[string]
+	Tags             plugin.TValue[map[string]any]
 	Columns          plugin.TValue[[]any]
 }
 
@@ -8908,6 +8951,12 @@ func (c *mqlDatabricksTable) GetComment() *plugin.TValue[string] {
 	return &c.Comment
 }
 
+func (c *mqlDatabricksTable) GetTags() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Tags, func() (map[string]any, error) {
+		return c.tags()
+	})
+}
+
 func (c *mqlDatabricksTable) GetColumns() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.Columns, func() ([]any, error) {
 		if c.MqlRuntime.HasRecording {
@@ -8934,6 +8983,7 @@ type mqlDatabricksTableColumn struct {
 	Position plugin.TValue[int64]
 	Nullable plugin.TValue[bool]
 	Comment  plugin.TValue[string]
+	Tags     plugin.TValue[map[string]any]
 	Mask     plugin.TValue[*mqlDatabricksFunction]
 }
 
@@ -8987,6 +9037,12 @@ func (c *mqlDatabricksTableColumn) GetNullable() *plugin.TValue[bool] {
 
 func (c *mqlDatabricksTableColumn) GetComment() *plugin.TValue[string] {
 	return &c.Comment
+}
+
+func (c *mqlDatabricksTableColumn) GetTags() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Tags, func() (map[string]any, error) {
+		return c.tags()
+	})
 }
 
 func (c *mqlDatabricksTableColumn) GetMask() *plugin.TValue[*mqlDatabricksFunction] {

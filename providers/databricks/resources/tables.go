@@ -29,6 +29,10 @@ type mqlDatabricksTableColumnInternal struct {
 	// cacheMaskFunction is the fully qualified name of the column mask's
 	// function, empty when the column has no mask.
 	cacheMaskFunction string
+	// The table the column belongs to; the tag fields key on them.
+	cacheCatalogName string
+	cacheSchemaName  string
+	cacheTableName   string
 }
 
 // tablePageLimit bounds how many tables one schema may yield. It is a
@@ -261,6 +265,9 @@ func (r *mqlDatabricksTable) columns() ([]any, error) {
 		}
 		col := res.(*mqlDatabricksTableColumn)
 		col.cacheMaskFunction = columnMaskFunction(infos[i])
+		col.cacheCatalogName = r.CatalogName.Data
+		col.cacheSchemaName = r.SchemaName.Data
+		col.cacheTableName = r.Name.Data
 		out = append(out, col)
 	}
 	return out, nil
