@@ -26,6 +26,7 @@ const (
 	ChannelSnap             = "snap"
 	ChannelFlatpak          = "flatpak"
 	ChannelChocolatey       = "chocolatey"
+	ChannelWinget           = "winget"
 	ChannelUnknown          = "unknown"
 )
 
