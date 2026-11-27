@@ -251,6 +251,7 @@ use (
    ./mql/providers/dropbox
    ./mql/providers/elasticsearch
    ./mql/providers/exoscale
+   ./mql/providers/fastly
    ./mql/providers/gcp
    ./mql/providers/github
    ./mql/providers/gitlab

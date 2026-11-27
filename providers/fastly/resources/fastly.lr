@@ -1,0 +1,251 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+import core
+
+option provider = "go.mondoo.com/mql/providers/fastly"
+option go_package = "go.mondoo.com/mql/providers/fastly/resources"
+option root = "fastly"
+
+// Fastly account
+//
+// A Fastly account, read through the Fastly API. `services` lists the delivery
+// and compute services, each with the domains it answers on and the backends it
+// forwards to. `tlsSubscriptions`, `tlsCertificates`, and `tlsActivations` cover
+// TLS for the account's domains, and `users` lists the account's users.
+fastly @root {
+	// Services on the account
+	services() []fastly.service
+	// Managed TLS subscriptions on the account
+	tlsSubscriptions() []fastly.tls.subscription
+	// TLS certificates served for the account's domains
+	tlsCertificates() []fastly.tls.certificate
+	// TLS activations enabling TLS on the account's domains
+	tlsActivations() []fastly.tls.activation
+	// Users on the account
+	users() []fastly.user
+}
+
+// Fastly service
+//
+// A Fastly service, either a `vcl` delivery service or a `wasm` compute service,
+// selected by `name`, for example `fastly.services.where(name == "www")`.
+// `domains` are the hostnames the service answers on, `backends` the origins it
+// forwards to, and `healthChecks` the origin health checks. The domain, backend,
+// and health check fields read the service's active configuration version.
+fastly.service @defaults("name type activeVersion") {
+	// Service ID
+	id string
+	// Service name
+	name string
+	// Service type, either vcl (delivery) or wasm (compute)
+	type string
+	// Freeform comment on the service
+	comment string
+	// Currently active configuration version, or null when no version is active
+	activeVersion int
+	// Time the service was created
+	createdAt time
+	// Time the service was last updated
+	updatedAt time
+	// Domains the service answers on, in its active version
+	domains() []fastly.service.domain
+	// Backends the service forwards to, in its active version
+	backends() []fastly.service.backend
+	// Origin health checks defined in the service's active version
+	healthChecks() []fastly.service.healthCheck
+}
+
+// Fastly service domain
+//
+// A hostname a Fastly service answers on, the public entry point for traffic to
+// the service. `name` is the fully qualified domain name, for example
+// www.example.com.
+private fastly.service.domain @defaults("name") {
+	// Fully qualified domain name the service answers on
+	name string
+	// Freeform comment on the domain
+	comment string
+	// ID of the service the domain belongs to
+	serviceId string
+	// Configuration version the domain is defined in
+	serviceVersion int
+}
+
+// Fastly service backend
+//
+// An origin server a Fastly service forwards requests to. `address` is the
+// origin host or IP, `port` the port, and the `ssl` fields describe how Fastly
+// connects to it over TLS. `healthCheck` is the origin health check that decides
+// whether the backend receives traffic.
+private fastly.service.backend @defaults("name address port") {
+	// Backend name
+	name string
+	// Origin host name or IP address Fastly connects to
+	address string
+	// Host name of the backend, when set separately from the address
+	hostname string
+	// Port Fastly connects to
+	port int
+	// Whether Fastly connects to the backend over TLS
+	useSSL bool
+	// Whether Fastly verifies the backend's TLS certificate
+	sslCheckCert bool
+	// Minimum TLS version Fastly negotiates with the backend
+	minTLSVersion string
+	// Maximum TLS version Fastly negotiates with the backend
+	maxTLSVersion string
+	// Certificate host name Fastly checks the backend's certificate against
+	sslCertHostname string
+	// SNI host name Fastly sends to the backend
+	sslSNIHostname string
+	// Host header Fastly overrides requests with, or empty when none is set
+	overrideHost string
+	// Whether the backend takes part in automatic load balancing
+	autoLoadBalance bool
+	// Relative weight for load balancing
+	weight int
+	// POP that shields the origin, or empty when shielding is off
+	shield string
+	// Connection timeout in milliseconds
+	connectTimeout int
+	// ID of the service the backend belongs to
+	serviceId string
+	// Configuration version the backend is defined in
+	serviceVersion int
+	// Origin health check that gates traffic to the backend, or null when none is set
+	healthCheck() fastly.service.healthCheck
+}
+
+// Fastly service health check
+//
+// An origin health check: the request Fastly sends and the response it expects
+// to decide whether a backend is healthy. Backends reference it by name through
+// their `healthCheck` field.
+private fastly.service.healthCheck @defaults("name host path") {
+	// Health check name
+	name string
+	// Host header sent with the check
+	host string
+	// Path the check requests
+	path string
+	// HTTP method the check uses
+	method string
+	// HTTP version the check uses
+	httpVersion string
+	// Status code that counts as a healthy response
+	expectedResponse int
+	// Interval between checks in milliseconds
+	checkInterval int
+	// Timeout for a single check in milliseconds
+	timeout int
+	// Number of checks within the window that must pass for a backend to be healthy
+	threshold int
+	// Number of most recent checks considered
+	window int
+	// Number of checks assumed successful at startup
+	initial int
+	// Freeform comment on the health check
+	comment string
+	// ID of the service the health check belongs to
+	serviceId string
+	// Configuration version the health check is defined in
+	serviceVersion int
+}
+
+// Fastly TLS subscription
+//
+// A managed TLS subscription: Fastly obtains and renews certificates for a set
+// of domains from a certificate authority. `state` is the subscription's
+// lifecycle state and `domains` are the hostnames it covers.
+private fastly.tls.subscription @defaults("commonName state certificateAuthority") {
+	// Subscription ID
+	id string
+	// Lifecycle state, for example pending, processing, issued, or renewing
+	state string
+	// Certificate authority issuing the certificates, for example lets-encrypt or globalsign
+	certificateAuthority string
+	// Primary domain on the certificate
+	commonName string
+	// Hostnames the subscription covers
+	domains []string
+	// Time the subscription was created
+	createdAt time
+	// Time the subscription was last updated
+	updatedAt time
+}
+
+// Fastly TLS certificate
+//
+// A TLS certificate Fastly serves for the account's domains. `notBefore` and
+// `notAfter` bound its validity, `domains` are the hostnames it covers, and
+// `issuer` names the authority that signed it.
+private fastly.tls.certificate @defaults("name issuedTo notAfter") {
+	// Certificate ID
+	id string
+	// Certificate name
+	name string
+	// Subject the certificate was issued to
+	issuedTo string
+	// Authority that issued the certificate
+	issuer string
+	// Serial number
+	serialNumber string
+	// Signature algorithm, for example SHA256-RSA
+	signatureAlgorithm string
+	// Start of the validity period
+	notBefore time
+	// End of the validity period
+	notAfter time
+	// Whether the certificate is flagged for replacement
+	replace bool
+	// Hostnames the certificate covers
+	domains []string
+	// Time the certificate was created
+	createdAt time
+	// Time the certificate was last updated
+	updatedAt time
+}
+
+// Fastly TLS activation
+//
+// The link that enables TLS on a domain by serving a certificate for it.
+// `domain` is the hostname TLS is enabled on and `certificate` is the
+// certificate served.
+private fastly.tls.activation @defaults("domain") {
+	// Activation ID
+	id string
+	// Hostname TLS is enabled on
+	domain string
+	// Time the activation was created
+	createdAt time
+	// Certificate served for the domain
+	certificate() fastly.tls.certificate
+}
+
+// Fastly user
+//
+// A user on the Fastly account with their role and login. Select a user by
+// login, for example `fastly.users.where(login == "ops@example.com")`.
+private fastly.user @defaults("login role") {
+	// User ID
+	id string
+	// Login, the user's email address
+	login string
+	// Display name
+	name string
+	// Role on the account, for example user, billing, engineer, or superuser
+	role string
+	// Whether the account is locked
+	locked bool
+	// Whether two-factor authentication is enabled
+	twoFactorAuthEnabled bool
+	// Whether the user must set up two-factor authentication
+	twoFactorSetupRequired bool
+	// Whether the user must set a new password at next login
+	requireNewPassword bool
+	// Time the user was created
+	createdAt time
+	// Time the user was last updated
+	updatedAt time
+}

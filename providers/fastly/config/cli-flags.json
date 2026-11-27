@@ -1,0 +1,17 @@
+{
+  "connectors": [
+    {
+      "name": "fastly",
+      "flags": [
+        {
+          "long": "api-token",
+          "type": "String"
+        },
+        {
+          "long": "base-url",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}
