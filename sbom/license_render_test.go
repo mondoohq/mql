@@ -28,6 +28,9 @@ func licenseBom() *Sbom {
 				License: "GPL-2.0-only WITH Classpath-exception-2.0"},
 			{Name: "free-text", Version: "1.0.0", Purl: "pkg:npm/free-text@1.0.0", License: "BSD-like, see LICENSE"},
 			{Name: "custom-ref", Version: "1.0.0", Purl: "pkg:npm/custom-ref@1.0.0", License: "LicenseRef-Acme-Internal"},
+			{Name: "unlicensed", Version: "1.0.0", Purl: "pkg:npm/unlicensed@1.0.0", License: "UNLICENSED"},
+			{Name: "unknown", Version: "1.0.0", Purl: "pkg:npm/unknown@1.0.0",
+				Licenses: []*License{{SpdxId: "UNKNOWN"}}},
 			{Name: "undeclared", Version: "1.0.0", Purl: "pkg:npm/undeclared@1.0.0"},
 		},
 	}
@@ -108,10 +111,18 @@ func TestCycloneDXEmitsLicenses(t *testing.T) {
 	if ls := get("free-text"); len(ls) != 1 || ls[0].License == nil || ls[0].License.Name == "" {
 		t.Errorf("free-text licenses = %+v, want license.name", ls)
 	}
-	// A custom identifier is still an identifier.
-	if ls := get("custom-ref"); len(ls) != 1 || ls[0].License == nil ||
-		ls[0].License.ID != "LicenseRef-Acme-Internal" {
-		t.Errorf("custom-ref licenses = %+v, want license.id", ls)
+	// The schema restricts license.id to the SPDX license list. An identifier
+	// that is not on the list goes in license.name, from the scalar and from
+	// the list alike.
+	for name, want := range map[string]string{
+		"custom-ref": "LicenseRef-Acme-Internal",
+		"unlicensed": "UNLICENSED",
+		"unknown":    "UNKNOWN",
+	} {
+		ls := get(name)
+		if len(ls) != 1 || ls[0].License == nil || ls[0].License.ID != "" || ls[0].License.Name != want {
+			t.Errorf("%s licenses = %+v, want license.name %s and no license.id", name, ls, want)
+		}
 	}
 	// An undeclared license emits no licenses key at all, which is valid
 	// CycloneDX — unlike SPDX, it has no NOASSERTION to state.

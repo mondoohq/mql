@@ -575,7 +575,7 @@ func cycloneDXLicenseList(licenses []*License) *cyclonedx.Licenses {
 			choice = cyclonedx.LicenseChoice{Expression: strings.TrimSpace(l.GetExpression())}
 		case strings.TrimSpace(l.GetSpdxId()) != "":
 			choice = cyclonedx.LicenseChoice{
-				License: &cyclonedx.License{ID: strings.TrimSpace(l.GetSpdxId())},
+				License: cycloneDXLicenseByID(strings.TrimSpace(l.GetSpdxId())),
 			}
 		case strings.TrimSpace(l.GetName()) != "":
 			choice = cyclonedx.LicenseChoice{
@@ -667,13 +667,14 @@ func cycloneDXLicenseProperties(l *License) *[]cyclonedx.Property {
 // wrong one fails schema validation:
 //
 //   - expression, for a full SPDX expression such as "MIT OR Apache-2.0";
-//   - license.id, for a bare SPDX identifier;
+//   - license.id, for an identifier on the SPDX license list;
 //   - license.name, for anything that is neither.
 //
 // Package license strings in the wild are all three, so the shape is decided
 // per value rather than assumed. A string containing an SPDX operator is an
-// expression; one that looks like a bare identifier is an id; everything else —
-// "BSD-like", "see LICENSE" — is a name, which is honest rather than lossy.
+// expression; one that is on the SPDX license list is an id; everything else —
+// "BSD-like", "see LICENSE", "UNLICENSED" — is a name, which is honest rather
+// than lossy.
 func cycloneDXLicenses(license string) *cyclonedx.Licenses {
 	license = strings.TrimSpace(license)
 	if license == "" {
@@ -682,10 +683,20 @@ func cycloneDXLicenses(license string) *cyclonedx.Licenses {
 	if isSPDXExpression(license) {
 		return &cyclonedx.Licenses{{Expression: license}}
 	}
-	if isSPDXIdentifierShaped(license) {
-		return &cyclonedx.Licenses{{License: &cyclonedx.License{ID: license}}}
+	return &cyclonedx.Licenses{{License: cycloneDXLicenseByID(license)}}
+}
+
+// cycloneDXLicenseByID renders a license that is not an expression.
+//
+// The schema restricts license.id to the SPDX license list. An identifier that
+// is not on the list ("UNLICENSED", "UNKNOWN", a LicenseRef) makes the document
+// fail validation there, so it goes in license.name. The value is kept as
+// written in both cases.
+func cycloneDXLicenseByID(id string) *cyclonedx.License {
+	if isSPDXLicenseID(id) {
+		return &cyclonedx.License{ID: id}
 	}
-	return &cyclonedx.Licenses{{License: &cyclonedx.License{Name: license}}}
+	return &cyclonedx.License{Name: id}
 }
 
 // isSPDXExpression reports whether a license string joins operands with SPDX
@@ -719,7 +730,8 @@ func isSPDXExpression(s string) bool {
 // renders whatever the extractors found and must not silently drop a license it
 // does not recognize; an unlisted identifier still belongs in the document, and
 // a consumer validating against the SPDX list will say so more usefully than a
-// renderer that omitted it.
+// renderer that omitted it. The CycloneDX renderer does check the list where it
+// writes license.id (cycloneDXLicenseByID), because the schema requires it.
 func isSPDXIdentifierShaped(s string) bool {
 	if s == "" || strings.ContainsAny(s, " \t") {
 		return false
