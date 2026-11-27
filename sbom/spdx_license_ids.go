@@ -1,4 +1,4 @@
-// Copyright Mondoo, Inc. 2026
+// Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package sbom
@@ -25,6 +25,21 @@ var spdxLicenseIDs = sync.OnceValue(func() map[string]struct{} {
 	}
 	return ids
 })
+
+var spdxLicenseIDsFolded = sync.OnceValue(func() map[string]struct{} {
+	ids := map[string]struct{}{}
+	for id := range spdxLicenseIDs() {
+		ids[strings.ToLower(id)] = struct{}{}
+	}
+	return ids
+})
+
+// isSPDXLicenseIDFold reports whether s is on the SPDX license list. SPDX
+// matches identifiers without regard to letter case, so "mit" is on the list.
+func isSPDXLicenseIDFold(s string) bool {
+	_, ok := spdxLicenseIDsFolded()[strings.ToLower(s)]
+	return ok
+}
 
 // isSPDXLicenseID reports whether s is an identifier that the CycloneDX schema
 // accepts in license.id. The schema compares the value as written, so the

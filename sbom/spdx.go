@@ -695,20 +695,22 @@ func (s extractedLicenseSet) render() []*spdx.OtherLicense {
 // synthesized for a free-form name are registered in extracted so the document
 // declares them before referencing them.
 //
-// The fallback scalar is passed through unchanged. It has rendered verbatim for
-// as long as the field has existed and producers set it to whatever their
-// package manager reported; re-encoding it here would rewrite what every
-// existing document says about a large share of OS packages, which is a
-// migration to make deliberately rather than as a side effect of adding a list.
+// The fallback scalar is read as DeclaredLicense reads it, so it follows the
+// same rules as a list entry. Producers set it to whatever their package
+// manager reported ("UNKNOWN", "GPLv2+ and MIT"), and a strict consumer rejects
+// such a value when it is written verbatim.
 func spdxLicense(licenses []*License, fallback string, extracted extractedLicenseSet) string {
+	if len(licenses) == 0 {
+		licenses = DeclaredLicenses(fallback)
+	}
 	parts := make([]string, 0, len(licenses))
 	for _, l := range licenses {
 		if v := strings.TrimSpace(l.GetExpression()); v != "" {
-			parts = append(parts, v)
+			parts = append(parts, spdxListedExpression(v, extracted))
 			continue
 		}
 		if v := strings.TrimSpace(l.GetSpdxId()); v != "" {
-			parts = append(parts, v)
+			parts = append(parts, spdxListedExpression(v, extracted))
 			continue
 		}
 		// A free-form name is not a legal operand: "see LICENSE" has a space in
@@ -730,7 +732,7 @@ func spdxLicense(licenses []*License, fallback string, extracted extractedLicens
 		}
 	}
 	if len(parts) == 0 {
-		return strings.TrimSpace(fallback)
+		return ""
 	}
 	if len(parts) == 1 {
 		return parts[0]
@@ -745,6 +747,64 @@ func spdxLicense(licenses []*License, fallback string, extracted extractedLicens
 		}
 	}
 	return strings.Join(parts, " AND ")
+}
+
+// spdxListedExpression makes every operand of a license expression one that
+// SPDX accepts.
+//
+// An operand must be an identifier on the SPDX license list or a LicenseRef-*
+// that the document defines. Package metadata also holds one-token values that
+// are neither, such as "UNLICENSED" and "UNKNOWN". Such an operand becomes a
+// LicenseRef-* registered in extracted, as a free-form name does, so the value
+// survives and the expression stays valid.
+//
+// These stay as written: the operators, the exception after WITH, a
+// LicenseRef-* or DocumentRef-*, a listed identifier in any letter case, a
+// listed identifier with the "+" suffix, and NONE and NOASSERTION.
+func spdxListedExpression(expr string, extracted extractedLicenseSet) string {
+	if expr == "NONE" || expr == spdxNoAssertionValue {
+		return expr
+	}
+	var out, word strings.Builder
+	exception := false
+	flush := func() {
+		w := word.String()
+		word.Reset()
+		switch {
+		case w == "":
+		case w == "AND" || w == "OR":
+			out.WriteString(w)
+		case w == "WITH":
+			exception = true
+			out.WriteString(w)
+		case exception:
+			exception = false
+			out.WriteString(w)
+		case strings.HasPrefix(w, licenseRefPrefix) || strings.HasPrefix(w, "DocumentRef-"):
+			out.WriteString(w)
+		case isSPDXLicenseIDFold(strings.TrimSuffix(w, "+")):
+			out.WriteString(w)
+		default:
+			ref := spdxLicenseRef(w)
+			if ref == "" {
+				out.WriteString(w)
+				return
+			}
+			extracted.addNamed(ref, w)
+			out.WriteString(ref)
+		}
+	}
+	for _, r := range expr {
+		switch r {
+		case ' ', '\t', '(', ')':
+			flush()
+			out.WriteRune(r)
+		default:
+			word.WriteRune(r)
+		}
+	}
+	flush()
+	return out.String()
 }
 
 // spdxLicenseRef builds the LicenseRef-* identifier that stands for a free-form
