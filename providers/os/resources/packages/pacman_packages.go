@@ -293,6 +293,8 @@ func packageFromPacmanFields(pf *inventory.Platform, fields map[string]string) *
 		Format:         PacmanPkgFormat,
 		FilesAvailable: PkgFilesAsync,
 		PUrl:           purl.NewPackageURL(pf, purl.TypeAlpm, name, version, purlOpts...).String(),
+
+		pacmanValidation: fields["%VALIDATION%"],
 	}
 }
 

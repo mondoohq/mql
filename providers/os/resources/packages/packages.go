@@ -126,6 +126,11 @@ type Package struct {
 	// query asks, through SourceResolver. Unexported: it reaches MQL through
 	// package.osProvided and package.source.
 	source *Source
+
+	// pacmanValidation is how pacman checked the package when it installed
+	// it, from %VALIDATION% of the local database: "pgp", "sha256", "md5" or
+	// "none". Unexported: source resolution reads it.
+	pacmanValidation string
 }
 
 // MacOSApp describes a macOS application bundle.
