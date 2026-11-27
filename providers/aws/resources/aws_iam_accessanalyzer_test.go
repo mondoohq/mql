@@ -39,6 +39,9 @@ type accessAnalyzerStub struct {
 	summaries   map[string][]aatypes.FindingSummary // analyzer ARN -> findings
 	getDetails  []aatypes.FindingDetails
 	listErr     error
+	v2Findings  map[string][]aatypes.FindingSummaryV2 // analyzer ARN -> ListFindingsV2 findings
+	v2Err       map[string]error                      // analyzer ARN -> ListFindingsV2 error
+	v2Calls     map[string]int
 	getErr      error
 	unexpected  []string
 	pageOfFirst int // when > 0, ListFindings serves the first summaries in a page of this size
@@ -64,6 +67,16 @@ func (s *accessAnalyzerStub) answer(params any) (any, error) {
 			return &accessanalyzer.ListFindingsOutput{Findings: all[s.pageOfFirst:]}, nil
 		}
 		return &accessanalyzer.ListFindingsOutput{Findings: all}, nil
+	case *accessanalyzer.ListFindingsV2Input:
+		if s.v2Calls == nil {
+			s.v2Calls = map[string]int{}
+		}
+		arn := aws.ToString(in.AnalyzerArn)
+		s.v2Calls[arn]++
+		if err := s.v2Err[arn]; err != nil {
+			return nil, err
+		}
+		return &accessanalyzer.ListFindingsV2Output{Findings: s.v2Findings[arn]}, nil
 	case *accessanalyzer.GetFindingV2Input:
 		s.getCalls++
 		if s.getErr != nil {
@@ -396,4 +409,129 @@ func TestAnalyzerAccessor(t *testing.T) {
 	assert.True(t, missing.IsNull())
 	assert.Nil(t, missing.Data)
 	assert.Empty(t, stub.unexpected)
+}
+
+// testAnalyzer builds a listed analyzer.
+func testAnalyzer(arn, analyzerType, status, region string) *mqlAwsIamAccessAnalyzerAnalyzer {
+	return &mqlAwsIamAccessAnalyzerAnalyzer{
+		Arn: setString(arn), Type: setString(analyzerType), Status: setString(status), Region: setString(region),
+	}
+}
+
+// rootWithAnalyzers returns the scan's aws.iam.accessAnalyzer with its analyzer
+// list already read.
+func rootWithAnalyzers(t *testing.T, rt *plugin.Runtime, analyzers ...*mqlAwsIamAccessAnalyzerAnalyzer) *mqlAwsIamAccessAnalyzer {
+	t.Helper()
+	root, err := accessAnalyzerRoot(rt)
+	require.NoError(t, err)
+	data := make([]any, 0, len(analyzers))
+	for _, a := range analyzers {
+		data = append(data, a)
+	}
+	root.Analyzers = plugin.TValue[[]any]{Data: data, State: plugin.StateIsSet}
+	return root
+}
+
+func v2Finding(id, findingType, resourceArn string) aatypes.FindingSummaryV2 {
+	return aatypes.FindingSummaryV2{
+		Id:          aws.String(id),
+		FindingType: aatypes.FindingType(findingType),
+		Resource:    aws.String(resourceArn),
+		Status:      aatypes.FindingStatusActive,
+	}
+}
+
+func findingIDs(t *testing.T, list []any) []string {
+	t.Helper()
+	ids := []string{}
+	for _, x := range list {
+		f, ok := x.(*mqlAwsIamAccessAnalyzerFinding)
+		require.True(t, ok)
+		ids = append(ids, f.Id.Data)
+	}
+	return ids
+}
+
+const (
+	testEuAnalyzerArn     = "arn:aws:access-analyzer:eu-west-1:111122223333:analyzer/account"
+	testUnusedAnalyzerArn = "arn:aws:access-analyzer:us-east-1:111122223333:analyzer/unused"
+)
+
+// Synthetic: the list errors NotApplicable when no external-access analyzer is
+// active, whatever the unused-access analyzers.
+func TestExternalAccessFindingsNotApplicable(t *testing.T) {
+	t.Run("only unused-access analyzers", func(t *testing.T) {
+		stub := &accessAnalyzerStub{}
+		rt := stub.runtime(t)
+		root := rootWithAnalyzers(t, rt, testAnalyzer(testUnusedAnalyzerArn, "ACCOUNT_UNUSED_ACCESS", "ACTIVE", "us-east-1"))
+		list := root.GetExternalAccessFindings()
+		require.Error(t, list.Error)
+		assert.ErrorIs(t, list.Error, llx.ErrNotApplicable)
+		assert.Empty(t, stub.v2Calls)
+	})
+
+	t.Run("account analyzer disabled", func(t *testing.T) {
+		stub := &accessAnalyzerStub{}
+		rt := stub.runtime(t)
+		root := rootWithAnalyzers(t, rt, testAnalyzer(testAnalyzerArn, "ACCOUNT", "DISABLED", "us-east-1"))
+		assert.ErrorIs(t, root.GetExternalAccessFindings().Error, llx.ErrNotApplicable)
+	})
+}
+
+// Synthetic: every region refused is Forbidden; one region refused keeps the
+// other region's findings.
+func TestExternalAccessFindingsAllRegionsRefused(t *testing.T) {
+	denied := accessAnalyzerDenied("access-analyzer:ListFindings")
+
+	t.Run("both refused", func(t *testing.T) {
+		stub := &accessAnalyzerStub{v2Err: map[string]error{testAnalyzerArn: denied, testEuAnalyzerArn: denied}}
+		rt := stub.runtime(t)
+		root := rootWithAnalyzers(t, rt,
+			testAnalyzer(testAnalyzerArn, "ACCOUNT", "ACTIVE", "us-east-1"),
+			testAnalyzer(testEuAnalyzerArn, "ACCOUNT", "ACTIVE", "eu-west-1"))
+		err := root.GetExternalAccessFindings().Error
+		require.Error(t, err)
+		assert.ErrorIs(t, err, llx.ErrForbidden)
+		e, ok := err.(*llx.Error)
+		require.True(t, ok)
+		assert.Equal(t, []string{"access-analyzer:ListFindings"}, e.Permissions)
+	})
+
+	t.Run("one refused", func(t *testing.T) {
+		stub := &accessAnalyzerStub{
+			v2Err:      map[string]error{testEuAnalyzerArn: denied},
+			v2Findings: map[string][]aatypes.FindingSummaryV2{testAnalyzerArn: {v2Finding("f-us", "ExternalAccess", "arn:aws:s3:::shared")}},
+		}
+		rt := stub.runtime(t)
+		root := rootWithAnalyzers(t, rt,
+			testAnalyzer(testAnalyzerArn, "ACCOUNT", "ACTIVE", "us-east-1"),
+			testAnalyzer(testEuAnalyzerArn, "ORGANIZATION", "ACTIVE", "eu-west-1"))
+		list := root.GetExternalAccessFindings()
+		require.NoError(t, list.Error)
+		assert.Equal(t, []string{"f-us"}, findingIDs(t, list.Data))
+	})
+}
+
+// Synthetic: only ExternalAccess findings are kept, and only external-access
+// analyzers are listed.
+func TestExternalAccessFindingsTypeFilter(t *testing.T) {
+	stub := &accessAnalyzerStub{v2Findings: map[string][]aatypes.FindingSummaryV2{
+		testAnalyzerArn: {
+			v2Finding("f-ext", "ExternalAccess", "arn:aws:s3:::shared"),
+			v2Finding("f-int", "InternalAccess", "arn:aws:s3:::shared"),
+		},
+		testUnusedAnalyzerArn: {v2Finding("f-unused", "UnusedIAMRole", "arn:aws:iam::111122223333:role/r")},
+	}}
+	rt := stub.runtime(t)
+	root := rootWithAnalyzers(t, rt,
+		testAnalyzer(testAnalyzerArn, "ACCOUNT", "ACTIVE", "us-east-1"),
+		testAnalyzer(testUnusedAnalyzerArn, "ACCOUNT_UNUSED_ACCESS", "ACTIVE", "us-east-1"))
+	list := root.GetExternalAccessFindings()
+	require.NoError(t, list.Error)
+	assert.Equal(t, []string{"f-ext"}, findingIDs(t, list.Data))
+	assert.Equal(t, map[string]int{testAnalyzerArn: 1}, stub.v2Calls, "the unused-access analyzer is not listed")
+
+	f := list.Data[0].(*mqlAwsIamAccessAnalyzerFinding)
+	assert.Equal(t, "us-east-1", f.Region.Data)
+	assert.Equal(t, testAnalyzerArn, f.AnalyzerArn.Data)
 }
