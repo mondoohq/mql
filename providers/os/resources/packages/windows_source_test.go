@@ -193,7 +193,8 @@ func TestEdgeApplicationDir(t *testing.T) {
 	assert.Equal(t, "", edgeApplicationDir(""))
 }
 
-// testdata/winget holds winget's tracking catalogs (installed.db, VACUUMed)
+// testdata/winget holds winget's tracking catalogs (installed.db, VACUUMed,
+// with the random databaseIdentifier replaced by a zero GUID)
 // copied from a Windows 11 Enterprise 23H2 (22631) host with App Installer
 // 1.29.380.0, on 2026-11-27, after winget installed 7-Zip, Chrome, Acrobat
 // Reader, Notepad++, jq and Visual Studio Code:
@@ -359,7 +360,7 @@ func TestWingetMicrosoftStoreSource(t *testing.T) {
 
 func TestWingetCatalogWithoutManifestMetadata(t *testing.T) {
 	// Measured: Windows 11 23H2, App Installer 1.29.380.0, 2026-11-27. The
-	// empty catalogs an older winget created (azureadmin's, every StoreEdgeFD)
+	// empty catalogs an older winget created (an administrator's, every StoreEdgeFD)
 	// have no manifest_metadata table. Synthetic: the measured SYSTEM catalog
 	// with that table dropped, so it still has rows to join.
 	local := filepath.Join(t.TempDir(), "installed.db")
