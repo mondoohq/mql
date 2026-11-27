@@ -232,9 +232,14 @@ func wingetFixtureFS(t *testing.T) afero.Fs {
 	return fs
 }
 
+// uninstallEntry builds an Uninstall entry the way List hands it to Sources:
+// after applyInstallIdentityQualifiers has moved the identity into the purl
+// and cleared installIdentity.
 func uninstallEntry(name, version, key string) Package {
-	return Package{Name: name, Version: version, Format: WindowsAppPkgFormat,
-		installIdentity: newInstallIdentity(key, false, "", "")}
+	pkgs := []Package{{Name: name, Version: version, Format: WindowsAppPkgFormat,
+		PUrl: "pkg:windows/windows/" + name + "@" + version, installIdentity: newInstallIdentity(key, false, "", "")}}
+	applyInstallIdentityQualifiers(pkgs, nil)
+	return pkgs[0]
 }
 
 func wingetSource(id string) Source {
@@ -350,6 +355,28 @@ func TestWingetMicrosoftStoreSource(t *testing.T) {
 	writeWingetFile(t, fs, wingetSystemDir+"Contoso.Source_8wekyb3d8bbwe/installed.db", wingetFixture(t, "system-Microsoft.Winget.Source.db"))
 	facts = windowsSourceFacts{winget: readWingetCatalogs(fs, mountedSystemDrivePath)}
 	assert.Equal(t, wingetSource("7zip.7zip"), windowsPackageSource(uninstallEntry("7-Zip", "26.03", "7-Zip"), facts))
+}
+
+func TestWingetCatalogWithoutManifestMetadata(t *testing.T) {
+	// Measured: Windows 11 23H2, App Installer 1.29.380.0, 2026-11-27. The
+	// empty catalogs an older winget created (azureadmin's, every StoreEdgeFD)
+	// have no manifest_metadata table. Synthetic: the measured SYSTEM catalog
+	// with that table dropped, so it still has rows to join.
+	local := filepath.Join(t.TempDir(), "installed.db")
+	require.NoError(t, os.WriteFile(local, wingetFixture(t, "system-Microsoft.Winget.Source.db"), 0o600))
+	db, err := sql.Open("sqlite", "file:"+local)
+	require.NoError(t, err)
+	_, err = db.Exec("DROP TABLE manifest_metadata")
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+	data, err := os.ReadFile(local)
+	require.NoError(t, err)
+
+	fs := afero.NewMemMapFs()
+	writeWingetFile(t, fs, wingetSystemDir+wingetCommunity+"/installed.db", data)
+	facts := windowsSourceFacts{winget: readWingetCatalogs(fs, mountedSystemDrivePath)}
+	assert.Equal(t, wingetSource("Notepad++.Notepad++"),
+		windowsPackageSource(uninstallEntry("Notepad++ (x64)", "8.9.9.1", "{A23B657D-838B-4C9B-8F9D-386E50C1A76B}"), facts))
 }
 
 func TestWingetBadCatalogsAreSkipped(t *testing.T) {

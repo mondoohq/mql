@@ -413,10 +413,14 @@ type wingetIndex map[string][]wingetEntry
 // older version than the registry (a later upgrade by another account), and
 // that still says who installed the program.
 func (idx wingetIndex) source(pkg Package) (Source, bool) {
-	if len(idx) == 0 || pkg.installIdentity == nil || pkg.installIdentity.uninstallKey == "" {
+	key := pkg.uninstallKey
+	if key == "" && pkg.installIdentity != nil {
+		key = pkg.installIdentity.uninstallKey
+	}
+	if len(idx) == 0 || key == "" {
 		return Source{}, false
 	}
-	entries := idx[strings.ToLower(pkg.installIdentity.uninstallKey)]
+	entries := idx[strings.ToLower(key)]
 	if len(entries) == 0 {
 		return Source{}, false
 	}
@@ -570,13 +574,22 @@ func readWingetCatalog(fs afero.Fs, fsPath, sourceDir string) ([]wingetRow, erro
 	}
 	defer db.Close()
 
-	rows, err := db.Query(`SELECT pc.productcode, i.id, v.version, CAST(COALESCE(mm.value, 0) AS INTEGER)
+	// manifest_metadata (schema 1.7 and later) holds when winget tracked a
+	// manifest; a catalog created by an older winget has no such table
+	written := "0"
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'manifest_metadata'`).Scan(&n); err != nil {
+		return nil, err
+	}
+	if n > 0 {
+		written = "(SELECT CAST(mm.value AS INTEGER) FROM manifest_metadata mm WHERE mm.manifest = m.rowid AND mm.metadata = 7)"
+	}
+	rows, err := db.Query(`SELECT pc.productcode, i.id, v.version, COALESCE(` + written + `, 0)
 FROM productcodes_map pm
 JOIN productcodes pc ON pc.rowid = pm.productcode
 JOIN manifest m ON m.rowid = pm.manifest
 JOIN ids i ON i.rowid = m.id
-JOIN versions v ON v.rowid = m.version
-LEFT JOIN manifest_metadata mm ON mm.manifest = m.rowid AND mm.metadata = 7`)
+JOIN versions v ON v.rowid = m.version`)
 	if err != nil {
 		return nil, err
 	}

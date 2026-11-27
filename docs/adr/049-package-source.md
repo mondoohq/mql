@@ -345,9 +345,15 @@ are in no catalog and stay `installer`. The reader runs only when a query asks
 for `osProvided` or `source` and the list holds an Uninstall entry. It copies
 each `installed.db` (and a `-wal` file beside it) through the connection's file
 system to a temporary file, at most 64 files of at most 16 MiB, and skips any it
-cannot read. Over SSH that is a directory listing per state directory plus
-one read per catalog; the cost was not measured. No host showed an msstore
-Win32 install, so that mapping follows what AppX Store installs report.
+cannot read. SYSTEM's catalogs are read first, so the bound never drops them.
+Catalogs an older winget created have no `manifest_metadata` table; they are
+read without the tracking time. Over SSH that is a directory listing per state
+directory plus one read per catalog: on the host above (8 catalogs of about
+220 KB) a query for `source` took 16.6 s instead of 15.0 s (median of three),
+and the plain inventory stayed byte-identical. SYSTEM staying first matters
+there: the catalog the Intune and remediation installs went into was SYSTEM's.
+No host showed an msstore Win32 install, so that mapping follows what AppX
+Store installs report.
 
 ### Files, not commands
 
