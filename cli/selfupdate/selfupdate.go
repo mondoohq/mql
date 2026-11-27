@@ -80,6 +80,12 @@ type Config struct {
 	// binaries that package installs. A binary that is not installed by it must
 	// set this, or an update writes its own version into that entry.
 	SkipRegisteredVersion bool
+	// CrashLoopGuard counts how often a staged newer binary is activated
+	// without confirming a healthy run, and after maxActivationAttempts falls
+	// back to the current binary and quarantines the staged version. Enable it
+	// only in a binary that calls ConfirmRunningVersion once it has done real
+	// work; without that call every staged update would be quarantined.
+	CrashLoopGuard bool
 }
 
 // releaseURLs is the ordered list of manifests to try: the configured one
@@ -352,6 +358,16 @@ func CheckAndUpdate(cfg Config) (bool, error) {
 		return false, nil
 	}
 
+	// Never re-download a version already quarantined as broken. An explicit
+	// `update` passes RefreshInterval 0 and gets to try again.
+	if cfg.RefreshInterval > 0 && isVersionQuarantined(binPath, release.Version) {
+		log.Warn().
+			Str("version", release.Version).
+			Msg("self-update: latest version is quarantined (previously failed to run); staying on current binary")
+		updateMarkerFile(binPath, cfg.BinaryName)
+		return false, nil
+	}
+
 	log.Info().
 		Str("current", currentVersion).
 		Str("latest", release.Version).
@@ -377,6 +393,16 @@ func CheckAndUpdate(cfg Config) (bool, error) {
 	// Update marker file after successful installation
 	updateMarkerFile(binPath, cfg.BinaryName)
 
+	// Health-check gate: prove the freshly downloaded binary runs before it is
+	// activated. A binary that fails is quarantined so it is neither activated
+	// now nor re-downloaded on the next automatic check.
+	if err := healthCheckBinary(binaryPath); err != nil {
+		log.Warn().Err(err).Str("version", release.Version).Msg("self-update: downloaded binary failed its health check; quarantining")
+		quarantineVersion(binPath, release.Version)
+		_ = os.Remove(binaryPath)
+		return false, errors.Wrap(err, "downloaded binary failed its health check")
+	}
+
 	log.Debug().
 		Str("version", release.Version).
 		Str("path", binaryPath).
@@ -384,10 +410,8 @@ func CheckAndUpdate(cfg Config) (bool, error) {
 
 	// On Windows, swap the binary in-place so the firewall rule for the
 	// original path keeps working (no second firewall prompt).
+	// No extra verification needed: healthCheckBinary already ran the binary.
 	if inPlaceUpdateEnabled {
-		if err := verifyBinary(binaryPath); err != nil {
-			return false, errors.Wrap(err, "new binary verification failed")
-		}
 		originalPath, err := swapBinaryInPlace(binaryPath)
 		if err != nil {
 			return false, errors.Wrap(err, "in-place swap failed")
@@ -472,6 +496,18 @@ func execLocalIfNewer(cfg Config, binPath, binName, currentVersion string) (bool
 
 	if cmp <= 0 {
 		// Local binary is not newer
+		return false, nil
+	}
+
+	// Crash-loop guard: a staged version that keeps being activated without
+	// ever confirming a healthy run is quarantined, and the current binary is
+	// used instead. Running `version` above does not count as healthy: a
+	// binary can print its version and still crash on real work.
+	if cfg.CrashLoopGuard && !recordActivationAttempt(binPath, localVersion) {
+		quarantineStagedBinary(binPath, binName, localVersion)
+		log.Warn().
+			Str("version", localVersion).
+			Msg("auto-update: staged version quarantined after repeated failures; using current binary")
 		return false, nil
 	}
 
@@ -754,10 +790,19 @@ func downloadAndInstall(ctx context.Context, release *Release, destPath string, 
 	}
 	tmpFile.Close()
 
-	// Verify checksum
+	// Verify checksum against the hash advertised in the release manifest
+	// (first-line integrity check).
 	computedHash := hex.EncodeToString(hash.Sum(nil))
 	if file.Hash != "" && computedHash != file.Hash {
 		return "", errors.Newf("checksum mismatch: expected %s, got %s", file.Hash, computedHash)
+	}
+
+	// Verify against the published SHA256SUMS manifest and its detached
+	// signature (integrity + authenticity). Under the default 'auto' policy an
+	// unsigned or absent manifest falls back to the hash above; under
+	// 'require' the absence of a valid signature fails the update.
+	if err := verifyDownloadManifest(ctx, downloadURL, binaryName, release.Version, computedHash); err != nil {
+		return "", errors.Wrap(err, "download verification failed")
 	}
 
 	// Ensure destination directory exists

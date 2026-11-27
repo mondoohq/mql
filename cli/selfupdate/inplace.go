@@ -4,33 +4,13 @@
 package selfupdate
 
 import (
-	"context"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
 )
-
-// verifyBinary runs "<binary> version" with auto-update disabled and a 5-second
-// timeout. It returns an error if the binary fails to execute or exits non-zero.
-// This is called BEFORE any rename so the original binary is never touched if
-// the staged binary is broken.
-func verifyBinary(binaryPath string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, binaryPath, "version")
-	cmd.Env = append(os.Environ(), EnvAutoUpdate+"=false")
-
-	if err := cmd.Run(); err != nil {
-		return errors.Wrap(err, "staged binary failed verification")
-	}
-	return nil
-}
 
 // swapBinaryInPlace replaces the currently running binary with the staged binary.
 // It renames the running executable to <name>.old, then copies the staged binary

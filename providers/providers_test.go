@@ -168,6 +168,7 @@ func TestInstallIO(t *testing.T) {
 	})
 
 	t.Run("archive with binary", func(t *testing.T) {
+		skipProviderHealthCheck(t)
 		archive, err := buildTarXz(map[string][]byte{
 			"testp":                []byte(`fake-binary`),
 			"testp.json":           confJSON,
@@ -277,6 +278,8 @@ func useTestProviderPath(t *testing.T, reg ProviderRegistry) string {
 	DefaultPath = dir
 	CustomProviderPath = dir
 	SetProviderRegistry(reg)
+	// The fake archives carry stub binaries that cannot start as plugins.
+	skipProviderHealthCheck(t)
 	CachedProviders = nil
 
 	t.Cleanup(func() {
@@ -302,7 +305,7 @@ func TestTryProviderUpdateCompletesSchemaOnlyInstall(t *testing.T) {
 
 	reg := &fakeRegistry{latest: version, archive: archive, confJSON: confJSON, schemaJSON: schemaJSON}
 	dir := useTestProviderPath(t, reg)
-	binPath := filepath.Join(dir, name, name)
+	binPath := filepath.Join(dir, name, version, name)
 
 	schemaOnly, err := InstallSchemaOnly(name, version)
 	require.NoError(t, err)
@@ -361,6 +364,12 @@ func TestInstallRetriesInterruptedDownload(t *testing.T) {
 	t.Run("connection dropped mid-archive, then a clean transfer", func(t *testing.T) {
 		var requests atomic.Int32
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// No checksum manifest is published, which the default 'auto'
+			// policy accepts.
+			if strings.HasSuffix(r.URL.Path, "_SHA256SUMS") || strings.HasSuffix(r.URL.Path, ".sig") {
+				http.NotFound(w, r)
+				return
+			}
 			// Both paths announce the whole archive; only the first two
 			// transfers fall short of it.
 			w.Header().Set("Content-Length", strconv.Itoa(len(archive)))
@@ -383,7 +392,7 @@ func TestInstallRetriesInterruptedDownload(t *testing.T) {
 		installed, err := Install(name, version)
 		require.NoError(t, err)
 		assert.Equal(t, version, installed.Version)
-		assert.FileExists(t, filepath.Join(dir, name, name))
+		assert.FileExists(t, filepath.Join(dir, name, version, name))
 		assert.Equal(t, int32(3), requests.Load())
 	})
 
@@ -396,7 +405,7 @@ func TestInstallRetriesInterruptedDownload(t *testing.T) {
 		require.ErrorIs(t, err, io.ErrUnexpectedEOF)
 		assert.Contains(t, err.Error(), "failed to install testp-1.2.3, failed to read body")
 		assert.Equal(t, 3, reg.downloads)
-		assert.NoFileExists(t, filepath.Join(dir, name, name))
+		assert.NoDirExists(t, filepath.Join(dir, name, version))
 	})
 
 	// Synthetic: a failure to get a response (a 404, a registry that is down)
@@ -583,7 +592,7 @@ func TestInstallDependenciesUpdatesOutdatedPeer(t *testing.T) {
 	require.NoError(t, installDependencies(caller, existing))
 
 	assert.Equal(t, 1, reg.downloads, "the outdated peer is downloaded once")
-	assert.FileExists(t, filepath.Join(dir, "network", "network.json"))
+	assert.FileExists(t, filepath.Join(dir, "network", floor, "network.json"))
 	peer := existing.Lookup(ProviderLookup{ProviderName: "network"})
 	require.NotNil(t, peer)
 	assert.Equal(t, floor, peer.Version)
@@ -848,7 +857,7 @@ func TestEnsureProviderInstallsUnknownNameFromRegistry(t *testing.T) {
 	assert.Equal(t, name, installed.Name)
 	assert.Equal(t, version, installed.Version)
 	assert.True(t, installed.HasBinary)
-	assert.FileExists(t, filepath.Join(dir, name, name))
+	assert.FileExists(t, filepath.Join(dir, name, version, name))
 	assert.Equal(t, 1, reg.downloads)
 	assert.Same(t, installed, existing.Lookup(lookup), "the install must be added to the caller's set")
 }
@@ -925,4 +934,21 @@ func TestInstallDependenciesInstallsUnknownDependencyFromRegistry(t *testing.T) 
 	require.NotNil(t, dep, "the dependency must have been installed")
 	assert.Equal(t, version, dep.Version)
 	assert.Equal(t, 1, reg.downloads)
+}
+
+// Delete removes the whole container, every retained version with it, not just
+// the active version directory.
+func TestDeleteProviderRemovesAllVersions(t *testing.T) {
+	dst := t.TempDir()
+	name := "testprov"
+	skipProviderHealthCheck(t)
+
+	_, err := InstallIO(makeProviderArchive(t, name, "13.1.0"), InstallConf{Dst: dst})
+	require.NoError(t, err)
+	installed, err := InstallIO(makeProviderArchive(t, name, "13.2.0"), InstallConf{Dst: dst})
+	require.NoError(t, err)
+	require.Len(t, installed, 1)
+
+	require.NoError(t, deleteProvider(installed[0]))
+	assert.NoDirExists(t, providerContainerDir(dst, name))
 }

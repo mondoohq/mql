@@ -269,10 +269,16 @@ type Provider struct {
 	// while the first reader is still populating it. Every access to
 	// Schema must be preceded by a successful LoadResources call so the
 	// reader synchronizes with the (single) writer through this mutex.
-	schemaMu  sync.Mutex
-	Schema    resources.ResourcesSchema
+	schemaMu sync.Mutex
+	Schema   resources.ResourcesSchema
+	// Path is the provider's install directory, <providers>/<name>. It is
+	// what gets removed on delete and what listings group by.
 	Path      string
 	HasBinary bool
+	// payloadDir is the directory holding the active binary and its JSON
+	// files: the version directory named by the .current pointer, or Path
+	// itself for a flat install. Empty means Path.
+	payloadDir string
 }
 
 var (
@@ -703,6 +709,14 @@ func installVersion(ctx context.Context, name string, version string) (*Provider
 		return nil, err
 	}
 
+	// Verify integrity (and authenticity, when available) before a single
+	// byte is unpacked. A failure aborts the install and leaves the active
+	// version untouched.
+	archiveName := fmt.Sprintf("%s_%s_%s_%s.tar.xz", name, version, runtime.GOOS, runtime.GOARCH)
+	if err := verifyProviderDownload(ctx, name, version, map[string][]byte{archiveName: tar}); err != nil {
+		return nil, errors.Wrap(err, "failed to verify "+name+"-"+version)
+	}
+
 	reader := io.NopCloser(
 		bytes.NewReader(tar),
 	)
@@ -757,6 +771,15 @@ func installSchemaVersion(ctx context.Context, name string, version string, dst 
 	confJSON, schemaJSON, err := registry.DownloadProviderMetadata(ctx, name, version)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to install schema for "+name+"-"+version)
+	}
+
+	// The registry publishes provider.json and schema.json under their
+	// release names in the same SHA256SUMS manifest as the archives.
+	if err := verifyProviderDownload(ctx, name, version, map[string][]byte{
+		name + "_" + version + "_provider.json": confJSON,
+		name + "_" + version + "_schema.json":   schemaJSON,
+	}); err != nil {
+		return nil, errors.Wrap(err, "failed to verify schema for "+name+"-"+version)
 	}
 
 	// Pack the two files into an in-memory tar.xz so the install goes
@@ -1025,6 +1048,16 @@ func PrintInstallResults(providers []*Provider) {
 type InstallConf struct {
 	// Dst specify which path to install into.
 	Dst string
+
+	// SkipHealthCheck disables launching the freshly installed provider to
+	// verify it can start before it is activated. Off by default; set only in
+	// tests, or contexts where launching a subprocess is not possible.
+	SkipHealthCheck bool
+
+	// KeepVersions overrides how many installed versions to retain per provider
+	// for rollback (the active version plus previous ones). Zero uses the
+	// default (defaultKeepVersions).
+	KeepVersions int
 }
 
 func InstallFile(path string, conf InstallConf) ([]*Provider, error) {
@@ -1147,7 +1180,7 @@ func InstallIO(reader io.ReadCloser, conf InstallConf) ([]*Provider, error) {
 		return nil, err
 	}
 
-	log.Debug().Msg("move provider to destination")
+	log.Debug().Msg("install provider versions")
 	providerDirs := []string{}
 	for name := range files {
 		// Providers are identified by their schema file: every package has
@@ -1169,44 +1202,18 @@ func InstallIO(reader io.ReadCloser, conf InstallConf) ([]*Provider, error) {
 			binName = providerName + ".exe"
 		}
 
-		dstPath := filepath.Join(conf.Dst, providerName)
-		if err = os.MkdirAll(dstPath, 0o755); err != nil {
+		// Install into a per-version directory, health-check the new binary
+		// (if the package has one), and only then flip the atomic .current
+		// pointer. On any failure the previously active version is left
+		// completely untouched.
+		containerDir, err := commitProviderVersion(tmpdir, conf, binName, providerName)
+		if err != nil {
 			return nil, err
 		}
 
-		// move the binary (if any) and the associated files
-		if binName != "" {
-			srcBin := filepath.Join(tmpdir, binName)
-			dstBin := filepath.Join(dstPath, binName)
-			log.Debug().Str("src", srcBin).Str("dst", dstBin).Msg("move provider binary")
-			if err = osRetry(func() error {
-				return os.Rename(srcBin, dstBin)
-			}, maxInstallBinaryRetries); err != nil {
-				return nil, err
-			}
-			if err = os.Chmod(dstBin, 0o755); err != nil {
-				return nil, err
-			}
-		}
-
-		srcMeta := filepath.Join(tmpdir, providerName)
-		dstMeta := filepath.Join(dstPath, providerName)
-		if err = osRetry(func() error {
-			return os.Rename(srcMeta+".json", dstMeta+".json")
-		}, maxInstallConfRetries); err != nil {
-			return nil, err
-		}
-		if err = osRetry(func() error {
-			return os.Rename(srcMeta+".resources.json", dstMeta+".resources.json")
-		}, maxInstallConfRetries); err != nil {
-			return nil, err
-		}
-
-		// Flush the directory entries so the renames above are durable;
-		// otherwise a crash can leave the provider half-installed.
-		syncDir(dstPath)
-
-		providerDirs = append(providerDirs, dstPath)
+		// readProviderDir resolves the container through the pointer we just
+		// wrote to the freshly activated version directory.
+		providerDirs = append(providerDirs, containerDir)
 	}
 
 	log.Debug().Msg("loading providers")
@@ -1365,13 +1372,22 @@ func findProviders(path string) ([]*Provider, error) {
 }
 
 func readProviderDir(pdir string) (*Provider, error) {
+	// pdir is the provider's container directory. Resolve the active payload:
+	// the versioned directory named by the .current pointer, or the container
+	// itself for a flat install.
 	name := filepath.Base(pdir)
-	bin := filepath.Join(pdir, name)
+	resolved, _, ok := resolveActiveDir(pdir, name)
+	if !ok {
+		log.Debug().Str("path", pdir).Msg("ignoring provider, no usable payload found")
+		return nil, nil
+	}
+
+	bin := filepath.Join(resolved, name)
 	if runtime.GOOS == "windows" {
 		bin += ".exe"
 	}
-	conf := filepath.Join(pdir, name+".json")
-	resources := filepath.Join(pdir, name+".resources.json")
+	conf := filepath.Join(resolved, name+".json")
+	resources := filepath.Join(resolved, name+".resources.json")
 
 	if !config.ProbeFile(conf) {
 		log.Debug().Str("path", conf).Msg("ignoring provider, can't access the plugin config")
@@ -1391,9 +1407,10 @@ func readProviderDir(pdir string) (*Provider, error) {
 		// exists above (ProbeFile); parsing every provider's schema (multiple
 		// megabytes in total) up front is wasted work for the providers we
 		// never touch.
-		Schema:    nil,
-		Path:      pdir,
-		HasBinary: config.ProbeFile(bin),
+		Schema:     nil,
+		Path:       pdir,
+		HasBinary:  config.ProbeFile(bin),
+		payloadDir: resolved,
 	}, nil
 }
 
@@ -1452,12 +1469,12 @@ func TryProviderUpdate(provider *Provider, update UpdateProvidersConfig) (*Provi
 		return provider, nil
 	}
 
-	semver := semver.Parser{}
-	diff, err := semver.Compare(provider.Version, latest)
+	// Apply the pin/floor policy to decide what (if anything) to install.
+	target, doUpdate, err := ResolveUpdateTarget(provider.Name, provider.Version, latest, update)
 	if err != nil {
 		return nil, err
 	}
-	if diff >= 0 {
+	if !doUpdate {
 		// Even if the provider doesn't need updating, we should check for any missing dependencies
 		if providers, err := ListActive(); err == nil {
 			err := installDependencies(provider, providers)
@@ -1470,9 +1487,10 @@ func TryProviderUpdate(provider *Provider, update UpdateProvidersConfig) (*Provi
 
 	log.Info().
 		Str("installed", provider.Version).
+		Str("target", target).
 		Str("latest", latest).
-		Msg("found a new version for '" + provider.Name + "' provider")
-	provider, err = installVersion(ctx, provider.Name, latest)
+		Msg("installing new version for '" + provider.Name + "' provider")
+	provider, err = installVersion(ctx, provider.Name, target)
 	if err != nil {
 		return nil, err
 	}
@@ -1520,7 +1538,7 @@ func (p *Provider) LoadResources() error {
 		return nil
 	}
 
-	path := filepath.Join(p.Path, p.Name+".resources.json")
+	path := filepath.Join(p.dir(), p.Name+".resources.json")
 	res, err := afero.ReadFile(config.AppFs, path)
 	if err != nil {
 		return errors.New("failed to read provider resources json from " + path + ": " + err.Error())
@@ -1579,8 +1597,16 @@ func stampProviderRoot(schema *resources.Schema, id string, root string) {
 	}
 }
 
+// dir is the directory holding the provider's active binary and JSON files.
+func (p *Provider) dir() string {
+	if p.payloadDir != "" {
+		return p.payloadDir
+	}
+	return p.Path
+}
+
 func (p *Provider) confJSONPath() string {
-	return filepath.Join(p.Path, p.Name+".json")
+	return filepath.Join(p.dir(), p.Name+".json")
 }
 
 func (p *Provider) binPath() string {
@@ -1588,7 +1614,7 @@ func (p *Provider) binPath() string {
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
-	return filepath.Join(p.Path, name)
+	return filepath.Join(p.dir(), name)
 }
 
 func MustLoadSchema(name string, data []byte) *resources.Schema {

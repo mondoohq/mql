@@ -80,6 +80,23 @@ const (
 	failedLatestVersionsTTL = time.Minute
 )
 
+// VerifiedRegistry is an optional extension of ProviderRegistry that can supply
+// the verification sidecars (checksum manifest and detached signature) for a
+// provider version. When a registry implements it, downloads are verified
+// before they are installed. Registries that do not implement it (e.g. simple
+// test doubles) skip verification unless the signature policy is 'require'.
+type VerifiedRegistry interface {
+	// DownloadChecksums returns the raw SHA256SUMS manifest for a provider
+	// version. ok is false (with a nil error) when no manifest is published,
+	// so callers can distinguish "not published" from "failed to fetch".
+	DownloadChecksums(ctx context.Context, name, version string) (data []byte, ok bool, err error)
+
+	// DownloadSignature returns the detached minisign signature over the
+	// checksum manifest. ok is false (with a nil error) when no signature has
+	// been published for this version.
+	DownloadSignature(ctx context.Context, name, version string) (data []byte, ok bool, err error)
+}
+
 // MondooProviderRegistry implements ProviderRegistry for Mondoo's provider registry
 type MondooProviderRegistry struct {
 	BaseURL string
@@ -432,4 +449,80 @@ func (r *MondooProviderRegistry) downloadReleaseFile(ctx context.Context, name, 
 		return nil, errors.Wrap(err, "failed to read "+filename+" for "+name+"-"+version)
 	}
 	return data, nil
+}
+
+// checksumFilename builds the name of the SHA256SUMS manifest for a version.
+// The release pipeline names it "<name>_<version>_SHA256SUMS"
+// (scripts/provider_bundler.sh) and publishes it next to the archives.
+func checksumFilename(name, version string) string {
+	return fmt.Sprintf("%s_%s_SHA256SUMS", name, version)
+}
+
+// DownloadChecksums fetches the SHA256SUMS manifest for a provider version. A
+// 404 is reported as ok=false with no error: a mirror that never copied the
+// manifest is not the same as one that served a bad archive.
+func (r *MondooProviderRegistry) DownloadChecksums(ctx context.Context, name, version string) ([]byte, bool, error) {
+	u, err := url.JoinPath(r.BaseURL, name, version, checksumFilename(name, version))
+	if err != nil {
+		return nil, false, errors.Wrap(err, "failed to construct checksum URL")
+	}
+	data, notFound, err := r.fetchSidecar(ctx, u)
+	if err != nil {
+		return nil, false, errors.Wrap(err, "failed to download checksum manifest for "+name+"-"+version)
+	}
+	if notFound {
+		return nil, false, nil
+	}
+	return data, true, nil
+}
+
+// DownloadSignature fetches the detached minisign signature over the checksum
+// manifest. A 404 is reported as ok=false with no error, so an as-yet-unsigned
+// release does not fail verification under the 'auto' policy.
+func (r *MondooProviderRegistry) DownloadSignature(ctx context.Context, name, version string) ([]byte, bool, error) {
+	u, err := url.JoinPath(r.BaseURL, name, version, checksumFilename(name, version)+".sig")
+	if err != nil {
+		return nil, false, errors.Wrap(err, "failed to construct signature URL")
+	}
+	data, notFound, err := r.fetchSidecar(ctx, u)
+	if err != nil {
+		return nil, false, errors.Wrap(err, "failed to download signature for "+name+"-"+version)
+	}
+	if notFound {
+		return nil, false, nil
+	}
+	return data, true, nil
+}
+
+// fetchSidecar GETs a small sidecar file. It returns notFound=true on a 404 so
+// callers can treat "not published" distinctly from a transport error.
+func (r *MondooProviderRegistry) fetchSidecar(ctx context.Context, u string) (data []byte, notFound bool, err error) {
+	client, err := httpClientWithRetry()
+	if err != nil {
+		return nil, false, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, false, err
+	}
+
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, false, err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode == http.StatusNotFound {
+		return nil, true, nil
+	}
+	if res.StatusCode != http.StatusOK {
+		return nil, false, errors.New("received status code " + res.Status + " for " + u)
+	}
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, false, err
+	}
+	return body, false, nil
 }

@@ -463,3 +463,48 @@ func TestMondooProviderRegistry_DownloadProviderCancellation(t *testing.T) {
 		})
 	}
 }
+
+func TestMondooProviderRegistry_DownloadChecksumsAndSignature(t *testing.T) {
+	// Synthetic: the paths follow scripts/provider_bundler.sh and the publish
+	// step in .github/workflows/providers.yaml; the contents are made up.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/aws/1.2.3/aws_1.2.3_SHA256SUMS":
+			w.Write([]byte("manifest")) // nolint:errcheck
+		case "/aws/1.2.3/aws_1.2.3_SHA256SUMS.sig":
+			w.Write([]byte("signature")) // nolint:errcheck
+		case "/denied/1.0.0/denied_1.0.0_SHA256SUMS":
+			w.WriteHeader(http.StatusForbidden)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	reg := NewMondooProviderRegistry(WithBaseURL(server.URL))
+	ctx := context.Background()
+
+	data, ok, err := reg.DownloadChecksums(ctx, "aws", "1.2.3")
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, "manifest", string(data))
+
+	sig, ok, err := reg.DownloadSignature(ctx, "aws", "1.2.3")
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, "signature", string(sig))
+
+	// Not published is not an error, so the caller can apply its policy.
+	_, ok, err = reg.DownloadChecksums(ctx, "unsigned", "1.0.0")
+	require.NoError(t, err)
+	assert.False(t, ok)
+	_, ok, err = reg.DownloadSignature(ctx, "aws", "9.9.9")
+	require.NoError(t, err)
+	assert.False(t, ok)
+
+	// Any other answer is a failure to fetch, not an absence.
+	_, ok, err = reg.DownloadChecksums(ctx, "denied", "1.0.0")
+	require.Error(t, err)
+	assert.False(t, ok)
+	assert.Contains(t, err.Error(), "403")
+}
