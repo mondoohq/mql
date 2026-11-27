@@ -521,3 +521,23 @@ func TestPackageSourceCannotBeQueriedOnItsOwn(t *testing.T) {
 	assert.Nil(t, res)
 	assert.Equal(t, args, got)
 }
+
+// files() asks the manager that listed the package, which every package of
+// that manager shares: the managers are resolved once per scan rather than
+// once per package (each resolve probes for flatpak, nix and Oracle homes, a
+// remote command each over docker exec), and what a manager caches, here
+// rpm's database path, serves all of its packages.
+func TestPackageFilesShareTheListingManager(t *testing.T) {
+	runtime, conn := newRpmUpdateHost(t, "", 0)
+	pkgs := listPackagesByName(t, runtime)
+	require.Equal(t, 1, conn.ran("which flatpak"), "listing resolves the managers")
+
+	for _, name := range []string{"openssl", "bash"} {
+		files := pkgs[name].GetFiles()
+		require.NoError(t, files.Error)
+		require.Len(t, files.Data, 1)
+		assert.Equal(t, "/var/lib/rpm", files.Data[0].(*mqlPkgFileInfo).Path.Data)
+	}
+	assert.Equal(t, 1, conn.ran("which flatpak"), "files resolves no manager again")
+	assert.Equal(t, 1, conn.ran("rpm -E '%{_dbpath}'"), "rpm's database path is resolved once for all packages")
+}

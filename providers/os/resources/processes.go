@@ -17,10 +17,8 @@ import (
 )
 
 type mqlProcessInternal struct {
-	SocketInodesError error
-	SocketInodes      plugin.TValue[[]int64]
-	processInfoError  error
-	lock              sync.Mutex
+	processInfoError error
+	lock             sync.Mutex
 }
 
 func initProcess(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -138,14 +136,16 @@ func (p *mqlProcess) gatherProcessInfo() error {
 	p.State = plugin.TValue[string]{Data: process.State, State: plugin.StateIsSet}
 	p.Executable = plugin.TValue[string]{Data: process.Executable, State: plugin.StateIsSet}
 	p.Command = plugin.TValue[string]{Data: process.Command, State: plugin.StateIsSet}
-	p.SocketInodes = plugin.TValue[[]int64]{Data: process.SocketInodes, State: plugin.StateIsSet}
 
 	return nil
 }
 
 type mqlProcessesInternal struct {
-	ByPID      map[int64]*mqlProcess
-	BySocketID map[int64]*mqlProcess
+	ByPID map[int64]*mqlProcess
+
+	// bySocketID maps a socket inode to the process holding it, see bySocket.
+	socketsLock sync.Mutex
+	bySocketID  plugin.TValue[map[int64]*mqlProcess]
 }
 
 func (p *mqlProcesses) list() ([]any, error) {
@@ -164,12 +164,6 @@ func (p *mqlProcesses) list() ([]any, error) {
 	}
 	log.Debug().Int("processes", len(procs)).Msg("mql[processes]> running processes")
 
-	processesInodesByPid, err := opm.ListSocketInodesByProcess()
-	if err != nil {
-		log.Warn().Err(err).Msg("mql[processes]> could not retrieve processes socket inodes")
-		return nil, fmt.Errorf("could not retrieve processes socket inodes")
-	}
-
 	result := make([]any, len(procs))
 
 	for i := range procs {
@@ -183,24 +177,6 @@ func (p *mqlProcesses) list() ([]any, error) {
 		})
 		if err != nil {
 			return nil, err
-		}
-
-		socketInodes := []int64{}
-		var socketInodesErr error
-		if _, ok := processesInodesByPid[proc.Pid]; ok {
-			socketInodes = processesInodesByPid[proc.Pid].Data
-			socketInodesErr = processesInodesByPid[proc.Pid].Error
-		} else {
-			if len(proc.SocketInodes) > 0 {
-				socketInodes = proc.SocketInodes
-				socketInodesErr = proc.SocketInodesError
-			}
-		}
-		process := o.(*mqlProcess)
-		process.SocketInodes = plugin.TValue[[]int64]{
-			Data:  socketInodes,
-			Error: socketInodesErr,
-			State: plugin.StateIsSet,
 		}
 
 		result[i] = o
@@ -219,17 +195,64 @@ func (p *mqlProcesses) refreshCache(all []any) error {
 	}
 
 	processesMap := make(map[int64]*mqlProcess, len(all))
-	socketsMap := map[int64]*mqlProcess{}
-
 	for i := range all {
 		process := all[i].(*mqlProcess)
 		processesMap[process.Pid.Data] = process
-		for i := range process.SocketInodes.Data {
-			socketsMap[process.SocketInodes.Data[i]] = process
-		}
 	}
 
 	p.ByPID = processesMap
-	p.BySocketID = socketsMap
 	return nil
+}
+
+// bySocket maps every socket inode to the process that holds it open.
+//
+// Finding the sockets means resolving every open file descriptor of every
+// process, more work than the listing itself and over docker exec a command
+// per descriptor. Only ports needs them, so they are read here, the first
+// time ports asks, and not by list(): policies list processes by executable
+// on every Linux asset (the Kubernetes filters do) and never use them.
+func (p *mqlProcesses) bySocket() (map[int64]*mqlProcess, error) {
+	p.socketsLock.Lock()
+	defer p.socketsLock.Unlock()
+
+	if p.bySocketID.State&plugin.StateIsSet != 0 {
+		return p.bySocketID.Data, p.bySocketID.Error
+	}
+	res, err := p.readSockets()
+	p.bySocketID = plugin.TValue[map[int64]*mqlProcess]{Data: res, Error: err, State: plugin.StateIsSet}
+	return res, err
+}
+
+func (p *mqlProcesses) readSockets() (map[int64]*mqlProcess, error) {
+	list := p.GetList()
+	if list.Error != nil {
+		return nil, list.Error
+	}
+
+	conn := p.MqlRuntime.Connection.(shared.Connection)
+	opm, err := processes.ResolveManager(conn)
+	if opm == nil || err != nil {
+		log.Debug().Err(err).Msg("mql[processes]> could not retrieve process resolver")
+		return nil, errors.New("cannot find process manager")
+	}
+	inodesByPid, err := opm.ListSocketInodesByProcess()
+	if err != nil {
+		log.Warn().Err(err).Msg("mql[processes]> could not retrieve processes socket inodes")
+		return nil, fmt.Errorf("could not retrieve processes socket inodes")
+	}
+	return indexSockets(list.Data, inodesByPid), nil
+}
+
+// indexSockets maps each socket inode in inodesByPid to the listed process
+// with that pid. Inodes of a pid that is not in the list (a process started
+// after the listing) have no process to point at and are left out.
+func indexSockets(list []any, inodesByPid map[int64]plugin.TValue[[]int64]) map[int64]*mqlProcess {
+	res := map[int64]*mqlProcess{}
+	for i := range list {
+		process := list[i].(*mqlProcess)
+		for _, inode := range inodesByPid[process.Pid.Data].Data {
+			res[inode] = process
+		}
+	}
+	return res
 }

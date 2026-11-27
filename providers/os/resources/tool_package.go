@@ -218,7 +218,9 @@ func resolveToolPackage(runtime *plugin.Runtime, configPath string, spec toolPac
 	// the `packages` collection. This works regardless of the package's name.
 	if conn, ok := runtime.Connection.(shared.Connection); ok {
 		for _, bin := range spec.binaryNames {
-			ownerName, err := packages.FindPackageOwningBinary(conn, bin)
+			ownerName, err := packages.FindPackageOwningBinary(conn, bin, func() ([]packages.OperatingSystemPkgManager, error) {
+				return systemPkgManagers(runtime)
+			})
 			if err != nil {
 				return nil, err
 			}

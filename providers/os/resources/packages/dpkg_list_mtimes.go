@@ -46,12 +46,36 @@ func (m DpkgListMtimes) Get(name, arch string) (time.Time, bool) {
 	return t, ok
 }
 
+// dpkgInfoLists is what one listing of /var/lib/dpkg/info says about the
+// package file lists in it.
+type dpkgInfoLists struct {
+	// names holds the name of every file list, without the .list suffix,
+	// whether or not it reports a modification time.
+	names map[string]struct{}
+	// mtimes holds the modification time of every list that has one.
+	mtimes DpkgListMtimes
+}
+
+// has reports whether the file list <name>.list exists.
+func (l dpkgInfoLists) has(name string) bool {
+	_, ok := l.names[name]
+	return ok
+}
+
 // ParseDpkgListMtimes reads the output of dpkgListMtimesCmd. Each line is a
 // Unix time with an optional fractional part, one space, and the file name.
 // Times are truncated to the second, the precision rpm and dpkg.log record.
 // Lines that do not have that shape are skipped.
 func ParseDpkgListMtimes(r io.Reader) DpkgListMtimes {
-	res := DpkgListMtimes{}
+	return parseDpkgInfoLists(r).mtimes
+}
+
+// parseDpkgInfoLists reads the output of dpkgListMtimesCmd into the names of
+// all file lists and the times of those that carry a valid one. A list whose
+// time does not parse, or is the epoch (an image built with its timestamps
+// zeroed), still exists.
+func parseDpkgInfoLists(r io.Reader) dpkgInfoLists {
+	res := dpkgInfoLists{names: map[string]struct{}{}, mtimes: DpkgListMtimes{}}
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -63,63 +87,71 @@ func ParseDpkgListMtimes(r io.Reader) DpkgListMtimes {
 		if !ok || name == "" {
 			continue
 		}
+		res.names[name] = struct{}{}
 		secs, _, _ := strings.Cut(ts, ".")
 		sec, err := strconv.ParseInt(secs, 10, 64)
 		if err != nil || sec <= 0 {
 			continue
 		}
-		res[name] = time.Unix(sec, 0).UTC()
+		res.mtimes[name] = time.Unix(sec, 0).UTC()
 	}
 	return res
 }
 
-// dpkgListMtimesFromFS lists /var/lib/dpkg/info through the asset's
+// dpkgInfoListsFromFS lists /var/lib/dpkg/info through the asset's
 // filesystem. It serves connections that cannot run commands (a mounted
 // snapshot, a container image), where a directory read is local and cheap.
-// A missing directory, as in a distroless image, yields no times.
-func dpkgListMtimesFromFS(fs afero.Fs) DpkgListMtimes {
-	res := DpkgListMtimes{}
+// It reports false when the directory cannot be read.
+func dpkgInfoListsFromFS(fs afero.Fs) (dpkgInfoLists, bool) {
+	res := dpkgInfoLists{names: map[string]struct{}{}, mtimes: DpkgListMtimes{}}
 	entries, err := afero.ReadDir(fs, dpkgInfoDir)
 	if err != nil {
 		log.Debug().Err(err).Str("path", dpkgInfoDir).Msg("mql[packages]> cannot list dpkg file lists")
-		return res
+		return res, false
 	}
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
 		}
 		name, ok := strings.CutSuffix(e.Name(), ".list")
-		if !ok || name == "" || e.ModTime().IsZero() {
+		if !ok || name == "" {
 			continue
 		}
-		res[name] = e.ModTime().Truncate(time.Second).UTC()
+		res.names[name] = struct{}{}
+		if e.ModTime().IsZero() {
+			continue
+		}
+		res.mtimes[name] = e.ModTime().Truncate(time.Second).UTC()
 	}
-	return res
+	return res, true
 }
 
-// readDpkgListMtimes returns the modification time of every dpkg file list.
+// readDpkgInfoLists lists every dpkg file list and its modification time.
 //
 // A connection that runs commands gets one batched find. Over SSH with sudo
-// the filesystem stats each file with its own remote command, so a directory
-// read there costs one round trip per installed package. Connections without
-// commands read the directory through the filesystem.
+// or docker exec the filesystem stats each file with its own remote command,
+// so a directory read there costs one round trip per installed package.
+// Connections without commands read the directory through the filesystem.
 //
-// When the command fails, the answer is empty rather than a filesystem walk,
-// so a host without GNU find never falls back to the per-file round trips.
-func readDpkgListMtimes(conn shared.Connection) DpkgListMtimes {
+// It reports false when the listing failed, so that callers needing to know
+// whether a list exists can fall back to asking for it by name. Install dates
+// never fall back: a host without GNU find stays undated rather than paying
+// the per-file round trips.
+func readDpkgInfoLists(conn shared.Connection) (dpkgInfoLists, bool) {
 	if !conn.Capabilities().Has(shared.Capability_RunCommand) {
-		return dpkgListMtimesFromFS(conn.FileSystem())
+		return dpkgInfoListsFromFS(conn.FileSystem())
 	}
+	empty := dpkgInfoLists{names: map[string]struct{}{}, mtimes: DpkgListMtimes{}}
 	cmd, err := conn.RunCommand(dpkgListMtimesCmd)
 	if err != nil {
-		log.Debug().Err(err).Msg("mql[packages]> cannot list dpkg file list times")
-		return DpkgListMtimes{}
+		log.Debug().Err(err).Msg("mql[packages]> cannot list dpkg file lists")
+		return empty, false
 	}
 	if cmd.ExitStatus != 0 {
-		log.Debug().Int("exit", cmd.ExitStatus).Msg("mql[packages]> listing dpkg file list times failed")
-		return DpkgListMtimes{}
+		log.Debug().Int("exit", cmd.ExitStatus).Msg("mql[packages]> listing dpkg file lists failed")
+		return empty, false
 	}
-	return ParseDpkgListMtimes(cmd.Stdout)
+	return parseDpkgInfoLists(cmd.Stdout), true
 }
 
 // dpkgStateHasCurrentFileList reports whether a dpkg status triple describes a

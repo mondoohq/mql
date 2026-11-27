@@ -111,6 +111,10 @@ type mqlPackageInternal struct {
 	// for a package that list() did not build.
 	sources   *pkgSources
 	sourceIdx int
+
+	// pm is the package manager that listed this package, which files() asks
+	// for the package's files. Nil for a package that list() did not build.
+	pm packages.OperatingSystemPkgManager
 }
 
 // initPackageMacos keeps `package.macos` from resolving on its own. The
@@ -397,11 +401,16 @@ func (p *mqlPackage) files() ([]any, error) {
 		// we already have the data
 		filesOnDisk = p.filesOnDisks
 	} else {
-		// we need to retrieve the data on-demand
-		conn := p.MqlRuntime.Connection.(shared.Connection)
-		pms, err := packages.ResolveSystemPkgManagers(conn)
-		if len(pms) == 0 || err != nil {
-			return nil, errors.New("could not detect suitable package manager for platform")
+		// we need to retrieve the data on-demand, from the manager that listed
+		// the package: another manager on the same host knows nothing about
+		// it, and asking all of them per package is what made this costly
+		pms := []packages.OperatingSystemPkgManager{p.pm}
+		if p.pm == nil {
+			var err error
+			pms, err = systemPkgManagers(p.MqlRuntime)
+			if len(pms) == 0 || err != nil {
+				return nil, errors.New("could not detect suitable package manager for platform")
+			}
 		}
 		filesOnDisk = []packages.FileRecord{}
 		for _, pm := range pms {
@@ -478,6 +487,48 @@ func (s *pkgSources) lookup(i int) *packages.Source {
 type mqlPackagesInternal struct {
 	lock           sync.Mutex
 	packagesByName map[string]*mqlPackage
+
+	// pms are the asset's package managers, resolved once per runtime, see
+	// managers.
+	pmsOnce sync.Once
+	pms     []packages.OperatingSystemPkgManager
+	pmsErr  error
+}
+
+// managers returns the asset's package managers, resolved once per runtime.
+//
+// Resolving is not free: besides the platform it probes the filesystem for
+// nix, flatpak and Oracle homes, and over docker exec or SSH every probe is a
+// remote command. It used to run again for every package that read its files.
+// Sharing the instances also shares what they cache for all packages: rpm's
+// database path and dpkg's file lists.
+func (x *mqlPackages) managers() ([]packages.OperatingSystemPkgManager, error) {
+	x.pmsOnce.Do(func() {
+		conn := x.MqlRuntime.Connection.(shared.Connection)
+		x.pms, x.pmsErr = packages.ResolveSystemPkgManagers(conn)
+	})
+	return x.pms, x.pmsErr
+}
+
+// systemPkgManagers returns the package managers of the runtime's asset,
+// resolved once per runtime, see mqlPackages.managers.
+func systemPkgManagers(runtime *plugin.Runtime) ([]packages.OperatingSystemPkgManager, error) {
+	obj, err := CreateResource(runtime, ResourcePackages, nil)
+	if err != nil {
+		return nil, err
+	}
+	return obj.(*mqlPackages).managers()
+}
+
+// pkgOrigin is what list() knows about where one package came from: the
+// manager that listed it, and that manager's update and source lookups,
+// which all of its packages share. sourceIdx is the package's position in
+// that manager's list.
+type pkgOrigin struct {
+	pm        packages.OperatingSystemPkgManager
+	updates   *pkgUpdates
+	sources   *pkgSources
+	sourceIdx int
 }
 
 // pkgUpdates holds one package manager's pending updates. The manager is only
@@ -667,7 +718,7 @@ func (x *mqlPackages) list() ([]any, error) {
 	defer x.lock.Unlock()
 
 	conn := x.MqlRuntime.Connection.(shared.Connection)
-	pms, err := packages.ResolveSystemPkgManagers(conn)
+	pms, err := x.managers()
 	if len(pms) == 0 || err != nil {
 		return nil, errors.New("could not detect suitable package manager for platform")
 	}
@@ -679,15 +730,11 @@ func (x *mqlPackages) list() ([]any, error) {
 	}
 
 	osPkgs := []packages.Package{}
-	// osPkgUpdates[i] holds the pending updates of the manager that listed
-	// osPkgs[i]. Nothing asks the manager for them until a package reads
-	// available or outdated.
-	osPkgUpdates := []*pkgUpdates{}
-	// osPkgSources[i] and osPkgSourceIdx[i] locate osPkgs[i] in its manager's
-	// source resolution, which runs only when a package reads osProvided or
-	// source.
-	osPkgSources := []*pkgSources{}
-	osPkgSourceIdx := []int{}
+	// origins[i] is where osPkgs[i] came from. Nothing asks its manager for
+	// pending updates until a package reads available or outdated, nor for
+	// sources until one reads osProvided or source, nor for files until one
+	// reads files.
+	origins := []pkgOrigin{}
 	for _, pm := range pms {
 		// retrieve all system packages
 		pkgs, err := pm.List()
@@ -699,15 +746,14 @@ func (x *mqlPackages) list() ([]any, error) {
 		updates := &pkgUpdates{pm: pm, noCommands: !conn.Capabilities().Has(shared.Capability_RunCommand)}
 		sources := &pkgSources{pm: pm, pkgs: pkgs}
 		for j := range pkgs {
-			osPkgUpdates = append(osPkgUpdates, updates)
-			osPkgSources = append(osPkgSources, sources)
-			osPkgSourceIdx = append(osPkgSourceIdx, j)
+			origins = append(origins, pkgOrigin{pm: pm, updates: updates, sources: sources, sourceIdx: j})
 		}
 	}
 
 	// googet registers each package it installs in Add/Remove Programs as well,
-	// so the Windows registry reader lists it a second time.
-	osPkgs, osPkgUpdates = packages.DropGooGetRegistryDuplicates(osPkgs, osPkgUpdates)
+	// so the Windows registry reader lists it a second time. Its origins are
+	// dropped with it, so every later package keeps its own.
+	osPkgs, origins = packages.DropGooGetRegistryDuplicates(osPkgs, origins)
 
 	// A Yocto image can use any package backend -- opkg, rpm or deb -- and each
 	// emits its own purl type (pkg:opkg, pkg:rpm, pkg:deb), none of which match
@@ -759,9 +805,10 @@ func (x *mqlPackages) list() ([]any, error) {
 		s.installUserSid = osPkg.InstallUser
 		s.macosApp = osPkg.MacOS
 		s.windowsIdentity = osPkg.Windows
-		s.updates = osPkgUpdates[i]
-		s.sources = osPkgSources[i]
-		s.sourceIdx = osPkgSourceIdx[i]
+		s.updates = origins[i].updates
+		s.sources = origins[i].sources
+		s.sourceIdx = origins[i].sourceIdx
+		s.pm = origins[i].pm
 		pkgs[i] = s
 	}
 

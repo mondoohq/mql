@@ -12,6 +12,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -354,6 +355,21 @@ func mergeDebUpdates(aptList, dryRun map[string]PackageUpdate) map[string]Packag
 type DebPkgManager struct {
 	conn     shared.Connection
 	platform *inventory.Platform
+
+	// infoLists is one listing of /var/lib/dpkg/info, read the first time a
+	// package's install date or files need it and kept for every package
+	// after that. infoListsOK is false when the directory could not be listed.
+	infoListsOnce sync.Once
+	infoLists     dpkgInfoLists
+	infoListsOK   bool
+}
+
+// fileLists returns the listing of /var/lib/dpkg/info, reading it once.
+func (dpm *DebPkgManager) fileLists() (dpkgInfoLists, bool) {
+	dpm.infoListsOnce.Do(func() {
+		dpm.infoLists, dpm.infoListsOK = readDpkgInfoLists(dpm.conn)
+	})
+	return dpm.infoLists, dpm.infoListsOK
 }
 
 func (dpm *DebPkgManager) Name() string {
@@ -468,7 +484,8 @@ func (dpm *DebPkgManager) applyInstallDates(fs afero.Fs, pkgList []Package) {
 		return
 	}
 
-	applyDpkgListMtimes(pkgList, readDpkgListMtimes(dpm.conn))
+	lists, _ := dpm.fileLists()
+	applyDpkgListMtimes(pkgList, lists.mtimes)
 }
 
 // applyDpkgListMtimes dates every package that is still undated from the
@@ -698,20 +715,29 @@ func parseDpkgOwner(output string) string {
 	return ""
 }
 
+// Files returns the dpkg file list of a package: <name>.list, or
+// <name>:<arch>.list for a Multi-Arch: same package, whichever exist.
+//
+// The answer comes from one listing of /var/lib/dpkg/info shared by all
+// packages. Asking for each list by name costs two stats per package, and
+// over docker exec or SSH every stat is a remote command. Only when the
+// directory cannot be listed are the lists looked up one by one.
 func (dpm *DebPkgManager) Files(name string, version string, arch string) ([]FileRecord, error) {
-	fs := dpm.conn.FileSystem()
-
-	dpkgListFiles := []string{
-		"/var/lib/dpkg/info/" + name + ".list",
-	}
-
+	names := []string{name}
 	if arch != "" {
-		dpkgListFiles = append(dpkgListFiles, "/var/lib/dpkg/info/"+name+":"+arch+".list")
+		names = append(names, name+":"+arch)
 	}
 
+	lists, ok := dpm.fileLists()
+	fs := dpm.conn.FileSystem()
 	fileRecords := []FileRecord{}
-	for _, file := range dpkgListFiles {
-		if _, err := fs.Stat(file); err != nil {
+	for _, n := range names {
+		file := dpkgInfoDir + "/" + n + ".list"
+		if ok {
+			if !lists.has(n) {
+				continue
+			}
+		} else if _, err := fs.Stat(file); err != nil {
 			continue
 		}
 		fileRecords = append(fileRecords, FileRecord{Path: file})

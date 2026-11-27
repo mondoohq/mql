@@ -23,9 +23,10 @@ import (
 	"go.mondoo.com/mql/utils/syncx"
 )
 
-// rpmUpdateHostConn answers the commands packages.list and package.available
-// run on a running rpm host, and counts the update checks. Everything else
-// (asset, filesystem) comes from an empty mock connection.
+// rpmUpdateHostConn answers the commands packages.list, package.available and
+// package.files run on a running rpm host, and counts the update checks and
+// every command it runs. Everything else (asset, filesystem) comes from an
+// empty mock connection.
 type rpmUpdateHostConn struct {
 	shared.Connection
 
@@ -34,6 +35,7 @@ type rpmUpdateHostConn struct {
 
 	mu           sync.Mutex
 	updateChecks int
+	commands     map[string]int
 }
 
 const rpmUpdateHostList = "openssl 1:3.0.8-1.amzn2023.0.14 x86_64__Amazon Linux__TLS toolkit__Apache-2.0__1700000000\n" +
@@ -48,9 +50,17 @@ func (c *rpmUpdateHostConn) RunCommand(command string) (*shared.Command, error) 
 			ExitStatus: exit,
 		}
 	}
+	c.mu.Lock()
+	if c.commands == nil {
+		c.commands = map[string]int{}
+	}
+	c.commands[command]++
+	c.mu.Unlock()
 	switch {
 	case command == "rpm --version":
 		return out("RPM version 4.16.1.3\n", 0), nil
+	case command == "rpm -E '%{_dbpath}'":
+		return out("/var/lib/rpm\n", 0), nil
 	case strings.HasPrefix(command, "rpm -qa"):
 		return out(rpmUpdateHostList, 0), nil
 	case strings.Contains(command, "check-update") || strings.HasPrefix(command, "zypper "):
@@ -66,6 +76,13 @@ func (c *rpmUpdateHostConn) checks() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.updateChecks
+}
+
+// ran returns how often command ran.
+func (c *rpmUpdateHostConn) ran(command string) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.commands[command]
 }
 
 func newRpmUpdateHost(t *testing.T, updateStdout string, updateExit int) (*plugin.Runtime, *rpmUpdateHostConn) {
