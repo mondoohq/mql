@@ -404,6 +404,190 @@ above (9 record folders) a query for `source` took 17.9 s instead of 17.0 s
 without the Chocolatey reader (median of three), and the plain inventory of all
 185 packages stayed byte-identical; every Uninstall entry read as listed here.
 
+**Amendment 2026-11-27: apk and pacman.** Both package managers record
+nothing about the repository an installed package came from, so both follow
+the dpkg rule: match the installed package against the indexes the package
+manager downloaded, and let the index's signing key decide.
+
+*apk.* The installed database (`/lib/apk/db/installed`, `/usr/lib/apk/db/installed`
+on Wolfi, `/var/lib/apk/db/installed` with apk-tools 3) holds, per package, a
+checksum `C:` (`Q1` and the base64 SHA-1 of the package's control segment) and
+no repository, tag or signer. The same `C:` is in the repository's index
+(`APKINDEX.tar.gz`) for the same build. apk keeps a downloaded index as
+`APKINDEX.<hash>.tar.gz` in `/var/cache/apk` (or `/etc/apk/cache`), where
+`<hash>` is the first four bytes, in hex, of the SHA-1 of
+`<repository>/<arch>/APKINDEX.tar.gz`. A repository that is a directory is
+read in place. The index is two gzip streams: a tar with one
+`.SIGN.RSA.<key file>` (RSA with SHA-1) or `.SIGN.RSA256.<key file>` (SHA-256)
+file per signature, then a tar with `DESCRIPTION` and `APKINDEX`. The
+signature covers the second stream as it is stored. The reader verifies it with
+the public key of that name in `/etc/apk/keys`, so a file that merely names an
+OS key does not count. An OS key is a file in `/etc/apk/keys` that an
+installed key package owns, read from the `F:` and `R:` lines of that package's
+record in the installed database:
+
+| Platform | Key package |
+|---|---|
+| `alpine` | `alpine-keys` |
+| `alpaquita` | `distro-keys` |
+| `wolfi`, `chainguard` | `wolfi-keys`, and the `chainguard-<64 hex>.rsa.pub` files, see below |
+
+The rules, in order: the installed `(name, version, checksum)` in an index
+signed by an OS key is `os`, `name` the repository's tag (`@testing`) or its
+address without scheme, as `apk policy` prints it. Listed only by indexes
+signed by other keys, or by an index with no signature, it is
+`vendor-repository`. A name in no index, with an index for every line of
+`/etc/apk/repositories`, is `direct`: `apk add ./file.apk`. A version in no
+index with the name only in OS-signed indexes is `os` (an index lists only the
+current version). Everything else is null: the version listed but with another
+checksum (a rebuild), a third-party index that lists the name as well, a
+repository without an index, an index apk-tools 3 wrote in its own format, a
+platform with no entry. An index apk downloaded for a repository that
+`/etc/apk/repositories` no longer names is not read.
+
+Measured on 2026-11-27, aarch64 containers:
+
+- `alpine:3.21` (apk-tools 2.14.13): five keys in `/etc/apk/keys`, all owned by
+  `alpine-keys-2.5-r0`; no index until `apk update`, which wrote
+  `APKINDEX.3983ad5a.tar.gz` (main), `APKINDEX.76499195.tar.gz` (community) and
+  `APKINDEX.9b60f87e.tar.gz` (`@testing https://dl-cdn.alpinelinux.org/alpine/edge/testing`),
+  signed `.SIGN.RSA.alpine-devel@lists.alpinelinux.org-616ae350.rsa.pub`.
+  `alpine:edge` (apk-tools 3.0.7) and `bellsoft/alpaquita-linux-base:glibc`
+  (3.0.9) name their cached indexes by the same hash and still write
+  `APKINDEX.tar.gz`. The hash was computed for eight repositories and matched
+  the file name each time.
+- With nginx.org's repository added (`https://nginx.org/packages/alpine/v3.21/main`,
+  `.SIGN.RSA256.nginx_signing.rsa.pub`, a key no package owns) and nginx,
+  neofetch (from `@testing`), jq and a locally built package installed: of 78
+  packages 74 are `os` from main, `neofetch` is `os` named `testing`,
+  `nginx` is `vendor-repository`, `hello-direct`
+  (`apk add --allow-untrusted ./hello-direct-2.0-r0.apk`) is `direct`, and
+  `zlib` is `os` as a package that missed an update. nginx.org's index, like
+  nginx.org's apt index, lists older versions next to the current one
+  (1.26.2-r1 to 1.30.8-r1); the installed `C:` equals the index's `C:` for
+  1.30.8-r1.
+- `cgr.dev/chainguard/wolfi-base`: the index of `https://apk.cgr.dev/chainguard`
+  is signed with three RSA-SHA256 signatures by
+  `chainguard-<hex>.rsa.pub` keys. No package owns those files (`apk info -W`
+  finds no owner); `wolfi-keys` owns `wolfi-signing.rsa.pub`, which does not
+  sign this index. apko writes the keys into `/etc/apk/keys` when it builds the
+  image. Ownership cannot decide here, so on `wolfi` and `chainguard` a
+  key file named `chainguard-<64 hex>.rsa.pub` counts too. That is a
+  weaker rule than ownership: whoever can write `/etc/apk/keys` can use such a
+  name, and could equally place a key in an owned file. After `apk update` all
+  19 packages are `os`.
+- `alpine:3.21`, `wolfi-base`, `alpaquita` and `cgr.dev/chainguard/static` ship
+  with no index, so every package reads null (`unknown`, `osProvided` null), as
+  on a stock Debian image.
+
+*pacman.* The local database (`/var/lib/pacman/local/<name>-<version>/desc`)
+holds `%VALIDATION%` (how pacman checked the package when it installed it) and
+no repository. The sync databases `pacman -Sy` downloads
+(`/var/lib/pacman/sync/<repo>.db`, a tar of `<name>-<version>/desc`, gzip on
+the images checked) list each repository's packages with `%PGPSIG%`, the
+base64 detached signature of the package file. The package file is not on the
+system, so the signature is matched by its issuer and not verified again,
+exactly as for rpm. The OS keys are the keys in the keyring files that the
+distribution's keyring package owns (the `usr/share/pacman/keyrings/*.gpg`
+entries of the package's `files` record):
+
+| Platform | Keyring packages |
+|---|---|
+| `arch` | `archlinux-keyring` |
+| `manjaro` | `manjaro-keyring`, `archlinux-keyring` |
+
+The repositories and their `Server` addresses come from `/etc/pacman.conf` and
+the mirror list it includes (read only from `/etc`); `$repo` and `$arch` are
+replaced. The rules mirror apk's: the installed `(name, version, architecture)`
+in a database whose package signature is from an OS key is `os`, `name` the
+repository (`core`, `extra`). Listed only with another key or no signature it
+is `vendor-repository`. A name in no database, with a database for every
+repository `pacman.conf` names, is `direct`: the `pacman -Qm` case, a package
+built locally, from the AUR or installed with `pacman -U`. A version in no
+database with the name only in OS-signed packages is `os` (Arch lists only the
+current version). A package an OS database lists whose `%VALIDATION%` is not
+`pgp` was not checked against that signature, so it is null; so is every case
+the apk rules call null.
+
+Measured on 2026-11-27, `archlinux:latest` (pacman 7.1.0, linux/amd64, under
+emulation) and `manjarolinux/base`:
+
+- Arch ships no sync database until `pacman -Sy`; before it the answer is null.
+  After it, `core.db` (130 KB) and `extra.db` (9 MB) are gzip tars. For a
+  repository with `DatabaseOptional` (the default) no `.db.sig` is kept
+  (`core.db.sig` is absent), so the database signature cannot be used; for a
+  `DatabaseRequired` repository it is kept. The signature of `acl` 2.4.0-1 is
+  by subkey `6D42BDD116E0068F`, a key in `archlinux.gpg` (1.8 MB, armored,
+  owned by `archlinux-keyring 20260909-1`).
+- All 137 local records of the image read `%VALIDATION%` `pgp`. A package
+  installed with `pacman -U` from an unsigned file reads `none`; one installed
+  from a local repository with `SigLevel = Required`, a signed database and a
+  signed package read `sha256`.
+- With a signed local repository (`vendor`, its key added with
+  `pacman-key --lsign-key`), nano from `core`, and `hello-direct` installed
+  with `pacman -U`: of 179 packages 170 are `os` (156 `core`, 14 `extra`), 7
+  are `os` as packages that missed an update, `hello-vendor` is
+  `vendor-repository` named `vendor`, and `hello-direct` is `direct`
+  (`pacman -Qm` lists exactly it).
+- `manjarolinux/base`: the sync databases are on the image. Of the 320 packages
+  in `core.db`, 254 are signed with a key from `archlinux.gpg` and 66 with one
+  from `manjaro.gpg`: Manjaro copies many Arch builds and signs the rest itself.
+  Both keyring packages are installed, so both keyrings are the operating
+  system's, and all 182 packages are `os`. The residual risk is an Arch
+  repository an administrator adds to a Manjaro host: its packages read as the
+  operating system's.
+
+Other Arch derivatives (EndeavourOS, Garuda, Arch Linux ARM's own repository)
+and Alpine derivatives (postmarketOS) have no entry, because no image of them
+was read; they report null, as an rpm platform without a key package does.
+
+Like dpkg, both readers read files and run no command, so a container, an image
+and a mounted disk give the same answer. Over SSH they read the same files
+through the connection's file system. The bytes are the cost there: the indexes
+apk reads are the configured repositories' only (alpine:3.21 with four
+repositories 3.2 MB, Wolfi 7.7 MB), and pacman reads `extra.db` (9 MB) and the
+keyring (1.8 MB). Measured on one machine against a container through a
+loopback SSH connection, apk's query for `source` took 0.33 s instead of 0.26 s
+without it; on a local container 0.70 s instead of 0.54 s (apk) and 1.88 s
+instead of 1.22 s (pacman, under emulation); the plain inventory stayed
+byte-identical. A transfer over a real network was not measured: at the sizes
+above it is a few seconds on a 20 Mbit link, which is the cost the dpkg
+section avoided by filtering on the host; a command that filters the indexes
+on the host is the next step if this proves slow.
+
+Guards both readers apply, so that a read that went wrong never becomes
+`direct`. An index or database that is cut short, damaged, larger than its cap
+or in a format the reader does not know counts as not read, and every answer
+that needed it stays null. The list of repositories is complete only when every
+line was placed: apk also reads `*.list` files in `/etc/apk/repositories.d` and
+`/lib/apk/repositories.d` (apk-tools 3 has those paths; the 2.14 binary on
+`alpine:3.21` has none), and a line that is neither `<url>` nor `@<tag> <url>`,
+or more repositories than the cap of 64, makes the list incomplete. An
+`APKINDEX.*` file in the cache that no configured repository explains (the
+index of `apk add -X <url>`, or of a repository since removed) makes it
+incomplete too: its address is unknown, so it is not read, and a package may
+have come from it. pacman is incomplete for an `Include` outside a repository
+section (the file may define repositories), for more repositories than the cap,
+and for a `sync/*.db` file no repository of `pacman.conf` names (the stale
+`community.db` of `manjarolinux/base` is one). A pacman package whose
+`%BUILDDATE%` differs from the sync entry of the same name, version and
+architecture is a rebuild by another repository and reads null, as an apk
+checksum mismatch does. `%VALIDATION%` can list several methods; `pgp` among
+them counts as a checked signature. Keys listed in the keyring package's
+`*-revoked` file (fingerprints, one per line) are not the operating system's.
+For apk, only the second gzip stream of an index is read when a signature
+stream precedes it: an `APKINDEX` entry in the first stream is outside the
+signature and is ignored, and an index of a single stream is unsigned and never
+`os`. The signature stream is read through a 1 MB cap and at most 16
+signatures.
+
+Two behaviours are kept as they are. A package that missed an update reads `os`
+when the name is only in OS-signed indexes, whether or not every repository has
+an index, as for dpkg. And pacman's signature match is by the issuer in the
+sync database's `%PGPSIG%`, which is not tied to the installed file, the same
+trade-off as for rpm: pacman verified the file when it installed it, and the
+database is what names the repository.
+
 ### Files, not commands
 
 As in ADR 044, every answer is read from files:
@@ -581,8 +765,9 @@ separately. The OS signing identity is exact.
 
 ## Not covered
 
-- apk, pacman, opkg, xbps and the BSDs. They report null until a reader is
-  added. (*Corrected 2026-10-05:* yum on Amazon Linux 2 and zypper are
+- opkg, xbps and the BSDs. They report null until a reader is added.
+  (*Amended 2026-11-27:* apk and pacman are covered, see the amendment under
+  "How each platform resolves it".) (*Corrected 2026-10-05:* yum on Amazon Linux 2 and zypper are
   covered: their signatures decide `osProvided` like dnf's, and their history,
   `yumdb` and `/var/log/zypp/history`, names the repository.)
 - ~~winget as a channel of its own.~~ Done 2026-11-27, see the amendment under

@@ -293,6 +293,9 @@ func packageFromPacmanFields(pf *inventory.Platform, fields map[string]string) *
 		Format:         PacmanPkgFormat,
 		FilesAvailable: PkgFilesAsync,
 		PUrl:           purl.NewPackageURL(pf, purl.TypeAlpm, name, version, purlOpts...).String(),
+
+		pacmanValidation: fields["%VALIDATION%"],
+		pacmanBuildDate:  fields["%BUILDDATE%"],
 	}
 }
 
@@ -354,7 +357,8 @@ func parsePacmanDescSections(r io.Reader) map[string]string {
 		// (multi-value sections like %DEPENDS% are not needed for SBOM).
 		// %LICENSE% lists one license per line and every line counts, so its
 		// lines are kept, newline separated.
-		if currentKey == "%LICENSE%" && fields[currentKey] != "" {
+		// %VALIDATION% lists every method pacman checked the package with.
+		if (currentKey == "%LICENSE%" || currentKey == "%VALIDATION%") && fields[currentKey] != "" {
 			fields[currentKey] += "\n" + line
 		} else if currentKey != "" && fields[currentKey] == "" {
 			fields[currentKey] = line

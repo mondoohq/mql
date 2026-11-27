@@ -313,6 +313,47 @@ mkdir -p ~/rpmbuild/SPECS && printf 'Name: acme-agent\nVersion: 1.2.3\nRelease: 
 rpmbuild -bb ~/rpmbuild/SPECS/a.spec >/dev/null 2>&1 && rpm -i ~/rpmbuild/RPMS/noarch/acme-agent-1.2.3-1.noarch.rpm`
 )
 
+const (
+	// apkVendorRepos adds nginx.org's repository under a tag, which keeps its
+	// nginx from being replaced by Alpine's, and installs a package built
+	// locally.
+	apkVendorRepos = `apk update >/dev/null
+wget -qO /etc/apk/keys/nginx_signing.rsa.pub https://nginx.org/keys/nginx_signing.rsa.pub
+echo "@nginx https://nginx.org/packages/alpine/v3.21/main" >> /etc/apk/repositories
+apk update >/dev/null && apk add -q tree nginx@nginx alpine-sdk >/dev/null
+adduser -D builder && addgroup builder abuild
+cat > /tmp/build.sh <<'EOS'
+abuild-keygen -a -n -q >/dev/null
+mkdir -p ~/acme && cd ~/acme
+printf 'pkgname=acme-agent\npkgver=1.2.3\npkgrel=0\npkgdesc="t"\nurl="https://acme.example"\narch="noarch"\nlicense="MIT"\noptions="!check"\npackage() { mkdir -p $pkgdir/usr/bin; echo t > $pkgdir/usr/bin/acme-agent; }\n' > APKBUILD
+abuild checksum >/dev/null && abuild -r >/dev/null 2>&1
+ls ~/packages/*/*/acme-agent-*.apk
+EOS
+su builder -c 'sh /tmp/build.sh' && apk add -q --allow-untrusted /home/builder/packages/*/*/acme-agent-*.apk`
+
+	// pacmanVendorRepos adds a local repository for a vendor, with an unsigned
+	// database and package, and installs a package built locally with
+	// pacman -U.
+	pacmanVendorRepos = `pacman --disable-sandbox -Sy --noconfirm >/dev/null 2>&1
+pacman-key --init >/dev/null 2>&1 && pacman-key --populate archlinux >/dev/null 2>&1
+pacman --disable-sandbox -S --noconfirm --needed base-devel tree >/dev/null 2>&1
+useradd -m builder
+cat > /tmp/build.sh <<'EOS'
+for n in acme-vendor acme-agent; do
+  mkdir -p ~/$n && cd ~/$n
+  printf 'pkgname=%s\npkgver=1.2.3\npkgrel=1\npkgdesc="t"\narch=("any")\nlicense=("MIT")\npackage() { install -Dm755 /dev/null "$pkgdir/usr/bin/%s"; }\n' $n $n > PKGBUILD
+  makepkg -f >/dev/null 2>&1
+done
+EOS
+su builder -c 'sh /tmp/build.sh'
+mkdir -p /srv/repo && cp /home/builder/acme-vendor/*.pkg.tar.zst /srv/repo/
+repo-add /srv/repo/vendor.db.tar.gz /srv/repo/acme-vendor-*.pkg.tar.zst >/dev/null 2>&1
+printf '\n[vendor]\nSigLevel = Optional TrustAll\nServer = file:///srv/repo\n' >> /etc/pacman.conf
+pacman --disable-sandbox -Sy --noconfirm >/dev/null 2>&1
+pacman --disable-sandbox -S --noconfirm acme-vendor >/dev/null 2>&1
+pacman -U --noconfirm /home/builder/acme-agent/*.pkg.tar.zst >/dev/null 2>&1`
+)
+
 var sourceMatrix = []sourceCase{
 	{
 		image: "debian:12",
@@ -383,7 +424,34 @@ zypper -q -n --gpg-auto-import-keys refresh >/dev/null && zypper -q -n install t
 			"bash": {boolPtr(true), "os", ""},
 		},
 	},
+	{
+		// Alpine records no repository for an installed package, so the
+		// downloaded indexes decide: nginx.org's index is signed with a key
+		// no package owns, and acme-agent is in no index.
+		image: "alpine:3.21",
+		setup: apkVendorRepos,
+		want: map[string]sourceWant{
+			"busybox":    {boolPtr(true), "os", "dl-cdn.alpinelinux.org/alpine/v3.21/main"},
+			"tree":       {boolPtr(true), "os", "dl-cdn.alpinelinux.org/alpine/v3.21/main"},
+			"nginx":      {boolPtr(false), "vendor-repository", "nginx"},
+			"acme-agent": {boolPtr(false), "direct", ""},
+		},
+	},
+	// A stock Alpine image has no repository index until the first apk update.
 	{image: "alpine:3.21", noSources: true},
+	{
+		// archlinux:latest is amd64 only; on another host set
+		// DOCKER_DEFAULT_PLATFORM=linux/amd64. The sandbox is disabled for the
+		// downloads, which an emulated or unprivileged container cannot set up.
+		image: "archlinux:latest",
+		setup: pacmanVendorRepos,
+		want: map[string]sourceWant{
+			"bash":        {boolPtr(true), "os", "core"},
+			"tree":        {boolPtr(true), "os", "extra"},
+			"acme-vendor": {boolPtr(false), "vendor-repository", "vendor"},
+			"acme-agent":  {boolPtr(false), "direct", ""},
+		},
+	},
 }
 
 func TestPackageSourceMatrix(t *testing.T) {
