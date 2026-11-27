@@ -31,7 +31,7 @@ func TestGlueColumns(t *testing.T) {
 	names := []string{}
 	for i, c := range got {
 		names = append(names, c.name)
-		assert.Equal(t, int64(i), c.position, "position of %s", c.name)
+		assert.Equal(t, int64(i+1), c.position, "position of %s", c.name)
 		assert.Equal(t, i >= 3, c.isPartitionKey, "isPartitionKey of %s", c.name)
 	}
 	assert.Equal(t, []string{"customer_id", "email", "address", "year", "month"}, names)
@@ -47,11 +47,27 @@ func TestGlueColumnsWithoutStorageDescriptor(t *testing.T) {
 	// partition keys, so nothing was cached.
 	assert.Empty(t, glueColumns(nil, nil))
 
-	// Synthetic: partition keys alone are numbered from 0.
+	// Synthetic: partition keys alone are numbered from 1.
 	got := glueColumns(nil, []glue_types.Column{{Name: aws.String("dt"), Type: aws.String("date")}})
 	require.Len(t, got, 1)
-	assert.Equal(t, int64(0), got[0].position)
+	assert.Equal(t, int64(1), got[0].position)
 	assert.True(t, got[0].isPartitionKey)
+}
+
+func TestGlueColumnID(t *testing.T) {
+	// Synthetic: a crawler-built table that lists "dt" both as a storage
+	// column and as a partition key (what Athena rejects as "Column repeated
+	// in partitioning columns"). Each must get its own resource id.
+	got := glueColumns(
+		[]glue_types.Column{{Name: aws.String("dt"), Type: aws.String("string")}},
+		[]glue_types.Column{{Name: aws.String("dt"), Type: aws.String("string")}},
+	)
+	require.Len(t, got, 2)
+	ids := map[string]bool{}
+	for _, c := range got {
+		ids[glueColumnID("arn:aws:glue:us-east-1:1:table/db/t", c.position)] = true
+	}
+	assert.Len(t, ids, 2)
 }
 
 func TestGlueS3Uri(t *testing.T) {

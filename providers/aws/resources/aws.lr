@@ -28433,7 +28433,7 @@ private aws.glue.database.table @defaults("name databaseName region") {
 private aws.glue.database.table.column @defaults("name typeName") {
   // Column name
   name string
-  // Position of the column, starting at 0, data columns first and partition keys after
+  // Position of the column, starting at 1, data columns first and partition keys after
   position int
   // Declared type of the column, for example string, bigint or struct<a:int>
   typeName string

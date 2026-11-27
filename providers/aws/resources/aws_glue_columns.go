@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"strconv"
 	"strings"
 
 	glue_types "github.com/aws/aws-sdk-go-v2/service/glue/types"
@@ -34,7 +35,8 @@ type glueColumnRow struct {
 }
 
 // glueColumns orders the storage columns first and the partition keys after
-// them, numbered from 0, as Athena and Hive present a partitioned table.
+// them, numbered from 1 (ADR 059), as Athena and Hive present a partitioned
+// table.
 func glueColumns(cols, parts []glue_types.Column) []glueColumnRow {
 	out := make([]glueColumnRow, 0, len(cols)+len(parts))
 	add := func(c glue_types.Column, partition bool) {
@@ -44,7 +46,7 @@ func glueColumns(cols, parts []glue_types.Column) []glueColumnRow {
 		}
 		out = append(out, glueColumnRow{
 			name:           convert.ToValue(c.Name),
-			position:       int64(len(out)),
+			position:       int64(len(out) + 1),
 			typeName:       convert.ToValue(c.Type),
 			comment:        convert.ToValue(c.Comment),
 			isPartitionKey: partition,
@@ -72,11 +74,18 @@ func glueS3Uri(location string) string {
 	return ""
 }
 
+// glueColumnID keys a column by its position, not its name: a crawler can
+// list one name both as a storage column and as a partition key, and a name
+// may hold "/".
+func glueColumnID(tableID string, position int64) string {
+	return tableID + "/column/" + strconv.FormatInt(position, 10)
+}
+
 func (a *mqlAwsGlueDatabaseTable) columns() ([]any, error) {
 	list := []any{}
 	for _, c := range glueColumns(a.cacheColumns, a.cachePartitionKeys) {
 		res, err := CreateResource(a.MqlRuntime, "aws.glue.database.table.column", map[string]*llx.RawData{
-			"__id":           llx.StringData(a.__id + "/column/" + c.name),
+			"__id":           llx.StringData(glueColumnID(a.__id, c.position)),
 			"name":           llx.StringData(c.name),
 			"position":       llx.IntData(c.position),
 			"typeName":       llx.StringData(c.typeName),
