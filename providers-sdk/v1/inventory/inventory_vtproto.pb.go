@@ -7,10 +7,12 @@ package inventory
 import (
 	fmt "fmt"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
+	structpb1 "github.com/planetscale/vtprotobuf/types/known/structpb"
 	upstream "go.mondoo.com/mql/providers-sdk/v1/upstream"
 	vault "go.mondoo.com/mql/providers-sdk/v1/vault"
 	proto "google.golang.org/protobuf/proto"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	structpb "google.golang.org/protobuf/types/known/structpb"
 	io "io"
 )
 
@@ -184,6 +186,11 @@ func (m *AssetRelationship) CloneVT() *AssetRelationship {
 	r.Asset = m.Asset.CloneVT()
 	r.ResourceType = m.ResourceType
 	r.ResourceId = m.ResourceId
+	r.Kind = m.Kind
+	r.FromResourceType = m.FromResourceType
+	r.FromResourceId = m.FromResourceId
+	r.Evidence = m.Evidence
+	r.Attributes = (*structpb.Struct)((*structpb1.Struct)(m.Attributes).CloneVT())
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1032,6 +1039,42 @@ func (m *AssetRelationship) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Attributes != nil {
+		size, err := (*structpb1.Struct)(m.Attributes).MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x42
+	}
+	if m.Evidence != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Evidence))
+		i--
+		dAtA[i] = 0x38
+	}
+	if len(m.FromResourceId) > 0 {
+		i -= len(m.FromResourceId)
+		copy(dAtA[i:], m.FromResourceId)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.FromResourceId)))
+		i--
+		dAtA[i] = 0x32
+	}
+	if len(m.FromResourceType) > 0 {
+		i -= len(m.FromResourceType)
+		copy(dAtA[i:], m.FromResourceType)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.FromResourceType)))
+		i--
+		dAtA[i] = 0x2a
+	}
+	if len(m.Kind) > 0 {
+		i -= len(m.Kind)
+		copy(dAtA[i:], m.Kind)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Kind)))
+		i--
+		dAtA[i] = 0x22
 	}
 	if len(m.ResourceId) > 0 {
 		i -= len(m.ResourceId)
@@ -2293,6 +2336,25 @@ func (m *AssetRelationship) SizeVT() (n int) {
 	}
 	l = len(m.ResourceId)
 	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.Kind)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.FromResourceType)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.FromResourceId)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.Evidence != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Evidence))
+	}
+	if m.Attributes != nil {
+		l = (*structpb1.Struct)(m.Attributes).SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -4423,6 +4485,157 @@ func (m *AssetRelationship) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.ResourceId = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Kind", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Kind = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field FromResourceType", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.FromResourceType = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field FromResourceId", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.FromResourceId = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Evidence", wireType)
+			}
+			m.Evidence = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Evidence |= RelationshipEvidence(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Attributes", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Attributes == nil {
+				m.Attributes = &structpb.Struct{}
+			}
+			if err := (*structpb1.Struct)(m.Attributes).UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

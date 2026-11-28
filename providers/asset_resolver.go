@@ -228,7 +228,9 @@ func (r *Runtime) recordedTargetForAnchor(v *llx.AssetValue) (*inventory.Asset, 
 			continue
 		}
 		for _, rel := range candidate.Asset.Relationships {
-			if rel == nil || rel.ResourceType != v.ResourceType || rel.ResourceId != v.ResourceId {
+			// Only an anchored edge (ADR 030) places an asset under a
+			// resource; other kinds say something else about it.
+			if rel == nil || !rel.Traversable() || rel.ResourceType != v.ResourceType || rel.ResourceId != v.ResourceId {
 				continue
 			}
 			matches = append(matches, candidate.Asset)

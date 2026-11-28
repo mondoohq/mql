@@ -14,6 +14,7 @@ import (
 	vault "go.mondoo.com/mql/providers-sdk/v1/vault"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	structpb "google.golang.org/protobuf/types/known/structpb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -154,6 +155,66 @@ func (x AssetCategory) Number() protoreflect.EnumNumber {
 // Deprecated: Use AssetCategory.Descriptor instead.
 func (AssetCategory) EnumDescriptor() ([]byte, []int) {
 	return file_inventory_proto_rawDescGZIP(), []int{1}
+}
+
+// RelationshipEvidence is how the producer knows that a relationship holds.
+type RelationshipEvidence int32
+
+const (
+	RelationshipEvidence_RELATIONSHIP_EVIDENCE_UNSPECIFIED RelationshipEvidence = 0
+	// A signed statement of the relationship, verified by the producer.
+	RelationshipEvidence_RELATIONSHIP_EVIDENCE_ATTESTED RelationshipEvidence = 1
+	// Both ends were matched by the exact digest of the same content.
+	RelationshipEvidence_RELATIONSHIP_EVIDENCE_DIGEST_EXACT RelationshipEvidence = 2
+	// A system of record lists the relationship (an API, a log, a state file).
+	RelationshipEvidence_RELATIONSHIP_EVIDENCE_RECORDED RelationshipEvidence = 3
+	// A configuration or a source file states it, and nothing confirmed it.
+	RelationshipEvidence_RELATIONSHIP_EVIDENCE_DECLARED RelationshipEvidence = 4
+)
+
+// Enum value maps for RelationshipEvidence.
+var (
+	RelationshipEvidence_name = map[int32]string{
+		0: "RELATIONSHIP_EVIDENCE_UNSPECIFIED",
+		1: "RELATIONSHIP_EVIDENCE_ATTESTED",
+		2: "RELATIONSHIP_EVIDENCE_DIGEST_EXACT",
+		3: "RELATIONSHIP_EVIDENCE_RECORDED",
+		4: "RELATIONSHIP_EVIDENCE_DECLARED",
+	}
+	RelationshipEvidence_value = map[string]int32{
+		"RELATIONSHIP_EVIDENCE_UNSPECIFIED":  0,
+		"RELATIONSHIP_EVIDENCE_ATTESTED":     1,
+		"RELATIONSHIP_EVIDENCE_DIGEST_EXACT": 2,
+		"RELATIONSHIP_EVIDENCE_RECORDED":     3,
+		"RELATIONSHIP_EVIDENCE_DECLARED":     4,
+	}
+)
+
+func (x RelationshipEvidence) Enum() *RelationshipEvidence {
+	p := new(RelationshipEvidence)
+	*p = x
+	return p
+}
+
+func (x RelationshipEvidence) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (RelationshipEvidence) Descriptor() protoreflect.EnumDescriptor {
+	return file_inventory_proto_enumTypes[2].Descriptor()
+}
+
+func (RelationshipEvidence) Type() protoreflect.EnumType {
+	return &file_inventory_proto_enumTypes[2]
+}
+
+func (x RelationshipEvidence) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use RelationshipEvidence.Descriptor instead.
+func (RelationshipEvidence) EnumDescriptor() ([]byte, []int) {
+	return file_inventory_proto_rawDescGZIP(), []int{2}
 }
 
 type Asset struct {
@@ -599,19 +660,35 @@ func (x *AssetClaim) GetSignature() string {
 	return ""
 }
 
-// AssetRelationship is a directed, resource-anchored edge to another asset. An
-// edge has two ends, and the anchor resource is meaningless without the asset
-// that owns it, so the message names both: the counterparty `asset` (a full
-// Asset, like `related_assets`, so identity is unrestricted) and the resource
-// on that asset that anchors the relationship. See ADR 030.
+// AssetRelationship is a directed edge from the asset that carries it to
+// another asset. An edge has two ends, and an anchor resource is meaningless
+// without the asset that owns it, so the message names the other end's asset
+// and, optionally, a resource on each end that anchors the edge. See ADR 030
+// and ADR 060.
+//
+// The other end is an asset stub, named by the strongest identity the
+// producer has: its MRN, its platform ids, or kind-tagged claims when it has
+// no canonical id. AssetRelationship.Validate checks the rules.
 type AssetRelationship struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// the asset at the other end of the edge (e.g. the parent/host that owns the
-	// anchor resource), referenced as an Asset (stub or full)
+	// anchor resource), referenced as an Asset stub
 	Asset *Asset `protobuf:"bytes,1,opt,name=asset,proto3" json:"asset,omitempty"`
 	// the anchor resource on `asset`
-	ResourceType  string `protobuf:"bytes,2,opt,name=resource_type,json=resourceType,proto3" json:"resource_type,omitempty"`
-	ResourceId    string `protobuf:"bytes,3,opt,name=resource_id,json=resourceId,proto3" json:"resource_id,omitempty"`
+	ResourceType string `protobuf:"bytes,2,opt,name=resource_type,json=resourceType,proto3" json:"resource_type,omitempty"`
+	ResourceId   string `protobuf:"bytes,3,opt,name=resource_id,json=resourceId,proto3" json:"resource_id,omitempty"`
+	// what the edge means, from a registered kind (RelationshipKinds). Empty is
+	// the ADR 030 edge: the carrying asset hangs off the anchor on `asset`, and
+	// only such edges are followed by cross-asset traversal (ADR 031).
+	Kind string `protobuf:"bytes,4,opt,name=kind,proto3" json:"kind,omitempty"`
+	// the anchor resource on the carrying asset, e.g. the file that declares
+	// the edge
+	FromResourceType string               `protobuf:"bytes,5,opt,name=from_resource_type,json=fromResourceType,proto3" json:"from_resource_type,omitempty"`
+	FromResourceId   string               `protobuf:"bytes,6,opt,name=from_resource_id,json=fromResourceId,proto3" json:"from_resource_id,omitempty"`
+	Evidence         RelationshipEvidence `protobuf:"varint,7,opt,name=evidence,proto3,enum=cnquery.providers.v1.RelationshipEvidence" json:"evidence,omitempty"`
+	// per-kind attributes, with the keys and types the kind registers; at most
+	// 4 KiB serialized
+	Attributes    *structpb.Struct `protobuf:"bytes,8,opt,name=attributes,proto3" json:"attributes,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -665,6 +742,41 @@ func (x *AssetRelationship) GetResourceId() string {
 		return x.ResourceId
 	}
 	return ""
+}
+
+func (x *AssetRelationship) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *AssetRelationship) GetFromResourceType() string {
+	if x != nil {
+		return x.FromResourceType
+	}
+	return ""
+}
+
+func (x *AssetRelationship) GetFromResourceId() string {
+	if x != nil {
+		return x.FromResourceId
+	}
+	return ""
+}
+
+func (x *AssetRelationship) GetEvidence() RelationshipEvidence {
+	if x != nil {
+		return x.Evidence
+	}
+	return RelationshipEvidence_RELATIONSHIP_EVIDENCE_UNSPECIFIED
+}
+
+func (x *AssetRelationship) GetAttributes() *structpb.Struct {
+	if x != nil {
+		return x.Attributes
+	}
+	return nil
 }
 
 // AssetUrlBranch defines the hierarchy into which an asset can be placed. It
@@ -1738,7 +1850,7 @@ var File_inventory_proto protoreflect.FileDescriptor
 
 const file_inventory_proto_rawDesc = "" +
 	"\n" +
-	"\x0finventory.proto\x12\x14cnquery.providers.v1\x1a(providers-sdk/v1/upstream/upstream.proto\x1a\"providers-sdk/v1/vault/vault.proto\"\x9d\t\n" +
+	"\x0finventory.proto\x12\x14cnquery.providers.v1\x1a\x1cgoogle/protobuf/struct.proto\x1a(providers-sdk/v1/upstream/upstream.proto\x1a\"providers-sdk/v1/vault/vault.proto\"\x9d\t\n" +
 	"\x05Asset\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x10\n" +
 	"\x03mrn\x18\x02 \x01(\tR\x03mrn\x12\x12\n" +
@@ -1792,12 +1904,19 @@ const file_inventory_proto_rawDesc = "" +
 	"\tsignature\x18\x03 \x01(\tR\tsignature\x1a9\n" +
 	"\vClaimsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x8c\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xf9\x02\n" +
 	"\x11AssetRelationship\x121\n" +
 	"\x05asset\x18\x01 \x01(\v2\x1b.cnquery.providers.v1.AssetR\x05asset\x12#\n" +
 	"\rresource_type\x18\x02 \x01(\tR\fresourceType\x12\x1f\n" +
 	"\vresource_id\x18\x03 \x01(\tR\n" +
-	"resourceId\"\x9f\x03\n" +
+	"resourceId\x12\x12\n" +
+	"\x04kind\x18\x04 \x01(\tR\x04kind\x12,\n" +
+	"\x12from_resource_type\x18\x05 \x01(\tR\x10fromResourceType\x12(\n" +
+	"\x10from_resource_id\x18\x06 \x01(\tR\x0efromResourceId\x12F\n" +
+	"\bevidence\x18\a \x01(\x0e2*.cnquery.providers.v1.RelationshipEvidenceR\bevidence\x127\n" +
+	"\n" +
+	"attributes\x18\b \x01(\v2\x17.google.protobuf.StructR\n" +
+	"attributes\"\x9f\x03\n" +
 	"\x0eAssetUrlBranch\x12#\n" +
 	"\rpath_segments\x18\x01 \x03(\tR\fpathSegments\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\x12H\n" +
@@ -1924,7 +2043,13 @@ const file_inventory_proto_rawDesc = "" +
 	"\rSTATE_DELETED\x10\v*:\n" +
 	"\rAssetCategory\x12\x16\n" +
 	"\x12CATEGORY_INVENTORY\x10\x00\x12\x11\n" +
-	"\rCATEGORY_CICD\x10\x01B.Z,go.mondoo.com/mql/providers-sdk/v1/inventoryb\x06proto3"
+	"\rCATEGORY_CICD\x10\x01*\xd1\x01\n" +
+	"\x14RelationshipEvidence\x12%\n" +
+	"!RELATIONSHIP_EVIDENCE_UNSPECIFIED\x10\x00\x12\"\n" +
+	"\x1eRELATIONSHIP_EVIDENCE_ATTESTED\x10\x01\x12&\n" +
+	"\"RELATIONSHIP_EVIDENCE_DIGEST_EXACT\x10\x02\x12\"\n" +
+	"\x1eRELATIONSHIP_EVIDENCE_RECORDED\x10\x03\x12\"\n" +
+	"\x1eRELATIONSHIP_EVIDENCE_DECLARED\x10\x04B.Z,go.mondoo.com/mql/providers-sdk/v1/inventoryb\x06proto3"
 
 var (
 	file_inventory_proto_rawDescOnce sync.Once
@@ -1938,85 +2063,89 @@ func file_inventory_proto_rawDescGZIP() []byte {
 	return file_inventory_proto_rawDescData
 }
 
-var file_inventory_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_inventory_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
 var file_inventory_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_inventory_proto_goTypes = []any{
 	(State)(0),                       // 0: cnquery.providers.v1.State
 	(AssetCategory)(0),               // 1: cnquery.providers.v1.AssetCategory
-	(*Asset)(nil),                    // 2: cnquery.providers.v1.Asset
-	(*ContextConfig)(nil),            // 3: cnquery.providers.v1.ContextConfig
-	(*ConfigOrigin)(nil),             // 4: cnquery.providers.v1.ConfigOrigin
-	(*AssetClaim)(nil),               // 5: cnquery.providers.v1.AssetClaim
-	(*AssetRelationship)(nil),        // 6: cnquery.providers.v1.AssetRelationship
-	(*AssetUrlBranch)(nil),           // 7: cnquery.providers.v1.AssetUrlBranch
-	(*Config)(nil),                   // 8: cnquery.providers.v1.Config
-	(*Sudo)(nil),                     // 9: cnquery.providers.v1.Sudo
-	(*Discovery)(nil),                // 10: cnquery.providers.v1.Discovery
-	(*Platform)(nil),                 // 11: cnquery.providers.v1.Platform
-	(*TypeMeta)(nil),                 // 12: cnquery.providers.v1.TypeMeta
-	(*ObjectMeta)(nil),               // 13: cnquery.providers.v1.ObjectMeta
-	(*Time)(nil),                     // 14: cnquery.providers.v1.Time
-	(*OwnerReference)(nil),           // 15: cnquery.providers.v1.OwnerReference
-	(*Inventory)(nil),                // 16: cnquery.providers.v1.Inventory
-	(*InventorySpec)(nil),            // 17: cnquery.providers.v1.InventorySpec
-	(*InventoryStatus)(nil),          // 18: cnquery.providers.v1.InventoryStatus
-	nil,                              // 19: cnquery.providers.v1.Asset.LabelsEntry
-	nil,                              // 20: cnquery.providers.v1.Asset.AnnotationsEntry
-	nil,                              // 21: cnquery.providers.v1.Asset.OptionsEntry
-	nil,                              // 22: cnquery.providers.v1.AssetClaim.ClaimsEntry
-	nil,                              // 23: cnquery.providers.v1.AssetUrlBranch.ValuesEntry
-	nil,                              // 24: cnquery.providers.v1.Config.OptionsEntry
-	nil,                              // 25: cnquery.providers.v1.Discovery.FilterEntry
-	nil,                              // 26: cnquery.providers.v1.Platform.LabelsEntry
-	nil,                              // 27: cnquery.providers.v1.Platform.MetadataEntry
-	nil,                              // 28: cnquery.providers.v1.ObjectMeta.LabelsEntry
-	nil,                              // 29: cnquery.providers.v1.ObjectMeta.AnnotationsEntry
-	nil,                              // 30: cnquery.providers.v1.InventorySpec.CredentialsEntry
-	(*vault.Credential)(nil),         // 31: cnquery.providers.v1.Credential
-	(*vault.VaultConfiguration)(nil), // 32: cnquery.providers.v1.VaultConfiguration
-	(*upstream.ServiceAccountCredentials)(nil), // 33: mondoo.mql.upstream.v1.ServiceAccountCredentials
+	(RelationshipEvidence)(0),        // 2: cnquery.providers.v1.RelationshipEvidence
+	(*Asset)(nil),                    // 3: cnquery.providers.v1.Asset
+	(*ContextConfig)(nil),            // 4: cnquery.providers.v1.ContextConfig
+	(*ConfigOrigin)(nil),             // 5: cnquery.providers.v1.ConfigOrigin
+	(*AssetClaim)(nil),               // 6: cnquery.providers.v1.AssetClaim
+	(*AssetRelationship)(nil),        // 7: cnquery.providers.v1.AssetRelationship
+	(*AssetUrlBranch)(nil),           // 8: cnquery.providers.v1.AssetUrlBranch
+	(*Config)(nil),                   // 9: cnquery.providers.v1.Config
+	(*Sudo)(nil),                     // 10: cnquery.providers.v1.Sudo
+	(*Discovery)(nil),                // 11: cnquery.providers.v1.Discovery
+	(*Platform)(nil),                 // 12: cnquery.providers.v1.Platform
+	(*TypeMeta)(nil),                 // 13: cnquery.providers.v1.TypeMeta
+	(*ObjectMeta)(nil),               // 14: cnquery.providers.v1.ObjectMeta
+	(*Time)(nil),                     // 15: cnquery.providers.v1.Time
+	(*OwnerReference)(nil),           // 16: cnquery.providers.v1.OwnerReference
+	(*Inventory)(nil),                // 17: cnquery.providers.v1.Inventory
+	(*InventorySpec)(nil),            // 18: cnquery.providers.v1.InventorySpec
+	(*InventoryStatus)(nil),          // 19: cnquery.providers.v1.InventoryStatus
+	nil,                              // 20: cnquery.providers.v1.Asset.LabelsEntry
+	nil,                              // 21: cnquery.providers.v1.Asset.AnnotationsEntry
+	nil,                              // 22: cnquery.providers.v1.Asset.OptionsEntry
+	nil,                              // 23: cnquery.providers.v1.AssetClaim.ClaimsEntry
+	nil,                              // 24: cnquery.providers.v1.AssetUrlBranch.ValuesEntry
+	nil,                              // 25: cnquery.providers.v1.Config.OptionsEntry
+	nil,                              // 26: cnquery.providers.v1.Discovery.FilterEntry
+	nil,                              // 27: cnquery.providers.v1.Platform.LabelsEntry
+	nil,                              // 28: cnquery.providers.v1.Platform.MetadataEntry
+	nil,                              // 29: cnquery.providers.v1.ObjectMeta.LabelsEntry
+	nil,                              // 30: cnquery.providers.v1.ObjectMeta.AnnotationsEntry
+	nil,                              // 31: cnquery.providers.v1.InventorySpec.CredentialsEntry
+	(*structpb.Struct)(nil),          // 32: google.protobuf.Struct
+	(*vault.Credential)(nil),         // 33: cnquery.providers.v1.Credential
+	(*vault.VaultConfiguration)(nil), // 34: cnquery.providers.v1.VaultConfiguration
+	(*upstream.ServiceAccountCredentials)(nil), // 35: mondoo.mql.upstream.v1.ServiceAccountCredentials
 }
 var file_inventory_proto_depIdxs = []int32{
 	0,  // 0: cnquery.providers.v1.Asset.state:type_name -> cnquery.providers.v1.State
-	11, // 1: cnquery.providers.v1.Asset.platform:type_name -> cnquery.providers.v1.Platform
-	8,  // 2: cnquery.providers.v1.Asset.connections:type_name -> cnquery.providers.v1.Config
-	19, // 3: cnquery.providers.v1.Asset.labels:type_name -> cnquery.providers.v1.Asset.LabelsEntry
-	20, // 4: cnquery.providers.v1.Asset.annotations:type_name -> cnquery.providers.v1.Asset.AnnotationsEntry
-	21, // 5: cnquery.providers.v1.Asset.options:type_name -> cnquery.providers.v1.Asset.OptionsEntry
+	12, // 1: cnquery.providers.v1.Asset.platform:type_name -> cnquery.providers.v1.Platform
+	9,  // 2: cnquery.providers.v1.Asset.connections:type_name -> cnquery.providers.v1.Config
+	20, // 3: cnquery.providers.v1.Asset.labels:type_name -> cnquery.providers.v1.Asset.LabelsEntry
+	21, // 4: cnquery.providers.v1.Asset.annotations:type_name -> cnquery.providers.v1.Asset.AnnotationsEntry
+	22, // 5: cnquery.providers.v1.Asset.options:type_name -> cnquery.providers.v1.Asset.OptionsEntry
 	1,  // 6: cnquery.providers.v1.Asset.category:type_name -> cnquery.providers.v1.AssetCategory
-	2,  // 7: cnquery.providers.v1.Asset.related_assets:type_name -> cnquery.providers.v1.Asset
-	6,  // 8: cnquery.providers.v1.Asset.relationships:type_name -> cnquery.providers.v1.AssetRelationship
-	3,  // 9: cnquery.providers.v1.Asset.context_config:type_name -> cnquery.providers.v1.ContextConfig
-	5,  // 10: cnquery.providers.v1.Asset.claims:type_name -> cnquery.providers.v1.AssetClaim
-	4,  // 11: cnquery.providers.v1.ContextConfig.origin:type_name -> cnquery.providers.v1.ConfigOrigin
-	22, // 12: cnquery.providers.v1.AssetClaim.claims:type_name -> cnquery.providers.v1.AssetClaim.ClaimsEntry
-	2,  // 13: cnquery.providers.v1.AssetRelationship.asset:type_name -> cnquery.providers.v1.Asset
-	23, // 14: cnquery.providers.v1.AssetUrlBranch.values:type_name -> cnquery.providers.v1.AssetUrlBranch.ValuesEntry
-	7,  // 15: cnquery.providers.v1.AssetUrlBranch.parent:type_name -> cnquery.providers.v1.AssetUrlBranch
-	31, // 16: cnquery.providers.v1.Config.credentials:type_name -> cnquery.providers.v1.Credential
-	9,  // 17: cnquery.providers.v1.Config.sudo:type_name -> cnquery.providers.v1.Sudo
-	24, // 18: cnquery.providers.v1.Config.options:type_name -> cnquery.providers.v1.Config.OptionsEntry
-	10, // 19: cnquery.providers.v1.Config.discover:type_name -> cnquery.providers.v1.Discovery
-	25, // 20: cnquery.providers.v1.Discovery.filter:type_name -> cnquery.providers.v1.Discovery.FilterEntry
-	26, // 21: cnquery.providers.v1.Platform.labels:type_name -> cnquery.providers.v1.Platform.LabelsEntry
-	27, // 22: cnquery.providers.v1.Platform.metadata:type_name -> cnquery.providers.v1.Platform.MetadataEntry
-	28, // 23: cnquery.providers.v1.ObjectMeta.labels:type_name -> cnquery.providers.v1.ObjectMeta.LabelsEntry
-	29, // 24: cnquery.providers.v1.ObjectMeta.annotations:type_name -> cnquery.providers.v1.ObjectMeta.AnnotationsEntry
-	15, // 25: cnquery.providers.v1.ObjectMeta.ownerReferences:type_name -> cnquery.providers.v1.OwnerReference
-	13, // 26: cnquery.providers.v1.Inventory.metadata:type_name -> cnquery.providers.v1.ObjectMeta
-	17, // 27: cnquery.providers.v1.Inventory.spec:type_name -> cnquery.providers.v1.InventorySpec
-	18, // 28: cnquery.providers.v1.Inventory.status:type_name -> cnquery.providers.v1.InventoryStatus
-	2,  // 29: cnquery.providers.v1.InventorySpec.assets:type_name -> cnquery.providers.v1.Asset
-	30, // 30: cnquery.providers.v1.InventorySpec.credentials:type_name -> cnquery.providers.v1.InventorySpec.CredentialsEntry
-	32, // 31: cnquery.providers.v1.InventorySpec.vault:type_name -> cnquery.providers.v1.VaultConfiguration
-	33, // 32: cnquery.providers.v1.InventorySpec.upstream_credentials:type_name -> mondoo.mql.upstream.v1.ServiceAccountCredentials
-	7,  // 33: cnquery.providers.v1.AssetUrlBranch.ValuesEntry.value:type_name -> cnquery.providers.v1.AssetUrlBranch
-	31, // 34: cnquery.providers.v1.InventorySpec.CredentialsEntry.value:type_name -> cnquery.providers.v1.Credential
-	35, // [35:35] is the sub-list for method output_type
-	35, // [35:35] is the sub-list for method input_type
-	35, // [35:35] is the sub-list for extension type_name
-	35, // [35:35] is the sub-list for extension extendee
-	0,  // [0:35] is the sub-list for field type_name
+	3,  // 7: cnquery.providers.v1.Asset.related_assets:type_name -> cnquery.providers.v1.Asset
+	7,  // 8: cnquery.providers.v1.Asset.relationships:type_name -> cnquery.providers.v1.AssetRelationship
+	4,  // 9: cnquery.providers.v1.Asset.context_config:type_name -> cnquery.providers.v1.ContextConfig
+	6,  // 10: cnquery.providers.v1.Asset.claims:type_name -> cnquery.providers.v1.AssetClaim
+	5,  // 11: cnquery.providers.v1.ContextConfig.origin:type_name -> cnquery.providers.v1.ConfigOrigin
+	23, // 12: cnquery.providers.v1.AssetClaim.claims:type_name -> cnquery.providers.v1.AssetClaim.ClaimsEntry
+	3,  // 13: cnquery.providers.v1.AssetRelationship.asset:type_name -> cnquery.providers.v1.Asset
+	2,  // 14: cnquery.providers.v1.AssetRelationship.evidence:type_name -> cnquery.providers.v1.RelationshipEvidence
+	32, // 15: cnquery.providers.v1.AssetRelationship.attributes:type_name -> google.protobuf.Struct
+	24, // 16: cnquery.providers.v1.AssetUrlBranch.values:type_name -> cnquery.providers.v1.AssetUrlBranch.ValuesEntry
+	8,  // 17: cnquery.providers.v1.AssetUrlBranch.parent:type_name -> cnquery.providers.v1.AssetUrlBranch
+	33, // 18: cnquery.providers.v1.Config.credentials:type_name -> cnquery.providers.v1.Credential
+	10, // 19: cnquery.providers.v1.Config.sudo:type_name -> cnquery.providers.v1.Sudo
+	25, // 20: cnquery.providers.v1.Config.options:type_name -> cnquery.providers.v1.Config.OptionsEntry
+	11, // 21: cnquery.providers.v1.Config.discover:type_name -> cnquery.providers.v1.Discovery
+	26, // 22: cnquery.providers.v1.Discovery.filter:type_name -> cnquery.providers.v1.Discovery.FilterEntry
+	27, // 23: cnquery.providers.v1.Platform.labels:type_name -> cnquery.providers.v1.Platform.LabelsEntry
+	28, // 24: cnquery.providers.v1.Platform.metadata:type_name -> cnquery.providers.v1.Platform.MetadataEntry
+	29, // 25: cnquery.providers.v1.ObjectMeta.labels:type_name -> cnquery.providers.v1.ObjectMeta.LabelsEntry
+	30, // 26: cnquery.providers.v1.ObjectMeta.annotations:type_name -> cnquery.providers.v1.ObjectMeta.AnnotationsEntry
+	16, // 27: cnquery.providers.v1.ObjectMeta.ownerReferences:type_name -> cnquery.providers.v1.OwnerReference
+	14, // 28: cnquery.providers.v1.Inventory.metadata:type_name -> cnquery.providers.v1.ObjectMeta
+	18, // 29: cnquery.providers.v1.Inventory.spec:type_name -> cnquery.providers.v1.InventorySpec
+	19, // 30: cnquery.providers.v1.Inventory.status:type_name -> cnquery.providers.v1.InventoryStatus
+	3,  // 31: cnquery.providers.v1.InventorySpec.assets:type_name -> cnquery.providers.v1.Asset
+	31, // 32: cnquery.providers.v1.InventorySpec.credentials:type_name -> cnquery.providers.v1.InventorySpec.CredentialsEntry
+	34, // 33: cnquery.providers.v1.InventorySpec.vault:type_name -> cnquery.providers.v1.VaultConfiguration
+	35, // 34: cnquery.providers.v1.InventorySpec.upstream_credentials:type_name -> mondoo.mql.upstream.v1.ServiceAccountCredentials
+	8,  // 35: cnquery.providers.v1.AssetUrlBranch.ValuesEntry.value:type_name -> cnquery.providers.v1.AssetUrlBranch
+	33, // 36: cnquery.providers.v1.InventorySpec.CredentialsEntry.value:type_name -> cnquery.providers.v1.Credential
+	37, // [37:37] is the sub-list for method output_type
+	37, // [37:37] is the sub-list for method input_type
+	37, // [37:37] is the sub-list for extension type_name
+	37, // [37:37] is the sub-list for extension extendee
+	0,  // [0:37] is the sub-list for field type_name
 }
 
 func init() { file_inventory_proto_init() }
@@ -2029,7 +2158,7 @@ func file_inventory_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_inventory_proto_rawDesc), len(file_inventory_proto_rawDesc)),
-			NumEnums:      2,
+			NumEnums:      3,
 			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   0,
