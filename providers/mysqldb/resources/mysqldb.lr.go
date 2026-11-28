@@ -26,6 +26,7 @@ const (
 	ResourceMysqldbPlugin                 string = "mysqldb.plugin"
 	ResourceMysqldbComponent              string = "mysqldb.component"
 	ResourceMysqldbTable                  string = "mysqldb.table"
+	ResourceMysqldbTableColumn            string = "mysqldb.table.column"
 	ResourceMysqldbReplicationChannel     string = "mysqldb.replicationChannel"
 	ResourceMysqldbKeyringComponentStatus string = "mysqldb.keyringComponentStatus"
 	ResourceMysqldbAuditLogFilter         string = "mysqldb.auditLogFilter"
@@ -75,6 +76,10 @@ func init() {
 		"mysqldb.table": {
 			// to override args, implement: initMysqldbTable(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMysqldbTable,
+		},
+		"mysqldb.table.column": {
+			// to override args, implement: initMysqldbTableColumn(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMysqldbTableColumn,
 		},
 		"mysqldb.replicationChannel": {
 			// to override args, implement: initMysqldbReplicationChannel(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -381,6 +386,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"mysqldb.table.privileges": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMysqldbTable).GetPrivileges()).ToDataRes(types.Array(types.Resource("mysqldb.privilege")))
+	},
+	"mysqldb.table.columns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbTable).GetColumns()).ToDataRes(types.Array(types.Resource("mysqldb.table.column")))
+	},
+	"mysqldb.table.column.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbTableColumn).GetName()).ToDataRes(types.String)
+	},
+	"mysqldb.table.column.position": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbTableColumn).GetPosition()).ToDataRes(types.Int)
+	},
+	"mysqldb.table.column.typeName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbTableColumn).GetTypeName()).ToDataRes(types.String)
+	},
+	"mysqldb.table.column.nullable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbTableColumn).GetNullable()).ToDataRes(types.Bool)
+	},
+	"mysqldb.table.column.comment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbTableColumn).GetComment()).ToDataRes(types.String)
 	},
 	"mysqldb.replicationChannel.channel": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMysqldbReplicationChannel).GetChannel()).ToDataRes(types.String)
@@ -796,6 +819,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mysqldb.table.privileges": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMysqldbTable).Privileges, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"mysqldb.table.columns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbTable).Columns, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"mysqldb.table.column.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbTableColumn).__id, ok = v.Value.(string)
+		return
+	},
+	"mysqldb.table.column.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbTableColumn).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mysqldb.table.column.position": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbTableColumn).Position, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"mysqldb.table.column.typeName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbTableColumn).TypeName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mysqldb.table.column.nullable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbTableColumn).Nullable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"mysqldb.table.column.comment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbTableColumn).Comment, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"mysqldb.replicationChannel.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1797,13 +1848,14 @@ func (c *mqlMysqldbComponent) GetUrn() *plugin.TValue[string] {
 type mqlMysqldbTable struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlMysqldbTableInternal it will be used here
+	mqlMysqldbTableInternal
 	Name       plugin.TValue[string]
 	Schema     plugin.TValue[string]
 	Engine     plugin.TValue[string]
 	RowFormat  plugin.TValue[string]
 	Encrypted  plugin.TValue[bool]
 	Privileges plugin.TValue[[]any]
+	Columns    plugin.TValue[[]any]
 }
 
 // createMysqldbTable creates a new instance of this resource
@@ -1872,6 +1924,86 @@ func (c *mqlMysqldbTable) GetPrivileges() *plugin.TValue[[]any] {
 
 		return c.privileges()
 	})
+}
+
+func (c *mqlMysqldbTable) GetColumns() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Columns, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mysqldb.table", c.__id, "columns")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.columns()
+	})
+}
+
+// mqlMysqldbTableColumn for the mysqldb.table.column resource
+type mqlMysqldbTableColumn struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMysqldbTableColumnInternal it will be used here
+	Name     plugin.TValue[string]
+	Position plugin.TValue[int64]
+	TypeName plugin.TValue[string]
+	Nullable plugin.TValue[bool]
+	Comment  plugin.TValue[string]
+}
+
+// createMysqldbTableColumn creates a new instance of this resource
+func createMysqldbTableColumn(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMysqldbTableColumn{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("mysqldb.table.column", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMysqldbTableColumn) MqlName() string {
+	return "mysqldb.table.column"
+}
+
+func (c *mqlMysqldbTableColumn) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMysqldbTableColumn) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlMysqldbTableColumn) GetPosition() *plugin.TValue[int64] {
+	return &c.Position
+}
+
+func (c *mqlMysqldbTableColumn) GetTypeName() *plugin.TValue[string] {
+	return &c.TypeName
+}
+
+func (c *mqlMysqldbTableColumn) GetNullable() *plugin.TValue[bool] {
+	return &c.Nullable
+}
+
+func (c *mqlMysqldbTableColumn) GetComment() *plugin.TValue[string] {
+	return &c.Comment
 }
 
 // mqlMysqldbReplicationChannel for the mysqldb.replicationChannel resource

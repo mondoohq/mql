@@ -280,6 +280,29 @@ mysqldb.table @defaults("schema name") {
   encrypted bool
   // Privileges granted on the table
   privileges() []mysqldb.privilege
+  // Columns of the table
+  //
+  // Name, position, declared type, nullability and comment of each column, in
+  // position order. Reading them needs global SELECT, since the server lists only
+  // the columns a caller holds a privilege on. No column value is read.
+  columns() []mysqldb.table.column
+}
+
+// Column of a MySQL table
+private mysqldb.table.column @defaults("name typeName") {
+  // Column name
+  name string
+  // Position of the column in the table, starting at 1
+  position int
+  // Declared type of the column, for example varchar(255) or decimal(10,2)
+  //
+  // MariaDB includes the display width of integer types, for example
+  // int(10) unsigned, where MySQL 8 reports int unsigned.
+  typeName string
+  // Whether the column accepts null values
+  nullable bool
+  // Comment on the column, empty when none is set
+  comment string
 }
 
 // MySQL replication channel

@@ -136,6 +136,7 @@ func (r *mqlMysqldbSchema) tables() ([]any, error) {
 	}
 	defer rows.Close()
 
+	columns := &mysqlSchemaColumns{}
 	list := []any{}
 	for rows.Next() {
 		var name, engine, rowFormat, createOptions string
@@ -155,6 +156,7 @@ func (r *mqlMysqldbSchema) tables() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		res.(*mqlMysqldbTable).cacheSchemaColumns = columns
 		list = append(list, res)
 	}
 	return list, rows.Err()
