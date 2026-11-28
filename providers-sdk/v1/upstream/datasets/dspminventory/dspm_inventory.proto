@@ -1,0 +1,178 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+// dspm_inventory is the record schema of the data-inventory dataset: the
+// entities a repository's code declares, their sensitive fields and the
+// table columns they map to, the data stores the repository declares or
+// connects to, and the flows of sensitive fields into sinks.
+//
+// A data store the repository declares or connects to is a
+// cnquery.providers.v1.AssetRelationship (inventory.proto in the inventory
+// SDK, ADR 060), the edge a scan writes too. The repository is the carrying
+// asset: the upload is for it, so no record names it.
+//
+// A dataset upload is a sequence of Record messages, each prefixed with its
+// length as a uvarint (protobuf-delimited). The version is in the package
+// name: a breaking change is a new package (v2), never an edited message.
+//
+// Names and classes only. No message has a field for a data value, a sample,
+// a configuration value other than a normalized store identifier, a
+// credential, or a hash of any of them. TestDatasetRecordsCarryNoValues fails
+// when a field whose name suggests one is added.
+package mondoo.datasets.dspm_inventory.v1;
+
+import "providers-sdk/v1/inventory/inventory.proto";
+
+// protolint:disable:next MAX_LINE_LENGTH
+option go_package = "go.mondoo.com/mql/providers-sdk/v1/upstream/datasets/dspminventory";
+
+// Record is one record of the dataset.
+message Record {
+  oneof record {
+    Entity entity = 1;
+    Field field = 2;
+    Flow flow = 4;
+    // A data store the repository declares or connects to. See "Store
+    // relationships" below for how its fields are set.
+    cnquery.providers.v1.AssetRelationship relationship = 5;
+    // A store reference whose target could not be read.
+    UnresolvedStore unresolved_store = 6;
+  }
+  reserved 3;
+  reserved "store_ref";
+}
+
+// TableSource is where an entity's table name came from.
+enum TableSource {
+  TABLE_SOURCE_UNSPECIFIED = 0;
+  // The ORM's own table metadata (a mapping annotation, a table-name method,
+  // a Meta option).
+  TABLE_SOURCE_MAPPING = 1;
+  // A CREATE TABLE statement.
+  TABLE_SOURCE_DDL = 2;
+  // A framework default that is exact and needs nothing outside the file.
+  TABLE_SOURCE_CONVENTION = 3;
+}
+
+// Entity is a declared data-carrying type: a struct, an ORM model or a
+// schema. It carries names only, never a value.
+message Entity {
+  // The type's name as declared.
+  string name = 1;
+  // The language of the declaring file, e.g. "go", "python".
+  string language = 2;
+  // Path of the declaring file, relative to the repository root.
+  string file = 3;
+  // The database table the entity is stored in, as the code names it
+  // (qualified as written). Empty when the code does not name it.
+  string table = 4;
+  // Where table came from. Unspecified when table is empty.
+  TableSource table_source = 5;
+  // The database schema the table is in, when the code qualifies it.
+  string schema = 6;
+  // Whose data the entity holds, e.g. "customer", "employee". A string, so a
+  // new subject needs no schema change.
+  string subject = 7;
+  // 1-based line of the declaration. 0 when unknown.
+  uint32 line = 8;
+}
+
+// Field is a classified field of an entity. It carries names and classes
+// only, never a value.
+message Field {
+  // The declaring entity's name.
+  string entity = 1;
+  // Path of the declaring entity's file, relative to the repository root;
+  // with entity, it names the entity.
+  string entity_file = 2;
+  // The field's name as declared.
+  string name = 3;
+  // The database column the field is stored in, as the code names it. Empty
+  // when the code does not name it.
+  string column = 4;
+  // The data category, e.g. "PII", "PHI", "PCI", "SECRET",
+  // "CUSTOMER_CONTENT", "AI_CONTEXT". A string, so a new category needs no
+  // schema change.
+  string category = 5;
+  // How confident the classification is: "HIGH", "MEDIUM" or "LOW".
+  string confidence = 6;
+  // Path of the file the field is declared in, relative to the repository
+  // root.
+  string file = 7;
+  // 1-based line of the declaration. 0 when unknown.
+  uint32 line = 8;
+}
+
+// Store relationships
+//
+// A Record's relationship is one data store the repository names, from the
+// repository (the carrying asset) to the store:
+//
+//   - kind: "declares" (infrastructure as code declares the store, e.g. a
+//     Terraform or CloudFormation resource) or "connects-to"
+//     (configuration holds a connection URL to the store).
+//   - from_resource_type "file" and from_resource_id the path of the file
+//     that names the store, relative to the repository root.
+//   - asset: the store as an asset stub. Its platform_ids hold the
+//     provider's platform id when the producer can build it; otherwise its
+//     claims name it: a "cloud-resource" claim (type, name) for declares,
+//     a "database-endpoint" claim (scheme, host, port, database) for
+//     connects-to.
+//   - evidence: RELATIONSHIP_EVIDENCE_DECLARED.
+//   - attributes: the kind's keys in inventory.RelationshipKinds:
+//     resource_address (the declaring resource's module-qualified address,
+//     or a CloudFormation logical id), root_module_dir (the root module the
+//     resource is applied from, relative to the repository root),
+//     resolution (how the name was read: "literal", "tfvars", "fields" or
+//     "placeholder-default") and line (1-based). Write and Read refuse any
+//     other key or type.
+//
+// The producer normalizes a connection URL before it reaches the record:
+// user information, every host after the first, the query and the
+// fragment are removed, and the database-endpoint claim has no key that
+// could hold them.
+
+// UnresolvedStore is a store reference whose target could not be read, so
+// it names no store and is not an edge.
+message UnresolvedStore {
+  // "declares" or "connects-to", as on a store relationship.
+  string kind = 1;
+  // Path of the file the reference is in, relative to the repository root.
+  string file = 2;
+  // 1-based line of the reference. 0 when unknown.
+  uint32 line = 3;
+  // Why the target could not be read: "omitted" (the cloud generates the
+  // name), "expression" (needs planning), "intrinsic" (a CloudFormation
+  // intrinsic function) or "erb" (ERB, evaluated when the application
+  // boots).
+  string reason = 4;
+  // For declares: the declaring resource's address and type, e.g.
+  // "module.data.aws_s3_bucket.logs" and "aws_s3_bucket".
+  string resource_address = 5;
+  string resource_type = 6;
+  // For connects-to: the URL scheme, when it could be read.
+  string scheme = 7;
+}
+
+// Flow is a sensitive field reaching a sink, as a code finding reports it.
+message Flow {
+  // The rule that reported the flow.
+  string rule_id = 1;
+  // The fingerprint of the finding that reported the flow, the key that
+  // joins this record to the finding in a findings upload.
+  string finding_fingerprint = 2;
+  // The field that flows, by name.
+  string field = 3;
+  // The field's entity, by name. Empty when the finding does not say.
+  string entity = 4;
+  // The field's data category, as on Field.category.
+  string category = 5;
+  // The sink class, e.g. "logs", "egress", "persistence", "response".
+  string sink = 6;
+  // Path of the file the sink is in, relative to the repository root.
+  string file = 7;
+  // 1-based line of the sink. 0 when unknown.
+  uint32 line = 8;
+}

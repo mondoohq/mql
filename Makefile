@@ -494,6 +494,7 @@ shared/generate:
 	go generate ./providers-sdk/v1/upstream/fex
 	go generate ./providers-sdk/v1/upstream/sbomscan
 	go generate ./providers-sdk/v1/upstream/sbomupload
+	go generate ./providers-sdk/v1/upstream/datasets/dspminventory
 
 #   ⛹🏽‍ Testing   #
 
