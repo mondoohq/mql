@@ -301,6 +301,7 @@ PROVIDERS := \
 	vllm \
 	vsphere \
 	weaviate \
+	yugabyte \
 	zoom
 
 .PHONY: providers/build

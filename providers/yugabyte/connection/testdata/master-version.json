@@ -1,0 +1,12 @@
+{
+    "git_hash": "41e47f405842e2d480b8ce11e97d81eca7e3f90c",
+    "build_hostname": "ip-10-9-13-254.us-west-2.compute.internal",
+    "build_timestamp": "02 Nov 2026 07:13:31 UTC",
+    "build_username": "jenkins",
+    "build_clean_repo": true,
+    "build_id": "2991",
+    "build_type": "RELEASE",
+    "version_number": "2025.2.8.1",
+    "build_number": "8",
+    "ysql_major_version": 15
+}

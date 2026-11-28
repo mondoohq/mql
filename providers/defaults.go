@@ -1749,6 +1749,22 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"yugabyte": {
+		Provider: &plugin.Provider{
+			Name:            "yugabyte",
+			ID:              "go.mondoo.com/mql/providers/yugabyte",
+			ConnectionTypes: []string{"yugabyte"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "yugabyte",
+					Use:   "yugabyte [host]",
+					Short: "a YugabyteDB cluster",
+				},
+			},
+		},
+	},
+
 	"zoom": {
 		Provider: &plugin.Provider{
 			Name:            "zoom",

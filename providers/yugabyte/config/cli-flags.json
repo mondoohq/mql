@@ -1,0 +1,98 @@
+{
+  "connectors": [
+    {
+      "name": "yugabyte",
+      "flags": [
+        {
+          "long": "ask-pass",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "database",
+          "type": "String",
+          "default": "yugabyte"
+        },
+        {
+          "long": "host",
+          "type": "String"
+        },
+        {
+          "long": "https",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "master-http-port",
+          "type": "Int",
+          "default": "7000"
+        },
+        {
+          "long": "password",
+          "short": "p",
+          "type": "String",
+          "options": [
+            "Password"
+          ]
+        },
+        {
+          "long": "sslcert",
+          "type": "String"
+        },
+        {
+          "long": "sslkey",
+          "type": "String"
+        },
+        {
+          "long": "sslmode",
+          "type": "String"
+        },
+        {
+          "long": "sslrootcert",
+          "type": "String"
+        },
+        {
+          "long": "tls-insecure",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "tserver-http-port",
+          "type": "Int",
+          "default": "9000"
+        },
+        {
+          "long": "user",
+          "short": "u",
+          "type": "String"
+        },
+        {
+          "long": "ycql-password",
+          "type": "String",
+          "options": [
+            "Password"
+          ]
+        },
+        {
+          "long": "ycql-port",
+          "type": "Int",
+          "default": "9042"
+        },
+        {
+          "long": "ycql-tls",
+          "type": "Bool",
+          "default": "false"
+        },
+        {
+          "long": "ycql-user",
+          "type": "String"
+        },
+        {
+          "long": "ysql-port",
+          "type": "Int",
+          "default": "5433"
+        }
+      ]
+    }
+  ]
+}

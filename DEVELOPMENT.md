@@ -305,6 +305,7 @@ use (
    ./mql/providers/vsphere
    ./mql/providers/weaviate
    ./cnspec
+   ./mql/providers/yugabyte
    ./mql/providers/zoom
 )
 ```
