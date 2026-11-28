@@ -74,6 +74,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/guardduty"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/aws/aws-sdk-go-v2/service/identitystore"
+	"github.com/aws/aws-sdk-go-v2/service/imagebuilder"
 	"github.com/aws/aws-sdk-go-v2/service/inspector2"
 	"github.com/aws/aws-sdk-go-v2/service/kafka"
 	"github.com/aws/aws-sdk-go-v2/service/keyspaces"
@@ -411,6 +412,10 @@ func (t *AwsConnection) Dsql(region string) *dsql.Client {
 
 func (t *AwsConnection) OpenSearchServerless(region string) *opensearchserverless.Client {
 	return regionalClient(t, "opensearchserverless", region, opensearchserverless.NewFromConfig)
+}
+
+func (t *AwsConnection) ImageBuilder(region string) *imagebuilder.Client {
+	return regionalClient(t, "imagebuilder", region, imagebuilder.NewFromConfig)
 }
 
 func (t *AwsConnection) RedshiftServerless(region string) *redshiftserverless.Client {

@@ -1,7 +1,7 @@
 {
   "provider": "aws",
-  "version": "14.14.1",
-  "generated_at": "2026-11-27T20:32:38-08:00",
+  "version": "14.15.0",
+  "generated_at": "2026-11-27T21:11:54-08:00",
   "permissions": [
     "access-analyzer:GetFinding",
     "access-analyzer:ListAnalyzers",
@@ -640,6 +640,13 @@
     "iam:ListVirtualMFADevices",
     "identitystore:ListGroups",
     "identitystore:ListUsers",
+    "imagebuilder:GetComponent",
+    "imagebuilder:GetDistributionConfiguration",
+    "imagebuilder:GetImageRecipe",
+    "imagebuilder:ListComponents",
+    "imagebuilder:ListDistributionConfigurations",
+    "imagebuilder:ListImagePipelines",
+    "imagebuilder:ListImageRecipes",
     "inspector2:BatchGetAccountStatus",
     "inspector2:GetConfiguration",
     "inspector2:ListCoverage",
@@ -703,6 +710,9 @@
     "lightsail:GetLoadBalancers",
     "lightsail:GetRelationalDatabases",
     "logs:DescribeAccountPolicies",
+    "logs:DescribeDeliveries",
+    "logs:DescribeDeliveryDestinations",
+    "logs:DescribeDeliverySources",
     "logs:DescribeDestinations",
     "logs:DescribeLogGroups",
     "logs:DescribeLogStreams",
@@ -5132,6 +5142,48 @@
       "source_file": "aws_identitycenter.go"
     },
     {
+      "permission": "imagebuilder:GetComponent",
+      "service": "imagebuilder",
+      "action": "GetComponent",
+      "source_file": "aws_imagebuilder.go"
+    },
+    {
+      "permission": "imagebuilder:GetDistributionConfiguration",
+      "service": "imagebuilder",
+      "action": "GetDistributionConfiguration",
+      "source_file": "aws_imagebuilder.go"
+    },
+    {
+      "permission": "imagebuilder:GetImageRecipe",
+      "service": "imagebuilder",
+      "action": "GetImageRecipe",
+      "source_file": "aws_imagebuilder.go"
+    },
+    {
+      "permission": "imagebuilder:ListComponents",
+      "service": "imagebuilder",
+      "action": "ListComponents",
+      "source_file": "aws_imagebuilder.go"
+    },
+    {
+      "permission": "imagebuilder:ListDistributionConfigurations",
+      "service": "imagebuilder",
+      "action": "ListDistributionConfigurations",
+      "source_file": "aws_imagebuilder.go"
+    },
+    {
+      "permission": "imagebuilder:ListImagePipelines",
+      "service": "imagebuilder",
+      "action": "ListImagePipelines",
+      "source_file": "aws_imagebuilder.go"
+    },
+    {
+      "permission": "imagebuilder:ListImageRecipes",
+      "service": "imagebuilder",
+      "action": "ListImageRecipes",
+      "source_file": "aws_imagebuilder.go"
+    },
+    {
       "permission": "inspector2:BatchGetAccountStatus",
       "service": "inspector2",
       "action": "BatchGetAccountStatus",
@@ -5520,6 +5572,24 @@
       "service": "logs",
       "action": "DescribeAccountPolicies",
       "source_file": "aws_cloudwatch_logs.go"
+    },
+    {
+      "permission": "logs:DescribeDeliveries",
+      "service": "logs",
+      "action": "DescribeDeliveries",
+      "source_file": "aws_cloudwatch_delivery.go"
+    },
+    {
+      "permission": "logs:DescribeDeliveryDestinations",
+      "service": "logs",
+      "action": "DescribeDeliveryDestinations",
+      "source_file": "aws_cloudwatch_delivery.go"
+    },
+    {
+      "permission": "logs:DescribeDeliverySources",
+      "service": "logs",
+      "action": "DescribeDeliverySources",
+      "source_file": "aws_cloudwatch_delivery.go"
     },
     {
       "permission": "logs:DescribeDestinations",
