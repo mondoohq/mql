@@ -2243,13 +2243,17 @@ func regexNotDictV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (
 
 // dict ==/!= arrays
 
+// opDictCmpArray compares a list out of a dict with a list written in the
+// query, as two lists out of dicts. The elements of the two need not be of
+// the same Go type: a number out of JSON is a float64 and one in a query an
+// int64. That is fine because opDictCmpDict compares each pair with the
+// comparison of the left one's kind, and each of those takes any kind on the
+// right.
 func opDictCmpArray(left any, right any) bool {
-	switch left.(type) {
-	case string:
-		return false
-	default:
-		return false
+	if _, ok := left.([]any); ok {
+		return opDictCmpDict(left, right)
 	}
+	return false
 }
 
 func dictCmpArrayV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
@@ -2298,27 +2302,31 @@ func dictNotRegexarrayV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint
 	return rawboolNotOpV2(e, bind, chunk, ref, opDictCmpRegexarray)
 }
 
-func opDictCmpBoolarray(left *RawData, right *RawData) bool { //nolint:unused
+func opDictCmpBoolarray(left *RawData, right *RawData) bool {
 	switch left.Value.(type) {
 	case string:
 		return cmpArrayOne(right, left, opBoolCmpString)
+	case []any:
+		return cmpArrays(left, right, opDictCmpBool)
 	default:
 		return false
 	}
 }
 
 func dictCmpBoolarrayV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return rawboolOpV2(e, bind, chunk, ref, opDictCmpStringarray)
+	return rawboolOpV2(e, bind, chunk, ref, opDictCmpBoolarray)
 }
 
 func dictNotBoolarrayV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	return rawboolNotOpV2(e, bind, chunk, ref, opDictCmpStringarray)
+	return rawboolNotOpV2(e, bind, chunk, ref, opDictCmpBoolarray)
 }
 
 func opDictCmpIntarray(left *RawData, right *RawData) bool {
 	switch left.Value.(type) {
 	case string:
 		return cmpArrayOne(right, left, opIntCmpString)
+	case []any:
+		return cmpArrays(left, right, opDictCmpInt)
 	default:
 		return false
 	}
@@ -2336,6 +2344,8 @@ func opDictCmpFloatarray(left *RawData, right *RawData) bool {
 	switch left.Value.(type) {
 	case string:
 		return cmpArrayOne(right, left, opFloatCmpString)
+	case []any:
+		return cmpArrays(left, right, opDictCmpFloat)
 	default:
 		return false
 	}
@@ -2351,8 +2361,14 @@ func dictNotFloatarrayV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint
 
 // dict ==/!= dict
 
+// opDictCmpDict says whether two values out of dicts are equal. Two lists are
+// if they have equal elements in the same order, two maps if they have equal
+// values under the same keys; elements and values are compared as the values
+// out of dicts they are, so a null equals a null here.
 func opDictCmpDict(left any, right any) bool {
 	switch x := left.(type) {
+	case nil:
+		return right == nil
 	case bool:
 		return opBoolCmpDict(x, right)
 	case int64:
@@ -2361,6 +2377,29 @@ func opDictCmpDict(left any, right any) bool {
 		return opFloatCmpDict(x, right)
 	case string:
 		return opStringCmpDict(x, right)
+	case []any:
+		y, ok := right.([]any)
+		if !ok || len(x) != len(y) {
+			return false
+		}
+		for i := range x {
+			if !opDictCmpDict(x[i], y[i]) {
+				return false
+			}
+		}
+		return true
+	case map[string]any:
+		y, ok := right.(map[string]any)
+		if !ok || len(x) != len(y) {
+			return false
+		}
+		for key, value := range x {
+			other, ok := y[key]
+			if !ok || !opDictCmpDict(value, other) {
+				return false
+			}
+		}
+		return true
 	default:
 		return false
 	}
