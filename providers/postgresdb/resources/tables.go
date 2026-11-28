@@ -63,6 +63,7 @@ func (r *mqlPostgresdbSchema) tables() ([]any, error) {
 	}
 	defer rows.Close()
 
+	columns := &pgSchemaColumns{}
 	list := []any{}
 	for rows.Next() {
 		var name, relkind, ownerName string
@@ -86,6 +87,7 @@ func (r *mqlPostgresdbSchema) tables() ([]any, error) {
 		tbl := res.(*mqlPostgresdbTable)
 		tbl.cacheDatabase = r.cacheDatabase
 		tbl.cacheOwner = ownerName
+		tbl.cacheSchemaColumns = columns
 		list = append(list, tbl)
 	}
 	return list, rows.Err()

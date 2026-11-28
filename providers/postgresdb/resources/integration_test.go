@@ -6,6 +6,7 @@ package resources
 import (
 	"errors"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -159,6 +160,7 @@ func TestIntegrationResolveAll(t *testing.T) {
 				}
 				resolveList(t, name+".table.privileges", tbl.GetPrivileges())
 				resolveList(t, name+".table.policies", tbl.GetPolicies())
+				resolveList(t, name+".table.columns", tbl.GetColumns())
 			}
 		}
 		for _, f := range resolveList(t, name+".functions", db.GetFunctions()) {
@@ -289,6 +291,76 @@ func TestIntegrationSeededFixtures(t *testing.T) {
 				t.Errorf("user mapping leaked a password option: %v", opt)
 			}
 		}
+	}
+}
+
+// TestIntegrationTableColumns reads the columns of appschema.customers and
+// appschema.customer_emails from testdata/seed.sql and compares them with what
+// \d+ shows on the server: a dropped column is absent and leaves a gap in the
+// positions, the comment is read, and both nullability states appear.
+func TestIntegrationTableColumns(t *testing.T) {
+	if os.Getenv("PG_TEST_SEEDED") == "" {
+		t.Skip("set PG_TEST_SEEDED=1 after loading testdata/seed.sql")
+	}
+	inst := mustInstance(t, newIntegrationRuntime(t))
+	tables := map[string]*mqlPostgresdbTable{}
+	for _, x := range inst.GetDatabases().Data {
+		d := x.(*mqlPostgresdbDatabase)
+		if d.GetName().Data != "appdb" {
+			continue
+		}
+		for _, s := range d.GetSchemas().Data {
+			sc := s.(*mqlPostgresdbSchema)
+			if sc.GetName().Data != "appschema" {
+				continue
+			}
+			for _, tb := range sc.GetTables().Data {
+				tbl := tb.(*mqlPostgresdbTable)
+				tables[tbl.GetName().Data] = tbl
+			}
+		}
+	}
+
+	type col struct {
+		name     string
+		position int64
+		typeName string
+		nullable bool
+		comment  string
+	}
+	read := func(name string) []col {
+		tbl := tables[name]
+		if tbl == nil {
+			t.Fatalf("appschema.%s not found", name)
+		}
+		cols := tbl.GetColumns()
+		if cols.Error != nil {
+			t.Fatalf("%s columns errored: %v", name, cols.Error)
+		}
+		out := []col{}
+		for _, x := range cols.Data {
+			c := x.(*mqlPostgresdbTableColumn)
+			out = append(out, col{c.GetName().Data, c.GetPosition().Data, c.GetTypeName().Data, c.GetNullable().Data, c.GetComment().Data})
+		}
+		return out
+	}
+
+	wantCustomers := []col{
+		{"id", 1, "bigint", false, ""},
+		{"email", 2, "character varying(255)", false, ""},
+		{"ssn", 3, "text", true, "US social security number"},
+		{"balance", 4, "numeric(10,2)", true, ""},
+		{"created_at", 6, "timestamp with time zone", true, ""},
+	}
+	if got := read("customers"); !reflect.DeepEqual(got, wantCustomers) {
+		t.Errorf("customers columns = %v, want %v", got, wantCustomers)
+	}
+	wantView := []col{
+		{"id", 1, "bigint", true, ""},
+		{"email", 2, "character varying(255)", true, ""},
+	}
+	if got := read("customer_emails"); !reflect.DeepEqual(got, wantView) {
+		t.Errorf("customer_emails columns = %v, want %v", got, wantView)
 	}
 }
 

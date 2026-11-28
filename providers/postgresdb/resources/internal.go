@@ -24,6 +24,9 @@ type mqlPostgresdbFunctionInternal struct {
 type mqlPostgresdbTableInternal struct {
 	cacheDatabase string
 	cacheOwner    string
+	// cacheSchemaColumns is shared by every relation one schema.tables() call
+	// lists, so reading the columns of all of them costs one query.
+	cacheSchemaColumns *pgSchemaColumns
 }
 
 type mqlPostgresdbTablespaceInternal struct {

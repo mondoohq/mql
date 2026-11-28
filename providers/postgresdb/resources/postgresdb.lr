@@ -210,6 +210,29 @@ postgresdb.table @defaults("schema name kind") {
   privileges() []postgresdb.privilege
   // Row-level security policies attached to the relation
   policies() []postgresdb.rlsPolicy
+  // Columns of the relation
+  //
+  // Name, position, declared type, nullability and comment of each user column,
+  // in position order. Dropped and system columns are left out. No column value
+  // is read.
+  columns() []postgresdb.table.column
+}
+
+// Column of a PostgreSQL relation
+private postgresdb.table.column @defaults("name typeName") {
+  // Column name
+  name string
+  // Position of the column in the relation, starting at 1
+  //
+  // A column removed with DROP COLUMN leaves a gap, so the positions after it
+  // are not consecutive.
+  position int
+  // Declared type of the column, for example character varying(255) or numeric(10,2)
+  typeName string
+  // Whether the column accepts null values
+  nullable bool
+  // Comment on the column, empty when none is set
+  comment string
 }
 
 // PostgreSQL row-level security policy
