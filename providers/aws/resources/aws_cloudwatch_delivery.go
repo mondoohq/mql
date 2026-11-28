@@ -12,6 +12,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // CloudWatch Logs vended log delivery: delivery sources name the resource that
@@ -37,11 +38,11 @@ func (a *mqlAwsCloudwatch) logDeliverySources() ([]any, error) {
 					"region":        llx.StringData(region),
 					"logType":       llx.StringDataPtr(s.LogType),
 					"service":       llx.StringDataPtr(s.Service),
-					"resourceArns":  llx.ArrayData(toInterfaceArr(s.ResourceArns), "string"),
+					"resourceArns":  llx.ArrayData(toInterfaceArr(s.ResourceArns), types.String),
 					"status":        llx.StringData(string(s.Status)),
 					"statusReason":  llx.StringData(string(s.StatusReason)),
-					"configuration": llx.MapData(toInterfaceMap(s.DeliverySourceConfiguration), "string"),
-					"tags":          llx.MapData(toInterfaceMap(s.Tags), "string"),
+					"configuration": llx.MapData(toInterfaceMap(s.DeliverySourceConfiguration), types.String),
+					"tags":          llx.MapData(toInterfaceMap(s.Tags), types.String),
 				})
 				if err != nil {
 					return nil, err
@@ -83,11 +84,11 @@ func (a *mqlAwsCloudwatch) logDeliveries() ([]any, error) {
 					"deliverySourceName":         llx.StringDataPtr(d.DeliverySourceName),
 					"deliveryDestinationArn":     llx.StringDataPtr(d.DeliveryDestinationArn),
 					"deliveryDestinationType":    llx.StringData(string(d.DeliveryDestinationType)),
-					"recordFields":               llx.ArrayData(toInterfaceArr(d.RecordFields), "string"),
+					"recordFields":               llx.ArrayData(toInterfaceArr(d.RecordFields), types.String),
 					"fieldDelimiter":             llx.StringDataPtr(d.FieldDelimiter),
 					"s3SuffixPath":               llx.StringData(suffixPath),
 					"s3EnableHiveCompatiblePath": llx.BoolData(hiveCompatible),
-					"tags":                       llx.MapData(toInterfaceMap(d.Tags), "string"),
+					"tags":                       llx.MapData(toInterfaceMap(d.Tags), types.String),
 				})
 				if err != nil {
 					return nil, err
@@ -124,7 +125,7 @@ func (a *mqlAwsCloudwatch) logDeliveryDestinations() ([]any, error) {
 					"destinationResourceArn":  llx.StringData(destinationArn),
 					"outputFormat":            llx.StringData(string(d.OutputFormat)),
 					"roleArn":                 llx.StringDataPtr(d.RoleArn),
-					"tags":                    llx.MapData(toInterfaceMap(d.Tags), "string"),
+					"tags":                    llx.MapData(toInterfaceMap(d.Tags), types.String),
 				})
 				if err != nil {
 					return nil, err

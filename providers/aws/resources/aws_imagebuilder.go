@@ -20,6 +20,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsImagebuilder) id() (string, error) {
@@ -109,7 +110,7 @@ func (a *mqlAwsImagebuilder) distributionConfigurations() ([]any, error) {
 					"description": llx.StringDataPtr(d.Description),
 					"createdAt":   llx.TimeDataPtr(parseAwsTimestampPtr(d.DateCreated)),
 					"updatedAt":   llx.TimeDataPtr(parseAwsTimestampPtr(d.DateUpdated)),
-					"tags":        llx.MapData(toInterfaceMap(d.Tags), "string"),
+					"tags":        llx.MapData(toInterfaceMap(d.Tags), types.String),
 				})
 				if err != nil {
 					return nil, err
@@ -182,7 +183,7 @@ func initAwsImagebuilderDistributionConfiguration(runtime *plugin.Runtime, args 
 	args["description"] = llx.StringDataPtr(d.Description)
 	args["createdAt"] = llx.TimeDataPtr(parseAwsTimestampPtr(d.DateCreated))
 	args["updatedAt"] = llx.TimeDataPtr(parseAwsTimestampPtr(d.DateUpdated))
-	args["tags"] = llx.MapData(toInterfaceMap(d.Tags), "string")
+	args["tags"] = llx.MapData(toInterfaceMap(d.Tags), types.String)
 	res, err := CreateResource(runtime, ResourceAwsImagebuilderDistributionConfiguration, args)
 	if err != nil {
 		return nil, nil, err
@@ -253,14 +254,14 @@ func (a *mqlAwsImagebuilderDistributionConfiguration) distributions() ([]any, er
 			"amiName":                                llx.StringData(amiName),
 			"amiDescription":                         llx.StringData(amiDescription),
 			"amiKmsKeyId":                            llx.StringData(amiKmsKeyId),
-			"amiTags":                                llx.MapData(toInterfaceMap(amiTags), "string"),
-			"targetAccountIds":                       llx.ArrayData(toInterfaceArr(targetAccountIds), "string"),
-			"launchPermissionUserGroups":             llx.ArrayData(toInterfaceArr(userGroups), "string"),
-			"launchPermissionUserIds":                llx.ArrayData(toInterfaceArr(userIds), "string"),
-			"launchPermissionOrganizationArns":       llx.ArrayData(toInterfaceArr(orgArns), "string"),
-			"launchPermissionOrganizationalUnitArns": llx.ArrayData(toInterfaceArr(ouArns), "string"),
+			"amiTags":                                llx.MapData(toInterfaceMap(amiTags), types.String),
+			"targetAccountIds":                       llx.ArrayData(toInterfaceArr(targetAccountIds), types.String),
+			"launchPermissionUserGroups":             llx.ArrayData(toInterfaceArr(userGroups), types.String),
+			"launchPermissionUserIds":                llx.ArrayData(toInterfaceArr(userIds), types.String),
+			"launchPermissionOrganizationArns":       llx.ArrayData(toInterfaceArr(orgArns), types.String),
+			"launchPermissionOrganizationalUnitArns": llx.ArrayData(toInterfaceArr(ouArns), types.String),
 			"public":                                 llx.BoolData(imagebuilderLaunchPermissionPublic(lp)),
-			"licenseConfigurationArns":               llx.ArrayData(toInterfaceArr(d.LicenseConfigurationArns), "string"),
+			"licenseConfigurationArns":               llx.ArrayData(toInterfaceArr(d.LicenseConfigurationArns), types.String),
 		})
 		if err != nil {
 			return nil, err
@@ -348,13 +349,13 @@ func fetchImagebuilderComponent(ctx context.Context, runtime *plugin.Runtime, re
 		"platform":               llx.StringData(string(c.Platform)),
 		"type":                   llx.StringData(string(c.Type)),
 		"owner":                  llx.StringDataPtr(c.Owner),
-		"supportedOsVersions":    llx.ArrayData(toInterfaceArr(c.SupportedOsVersions), "string"),
+		"supportedOsVersions":    llx.ArrayData(toInterfaceArr(c.SupportedOsVersions), types.String),
 		"encrypted":              llx.BoolData(convert.ToValue(c.Encrypted)),
 		"kmsKeyId":               llx.StringDataPtr(c.KmsKeyId),
 		"data":                   llx.StringData(data),
-		"skippedCleanupSections": llx.ArrayData(toInterfaceArr(imagebuilderSkippedCleanupSections(data)), "string"),
+		"skippedCleanupSections": llx.ArrayData(toInterfaceArr(imagebuilderSkippedCleanupSections(data)), types.String),
 		"createdAt":              llx.TimeDataPtr(parseAwsTimestampPtr(c.DateCreated)),
-		"tags":                   llx.MapData(toInterfaceMap(c.Tags), "string"),
+		"tags":                   llx.MapData(toInterfaceMap(c.Tags), types.String),
 	})
 	if err != nil {
 		return nil, err
@@ -454,12 +455,12 @@ func imagebuilderImageRecipeArgs(region string, r *ibtypes.ImageRecipe) (map[str
 		"owner":                       llx.StringDataPtr(r.Owner),
 		"parentImage":                 llx.StringDataPtr(r.ParentImage),
 		"workingDirectory":            llx.StringDataPtr(r.WorkingDirectory),
-		"components":                  llx.ArrayData(components, "dict"),
+		"components":                  llx.ArrayData(components, types.Dict),
 		"userDataOverride":            llx.StringData(userData),
 		"ssmAgentUninstallAfterBuild": llx.BoolData(ssmUninstall),
 		"cleanupScriptDisabled":       llx.BoolData(imagebuilderCleanupScriptDisabled(userData)),
 		"createdAt":                   llx.TimeDataPtr(parseAwsTimestampPtr(r.DateCreated)),
-		"tags":                        llx.MapData(toInterfaceMap(r.Tags), "string"),
+		"tags":                        llx.MapData(toInterfaceMap(r.Tags), types.String),
 	}, nil
 }
 
@@ -622,14 +623,14 @@ func newMqlImagebuilderImagePipeline(runtime *plugin.Runtime, region string, p *
 		"imageScanningEnabled":           llx.BoolData(scanningEnabled),
 		"schedule":                       schedule,
 		"executionRole":                  llx.StringDataPtr(p.ExecutionRole),
-		"workflows":                      llx.ArrayData(workflows, "dict"),
+		"workflows":                      llx.ArrayData(workflows, types.Dict),
 		"lastRunStatus":                  llx.StringData(string(p.LastRunStatus)),
 		"consecutiveFailures":            llx.IntDataDefault(p.ConsecutiveFailures, 0),
 		"createdAt":                      llx.TimeDataPtr(parseAwsTimestampPtr(p.DateCreated)),
 		"updatedAt":                      llx.TimeDataPtr(parseAwsTimestampPtr(p.DateUpdated)),
 		"lastRunAt":                      llx.TimeDataPtr(parseAwsTimestampPtr(p.DateLastRun)),
 		"nextRunAt":                      llx.TimeDataPtr(parseAwsTimestampPtr(p.DateNextRun)),
-		"tags":                           llx.MapData(toInterfaceMap(p.Tags), "string"),
+		"tags":                           llx.MapData(toInterfaceMap(p.Tags), types.String),
 	})
 }
 
