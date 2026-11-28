@@ -30,6 +30,23 @@ import (
 // says so without the reader having to know that.
 var reSafeName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._\-]{0,63}$`)
 
+// rePeer matches a BGP peer, which is an address or an interface name. An
+// IPv6 peer carries colons, and a link-local peer can carry a scope.
+//
+// The dash is escaped so the class cannot be read as a range from `%` to
+// `-`. It is the last character either way, which RE2 already takes
+// literally, but the escape says so without the reader having to know that.
+var rePeer = regexp.MustCompile(`^[A-Za-z0-9:][A-Za-z0-9._:%\-]{0,63}$`)
+
+// ValidatePeer rejects a peer identifier that could change the meaning of
+// the command it is placed in.
+func ValidatePeer(peer string) error {
+	if !rePeer.MatchString(peer) {
+		return fmt.Errorf("invalid peer %q, expected an address or an interface name", peer)
+	}
+	return nil
+}
+
 // ValidateName rejects a VRF or table name that could change the meaning of
 // the command it is placed in.
 func ValidateName(kind, name string) error {
