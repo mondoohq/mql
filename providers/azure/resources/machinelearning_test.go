@@ -167,3 +167,76 @@ func TestMachineLearningWorkspaceWithoutManagedNetwork(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, links)
 }
+
+func TestMlSystemDatastoresAuthMode(t *testing.T) {
+	// Measured: two workspaces read at API version 2025-09-01, 2026-11-27.
+	// One set to identity-based access, one to key access; Azure returned
+	// both lowercased.
+	assert.Equal(t, "identity", mlSystemDatastoresAuthMode(new("identity")))
+	assert.Equal(t, "accesskey", mlSystemDatastoresAuthMode(new("accesskey")))
+	// Synthetic: the API enum spells the values in PascalCase.
+	assert.Equal(t, "identity", mlSystemDatastoresAuthMode(new("Identity")))
+	assert.Equal(t, "userdelegationsas", mlSystemDatastoresAuthMode(new("UserDelegationSAS")))
+	// Synthetic: a workspace that never set the mode uses the account key.
+	assert.Equal(t, "accesskey", mlSystemDatastoresAuthMode(nil))
+	assert.Equal(t, "accesskey", mlSystemDatastoresAuthMode(new("")))
+}
+
+func TestMlComputeInstanceSettings(t *testing.T) {
+	// Synthetic: shaped as the 2025-09-01 ComputeInstanceProperties model.
+	body := `{"properties":{"computeType":"ComputeInstance","properties":{
+		"idleTimeBeforeShutdown":"PT30M",
+		"schedules":{"computeStartStop":[
+			{"id":"s1","action":"Stop","status":"Enabled","triggerType":"Cron","provisioningStatus":"Completed",
+			 "cron":{"expression":"0 18 * * 1-5","timeZone":"UTC"},"schedule":{"status":"Enabled"}},
+			null
+		]}}}}`
+	var resp mlComputeInstanceResponse
+	require.NoError(t, json.Unmarshal([]byte(body), &resp))
+	s := resp.settings()
+	assert.Equal(t, "PT30M", s.idleTimeBeforeShutdown)
+	require.Len(t, s.schedules, 1)
+	sched := s.schedules[0].(map[string]any)
+	assert.Equal(t, "Stop", sched["action"])
+	assert.Equal(t, "Cron", sched["triggerType"])
+	assert.Equal(t, "0 18 * * 1-5", sched["cron"].(map[string]any)["expression"])
+	assert.NotContains(t, sched, "schedule", "the deprecated schedule block is dropped")
+
+	// Synthetic: an instance with neither setting has idle shutdown off and no
+	// schedule, an empty list rather than null.
+	var bare mlComputeInstanceResponse
+	require.NoError(t, json.Unmarshal([]byte(`{"properties":{"computeType":"ComputeInstance","properties":{}}}`), &bare))
+	s = bare.settings()
+	assert.Equal(t, "", s.idleTimeBeforeShutdown)
+	assert.NotNil(t, s.schedules)
+	assert.Empty(t, s.schedules)
+
+	assert.Equal(t, "", mlComputeInstanceResponse{}.settings().idleTimeBeforeShutdown)
+}
+
+func TestIso8601DurationMinutes(t *testing.T) {
+	// Synthetic: Azure accepts 15 minutes to 3 days.
+	for in, want := range map[string]int64{
+		"PT15M":     15,
+		"PT30M":     30,
+		"PT1H":      60,
+		"PT1H30M":   90,
+		"PT90S":     1,
+		"PT59S":     0,
+		"P1D":       1440,
+		"P3D":       4320,
+		"P1DT2H":    1560,
+		"P1W":       10080,
+		"PT0.5H":    30,
+		"pt45m":     45,
+		"PT1H0M30S": 60,
+	} {
+		got, err := iso8601DurationMinutes(in)
+		require.NoError(t, err, in)
+		assert.Equal(t, want, got, in)
+	}
+	for _, in := range []string{"", "P", "PT", "30M", "P1M", "P1Y", "PT1D", "P1H", "PTM", "P1DT", "PT1H2"} {
+		_, err := iso8601DurationMinutes(in)
+		assert.Error(t, err, in)
+	}
+}

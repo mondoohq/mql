@@ -556,6 +556,12 @@ const (
 	ResourceAzureSubscriptionBotServiceBotChannel                                                       string = "azure.subscription.botService.bot.channel"
 	ResourceAzureSubscriptionBotServiceBotChannelSite                                                   string = "azure.subscription.botService.bot.channel.site"
 	ResourceAzureSubscriptionBotServiceBotConnection                                                    string = "azure.subscription.botService.bot.connection"
+	ResourceAzureSubscriptionVideoIndexerService                                                        string = "azure.subscription.videoIndexerService"
+	ResourceAzureSubscriptionVideoIndexerServiceAccount                                                 string = "azure.subscription.videoIndexerService.account"
+	ResourceAzureSubscriptionHealthBotService                                                           string = "azure.subscription.healthBotService"
+	ResourceAzureSubscriptionHealthBotServiceBot                                                        string = "azure.subscription.healthBotService.bot"
+	ResourceAzureSubscriptionSreAgentService                                                            string = "azure.subscription.sreAgentService"
+	ResourceAzureSubscriptionSreAgentServiceAgent                                                       string = "azure.subscription.sreAgentService.agent"
 	ResourceAzureSubscriptionMachineLearningService                                                     string = "azure.subscription.machineLearningService"
 	ResourceAzureSubscriptionMachineLearningServiceRegistry                                             string = "azure.subscription.machineLearningService.registry"
 	ResourceAzureSubscriptionMachineLearningServiceRegistryRegion                                       string = "azure.subscription.machineLearningService.registry.region"
@@ -2821,6 +2827,30 @@ func init() {
 			// to override args, implement: initAzureSubscriptionBotServiceBotConnection(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAzureSubscriptionBotServiceBotConnection,
 		},
+		"azure.subscription.videoIndexerService": {
+			Init:   initAzureSubscriptionVideoIndexerService,
+			Create: createAzureSubscriptionVideoIndexerService,
+		},
+		"azure.subscription.videoIndexerService.account": {
+			// to override args, implement: initAzureSubscriptionVideoIndexerServiceAccount(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionVideoIndexerServiceAccount,
+		},
+		"azure.subscription.healthBotService": {
+			Init:   initAzureSubscriptionHealthBotService,
+			Create: createAzureSubscriptionHealthBotService,
+		},
+		"azure.subscription.healthBotService.bot": {
+			// to override args, implement: initAzureSubscriptionHealthBotServiceBot(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionHealthBotServiceBot,
+		},
+		"azure.subscription.sreAgentService": {
+			Init:   initAzureSubscriptionSreAgentService,
+			Create: createAzureSubscriptionSreAgentService,
+		},
+		"azure.subscription.sreAgentService.agent": {
+			// to override args, implement: initAzureSubscriptionSreAgentServiceAgent(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionSreAgentServiceAgent,
+		},
 		"azure.subscription.machineLearningService": {
 			Init:   initAzureSubscriptionMachineLearningService,
 			Create: createAzureSubscriptionMachineLearningService,
@@ -3596,6 +3626,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.botService": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscription).GetBotService()).ToDataRes(types.Resource("azure.subscription.botService"))
+	},
+	"azure.subscription.videoIndexer": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscription).GetVideoIndexer()).ToDataRes(types.Resource("azure.subscription.videoIndexerService"))
+	},
+	"azure.subscription.healthBot": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscription).GetHealthBot()).ToDataRes(types.Resource("azure.subscription.healthBotService"))
+	},
+	"azure.subscription.sreAgent": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscription).GetSreAgent()).ToDataRes(types.Resource("azure.subscription.sreAgentService"))
 	},
 	"azure.subscription.webService.function.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionWebServiceFunction).GetId()).ToDataRes(types.String)
@@ -22581,6 +22620,159 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.botService.bot.connection.provisioningState": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionBotServiceBotConnection).GetProvisioningState()).ToDataRes(types.String)
 	},
+	"azure.subscription.videoIndexerService.subscriptionId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionVideoIndexerService).GetSubscriptionId()).ToDataRes(types.String)
+	},
+	"azure.subscription.videoIndexerService.accounts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionVideoIndexerService).GetAccounts()).ToDataRes(types.Array(types.Resource("azure.subscription.videoIndexerService.account")))
+	},
+	"azure.subscription.videoIndexerService.account.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).GetId()).ToDataRes(types.String)
+	},
+	"azure.subscription.videoIndexerService.account.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).GetName()).ToDataRes(types.String)
+	},
+	"azure.subscription.videoIndexerService.account.location": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).GetLocation()).ToDataRes(types.String)
+	},
+	"azure.subscription.videoIndexerService.account.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"azure.subscription.videoIndexerService.account.resourceIdentity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).GetResourceIdentity()).ToDataRes(types.Resource("azure.subscription.resourceIdentity"))
+	},
+	"azure.subscription.videoIndexerService.account.accountId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).GetAccountId()).ToDataRes(types.String)
+	},
+	"azure.subscription.videoIndexerService.account.tenantId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).GetTenantId()).ToDataRes(types.String)
+	},
+	"azure.subscription.videoIndexerService.account.publicNetworkAccess": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).GetPublicNetworkAccess()).ToDataRes(types.String)
+	},
+	"azure.subscription.videoIndexerService.account.privateEndpointConnections": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).GetPrivateEndpointConnections()).ToDataRes(types.Array(types.Resource("azure.subscription.privateEndpointConnection")))
+	},
+	"azure.subscription.videoIndexerService.account.storageAccount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).GetStorageAccount()).ToDataRes(types.Resource("azure.subscription.storageService.account"))
+	},
+	"azure.subscription.videoIndexerService.account.storageAccessIdentity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).GetStorageAccessIdentity()).ToDataRes(types.Resource("azure.subscription.managedIdentity"))
+	},
+	"azure.subscription.videoIndexerService.account.openAiAccount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).GetOpenAiAccount()).ToDataRes(types.Resource("azure.subscription.cognitiveServicesService.account"))
+	},
+	"azure.subscription.videoIndexerService.account.openAiAccessIdentity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).GetOpenAiAccessIdentity()).ToDataRes(types.Resource("azure.subscription.managedIdentity"))
+	},
+	"azure.subscription.videoIndexerService.account.totalMinutesIndexed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).GetTotalMinutesIndexed()).ToDataRes(types.Int)
+	},
+	"azure.subscription.videoIndexerService.account.provisioningState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).GetProvisioningState()).ToDataRes(types.String)
+	},
+	"azure.subscription.healthBotService.subscriptionId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionHealthBotService).GetSubscriptionId()).ToDataRes(types.String)
+	},
+	"azure.subscription.healthBotService.bots": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionHealthBotService).GetBots()).ToDataRes(types.Array(types.Resource("azure.subscription.healthBotService.bot")))
+	},
+	"azure.subscription.healthBotService.bot.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionHealthBotServiceBot).GetId()).ToDataRes(types.String)
+	},
+	"azure.subscription.healthBotService.bot.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionHealthBotServiceBot).GetName()).ToDataRes(types.String)
+	},
+	"azure.subscription.healthBotService.bot.location": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionHealthBotServiceBot).GetLocation()).ToDataRes(types.String)
+	},
+	"azure.subscription.healthBotService.bot.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionHealthBotServiceBot).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"azure.subscription.healthBotService.bot.skuData": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionHealthBotServiceBot).GetSkuData()).ToDataRes(types.Resource("azure.subscription.resourceSku"))
+	},
+	"azure.subscription.healthBotService.bot.resourceIdentity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionHealthBotServiceBot).GetResourceIdentity()).ToDataRes(types.Resource("azure.subscription.resourceIdentity"))
+	},
+	"azure.subscription.healthBotService.bot.accessControlMethod": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionHealthBotServiceBot).GetAccessControlMethod()).ToDataRes(types.String)
+	},
+	"azure.subscription.healthBotService.bot.customerManagedKeyEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionHealthBotServiceBot).GetCustomerManagedKeyEnabled()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.healthBotService.bot.encryptionKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionHealthBotServiceBot).GetEncryptionKey()).ToDataRes(types.Resource("azure.subscription.keyVaultService.key"))
+	},
+	"azure.subscription.healthBotService.bot.encryptionKeyName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionHealthBotServiceBot).GetEncryptionKeyName()).ToDataRes(types.String)
+	},
+	"azure.subscription.healthBotService.bot.encryptionKeyVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionHealthBotServiceBot).GetEncryptionKeyVersion()).ToDataRes(types.String)
+	},
+	"azure.subscription.healthBotService.bot.encryptionIdentity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionHealthBotServiceBot).GetEncryptionIdentity()).ToDataRes(types.Resource("azure.subscription.managedIdentity"))
+	},
+	"azure.subscription.healthBotService.bot.botManagementPortalLink": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionHealthBotServiceBot).GetBotManagementPortalLink()).ToDataRes(types.String)
+	},
+	"azure.subscription.healthBotService.bot.provisioningState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionHealthBotServiceBot).GetProvisioningState()).ToDataRes(types.String)
+	},
+	"azure.subscription.sreAgentService.subscriptionId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSreAgentService).GetSubscriptionId()).ToDataRes(types.String)
+	},
+	"azure.subscription.sreAgentService.agents": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSreAgentService).GetAgents()).ToDataRes(types.Array(types.Resource("azure.subscription.sreAgentService.agent")))
+	},
+	"azure.subscription.sreAgentService.agent.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSreAgentServiceAgent).GetId()).ToDataRes(types.String)
+	},
+	"azure.subscription.sreAgentService.agent.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSreAgentServiceAgent).GetName()).ToDataRes(types.String)
+	},
+	"azure.subscription.sreAgentService.agent.location": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSreAgentServiceAgent).GetLocation()).ToDataRes(types.String)
+	},
+	"azure.subscription.sreAgentService.agent.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSreAgentServiceAgent).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"azure.subscription.sreAgentService.agent.resourceIdentity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSreAgentServiceAgent).GetResourceIdentity()).ToDataRes(types.Resource("azure.subscription.resourceIdentity"))
+	},
+	"azure.subscription.sreAgentService.agent.provisioningState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSreAgentServiceAgent).GetProvisioningState()).ToDataRes(types.String)
+	},
+	"azure.subscription.sreAgentService.agent.powerState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSreAgentServiceAgent).GetPowerState()).ToDataRes(types.String)
+	},
+	"azure.subscription.sreAgentService.agent.runningState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSreAgentServiceAgent).GetRunningState()).ToDataRes(types.String)
+	},
+	"azure.subscription.sreAgentService.agent.agentEndpoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSreAgentServiceAgent).GetAgentEndpoint()).ToDataRes(types.String)
+	},
+	"azure.subscription.sreAgentService.agent.upgradeChannel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSreAgentServiceAgent).GetUpgradeChannel()).ToDataRes(types.String)
+	},
+	"azure.subscription.sreAgentService.agent.actionMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSreAgentServiceAgent).GetActionMode()).ToDataRes(types.String)
+	},
+	"azure.subscription.sreAgentService.agent.actionAccessLevel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSreAgentServiceAgent).GetActionAccessLevel()).ToDataRes(types.String)
+	},
+	"azure.subscription.sreAgentService.agent.actionIdentity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSreAgentServiceAgent).GetActionIdentity()).ToDataRes(types.Resource("azure.subscription.managedIdentity"))
+	},
+	"azure.subscription.sreAgentService.agent.knowledgeGraphIdentity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSreAgentServiceAgent).GetKnowledgeGraphIdentity()).ToDataRes(types.Resource("azure.subscription.managedIdentity"))
+	},
+	"azure.subscription.sreAgentService.agent.managedResources": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSreAgentServiceAgent).GetManagedResources()).ToDataRes(types.Array(types.String))
+	},
+	"azure.subscription.sreAgentService.agent.managedResourceGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSreAgentServiceAgent).GetManagedResourceGroups()).ToDataRes(types.Array(types.Resource("azure.subscription.resourcegroup")))
+	},
 	"azure.subscription.machineLearningService.subscriptionId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionMachineLearningService).GetSubscriptionId()).ToDataRes(types.String)
 	},
@@ -22727,6 +22919,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.machineLearningService.workspace.storageHnsEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).GetStorageHnsEnabled()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.machineLearningService.workspace.systemDatastoresAuthMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).GetSystemDatastoresAuthMode()).ToDataRes(types.String)
 	},
 	"azure.subscription.machineLearningService.workspace.workspaceTenantId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).GetWorkspaceTenantId()).ToDataRes(types.String)
@@ -23060,6 +23255,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.machineLearningService.workspace.compute.assignedUserTenantId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute).GetAssignedUserTenantId()).ToDataRes(types.String)
+	},
+	"azure.subscription.machineLearningService.workspace.compute.idleShutdownEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute).GetIdleShutdownEnabled()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.machineLearningService.workspace.compute.idleTimeBeforeShutdown": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute).GetIdleTimeBeforeShutdown()).ToDataRes(types.String)
+	},
+	"azure.subscription.machineLearningService.workspace.compute.idleShutdownMinutes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute).GetIdleShutdownMinutes()).ToDataRes(types.Int)
+	},
+	"azure.subscription.machineLearningService.workspace.compute.startStopSchedules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute).GetStartStopSchedules()).ToDataRes(types.Array(types.Dict))
 	},
 	"azure.subscription.machineLearningService.workspace.compute.systemMetadata": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute).GetSystemMetadata()).ToDataRes(types.Resource("azure.subscription.systemData"))
@@ -26753,6 +26960,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.botService": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscription).BotService, ok = plugin.RawToTValue[*mqlAzureSubscriptionBotService](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.videoIndexer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscription).VideoIndexer, ok = plugin.RawToTValue[*mqlAzureSubscriptionVideoIndexerService](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.healthBot": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscription).HealthBot, ok = plugin.RawToTValue[*mqlAzureSubscriptionHealthBotService](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.sreAgent": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscription).SreAgent, ok = plugin.RawToTValue[*mqlAzureSubscriptionSreAgentService](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.webService.function.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -54203,6 +54422,234 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionBotServiceBotConnection).ProvisioningState, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.videoIndexerService.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionVideoIndexerService).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.subscription.videoIndexerService.subscriptionId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionVideoIndexerService).SubscriptionId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.videoIndexerService.accounts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionVideoIndexerService).Accounts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.videoIndexerService.account.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.subscription.videoIndexerService.account.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.videoIndexerService.account.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.videoIndexerService.account.location": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).Location, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.videoIndexerService.account.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.videoIndexerService.account.resourceIdentity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).ResourceIdentity, ok = plugin.RawToTValue[*mqlAzureSubscriptionResourceIdentity](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.videoIndexerService.account.accountId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).AccountId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.videoIndexerService.account.tenantId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).TenantId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.videoIndexerService.account.publicNetworkAccess": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).PublicNetworkAccess, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.videoIndexerService.account.privateEndpointConnections": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).PrivateEndpointConnections, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.videoIndexerService.account.storageAccount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).StorageAccount, ok = plugin.RawToTValue[*mqlAzureSubscriptionStorageServiceAccount](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.videoIndexerService.account.storageAccessIdentity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).StorageAccessIdentity, ok = plugin.RawToTValue[*mqlAzureSubscriptionManagedIdentity](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.videoIndexerService.account.openAiAccount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).OpenAiAccount, ok = plugin.RawToTValue[*mqlAzureSubscriptionCognitiveServicesServiceAccount](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.videoIndexerService.account.openAiAccessIdentity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).OpenAiAccessIdentity, ok = plugin.RawToTValue[*mqlAzureSubscriptionManagedIdentity](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.videoIndexerService.account.totalMinutesIndexed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).TotalMinutesIndexed, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.videoIndexerService.account.provisioningState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionVideoIndexerServiceAccount).ProvisioningState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.healthBotService.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionHealthBotService).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.subscription.healthBotService.subscriptionId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionHealthBotService).SubscriptionId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.healthBotService.bots": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionHealthBotService).Bots, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.healthBotService.bot.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionHealthBotServiceBot).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.subscription.healthBotService.bot.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionHealthBotServiceBot).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.healthBotService.bot.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionHealthBotServiceBot).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.healthBotService.bot.location": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionHealthBotServiceBot).Location, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.healthBotService.bot.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionHealthBotServiceBot).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.healthBotService.bot.skuData": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionHealthBotServiceBot).SkuData, ok = plugin.RawToTValue[*mqlAzureSubscriptionResourceSku](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.healthBotService.bot.resourceIdentity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionHealthBotServiceBot).ResourceIdentity, ok = plugin.RawToTValue[*mqlAzureSubscriptionResourceIdentity](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.healthBotService.bot.accessControlMethod": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionHealthBotServiceBot).AccessControlMethod, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.healthBotService.bot.customerManagedKeyEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionHealthBotServiceBot).CustomerManagedKeyEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.healthBotService.bot.encryptionKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionHealthBotServiceBot).EncryptionKey, ok = plugin.RawToTValue[*mqlAzureSubscriptionKeyVaultServiceKey](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.healthBotService.bot.encryptionKeyName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionHealthBotServiceBot).EncryptionKeyName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.healthBotService.bot.encryptionKeyVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionHealthBotServiceBot).EncryptionKeyVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.healthBotService.bot.encryptionIdentity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionHealthBotServiceBot).EncryptionIdentity, ok = plugin.RawToTValue[*mqlAzureSubscriptionManagedIdentity](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.healthBotService.bot.botManagementPortalLink": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionHealthBotServiceBot).BotManagementPortalLink, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.healthBotService.bot.provisioningState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionHealthBotServiceBot).ProvisioningState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.sreAgentService.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSreAgentService).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.subscription.sreAgentService.subscriptionId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSreAgentService).SubscriptionId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.sreAgentService.agents": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSreAgentService).Agents, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.sreAgentService.agent.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSreAgentServiceAgent).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.subscription.sreAgentService.agent.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSreAgentServiceAgent).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.sreAgentService.agent.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSreAgentServiceAgent).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.sreAgentService.agent.location": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSreAgentServiceAgent).Location, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.sreAgentService.agent.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSreAgentServiceAgent).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.sreAgentService.agent.resourceIdentity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSreAgentServiceAgent).ResourceIdentity, ok = plugin.RawToTValue[*mqlAzureSubscriptionResourceIdentity](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.sreAgentService.agent.provisioningState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSreAgentServiceAgent).ProvisioningState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.sreAgentService.agent.powerState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSreAgentServiceAgent).PowerState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.sreAgentService.agent.runningState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSreAgentServiceAgent).RunningState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.sreAgentService.agent.agentEndpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSreAgentServiceAgent).AgentEndpoint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.sreAgentService.agent.upgradeChannel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSreAgentServiceAgent).UpgradeChannel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.sreAgentService.agent.actionMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSreAgentServiceAgent).ActionMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.sreAgentService.agent.actionAccessLevel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSreAgentServiceAgent).ActionAccessLevel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.sreAgentService.agent.actionIdentity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSreAgentServiceAgent).ActionIdentity, ok = plugin.RawToTValue[*mqlAzureSubscriptionManagedIdentity](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.sreAgentService.agent.knowledgeGraphIdentity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSreAgentServiceAgent).KnowledgeGraphIdentity, ok = plugin.RawToTValue[*mqlAzureSubscriptionManagedIdentity](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.sreAgentService.agent.managedResources": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSreAgentServiceAgent).ManagedResources, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.sreAgentService.agent.managedResourceGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSreAgentServiceAgent).ManagedResourceGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.machineLearningService.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionMachineLearningService).__id, ok = v.Value.(string)
 		return
@@ -54413,6 +54860,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.machineLearningService.workspace.storageHnsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).StorageHnsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.workspace.systemDatastoresAuthMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).SystemDatastoresAuthMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.machineLearningService.workspace.workspaceTenantId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -54881,6 +55332,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.machineLearningService.workspace.compute.assignedUserTenantId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute).AssignedUserTenantId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.workspace.compute.idleShutdownEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute).IdleShutdownEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.workspace.compute.idleTimeBeforeShutdown": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute).IdleTimeBeforeShutdown, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.workspace.compute.idleShutdownMinutes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute).IdleShutdownMinutes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.workspace.compute.startStopSchedules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute).StartStopSchedules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.machineLearningService.workspace.compute.systemMetadata": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -60168,6 +60635,9 @@ type mqlAzureSubscription struct {
 	Automation            plugin.TValue[*mqlAzureSubscriptionAutomationService]
 	DesktopVirtualization plugin.TValue[*mqlAzureSubscriptionDesktopVirtualizationService]
 	BotService            plugin.TValue[*mqlAzureSubscriptionBotService]
+	VideoIndexer          plugin.TValue[*mqlAzureSubscriptionVideoIndexerService]
+	HealthBot             plugin.TValue[*mqlAzureSubscriptionHealthBotService]
+	SreAgent              plugin.TValue[*mqlAzureSubscriptionSreAgentService]
 }
 
 // createAzureSubscription creates a new instance of this resource
@@ -61168,6 +61638,54 @@ func (c *mqlAzureSubscription) GetBotService() *plugin.TValue[*mqlAzureSubscript
 		}
 
 		return c.botService()
+	})
+}
+
+func (c *mqlAzureSubscription) GetVideoIndexer() *plugin.TValue[*mqlAzureSubscriptionVideoIndexerService] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionVideoIndexerService](&c.VideoIndexer, func() (*mqlAzureSubscriptionVideoIndexerService, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription", c.__id, "videoIndexer")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionVideoIndexerService), nil
+			}
+		}
+
+		return c.videoIndexer()
+	})
+}
+
+func (c *mqlAzureSubscription) GetHealthBot() *plugin.TValue[*mqlAzureSubscriptionHealthBotService] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionHealthBotService](&c.HealthBot, func() (*mqlAzureSubscriptionHealthBotService, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription", c.__id, "healthBot")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionHealthBotService), nil
+			}
+		}
+
+		return c.healthBot()
+	})
+}
+
+func (c *mqlAzureSubscription) GetSreAgent() *plugin.TValue[*mqlAzureSubscriptionSreAgentService] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionSreAgentService](&c.SreAgent, func() (*mqlAzureSubscriptionSreAgentService, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription", c.__id, "sreAgent")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionSreAgentService), nil
+			}
+		}
+
+		return c.sreAgent()
 	})
 }
 
@@ -127366,6 +127884,681 @@ func (c *mqlAzureSubscriptionBotServiceBotConnection) GetProvisioningState() *pl
 	return &c.ProvisioningState
 }
 
+// mqlAzureSubscriptionVideoIndexerService for the azure.subscription.videoIndexerService resource
+type mqlAzureSubscriptionVideoIndexerService struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzureSubscriptionVideoIndexerServiceInternal it will be used here
+	SubscriptionId plugin.TValue[string]
+	Accounts       plugin.TValue[[]any]
+}
+
+// createAzureSubscriptionVideoIndexerService creates a new instance of this resource
+func createAzureSubscriptionVideoIndexerService(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionVideoIndexerService{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.subscription.videoIndexerService", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureSubscriptionVideoIndexerService) MqlName() string {
+	return "azure.subscription.videoIndexerService"
+}
+
+func (c *mqlAzureSubscriptionVideoIndexerService) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureSubscriptionVideoIndexerService) GetSubscriptionId() *plugin.TValue[string] {
+	return &c.SubscriptionId
+}
+
+func (c *mqlAzureSubscriptionVideoIndexerService) GetAccounts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Accounts, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.videoIndexerService", c.__id, "accounts")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.accounts()
+	})
+}
+
+// mqlAzureSubscriptionVideoIndexerServiceAccount for the azure.subscription.videoIndexerService.account resource
+type mqlAzureSubscriptionVideoIndexerServiceAccount struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAzureSubscriptionVideoIndexerServiceAccountInternal
+	Id                         plugin.TValue[string]
+	Name                       plugin.TValue[string]
+	Location                   plugin.TValue[string]
+	Tags                       plugin.TValue[map[string]any]
+	ResourceIdentity           plugin.TValue[*mqlAzureSubscriptionResourceIdentity]
+	AccountId                  plugin.TValue[string]
+	TenantId                   plugin.TValue[string]
+	PublicNetworkAccess        plugin.TValue[string]
+	PrivateEndpointConnections plugin.TValue[[]any]
+	StorageAccount             plugin.TValue[*mqlAzureSubscriptionStorageServiceAccount]
+	StorageAccessIdentity      plugin.TValue[*mqlAzureSubscriptionManagedIdentity]
+	OpenAiAccount              plugin.TValue[*mqlAzureSubscriptionCognitiveServicesServiceAccount]
+	OpenAiAccessIdentity       plugin.TValue[*mqlAzureSubscriptionManagedIdentity]
+	TotalMinutesIndexed        plugin.TValue[int64]
+	ProvisioningState          plugin.TValue[string]
+}
+
+// createAzureSubscriptionVideoIndexerServiceAccount creates a new instance of this resource
+func createAzureSubscriptionVideoIndexerServiceAccount(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionVideoIndexerServiceAccount{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.subscription.videoIndexerService.account", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureSubscriptionVideoIndexerServiceAccount) MqlName() string {
+	return "azure.subscription.videoIndexerService.account"
+}
+
+func (c *mqlAzureSubscriptionVideoIndexerServiceAccount) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureSubscriptionVideoIndexerServiceAccount) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAzureSubscriptionVideoIndexerServiceAccount) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAzureSubscriptionVideoIndexerServiceAccount) GetLocation() *plugin.TValue[string] {
+	return &c.Location
+}
+
+func (c *mqlAzureSubscriptionVideoIndexerServiceAccount) GetTags() *plugin.TValue[map[string]any] {
+	return &c.Tags
+}
+
+func (c *mqlAzureSubscriptionVideoIndexerServiceAccount) GetResourceIdentity() *plugin.TValue[*mqlAzureSubscriptionResourceIdentity] {
+	return &c.ResourceIdentity
+}
+
+func (c *mqlAzureSubscriptionVideoIndexerServiceAccount) GetAccountId() *plugin.TValue[string] {
+	return &c.AccountId
+}
+
+func (c *mqlAzureSubscriptionVideoIndexerServiceAccount) GetTenantId() *plugin.TValue[string] {
+	return &c.TenantId
+}
+
+func (c *mqlAzureSubscriptionVideoIndexerServiceAccount) GetPublicNetworkAccess() *plugin.TValue[string] {
+	return &c.PublicNetworkAccess
+}
+
+func (c *mqlAzureSubscriptionVideoIndexerServiceAccount) GetPrivateEndpointConnections() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PrivateEndpointConnections, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.videoIndexerService.account", c.__id, "privateEndpointConnections")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.privateEndpointConnections()
+	})
+}
+
+func (c *mqlAzureSubscriptionVideoIndexerServiceAccount) GetStorageAccount() *plugin.TValue[*mqlAzureSubscriptionStorageServiceAccount] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionStorageServiceAccount](&c.StorageAccount, func() (*mqlAzureSubscriptionStorageServiceAccount, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.videoIndexerService.account", c.__id, "storageAccount")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionStorageServiceAccount), nil
+			}
+		}
+
+		return c.storageAccount()
+	})
+}
+
+func (c *mqlAzureSubscriptionVideoIndexerServiceAccount) GetStorageAccessIdentity() *plugin.TValue[*mqlAzureSubscriptionManagedIdentity] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionManagedIdentity](&c.StorageAccessIdentity, func() (*mqlAzureSubscriptionManagedIdentity, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.videoIndexerService.account", c.__id, "storageAccessIdentity")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionManagedIdentity), nil
+			}
+		}
+
+		return c.storageAccessIdentity()
+	})
+}
+
+func (c *mqlAzureSubscriptionVideoIndexerServiceAccount) GetOpenAiAccount() *plugin.TValue[*mqlAzureSubscriptionCognitiveServicesServiceAccount] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionCognitiveServicesServiceAccount](&c.OpenAiAccount, func() (*mqlAzureSubscriptionCognitiveServicesServiceAccount, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.videoIndexerService.account", c.__id, "openAiAccount")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionCognitiveServicesServiceAccount), nil
+			}
+		}
+
+		return c.openAiAccount()
+	})
+}
+
+func (c *mqlAzureSubscriptionVideoIndexerServiceAccount) GetOpenAiAccessIdentity() *plugin.TValue[*mqlAzureSubscriptionManagedIdentity] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionManagedIdentity](&c.OpenAiAccessIdentity, func() (*mqlAzureSubscriptionManagedIdentity, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.videoIndexerService.account", c.__id, "openAiAccessIdentity")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionManagedIdentity), nil
+			}
+		}
+
+		return c.openAiAccessIdentity()
+	})
+}
+
+func (c *mqlAzureSubscriptionVideoIndexerServiceAccount) GetTotalMinutesIndexed() *plugin.TValue[int64] {
+	return &c.TotalMinutesIndexed
+}
+
+func (c *mqlAzureSubscriptionVideoIndexerServiceAccount) GetProvisioningState() *plugin.TValue[string] {
+	return &c.ProvisioningState
+}
+
+// mqlAzureSubscriptionHealthBotService for the azure.subscription.healthBotService resource
+type mqlAzureSubscriptionHealthBotService struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzureSubscriptionHealthBotServiceInternal it will be used here
+	SubscriptionId plugin.TValue[string]
+	Bots           plugin.TValue[[]any]
+}
+
+// createAzureSubscriptionHealthBotService creates a new instance of this resource
+func createAzureSubscriptionHealthBotService(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionHealthBotService{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.subscription.healthBotService", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureSubscriptionHealthBotService) MqlName() string {
+	return "azure.subscription.healthBotService"
+}
+
+func (c *mqlAzureSubscriptionHealthBotService) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureSubscriptionHealthBotService) GetSubscriptionId() *plugin.TValue[string] {
+	return &c.SubscriptionId
+}
+
+func (c *mqlAzureSubscriptionHealthBotService) GetBots() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Bots, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.healthBotService", c.__id, "bots")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.bots()
+	})
+}
+
+// mqlAzureSubscriptionHealthBotServiceBot for the azure.subscription.healthBotService.bot resource
+type mqlAzureSubscriptionHealthBotServiceBot struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAzureSubscriptionHealthBotServiceBotInternal
+	Id                        plugin.TValue[string]
+	Name                      plugin.TValue[string]
+	Location                  plugin.TValue[string]
+	Tags                      plugin.TValue[map[string]any]
+	SkuData                   plugin.TValue[*mqlAzureSubscriptionResourceSku]
+	ResourceIdentity          plugin.TValue[*mqlAzureSubscriptionResourceIdentity]
+	AccessControlMethod       plugin.TValue[string]
+	CustomerManagedKeyEnabled plugin.TValue[bool]
+	EncryptionKey             plugin.TValue[*mqlAzureSubscriptionKeyVaultServiceKey]
+	EncryptionKeyName         plugin.TValue[string]
+	EncryptionKeyVersion      plugin.TValue[string]
+	EncryptionIdentity        plugin.TValue[*mqlAzureSubscriptionManagedIdentity]
+	BotManagementPortalLink   plugin.TValue[string]
+	ProvisioningState         plugin.TValue[string]
+}
+
+// createAzureSubscriptionHealthBotServiceBot creates a new instance of this resource
+func createAzureSubscriptionHealthBotServiceBot(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionHealthBotServiceBot{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.subscription.healthBotService.bot", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureSubscriptionHealthBotServiceBot) MqlName() string {
+	return "azure.subscription.healthBotService.bot"
+}
+
+func (c *mqlAzureSubscriptionHealthBotServiceBot) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureSubscriptionHealthBotServiceBot) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAzureSubscriptionHealthBotServiceBot) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAzureSubscriptionHealthBotServiceBot) GetLocation() *plugin.TValue[string] {
+	return &c.Location
+}
+
+func (c *mqlAzureSubscriptionHealthBotServiceBot) GetTags() *plugin.TValue[map[string]any] {
+	return &c.Tags
+}
+
+func (c *mqlAzureSubscriptionHealthBotServiceBot) GetSkuData() *plugin.TValue[*mqlAzureSubscriptionResourceSku] {
+	return &c.SkuData
+}
+
+func (c *mqlAzureSubscriptionHealthBotServiceBot) GetResourceIdentity() *plugin.TValue[*mqlAzureSubscriptionResourceIdentity] {
+	return &c.ResourceIdentity
+}
+
+func (c *mqlAzureSubscriptionHealthBotServiceBot) GetAccessControlMethod() *plugin.TValue[string] {
+	return &c.AccessControlMethod
+}
+
+func (c *mqlAzureSubscriptionHealthBotServiceBot) GetCustomerManagedKeyEnabled() *plugin.TValue[bool] {
+	return &c.CustomerManagedKeyEnabled
+}
+
+func (c *mqlAzureSubscriptionHealthBotServiceBot) GetEncryptionKey() *plugin.TValue[*mqlAzureSubscriptionKeyVaultServiceKey] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionKeyVaultServiceKey](&c.EncryptionKey, func() (*mqlAzureSubscriptionKeyVaultServiceKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.healthBotService.bot", c.__id, "encryptionKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionKeyVaultServiceKey), nil
+			}
+		}
+
+		return c.encryptionKey()
+	})
+}
+
+func (c *mqlAzureSubscriptionHealthBotServiceBot) GetEncryptionKeyName() *plugin.TValue[string] {
+	return &c.EncryptionKeyName
+}
+
+func (c *mqlAzureSubscriptionHealthBotServiceBot) GetEncryptionKeyVersion() *plugin.TValue[string] {
+	return &c.EncryptionKeyVersion
+}
+
+func (c *mqlAzureSubscriptionHealthBotServiceBot) GetEncryptionIdentity() *plugin.TValue[*mqlAzureSubscriptionManagedIdentity] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionManagedIdentity](&c.EncryptionIdentity, func() (*mqlAzureSubscriptionManagedIdentity, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.healthBotService.bot", c.__id, "encryptionIdentity")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionManagedIdentity), nil
+			}
+		}
+
+		return c.encryptionIdentity()
+	})
+}
+
+func (c *mqlAzureSubscriptionHealthBotServiceBot) GetBotManagementPortalLink() *plugin.TValue[string] {
+	return &c.BotManagementPortalLink
+}
+
+func (c *mqlAzureSubscriptionHealthBotServiceBot) GetProvisioningState() *plugin.TValue[string] {
+	return &c.ProvisioningState
+}
+
+// mqlAzureSubscriptionSreAgentService for the azure.subscription.sreAgentService resource
+type mqlAzureSubscriptionSreAgentService struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzureSubscriptionSreAgentServiceInternal it will be used here
+	SubscriptionId plugin.TValue[string]
+	Agents         plugin.TValue[[]any]
+}
+
+// createAzureSubscriptionSreAgentService creates a new instance of this resource
+func createAzureSubscriptionSreAgentService(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionSreAgentService{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.subscription.sreAgentService", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureSubscriptionSreAgentService) MqlName() string {
+	return "azure.subscription.sreAgentService"
+}
+
+func (c *mqlAzureSubscriptionSreAgentService) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureSubscriptionSreAgentService) GetSubscriptionId() *plugin.TValue[string] {
+	return &c.SubscriptionId
+}
+
+func (c *mqlAzureSubscriptionSreAgentService) GetAgents() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Agents, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.sreAgentService", c.__id, "agents")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.agents()
+	})
+}
+
+// mqlAzureSubscriptionSreAgentServiceAgent for the azure.subscription.sreAgentService.agent resource
+type mqlAzureSubscriptionSreAgentServiceAgent struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAzureSubscriptionSreAgentServiceAgentInternal
+	Id                     plugin.TValue[string]
+	Name                   plugin.TValue[string]
+	Location               plugin.TValue[string]
+	Tags                   plugin.TValue[map[string]any]
+	ResourceIdentity       plugin.TValue[*mqlAzureSubscriptionResourceIdentity]
+	ProvisioningState      plugin.TValue[string]
+	PowerState             plugin.TValue[string]
+	RunningState           plugin.TValue[string]
+	AgentEndpoint          plugin.TValue[string]
+	UpgradeChannel         plugin.TValue[string]
+	ActionMode             plugin.TValue[string]
+	ActionAccessLevel      plugin.TValue[string]
+	ActionIdentity         plugin.TValue[*mqlAzureSubscriptionManagedIdentity]
+	KnowledgeGraphIdentity plugin.TValue[*mqlAzureSubscriptionManagedIdentity]
+	ManagedResources       plugin.TValue[[]any]
+	ManagedResourceGroups  plugin.TValue[[]any]
+}
+
+// createAzureSubscriptionSreAgentServiceAgent creates a new instance of this resource
+func createAzureSubscriptionSreAgentServiceAgent(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionSreAgentServiceAgent{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.subscription.sreAgentService.agent", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureSubscriptionSreAgentServiceAgent) MqlName() string {
+	return "azure.subscription.sreAgentService.agent"
+}
+
+func (c *mqlAzureSubscriptionSreAgentServiceAgent) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureSubscriptionSreAgentServiceAgent) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAzureSubscriptionSreAgentServiceAgent) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAzureSubscriptionSreAgentServiceAgent) GetLocation() *plugin.TValue[string] {
+	return &c.Location
+}
+
+func (c *mqlAzureSubscriptionSreAgentServiceAgent) GetTags() *plugin.TValue[map[string]any] {
+	return &c.Tags
+}
+
+func (c *mqlAzureSubscriptionSreAgentServiceAgent) GetResourceIdentity() *plugin.TValue[*mqlAzureSubscriptionResourceIdentity] {
+	return &c.ResourceIdentity
+}
+
+func (c *mqlAzureSubscriptionSreAgentServiceAgent) GetProvisioningState() *plugin.TValue[string] {
+	return &c.ProvisioningState
+}
+
+func (c *mqlAzureSubscriptionSreAgentServiceAgent) GetPowerState() *plugin.TValue[string] {
+	return &c.PowerState
+}
+
+func (c *mqlAzureSubscriptionSreAgentServiceAgent) GetRunningState() *plugin.TValue[string] {
+	return &c.RunningState
+}
+
+func (c *mqlAzureSubscriptionSreAgentServiceAgent) GetAgentEndpoint() *plugin.TValue[string] {
+	return &c.AgentEndpoint
+}
+
+func (c *mqlAzureSubscriptionSreAgentServiceAgent) GetUpgradeChannel() *plugin.TValue[string] {
+	return &c.UpgradeChannel
+}
+
+func (c *mqlAzureSubscriptionSreAgentServiceAgent) GetActionMode() *plugin.TValue[string] {
+	return &c.ActionMode
+}
+
+func (c *mqlAzureSubscriptionSreAgentServiceAgent) GetActionAccessLevel() *plugin.TValue[string] {
+	return &c.ActionAccessLevel
+}
+
+func (c *mqlAzureSubscriptionSreAgentServiceAgent) GetActionIdentity() *plugin.TValue[*mqlAzureSubscriptionManagedIdentity] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionManagedIdentity](&c.ActionIdentity, func() (*mqlAzureSubscriptionManagedIdentity, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.sreAgentService.agent", c.__id, "actionIdentity")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionManagedIdentity), nil
+			}
+		}
+
+		return c.actionIdentity()
+	})
+}
+
+func (c *mqlAzureSubscriptionSreAgentServiceAgent) GetKnowledgeGraphIdentity() *plugin.TValue[*mqlAzureSubscriptionManagedIdentity] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionManagedIdentity](&c.KnowledgeGraphIdentity, func() (*mqlAzureSubscriptionManagedIdentity, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.sreAgentService.agent", c.__id, "knowledgeGraphIdentity")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionManagedIdentity), nil
+			}
+		}
+
+		return c.knowledgeGraphIdentity()
+	})
+}
+
+func (c *mqlAzureSubscriptionSreAgentServiceAgent) GetManagedResources() *plugin.TValue[[]any] {
+	return &c.ManagedResources
+}
+
+func (c *mqlAzureSubscriptionSreAgentServiceAgent) GetManagedResourceGroups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ManagedResourceGroups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.sreAgentService.agent", c.__id, "managedResourceGroups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.managedResourceGroups()
+	})
+}
+
 // mqlAzureSubscriptionMachineLearningService for the azure.subscription.machineLearningService resource
 type mqlAzureSubscriptionMachineLearningService struct {
 	MqlRuntime *plugin.Runtime
@@ -127727,6 +128920,7 @@ type mqlAzureSubscriptionMachineLearningServiceWorkspace struct {
 	AssociatedWorkspaces            plugin.TValue[[]any]
 	PrivateLinkCount                plugin.TValue[int64]
 	StorageHnsEnabled               plugin.TValue[bool]
+	SystemDatastoresAuthMode        plugin.TValue[string]
 	WorkspaceTenantId               plugin.TValue[string]
 	DiscoveryUrl                    plugin.TValue[string]
 	MlFlowTrackingUri               plugin.TValue[string]
@@ -127928,6 +129122,12 @@ func (c *mqlAzureSubscriptionMachineLearningServiceWorkspace) GetPrivateLinkCoun
 
 func (c *mqlAzureSubscriptionMachineLearningServiceWorkspace) GetStorageHnsEnabled() *plugin.TValue[bool] {
 	return &c.StorageHnsEnabled
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceWorkspace) GetSystemDatastoresAuthMode() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SystemDatastoresAuthMode, func() (string, error) {
+		return c.systemDatastoresAuthMode()
+	})
 }
 
 func (c *mqlAzureSubscriptionMachineLearningServiceWorkspace) GetWorkspaceTenantId() *plugin.TValue[string] {
@@ -128848,27 +130048,31 @@ type mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAzureSubscriptionMachineLearningServiceWorkspaceComputeInternal
-	Id                   plugin.TValue[string]
-	Name                 plugin.TValue[string]
-	Location             plugin.TValue[string]
-	Tags                 plugin.TValue[map[string]any]
-	Identity             plugin.TValue[any]
-	ResourceIdentity     plugin.TValue[*mqlAzureSubscriptionResourceIdentity]
-	ComputeType          plugin.TValue[string]
-	Description          plugin.TValue[string]
-	DisableLocalAuth     plugin.TValue[bool]
-	IsAttachedCompute    plugin.TValue[bool]
-	ResourceId           plugin.TValue[string]
-	ComputeLocation      plugin.TValue[string]
-	ProvisioningState    plugin.TValue[string]
-	CreatedOn            plugin.TValue[*time.Time]
-	ModifiedOn           plugin.TValue[*time.Time]
-	EnableNodePublicIp   plugin.TValue[bool]
-	SshPublicAccess      plugin.TValue[string]
-	Subnet               plugin.TValue[*mqlAzureSubscriptionNetworkServiceSubnet]
-	AssignedUserObjectId plugin.TValue[string]
-	AssignedUserTenantId plugin.TValue[string]
-	SystemMetadata       plugin.TValue[*mqlAzureSubscriptionSystemData]
+	Id                     plugin.TValue[string]
+	Name                   plugin.TValue[string]
+	Location               plugin.TValue[string]
+	Tags                   plugin.TValue[map[string]any]
+	Identity               plugin.TValue[any]
+	ResourceIdentity       plugin.TValue[*mqlAzureSubscriptionResourceIdentity]
+	ComputeType            plugin.TValue[string]
+	Description            plugin.TValue[string]
+	DisableLocalAuth       plugin.TValue[bool]
+	IsAttachedCompute      plugin.TValue[bool]
+	ResourceId             plugin.TValue[string]
+	ComputeLocation        plugin.TValue[string]
+	ProvisioningState      plugin.TValue[string]
+	CreatedOn              plugin.TValue[*time.Time]
+	ModifiedOn             plugin.TValue[*time.Time]
+	EnableNodePublicIp     plugin.TValue[bool]
+	SshPublicAccess        plugin.TValue[string]
+	Subnet                 plugin.TValue[*mqlAzureSubscriptionNetworkServiceSubnet]
+	AssignedUserObjectId   plugin.TValue[string]
+	AssignedUserTenantId   plugin.TValue[string]
+	IdleShutdownEnabled    plugin.TValue[bool]
+	IdleTimeBeforeShutdown plugin.TValue[string]
+	IdleShutdownMinutes    plugin.TValue[int64]
+	StartStopSchedules     plugin.TValue[[]any]
+	SystemMetadata         plugin.TValue[*mqlAzureSubscriptionSystemData]
 }
 
 // createAzureSubscriptionMachineLearningServiceWorkspaceCompute creates a new instance of this resource
@@ -128998,6 +130202,30 @@ func (c *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) GetAssigned
 
 func (c *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) GetAssignedUserTenantId() *plugin.TValue[string] {
 	return &c.AssignedUserTenantId
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) GetIdleShutdownEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.IdleShutdownEnabled, func() (bool, error) {
+		return c.idleShutdownEnabled()
+	})
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) GetIdleTimeBeforeShutdown() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.IdleTimeBeforeShutdown, func() (string, error) {
+		return c.idleTimeBeforeShutdown()
+	})
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) GetIdleShutdownMinutes() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.IdleShutdownMinutes, func() (int64, error) {
+		return c.idleShutdownMinutes()
+	})
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) GetStartStopSchedules() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.StartStopSchedules, func() ([]any, error) {
+		return c.startStopSchedules()
+	})
 }
 
 func (c *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) GetSystemMetadata() *plugin.TValue[*mqlAzureSubscriptionSystemData] {

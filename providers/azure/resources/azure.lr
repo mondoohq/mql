@@ -423,6 +423,12 @@ azure.subscription @defaults ("name") {
   desktopVirtualization() azure.subscription.desktopVirtualizationService
   // Azure AI Bot Service resources in the subscription
   botService() azure.subscription.botService
+  // Azure AI Video Indexer resources in the subscription
+  videoIndexer() azure.subscription.videoIndexerService
+  // Azure Health Bot resources in the subscription
+  healthBot() azure.subscription.healthBotService
+  // Azure SRE Agent resources in the subscription
+  sreAgent() azure.subscription.sreAgentService
 }
 
 // Azure function
@@ -20214,6 +20220,216 @@ private azure.subscription.botService.bot.connection @defaults("name serviceProv
   provisioningState string
 }
 
+// Azure AI Video Indexer
+//
+// Video Indexer accounts (ARM-based) in the subscription, which extract
+// insights from video and audio stored in a linked storage account.
+private azure.subscription.videoIndexerService {
+  // Subscription identifier
+  subscriptionId string
+  // Video Indexer accounts in the subscription
+  accounts() []azure.subscription.videoIndexerService.account
+}
+
+// Azure AI Video Indexer account
+//
+// Single Video Indexer account, selected by `name` (for example
+// `azure.subscription.videoIndexer.accounts.where(name == "media-insights")`).
+// `publicNetworkAccess` reports whether the account is reachable from the
+// public internet and `privateEndpointConnections` the private endpoints into
+// it. `storageAccount` resolves the storage account holding the account's media
+// and insights, whose own network rules (such as the trusted-service bypass)
+// decide who else can reach that data; `storageAccessIdentity` is the identity
+// the account reaches it with. `openAiAccount` resolves the Azure OpenAI
+// resource connected for generative insights.
+azure.subscription.videoIndexerService.account @defaults("id name location publicNetworkAccess") {
+  // Account resource ID
+  id string
+  // Account name
+  name string
+  // Account location
+  location string
+  // Account tags
+  tags map[string]string
+  // Managed identity attached to the resource
+  resourceIdentity azure.subscription.resourceIdentity
+  // Data-plane ID of the account, used by the Video Indexer API and portal
+  accountId string
+  // Microsoft Entra tenant of the account
+  tenantId string
+  // Whether the account is reachable from the public internet ("Enabled" or "Disabled")
+  //
+  // An account that never set it reads "Enabled", which is what Azure uses
+  // then.
+  publicNetworkAccess string
+  // Private endpoint connections to the account
+  privateEndpointConnections() []azure.subscription.privateEndpointConnection
+  // Storage account holding the account's media and insights
+  storageAccount() azure.subscription.storageService.account
+  // User-assigned identity the account reaches its storage account with
+  //
+  // Null when no user-assigned identity is configured for storage access.
+  storageAccessIdentity() azure.subscription.managedIdentity
+  // Azure OpenAI account connected for generative insights
+  //
+  // Null when no Azure OpenAI resource is connected.
+  openAiAccount() azure.subscription.cognitiveServicesService.account
+  // User-assigned identity the account reaches its Azure OpenAI account with
+  //
+  // Null when no user-assigned identity is configured for Azure OpenAI access.
+  openAiAccessIdentity() azure.subscription.managedIdentity
+  // Total minutes of media indexed by the account
+  totalMinutesIndexed int
+  // Provisioning state of the account
+  //
+  // One of "Succeeded", "Failed", "Canceled", "Accepted", "Provisioning", or "Deleting".
+  provisioningState string
+}
+
+// Azure Health Bot
+//
+// Azure Health Bot (healthcare agent service) instances in the subscription.
+private azure.subscription.healthBotService {
+  // Subscription identifier
+  subscriptionId string
+  // Health Bot instances in the subscription
+  bots() []azure.subscription.healthBotService.bot
+}
+
+// Azure Health Bot instance
+//
+// Single Health Bot instance, selected by `name` (for example
+// `azure.subscription.healthBot.bots.where(name == "triage-bot")`).
+// `accessControlMethod` reports how users of the bot's management portal are
+// authorized (Microsoft Entra access management or the portal's own legacy
+// user list), and `encryptionKey` resolves the customer-managed key encrypting
+// the bot's data (null when Microsoft-managed keys are used).
+azure.subscription.healthBotService.bot @defaults("id name location accessControlMethod") {
+  // Health Bot resource ID
+  id string
+  // Health Bot name
+  name string
+  // Health Bot location
+  location string
+  // Health Bot tags
+  tags map[string]string
+  // Billable SKU the resource is provisioned at
+  skuData azure.subscription.resourceSku
+  // Managed identity attached to the resource
+  resourceIdentity azure.subscription.resourceIdentity
+  // How users of the management portal are authorized
+  //
+  // As Azure reports it. The API documents no fixed set of values; it tells a
+  // bot that uses Microsoft Entra access management (roles assigned in the
+  // Azure portal's access control) from one that uses the management portal's
+  // legacy user list. Empty when Azure does not report it.
+  accessControlMethod string
+  // Whether the bot's data is encrypted with a customer-managed key
+  //
+  // False when the bot uses Microsoft-managed keys.
+  customerManagedKeyEnabled bool
+  // Customer-managed Key Vault key encrypting the bot's data
+  //
+  // Null when the bot uses Microsoft-managed keys.
+  encryptionKey() azure.subscription.keyVaultService.key
+  // Name of the customer-managed key
+  //
+  // Empty when the bot uses Microsoft-managed keys.
+  encryptionKeyName string
+  // Version of the customer-managed key
+  //
+  // Empty when the bot uses Microsoft-managed keys or follows the key's
+  // latest version.
+  encryptionKeyVersion string
+  // User-assigned identity the bot reads its customer-managed key with
+  //
+  // Null when the bot uses Microsoft-managed keys or reads the key with its
+  // system-assigned identity.
+  encryptionIdentity() azure.subscription.managedIdentity
+  // Link to the bot's management portal
+  botManagementPortalLink string
+  // Provisioning state of the bot
+  provisioningState string
+}
+
+// Azure SRE Agent
+//
+// SRE Agents in the subscription, which investigate and remediate incidents
+// on the resources they are given.
+private azure.subscription.sreAgentService {
+  // Subscription identifier
+  subscriptionId string
+  // SRE Agents in the subscription
+  agents() []azure.subscription.sreAgentService.agent
+}
+
+// Azure SRE Agent
+//
+// Single SRE Agent, selected by `name` (for example
+// `azure.subscription.sreAgent.agents.where(name == "ops-agent")`).
+// `actionAccessLevel` is the access its identity gets on the resources it
+// manages ("Low" is read only, "High" lets it act), `actionMode` whether its
+// write actions run without approval, and `managedResources` with
+// `managedResourceGroups` the scopes it is given. Response plans and scheduled
+// tasks are configured in the agent itself, not through Azure Resource
+// Manager, and are not listed here.
+azure.subscription.sreAgentService.agent @defaults("id name actionMode actionAccessLevel") {
+  // Agent resource ID
+  id string
+  // Agent name
+  name string
+  // Agent location
+  location string
+  // Agent tags
+  tags map[string]string
+  // Managed identity attached to the resource
+  resourceIdentity azure.subscription.resourceIdentity
+  // Provisioning state of the agent
+  //
+  // One of "Succeeded", "Failed", "Canceled", "InProgress", or "Deleting".
+  provisioningState string
+  // Power state of the agent ("Running" or "Stopped")
+  powerState string
+  // Running state of the agent, as Azure reports it
+  runningState string
+  // Endpoint of the agent
+  agentEndpoint string
+  // Upgrade channel of the agent ("Preview" or "Stable")
+  upgradeChannel string
+  // Default run mode of the agent's write actions
+  //
+  // "Review" asks a user to approve each write action, "Autonomous" runs them
+  // without approval, and "ReadOnly" runs none. Empty when Azure does not
+  // report it.
+  actionMode string
+  // Access level of the agent on the resources it manages
+  //
+  // "Low" gives it read-only (Reader) permissions on its managed resource
+  // groups, "High" lets it take approved actions with its own managed
+  // identity. Empty when Azure does not report it.
+  actionAccessLevel string
+  // User-assigned identity the agent takes actions with
+  //
+  // Null when the configured identity is not a user-assigned managed
+  // identity.
+  actionIdentity() azure.subscription.managedIdentity
+  // User-assigned identity the agent reads its managed resources with
+  //
+  // Null when the configured identity is not a user-assigned managed
+  // identity.
+  knowledgeGraphIdentity() azure.subscription.managedIdentity
+  // ARM IDs of the scopes the agent manages
+  //
+  // Resource groups, subscriptions, or single resources, as configured. A
+  // scope wider than needed, such as a whole subscription, widens what the
+  // agent's identity can read and change.
+  managedResources []string
+  // Resource groups of this subscription the agent manages
+  //
+  // The resource-group entries of managedResources.
+  managedResourceGroups() []azure.subscription.resourcegroup
+}
+
 // Azure Machine Learning
 //
 // Machine Learning namespace covering the Azure Machine Learning workspaces in
@@ -20400,6 +20616,14 @@ azure.subscription.machineLearningService.workspace @defaults("id name location 
   // True means the backing storage uses Data Lake Storage semantics,
   // where POSIX ACLs govern access alongside role assignments.
   storageHnsEnabled bool
+  // How the workspace authenticates to its system datastores
+  //
+  // One of "accesskey" (the storage account key, stored as a workspace
+  // secret), "identity" (the workspace's managed identity, through Microsoft
+  // Entra ID role assignments), or "userdelegationsas" (a user delegation
+  // SAS). Lowercased, as the API returns it in either case. A workspace that
+  // never set the mode reads "accesskey", which is what Azure uses then.
+  systemDatastoresAuthMode() string
   // Tenant that owns the workspace
   workspaceTenantId string
   // URL of the discovery service that clients use to resolve workspace-scoped endpoints
@@ -20742,6 +20966,32 @@ azure.subscription.machineLearningService.workspace.compute @defaults("name comp
   // Null when the instance has no assigned user, and for compute types
   // other than ComputeInstance.
   assignedUserTenantId string
+  // Whether a compute instance shuts down after a period of inactivity
+  //
+  // False when the instance has no idle shutdown time, so it runs (and is
+  // billed) until stopped. Null for compute types other than
+  // ComputeInstance.
+  idleShutdownEnabled() bool
+  // Inactivity period after which a compute instance shuts down
+  //
+  // An ISO 8601 duration as Azure returns it, for example "PT30M". Azure
+  // accepts 15 minutes to 3 days. Empty when idle shutdown is off, and null
+  // for compute types other than ComputeInstance.
+  idleTimeBeforeShutdown() string
+  // Inactivity period after which a compute instance shuts down, in minutes
+  //
+  // idleTimeBeforeShutdown converted to whole minutes. 0 when idle shutdown
+  // is off, and null for compute types other than ComputeInstance.
+  idleShutdownMinutes() int
+  // Start and stop schedules of a compute instance
+  //
+  // One entry per schedule with `action` ("Start" or "Stop"), `status`
+  // ("Enabled" or "Disabled"), `triggerType` ("Cron" or "Recurrence"),
+  // `provisioningStatus`, and the `cron` (`expression`, `startTime`,
+  // `timeZone`) or `recurrence` (`frequency`, `interval`, `schedule`,
+  // `startTime`, `timeZone`) that triggers it. Empty when the instance has
+  // no schedule, and null for compute types other than ComputeInstance.
+  startStopSchedules() []dict
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
 }

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
@@ -995,6 +996,13 @@ type mqlAzureSubscriptionMachineLearningServiceWorkspaceServerlessEndpointIntern
 type mqlAzureSubscriptionMachineLearningServiceWorkspaceComputeInternal struct {
 	cacheSystemData any
 	cacheSubnetId   *string
+
+	// instanceLock guards the compute instance settings read with a newer API
+	// version than the SDK speaks; one fetch feeds all four idle and schedule
+	// fields.
+	instanceLock    sync.Mutex
+	instanceFetched bool
+	instance        mlComputeInstanceSettings
 }
 
 // mlComputeNodeAccess holds the node-level network and access settings of a
@@ -1080,4 +1088,224 @@ func (a *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) systemMetad
 
 func (a *mqlAzureSubscriptionMachineLearningServiceWorkspaceModel) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
 	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
+}
+
+// The armmachinelearning module speaks API version 2024-04-01, which has
+// neither a workspace's system datastore auth mode nor a compute instance's
+// idle shutdown time. Those are read with a request through the azcore ARM
+// pipeline at a newer stable API version (see arm_raw.go).
+const mlRestAPIVersion = "2025-09-01"
+
+// mlSystemDatastoresAuthMode normalizes a workspace's system datastore auth
+// mode. Azure returns it in either case ("identity", "Identity"), and leaves
+// it out on a workspace that never set it, which then uses the storage account
+// key.
+func mlSystemDatastoresAuthMode(mode *string) string {
+	return strings.ToLower(orDefault(mode, "accesskey"))
+}
+
+func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) systemDatastoresAuthMode() (string, error) {
+	conn, err := azureConn(a.MqlRuntime)
+	if err != nil {
+		return "", err
+	}
+	client, err := newRawArmClient(conn, "mql-azure-machinelearning")
+	if err != nil {
+		return "", err
+	}
+	var ws struct {
+		Properties *struct {
+			SystemDatastoresAuthMode *string `json:"systemDatastoresAuthMode"`
+		} `json:"properties"`
+	}
+	if err := armGetJSON(context.Background(), client, a.Id.Data, mlRestAPIVersion, &ws); err != nil {
+		return "", classifyAzureRefusal(err, "Microsoft.MachineLearningServices/workspaces/read")
+	}
+	var mode *string
+	if ws.Properties != nil {
+		mode = ws.Properties.SystemDatastoresAuthMode
+	}
+	return mlSystemDatastoresAuthMode(mode), nil
+}
+
+// mlComputeInstanceSettings are the idle shutdown and start/stop schedule
+// settings of a compute instance.
+type mlComputeInstanceSettings struct {
+	idleTimeBeforeShutdown string
+	schedules              []any
+}
+
+// mlComputeInstanceResponse is the part of a compute read that carries a
+// compute instance's idle shutdown and schedules.
+type mlComputeInstanceResponse struct {
+	Properties *struct {
+		Properties *struct {
+			IdleTimeBeforeShutdown *string `json:"idleTimeBeforeShutdown"`
+			Schedules              *struct {
+				ComputeStartStop []map[string]any `json:"computeStartStop"`
+			} `json:"schedules"`
+		} `json:"properties"`
+	} `json:"properties"`
+}
+
+// settings extracts the compute instance settings. Absent values mean idle
+// shutdown is off and no schedule is set.
+func (r mlComputeInstanceResponse) settings() mlComputeInstanceSettings {
+	out := mlComputeInstanceSettings{schedules: []any{}}
+	if r.Properties == nil || r.Properties.Properties == nil {
+		return out
+	}
+	p := r.Properties.Properties
+	out.idleTimeBeforeShutdown = convert.ToValue(p.IdleTimeBeforeShutdown)
+	if p.Schedules != nil {
+		for _, s := range p.Schedules.ComputeStartStop {
+			if s == nil {
+				continue
+			}
+			// The schedule key is a deprecated block Azure no longer uses.
+			delete(s, "schedule")
+			out.schedules = append(out.schedules, s)
+		}
+	}
+	return out
+}
+
+// isComputeInstance reports whether the compute is a compute instance, the only
+// type with idle shutdown and start/stop schedules. Other types read null.
+func (a *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) isComputeInstance() bool {
+	return a.ComputeType.Data == string(ml.ComputeTypeComputeInstance)
+}
+
+// instanceSettings fetches the compute instance settings once.
+func (a *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) instanceSettings() (mlComputeInstanceSettings, error) {
+	a.instanceLock.Lock()
+	defer a.instanceLock.Unlock()
+	if a.instanceFetched {
+		return a.instance, nil
+	}
+	conn, err := azureConn(a.MqlRuntime)
+	if err != nil {
+		return mlComputeInstanceSettings{}, err
+	}
+	client, err := newRawArmClient(conn, "mql-azure-machinelearning")
+	if err != nil {
+		return mlComputeInstanceSettings{}, err
+	}
+	var resp mlComputeInstanceResponse
+	if err := armGetJSON(context.Background(), client, a.Id.Data, mlRestAPIVersion, &resp); err != nil {
+		return mlComputeInstanceSettings{}, classifyAzureRefusal(err, "Microsoft.MachineLearningServices/workspaces/computes/read")
+	}
+	a.instance = resp.settings()
+	a.instanceFetched = true
+	return a.instance, nil
+}
+
+func (a *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) idleTimeBeforeShutdown() (string, error) {
+	if !a.isComputeInstance() {
+		a.IdleTimeBeforeShutdown.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	s, err := a.instanceSettings()
+	return s.idleTimeBeforeShutdown, err
+}
+
+func (a *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) idleShutdownEnabled() (bool, error) {
+	if !a.isComputeInstance() {
+		a.IdleShutdownEnabled.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	s, err := a.instanceSettings()
+	return s.idleTimeBeforeShutdown != "", err
+}
+
+func (a *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) idleShutdownMinutes() (int64, error) {
+	if !a.isComputeInstance() {
+		a.IdleShutdownMinutes.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	s, err := a.instanceSettings()
+	if err != nil {
+		return 0, err
+	}
+	if s.idleTimeBeforeShutdown == "" {
+		return 0, nil
+	}
+	minutes, err := iso8601DurationMinutes(s.idleTimeBeforeShutdown)
+	if err != nil {
+		return 0, llx.MalformedData(err)
+	}
+	return minutes, nil
+}
+
+func (a *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) startStopSchedules() ([]any, error) {
+	if !a.isComputeInstance() {
+		a.StartStopSchedules.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	s, err := a.instanceSettings()
+	if err != nil {
+		return nil, err
+	}
+	return s.schedules, nil
+}
+
+// iso8601DurationMinutes converts an ISO 8601 duration of weeks, days, hours,
+// minutes, and seconds ("PT30M", "P1DT2H", "PT90S") to whole minutes, rounding
+// seconds down. Years and months have no fixed length and are rejected.
+func iso8601DurationMinutes(d string) (int64, error) {
+	s := strings.ToUpper(strings.TrimSpace(d))
+	if !strings.HasPrefix(s, "P") || len(s) < 3 {
+		return 0, fmt.Errorf("invalid ISO 8601 duration %q", d)
+	}
+	s = s[1:]
+	var seconds float64
+	inTime := false
+	num := ""
+	sawUnit, sawTimeUnit := false, false
+	for _, r := range s {
+		switch {
+		case r == 'T':
+			if inTime || num != "" {
+				return 0, fmt.Errorf("invalid ISO 8601 duration %q", d)
+			}
+			inTime = true
+		case r >= '0' && r <= '9' || r == '.' || r == ',':
+			if r == ',' {
+				r = '.'
+			}
+			num += string(r)
+		default:
+			if num == "" {
+				return 0, fmt.Errorf("invalid ISO 8601 duration %q", d)
+			}
+			var v float64
+			if _, err := fmt.Sscanf(num, "%g", &v); err != nil {
+				return 0, fmt.Errorf("invalid ISO 8601 duration %q", d)
+			}
+			num = ""
+			var unit float64
+			switch {
+			case !inTime && r == 'W':
+				unit = 7 * 24 * 3600
+			case !inTime && r == 'D':
+				unit = 24 * 3600
+			case inTime && r == 'H':
+				unit = 3600
+			case inTime && r == 'M':
+				unit = 60
+			case inTime && r == 'S':
+				unit = 1
+			default:
+				return 0, fmt.Errorf("unsupported ISO 8601 duration %q: only weeks, days, hours, minutes, and seconds have a fixed length", d)
+			}
+			seconds += v * unit
+			sawUnit = true
+			sawTimeUnit = sawTimeUnit || inTime
+		}
+	}
+	// A "T" must be followed by at least one time component.
+	if num != "" || !sawUnit || inTime && !sawTimeUnit {
+		return 0, fmt.Errorf("invalid ISO 8601 duration %q", d)
+	}
+	return int64(seconds) / 60, nil
 }
