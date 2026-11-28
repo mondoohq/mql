@@ -17,7 +17,9 @@ import (
 // The MQL type names exposed as public consts for ease of reference.
 const (
 	ResourceAzure                                                                                       string = "azure"
+	ResourceAzureSubscriptionTenantPolicy                                                               string = "azure.subscriptionTenantPolicy"
 	ResourceAzureManagementGroup                                                                        string = "azure.managementGroup"
+	ResourceAzureManagementGroupHierarchySettings                                                       string = "azure.managementGroup.hierarchySettings"
 	ResourceAzureEntraPrincipal                                                                         string = "azure.entraPrincipal"
 	ResourceAzureSubscription                                                                           string = "azure.subscription"
 	ResourceAzureSubscriptionWebServiceFunction                                                         string = "azure.subscription.webService.function"
@@ -324,6 +326,7 @@ const (
 	ResourceAzureSubscriptionMonitorServiceDiagnosticsettingMetricSetting                               string = "azure.subscription.monitorService.diagnosticsetting.metricSetting"
 	ResourceAzureSubscriptionMonitorServiceDiagnosticSettingsCategory                                   string = "azure.subscription.monitorService.diagnosticSettingsCategory"
 	ResourceAzureSubscriptionCloudDefenderService                                                       string = "azure.subscription.cloudDefenderService"
+	ResourceAzureSubscriptionCloudDefenderServiceEasmWorkspace                                          string = "azure.subscription.cloudDefenderService.easmWorkspace"
 	ResourceAzureSubscriptionCloudDefenderServiceGovernanceRule                                         string = "azure.subscription.cloudDefenderService.governanceRule"
 	ResourceAzureSubscriptionCloudDefenderServiceApiCollection                                          string = "azure.subscription.cloudDefenderService.apiCollection"
 	ResourceAzureSubscriptionCloudDefenderServiceAlertSuppressionRule                                   string = "azure.subscription.cloudDefenderService.alertSuppressionRule"
@@ -662,9 +665,17 @@ func init() {
 			// to override args, implement: initAzure(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAzure,
 		},
+		"azure.subscriptionTenantPolicy": {
+			// to override args, implement: initAzureSubscriptionTenantPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionTenantPolicy,
+		},
 		"azure.managementGroup": {
 			Init:   initAzureManagementGroup,
 			Create: createAzureManagementGroup,
+		},
+		"azure.managementGroup.hierarchySettings": {
+			// to override args, implement: initAzureManagementGroupHierarchySettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureManagementGroupHierarchySettings,
 		},
 		"azure.entraPrincipal": {
 			// to override args, implement: initAzureEntraPrincipal(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -1889,6 +1900,10 @@ func init() {
 		"azure.subscription.cloudDefenderService": {
 			Init:   initAzureSubscriptionCloudDefenderService,
 			Create: createAzureSubscriptionCloudDefenderService,
+		},
+		"azure.subscription.cloudDefenderService.easmWorkspace": {
+			// to override args, implement: initAzureSubscriptionCloudDefenderServiceEasmWorkspace(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionCloudDefenderServiceEasmWorkspace,
 		},
 		"azure.subscription.cloudDefenderService.governanceRule": {
 			// to override args, implement: initAzureSubscriptionCloudDefenderServiceGovernanceRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -3276,6 +3291,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.managementGroups": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzure).GetManagementGroups()).ToDataRes(types.Array(types.Resource("azure.managementGroup")))
 	},
+	"azure.subscriptionTenantPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzure).GetSubscriptionTenantPolicy()).ToDataRes(types.Resource("azure.subscriptionTenantPolicy"))
+	},
+	"azure.subscriptionTenantPolicy.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionTenantPolicy).GetId()).ToDataRes(types.String)
+	},
+	"azure.subscriptionTenantPolicy.tenantId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionTenantPolicy).GetTenantId()).ToDataRes(types.String)
+	},
+	"azure.subscriptionTenantPolicy.blockSubscriptionsLeavingTenant": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionTenantPolicy).GetBlockSubscriptionsLeavingTenant()).ToDataRes(types.Bool)
+	},
+	"azure.subscriptionTenantPolicy.blockSubscriptionsIntoTenant": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionTenantPolicy).GetBlockSubscriptionsIntoTenant()).ToDataRes(types.Bool)
+	},
+	"azure.subscriptionTenantPolicy.exemptedPrincipals": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionTenantPolicy).GetExemptedPrincipals()).ToDataRes(types.Array(types.String))
+	},
 	"azure.managementGroup.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureManagementGroup).GetId()).ToDataRes(types.String)
 	},
@@ -3308,6 +3341,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.managementGroup.policyAssignments": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureManagementGroup).GetPolicyAssignments()).ToDataRes(types.Array(types.Resource("azure.subscription.policy.assignment")))
+	},
+	"azure.managementGroup.hierarchySettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureManagementGroup).GetHierarchySettings()).ToDataRes(types.Resource("azure.managementGroup.hierarchySettings"))
+	},
+	"azure.managementGroup.hierarchySettings.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureManagementGroupHierarchySettings).GetId()).ToDataRes(types.String)
+	},
+	"azure.managementGroup.hierarchySettings.tenantId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureManagementGroupHierarchySettings).GetTenantId()).ToDataRes(types.String)
+	},
+	"azure.managementGroup.hierarchySettings.defaultManagementGroupId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureManagementGroupHierarchySettings).GetDefaultManagementGroupId()).ToDataRes(types.String)
+	},
+	"azure.managementGroup.hierarchySettings.defaultManagementGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureManagementGroupHierarchySettings).GetDefaultManagementGroup()).ToDataRes(types.Resource("azure.managementGroup"))
+	},
+	"azure.managementGroup.hierarchySettings.requireAuthorizationForGroupCreation": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureManagementGroupHierarchySettings).GetRequireAuthorizationForGroupCreation()).ToDataRes(types.Bool)
 	},
 	"azure.entraPrincipal.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureEntraPrincipal).GetId()).ToDataRes(types.String)
@@ -15285,6 +15336,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.cloudDefenderService.governanceRules": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionCloudDefenderService).GetGovernanceRules()).ToDataRes(types.Array(types.Resource("azure.subscription.cloudDefenderService.governanceRule")))
 	},
+	"azure.subscription.cloudDefenderService.easmWorkspaces": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCloudDefenderService).GetEasmWorkspaces()).ToDataRes(types.Array(types.Resource("azure.subscription.cloudDefenderService.easmWorkspace")))
+	},
+	"azure.subscription.cloudDefenderService.easmWorkspace.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCloudDefenderServiceEasmWorkspace).GetId()).ToDataRes(types.String)
+	},
+	"azure.subscription.cloudDefenderService.easmWorkspace.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCloudDefenderServiceEasmWorkspace).GetName()).ToDataRes(types.String)
+	},
+	"azure.subscription.cloudDefenderService.easmWorkspace.location": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCloudDefenderServiceEasmWorkspace).GetLocation()).ToDataRes(types.String)
+	},
+	"azure.subscription.cloudDefenderService.easmWorkspace.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCloudDefenderServiceEasmWorkspace).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"azure.subscription.cloudDefenderService.easmWorkspace.provisioningState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCloudDefenderServiceEasmWorkspace).GetProvisioningState()).ToDataRes(types.String)
+	},
+	"azure.subscription.cloudDefenderService.easmWorkspace.dataPlaneEndpoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCloudDefenderServiceEasmWorkspace).GetDataPlaneEndpoint()).ToDataRes(types.String)
+	},
 	"azure.subscription.cloudDefenderService.governanceRule.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionCloudDefenderServiceGovernanceRule).GetId()).ToDataRes(types.String)
 	},
@@ -26255,6 +26327,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzure).ManagementGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"azure.subscriptionTenantPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzure).SubscriptionTenantPolicy, ok = plugin.RawToTValue[*mqlAzureSubscriptionTenantPolicy](v.Value, v.Error)
+		return
+	},
+	"azure.subscriptionTenantPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionTenantPolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.subscriptionTenantPolicy.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionTenantPolicy).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscriptionTenantPolicy.tenantId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionTenantPolicy).TenantId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscriptionTenantPolicy.blockSubscriptionsLeavingTenant": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionTenantPolicy).BlockSubscriptionsLeavingTenant, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscriptionTenantPolicy.blockSubscriptionsIntoTenant": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionTenantPolicy).BlockSubscriptionsIntoTenant, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscriptionTenantPolicy.exemptedPrincipals": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionTenantPolicy).ExemptedPrincipals, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"azure.managementGroup.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureManagementGroup).__id, ok = v.Value.(string)
 		return
@@ -26301,6 +26401,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.managementGroup.policyAssignments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureManagementGroup).PolicyAssignments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.managementGroup.hierarchySettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureManagementGroup).HierarchySettings, ok = plugin.RawToTValue[*mqlAzureManagementGroupHierarchySettings](v.Value, v.Error)
+		return
+	},
+	"azure.managementGroup.hierarchySettings.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureManagementGroupHierarchySettings).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.managementGroup.hierarchySettings.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureManagementGroupHierarchySettings).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.managementGroup.hierarchySettings.tenantId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureManagementGroupHierarchySettings).TenantId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.managementGroup.hierarchySettings.defaultManagementGroupId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureManagementGroupHierarchySettings).DefaultManagementGroupId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.managementGroup.hierarchySettings.defaultManagementGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureManagementGroupHierarchySettings).DefaultManagementGroup, ok = plugin.RawToTValue[*mqlAzureManagementGroup](v.Value, v.Error)
+		return
+	},
+	"azure.managementGroup.hierarchySettings.requireAuthorizationForGroupCreation": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureManagementGroupHierarchySettings).RequireAuthorizationForGroupCreation, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"azure.entraPrincipal.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -43495,6 +43623,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionCloudDefenderService).GovernanceRules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.cloudDefenderService.easmWorkspaces": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderService).EasmWorkspaces, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.cloudDefenderService.easmWorkspace.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderServiceEasmWorkspace).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.subscription.cloudDefenderService.easmWorkspace.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderServiceEasmWorkspace).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.cloudDefenderService.easmWorkspace.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderServiceEasmWorkspace).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.cloudDefenderService.easmWorkspace.location": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderServiceEasmWorkspace).Location, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.cloudDefenderService.easmWorkspace.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderServiceEasmWorkspace).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.cloudDefenderService.easmWorkspace.provisioningState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderServiceEasmWorkspace).ProvisioningState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.cloudDefenderService.easmWorkspace.dataPlaneEndpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderServiceEasmWorkspace).DataPlaneEndpoint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.cloudDefenderService.governanceRule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionCloudDefenderServiceGovernanceRule).__id, ok = v.Value.(string)
 		return
@@ -59436,7 +59596,8 @@ type mqlAzure struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAzureInternal
-	ManagementGroups plugin.TValue[[]any]
+	ManagementGroups         plugin.TValue[[]any]
+	SubscriptionTenantPolicy plugin.TValue[*mqlAzureSubscriptionTenantPolicy]
 }
 
 // createAzure creates a new instance of this resource
@@ -59487,6 +59648,91 @@ func (c *mqlAzure) GetManagementGroups() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlAzure) GetSubscriptionTenantPolicy() *plugin.TValue[*mqlAzureSubscriptionTenantPolicy] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionTenantPolicy](&c.SubscriptionTenantPolicy, func() (*mqlAzureSubscriptionTenantPolicy, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure", c.__id, "subscriptionTenantPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionTenantPolicy), nil
+			}
+		}
+
+		return c.subscriptionTenantPolicy()
+	})
+}
+
+// mqlAzureSubscriptionTenantPolicy for the azure.subscriptionTenantPolicy resource
+type mqlAzureSubscriptionTenantPolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzureSubscriptionTenantPolicyInternal it will be used here
+	Id                              plugin.TValue[string]
+	TenantId                        plugin.TValue[string]
+	BlockSubscriptionsLeavingTenant plugin.TValue[bool]
+	BlockSubscriptionsIntoTenant    plugin.TValue[bool]
+	ExemptedPrincipals              plugin.TValue[[]any]
+}
+
+// createAzureSubscriptionTenantPolicy creates a new instance of this resource
+func createAzureSubscriptionTenantPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionTenantPolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.subscriptionTenantPolicy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureSubscriptionTenantPolicy) MqlName() string {
+	return "azure.subscriptionTenantPolicy"
+}
+
+func (c *mqlAzureSubscriptionTenantPolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureSubscriptionTenantPolicy) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAzureSubscriptionTenantPolicy) GetTenantId() *plugin.TValue[string] {
+	return &c.TenantId
+}
+
+func (c *mqlAzureSubscriptionTenantPolicy) GetBlockSubscriptionsLeavingTenant() *plugin.TValue[bool] {
+	return &c.BlockSubscriptionsLeavingTenant
+}
+
+func (c *mqlAzureSubscriptionTenantPolicy) GetBlockSubscriptionsIntoTenant() *plugin.TValue[bool] {
+	return &c.BlockSubscriptionsIntoTenant
+}
+
+func (c *mqlAzureSubscriptionTenantPolicy) GetExemptedPrincipals() *plugin.TValue[[]any] {
+	return &c.ExemptedPrincipals
+}
+
 // mqlAzureManagementGroup for the azure.managementGroup resource
 type mqlAzureManagementGroup struct {
 	MqlRuntime *plugin.Runtime
@@ -59503,6 +59749,7 @@ type mqlAzureManagementGroup struct {
 	SubscriptionCount plugin.TValue[int64]
 	RoleAssignments   plugin.TValue[[]any]
 	PolicyAssignments plugin.TValue[[]any]
+	HierarchySettings plugin.TValue[*mqlAzureManagementGroupHierarchySettings]
 }
 
 // createAzureManagementGroup creates a new instance of this resource
@@ -59627,6 +59874,103 @@ func (c *mqlAzureManagementGroup) GetPolicyAssignments() *plugin.TValue[[]any] {
 
 		return c.policyAssignments()
 	})
+}
+
+func (c *mqlAzureManagementGroup) GetHierarchySettings() *plugin.TValue[*mqlAzureManagementGroupHierarchySettings] {
+	return plugin.GetOrCompute[*mqlAzureManagementGroupHierarchySettings](&c.HierarchySettings, func() (*mqlAzureManagementGroupHierarchySettings, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.managementGroup", c.__id, "hierarchySettings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureManagementGroupHierarchySettings), nil
+			}
+		}
+
+		return c.hierarchySettings()
+	})
+}
+
+// mqlAzureManagementGroupHierarchySettings for the azure.managementGroup.hierarchySettings resource
+type mqlAzureManagementGroupHierarchySettings struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzureManagementGroupHierarchySettingsInternal it will be used here
+	Id                                   plugin.TValue[string]
+	TenantId                             plugin.TValue[string]
+	DefaultManagementGroupId             plugin.TValue[string]
+	DefaultManagementGroup               plugin.TValue[*mqlAzureManagementGroup]
+	RequireAuthorizationForGroupCreation plugin.TValue[bool]
+}
+
+// createAzureManagementGroupHierarchySettings creates a new instance of this resource
+func createAzureManagementGroupHierarchySettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureManagementGroupHierarchySettings{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.managementGroup.hierarchySettings", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureManagementGroupHierarchySettings) MqlName() string {
+	return "azure.managementGroup.hierarchySettings"
+}
+
+func (c *mqlAzureManagementGroupHierarchySettings) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureManagementGroupHierarchySettings) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAzureManagementGroupHierarchySettings) GetTenantId() *plugin.TValue[string] {
+	return &c.TenantId
+}
+
+func (c *mqlAzureManagementGroupHierarchySettings) GetDefaultManagementGroupId() *plugin.TValue[string] {
+	return &c.DefaultManagementGroupId
+}
+
+func (c *mqlAzureManagementGroupHierarchySettings) GetDefaultManagementGroup() *plugin.TValue[*mqlAzureManagementGroup] {
+	return plugin.GetOrCompute[*mqlAzureManagementGroup](&c.DefaultManagementGroup, func() (*mqlAzureManagementGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.managementGroup.hierarchySettings", c.__id, "defaultManagementGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureManagementGroup), nil
+			}
+		}
+
+		return c.defaultManagementGroup()
+	})
+}
+
+func (c *mqlAzureManagementGroupHierarchySettings) GetRequireAuthorizationForGroupCreation() *plugin.TValue[bool] {
+	return &c.RequireAuthorizationForGroupCreation
 }
 
 // mqlAzureEntraPrincipal for the azure.entraPrincipal resource
@@ -100402,6 +100746,7 @@ type mqlAzureSubscriptionCloudDefenderService struct {
 	WorkspaceSettings             plugin.TValue[[]any]
 	ApiCollections                plugin.TValue[[]any]
 	GovernanceRules               plugin.TValue[[]any]
+	EasmWorkspaces                plugin.TValue[[]any]
 }
 
 // createAzureSubscriptionCloudDefenderService creates a new instance of this resource
@@ -100897,6 +101242,96 @@ func (c *mqlAzureSubscriptionCloudDefenderService) GetGovernanceRules() *plugin.
 
 		return c.governanceRules()
 	})
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderService) GetEasmWorkspaces() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EasmWorkspaces, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.cloudDefenderService", c.__id, "easmWorkspaces")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.easmWorkspaces()
+	})
+}
+
+// mqlAzureSubscriptionCloudDefenderServiceEasmWorkspace for the azure.subscription.cloudDefenderService.easmWorkspace resource
+type mqlAzureSubscriptionCloudDefenderServiceEasmWorkspace struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzureSubscriptionCloudDefenderServiceEasmWorkspaceInternal it will be used here
+	Id                plugin.TValue[string]
+	Name              plugin.TValue[string]
+	Location          plugin.TValue[string]
+	Tags              plugin.TValue[map[string]any]
+	ProvisioningState plugin.TValue[string]
+	DataPlaneEndpoint plugin.TValue[string]
+}
+
+// createAzureSubscriptionCloudDefenderServiceEasmWorkspace creates a new instance of this resource
+func createAzureSubscriptionCloudDefenderServiceEasmWorkspace(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionCloudDefenderServiceEasmWorkspace{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.subscription.cloudDefenderService.easmWorkspace", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceEasmWorkspace) MqlName() string {
+	return "azure.subscription.cloudDefenderService.easmWorkspace"
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceEasmWorkspace) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceEasmWorkspace) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceEasmWorkspace) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceEasmWorkspace) GetLocation() *plugin.TValue[string] {
+	return &c.Location
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceEasmWorkspace) GetTags() *plugin.TValue[map[string]any] {
+	return &c.Tags
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceEasmWorkspace) GetProvisioningState() *plugin.TValue[string] {
+	return &c.ProvisioningState
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceEasmWorkspace) GetDataPlaneEndpoint() *plugin.TValue[string] {
+	return &c.DataPlaneEndpoint
 }
 
 // mqlAzureSubscriptionCloudDefenderServiceGovernanceRule for the azure.subscription.cloudDefenderService.governanceRule resource

@@ -1,7 +1,7 @@
 {
   "provider": "azure",
-  "version": "14.12.0",
-  "generated_at": "2026-11-23T13:24:57-08:00",
+  "version": "14.14.0",
+  "generated_at": "2026-11-27T21:11:54-08:00",
   "permissions": [
     "Microsoft.Advisor/recommendations/read",
     "Microsoft.ApiManagement/service/apis/policies/read",
@@ -188,6 +188,7 @@
     "Microsoft.ManagedServices/registrationAssignments/read",
     "Microsoft.ManagedServices/registrationDefinitions/read",
     "Microsoft.Management/getEntities/action",
+    "Microsoft.Management/managementGroups/settings/read",
     "Microsoft.NetApp/netAppAccounts/capacityPools/read",
     "Microsoft.NetApp/netAppAccounts/capacityPools/volumes/read",
     "Microsoft.NetApp/netAppAccounts/read",
@@ -365,6 +366,7 @@
     "Microsoft.Storage/storageAccounts/read",
     "Microsoft.Storage/storageAccounts/tableServices/tables/read",
     "Microsoft.StorageCache/amlFilesystems/read",
+    "Microsoft.Subscription/Policies/default/read",
     "Microsoft.Synapse/workspaces/administrators/read",
     "Microsoft.Synapse/workspaces/auditingSettings/read",
     "Microsoft.Synapse/workspaces/bigDataPools/read",
@@ -1503,6 +1505,12 @@
       "source_file": "managementgroups.go"
     },
     {
+      "permission": "Microsoft.Management/managementGroups/settings/read",
+      "service": "Microsoft.Management",
+      "action": "Get",
+      "source_file": "tenant_settings.go"
+    },
+    {
       "permission": "Microsoft.NetApp/netAppAccounts/capacityPools/read",
       "service": "Microsoft.NetApp",
       "action": "NewListPager",
@@ -2611,6 +2619,12 @@
       "service": "Microsoft.StorageCache",
       "action": "NewListPager",
       "source_file": "storagecache.go"
+    },
+    {
+      "permission": "Microsoft.Subscription/Policies/default/read",
+      "service": "Microsoft.Subscription",
+      "action": "GetPolicyForTenant",
+      "source_file": "tenant_settings.go"
     },
     {
       "permission": "Microsoft.Synapse/workspaces/administrators/read",
