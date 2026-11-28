@@ -1,4 +1,4 @@
-# ADR 057: Snowflake tag references, and Unity Catalog tables, tags and column masks
+# ADR 065: Snowflake tag references, and Unity Catalog tables, tags and column masks
 
 ## Status
 
