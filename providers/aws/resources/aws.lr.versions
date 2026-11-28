@@ -2675,6 +2675,13 @@ aws.cloudwatch.metricstatistics.label 11.15.2
 aws.cloudwatch.metricstatistics.name 11.15.2
 aws.cloudwatch.metricstatistics.namespace 11.15.2
 aws.cloudwatch.metricstatistics.region 11.15.2
+aws.cloudwatch.otelEnrichment 14.14.2
+aws.cloudwatch.otelEnrichment.createdAt 14.14.2
+aws.cloudwatch.otelEnrichment.region 14.14.2
+aws.cloudwatch.otelEnrichment.status 14.14.2
+aws.cloudwatch.otelEnrichment.tagEnrichmentEnabled 14.14.2
+aws.cloudwatch.otelEnrichment.updatedAt 14.14.2
+aws.cloudwatch.otelEnrichments 14.14.2
 aws.cloudwatch.resourcePolicies 13.6.3
 aws.cloudwatch.resourcepolicy 13.6.3
 aws.cloudwatch.resourcepolicy.lastUpdatedTime 13.6.3
@@ -5940,6 +5947,10 @@ aws.es.domain.automatedSnapshotPauseStartTime 13.25.1
 aws.es.domain.automatedSnapshotPauseState 13.25.1
 aws.es.domain.automatedSnapshotStartHour 13.21.4
 aws.es.domain.availabilityZones 13.21.4
+aws.es.domain.catalogEnabled 14.14.2
+aws.es.domain.catalogEncryptionEnabled 14.14.2
+aws.es.domain.catalogKmsKey 14.14.2
+aws.es.domain.catalogType 14.14.2
 aws.es.domain.cloudformationStack 13.39.2
 aws.es.domain.cognitoEnabled 13.21.4
 aws.es.domain.cognitoIdentityPool 14.12.1
@@ -8667,6 +8678,7 @@ aws.neptuneAnalytics 13.18.1
 aws.neptuneAnalytics.graph 13.18.1
 aws.neptuneAnalytics.graph.arn 13.18.1
 aws.neptuneAnalytics.graph.buildNumber 13.18.1
+aws.neptuneAnalytics.graph.computeType 14.14.2
 aws.neptuneAnalytics.graph.createdAt 13.18.1
 aws.neptuneAnalytics.graph.deletionProtection 13.18.1
 aws.neptuneAnalytics.graph.endpoint 13.18.1
@@ -8677,6 +8689,7 @@ aws.neptuneAnalytics.graph.provisionedMemory 13.18.1
 aws.neptuneAnalytics.graph.publicConnectivity 13.18.1
 aws.neptuneAnalytics.graph.region 13.18.1
 aws.neptuneAnalytics.graph.replicaCount 13.18.1
+aws.neptuneAnalytics.graph.sessionMinMemory 14.14.2
 aws.neptuneAnalytics.graph.sourceSnapshotId 13.18.1
 aws.neptuneAnalytics.graph.status 13.18.1
 aws.neptuneAnalytics.graph.statusReason 13.18.1
@@ -8827,6 +8840,10 @@ aws.opensearch.domain.automatedSnapshotPauseEndTime 13.25.1
 aws.opensearch.domain.automatedSnapshotPauseStartTime 13.25.1
 aws.opensearch.domain.automatedSnapshotPauseState 13.25.1
 aws.opensearch.domain.availabilityZoneCount 11.15.2
+aws.opensearch.domain.catalogEnabled 14.14.2
+aws.opensearch.domain.catalogEncryptionEnabled 14.14.2
+aws.opensearch.domain.catalogKmsKey 14.14.2
+aws.opensearch.domain.catalogType 14.14.2
 aws.opensearch.domain.cloudformationStack 13.39.2
 aws.opensearch.domain.cognitoEnabled 14.12.1
 aws.opensearch.domain.cognitoIdentityPool 14.12.1

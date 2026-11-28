@@ -1423,6 +1423,7 @@ stackit.telemetry.link.description 13.0.3
 stackit.telemetry.link.displayName 13.0.3
 stackit.telemetry.link.enabled 13.0.3
 stackit.telemetry.link.id 13.0.3
+stackit.telemetry.link.labels 14.4.2
 stackit.telemetry.link.region 13.0.3
 stackit.telemetry.link.router 13.0.3
 stackit.telemetry.link.status 13.0.3

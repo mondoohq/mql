@@ -178,6 +178,7 @@ func initAwsOpensearchDomain(runtime *plugin.Runtime, args map[string]*llx.RawDa
 
 type mqlAwsOpensearchDomainInternal struct {
 	cacheEncryptionAtRestKmsKeyId string
+	cacheCatalogKmsKeyArn         string
 	cacheVpcId                    string
 	securityGroupIdHandler
 	region                         string
@@ -396,8 +397,13 @@ func newMqlAwsOpensearchDomain(runtime *plugin.Runtime, region string, accountID
 		createdAt = llx.NilData
 	}
 
+	catalog := opensearchDomainCatalog(domain.CatalogOptions)
+	catalogArgs := catalog.args()
 	resource, err := CreateResource(runtime, ResourceAwsOpensearchDomain,
 		map[string]*llx.RawData{
+			"catalogEnabled":                     catalogArgs["catalogEnabled"],
+			"catalogType":                        catalogArgs["catalogType"],
+			"catalogEncryptionEnabled":           catalogArgs["catalogEncryptionEnabled"],
 			"arn":                                llx.StringDataPtr(domain.ARN),
 			"name":                               llx.StringDataPtr(domain.DomainName),
 			"domainId":                           llx.StringDataPtr(domain.DomainId),
@@ -477,6 +483,7 @@ func newMqlAwsOpensearchDomain(runtime *plugin.Runtime, region string, accountID
 	mqlDomain.cacheIndexSlowLogGroupArn = indexSlowLogArn
 	mqlDomain.cacheSearchSlowLogGroupArn = searchSlowLogArn
 	mqlDomain.cacheApplicationLogGroupArn = applicationLogArn
+	mqlDomain.cacheCatalogKmsKeyArn = catalog.kmsKeyArn
 	mqlDomain.setSecurityGroupArns(sgArns)
 	if domain.CognitoOptions != nil && convert.ToValue(domain.CognitoOptions.Enabled) {
 		mqlDomain.cacheCognitoUserPoolId = convert.ToValue(domain.CognitoOptions.UserPoolId)
@@ -537,6 +544,10 @@ func (a *mqlAwsOpensearchDomain) encryptionAtRestKmsKey() (*mqlAwsKmsKey, error)
 		return nil, err
 	}
 	return mqlKey.(*mqlAwsKmsKey), nil
+}
+
+func (a *mqlAwsOpensearchDomain) catalogKmsKey() (*mqlAwsKmsKey, error) {
+	return catalogKmsKey(a.MqlRuntime, a.cacheCatalogKmsKeyArn, &a.CatalogKmsKey.State)
 }
 
 func (a *mqlAwsOpensearchDomain) vpc() (*mqlAwsVpc, error) {

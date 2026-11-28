@@ -49,7 +49,7 @@ import (
 	ske "github.com/stackitcloud/stackit-sdk-go/services/ske/v2api"
 	sqlserverflex "github.com/stackitcloud/stackit-sdk-go/services/sqlserverflex/v2api"
 	sqlserverflexv3 "github.com/stackitcloud/stackit-sdk-go/services/sqlserverflex/v3api"
-	telemetrylink "github.com/stackitcloud/stackit-sdk-go/services/telemetrylink/v1betaapi"
+	telemetrylink "github.com/stackitcloud/stackit-sdk-go/services/telemetrylink/v1api"
 	telemetryrouter "github.com/stackitcloud/stackit-sdk-go/services/telemetryrouter/v1betaapi"
 	ufw "github.com/stackitcloud/stackit-sdk-go/services/ufw/v1api"
 	valkey "github.com/stackitcloud/stackit-sdk-go/services/valkey/v2api"

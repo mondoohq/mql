@@ -4324,6 +4324,8 @@ private stackit.telemetry.link @defaults("id displayName enabled status") {
   region string
   // Creation timestamp
   createdAt time
+  // Labels attached to the link
+  labels map[string]string
   // Telemetry router this link forwards data to
   router() stackit.telemetry.router
 }

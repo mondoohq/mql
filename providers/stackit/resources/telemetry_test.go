@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	tlink "github.com/stackitcloud/stackit-sdk-go/services/telemetrylink/v1api"
 	trouter "github.com/stackitcloud/stackit-sdk-go/services/telemetryrouter/v1betaapi"
 )
 
@@ -108,4 +109,32 @@ func TestRedactDestinationConfigStripsSecrets(t *testing.T) {
 			t.Fatalf("redactDestinationConfig(string) = %v, want the input back", got)
 		}
 	})
+}
+
+// Synthetic: GetProjectTelemetryLink payloads shaped after the v1 API model; no live link was read.
+func TestTelemetryLinkArgsLabels(t *testing.T) {
+	decode := func(payload string) map[string]any {
+		t.Helper()
+		var l tlink.TelemetryLinkResponse
+		if err := json.Unmarshal([]byte(payload), &l); err != nil {
+			t.Fatalf("decoding telemetry link: %v", err)
+		}
+		labels, ok := telemetryLinkArgs(&l)["labels"].Value.(map[string]any)
+		if !ok {
+			t.Fatalf("labels is %T, want map", telemetryLinkArgs(&l)["labels"].Value)
+		}
+		return labels
+	}
+
+	base := `"id":"0b8b5c0e-1111-2222-3333-444455556666","displayName":"prod","enabled":true,` +
+		`"regionId":"eu01","status":"active","createTime":"2026-11-20T10:00:00Z","telemetryRouterId":"r1"`
+
+	labels := decode(`{` + base + `,"resourceLabels":{"env":"prod","team":"platform"}}`)
+	if labels["env"] != "prod" || labels["team"] != "platform" || len(labels) != 2 {
+		t.Fatalf("labels = %v, want env=prod team=platform", labels)
+	}
+
+	if labels := decode(`{` + base + `}`); len(labels) != 0 {
+		t.Fatalf("labels without resourceLabels = %v, want empty", labels)
+	}
 }

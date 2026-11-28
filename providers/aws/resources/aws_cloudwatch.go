@@ -1360,3 +1360,68 @@ func initAwsCloudwatchMetricsalarm(runtime *plugin.Runtime, args map[string]*llx
 type mqlAwsCloudwatchLoggroupSubscriptionfilterInternal struct {
 	cacheRoleArn string
 }
+
+// otelEnrichments returns the CloudWatch OpenTelemetry enrichment setting of
+// every enabled region.
+func (a *mqlAwsCloudwatch) otelEnrichments() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+
+	res := []any{}
+	poolOfJobs := jobpool.CreatePool(a.getOtelEnrichments(conn), 5)
+	poolOfJobs.Run()
+
+	if poolOfJobs.HasErrors() {
+		return nil, poolOfJobs.GetErrors()
+	}
+	for i := range poolOfJobs.Jobs {
+		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
+	}
+	return res, nil
+}
+
+func (a *mqlAwsCloudwatch) getOtelEnrichments(conn *connection.AwsConnection) []*jobpool.Job {
+	regions, err := conn.Regions()
+	if err != nil {
+		return []*jobpool.Job{{Err: err}}
+	}
+	tasks := make([]*jobpool.Job, 0, len(regions))
+	for _, region := range regions {
+		f := func() (jobpool.JobResult, error) {
+			svc := conn.Cloudwatch(region)
+			resp, err := svc.GetOTelEnrichment(context.Background(), &cloudwatch.GetOTelEnrichmentInput{})
+			if err != nil {
+				if Is400AccessDeniedError(err) {
+					log.Debug().Str("region", region).Msg("access denied reading cloudwatch otel enrichment")
+					return jobpool.JobResult([]any{}), nil
+				}
+				if IsServiceNotAvailableInRegionError(err) {
+					log.Debug().Str("region", region).Msg("cloudwatch otel enrichment not available in region")
+					return jobpool.JobResult([]any{}), nil
+				}
+				return nil, errors.Wrap(err, "could not gather cloudwatch otel enrichment")
+			}
+			mqlEnrichment, err := CreateResource(a.MqlRuntime, "aws.cloudwatch.otelEnrichment",
+				otelEnrichmentArgs(conn.AccountId(), region, resp))
+			if err != nil {
+				return nil, err
+			}
+			return jobpool.JobResult([]any{mqlEnrichment}), nil
+		}
+		tasks = append(tasks, jobpool.NewJob(f))
+	}
+	return tasks
+}
+
+// otelEnrichmentArgs maps a region's GetOTelEnrichment answer. The API omits
+// the tag setting and the start time while enrichment is stopped, so those
+// stay null rather than reading as false or the zero time.
+func otelEnrichmentArgs(accountID, region string, resp *cloudwatch.GetOTelEnrichmentOutput) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":                 llx.StringData(accountID + "/" + region + "/otelEnrichment"),
+		"region":               llx.StringData(region),
+		"status":               llx.StringData(string(resp.Status)),
+		"tagEnrichmentEnabled": llx.BoolDataPtr(resp.EnableTagEnrichment),
+		"createdAt":            llx.TimeDataPtr(resp.CreatedAt),
+		"updatedAt":            llx.TimeDataPtr(resp.UpdatedAt),
+	}
+}

@@ -510,6 +510,7 @@ alicloud.cloudsso.directories 13.2.5
 alicloud.cloudsso.directory 13.2.5
 alicloud.cloudsso.directory.accessAssignments 13.2.5
 alicloud.cloudsso.directory.accessConfigurations 13.2.5
+alicloud.cloudsso.directory.allowUserManageSecurityEmail 14.6.2
 alicloud.cloudsso.directory.allowUserToGetCredentials 13.2.5
 alicloud.cloudsso.directory.createTime 13.2.5
 alicloud.cloudsso.directory.directoryId 13.2.5
@@ -603,6 +604,8 @@ alicloud.cloudsso.user.groups 13.2.5
 alicloud.cloudsso.user.lastName 13.2.5
 alicloud.cloudsso.user.mfaDevices 13.2.5
 alicloud.cloudsso.user.provisionType 13.2.5
+alicloud.cloudsso.user.securityEmail 14.6.2
+alicloud.cloudsso.user.securityEmailStatus 14.6.2
 alicloud.cloudsso.user.status 13.2.5
 alicloud.cloudsso.user.updateTime 13.2.5
 alicloud.cloudsso.user.userId 13.2.5

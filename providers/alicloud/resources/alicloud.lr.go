@@ -7359,6 +7359,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"alicloud.cloudsso.directory.allowUserToGetCredentials": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudCloudssoDirectory).GetAllowUserToGetCredentials()).ToDataRes(types.Bool)
 	},
+	"alicloud.cloudsso.directory.allowUserManageSecurityEmail": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudCloudssoDirectory).GetAllowUserManageSecurityEmail()).ToDataRes(types.Bool)
+	},
 	"alicloud.cloudsso.directory.loginNetworkMasks": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudCloudssoDirectory).GetLoginNetworkMasks()).ToDataRes(types.String)
 	},
@@ -7535,6 +7538,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"alicloud.cloudsso.user.groups": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudCloudssoUser).GetGroups()).ToDataRes(types.Array(types.Resource("alicloud.cloudsso.group")))
+	},
+	"alicloud.cloudsso.user.securityEmail": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudCloudssoUser).GetSecurityEmail()).ToDataRes(types.String)
+	},
+	"alicloud.cloudsso.user.securityEmailStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudCloudssoUser).GetSecurityEmailStatus()).ToDataRes(types.String)
 	},
 	"alicloud.cloudsso.group.directoryId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudCloudssoGroup).GetDirectoryId()).ToDataRes(types.String)
@@ -18525,6 +18534,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAlicloudCloudssoDirectory).AllowUserToGetCredentials, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"alicloud.cloudsso.directory.allowUserManageSecurityEmail": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudCloudssoDirectory).AllowUserManageSecurityEmail, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"alicloud.cloudsso.directory.loginNetworkMasks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAlicloudCloudssoDirectory).LoginNetworkMasks, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -18775,6 +18788,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"alicloud.cloudsso.user.groups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAlicloudCloudssoUser).Groups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.cloudsso.user.securityEmail": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudCloudssoUser).SecurityEmail, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.cloudsso.user.securityEmailStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudCloudssoUser).SecurityEmailStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"alicloud.cloudsso.group.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -42317,23 +42338,24 @@ type mqlAlicloudCloudssoDirectory struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAlicloudCloudssoDirectoryInternal
-	DirectoryId                plugin.TValue[string]
-	DirectoryName              plugin.TValue[string]
-	Region                     plugin.TValue[string]
-	CreateTime                 plugin.TValue[*time.Time]
-	UpdateTime                 plugin.TValue[*time.Time]
-	Users                      plugin.TValue[[]any]
-	Groups                     plugin.TValue[[]any]
-	AccessConfigurations       plugin.TValue[[]any]
-	AccessAssignments          plugin.TValue[[]any]
-	PasswordPolicy             plugin.TValue[*mqlAlicloudCloudssoPasswordPolicy]
-	MfaAuthenticationStatus    plugin.TValue[string]
-	AllowUserToGetCredentials  plugin.TValue[bool]
-	LoginNetworkMasks          plugin.TValue[string]
-	ScimSynchronizationEnabled plugin.TValue[bool]
-	SamlIdentityProvider       plugin.TValue[*mqlAlicloudCloudssoSamlIdentityProvider]
-	SsoEnabled                 plugin.TValue[bool]
-	Tasks                      plugin.TValue[[]any]
+	DirectoryId                  plugin.TValue[string]
+	DirectoryName                plugin.TValue[string]
+	Region                       plugin.TValue[string]
+	CreateTime                   plugin.TValue[*time.Time]
+	UpdateTime                   plugin.TValue[*time.Time]
+	Users                        plugin.TValue[[]any]
+	Groups                       plugin.TValue[[]any]
+	AccessConfigurations         plugin.TValue[[]any]
+	AccessAssignments            plugin.TValue[[]any]
+	PasswordPolicy               plugin.TValue[*mqlAlicloudCloudssoPasswordPolicy]
+	MfaAuthenticationStatus      plugin.TValue[string]
+	AllowUserToGetCredentials    plugin.TValue[bool]
+	AllowUserManageSecurityEmail plugin.TValue[bool]
+	LoginNetworkMasks            plugin.TValue[string]
+	ScimSynchronizationEnabled   plugin.TValue[bool]
+	SamlIdentityProvider         plugin.TValue[*mqlAlicloudCloudssoSamlIdentityProvider]
+	SsoEnabled                   plugin.TValue[bool]
+	Tasks                        plugin.TValue[[]any]
 }
 
 // createAlicloudCloudssoDirectory creates a new instance of this resource
@@ -42477,6 +42499,12 @@ func (c *mqlAlicloudCloudssoDirectory) GetMfaAuthenticationStatus() *plugin.TVal
 func (c *mqlAlicloudCloudssoDirectory) GetAllowUserToGetCredentials() *plugin.TValue[bool] {
 	return plugin.GetOrCompute[bool](&c.AllowUserToGetCredentials, func() (bool, error) {
 		return c.allowUserToGetCredentials()
+	})
+}
+
+func (c *mqlAlicloudCloudssoDirectory) GetAllowUserManageSecurityEmail() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AllowUserManageSecurityEmail, func() (bool, error) {
+		return c.allowUserManageSecurityEmail()
 	})
 }
 
@@ -42874,20 +42902,22 @@ type mqlAlicloudCloudssoUser struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAlicloudCloudssoUserInternal
-	DirectoryId   plugin.TValue[string]
-	UserId        plugin.TValue[string]
-	UserName      plugin.TValue[string]
-	DisplayName   plugin.TValue[string]
-	FirstName     plugin.TValue[string]
-	LastName      plugin.TValue[string]
-	Email         plugin.TValue[string]
-	Description   plugin.TValue[string]
-	Status        plugin.TValue[string]
-	ProvisionType plugin.TValue[string]
-	CreateTime    plugin.TValue[*time.Time]
-	UpdateTime    plugin.TValue[*time.Time]
-	MfaDevices    plugin.TValue[[]any]
-	Groups        plugin.TValue[[]any]
+	DirectoryId         plugin.TValue[string]
+	UserId              plugin.TValue[string]
+	UserName            plugin.TValue[string]
+	DisplayName         plugin.TValue[string]
+	FirstName           plugin.TValue[string]
+	LastName            plugin.TValue[string]
+	Email               plugin.TValue[string]
+	Description         plugin.TValue[string]
+	Status              plugin.TValue[string]
+	ProvisionType       plugin.TValue[string]
+	CreateTime          plugin.TValue[*time.Time]
+	UpdateTime          plugin.TValue[*time.Time]
+	MfaDevices          plugin.TValue[[]any]
+	Groups              plugin.TValue[[]any]
+	SecurityEmail       plugin.TValue[string]
+	SecurityEmailStatus plugin.TValue[string]
 }
 
 // createAlicloudCloudssoUser creates a new instance of this resource
@@ -43004,6 +43034,18 @@ func (c *mqlAlicloudCloudssoUser) GetGroups() *plugin.TValue[[]any] {
 		}
 
 		return c.groups()
+	})
+}
+
+func (c *mqlAlicloudCloudssoUser) GetSecurityEmail() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SecurityEmail, func() (string, error) {
+		return c.securityEmail()
+	})
+}
+
+func (c *mqlAlicloudCloudssoUser) GetSecurityEmailStatus() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SecurityEmailStatus, func() (string, error) {
+		return c.securityEmailStatus()
 	})
 }
 

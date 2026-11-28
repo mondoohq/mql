@@ -4136,6 +4136,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"stackit.telemetry.link.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitTelemetryLink).GetCreatedAt()).ToDataRes(types.Time)
 	},
+	"stackit.telemetry.link.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitTelemetryLink).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
 	"stackit.telemetry.link.router": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitTelemetryLink).GetRouter()).ToDataRes(types.Resource("stackit.telemetry.router"))
 	},
@@ -10211,6 +10214,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"stackit.telemetry.link.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlStackitTelemetryLink).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"stackit.telemetry.link.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitTelemetryLink).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
 	"stackit.telemetry.link.router": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -24576,6 +24583,7 @@ type mqlStackitTelemetryLink struct {
 	Status      plugin.TValue[string]
 	Region      plugin.TValue[string]
 	CreatedAt   plugin.TValue[*time.Time]
+	Labels      plugin.TValue[map[string]any]
 	Router      plugin.TValue[*mqlStackitTelemetryRouter]
 }
 
@@ -24642,6 +24650,10 @@ func (c *mqlStackitTelemetryLink) GetRegion() *plugin.TValue[string] {
 
 func (c *mqlStackitTelemetryLink) GetCreatedAt() *plugin.TValue[*time.Time] {
 	return &c.CreatedAt
+}
+
+func (c *mqlStackitTelemetryLink) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
 }
 
 func (c *mqlStackitTelemetryLink) GetRouter() *plugin.TValue[*mqlStackitTelemetryRouter] {

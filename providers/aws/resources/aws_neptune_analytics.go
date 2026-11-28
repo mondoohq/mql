@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/neptunegraph"
+	neptunegraph_types "github.com/aws/aws-sdk-go-v2/service/neptunegraph/types"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -68,6 +69,7 @@ func (a *mqlAwsNeptuneAnalytics) getGraphs(conn *connection.AwsConnection) []*jo
 					return nil, err
 				}
 				for _, g := range page.Graphs {
+					computeType, sessionMinMemory := neptuneGraphCompute(g.ComputeConfiguration)
 					mqlGraph, err := CreateResource(a.MqlRuntime, "aws.neptuneAnalytics.graph",
 						map[string]*llx.RawData{
 							"__id":               llx.StringDataPtr(g.Arn),
@@ -81,6 +83,8 @@ func (a *mqlAwsNeptuneAnalytics) getGraphs(conn *connection.AwsConnection) []*jo
 							"publicConnectivity": llx.BoolDataPtr(g.PublicConnectivity),
 							"provisionedMemory":  llx.IntDataDefault(g.ProvisionedMemory, 0),
 							"replicaCount":       llx.IntDataDefault(g.ReplicaCount, 0),
+							"computeType":        computeType,
+							"sessionMinMemory":   sessionMinMemory,
 						})
 					if err != nil {
 						return nil, err
@@ -94,6 +98,30 @@ func (a *mqlAwsNeptuneAnalytics) getGraphs(conn *connection.AwsConnection) []*jo
 		tasks = append(tasks, jobpool.NewJob(f))
 	}
 	return tasks
+}
+
+const (
+	neptuneComputeProvisionedGraph = "ProvisionedGraph"
+	neptuneComputeGraphSession     = "GraphSession"
+)
+
+// neptuneGraphCompute decodes a graph's compute configuration into its kind
+// and, for a graph session, the minimum session capacity units. Both are null
+// when AWS does not report the configuration.
+func neptuneGraphCompute(cc neptunegraph_types.ComputeConfiguration) (computeType *llx.RawData, sessionMinMemory *llx.RawData) {
+	switch v := cc.(type) {
+	case *neptunegraph_types.ComputeConfigurationMemberProvisionedGraph:
+		return llx.StringData(neptuneComputeProvisionedGraph), llx.NilData
+	case *neptunegraph_types.ComputeConfigurationMemberGraphSession:
+		if v.Value.MinMemory == nil {
+			return llx.StringData(neptuneComputeGraphSession), llx.NilData
+		}
+		return llx.StringData(neptuneComputeGraphSession), llx.IntData(int64(*v.Value.MinMemory))
+	case *neptunegraph_types.UnknownUnionMember:
+		return llx.StringData(v.Tag), llx.NilData
+	default:
+		return llx.NilData, llx.NilData
+	}
 }
 
 type mqlAwsNeptuneAnalyticsGraphInternal struct {

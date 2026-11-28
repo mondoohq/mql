@@ -7584,6 +7584,12 @@ alicloud.cloudsso.directory @defaults("directoryId directoryName region") {
   // True lets a signed-in user mint credentials that outlive the sign-in
   // session, widening the window in which a compromised session is useful.
   allowUserToGetCredentials() bool
+  // Whether users may change their own security email in the user portal
+  //
+  // The security email receives the verification codes that confirm a user's
+  // identity, so a user who can change it can redirect those codes. False,
+  // the default, leaves the address to administrators.
+  allowUserManageSecurityEmail() bool
   // Network ranges users may sign in from
   //
   // Semicolon-separated CIDR blocks restricting where sign-ins are accepted.
@@ -7789,6 +7795,16 @@ alicloud.cloudsso.user @defaults("userName displayName status provisionType") {
   mfaDevices() []alicloud.cloudsso.mfaDevice
   // Groups the user belongs to
   groups() []alicloud.cloudsso.group
+  // Security email bound to the user
+  //
+  // The address that receives the user's identity verification codes. Null
+  // when none is configured.
+  securityEmail() string
+  // Verification state of the security email
+  //
+  // One of active (verified) or pending. Null when no security email is
+  // configured.
+  securityEmailStatus() string
 }
 
 // CloudSSO group

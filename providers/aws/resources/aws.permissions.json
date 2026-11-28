@@ -1,7 +1,7 @@
 {
   "provider": "aws",
-  "version": "14.10.0",
-  "generated_at": "2026-11-20T22:33:35-08:00",
+  "version": "14.14.1",
+  "generated_at": "2026-11-27T20:32:38-08:00",
   "permissions": [
     "access-analyzer:GetFinding",
     "access-analyzer:ListAnalyzers",
@@ -232,6 +232,7 @@
     "cloudwatch:DescribeAlarms",
     "cloudwatch:DescribeAlarmsForMetric",
     "cloudwatch:GetMetricStatistics",
+    "cloudwatch:GetOTelEnrichment",
     "cloudwatch:ListMetrics",
     "cloudwatch:ListTagsForResource",
     "codeartifact:DescribeDomain",
@@ -2584,6 +2585,12 @@
       "permission": "cloudwatch:GetMetricStatistics",
       "service": "cloudwatch",
       "action": "GetMetricStatistics",
+      "source_file": "aws_cloudwatch.go"
+    },
+    {
+      "permission": "cloudwatch:GetOTelEnrichment",
+      "service": "cloudwatch",
+      "action": "GetOTelEnrichment",
       "source_file": "aws_cloudwatch.go"
     },
     {

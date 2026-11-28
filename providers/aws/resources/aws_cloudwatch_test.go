@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
 	cloudwatchtypes "github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
 	cloudwatchlogstypes "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
 	"github.com/stretchr/testify/assert"
@@ -212,5 +213,37 @@ func TestDatapointCacheKey(t *testing.T) {
 		assert.NotPanics(t, func() {
 			datapointCacheKey("series", cloudwatchtypes.Datapoint{Average: aws.Float64(1)})
 		})
+	})
+}
+
+// Synthetic: GetOTelEnrichment answers shaped after the API model; no live region was read.
+func TestOtelEnrichmentArgs(t *testing.T) {
+	t.Run("stopped omits tag setting and start time", func(t *testing.T) {
+		args := otelEnrichmentArgs("111122223333", "us-east-1", &cloudwatch.GetOTelEnrichmentOutput{
+			Status: cloudwatchtypes.OTelEnrichmentStatusStopped,
+		})
+		assert.Equal(t, "111122223333/us-east-1/otelEnrichment", args["__id"].Value)
+		assert.Equal(t, "Stopped", args["status"].Value)
+		assert.Nil(t, args["tagEnrichmentEnabled"].Value)
+		assert.Nil(t, args["createdAt"].Value)
+		assert.Nil(t, args["updatedAt"].Value)
+	})
+
+	t.Run("running without tag enrichment", func(t *testing.T) {
+		started := time.Date(2026, 11, 20, 10, 0, 0, 0, time.UTC)
+		args := otelEnrichmentArgs("111122223333", "eu-west-1", &cloudwatch.GetOTelEnrichmentOutput{
+			Status:              cloudwatchtypes.OTelEnrichmentStatusRunning,
+			EnableTagEnrichment: aws.Bool(false),
+			CreatedAt:           &started,
+		})
+		assert.Equal(t, "Running", args["status"].Value)
+		assert.Equal(t, false, args["tagEnrichmentEnabled"].Value)
+		assert.Equal(t, &started, args["createdAt"].Value)
+	})
+
+	t.Run("regions get distinct ids", func(t *testing.T) {
+		a := otelEnrichmentArgs("111122223333", "us-east-1", &cloudwatch.GetOTelEnrichmentOutput{})
+		b := otelEnrichmentArgs("111122223333", "us-west-2", &cloudwatch.GetOTelEnrichmentOutput{})
+		assert.NotEqual(t, a["__id"].Value, b["__id"].Value)
 	})
 }
