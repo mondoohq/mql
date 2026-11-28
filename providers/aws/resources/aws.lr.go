@@ -36041,8 +36041,8 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.cloudwatch.logDeliveryDestination.outputFormat": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCloudwatchLogDeliveryDestination).GetOutputFormat()).ToDataRes(types.String)
 	},
-	"aws.cloudwatch.logDeliveryDestination.roleArn": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAwsCloudwatchLogDeliveryDestination).GetRoleArn()).ToDataRes(types.String)
+	"aws.cloudwatch.logDeliveryDestination.role": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDeliveryDestination).GetRole()).ToDataRes(types.Resource("aws.iam.role"))
 	},
 	"aws.cloudwatch.logDeliveryDestination.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCloudwatchLogDeliveryDestination).GetTags()).ToDataRes(types.Map(types.String, types.String))
@@ -41504,17 +41504,11 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.imagebuilder.imagePipeline.status": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsImagebuilderImagePipeline).GetStatus()).ToDataRes(types.String)
 	},
-	"aws.imagebuilder.imagePipeline.imageRecipeArn": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAwsImagebuilderImagePipeline).GetImageRecipeArn()).ToDataRes(types.String)
-	},
 	"aws.imagebuilder.imagePipeline.containerRecipeArn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsImagebuilderImagePipeline).GetContainerRecipeArn()).ToDataRes(types.String)
 	},
 	"aws.imagebuilder.imagePipeline.infrastructureConfigurationArn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsImagebuilderImagePipeline).GetInfrastructureConfigurationArn()).ToDataRes(types.String)
-	},
-	"aws.imagebuilder.imagePipeline.distributionConfigurationArn": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAwsImagebuilderImagePipeline).GetDistributionConfigurationArn()).ToDataRes(types.String)
 	},
 	"aws.imagebuilder.imagePipeline.enhancedImageMetadataEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsImagebuilderImagePipeline).GetEnhancedImageMetadataEnabled()).ToDataRes(types.Bool)
@@ -41529,7 +41523,7 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 		return (r.(*mqlAwsImagebuilderImagePipeline).GetSchedule()).ToDataRes(types.Dict)
 	},
 	"aws.imagebuilder.imagePipeline.executionRole": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAwsImagebuilderImagePipeline).GetExecutionRole()).ToDataRes(types.String)
+		return (r.(*mqlAwsImagebuilderImagePipeline).GetExecutionRole()).ToDataRes(types.Resource("aws.iam.role"))
 	},
 	"aws.imagebuilder.imagePipeline.workflows": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsImagebuilderImagePipeline).GetWorkflows()).ToDataRes(types.Array(types.Dict))
@@ -86305,8 +86299,8 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsCloudwatchLogDeliveryDestination).OutputFormat, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"aws.cloudwatch.logDeliveryDestination.roleArn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAwsCloudwatchLogDeliveryDestination).RoleArn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"aws.cloudwatch.logDeliveryDestination.role": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDeliveryDestination).Role, ok = plugin.RawToTValue[*mqlAwsIamRole](v.Value, v.Error)
 		return
 	},
 	"aws.cloudwatch.logDeliveryDestination.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -94225,20 +94219,12 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsImagebuilderImagePipeline).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"aws.imagebuilder.imagePipeline.imageRecipeArn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAwsImagebuilderImagePipeline).ImageRecipeArn, ok = plugin.RawToTValue[string](v.Value, v.Error)
-		return
-	},
 	"aws.imagebuilder.imagePipeline.containerRecipeArn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsImagebuilderImagePipeline).ContainerRecipeArn, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.imagebuilder.imagePipeline.infrastructureConfigurationArn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsImagebuilderImagePipeline).InfrastructureConfigurationArn, ok = plugin.RawToTValue[string](v.Value, v.Error)
-		return
-	},
-	"aws.imagebuilder.imagePipeline.distributionConfigurationArn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAwsImagebuilderImagePipeline).DistributionConfigurationArn, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.imagebuilder.imagePipeline.enhancedImageMetadataEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -94258,7 +94244,7 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		return
 	},
 	"aws.imagebuilder.imagePipeline.executionRole": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAwsImagebuilderImagePipeline).ExecutionRole, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		r.(*mqlAwsImagebuilderImagePipeline).ExecutionRole, ok = plugin.RawToTValue[*mqlAwsIamRole](v.Value, v.Error)
 		return
 	},
 	"aws.imagebuilder.imagePipeline.workflows": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -209321,14 +209307,14 @@ func (c *mqlAwsCloudwatchLogDelivery) GetDeliveryDestination() *plugin.TValue[*m
 type mqlAwsCloudwatchLogDeliveryDestination struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlAwsCloudwatchLogDeliveryDestinationInternal it will be used here
+	mqlAwsCloudwatchLogDeliveryDestinationInternal
 	Arn                     plugin.TValue[string]
 	Name                    plugin.TValue[string]
 	Region                  plugin.TValue[string]
 	DeliveryDestinationType plugin.TValue[string]
 	DestinationResourceArn  plugin.TValue[string]
 	OutputFormat            plugin.TValue[string]
-	RoleArn                 plugin.TValue[string]
+	Role                    plugin.TValue[*mqlAwsIamRole]
 	Tags                    plugin.TValue[map[string]any]
 }
 
@@ -209393,8 +209379,20 @@ func (c *mqlAwsCloudwatchLogDeliveryDestination) GetOutputFormat() *plugin.TValu
 	return &c.OutputFormat
 }
 
-func (c *mqlAwsCloudwatchLogDeliveryDestination) GetRoleArn() *plugin.TValue[string] {
-	return &c.RoleArn
+func (c *mqlAwsCloudwatchLogDeliveryDestination) GetRole() *plugin.TValue[*mqlAwsIamRole] {
+	return plugin.GetOrCompute[*mqlAwsIamRole](&c.Role, func() (*mqlAwsIamRole, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.cloudwatch.logDeliveryDestination", c.__id, "role")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsIamRole), nil
+			}
+		}
+
+		return c.role()
+	})
 }
 
 func (c *mqlAwsCloudwatchLogDeliveryDestination) GetTags() *plugin.TValue[map[string]any] {
@@ -230230,22 +230228,20 @@ func (c *mqlAwsImagebuilder) GetDistributionConfigurations() *plugin.TValue[[]an
 type mqlAwsImagebuilderImagePipeline struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlAwsImagebuilderImagePipelineInternal it will be used here
+	mqlAwsImagebuilderImagePipelineInternal
 	Arn                            plugin.TValue[string]
 	Name                           plugin.TValue[string]
 	Region                         plugin.TValue[string]
 	Description                    plugin.TValue[string]
 	Platform                       plugin.TValue[string]
 	Status                         plugin.TValue[string]
-	ImageRecipeArn                 plugin.TValue[string]
 	ContainerRecipeArn             plugin.TValue[string]
 	InfrastructureConfigurationArn plugin.TValue[string]
-	DistributionConfigurationArn   plugin.TValue[string]
 	EnhancedImageMetadataEnabled   plugin.TValue[bool]
 	ImageTestsEnabled              plugin.TValue[bool]
 	ImageScanningEnabled           plugin.TValue[bool]
 	Schedule                       plugin.TValue[any]
-	ExecutionRole                  plugin.TValue[string]
+	ExecutionRole                  plugin.TValue[*mqlAwsIamRole]
 	Workflows                      plugin.TValue[[]any]
 	LastRunStatus                  plugin.TValue[string]
 	ConsecutiveFailures            plugin.TValue[int64]
@@ -230320,20 +230316,12 @@ func (c *mqlAwsImagebuilderImagePipeline) GetStatus() *plugin.TValue[string] {
 	return &c.Status
 }
 
-func (c *mqlAwsImagebuilderImagePipeline) GetImageRecipeArn() *plugin.TValue[string] {
-	return &c.ImageRecipeArn
-}
-
 func (c *mqlAwsImagebuilderImagePipeline) GetContainerRecipeArn() *plugin.TValue[string] {
 	return &c.ContainerRecipeArn
 }
 
 func (c *mqlAwsImagebuilderImagePipeline) GetInfrastructureConfigurationArn() *plugin.TValue[string] {
 	return &c.InfrastructureConfigurationArn
-}
-
-func (c *mqlAwsImagebuilderImagePipeline) GetDistributionConfigurationArn() *plugin.TValue[string] {
-	return &c.DistributionConfigurationArn
 }
 
 func (c *mqlAwsImagebuilderImagePipeline) GetEnhancedImageMetadataEnabled() *plugin.TValue[bool] {
@@ -230352,8 +230340,20 @@ func (c *mqlAwsImagebuilderImagePipeline) GetSchedule() *plugin.TValue[any] {
 	return &c.Schedule
 }
 
-func (c *mqlAwsImagebuilderImagePipeline) GetExecutionRole() *plugin.TValue[string] {
-	return &c.ExecutionRole
+func (c *mqlAwsImagebuilderImagePipeline) GetExecutionRole() *plugin.TValue[*mqlAwsIamRole] {
+	return plugin.GetOrCompute[*mqlAwsIamRole](&c.ExecutionRole, func() (*mqlAwsIamRole, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.imagebuilder.imagePipeline", c.__id, "executionRole")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsIamRole), nil
+			}
+		}
+
+		return c.executionRole()
+	})
 }
 
 func (c *mqlAwsImagebuilderImagePipeline) GetWorkflows() *plugin.TValue[[]any] {

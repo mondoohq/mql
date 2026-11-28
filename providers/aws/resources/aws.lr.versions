@@ -2572,7 +2572,7 @@ aws.cloudwatch.logDeliveryDestination.destinationResourceArn 14.15.1
 aws.cloudwatch.logDeliveryDestination.name 14.15.1
 aws.cloudwatch.logDeliveryDestination.outputFormat 14.15.1
 aws.cloudwatch.logDeliveryDestination.region 14.15.1
-aws.cloudwatch.logDeliveryDestination.roleArn 14.15.1
+aws.cloudwatch.logDeliveryDestination.role 14.15.1
 aws.cloudwatch.logDeliveryDestination.tags 14.15.1
 aws.cloudwatch.logDeliveryDestinations 14.15.1
 aws.cloudwatch.logDeliverySource 14.15.1
@@ -7288,11 +7288,9 @@ aws.imagebuilder.imagePipeline.containerRecipeArn 14.15.1
 aws.imagebuilder.imagePipeline.createdAt 14.15.1
 aws.imagebuilder.imagePipeline.description 14.15.1
 aws.imagebuilder.imagePipeline.distributionConfiguration 14.15.1
-aws.imagebuilder.imagePipeline.distributionConfigurationArn 14.15.1
 aws.imagebuilder.imagePipeline.enhancedImageMetadataEnabled 14.15.1
 aws.imagebuilder.imagePipeline.executionRole 14.15.1
 aws.imagebuilder.imagePipeline.imageRecipe 14.15.1
-aws.imagebuilder.imagePipeline.imageRecipeArn 14.15.1
 aws.imagebuilder.imagePipeline.imageScanningEnabled 14.15.1
 aws.imagebuilder.imagePipeline.imageTestsEnabled 14.15.1
 aws.imagebuilder.imagePipeline.infrastructureConfigurationArn 14.15.1

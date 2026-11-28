@@ -606,7 +606,7 @@ func newMqlImagebuilderImagePipeline(runtime *plugin.Runtime, region string, p *
 			"parameters":    params,
 		})
 	}
-	return CreateResource(runtime, ResourceAwsImagebuilderImagePipeline, map[string]*llx.RawData{
+	res, err := CreateResource(runtime, ResourceAwsImagebuilderImagePipeline, map[string]*llx.RawData{
 		"__id":                           llx.StringDataPtr(p.Arn),
 		"arn":                            llx.StringDataPtr(p.Arn),
 		"name":                           llx.StringDataPtr(p.Name),
@@ -614,15 +614,12 @@ func newMqlImagebuilderImagePipeline(runtime *plugin.Runtime, region string, p *
 		"description":                    llx.StringDataPtr(p.Description),
 		"platform":                       llx.StringData(string(p.Platform)),
 		"status":                         llx.StringData(string(p.Status)),
-		"imageRecipeArn":                 llx.StringDataPtr(p.ImageRecipeArn),
 		"containerRecipeArn":             llx.StringDataPtr(p.ContainerRecipeArn),
 		"infrastructureConfigurationArn": llx.StringDataPtr(p.InfrastructureConfigurationArn),
-		"distributionConfigurationArn":   llx.StringDataPtr(p.DistributionConfigurationArn),
 		"enhancedImageMetadataEnabled":   llx.BoolData(convert.ToValue(p.EnhancedImageMetadataEnabled)),
 		"imageTestsEnabled":              llx.BoolData(testsEnabled),
 		"imageScanningEnabled":           llx.BoolData(scanningEnabled),
 		"schedule":                       schedule,
-		"executionRole":                  llx.StringDataPtr(p.ExecutionRole),
 		"workflows":                      llx.ArrayData(workflows, types.Dict),
 		"lastRunStatus":                  llx.StringData(string(p.LastRunStatus)),
 		"consecutiveFailures":            llx.IntDataDefault(p.ConsecutiveFailures, 0),
@@ -632,6 +629,22 @@ func newMqlImagebuilderImagePipeline(runtime *plugin.Runtime, region string, p *
 		"nextRunAt":                      llx.TimeDataPtr(parseAwsTimestampPtr(p.DateNextRun)),
 		"tags":                           llx.MapData(toInterfaceMap(p.Tags), types.String),
 	})
+	if err != nil {
+		return nil, err
+	}
+	pipeline := res.(*mqlAwsImagebuilderImagePipeline)
+	pipeline.imageRecipeArn = convert.ToValue(p.ImageRecipeArn)
+	pipeline.distributionConfigurationArn = convert.ToValue(p.DistributionConfigurationArn)
+	pipeline.executionRoleArn = convert.ToValue(p.ExecutionRole)
+	return pipeline, nil
+}
+
+// mqlAwsImagebuilderImagePipelineInternal keeps the ARNs that the typed
+// accessors resolve.
+type mqlAwsImagebuilderImagePipelineInternal struct {
+	imageRecipeArn               string
+	distributionConfigurationArn string
+	executionRoleArn             string
 }
 
 func (a *mqlAwsImagebuilderImagePipeline) id() (string, error) {
@@ -639,12 +652,12 @@ func (a *mqlAwsImagebuilderImagePipeline) id() (string, error) {
 }
 
 func (a *mqlAwsImagebuilderImagePipeline) imageRecipe() (*mqlAwsImagebuilderImageRecipe, error) {
-	if a.ImageRecipeArn.Data == "" {
+	if a.imageRecipeArn == "" {
 		a.ImageRecipe.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	res, err := NewResource(a.MqlRuntime, ResourceAwsImagebuilderImageRecipe, map[string]*llx.RawData{
-		"arn": llx.StringData(a.ImageRecipeArn.Data),
+		"arn": llx.StringData(a.imageRecipeArn),
 	})
 	if err != nil {
 		return nil, err
@@ -653,17 +666,31 @@ func (a *mqlAwsImagebuilderImagePipeline) imageRecipe() (*mqlAwsImagebuilderImag
 }
 
 func (a *mqlAwsImagebuilderImagePipeline) distributionConfiguration() (*mqlAwsImagebuilderDistributionConfiguration, error) {
-	if a.DistributionConfigurationArn.Data == "" {
+	if a.distributionConfigurationArn == "" {
 		a.DistributionConfiguration.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	res, err := NewResource(a.MqlRuntime, ResourceAwsImagebuilderDistributionConfiguration, map[string]*llx.RawData{
-		"arn": llx.StringData(a.DistributionConfigurationArn.Data),
+		"arn": llx.StringData(a.distributionConfigurationArn),
 	})
 	if err != nil {
 		return nil, err
 	}
 	return res.(*mqlAwsImagebuilderDistributionConfiguration), nil
+}
+
+func (a *mqlAwsImagebuilderImagePipeline) executionRole() (*mqlAwsIamRole, error) {
+	if a.executionRoleArn == "" {
+		a.ExecutionRole.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, ResourceAwsIamRole, map[string]*llx.RawData{
+		"arn": llx.StringData(a.executionRoleArn),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsIamRole), nil
 }
 
 func (a *mqlAwsImagebuilderImagePipeline) cleanupBypassed() (bool, error) {

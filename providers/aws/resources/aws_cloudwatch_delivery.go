@@ -124,12 +124,12 @@ func (a *mqlAwsCloudwatch) logDeliveryDestinations() ([]any, error) {
 					"deliveryDestinationType": llx.StringData(string(d.DeliveryDestinationType)),
 					"destinationResourceArn":  llx.StringData(destinationArn),
 					"outputFormat":            llx.StringData(string(d.OutputFormat)),
-					"roleArn":                 llx.StringDataPtr(d.RoleArn),
 					"tags":                    llx.MapData(toInterfaceMap(d.Tags), types.String),
 				})
 				if err != nil {
 					return nil, err
 				}
+				mqlDestination.(*mqlAwsCloudwatchLogDeliveryDestination).roleArn = convert.ToValue(d.RoleArn)
 				res = append(res, mqlDestination)
 			}
 		}
@@ -276,4 +276,24 @@ func (a *mqlAwsBedrockKnowledgeBase) logDeliveries() ([]any, error) {
 		return nil, kbArn.Error
 	}
 	return logDeliveriesForResource(a.MqlRuntime, kbArn.Data)
+}
+
+// mqlAwsCloudwatchLogDeliveryDestinationInternal keeps the role ARN that
+// role() resolves.
+type mqlAwsCloudwatchLogDeliveryDestinationInternal struct {
+	roleArn string
+}
+
+func (a *mqlAwsCloudwatchLogDeliveryDestination) role() (*mqlAwsIamRole, error) {
+	if a.roleArn == "" {
+		a.Role.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, ResourceAwsIamRole, map[string]*llx.RawData{
+		"arn": llx.StringData(a.roleArn),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsIamRole), nil
 }

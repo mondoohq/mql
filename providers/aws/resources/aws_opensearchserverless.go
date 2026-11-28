@@ -813,6 +813,11 @@ func (a *mqlAwsOpensearchserverlessCollection) sourceServices() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A partial list would let a check pass on access it cannot see.
+	if net.unknown {
+		a.SourceServices.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
 	return net.sourceServices, nil
 }
 
@@ -820,6 +825,11 @@ func (a *mqlAwsOpensearchserverlessCollection) sourceVpcEndpointIds() ([]any, er
 	net, err := a.fetchNetwork()
 	if err != nil {
 		return nil, err
+	}
+	// A partial list would let a check pass on access it cannot see.
+	if net.unknown {
+		a.SourceVpcEndpointIds.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 	return net.sourceVpces, nil
 }

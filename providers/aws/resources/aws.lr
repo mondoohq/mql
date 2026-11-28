@@ -31423,8 +31423,10 @@ private aws.cloudwatch.logDeliveryDestination @defaults("name deliveryDestinatio
   destinationResourceArn string
   // Format of delivered logs, for example json, plain, w3c, raw, or parquet
   outputFormat string
-  // ARN of the IAM role the destination uses, when the destination type requires one
-  roleArn string
+  // IAM role the destination uses
+  //
+  // Null when the destination type needs no role.
+  role() aws.iam.role
   // Tags of the delivery destination
   tags map[string]string
 }
@@ -37263,12 +37265,14 @@ private aws.opensearchserverless.collection @defaults("name type status region")
   // AWS services allowed private access to the collection, for example bedrock.amazonaws.com
   //
   // The SourceServices of the private rule sets of matching network policies
-  // that cover the collection with a `collection` rule.
+  // that cover the collection with a `collection` rule. Null when a matching
+  // policy's document could not be read, since the list would be incomplete.
   sourceServices() []string
   // OpenSearch Serverless VPC endpoints allowed access to the collection
   //
   // The SourceVPCEs of the private rule sets of matching network policies
-  // that cover the collection with a `collection` rule.
+  // that cover the collection with a `collection` rule. Null when a matching
+  // policy's document could not be read, since the list would be incomplete.
   sourceVpcEndpointIds() []string
 }
 
@@ -37408,14 +37412,10 @@ private aws.imagebuilder.imagePipeline @defaults("name status platform region") 
   platform string
   // Status of the image pipeline: ENABLED or DISABLED
   status string
-  // ARN of the image recipe; empty for container pipelines
-  imageRecipeArn string
   // ARN of the container recipe; empty for AMI pipelines
   containerRecipeArn string
   // ARN of the infrastructure configuration
   infrastructureConfigurationArn string
-  // ARN of the distribution configuration; empty when none is attached
-  distributionConfigurationArn string
   // Whether enhanced image metadata (installed package inventory) is collected
   enhancedImageMetadataEnabled bool
   // Whether image tests run after each build
@@ -37429,7 +37429,10 @@ private aws.imagebuilder.imagePipeline @defaults("name status platform region") 
   // demand.
   schedule dict
   // IAM role Image Builder assumes to run the pipeline's workflows
-  executionRole string
+  //
+  // Null when the pipeline names none and Image Builder uses its
+  // service-linked role.
+  executionRole() aws.iam.role
   // Workflows the pipeline runs, each with `workflowArn`, `onFailure`, `parallelGroup`, and `parameters`
   workflows []dict
   // Status of the last run, for example AVAILABLE or FAILED
