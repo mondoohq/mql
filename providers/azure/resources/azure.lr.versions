@@ -20,6 +20,7 @@ azure.managementGroup.children 13.33.8
 azure.managementGroup.displayName 13.33.8
 azure.managementGroup.hierarchySettings 14.14.1
 azure.managementGroup.hierarchySettings.defaultManagementGroup 14.14.1
+azure.managementGroup.hierarchySettings.defaultManagementGroupId 14.14.1
 azure.managementGroup.hierarchySettings.id 14.14.1
 azure.managementGroup.hierarchySettings.requireAuthorizationForGroupCreation 14.14.1
 azure.managementGroup.hierarchySettings.tenantId 14.14.1

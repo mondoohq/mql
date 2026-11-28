@@ -144,7 +144,7 @@ azure.managementGroup @defaults("name displayName subscriptionCount") {
 // subscriptions land in the root group and only inherit what is assigned
 // there; without the authorization requirement, any user in the tenant
 // can create management groups under the root.
-private azure.managementGroup.hierarchySettings @defaults("defaultManagementGroup requireAuthorizationForGroupCreation") {
+private azure.managementGroup.hierarchySettings @defaults("defaultManagementGroupId requireAuthorizationForGroupCreation") {
   // Resource ID of the settings on the tenant root group
   id string
   // Tenant the hierarchy belongs to
@@ -154,7 +154,14 @@ private azure.managementGroup.hierarchySettings @defaults("defaultManagementGrou
   // The tenant root group's ID when no default group was set, which is
   // where Azure places new subscriptions in that case, for example
   // `/providers/Microsoft.Management/managementGroups/<tenant ID>`.
-  defaultManagementGroup string
+  // Always set, even when the credential cannot read the group itself.
+  defaultManagementGroupId string
+  // Management group new subscriptions are placed in
+  //
+  // The group named by defaultManagementGroupId, the tenant root group
+  // when no default group was set. Null when the credential cannot read
+  // that group; compare defaultManagementGroupId then.
+  defaultManagementGroup() azure.managementGroup
   // Whether creating a management group requires write access on the root group
   //
   // When true, a user needs

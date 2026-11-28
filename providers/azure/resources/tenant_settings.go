@@ -7,12 +7,14 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/managementgroups/armmanagementgroups/v2"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/types"
 )
@@ -107,7 +109,7 @@ func (a *mqlAzureManagementGroup) hierarchySettings() (*mqlAzureManagementGroupH
 		"__id":                                 llx.StringData(v.id),
 		"id":                                   llx.StringData(v.id),
 		"tenantId":                             llx.StringData(v.tenantID),
-		"defaultManagementGroup":               llx.StringData(v.defaultManagementGroup),
+		"defaultManagementGroupId":             llx.StringData(v.defaultManagementGroup),
 		"requireAuthorizationForGroupCreation": llx.BoolData(v.requireAuthorizationForGroupCreation),
 	})
 	if err != nil {
@@ -219,6 +221,27 @@ func connectedTenantID(a *mqlAzure) (string, error) {
 
 func (a *mqlAzureManagementGroupHierarchySettings) id() (string, error) {
 	return a.Id.Data, nil
+}
+
+// defaultManagementGroup resolves defaultManagementGroupId against the
+// tenant's cached management group hierarchy. It is null when that group is
+// not among the groups the credential can read.
+func (a *mqlAzureManagementGroupHierarchySettings) defaultManagementGroup() (*mqlAzureManagementGroup, error) {
+	az, err := azureSingleton(a.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	entities, err := az.managementGroupEntities()
+	if err != nil {
+		return nil, err
+	}
+	for _, e := range entities {
+		if isManagementGroupEntity(e) && strings.EqualFold(convert.ToValue(e.ID), a.DefaultManagementGroupId.Data) {
+			return newMqlManagementGroup(a.MqlRuntime, e, entities)
+		}
+	}
+	a.DefaultManagementGroup.State = plugin.StateIsSet | plugin.StateIsNull
+	return nil, nil
 }
 
 func (a *mqlAzureSubscriptionTenantPolicy) id() (string, error) {

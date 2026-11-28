@@ -3351,8 +3351,11 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.managementGroup.hierarchySettings.tenantId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureManagementGroupHierarchySettings).GetTenantId()).ToDataRes(types.String)
 	},
+	"azure.managementGroup.hierarchySettings.defaultManagementGroupId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureManagementGroupHierarchySettings).GetDefaultManagementGroupId()).ToDataRes(types.String)
+	},
 	"azure.managementGroup.hierarchySettings.defaultManagementGroup": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAzureManagementGroupHierarchySettings).GetDefaultManagementGroup()).ToDataRes(types.String)
+		return (r.(*mqlAzureManagementGroupHierarchySettings).GetDefaultManagementGroup()).ToDataRes(types.Resource("azure.managementGroup"))
 	},
 	"azure.managementGroup.hierarchySettings.requireAuthorizationForGroupCreation": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureManagementGroupHierarchySettings).GetRequireAuthorizationForGroupCreation()).ToDataRes(types.Bool)
@@ -26416,8 +26419,12 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureManagementGroupHierarchySettings).TenantId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"azure.managementGroup.hierarchySettings.defaultManagementGroupId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureManagementGroupHierarchySettings).DefaultManagementGroupId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"azure.managementGroup.hierarchySettings.defaultManagementGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureManagementGroupHierarchySettings).DefaultManagementGroup, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		r.(*mqlAzureManagementGroupHierarchySettings).DefaultManagementGroup, ok = plugin.RawToTValue[*mqlAzureManagementGroup](v.Value, v.Error)
 		return
 	},
 	"azure.managementGroup.hierarchySettings.requireAuthorizationForGroupCreation": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -59892,7 +59899,8 @@ type mqlAzureManagementGroupHierarchySettings struct {
 	// optional: if you define mqlAzureManagementGroupHierarchySettingsInternal it will be used here
 	Id                                   plugin.TValue[string]
 	TenantId                             plugin.TValue[string]
-	DefaultManagementGroup               plugin.TValue[string]
+	DefaultManagementGroupId             plugin.TValue[string]
+	DefaultManagementGroup               plugin.TValue[*mqlAzureManagementGroup]
 	RequireAuthorizationForGroupCreation plugin.TValue[bool]
 }
 
@@ -59941,8 +59949,24 @@ func (c *mqlAzureManagementGroupHierarchySettings) GetTenantId() *plugin.TValue[
 	return &c.TenantId
 }
 
-func (c *mqlAzureManagementGroupHierarchySettings) GetDefaultManagementGroup() *plugin.TValue[string] {
-	return &c.DefaultManagementGroup
+func (c *mqlAzureManagementGroupHierarchySettings) GetDefaultManagementGroupId() *plugin.TValue[string] {
+	return &c.DefaultManagementGroupId
+}
+
+func (c *mqlAzureManagementGroupHierarchySettings) GetDefaultManagementGroup() *plugin.TValue[*mqlAzureManagementGroup] {
+	return plugin.GetOrCompute[*mqlAzureManagementGroup](&c.DefaultManagementGroup, func() (*mqlAzureManagementGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.managementGroup.hierarchySettings", c.__id, "defaultManagementGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureManagementGroup), nil
+			}
+		}
+
+		return c.defaultManagementGroup()
+	})
 }
 
 func (c *mqlAzureManagementGroupHierarchySettings) GetRequireAuthorizationForGroupCreation() *plugin.TValue[bool] {
