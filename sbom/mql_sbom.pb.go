@@ -323,9 +323,17 @@ type Sbom struct {
 	// go.mod's flat require list). This is the CycloneDX `dependencies` / SPDX
 	// `DEPENDS_ON` graph, which lets a consumer reason about which components a
 	// given component pulls in rather than just a flat inventory.
-	Dependencies  []*Dependency `protobuf:"bytes,7,rep,name=dependencies,proto3" json:"dependencies,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Dependencies []*Dependency `protobuf:"bytes,7,rep,name=dependencies,proto3" json:"dependencies,omitempty"`
+	// 'history_coverage' says how much source-control history the packages'
+	// presence_intervals were read from: one entry per lockfile and branch
+	// walked. Empty when no history was read, which is the case for every
+	// scan that is not a repository scan asked to read lockfile history. An
+	// interval is only evidence for the window its coverage entry covers; a
+	// version with no interval was not seen in that window, nothing more.
+	// protolint:disable:next REPEATED_FIELD_NAMES_PLURALIZED
+	HistoryCoverage []*HistoryCoverage `protobuf:"bytes,8,rep,name=history_coverage,json=historyCoverage,proto3" json:"history_coverage,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *Sbom) Reset() {
@@ -407,6 +415,255 @@ func (x *Sbom) GetDependencies() []*Dependency {
 	return nil
 }
 
+func (x *Sbom) GetHistoryCoverage() []*HistoryCoverage {
+	if x != nil {
+		return x.HistoryCoverage
+	}
+	return nil
+}
+
+// HistoryCoverage is how much history one lockfile's walk on one branch read.
+type HistoryCoverage struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 'lockfile' is the path of the lockfile, relative to the repository root.
+	Lockfile string `protobuf:"bytes,1,opt,name=lockfile,proto3" json:"lockfile,omitempty"`
+	// 'branch' is the branch walked, e.g. "main".
+	Branch string `protobuf:"bytes,2,opt,name=branch,proto3" json:"branch,omitempty"`
+	// 'requested_since' is the start of the window the scan asked for, in RFC
+	// 3339 UTC. Empty when the whole history was asked for.
+	RequestedSince string `protobuf:"bytes,3,opt,name=requested_since,json=requestedSince,proto3" json:"requested_since,omitempty"`
+	// 'since' is the committer time of the oldest commit read, in RFC 3339
+	// UTC. Later than requested_since when the walk stopped early or the
+	// history is shorter. Empty when no commit was read.
+	Since string `protobuf:"bytes,4,opt,name=since,proto3" json:"since,omitempty"`
+	// 'commits' is the number of commits read.
+	Commits int32 `protobuf:"varint,5,opt,name=commits,proto3" json:"commits,omitempty"`
+	// 'truncated' is set when the walk stopped before the start of the window
+	// or the root commit, because a limit was reached. 'truncated_reason' names
+	// the limit, as a short kebab-case reason, e.g. "max-commits" or
+	// "byte-budget".
+	Truncated       bool   `protobuf:"varint,6,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	TruncatedReason string `protobuf:"bytes,7,opt,name=truncated_reason,json=truncatedReason,proto3" json:"truncated_reason,omitempty"`
+	// 'shallow' is set when the walk reached the boundary of a shallow clone,
+	// so older history exists but was not available to read.
+	Shallow bool `protobuf:"varint,8,opt,name=shallow,proto3" json:"shallow,omitempty"`
+	// 'unparsed_commits' is the number of commits read whose lockfile did not
+	// parse. Their state is taken to be the one of the commit before.
+	UnparsedCommits int32 `protobuf:"varint,9,opt,name=unparsed_commits,json=unparsedCommits,proto3" json:"unparsed_commits,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *HistoryCoverage) Reset() {
+	*x = HistoryCoverage{}
+	mi := &file_mql_sbom_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HistoryCoverage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HistoryCoverage) ProtoMessage() {}
+
+func (x *HistoryCoverage) ProtoReflect() protoreflect.Message {
+	mi := &file_mql_sbom_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HistoryCoverage.ProtoReflect.Descriptor instead.
+func (*HistoryCoverage) Descriptor() ([]byte, []int) {
+	return file_mql_sbom_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *HistoryCoverage) GetLockfile() string {
+	if x != nil {
+		return x.Lockfile
+	}
+	return ""
+}
+
+func (x *HistoryCoverage) GetBranch() string {
+	if x != nil {
+		return x.Branch
+	}
+	return ""
+}
+
+func (x *HistoryCoverage) GetRequestedSince() string {
+	if x != nil {
+		return x.RequestedSince
+	}
+	return ""
+}
+
+func (x *HistoryCoverage) GetSince() string {
+	if x != nil {
+		return x.Since
+	}
+	return ""
+}
+
+func (x *HistoryCoverage) GetCommits() int32 {
+	if x != nil {
+		return x.Commits
+	}
+	return 0
+}
+
+func (x *HistoryCoverage) GetTruncated() bool {
+	if x != nil {
+		return x.Truncated
+	}
+	return false
+}
+
+func (x *HistoryCoverage) GetTruncatedReason() string {
+	if x != nil {
+		return x.TruncatedReason
+	}
+	return ""
+}
+
+func (x *HistoryCoverage) GetShallow() bool {
+	if x != nil {
+		return x.Shallow
+	}
+	return false
+}
+
+func (x *HistoryCoverage) GetUnparsedCommits() int32 {
+	if x != nil {
+		return x.UnparsedCommits
+	}
+	return 0
+}
+
+// PresenceInterval is a window of source-control history in which one
+// version of a package was in a lockfile on a branch. Times are commit
+// committer times in RFC 3339 UTC, which whoever made the commit chose: an
+// interval is evidence that the version was installed in the window, never
+// that it was absent outside of it.
+type PresenceInterval struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 'lockfile' is the path of the lockfile, relative to the repository root.
+	Lockfile string `protobuf:"bytes,1,opt,name=lockfile,proto3" json:"lockfile,omitempty"`
+	// 'branch' is the branch the interval was read on.
+	Branch string `protobuf:"bytes,2,opt,name=branch,proto3" json:"branch,omitempty"`
+	// 'first_commit' is the commit that added the version, or the oldest
+	// commit read when the version was already there (see at_walk_start).
+	FirstCommit string `protobuf:"bytes,3,opt,name=first_commit,json=firstCommit,proto3" json:"first_commit,omitempty"`
+	// 'first_seen' is the committer time of first_commit.
+	FirstSeen string `protobuf:"bytes,4,opt,name=first_seen,json=firstSeen,proto3" json:"first_seen,omitempty"`
+	// 'at_walk_start' is set when the version was in the oldest commit read,
+	// so it may have been added before first_seen.
+	AtWalkStart bool `protobuf:"varint,5,opt,name=at_walk_start,json=atWalkStart,proto3" json:"at_walk_start,omitempty"`
+	// 'last_commit' is the first commit without the version, the one that
+	// removed it. Empty while open.
+	LastCommit string `protobuf:"bytes,6,opt,name=last_commit,json=lastCommit,proto3" json:"last_commit,omitempty"`
+	// 'last_seen' is the committer time of last_commit. Empty while open.
+	LastSeen string `protobuf:"bytes,7,opt,name=last_seen,json=lastSeen,proto3" json:"last_seen,omitempty"`
+	// 'open' is set when the version is in the newest commit read, the
+	// branch's head.
+	Open          bool `protobuf:"varint,8,opt,name=open,proto3" json:"open,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PresenceInterval) Reset() {
+	*x = PresenceInterval{}
+	mi := &file_mql_sbom_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PresenceInterval) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PresenceInterval) ProtoMessage() {}
+
+func (x *PresenceInterval) ProtoReflect() protoreflect.Message {
+	mi := &file_mql_sbom_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PresenceInterval.ProtoReflect.Descriptor instead.
+func (*PresenceInterval) Descriptor() ([]byte, []int) {
+	return file_mql_sbom_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *PresenceInterval) GetLockfile() string {
+	if x != nil {
+		return x.Lockfile
+	}
+	return ""
+}
+
+func (x *PresenceInterval) GetBranch() string {
+	if x != nil {
+		return x.Branch
+	}
+	return ""
+}
+
+func (x *PresenceInterval) GetFirstCommit() string {
+	if x != nil {
+		return x.FirstCommit
+	}
+	return ""
+}
+
+func (x *PresenceInterval) GetFirstSeen() string {
+	if x != nil {
+		return x.FirstSeen
+	}
+	return ""
+}
+
+func (x *PresenceInterval) GetAtWalkStart() bool {
+	if x != nil {
+		return x.AtWalkStart
+	}
+	return false
+}
+
+func (x *PresenceInterval) GetLastCommit() string {
+	if x != nil {
+		return x.LastCommit
+	}
+	return ""
+}
+
+func (x *PresenceInterval) GetLastSeen() string {
+	if x != nil {
+		return x.LastSeen
+	}
+	return ""
+}
+
+func (x *PresenceInterval) GetOpen() bool {
+	if x != nil {
+		return x.Open
+	}
+	return false
+}
+
 // Dependency is one node of the dependency graph: a component and the
 // components it directly depends on, all referenced by Package.bom_ref.
 type Dependency struct {
@@ -421,7 +678,7 @@ type Dependency struct {
 
 func (x *Dependency) Reset() {
 	*x = Dependency{}
-	mi := &file_mql_sbom_proto_msgTypes[1]
+	mi := &file_mql_sbom_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -433,7 +690,7 @@ func (x *Dependency) String() string {
 func (*Dependency) ProtoMessage() {}
 
 func (x *Dependency) ProtoReflect() protoreflect.Message {
-	mi := &file_mql_sbom_proto_msgTypes[1]
+	mi := &file_mql_sbom_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -446,7 +703,7 @@ func (x *Dependency) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Dependency.ProtoReflect.Descriptor instead.
 func (*Dependency) Descriptor() ([]byte, []int) {
-	return file_mql_sbom_proto_rawDescGZIP(), []int{1}
+	return file_mql_sbom_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *Dependency) GetRef() string {
@@ -481,7 +738,7 @@ type Generator struct {
 
 func (x *Generator) Reset() {
 	*x = Generator{}
-	mi := &file_mql_sbom_proto_msgTypes[2]
+	mi := &file_mql_sbom_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -493,7 +750,7 @@ func (x *Generator) String() string {
 func (*Generator) ProtoMessage() {}
 
 func (x *Generator) ProtoReflect() protoreflect.Message {
-	mi := &file_mql_sbom_proto_msgTypes[2]
+	mi := &file_mql_sbom_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -506,7 +763,7 @@ func (x *Generator) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Generator.ProtoReflect.Descriptor instead.
 func (*Generator) Descriptor() ([]byte, []int) {
-	return file_mql_sbom_proto_rawDescGZIP(), []int{2}
+	return file_mql_sbom_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Generator) GetVendor() string {
@@ -558,7 +815,7 @@ type ExternalID struct {
 
 func (x *ExternalID) Reset() {
 	*x = ExternalID{}
-	mi := &file_mql_sbom_proto_msgTypes[3]
+	mi := &file_mql_sbom_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -570,7 +827,7 @@ func (x *ExternalID) String() string {
 func (*ExternalID) ProtoMessage() {}
 
 func (x *ExternalID) ProtoReflect() protoreflect.Message {
-	mi := &file_mql_sbom_proto_msgTypes[3]
+	mi := &file_mql_sbom_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -583,7 +840,7 @@ func (x *ExternalID) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExternalID.ProtoReflect.Descriptor instead.
 func (*ExternalID) Descriptor() ([]byte, []int) {
-	return file_mql_sbom_proto_rawDescGZIP(), []int{3}
+	return file_mql_sbom_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ExternalID) GetType() ExternalIDType {
@@ -639,7 +896,7 @@ type Asset struct {
 
 func (x *Asset) Reset() {
 	*x = Asset{}
-	mi := &file_mql_sbom_proto_msgTypes[4]
+	mi := &file_mql_sbom_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -651,7 +908,7 @@ func (x *Asset) String() string {
 func (*Asset) ProtoMessage() {}
 
 func (x *Asset) ProtoReflect() protoreflect.Message {
-	mi := &file_mql_sbom_proto_msgTypes[4]
+	mi := &file_mql_sbom_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -664,7 +921,7 @@ func (x *Asset) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Asset.ProtoReflect.Descriptor instead.
 func (*Asset) Descriptor() ([]byte, []int) {
-	return file_mql_sbom_proto_rawDescGZIP(), []int{4}
+	return file_mql_sbom_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Asset) GetName() string {
@@ -745,7 +1002,7 @@ type Platform struct {
 
 func (x *Platform) Reset() {
 	*x = Platform{}
-	mi := &file_mql_sbom_proto_msgTypes[5]
+	mi := &file_mql_sbom_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -757,7 +1014,7 @@ func (x *Platform) String() string {
 func (*Platform) ProtoMessage() {}
 
 func (x *Platform) ProtoReflect() protoreflect.Message {
-	mi := &file_mql_sbom_proto_msgTypes[5]
+	mi := &file_mql_sbom_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -770,7 +1027,7 @@ func (x *Platform) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Platform.ProtoReflect.Descriptor instead.
 func (*Platform) Descriptor() ([]byte, []int) {
-	return file_mql_sbom_proto_rawDescGZIP(), []int{5}
+	return file_mql_sbom_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Platform) GetName() string {
@@ -948,14 +1205,21 @@ type Package struct {
 	OsProvided *bool `protobuf:"varint,36,opt,name=os_provided,json=osProvided,proto3,oneof" json:"os_provided,omitempty"`
 	// 'source' is where the installed build came from. Unset when the scan did
 	// not report it.
-	Source        *PackageSource `protobuf:"bytes,37,opt,name=source,proto3" json:"source,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Source *PackageSource `protobuf:"bytes,37,opt,name=source,proto3" json:"source,omitempty"`
+	// 'presence_intervals' are the windows of source-control history in which
+	// this version was in a lockfile, for a repository scan that read lockfile
+	// history (see Sbom.history_coverage). A version added, removed and added
+	// again has two. Empty when no history was read. A package is listed
+	// because it is in the scanned head; a version that only appears in history
+	// is not listed as a package.
+	PresenceIntervals []*PresenceInterval `protobuf:"bytes,38,rep,name=presence_intervals,json=presenceIntervals,proto3" json:"presence_intervals,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *Package) Reset() {
 	*x = Package{}
-	mi := &file_mql_sbom_proto_msgTypes[6]
+	mi := &file_mql_sbom_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -967,7 +1231,7 @@ func (x *Package) String() string {
 func (*Package) ProtoMessage() {}
 
 func (x *Package) ProtoReflect() protoreflect.Message {
-	mi := &file_mql_sbom_proto_msgTypes[6]
+	mi := &file_mql_sbom_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -980,7 +1244,7 @@ func (x *Package) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Package.ProtoReflect.Descriptor instead.
 func (*Package) Descriptor() ([]byte, []int) {
-	return file_mql_sbom_proto_rawDescGZIP(), []int{6}
+	return file_mql_sbom_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *Package) GetName() string {
@@ -1159,6 +1423,13 @@ func (x *Package) GetSource() *PackageSource {
 	return nil
 }
 
+func (x *Package) GetPresenceIntervals() []*PresenceInterval {
+	if x != nil {
+		return x.PresenceIntervals
+	}
+	return nil
+}
+
 // IdentityEvidence is how one field of a package's identity was concluded,
 // in the terms of CycloneDX's evidence.identity.
 type IdentityEvidence struct {
@@ -1181,7 +1452,7 @@ type IdentityEvidence struct {
 
 func (x *IdentityEvidence) Reset() {
 	*x = IdentityEvidence{}
-	mi := &file_mql_sbom_proto_msgTypes[7]
+	mi := &file_mql_sbom_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1193,7 +1464,7 @@ func (x *IdentityEvidence) String() string {
 func (*IdentityEvidence) ProtoMessage() {}
 
 func (x *IdentityEvidence) ProtoReflect() protoreflect.Message {
-	mi := &file_mql_sbom_proto_msgTypes[7]
+	mi := &file_mql_sbom_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1206,7 +1477,7 @@ func (x *IdentityEvidence) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IdentityEvidence.ProtoReflect.Descriptor instead.
 func (*IdentityEvidence) Descriptor() ([]byte, []int) {
-	return file_mql_sbom_proto_rawDescGZIP(), []int{7}
+	return file_mql_sbom_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *IdentityEvidence) GetField() string {
@@ -1262,7 +1533,7 @@ type CodeSignature struct {
 
 func (x *CodeSignature) Reset() {
 	*x = CodeSignature{}
-	mi := &file_mql_sbom_proto_msgTypes[8]
+	mi := &file_mql_sbom_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1274,7 +1545,7 @@ func (x *CodeSignature) String() string {
 func (*CodeSignature) ProtoMessage() {}
 
 func (x *CodeSignature) ProtoReflect() protoreflect.Message {
-	mi := &file_mql_sbom_proto_msgTypes[8]
+	mi := &file_mql_sbom_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1287,7 +1558,7 @@ func (x *CodeSignature) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CodeSignature.ProtoReflect.Descriptor instead.
 func (*CodeSignature) Descriptor() ([]byte, []int) {
-	return file_mql_sbom_proto_rawDescGZIP(), []int{8}
+	return file_mql_sbom_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *CodeSignature) GetStatus() string {
@@ -1329,7 +1600,7 @@ type PackageSource struct {
 
 func (x *PackageSource) Reset() {
 	*x = PackageSource{}
-	mi := &file_mql_sbom_proto_msgTypes[9]
+	mi := &file_mql_sbom_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1341,7 +1612,7 @@ func (x *PackageSource) String() string {
 func (*PackageSource) ProtoMessage() {}
 
 func (x *PackageSource) ProtoReflect() protoreflect.Message {
-	mi := &file_mql_sbom_proto_msgTypes[9]
+	mi := &file_mql_sbom_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1354,7 +1625,7 @@ func (x *PackageSource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PackageSource.ProtoReflect.Descriptor instead.
 func (*PackageSource) Descriptor() ([]byte, []int) {
-	return file_mql_sbom_proto_rawDescGZIP(), []int{9}
+	return file_mql_sbom_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *PackageSource) GetChannel() string {
@@ -1423,7 +1694,7 @@ type License struct {
 
 func (x *License) Reset() {
 	*x = License{}
-	mi := &file_mql_sbom_proto_msgTypes[10]
+	mi := &file_mql_sbom_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1435,7 +1706,7 @@ func (x *License) String() string {
 func (*License) ProtoMessage() {}
 
 func (x *License) ProtoReflect() protoreflect.Message {
-	mi := &file_mql_sbom_proto_msgTypes[10]
+	mi := &file_mql_sbom_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1448,7 +1719,7 @@ func (x *License) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use License.ProtoReflect.Descriptor instead.
 func (*License) Descriptor() ([]byte, []int) {
-	return file_mql_sbom_proto_rawDescGZIP(), []int{10}
+	return file_mql_sbom_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *License) GetSpdxId() string {
@@ -1507,7 +1778,7 @@ type Hash struct {
 
 func (x *Hash) Reset() {
 	*x = Hash{}
-	mi := &file_mql_sbom_proto_msgTypes[11]
+	mi := &file_mql_sbom_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1519,7 +1790,7 @@ func (x *Hash) String() string {
 func (*Hash) ProtoMessage() {}
 
 func (x *Hash) ProtoReflect() protoreflect.Message {
-	mi := &file_mql_sbom_proto_msgTypes[11]
+	mi := &file_mql_sbom_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1532,7 +1803,7 @@ func (x *Hash) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Hash.ProtoReflect.Descriptor instead.
 func (*Hash) Descriptor() ([]byte, []int) {
-	return file_mql_sbom_proto_rawDescGZIP(), []int{11}
+	return file_mql_sbom_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *Hash) GetAlg() string {
@@ -1563,7 +1834,7 @@ type Evidence struct {
 
 func (x *Evidence) Reset() {
 	*x = Evidence{}
-	mi := &file_mql_sbom_proto_msgTypes[12]
+	mi := &file_mql_sbom_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1575,7 +1846,7 @@ func (x *Evidence) String() string {
 func (*Evidence) ProtoMessage() {}
 
 func (x *Evidence) ProtoReflect() protoreflect.Message {
-	mi := &file_mql_sbom_proto_msgTypes[12]
+	mi := &file_mql_sbom_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1588,7 +1859,7 @@ func (x *Evidence) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Evidence.ProtoReflect.Descriptor instead.
 func (*Evidence) Descriptor() ([]byte, []int) {
-	return file_mql_sbom_proto_rawDescGZIP(), []int{12}
+	return file_mql_sbom_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *Evidence) GetType() EvidenceType {
@@ -1620,7 +1891,7 @@ type Kernel struct {
 
 func (x *Kernel) Reset() {
 	*x = Kernel{}
-	mi := &file_mql_sbom_proto_msgTypes[13]
+	mi := &file_mql_sbom_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1632,7 +1903,7 @@ func (x *Kernel) String() string {
 func (*Kernel) ProtoMessage() {}
 
 func (x *Kernel) ProtoReflect() protoreflect.Message {
-	mi := &file_mql_sbom_proto_msgTypes[13]
+	mi := &file_mql_sbom_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1645,7 +1916,7 @@ func (x *Kernel) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Kernel.ProtoReflect.Descriptor instead.
 func (*Kernel) Descriptor() ([]byte, []int) {
-	return file_mql_sbom_proto_rawDescGZIP(), []int{13}
+	return file_mql_sbom_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *Kernel) GetName() string {
@@ -1673,7 +1944,7 @@ var File_mql_sbom_proto protoreflect.FileDescriptor
 
 const file_mql_sbom_proto_rawDesc = "" +
 	"\n" +
-	"\x0emql_sbom.proto\x12\x0emondoo.sbom.v1\"\xd4\x02\n" +
+	"\x0emql_sbom.proto\x12\x0emondoo.sbom.v1\"\xa0\x03\n" +
 	"\x04Sbom\x127\n" +
 	"\tgenerator\x18\x01 \x01(\v2\x19.mondoo.sbom.v1.GeneratorR\tgenerator\x12\x1c\n" +
 	"\ttimestamp\x18\x02 \x01(\tR\ttimestamp\x12.\n" +
@@ -1681,7 +1952,29 @@ const file_mql_sbom_proto_rawDesc = "" +
 	"\x05asset\x18\x04 \x01(\v2\x15.mondoo.sbom.v1.AssetR\x05asset\x123\n" +
 	"\bpackages\x18\x05 \x03(\v2\x17.mondoo.sbom.v1.PackageR\bpackages\x12#\n" +
 	"\rerror_message\x18\x06 \x01(\tR\ferrorMessage\x12>\n" +
-	"\fdependencies\x18\a \x03(\v2\x1a.mondoo.sbom.v1.DependencyR\fdependencies\"G\n" +
+	"\fdependencies\x18\a \x03(\v2\x1a.mondoo.sbom.v1.DependencyR\fdependencies\x12J\n" +
+	"\x10history_coverage\x18\b \x03(\v2\x1f.mondoo.sbom.v1.HistoryCoverageR\x0fhistoryCoverage\"\xac\x02\n" +
+	"\x0fHistoryCoverage\x12\x1a\n" +
+	"\blockfile\x18\x01 \x01(\tR\blockfile\x12\x16\n" +
+	"\x06branch\x18\x02 \x01(\tR\x06branch\x12'\n" +
+	"\x0frequested_since\x18\x03 \x01(\tR\x0erequestedSince\x12\x14\n" +
+	"\x05since\x18\x04 \x01(\tR\x05since\x12\x18\n" +
+	"\acommits\x18\x05 \x01(\x05R\acommits\x12\x1c\n" +
+	"\ttruncated\x18\x06 \x01(\bR\ttruncated\x12)\n" +
+	"\x10truncated_reason\x18\a \x01(\tR\x0ftruncatedReason\x12\x18\n" +
+	"\ashallow\x18\b \x01(\bR\ashallow\x12)\n" +
+	"\x10unparsed_commits\x18\t \x01(\x05R\x0funparsedCommits\"\xfe\x01\n" +
+	"\x10PresenceInterval\x12\x1a\n" +
+	"\blockfile\x18\x01 \x01(\tR\blockfile\x12\x16\n" +
+	"\x06branch\x18\x02 \x01(\tR\x06branch\x12!\n" +
+	"\ffirst_commit\x18\x03 \x01(\tR\vfirstCommit\x12\x1d\n" +
+	"\n" +
+	"first_seen\x18\x04 \x01(\tR\tfirstSeen\x12\"\n" +
+	"\rat_walk_start\x18\x05 \x01(\bR\vatWalkStart\x12\x1f\n" +
+	"\vlast_commit\x18\x06 \x01(\tR\n" +
+	"lastCommit\x12\x1b\n" +
+	"\tlast_seen\x18\a \x01(\tR\blastSeen\x12\x12\n" +
+	"\x04open\x18\b \x01(\bR\x04open\"G\n" +
 	"\n" +
 	"Dependency\x12\x10\n" +
 	"\x03ref\x18\x01 \x01(\tR\x03ref\x12'\n" +
@@ -1717,7 +2010,7 @@ const file_mql_sbom_proto_rawDesc = "" +
 	"\x04cpes\x18\x17 \x03(\tR\x04cpes\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xf8\x06\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xc9\a\n" +
 	"\aPackage\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12\"\n" +
@@ -1744,7 +2037,8 @@ const file_mql_sbom_proto_rawDesc = "" +
 	"\tsignature\x18# \x01(\v2\x1d.mondoo.sbom.v1.CodeSignatureR\tsignature\x12$\n" +
 	"\vos_provided\x18$ \x01(\bH\x00R\n" +
 	"osProvided\x88\x01\x01\x125\n" +
-	"\x06source\x18% \x01(\v2\x1d.mondoo.sbom.v1.PackageSourceR\x06sourceB\x0e\n" +
+	"\x06source\x18% \x01(\v2\x1d.mondoo.sbom.v1.PackageSourceR\x06source\x12O\n" +
+	"\x12presence_intervals\x18& \x03(\v2 .mondoo.sbom.v1.PresenceIntervalR\x11presenceIntervalsB\x0e\n" +
 	"\f_os_provided\"\xa5\x01\n" +
 	"\x10IdentityEvidence\x12\x14\n" +
 	"\x05field\x18\x01 \x01(\tR\x05field\x12'\n" +
@@ -1817,54 +2111,58 @@ func file_mql_sbom_proto_rawDescGZIP() []byte {
 }
 
 var file_mql_sbom_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_mql_sbom_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_mql_sbom_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_mql_sbom_proto_goTypes = []any{
 	(Status)(0),              // 0: mondoo.sbom.v1.Status
 	(ExternalIDType)(0),      // 1: mondoo.sbom.v1.ExternalIDType
 	(LicenseAcquisition)(0),  // 2: mondoo.sbom.v1.LicenseAcquisition
 	(EvidenceType)(0),        // 3: mondoo.sbom.v1.EvidenceType
 	(*Sbom)(nil),             // 4: mondoo.sbom.v1.Sbom
-	(*Dependency)(nil),       // 5: mondoo.sbom.v1.Dependency
-	(*Generator)(nil),        // 6: mondoo.sbom.v1.Generator
-	(*ExternalID)(nil),       // 7: mondoo.sbom.v1.ExternalID
-	(*Asset)(nil),            // 8: mondoo.sbom.v1.Asset
-	(*Platform)(nil),         // 9: mondoo.sbom.v1.Platform
-	(*Package)(nil),          // 10: mondoo.sbom.v1.Package
-	(*IdentityEvidence)(nil), // 11: mondoo.sbom.v1.IdentityEvidence
-	(*CodeSignature)(nil),    // 12: mondoo.sbom.v1.CodeSignature
-	(*PackageSource)(nil),    // 13: mondoo.sbom.v1.PackageSource
-	(*License)(nil),          // 14: mondoo.sbom.v1.License
-	(*Hash)(nil),             // 15: mondoo.sbom.v1.Hash
-	(*Evidence)(nil),         // 16: mondoo.sbom.v1.Evidence
-	(*Kernel)(nil),           // 17: mondoo.sbom.v1.Kernel
-	nil,                      // 18: mondoo.sbom.v1.Asset.LabelsEntry
-	nil,                      // 19: mondoo.sbom.v1.Platform.LabelsEntry
+	(*HistoryCoverage)(nil),  // 5: mondoo.sbom.v1.HistoryCoverage
+	(*PresenceInterval)(nil), // 6: mondoo.sbom.v1.PresenceInterval
+	(*Dependency)(nil),       // 7: mondoo.sbom.v1.Dependency
+	(*Generator)(nil),        // 8: mondoo.sbom.v1.Generator
+	(*ExternalID)(nil),       // 9: mondoo.sbom.v1.ExternalID
+	(*Asset)(nil),            // 10: mondoo.sbom.v1.Asset
+	(*Platform)(nil),         // 11: mondoo.sbom.v1.Platform
+	(*Package)(nil),          // 12: mondoo.sbom.v1.Package
+	(*IdentityEvidence)(nil), // 13: mondoo.sbom.v1.IdentityEvidence
+	(*CodeSignature)(nil),    // 14: mondoo.sbom.v1.CodeSignature
+	(*PackageSource)(nil),    // 15: mondoo.sbom.v1.PackageSource
+	(*License)(nil),          // 16: mondoo.sbom.v1.License
+	(*Hash)(nil),             // 17: mondoo.sbom.v1.Hash
+	(*Evidence)(nil),         // 18: mondoo.sbom.v1.Evidence
+	(*Kernel)(nil),           // 19: mondoo.sbom.v1.Kernel
+	nil,                      // 20: mondoo.sbom.v1.Asset.LabelsEntry
+	nil,                      // 21: mondoo.sbom.v1.Platform.LabelsEntry
 }
 var file_mql_sbom_proto_depIdxs = []int32{
-	6,  // 0: mondoo.sbom.v1.Sbom.generator:type_name -> mondoo.sbom.v1.Generator
+	8,  // 0: mondoo.sbom.v1.Sbom.generator:type_name -> mondoo.sbom.v1.Generator
 	0,  // 1: mondoo.sbom.v1.Sbom.status:type_name -> mondoo.sbom.v1.Status
-	8,  // 2: mondoo.sbom.v1.Sbom.asset:type_name -> mondoo.sbom.v1.Asset
-	10, // 3: mondoo.sbom.v1.Sbom.packages:type_name -> mondoo.sbom.v1.Package
-	5,  // 4: mondoo.sbom.v1.Sbom.dependencies:type_name -> mondoo.sbom.v1.Dependency
-	1,  // 5: mondoo.sbom.v1.ExternalID.type:type_name -> mondoo.sbom.v1.ExternalIDType
-	7,  // 6: mondoo.sbom.v1.Asset.external_ids:type_name -> mondoo.sbom.v1.ExternalID
-	9,  // 7: mondoo.sbom.v1.Asset.platform:type_name -> mondoo.sbom.v1.Platform
-	18, // 8: mondoo.sbom.v1.Asset.labels:type_name -> mondoo.sbom.v1.Asset.LabelsEntry
-	17, // 9: mondoo.sbom.v1.Asset.kernels:type_name -> mondoo.sbom.v1.Kernel
-	19, // 10: mondoo.sbom.v1.Platform.labels:type_name -> mondoo.sbom.v1.Platform.LabelsEntry
-	16, // 11: mondoo.sbom.v1.Package.evidence_list:type_name -> mondoo.sbom.v1.Evidence
-	15, // 12: mondoo.sbom.v1.Package.hashes:type_name -> mondoo.sbom.v1.Hash
-	14, // 13: mondoo.sbom.v1.Package.licenses:type_name -> mondoo.sbom.v1.License
-	11, // 14: mondoo.sbom.v1.Package.identity_evidence:type_name -> mondoo.sbom.v1.IdentityEvidence
-	12, // 15: mondoo.sbom.v1.Package.signature:type_name -> mondoo.sbom.v1.CodeSignature
-	13, // 16: mondoo.sbom.v1.Package.source:type_name -> mondoo.sbom.v1.PackageSource
-	2,  // 17: mondoo.sbom.v1.License.acquisition:type_name -> mondoo.sbom.v1.LicenseAcquisition
-	3,  // 18: mondoo.sbom.v1.Evidence.type:type_name -> mondoo.sbom.v1.EvidenceType
-	19, // [19:19] is the sub-list for method output_type
-	19, // [19:19] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	10, // 2: mondoo.sbom.v1.Sbom.asset:type_name -> mondoo.sbom.v1.Asset
+	12, // 3: mondoo.sbom.v1.Sbom.packages:type_name -> mondoo.sbom.v1.Package
+	7,  // 4: mondoo.sbom.v1.Sbom.dependencies:type_name -> mondoo.sbom.v1.Dependency
+	5,  // 5: mondoo.sbom.v1.Sbom.history_coverage:type_name -> mondoo.sbom.v1.HistoryCoverage
+	1,  // 6: mondoo.sbom.v1.ExternalID.type:type_name -> mondoo.sbom.v1.ExternalIDType
+	9,  // 7: mondoo.sbom.v1.Asset.external_ids:type_name -> mondoo.sbom.v1.ExternalID
+	11, // 8: mondoo.sbom.v1.Asset.platform:type_name -> mondoo.sbom.v1.Platform
+	20, // 9: mondoo.sbom.v1.Asset.labels:type_name -> mondoo.sbom.v1.Asset.LabelsEntry
+	19, // 10: mondoo.sbom.v1.Asset.kernels:type_name -> mondoo.sbom.v1.Kernel
+	21, // 11: mondoo.sbom.v1.Platform.labels:type_name -> mondoo.sbom.v1.Platform.LabelsEntry
+	18, // 12: mondoo.sbom.v1.Package.evidence_list:type_name -> mondoo.sbom.v1.Evidence
+	17, // 13: mondoo.sbom.v1.Package.hashes:type_name -> mondoo.sbom.v1.Hash
+	16, // 14: mondoo.sbom.v1.Package.licenses:type_name -> mondoo.sbom.v1.License
+	13, // 15: mondoo.sbom.v1.Package.identity_evidence:type_name -> mondoo.sbom.v1.IdentityEvidence
+	14, // 16: mondoo.sbom.v1.Package.signature:type_name -> mondoo.sbom.v1.CodeSignature
+	15, // 17: mondoo.sbom.v1.Package.source:type_name -> mondoo.sbom.v1.PackageSource
+	6,  // 18: mondoo.sbom.v1.Package.presence_intervals:type_name -> mondoo.sbom.v1.PresenceInterval
+	2,  // 19: mondoo.sbom.v1.License.acquisition:type_name -> mondoo.sbom.v1.LicenseAcquisition
+	3,  // 20: mondoo.sbom.v1.Evidence.type:type_name -> mondoo.sbom.v1.EvidenceType
+	21, // [21:21] is the sub-list for method output_type
+	21, // [21:21] is the sub-list for method input_type
+	21, // [21:21] is the sub-list for extension type_name
+	21, // [21:21] is the sub-list for extension extendee
+	0,  // [0:21] is the sub-list for field type_name
 }
 
 func init() { file_mql_sbom_proto_init() }
@@ -1872,14 +2170,14 @@ func file_mql_sbom_proto_init() {
 	if File_mql_sbom_proto != nil {
 		return
 	}
-	file_mql_sbom_proto_msgTypes[6].OneofWrappers = []any{}
+	file_mql_sbom_proto_msgTypes[8].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mql_sbom_proto_rawDesc), len(file_mql_sbom_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   16,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
