@@ -785,6 +785,7 @@ func awsConnectionMethodToService(method string) string {
 		"personalize":              "personalize",
 		"opensearchserverless":     "opensearchserverless",
 		"redshiftserverless":       "redshiftserverless",
+		"imagebuilder":             "imagebuilder",
 		"mwaa":                     "mwaa",
 		"ram":                      "ram",
 	}

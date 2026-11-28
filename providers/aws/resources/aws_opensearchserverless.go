@@ -114,6 +114,10 @@ func newMqlAossCollection(runtime *plugin.Runtime, region string, c aosstypes.Co
 
 type mqlAwsOpensearchserverlessCollectionInternal struct {
 	cacheKmsKeyArn *string
+
+	networkLock    sync.Mutex
+	networkFetched bool
+	network        aossCollectionNetwork
 }
 
 func (a *mqlAwsOpensearchserverlessCollection) id() (string, error) {
@@ -646,4 +650,186 @@ func (a *mqlAwsOpensearchserverlessAccessPolicy) permissions() ([]any, error) {
 
 func (a *mqlAwsOpensearchserverlessAccessPolicy) resources() ([]any, error) {
 	return a.accessPolicyList(&a.Resources, func(s *aossPolicySummary) []any { return s.resources })
+}
+
+// --- network access of a collection ---
+
+// aossPatternMatches reports whether an OpenSearch Serverless resource
+// pattern, such as collection/logs-* or collection/*, matches resource. A
+// `*` matches any run of characters, including none.
+func aossPatternMatches(pattern, resource string) bool {
+	parts := strings.Split(pattern, "*")
+	if len(parts) == 1 {
+		return pattern == resource
+	}
+	if !strings.HasPrefix(resource, parts[0]) {
+		return false
+	}
+	rest := resource[len(parts[0]):]
+	last := parts[len(parts)-1]
+	for _, part := range parts[1 : len(parts)-1] {
+		i := strings.Index(rest, part)
+		if i < 0 {
+			return false
+		}
+		rest = rest[i+len(part):]
+	}
+	return len(rest) >= len(last) && strings.HasSuffix(rest, last)
+}
+
+// aossRuleSetCoversCollection reports whether a network policy rule set has
+// a rule of ResourceType collection whose pattern matches the collection.
+func aossRuleSetCoversCollection(entry map[string]any, collectionName string) bool {
+	rules, ok := entry["Rules"].([]any)
+	if !ok {
+		return false
+	}
+	resource := "collection/" + collectionName
+	for _, r := range rules {
+		rule, ok := r.(map[string]any)
+		if !ok {
+			continue
+		}
+		if t, _ := rule["ResourceType"].(string); !strings.EqualFold(t, "collection") {
+			continue
+		}
+		var patterns []any
+		switch v := rule["Resource"].(type) {
+		case []any:
+			patterns = v
+		case string:
+			patterns = []any{v}
+		}
+		for _, p := range patterns {
+			if ps, ok := p.(string); ok && aossPatternMatches(ps, resource) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// aossCollectionNetwork is the network access a collection gets from the
+// network policies that match it.
+type aossCollectionNetwork struct {
+	policies        []any
+	allowFromPublic bool
+	sourceServices  []any
+	sourceVpces     []any
+	// unknown is set when a network policy document could not be read, so
+	// the derived values may be incomplete.
+	unknown bool
+}
+
+// aossNetworkAccess folds the rule sets of one network policy document that
+// cover the collection into acc. It reports whether any rule set matched.
+func aossNetworkAccess(doc any, collectionName string, services, vpces *stringSet) (matched bool, public bool) {
+	for _, entry := range aossPolicyEntries(doc) {
+		if !aossRuleSetCoversCollection(entry, collectionName) {
+			continue
+		}
+		matched = true
+		if p, ok := entry["AllowFromPublic"].(bool); ok && p {
+			public = true
+			continue
+		}
+		services.add(entry["SourceServices"])
+		vpces.add(entry["SourceVPCEs"])
+	}
+	return matched, public
+}
+
+func (a *mqlAwsOpensearchserverlessCollection) fetchNetwork() (*aossCollectionNetwork, error) {
+	a.networkLock.Lock()
+	defer a.networkLock.Unlock()
+	if a.networkFetched {
+		return &a.network, nil
+	}
+
+	obj, err := CreateResource(a.MqlRuntime, ResourceAwsOpensearchserverless, map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	policies := obj.(*mqlAwsOpensearchserverless).GetSecurityPolicies()
+	if policies.Error != nil {
+		return nil, policies.Error
+	}
+
+	net := aossCollectionNetwork{policies: []any{}}
+	var services, vpces stringSet
+	for _, raw := range policies.Data {
+		p, ok := raw.(*mqlAwsOpensearchserverlessSecurityPolicy)
+		if !ok || !p.isNetwork() || p.Region.Data != a.Region.Data {
+			continue
+		}
+		doc, _, err := p.fetchPolicy()
+		if err != nil {
+			return nil, err
+		}
+		if doc == nil {
+			net.unknown = true
+			continue
+		}
+		matched, public := aossNetworkAccess(doc, a.Name.Data, &services, &vpces)
+		if !matched {
+			continue
+		}
+		net.policies = append(net.policies, p)
+		if public {
+			net.allowFromPublic = true
+		}
+	}
+	net.sourceServices = services.list()
+	net.sourceVpces = vpces.list()
+	a.network = net
+	a.networkFetched = true
+	return &a.network, nil
+}
+
+func (a *mqlAwsOpensearchserverlessCollection) networkPolicies() ([]any, error) {
+	net, err := a.fetchNetwork()
+	if err != nil {
+		return nil, err
+	}
+	return net.policies, nil
+}
+
+func (a *mqlAwsOpensearchserverlessCollection) allowFromPublic() (bool, error) {
+	net, err := a.fetchNetwork()
+	if err != nil {
+		return false, err
+	}
+	// A public rule found is decisive; its absence is not when a policy could
+	// not be read.
+	if !net.allowFromPublic && net.unknown {
+		a.AllowFromPublic.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return net.allowFromPublic, nil
+}
+
+func (a *mqlAwsOpensearchserverlessCollection) sourceServices() ([]any, error) {
+	net, err := a.fetchNetwork()
+	if err != nil {
+		return nil, err
+	}
+	// A partial list would let a check pass on access it cannot see.
+	if net.unknown {
+		a.SourceServices.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return net.sourceServices, nil
+}
+
+func (a *mqlAwsOpensearchserverlessCollection) sourceVpcEndpointIds() ([]any, error) {
+	net, err := a.fetchNetwork()
+	if err != nil {
+		return nil, err
+	}
+	// A partial list would let a check pass on access it cannot see.
+	if net.unknown {
+		a.SourceVpcEndpointIds.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return net.sourceVpces, nil
 }

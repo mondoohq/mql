@@ -12578,6 +12578,23 @@ aws.cloudwatch {
   anomalyDetectors() []aws.cloudwatch.logAnomalyDetector
   // OpenTelemetry enrichment of vended metrics, one entry per region
   otelEnrichments() []aws.cloudwatch.otelEnrichment
+  // Vended log delivery sources across all enabled regions
+  //
+  // A delivery source names an AWS resource that vends logs, such as a
+  // CloudFront distribution (standard logging v2) or a Bedrock knowledge
+  // base, and the log type it emits. On its own a source delivers nothing;
+  // see `logDeliveries`.
+  logDeliverySources() []aws.cloudwatch.logDeliverySource
+  // Vended log deliveries across all enabled regions
+  //
+  // A delivery connects one delivery source to one delivery destination.
+  // Logs flow only while a delivery exists.
+  logDeliveries() []aws.cloudwatch.logDelivery
+  // Vended log delivery destinations across all enabled regions
+  //
+  // A delivery destination is the CloudWatch Logs log group, S3 bucket,
+  // Firehose stream, or X-Ray target that deliveries write to.
+  logDeliveryDestinations() []aws.cloudwatch.logDeliveryDestination
 }
 
 // CloudWatch OpenTelemetry enrichment setting for a region
@@ -13158,6 +13175,13 @@ private aws.cloudfront.distribution @defaults("domainName status") {
   comment string
   // Logging configuration for the distribution
   logging() aws.cloudfront.distribution.loggingConfig
+  // Vended log deliveries of the distribution (standard logging v2)
+  //
+  // The CloudWatch Logs deliveries whose delivery source names this
+  // distribution's ARN. Standard logging v2 sends access logs to CloudWatch
+  // Logs, S3, or Firehose this way; `logging` covers only legacy logging to
+  // S3. Empty when the distribution has no standard logging v2 delivery.
+  logDeliveries() []aws.cloudwatch.logDelivery
   // Viewer mutual TLS (mTLS) mode (required, optional, or passthrough; empty string when viewer mTLS is not configured)
   viewerMtlsMode string
   // ID of the trust store associated with the viewer mTLS configuration (empty string when none)
@@ -31310,6 +31334,101 @@ private aws.cloudwatch.logInsightQuery @defaults("name") {
   modifiedAt time
 }
 
+// Amazon CloudWatch Logs vended log delivery source
+//
+// A resource that vends logs through CloudWatch Logs delivery, returned by
+// `DescribeDeliverySources`. `resourceArns` names the resource the logs come
+// from (for example a CloudFront distribution or a Bedrock knowledge base),
+// `service` the AWS service that vends them, and `logType` which logs, such
+// as ACCESS_LOGS or APPLICATION_LOGS. `deliveries` lists the deliveries that
+// send this source's logs to a destination; a source without one delivers
+// nothing. CloudFront delivery sources exist only in us-east-1.
+private aws.cloudwatch.logDeliverySource @defaults("name service logType region") {
+  // ARN of the delivery source
+  arn string
+  // Name of the delivery source
+  name string
+  // Region of the delivery source
+  region string
+  // Type of log the source vends, for example ACCESS_LOGS or APPLICATION_LOGS
+  logType string
+  // AWS service that vends the logs, for example cloudfront or bedrock
+  service string
+  // ARNs of the AWS resources whose logs the source vends
+  resourceArns []string
+  // Status of the delivery source: ACTIVE or INACTIVE
+  //
+  // INACTIVE when the resource the source names was deleted.
+  status string
+  // Reason for an INACTIVE status, for example RESOURCE_DELETED
+  statusReason string
+  // Service-specific settings of the delivery source
+  configuration map[string]string
+  // Tags of the delivery source
+  tags map[string]string
+  // Deliveries that send this source's logs to a destination
+  deliveries() []aws.cloudwatch.logDelivery
+}
+
+// Amazon CloudWatch Logs vended log delivery
+//
+// The pairing of one delivery source with one delivery destination,
+// returned by `DescribeDeliveries`. Logs of the source reach the destination
+// only while this delivery exists. `deliveryDestinationType` is CWL
+// (CloudWatch Logs), S3, FH (Firehose), or XRAY.
+private aws.cloudwatch.logDelivery @defaults("id deliverySourceName deliveryDestinationType region") {
+  // Unique identifier of the delivery
+  id string
+  // ARN of the delivery
+  arn string
+  // Region of the delivery
+  region string
+  // Name of the delivery source the delivery reads from
+  deliverySourceName string
+  // Type of the destination: CWL, S3, FH, or XRAY
+  deliveryDestinationType string
+  // Log record fields the delivery sends
+  recordFields []string
+  // Delimiter between fields in delivered records, for plain and W3C output formats
+  fieldDelimiter string
+  // Suffix of the S3 object path, for S3 destinations
+  s3SuffixPath string
+  // Whether S3 object paths are Hive compatible, for S3 destinations
+  s3EnableHiveCompatiblePath bool
+  // Tags of the delivery
+  tags map[string]string
+  // Delivery source the delivery reads from
+  deliverySource() aws.cloudwatch.logDeliverySource
+  // Delivery destination the delivery writes to
+  deliveryDestination() aws.cloudwatch.logDeliveryDestination
+}
+
+// Amazon CloudWatch Logs vended log delivery destination
+//
+// Where deliveries write vended logs, returned by
+// `DescribeDeliveryDestinations`. `destinationResourceArn` is the log group,
+// S3 bucket, or Firehose stream that receives them.
+private aws.cloudwatch.logDeliveryDestination @defaults("name deliveryDestinationType region") {
+  // ARN of the delivery destination
+  arn string
+  // Name of the delivery destination
+  name string
+  // Region of the delivery destination
+  region string
+  // Type of the destination: CWL, S3, FH, or XRAY
+  deliveryDestinationType string
+  // ARN of the log group, S3 bucket, or Firehose stream receiving the logs
+  destinationResourceArn string
+  // Format of delivered logs, for example json, plain, w3c, raw, or parquet
+  outputFormat string
+  // IAM role the destination uses
+  //
+  // Null when the destination type needs no role.
+  role() aws.iam.role
+  // Tags of the delivery destination
+  tags map[string]string
+}
+
 // Amazon VPC Endpoint Service connection (consumer connected to an endpoint service)
 private aws.ec2.vpcEndpointServiceConfiguration.connection @defaults("endpointId endpointState") {
   // Unique ID for the connection
@@ -35283,6 +35402,12 @@ private aws.bedrock.knowledgeBase @defaults("name status") {
   // or STRING_LIST), and `searchable` (true when the field is indexed for
   // search, so its values can be matched by retrieval queries).
   metadataConfigurations() []dict
+  // Vended log deliveries of the knowledge base
+  //
+  // The CloudWatch Logs deliveries whose delivery source names this knowledge
+  // base's ARN. Ingestion logs are delivered with logType APPLICATION_LOGS.
+  // Empty when no log delivery is configured.
+  logDeliveries() []aws.cloudwatch.logDelivery
   // Tags assigned to the knowledge base
   tags() map[string]string
 }
@@ -37121,6 +37246,32 @@ private aws.opensearchserverless.collection @defaults("name type status region")
   updatedAt time
   // Tags for the collection
   tags() map[string]string
+  // Network policies that govern the collection
+  //
+  // The network security policies in the collection's region with a rule of
+  // ResourceType `collection` whose resource pattern matches the collection
+  // name, such as `collection/<name>`, `collection/<prefix>*`, or
+  // `collection/*`.
+  networkPolicies() []aws.opensearchserverless.securityPolicy
+  // Whether the collection endpoint is reachable from the internet
+  //
+  // True when a rule set of a matching network policy covers the collection
+  // with a `collection` rule and sets AllowFromPublic. Dashboard rules are
+  // not considered. A collection that no network policy matches cannot be
+  // reached at all and reports false.
+  allowFromPublic() bool
+  // AWS services allowed private access to the collection, for example bedrock.amazonaws.com
+  //
+  // The SourceServices of the private rule sets of matching network policies
+  // that cover the collection with a `collection` rule. Null when a matching
+  // policy's document could not be read, since the list would be incomplete.
+  sourceServices() []string
+  // OpenSearch Serverless VPC endpoints allowed access to the collection
+  //
+  // The SourceVPCEs of the private rule sets of matching network policies
+  // that cover the collection with a `collection` rule. Null when a matching
+  // policy's document could not be read, since the list would be incomplete.
+  sourceVpcEndpointIds() []string
 }
 
 // Amazon OpenSearch Serverless security policy
@@ -37215,6 +37366,272 @@ private aws.opensearchserverless.accessPolicy @defaults("name region") {
   permissions() []string
   // Collection and index patterns the policy applies to, for example index/logs-*/*
   resources() []string
+}
+
+// Amazon EC2 Image Builder
+//
+// Image Builder pipelines, image recipes, components, and distribution
+// configurations across every enabled region. `distributionConfigurations`
+// decides who may launch the AMIs a pipeline produces: a `public`
+// configuration grants launch permission to every AWS account.
+// `imageRecipes` and `components` decide whether the built-in cleanup
+// script, which removes SSH host keys, authorized_keys, cloud-init data, and
+// build logs before the AMI snapshot, runs in full: a recipe's user data
+// override turns it off unless it creates the `perform_cleanup` file, and a
+// `skip_cleanup_*` file created by user data or a component skips a section.
+aws.imagebuilder @defaults("imagePipelines") {
+  // Image pipelines across all enabled regions
+  imagePipelines() []aws.imagebuilder.imagePipeline
+  // Image recipes owned by the account across all enabled regions
+  imageRecipes() []aws.imagebuilder.imageRecipe
+  // Components owned by the account across all enabled regions
+  components() []aws.imagebuilder.component
+  // Distribution configurations across all enabled regions
+  distributionConfigurations() []aws.imagebuilder.distributionConfiguration
+}
+
+// Amazon EC2 Image Builder image pipeline
+//
+// The automation that builds an image from an image recipe (or a container
+// recipe), tests it, and distributes it with a distribution configuration.
+// `imageRecipe` and `distributionConfiguration` resolve the configuration
+// the pipeline uses; `cleanupBypassed` reports whether its builds skip any
+// of the built-in cleanup. The `arn` selects a pipeline.
+private aws.imagebuilder.imagePipeline @defaults("name status platform region") {
+  // ARN of the image pipeline
+  arn string
+  // Name of the image pipeline
+  name string
+  // Region of the image pipeline
+  region string
+  // Description of the image pipeline
+  description string
+  // Platform of the images the pipeline builds: Linux, Windows, or macOS
+  platform string
+  // Status of the image pipeline: ENABLED or DISABLED
+  status string
+  // ARN of the container recipe; empty for AMI pipelines
+  containerRecipeArn string
+  // ARN of the infrastructure configuration
+  infrastructureConfigurationArn string
+  // Whether enhanced image metadata (installed package inventory) is collected
+  enhancedImageMetadataEnabled bool
+  // Whether image tests run after each build
+  imageTestsEnabled bool
+  // Whether Amazon Inspector scans the images the pipeline builds
+  imageScanningEnabled bool
+  // Build schedule
+  //
+  // Keys: `scheduleExpression` (cron expression), `timezone`, and
+  // `pipelineExecutionStartCondition`. Null when the pipeline runs only on
+  // demand.
+  schedule dict
+  // IAM role Image Builder assumes to run the pipeline's workflows
+  //
+  // Null when the pipeline names none and Image Builder uses its
+  // service-linked role.
+  executionRole() aws.iam.role
+  // Workflows the pipeline runs, each with `workflowArn`, `onFailure`, `parallelGroup`, and `parameters`
+  workflows []dict
+  // Status of the last run, for example AVAILABLE or FAILED
+  lastRunStatus string
+  // Number of consecutive failed runs
+  consecutiveFailures int
+  // Time the pipeline was created
+  createdAt time
+  // Time the pipeline was last updated
+  updatedAt time
+  // Time the pipeline last ran
+  lastRunAt time
+  // Time the pipeline next runs
+  nextRunAt time
+  // Tags of the image pipeline
+  tags map[string]string
+  // Image recipe the pipeline builds from
+  //
+  // Null for container pipelines.
+  imageRecipe() aws.imagebuilder.imageRecipe
+  // Distribution configuration the pipeline distributes its images with
+  //
+  // Null when the pipeline has none.
+  distributionConfiguration() aws.imagebuilder.distributionConfiguration
+  // Whether the pipeline's builds skip any of the built-in cleanup script
+  //
+  // The image recipe's `cleanupBypassed`. Null for container pipelines.
+  cleanupBypassed() bool
+}
+
+// Amazon EC2 Image Builder image recipe
+//
+// The parent image and the components that build an AMI. On Linux and
+// macOS, Image Builder runs a cleanup script before taking the snapshot.
+// `userDataOverride` replaces the user data that starts that script:
+// `cleanupScriptDisabled` is true when an override is set and does not
+// create the `perform_cleanup` file. `skippedCleanupSections` lists the
+// `skip_cleanup_*` files the override or the recipe's components create,
+// each of which skips one section of the script. `cleanupBypassed` combines
+// both. The `arn` selects a recipe version.
+private aws.imagebuilder.imageRecipe @defaults("name version platform region") {
+  // ARN of the image recipe version
+  arn string
+  // Name of the image recipe
+  name string
+  // Semantic version of the image recipe
+  version string
+  // Region of the image recipe
+  region string
+  // Description of the image recipe
+  description string
+  // Platform of the image recipe: Linux, Windows, or macOS
+  platform string
+  // Owner of the image recipe
+  owner string
+  // Parent image the recipe builds on: an AMI ID or an Image Builder image ARN
+  parentImage string
+  // Working directory on the build instance
+  workingDirectory string
+  // Components the recipe runs, each with `componentArn` and `parameters`
+  components []dict
+  // User data that replaces the user data Image Builder starts the build instance with
+  //
+  // Decoded from base64. Empty when the recipe does not override user data.
+  userDataOverride string
+  // Whether the Systems Manager agent is uninstalled from the image after the build
+  ssmAgentUninstallAfterBuild bool
+  // Whether the user data override disables the built-in cleanup script
+  //
+  // True when `userDataOverride` is set and does not create the
+  // `perform_cleanup` file, which the cleanup script requires to run.
+  cleanupScriptDisabled bool
+  // Time the image recipe was created
+  createdAt time
+  // Tags of the image recipe
+  tags map[string]string
+  // Components the recipe runs, resolved
+  componentDetails() []aws.imagebuilder.component
+  // Sections of the built-in cleanup script the build skips
+  //
+  // The `skip_cleanup_*` file names, such as `skip_cleanup_ssh_files`,
+  // found in the user data override or in the data of the recipe's
+  // components.
+  skippedCleanupSections() []string
+  // Whether the build skips any of the built-in cleanup script
+  //
+  // True when `cleanupScriptDisabled` is true or `skippedCleanupSections`
+  // is not empty.
+  cleanupBypassed() bool
+}
+
+// Amazon EC2 Image Builder component
+//
+// A build or test document run on the build instance. `data` is the
+// component's YAML document; `skippedCleanupSections` lists the
+// `skip_cleanup_*` files it creates, each of which skips a section of the
+// built-in cleanup script. The `arn` selects a component version.
+private aws.imagebuilder.component @defaults("name version type platform region") {
+  // ARN of the component version
+  arn string
+  // Name of the component
+  name string
+  // Semantic version of the component
+  version string
+  // Region of the component
+  region string
+  // Description of the component
+  description string
+  // Description of the changes in this version
+  changeDescription string
+  // Platform of the component: Linux, Windows, or macOS
+  platform string
+  // Type of the component: BUILD or TEST
+  type string
+  // Owner of the component
+  owner string
+  // Operating system versions the component supports
+  supportedOsVersions []string
+  // Whether the component is encrypted
+  encrypted bool
+  // KMS key that encrypts the component
+  //
+  // Null when the component is encrypted with an AWS owned key.
+  kmsKey() aws.kms.key
+  // Component document (YAML)
+  //
+  // Empty for components whose content AWS obfuscates.
+  data string
+  // Sections of the built-in cleanup script the component skips
+  //
+  // The `skip_cleanup_*` file names found in `data`.
+  skippedCleanupSections []string
+  // Time the component was created
+  createdAt time
+  // Tags of the component
+  tags map[string]string
+}
+
+// Amazon EC2 Image Builder distribution configuration
+//
+// Where and to whom a pipeline distributes its AMIs. Each entry of
+// `distributions` covers one Region. `public` reports whether any Region
+// grants launch permission to the `all` user group, which makes the AMIs
+// public. The `arn` selects a configuration.
+private aws.imagebuilder.distributionConfiguration @defaults("name region public") {
+  // ARN of the distribution configuration
+  arn string
+  // Name of the distribution configuration
+  name string
+  // Region of the distribution configuration
+  region string
+  // Description of the distribution configuration
+  description string
+  // Time the distribution configuration was created
+  createdAt time
+  // Time the distribution configuration was last updated
+  updatedAt time
+  // Tags of the distribution configuration
+  tags map[string]string
+  // Per-Region distribution settings
+  distributions() []aws.imagebuilder.distributionConfiguration.distribution
+  // Whether any Region shares its AMIs publicly
+  //
+  // True when the AMI launch permission of any Region lists the `all` user group.
+  public() bool
+}
+
+// AMI distribution settings of an Image Builder distribution configuration for one Region
+//
+// `launchPermissionUserGroups` containing `all` makes the AMI public.
+// `launchPermissionUserIds`, `launchPermissionOrganizationArns`, and
+// `launchPermissionOrganizationalUnitArns` share it with specific accounts,
+// organizations, and organizational units; `targetAccountIds` copies it
+// into other accounts.
+private aws.imagebuilder.distributionConfiguration.distribution @defaults("region public") {
+  // Region the AMI is distributed to
+  region string
+  // Name template of the distributed AMI
+  amiName string
+  // Description of the distributed AMI
+  amiDescription string
+  // KMS key that encrypts the distributed AMI's snapshots in this Region
+  //
+  // Null when the distribution sets no key.
+  amiKmsKey() aws.kms.key
+  // Tags applied to the distributed AMI
+  amiTags map[string]string
+  // Accounts the AMI is copied to
+  targetAccountIds []string
+  // User groups granted launch permission; `all` makes the AMI public
+  launchPermissionUserGroups []string
+  // Accounts granted launch permission
+  launchPermissionUserIds []string
+  // Organizations granted launch permission
+  launchPermissionOrganizationArns []string
+  // Organizational units granted launch permission
+  launchPermissionOrganizationalUnitArns []string
+  // Whether the launch permission makes the AMI public
+  public bool
+  // License Manager license configurations attached to the AMI
+  licenseConfigurationArns []string
 }
 
 // Amazon Redshift Serverless

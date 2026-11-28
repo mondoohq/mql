@@ -943,6 +943,9 @@ const (
 	ResourceAwsSsmServiceSetting                                                string = "aws.ssm.serviceSetting"
 	ResourceAwsCloudwatchLogDestination                                         string = "aws.cloudwatch.logDestination"
 	ResourceAwsCloudwatchLogInsightQuery                                        string = "aws.cloudwatch.logInsightQuery"
+	ResourceAwsCloudwatchLogDeliverySource                                      string = "aws.cloudwatch.logDeliverySource"
+	ResourceAwsCloudwatchLogDelivery                                            string = "aws.cloudwatch.logDelivery"
+	ResourceAwsCloudwatchLogDeliveryDestination                                 string = "aws.cloudwatch.logDeliveryDestination"
 	ResourceAwsEc2VpcEndpointServiceConfigurationConnection                     string = "aws.ec2.vpcEndpointServiceConfiguration.connection"
 	ResourceAwsEc2Ipam                                                          string = "aws.ec2.ipam"
 	ResourceAwsEc2IpamScope                                                     string = "aws.ec2.ipam.scope"
@@ -1100,6 +1103,12 @@ const (
 	ResourceAwsOpensearchserverlessCollection                                   string = "aws.opensearchserverless.collection"
 	ResourceAwsOpensearchserverlessSecurityPolicy                               string = "aws.opensearchserverless.securityPolicy"
 	ResourceAwsOpensearchserverlessAccessPolicy                                 string = "aws.opensearchserverless.accessPolicy"
+	ResourceAwsImagebuilder                                                     string = "aws.imagebuilder"
+	ResourceAwsImagebuilderImagePipeline                                        string = "aws.imagebuilder.imagePipeline"
+	ResourceAwsImagebuilderImageRecipe                                          string = "aws.imagebuilder.imageRecipe"
+	ResourceAwsImagebuilderComponent                                            string = "aws.imagebuilder.component"
+	ResourceAwsImagebuilderDistributionConfiguration                            string = "aws.imagebuilder.distributionConfiguration"
+	ResourceAwsImagebuilderDistributionConfigurationDistribution                string = "aws.imagebuilder.distributionConfiguration.distribution"
 	ResourceAwsRedshiftserverless                                               string = "aws.redshiftserverless"
 	ResourceAwsRedshiftserverlessWorkgroup                                      string = "aws.redshiftserverless.workgroup"
 	ResourceAwsRedshiftserverlessNamespace                                      string = "aws.redshiftserverless.namespace"
@@ -4820,6 +4829,18 @@ func init() {
 			// to override args, implement: initAwsCloudwatchLogInsightQuery(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAwsCloudwatchLogInsightQuery,
 		},
+		"aws.cloudwatch.logDeliverySource": {
+			// to override args, implement: initAwsCloudwatchLogDeliverySource(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsCloudwatchLogDeliverySource,
+		},
+		"aws.cloudwatch.logDelivery": {
+			// to override args, implement: initAwsCloudwatchLogDelivery(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsCloudwatchLogDelivery,
+		},
+		"aws.cloudwatch.logDeliveryDestination": {
+			// to override args, implement: initAwsCloudwatchLogDeliveryDestination(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsCloudwatchLogDeliveryDestination,
+		},
 		"aws.ec2.vpcEndpointServiceConfiguration.connection": {
 			// to override args, implement: initAwsEc2VpcEndpointServiceConfigurationConnection(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAwsEc2VpcEndpointServiceConfigurationConnection,
@@ -5447,6 +5468,30 @@ func init() {
 		"aws.opensearchserverless.accessPolicy": {
 			// to override args, implement: initAwsOpensearchserverlessAccessPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAwsOpensearchserverlessAccessPolicy,
+		},
+		"aws.imagebuilder": {
+			// to override args, implement: initAwsImagebuilder(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsImagebuilder,
+		},
+		"aws.imagebuilder.imagePipeline": {
+			// to override args, implement: initAwsImagebuilderImagePipeline(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsImagebuilderImagePipeline,
+		},
+		"aws.imagebuilder.imageRecipe": {
+			Init:   initAwsImagebuilderImageRecipe,
+			Create: createAwsImagebuilderImageRecipe,
+		},
+		"aws.imagebuilder.component": {
+			// to override args, implement: initAwsImagebuilderComponent(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsImagebuilderComponent,
+		},
+		"aws.imagebuilder.distributionConfiguration": {
+			Init:   initAwsImagebuilderDistributionConfiguration,
+			Create: createAwsImagebuilderDistributionConfiguration,
+		},
+		"aws.imagebuilder.distributionConfiguration.distribution": {
+			// to override args, implement: initAwsImagebuilderDistributionConfigurationDistribution(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsImagebuilderDistributionConfigurationDistribution,
 		},
 		"aws.redshiftserverless": {
 			// to override args, implement: initAwsRedshiftserverless(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -17675,6 +17720,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.cloudwatch.otelEnrichments": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCloudwatch).GetOtelEnrichments()).ToDataRes(types.Array(types.Resource("aws.cloudwatch.otelEnrichment")))
 	},
+	"aws.cloudwatch.logDeliverySources": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatch).GetLogDeliverySources()).ToDataRes(types.Array(types.Resource("aws.cloudwatch.logDeliverySource")))
+	},
+	"aws.cloudwatch.logDeliveries": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatch).GetLogDeliveries()).ToDataRes(types.Array(types.Resource("aws.cloudwatch.logDelivery")))
+	},
+	"aws.cloudwatch.logDeliveryDestinations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatch).GetLogDeliveryDestinations()).ToDataRes(types.Array(types.Resource("aws.cloudwatch.logDeliveryDestination")))
+	},
 	"aws.cloudwatch.otelEnrichment.region": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCloudwatchOtelEnrichment).GetRegion()).ToDataRes(types.String)
 	},
@@ -18232,6 +18286,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.cloudfront.distribution.logging": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCloudfrontDistribution).GetLogging()).ToDataRes(types.Resource("aws.cloudfront.distribution.loggingConfig"))
+	},
+	"aws.cloudfront.distribution.logDeliveries": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudfrontDistribution).GetLogDeliveries()).ToDataRes(types.Array(types.Resource("aws.cloudwatch.logDelivery")))
 	},
 	"aws.cloudfront.distribution.viewerMtlsMode": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCloudfrontDistribution).GetViewerMtlsMode()).ToDataRes(types.String)
@@ -35894,6 +35951,99 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.cloudwatch.logInsightQuery.modifiedAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCloudwatchLogInsightQuery).GetModifiedAt()).ToDataRes(types.Time)
 	},
+	"aws.cloudwatch.logDeliverySource.arn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDeliverySource).GetArn()).ToDataRes(types.String)
+	},
+	"aws.cloudwatch.logDeliverySource.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDeliverySource).GetName()).ToDataRes(types.String)
+	},
+	"aws.cloudwatch.logDeliverySource.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDeliverySource).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.cloudwatch.logDeliverySource.logType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDeliverySource).GetLogType()).ToDataRes(types.String)
+	},
+	"aws.cloudwatch.logDeliverySource.service": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDeliverySource).GetService()).ToDataRes(types.String)
+	},
+	"aws.cloudwatch.logDeliverySource.resourceArns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDeliverySource).GetResourceArns()).ToDataRes(types.Array(types.String))
+	},
+	"aws.cloudwatch.logDeliverySource.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDeliverySource).GetStatus()).ToDataRes(types.String)
+	},
+	"aws.cloudwatch.logDeliverySource.statusReason": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDeliverySource).GetStatusReason()).ToDataRes(types.String)
+	},
+	"aws.cloudwatch.logDeliverySource.configuration": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDeliverySource).GetConfiguration()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"aws.cloudwatch.logDeliverySource.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDeliverySource).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"aws.cloudwatch.logDeliverySource.deliveries": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDeliverySource).GetDeliveries()).ToDataRes(types.Array(types.Resource("aws.cloudwatch.logDelivery")))
+	},
+	"aws.cloudwatch.logDelivery.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDelivery).GetId()).ToDataRes(types.String)
+	},
+	"aws.cloudwatch.logDelivery.arn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDelivery).GetArn()).ToDataRes(types.String)
+	},
+	"aws.cloudwatch.logDelivery.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDelivery).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.cloudwatch.logDelivery.deliverySourceName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDelivery).GetDeliverySourceName()).ToDataRes(types.String)
+	},
+	"aws.cloudwatch.logDelivery.deliveryDestinationType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDelivery).GetDeliveryDestinationType()).ToDataRes(types.String)
+	},
+	"aws.cloudwatch.logDelivery.recordFields": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDelivery).GetRecordFields()).ToDataRes(types.Array(types.String))
+	},
+	"aws.cloudwatch.logDelivery.fieldDelimiter": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDelivery).GetFieldDelimiter()).ToDataRes(types.String)
+	},
+	"aws.cloudwatch.logDelivery.s3SuffixPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDelivery).GetS3SuffixPath()).ToDataRes(types.String)
+	},
+	"aws.cloudwatch.logDelivery.s3EnableHiveCompatiblePath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDelivery).GetS3EnableHiveCompatiblePath()).ToDataRes(types.Bool)
+	},
+	"aws.cloudwatch.logDelivery.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDelivery).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"aws.cloudwatch.logDelivery.deliverySource": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDelivery).GetDeliverySource()).ToDataRes(types.Resource("aws.cloudwatch.logDeliverySource"))
+	},
+	"aws.cloudwatch.logDelivery.deliveryDestination": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDelivery).GetDeliveryDestination()).ToDataRes(types.Resource("aws.cloudwatch.logDeliveryDestination"))
+	},
+	"aws.cloudwatch.logDeliveryDestination.arn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDeliveryDestination).GetArn()).ToDataRes(types.String)
+	},
+	"aws.cloudwatch.logDeliveryDestination.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDeliveryDestination).GetName()).ToDataRes(types.String)
+	},
+	"aws.cloudwatch.logDeliveryDestination.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDeliveryDestination).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.cloudwatch.logDeliveryDestination.deliveryDestinationType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDeliveryDestination).GetDeliveryDestinationType()).ToDataRes(types.String)
+	},
+	"aws.cloudwatch.logDeliveryDestination.destinationResourceArn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDeliveryDestination).GetDestinationResourceArn()).ToDataRes(types.String)
+	},
+	"aws.cloudwatch.logDeliveryDestination.outputFormat": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDeliveryDestination).GetOutputFormat()).ToDataRes(types.String)
+	},
+	"aws.cloudwatch.logDeliveryDestination.role": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDeliveryDestination).GetRole()).ToDataRes(types.Resource("aws.iam.role"))
+	},
+	"aws.cloudwatch.logDeliveryDestination.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLogDeliveryDestination).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
 	"aws.ec2.vpcEndpointServiceConfiguration.connection.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEc2VpcEndpointServiceConfigurationConnection).GetId()).ToDataRes(types.String)
 	},
@@ -39524,6 +39674,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.bedrock.knowledgeBase.metadataConfigurations": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockKnowledgeBase).GetMetadataConfigurations()).ToDataRes(types.Array(types.Dict))
 	},
+	"aws.bedrock.knowledgeBase.logDeliveries": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockKnowledgeBase).GetLogDeliveries()).ToDataRes(types.Array(types.Resource("aws.cloudwatch.logDelivery")))
+	},
 	"aws.bedrock.knowledgeBase.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockKnowledgeBase).GetTags()).ToDataRes(types.Map(types.String, types.String))
 	},
@@ -41231,6 +41384,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.opensearchserverless.collection.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsOpensearchserverlessCollection).GetTags()).ToDataRes(types.Map(types.String, types.String))
 	},
+	"aws.opensearchserverless.collection.networkPolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsOpensearchserverlessCollection).GetNetworkPolicies()).ToDataRes(types.Array(types.Resource("aws.opensearchserverless.securityPolicy")))
+	},
+	"aws.opensearchserverless.collection.allowFromPublic": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsOpensearchserverlessCollection).GetAllowFromPublic()).ToDataRes(types.Bool)
+	},
+	"aws.opensearchserverless.collection.sourceServices": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsOpensearchserverlessCollection).GetSourceServices()).ToDataRes(types.Array(types.String))
+	},
+	"aws.opensearchserverless.collection.sourceVpcEndpointIds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsOpensearchserverlessCollection).GetSourceVpcEndpointIds()).ToDataRes(types.Array(types.String))
+	},
 	"aws.opensearchserverless.securityPolicy.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsOpensearchserverlessSecurityPolicy).GetName()).ToDataRes(types.String)
 	},
@@ -41305,6 +41470,255 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.opensearchserverless.accessPolicy.resources": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsOpensearchserverlessAccessPolicy).GetResources()).ToDataRes(types.Array(types.String))
+	},
+	"aws.imagebuilder.imagePipelines": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilder).GetImagePipelines()).ToDataRes(types.Array(types.Resource("aws.imagebuilder.imagePipeline")))
+	},
+	"aws.imagebuilder.imageRecipes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilder).GetImageRecipes()).ToDataRes(types.Array(types.Resource("aws.imagebuilder.imageRecipe")))
+	},
+	"aws.imagebuilder.components": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilder).GetComponents()).ToDataRes(types.Array(types.Resource("aws.imagebuilder.component")))
+	},
+	"aws.imagebuilder.distributionConfigurations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilder).GetDistributionConfigurations()).ToDataRes(types.Array(types.Resource("aws.imagebuilder.distributionConfiguration")))
+	},
+	"aws.imagebuilder.imagePipeline.arn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImagePipeline).GetArn()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.imagePipeline.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImagePipeline).GetName()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.imagePipeline.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImagePipeline).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.imagePipeline.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImagePipeline).GetDescription()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.imagePipeline.platform": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImagePipeline).GetPlatform()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.imagePipeline.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImagePipeline).GetStatus()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.imagePipeline.containerRecipeArn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImagePipeline).GetContainerRecipeArn()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.imagePipeline.infrastructureConfigurationArn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImagePipeline).GetInfrastructureConfigurationArn()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.imagePipeline.enhancedImageMetadataEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImagePipeline).GetEnhancedImageMetadataEnabled()).ToDataRes(types.Bool)
+	},
+	"aws.imagebuilder.imagePipeline.imageTestsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImagePipeline).GetImageTestsEnabled()).ToDataRes(types.Bool)
+	},
+	"aws.imagebuilder.imagePipeline.imageScanningEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImagePipeline).GetImageScanningEnabled()).ToDataRes(types.Bool)
+	},
+	"aws.imagebuilder.imagePipeline.schedule": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImagePipeline).GetSchedule()).ToDataRes(types.Dict)
+	},
+	"aws.imagebuilder.imagePipeline.executionRole": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImagePipeline).GetExecutionRole()).ToDataRes(types.Resource("aws.iam.role"))
+	},
+	"aws.imagebuilder.imagePipeline.workflows": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImagePipeline).GetWorkflows()).ToDataRes(types.Array(types.Dict))
+	},
+	"aws.imagebuilder.imagePipeline.lastRunStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImagePipeline).GetLastRunStatus()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.imagePipeline.consecutiveFailures": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImagePipeline).GetConsecutiveFailures()).ToDataRes(types.Int)
+	},
+	"aws.imagebuilder.imagePipeline.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImagePipeline).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"aws.imagebuilder.imagePipeline.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImagePipeline).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"aws.imagebuilder.imagePipeline.lastRunAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImagePipeline).GetLastRunAt()).ToDataRes(types.Time)
+	},
+	"aws.imagebuilder.imagePipeline.nextRunAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImagePipeline).GetNextRunAt()).ToDataRes(types.Time)
+	},
+	"aws.imagebuilder.imagePipeline.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImagePipeline).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"aws.imagebuilder.imagePipeline.imageRecipe": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImagePipeline).GetImageRecipe()).ToDataRes(types.Resource("aws.imagebuilder.imageRecipe"))
+	},
+	"aws.imagebuilder.imagePipeline.distributionConfiguration": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImagePipeline).GetDistributionConfiguration()).ToDataRes(types.Resource("aws.imagebuilder.distributionConfiguration"))
+	},
+	"aws.imagebuilder.imagePipeline.cleanupBypassed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImagePipeline).GetCleanupBypassed()).ToDataRes(types.Bool)
+	},
+	"aws.imagebuilder.imageRecipe.arn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImageRecipe).GetArn()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.imageRecipe.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImageRecipe).GetName()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.imageRecipe.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImageRecipe).GetVersion()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.imageRecipe.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImageRecipe).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.imageRecipe.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImageRecipe).GetDescription()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.imageRecipe.platform": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImageRecipe).GetPlatform()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.imageRecipe.owner": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImageRecipe).GetOwner()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.imageRecipe.parentImage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImageRecipe).GetParentImage()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.imageRecipe.workingDirectory": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImageRecipe).GetWorkingDirectory()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.imageRecipe.components": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImageRecipe).GetComponents()).ToDataRes(types.Array(types.Dict))
+	},
+	"aws.imagebuilder.imageRecipe.userDataOverride": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImageRecipe).GetUserDataOverride()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.imageRecipe.ssmAgentUninstallAfterBuild": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImageRecipe).GetSsmAgentUninstallAfterBuild()).ToDataRes(types.Bool)
+	},
+	"aws.imagebuilder.imageRecipe.cleanupScriptDisabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImageRecipe).GetCleanupScriptDisabled()).ToDataRes(types.Bool)
+	},
+	"aws.imagebuilder.imageRecipe.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImageRecipe).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"aws.imagebuilder.imageRecipe.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImageRecipe).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"aws.imagebuilder.imageRecipe.componentDetails": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImageRecipe).GetComponentDetails()).ToDataRes(types.Array(types.Resource("aws.imagebuilder.component")))
+	},
+	"aws.imagebuilder.imageRecipe.skippedCleanupSections": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImageRecipe).GetSkippedCleanupSections()).ToDataRes(types.Array(types.String))
+	},
+	"aws.imagebuilder.imageRecipe.cleanupBypassed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderImageRecipe).GetCleanupBypassed()).ToDataRes(types.Bool)
+	},
+	"aws.imagebuilder.component.arn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderComponent).GetArn()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.component.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderComponent).GetName()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.component.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderComponent).GetVersion()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.component.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderComponent).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.component.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderComponent).GetDescription()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.component.changeDescription": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderComponent).GetChangeDescription()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.component.platform": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderComponent).GetPlatform()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.component.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderComponent).GetType()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.component.owner": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderComponent).GetOwner()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.component.supportedOsVersions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderComponent).GetSupportedOsVersions()).ToDataRes(types.Array(types.String))
+	},
+	"aws.imagebuilder.component.encrypted": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderComponent).GetEncrypted()).ToDataRes(types.Bool)
+	},
+	"aws.imagebuilder.component.kmsKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderComponent).GetKmsKey()).ToDataRes(types.Resource("aws.kms.key"))
+	},
+	"aws.imagebuilder.component.data": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderComponent).GetData()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.component.skippedCleanupSections": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderComponent).GetSkippedCleanupSections()).ToDataRes(types.Array(types.String))
+	},
+	"aws.imagebuilder.component.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderComponent).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"aws.imagebuilder.component.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderComponent).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"aws.imagebuilder.distributionConfiguration.arn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderDistributionConfiguration).GetArn()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.distributionConfiguration.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderDistributionConfiguration).GetName()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.distributionConfiguration.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderDistributionConfiguration).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.distributionConfiguration.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderDistributionConfiguration).GetDescription()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.distributionConfiguration.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderDistributionConfiguration).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"aws.imagebuilder.distributionConfiguration.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderDistributionConfiguration).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"aws.imagebuilder.distributionConfiguration.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderDistributionConfiguration).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"aws.imagebuilder.distributionConfiguration.distributions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderDistributionConfiguration).GetDistributions()).ToDataRes(types.Array(types.Resource("aws.imagebuilder.distributionConfiguration.distribution")))
+	},
+	"aws.imagebuilder.distributionConfiguration.public": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderDistributionConfiguration).GetPublic()).ToDataRes(types.Bool)
+	},
+	"aws.imagebuilder.distributionConfiguration.distribution.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.distributionConfiguration.distribution.amiName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).GetAmiName()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.distributionConfiguration.distribution.amiDescription": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).GetAmiDescription()).ToDataRes(types.String)
+	},
+	"aws.imagebuilder.distributionConfiguration.distribution.amiKmsKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).GetAmiKmsKey()).ToDataRes(types.Resource("aws.kms.key"))
+	},
+	"aws.imagebuilder.distributionConfiguration.distribution.amiTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).GetAmiTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"aws.imagebuilder.distributionConfiguration.distribution.targetAccountIds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).GetTargetAccountIds()).ToDataRes(types.Array(types.String))
+	},
+	"aws.imagebuilder.distributionConfiguration.distribution.launchPermissionUserGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).GetLaunchPermissionUserGroups()).ToDataRes(types.Array(types.String))
+	},
+	"aws.imagebuilder.distributionConfiguration.distribution.launchPermissionUserIds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).GetLaunchPermissionUserIds()).ToDataRes(types.Array(types.String))
+	},
+	"aws.imagebuilder.distributionConfiguration.distribution.launchPermissionOrganizationArns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).GetLaunchPermissionOrganizationArns()).ToDataRes(types.Array(types.String))
+	},
+	"aws.imagebuilder.distributionConfiguration.distribution.launchPermissionOrganizationalUnitArns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).GetLaunchPermissionOrganizationalUnitArns()).ToDataRes(types.Array(types.String))
+	},
+	"aws.imagebuilder.distributionConfiguration.distribution.public": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).GetPublic()).ToDataRes(types.Bool)
+	},
+	"aws.imagebuilder.distributionConfiguration.distribution.licenseConfigurationArns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).GetLicenseConfigurationArns()).ToDataRes(types.Array(types.String))
 	},
 	"aws.redshiftserverless.workgroups": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsRedshiftserverless).GetWorkgroups()).ToDataRes(types.Array(types.Resource("aws.redshiftserverless.workgroup")))
@@ -59366,6 +59780,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsCloudwatch).OtelEnrichments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"aws.cloudwatch.logDeliverySources": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatch).LogDeliverySources, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDeliveries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatch).LogDeliveries, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDeliveryDestinations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatch).LogDeliveryDestinations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"aws.cloudwatch.otelEnrichment.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsCloudwatchOtelEnrichment).__id, ok = v.Value.(string)
 		return
@@ -60176,6 +60602,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.cloudfront.distribution.logging": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsCloudfrontDistribution).Logging, ok = plugin.RawToTValue[*mqlAwsCloudfrontDistributionLoggingConfig](v.Value, v.Error)
+		return
+	},
+	"aws.cloudfront.distribution.logDeliveries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudfrontDistribution).LogDeliveries, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"aws.cloudfront.distribution.viewerMtlsMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -85734,6 +86164,142 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsCloudwatchLogInsightQuery).ModifiedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
+	"aws.cloudwatch.logDeliverySource.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDeliverySource).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.cloudwatch.logDeliverySource.arn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDeliverySource).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDeliverySource.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDeliverySource).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDeliverySource.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDeliverySource).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDeliverySource.logType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDeliverySource).LogType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDeliverySource.service": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDeliverySource).Service, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDeliverySource.resourceArns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDeliverySource).ResourceArns, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDeliverySource.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDeliverySource).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDeliverySource.statusReason": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDeliverySource).StatusReason, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDeliverySource.configuration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDeliverySource).Configuration, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDeliverySource.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDeliverySource).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDeliverySource.deliveries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDeliverySource).Deliveries, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDelivery.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDelivery).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.cloudwatch.logDelivery.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDelivery).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDelivery.arn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDelivery).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDelivery.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDelivery).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDelivery.deliverySourceName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDelivery).DeliverySourceName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDelivery.deliveryDestinationType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDelivery).DeliveryDestinationType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDelivery.recordFields": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDelivery).RecordFields, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDelivery.fieldDelimiter": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDelivery).FieldDelimiter, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDelivery.s3SuffixPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDelivery).S3SuffixPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDelivery.s3EnableHiveCompatiblePath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDelivery).S3EnableHiveCompatiblePath, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDelivery.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDelivery).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDelivery.deliverySource": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDelivery).DeliverySource, ok = plugin.RawToTValue[*mqlAwsCloudwatchLogDeliverySource](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDelivery.deliveryDestination": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDelivery).DeliveryDestination, ok = plugin.RawToTValue[*mqlAwsCloudwatchLogDeliveryDestination](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDeliveryDestination.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDeliveryDestination).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.cloudwatch.logDeliveryDestination.arn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDeliveryDestination).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDeliveryDestination.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDeliveryDestination).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDeliveryDestination.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDeliveryDestination).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDeliveryDestination.deliveryDestinationType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDeliveryDestination).DeliveryDestinationType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDeliveryDestination.destinationResourceArn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDeliveryDestination).DestinationResourceArn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDeliveryDestination.outputFormat": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDeliveryDestination).OutputFormat, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDeliveryDestination.role": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDeliveryDestination).Role, ok = plugin.RawToTValue[*mqlAwsIamRole](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.logDeliveryDestination.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLogDeliveryDestination).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
 	"aws.ec2.vpcEndpointServiceConfiguration.connection.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsEc2VpcEndpointServiceConfigurationConnection).__id, ok = v.Value.(string)
 		return
@@ -90978,6 +91544,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsBedrockKnowledgeBase).MetadataConfigurations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"aws.bedrock.knowledgeBase.logDeliveries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockKnowledgeBase).LogDeliveries, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"aws.bedrock.knowledgeBase.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsBedrockKnowledgeBase).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
@@ -93470,6 +94040,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsOpensearchserverlessCollection).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
+	"aws.opensearchserverless.collection.networkPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOpensearchserverlessCollection).NetworkPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.opensearchserverless.collection.allowFromPublic": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOpensearchserverlessCollection).AllowFromPublic, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.opensearchserverless.collection.sourceServices": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOpensearchserverlessCollection).SourceServices, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.opensearchserverless.collection.sourceVpcEndpointIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOpensearchserverlessCollection).SourceVpcEndpointIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"aws.opensearchserverless.securityPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsOpensearchserverlessSecurityPolicy).__id, ok = v.Value.(string)
 		return
@@ -93576,6 +94162,362 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.opensearchserverless.accessPolicy.resources": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsOpensearchserverlessAccessPolicy).Resources, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilder).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.imagebuilder.imagePipelines": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilder).ImagePipelines, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imageRecipes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilder).ImageRecipes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.components": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilder).Components, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.distributionConfigurations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilder).DistributionConfigurations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imagePipeline.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImagePipeline).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.imagebuilder.imagePipeline.arn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImagePipeline).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imagePipeline.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImagePipeline).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imagePipeline.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImagePipeline).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imagePipeline.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImagePipeline).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imagePipeline.platform": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImagePipeline).Platform, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imagePipeline.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImagePipeline).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imagePipeline.containerRecipeArn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImagePipeline).ContainerRecipeArn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imagePipeline.infrastructureConfigurationArn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImagePipeline).InfrastructureConfigurationArn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imagePipeline.enhancedImageMetadataEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImagePipeline).EnhancedImageMetadataEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imagePipeline.imageTestsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImagePipeline).ImageTestsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imagePipeline.imageScanningEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImagePipeline).ImageScanningEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imagePipeline.schedule": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImagePipeline).Schedule, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imagePipeline.executionRole": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImagePipeline).ExecutionRole, ok = plugin.RawToTValue[*mqlAwsIamRole](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imagePipeline.workflows": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImagePipeline).Workflows, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imagePipeline.lastRunStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImagePipeline).LastRunStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imagePipeline.consecutiveFailures": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImagePipeline).ConsecutiveFailures, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imagePipeline.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImagePipeline).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imagePipeline.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImagePipeline).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imagePipeline.lastRunAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImagePipeline).LastRunAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imagePipeline.nextRunAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImagePipeline).NextRunAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imagePipeline.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImagePipeline).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imagePipeline.imageRecipe": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImagePipeline).ImageRecipe, ok = plugin.RawToTValue[*mqlAwsImagebuilderImageRecipe](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imagePipeline.distributionConfiguration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImagePipeline).DistributionConfiguration, ok = plugin.RawToTValue[*mqlAwsImagebuilderDistributionConfiguration](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imagePipeline.cleanupBypassed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImagePipeline).CleanupBypassed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imageRecipe.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImageRecipe).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.imagebuilder.imageRecipe.arn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImageRecipe).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imageRecipe.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImageRecipe).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imageRecipe.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImageRecipe).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imageRecipe.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImageRecipe).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imageRecipe.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImageRecipe).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imageRecipe.platform": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImageRecipe).Platform, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imageRecipe.owner": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImageRecipe).Owner, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imageRecipe.parentImage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImageRecipe).ParentImage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imageRecipe.workingDirectory": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImageRecipe).WorkingDirectory, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imageRecipe.components": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImageRecipe).Components, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imageRecipe.userDataOverride": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImageRecipe).UserDataOverride, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imageRecipe.ssmAgentUninstallAfterBuild": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImageRecipe).SsmAgentUninstallAfterBuild, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imageRecipe.cleanupScriptDisabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImageRecipe).CleanupScriptDisabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imageRecipe.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImageRecipe).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imageRecipe.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImageRecipe).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imageRecipe.componentDetails": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImageRecipe).ComponentDetails, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imageRecipe.skippedCleanupSections": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImageRecipe).SkippedCleanupSections, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.imageRecipe.cleanupBypassed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderImageRecipe).CleanupBypassed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.component.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderComponent).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.imagebuilder.component.arn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderComponent).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.component.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderComponent).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.component.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderComponent).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.component.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderComponent).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.component.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderComponent).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.component.changeDescription": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderComponent).ChangeDescription, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.component.platform": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderComponent).Platform, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.component.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderComponent).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.component.owner": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderComponent).Owner, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.component.supportedOsVersions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderComponent).SupportedOsVersions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.component.encrypted": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderComponent).Encrypted, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.component.kmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderComponent).KmsKey, ok = plugin.RawToTValue[*mqlAwsKmsKey](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.component.data": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderComponent).Data, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.component.skippedCleanupSections": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderComponent).SkippedCleanupSections, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.component.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderComponent).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.component.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderComponent).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.distributionConfiguration.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderDistributionConfiguration).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.imagebuilder.distributionConfiguration.arn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderDistributionConfiguration).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.distributionConfiguration.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderDistributionConfiguration).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.distributionConfiguration.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderDistributionConfiguration).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.distributionConfiguration.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderDistributionConfiguration).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.distributionConfiguration.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderDistributionConfiguration).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.distributionConfiguration.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderDistributionConfiguration).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.distributionConfiguration.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderDistributionConfiguration).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.distributionConfiguration.distributions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderDistributionConfiguration).Distributions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.distributionConfiguration.public": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderDistributionConfiguration).Public, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.distributionConfiguration.distribution.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.imagebuilder.distributionConfiguration.distribution.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.distributionConfiguration.distribution.amiName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).AmiName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.distributionConfiguration.distribution.amiDescription": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).AmiDescription, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.distributionConfiguration.distribution.amiKmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).AmiKmsKey, ok = plugin.RawToTValue[*mqlAwsKmsKey](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.distributionConfiguration.distribution.amiTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).AmiTags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.distributionConfiguration.distribution.targetAccountIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).TargetAccountIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.distributionConfiguration.distribution.launchPermissionUserGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).LaunchPermissionUserGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.distributionConfiguration.distribution.launchPermissionUserIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).LaunchPermissionUserIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.distributionConfiguration.distribution.launchPermissionOrganizationArns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).LaunchPermissionOrganizationArns, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.distributionConfiguration.distribution.launchPermissionOrganizationalUnitArns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).LaunchPermissionOrganizationalUnitArns, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.distributionConfiguration.distribution.public": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).Public, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.imagebuilder.distributionConfiguration.distribution.licenseConfigurationArns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).LicenseConfigurationArns, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"aws.redshiftserverless.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -142044,15 +142986,18 @@ type mqlAwsCloudwatch struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlAwsCloudwatchInternal it will be used here
-	LogGroups         plugin.TValue[[]any]
-	Alarms            plugin.TValue[[]any]
-	Metrics           plugin.TValue[[]any]
-	ResourcePolicies  plugin.TValue[[]any]
-	LogDestinations   plugin.TValue[[]any]
-	LogInsightQueries plugin.TValue[[]any]
-	AccountPolicies   plugin.TValue[[]any]
-	AnomalyDetectors  plugin.TValue[[]any]
-	OtelEnrichments   plugin.TValue[[]any]
+	LogGroups               plugin.TValue[[]any]
+	Alarms                  plugin.TValue[[]any]
+	Metrics                 plugin.TValue[[]any]
+	ResourcePolicies        plugin.TValue[[]any]
+	LogDestinations         plugin.TValue[[]any]
+	LogInsightQueries       plugin.TValue[[]any]
+	AccountPolicies         plugin.TValue[[]any]
+	AnomalyDetectors        plugin.TValue[[]any]
+	OtelEnrichments         plugin.TValue[[]any]
+	LogDeliverySources      plugin.TValue[[]any]
+	LogDeliveries           plugin.TValue[[]any]
+	LogDeliveryDestinations plugin.TValue[[]any]
 }
 
 // createAwsCloudwatch creates a new instance of this resource
@@ -142233,6 +143178,54 @@ func (c *mqlAwsCloudwatch) GetOtelEnrichments() *plugin.TValue[[]any] {
 		}
 
 		return c.otelEnrichments()
+	})
+}
+
+func (c *mqlAwsCloudwatch) GetLogDeliverySources() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.LogDeliverySources, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.cloudwatch", c.__id, "logDeliverySources")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.logDeliverySources()
+	})
+}
+
+func (c *mqlAwsCloudwatch) GetLogDeliveries() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.LogDeliveries, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.cloudwatch", c.__id, "logDeliveries")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.logDeliveries()
+	})
+}
+
+func (c *mqlAwsCloudwatch) GetLogDeliveryDestinations() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.LogDeliveryDestinations, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.cloudwatch", c.__id, "logDeliveryDestinations")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.logDeliveryDestinations()
 	})
 }
 
@@ -144136,6 +145129,7 @@ type mqlAwsCloudfrontDistribution struct {
 	LastModifiedAt               plugin.TValue[*time.Time]
 	Comment                      plugin.TValue[string]
 	Logging                      plugin.TValue[*mqlAwsCloudfrontDistributionLoggingConfig]
+	LogDeliveries                plugin.TValue[[]any]
 	ViewerMtlsMode               plugin.TValue[string]
 	ViewerMtlsTrustStoreId       plugin.TValue[string]
 	Id                           plugin.TValue[string]
@@ -144325,6 +145319,22 @@ func (c *mqlAwsCloudfrontDistribution) GetLogging() *plugin.TValue[*mqlAwsCloudf
 		}
 
 		return c.logging()
+	})
+}
+
+func (c *mqlAwsCloudfrontDistribution) GetLogDeliveries() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.LogDeliveries, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.cloudfront.distribution", c.__id, "logDeliveries")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.logDeliveries()
 	})
 }
 
@@ -208042,6 +209052,341 @@ func (c *mqlAwsCloudwatchLogInsightQuery) GetModifiedAt() *plugin.TValue[*time.T
 	return &c.ModifiedAt
 }
 
+// mqlAwsCloudwatchLogDeliverySource for the aws.cloudwatch.logDeliverySource resource
+type mqlAwsCloudwatchLogDeliverySource struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAwsCloudwatchLogDeliverySourceInternal it will be used here
+	Arn           plugin.TValue[string]
+	Name          plugin.TValue[string]
+	Region        plugin.TValue[string]
+	LogType       plugin.TValue[string]
+	Service       plugin.TValue[string]
+	ResourceArns  plugin.TValue[[]any]
+	Status        plugin.TValue[string]
+	StatusReason  plugin.TValue[string]
+	Configuration plugin.TValue[map[string]any]
+	Tags          plugin.TValue[map[string]any]
+	Deliveries    plugin.TValue[[]any]
+}
+
+// createAwsCloudwatchLogDeliverySource creates a new instance of this resource
+func createAwsCloudwatchLogDeliverySource(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsCloudwatchLogDeliverySource{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.cloudwatch.logDeliverySource", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsCloudwatchLogDeliverySource) MqlName() string {
+	return "aws.cloudwatch.logDeliverySource"
+}
+
+func (c *mqlAwsCloudwatchLogDeliverySource) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsCloudwatchLogDeliverySource) GetArn() *plugin.TValue[string] {
+	return &c.Arn
+}
+
+func (c *mqlAwsCloudwatchLogDeliverySource) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAwsCloudwatchLogDeliverySource) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlAwsCloudwatchLogDeliverySource) GetLogType() *plugin.TValue[string] {
+	return &c.LogType
+}
+
+func (c *mqlAwsCloudwatchLogDeliverySource) GetService() *plugin.TValue[string] {
+	return &c.Service
+}
+
+func (c *mqlAwsCloudwatchLogDeliverySource) GetResourceArns() *plugin.TValue[[]any] {
+	return &c.ResourceArns
+}
+
+func (c *mqlAwsCloudwatchLogDeliverySource) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlAwsCloudwatchLogDeliverySource) GetStatusReason() *plugin.TValue[string] {
+	return &c.StatusReason
+}
+
+func (c *mqlAwsCloudwatchLogDeliverySource) GetConfiguration() *plugin.TValue[map[string]any] {
+	return &c.Configuration
+}
+
+func (c *mqlAwsCloudwatchLogDeliverySource) GetTags() *plugin.TValue[map[string]any] {
+	return &c.Tags
+}
+
+func (c *mqlAwsCloudwatchLogDeliverySource) GetDeliveries() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Deliveries, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.cloudwatch.logDeliverySource", c.__id, "deliveries")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.deliveries()
+	})
+}
+
+// mqlAwsCloudwatchLogDelivery for the aws.cloudwatch.logDelivery resource
+type mqlAwsCloudwatchLogDelivery struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsCloudwatchLogDeliveryInternal
+	Id                         plugin.TValue[string]
+	Arn                        plugin.TValue[string]
+	Region                     plugin.TValue[string]
+	DeliverySourceName         plugin.TValue[string]
+	DeliveryDestinationType    plugin.TValue[string]
+	RecordFields               plugin.TValue[[]any]
+	FieldDelimiter             plugin.TValue[string]
+	S3SuffixPath               plugin.TValue[string]
+	S3EnableHiveCompatiblePath plugin.TValue[bool]
+	Tags                       plugin.TValue[map[string]any]
+	DeliverySource             plugin.TValue[*mqlAwsCloudwatchLogDeliverySource]
+	DeliveryDestination        plugin.TValue[*mqlAwsCloudwatchLogDeliveryDestination]
+}
+
+// createAwsCloudwatchLogDelivery creates a new instance of this resource
+func createAwsCloudwatchLogDelivery(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsCloudwatchLogDelivery{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.cloudwatch.logDelivery", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsCloudwatchLogDelivery) MqlName() string {
+	return "aws.cloudwatch.logDelivery"
+}
+
+func (c *mqlAwsCloudwatchLogDelivery) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsCloudwatchLogDelivery) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAwsCloudwatchLogDelivery) GetArn() *plugin.TValue[string] {
+	return &c.Arn
+}
+
+func (c *mqlAwsCloudwatchLogDelivery) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlAwsCloudwatchLogDelivery) GetDeliverySourceName() *plugin.TValue[string] {
+	return &c.DeliverySourceName
+}
+
+func (c *mqlAwsCloudwatchLogDelivery) GetDeliveryDestinationType() *plugin.TValue[string] {
+	return &c.DeliveryDestinationType
+}
+
+func (c *mqlAwsCloudwatchLogDelivery) GetRecordFields() *plugin.TValue[[]any] {
+	return &c.RecordFields
+}
+
+func (c *mqlAwsCloudwatchLogDelivery) GetFieldDelimiter() *plugin.TValue[string] {
+	return &c.FieldDelimiter
+}
+
+func (c *mqlAwsCloudwatchLogDelivery) GetS3SuffixPath() *plugin.TValue[string] {
+	return &c.S3SuffixPath
+}
+
+func (c *mqlAwsCloudwatchLogDelivery) GetS3EnableHiveCompatiblePath() *plugin.TValue[bool] {
+	return &c.S3EnableHiveCompatiblePath
+}
+
+func (c *mqlAwsCloudwatchLogDelivery) GetTags() *plugin.TValue[map[string]any] {
+	return &c.Tags
+}
+
+func (c *mqlAwsCloudwatchLogDelivery) GetDeliverySource() *plugin.TValue[*mqlAwsCloudwatchLogDeliverySource] {
+	return plugin.GetOrCompute[*mqlAwsCloudwatchLogDeliverySource](&c.DeliverySource, func() (*mqlAwsCloudwatchLogDeliverySource, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.cloudwatch.logDelivery", c.__id, "deliverySource")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsCloudwatchLogDeliverySource), nil
+			}
+		}
+
+		return c.deliverySource()
+	})
+}
+
+func (c *mqlAwsCloudwatchLogDelivery) GetDeliveryDestination() *plugin.TValue[*mqlAwsCloudwatchLogDeliveryDestination] {
+	return plugin.GetOrCompute[*mqlAwsCloudwatchLogDeliveryDestination](&c.DeliveryDestination, func() (*mqlAwsCloudwatchLogDeliveryDestination, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.cloudwatch.logDelivery", c.__id, "deliveryDestination")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsCloudwatchLogDeliveryDestination), nil
+			}
+		}
+
+		return c.deliveryDestination()
+	})
+}
+
+// mqlAwsCloudwatchLogDeliveryDestination for the aws.cloudwatch.logDeliveryDestination resource
+type mqlAwsCloudwatchLogDeliveryDestination struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsCloudwatchLogDeliveryDestinationInternal
+	Arn                     plugin.TValue[string]
+	Name                    plugin.TValue[string]
+	Region                  plugin.TValue[string]
+	DeliveryDestinationType plugin.TValue[string]
+	DestinationResourceArn  plugin.TValue[string]
+	OutputFormat            plugin.TValue[string]
+	Role                    plugin.TValue[*mqlAwsIamRole]
+	Tags                    plugin.TValue[map[string]any]
+}
+
+// createAwsCloudwatchLogDeliveryDestination creates a new instance of this resource
+func createAwsCloudwatchLogDeliveryDestination(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsCloudwatchLogDeliveryDestination{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.cloudwatch.logDeliveryDestination", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsCloudwatchLogDeliveryDestination) MqlName() string {
+	return "aws.cloudwatch.logDeliveryDestination"
+}
+
+func (c *mqlAwsCloudwatchLogDeliveryDestination) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsCloudwatchLogDeliveryDestination) GetArn() *plugin.TValue[string] {
+	return &c.Arn
+}
+
+func (c *mqlAwsCloudwatchLogDeliveryDestination) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAwsCloudwatchLogDeliveryDestination) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlAwsCloudwatchLogDeliveryDestination) GetDeliveryDestinationType() *plugin.TValue[string] {
+	return &c.DeliveryDestinationType
+}
+
+func (c *mqlAwsCloudwatchLogDeliveryDestination) GetDestinationResourceArn() *plugin.TValue[string] {
+	return &c.DestinationResourceArn
+}
+
+func (c *mqlAwsCloudwatchLogDeliveryDestination) GetOutputFormat() *plugin.TValue[string] {
+	return &c.OutputFormat
+}
+
+func (c *mqlAwsCloudwatchLogDeliveryDestination) GetRole() *plugin.TValue[*mqlAwsIamRole] {
+	return plugin.GetOrCompute[*mqlAwsIamRole](&c.Role, func() (*mqlAwsIamRole, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.cloudwatch.logDeliveryDestination", c.__id, "role")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsIamRole), nil
+			}
+		}
+
+		return c.role()
+	})
+}
+
+func (c *mqlAwsCloudwatchLogDeliveryDestination) GetTags() *plugin.TValue[map[string]any] {
+	return &c.Tags
+}
+
 // mqlAwsEc2VpcEndpointServiceConfigurationConnection for the aws.ec2.vpcEndpointServiceConfiguration.connection resource
 type mqlAwsEc2VpcEndpointServiceConfigurationConnection struct {
 	MqlRuntime *plugin.Runtime
@@ -221634,6 +222979,7 @@ type mqlAwsBedrockKnowledgeBase struct {
 	DataSourceDetails          plugin.TValue[[]any]
 	VpcConfigurations          plugin.TValue[[]any]
 	MetadataConfigurations     plugin.TValue[[]any]
+	LogDeliveries              plugin.TValue[[]any]
 	Tags                       plugin.TValue[map[string]any]
 }
 
@@ -221821,6 +223167,22 @@ func (c *mqlAwsBedrockKnowledgeBase) GetVpcConfigurations() *plugin.TValue[[]any
 func (c *mqlAwsBedrockKnowledgeBase) GetMetadataConfigurations() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.MetadataConfigurations, func() ([]any, error) {
 		return c.metadataConfigurations()
+	})
+}
+
+func (c *mqlAwsBedrockKnowledgeBase) GetLogDeliveries() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.LogDeliveries, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.knowledgeBase", c.__id, "logDeliveries")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.logDeliveries()
 	})
 }
 
@@ -228338,6 +229700,10 @@ type mqlAwsOpensearchserverlessCollection struct {
 	CreatedAt                 plugin.TValue[*time.Time]
 	UpdatedAt                 plugin.TValue[*time.Time]
 	Tags                      plugin.TValue[map[string]any]
+	NetworkPolicies           plugin.TValue[[]any]
+	AllowFromPublic           plugin.TValue[bool]
+	SourceServices            plugin.TValue[[]any]
+	SourceVpcEndpointIds      plugin.TValue[[]any]
 }
 
 // createAwsOpensearchserverlessCollection creates a new instance of this resource
@@ -228452,6 +229818,40 @@ func (c *mqlAwsOpensearchserverlessCollection) GetUpdatedAt() *plugin.TValue[*ti
 func (c *mqlAwsOpensearchserverlessCollection) GetTags() *plugin.TValue[map[string]any] {
 	return plugin.GetOrCompute[map[string]any](&c.Tags, func() (map[string]any, error) {
 		return c.tags()
+	})
+}
+
+func (c *mqlAwsOpensearchserverlessCollection) GetNetworkPolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.NetworkPolicies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.opensearchserverless.collection", c.__id, "networkPolicies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.networkPolicies()
+	})
+}
+
+func (c *mqlAwsOpensearchserverlessCollection) GetAllowFromPublic() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AllowFromPublic, func() (bool, error) {
+		return c.allowFromPublic()
+	})
+}
+
+func (c *mqlAwsOpensearchserverlessCollection) GetSourceServices() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SourceServices, func() ([]any, error) {
+		return c.sourceServices()
+	})
+}
+
+func (c *mqlAwsOpensearchserverlessCollection) GetSourceVpcEndpointIds() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SourceVpcEndpointIds, func() ([]any, error) {
+		return c.sourceVpcEndpointIds()
 	})
 }
 
@@ -228698,6 +230098,825 @@ func (c *mqlAwsOpensearchserverlessAccessPolicy) GetResources() *plugin.TValue[[
 	return plugin.GetOrCompute[[]any](&c.Resources, func() ([]any, error) {
 		return c.resources()
 	})
+}
+
+// mqlAwsImagebuilder for the aws.imagebuilder resource
+type mqlAwsImagebuilder struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAwsImagebuilderInternal it will be used here
+	ImagePipelines             plugin.TValue[[]any]
+	ImageRecipes               plugin.TValue[[]any]
+	Components                 plugin.TValue[[]any]
+	DistributionConfigurations plugin.TValue[[]any]
+}
+
+// createAwsImagebuilder creates a new instance of this resource
+func createAwsImagebuilder(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsImagebuilder{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.imagebuilder", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsImagebuilder) MqlName() string {
+	return "aws.imagebuilder"
+}
+
+func (c *mqlAwsImagebuilder) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsImagebuilder) GetImagePipelines() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ImagePipelines, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.imagebuilder", c.__id, "imagePipelines")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.imagePipelines()
+	})
+}
+
+func (c *mqlAwsImagebuilder) GetImageRecipes() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ImageRecipes, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.imagebuilder", c.__id, "imageRecipes")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.imageRecipes()
+	})
+}
+
+func (c *mqlAwsImagebuilder) GetComponents() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Components, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.imagebuilder", c.__id, "components")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.components()
+	})
+}
+
+func (c *mqlAwsImagebuilder) GetDistributionConfigurations() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DistributionConfigurations, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.imagebuilder", c.__id, "distributionConfigurations")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.distributionConfigurations()
+	})
+}
+
+// mqlAwsImagebuilderImagePipeline for the aws.imagebuilder.imagePipeline resource
+type mqlAwsImagebuilderImagePipeline struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsImagebuilderImagePipelineInternal
+	Arn                            plugin.TValue[string]
+	Name                           plugin.TValue[string]
+	Region                         plugin.TValue[string]
+	Description                    plugin.TValue[string]
+	Platform                       plugin.TValue[string]
+	Status                         plugin.TValue[string]
+	ContainerRecipeArn             plugin.TValue[string]
+	InfrastructureConfigurationArn plugin.TValue[string]
+	EnhancedImageMetadataEnabled   plugin.TValue[bool]
+	ImageTestsEnabled              plugin.TValue[bool]
+	ImageScanningEnabled           plugin.TValue[bool]
+	Schedule                       plugin.TValue[any]
+	ExecutionRole                  plugin.TValue[*mqlAwsIamRole]
+	Workflows                      plugin.TValue[[]any]
+	LastRunStatus                  plugin.TValue[string]
+	ConsecutiveFailures            plugin.TValue[int64]
+	CreatedAt                      plugin.TValue[*time.Time]
+	UpdatedAt                      plugin.TValue[*time.Time]
+	LastRunAt                      plugin.TValue[*time.Time]
+	NextRunAt                      plugin.TValue[*time.Time]
+	Tags                           plugin.TValue[map[string]any]
+	ImageRecipe                    plugin.TValue[*mqlAwsImagebuilderImageRecipe]
+	DistributionConfiguration      plugin.TValue[*mqlAwsImagebuilderDistributionConfiguration]
+	CleanupBypassed                plugin.TValue[bool]
+}
+
+// createAwsImagebuilderImagePipeline creates a new instance of this resource
+func createAwsImagebuilderImagePipeline(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsImagebuilderImagePipeline{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.imagebuilder.imagePipeline", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsImagebuilderImagePipeline) MqlName() string {
+	return "aws.imagebuilder.imagePipeline"
+}
+
+func (c *mqlAwsImagebuilderImagePipeline) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsImagebuilderImagePipeline) GetArn() *plugin.TValue[string] {
+	return &c.Arn
+}
+
+func (c *mqlAwsImagebuilderImagePipeline) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAwsImagebuilderImagePipeline) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlAwsImagebuilderImagePipeline) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlAwsImagebuilderImagePipeline) GetPlatform() *plugin.TValue[string] {
+	return &c.Platform
+}
+
+func (c *mqlAwsImagebuilderImagePipeline) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlAwsImagebuilderImagePipeline) GetContainerRecipeArn() *plugin.TValue[string] {
+	return &c.ContainerRecipeArn
+}
+
+func (c *mqlAwsImagebuilderImagePipeline) GetInfrastructureConfigurationArn() *plugin.TValue[string] {
+	return &c.InfrastructureConfigurationArn
+}
+
+func (c *mqlAwsImagebuilderImagePipeline) GetEnhancedImageMetadataEnabled() *plugin.TValue[bool] {
+	return &c.EnhancedImageMetadataEnabled
+}
+
+func (c *mqlAwsImagebuilderImagePipeline) GetImageTestsEnabled() *plugin.TValue[bool] {
+	return &c.ImageTestsEnabled
+}
+
+func (c *mqlAwsImagebuilderImagePipeline) GetImageScanningEnabled() *plugin.TValue[bool] {
+	return &c.ImageScanningEnabled
+}
+
+func (c *mqlAwsImagebuilderImagePipeline) GetSchedule() *plugin.TValue[any] {
+	return &c.Schedule
+}
+
+func (c *mqlAwsImagebuilderImagePipeline) GetExecutionRole() *plugin.TValue[*mqlAwsIamRole] {
+	return plugin.GetOrCompute[*mqlAwsIamRole](&c.ExecutionRole, func() (*mqlAwsIamRole, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.imagebuilder.imagePipeline", c.__id, "executionRole")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsIamRole), nil
+			}
+		}
+
+		return c.executionRole()
+	})
+}
+
+func (c *mqlAwsImagebuilderImagePipeline) GetWorkflows() *plugin.TValue[[]any] {
+	return &c.Workflows
+}
+
+func (c *mqlAwsImagebuilderImagePipeline) GetLastRunStatus() *plugin.TValue[string] {
+	return &c.LastRunStatus
+}
+
+func (c *mqlAwsImagebuilderImagePipeline) GetConsecutiveFailures() *plugin.TValue[int64] {
+	return &c.ConsecutiveFailures
+}
+
+func (c *mqlAwsImagebuilderImagePipeline) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlAwsImagebuilderImagePipeline) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlAwsImagebuilderImagePipeline) GetLastRunAt() *plugin.TValue[*time.Time] {
+	return &c.LastRunAt
+}
+
+func (c *mqlAwsImagebuilderImagePipeline) GetNextRunAt() *plugin.TValue[*time.Time] {
+	return &c.NextRunAt
+}
+
+func (c *mqlAwsImagebuilderImagePipeline) GetTags() *plugin.TValue[map[string]any] {
+	return &c.Tags
+}
+
+func (c *mqlAwsImagebuilderImagePipeline) GetImageRecipe() *plugin.TValue[*mqlAwsImagebuilderImageRecipe] {
+	return plugin.GetOrCompute[*mqlAwsImagebuilderImageRecipe](&c.ImageRecipe, func() (*mqlAwsImagebuilderImageRecipe, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.imagebuilder.imagePipeline", c.__id, "imageRecipe")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsImagebuilderImageRecipe), nil
+			}
+		}
+
+		return c.imageRecipe()
+	})
+}
+
+func (c *mqlAwsImagebuilderImagePipeline) GetDistributionConfiguration() *plugin.TValue[*mqlAwsImagebuilderDistributionConfiguration] {
+	return plugin.GetOrCompute[*mqlAwsImagebuilderDistributionConfiguration](&c.DistributionConfiguration, func() (*mqlAwsImagebuilderDistributionConfiguration, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.imagebuilder.imagePipeline", c.__id, "distributionConfiguration")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsImagebuilderDistributionConfiguration), nil
+			}
+		}
+
+		return c.distributionConfiguration()
+	})
+}
+
+func (c *mqlAwsImagebuilderImagePipeline) GetCleanupBypassed() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.CleanupBypassed, func() (bool, error) {
+		return c.cleanupBypassed()
+	})
+}
+
+// mqlAwsImagebuilderImageRecipe for the aws.imagebuilder.imageRecipe resource
+type mqlAwsImagebuilderImageRecipe struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAwsImagebuilderImageRecipeInternal it will be used here
+	Arn                         plugin.TValue[string]
+	Name                        plugin.TValue[string]
+	Version                     plugin.TValue[string]
+	Region                      plugin.TValue[string]
+	Description                 plugin.TValue[string]
+	Platform                    plugin.TValue[string]
+	Owner                       plugin.TValue[string]
+	ParentImage                 plugin.TValue[string]
+	WorkingDirectory            plugin.TValue[string]
+	Components                  plugin.TValue[[]any]
+	UserDataOverride            plugin.TValue[string]
+	SsmAgentUninstallAfterBuild plugin.TValue[bool]
+	CleanupScriptDisabled       plugin.TValue[bool]
+	CreatedAt                   plugin.TValue[*time.Time]
+	Tags                        plugin.TValue[map[string]any]
+	ComponentDetails            plugin.TValue[[]any]
+	SkippedCleanupSections      plugin.TValue[[]any]
+	CleanupBypassed             plugin.TValue[bool]
+}
+
+// createAwsImagebuilderImageRecipe creates a new instance of this resource
+func createAwsImagebuilderImageRecipe(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsImagebuilderImageRecipe{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.imagebuilder.imageRecipe", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsImagebuilderImageRecipe) MqlName() string {
+	return "aws.imagebuilder.imageRecipe"
+}
+
+func (c *mqlAwsImagebuilderImageRecipe) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsImagebuilderImageRecipe) GetArn() *plugin.TValue[string] {
+	return &c.Arn
+}
+
+func (c *mqlAwsImagebuilderImageRecipe) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAwsImagebuilderImageRecipe) GetVersion() *plugin.TValue[string] {
+	return &c.Version
+}
+
+func (c *mqlAwsImagebuilderImageRecipe) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlAwsImagebuilderImageRecipe) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlAwsImagebuilderImageRecipe) GetPlatform() *plugin.TValue[string] {
+	return &c.Platform
+}
+
+func (c *mqlAwsImagebuilderImageRecipe) GetOwner() *plugin.TValue[string] {
+	return &c.Owner
+}
+
+func (c *mqlAwsImagebuilderImageRecipe) GetParentImage() *plugin.TValue[string] {
+	return &c.ParentImage
+}
+
+func (c *mqlAwsImagebuilderImageRecipe) GetWorkingDirectory() *plugin.TValue[string] {
+	return &c.WorkingDirectory
+}
+
+func (c *mqlAwsImagebuilderImageRecipe) GetComponents() *plugin.TValue[[]any] {
+	return &c.Components
+}
+
+func (c *mqlAwsImagebuilderImageRecipe) GetUserDataOverride() *plugin.TValue[string] {
+	return &c.UserDataOverride
+}
+
+func (c *mqlAwsImagebuilderImageRecipe) GetSsmAgentUninstallAfterBuild() *plugin.TValue[bool] {
+	return &c.SsmAgentUninstallAfterBuild
+}
+
+func (c *mqlAwsImagebuilderImageRecipe) GetCleanupScriptDisabled() *plugin.TValue[bool] {
+	return &c.CleanupScriptDisabled
+}
+
+func (c *mqlAwsImagebuilderImageRecipe) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlAwsImagebuilderImageRecipe) GetTags() *plugin.TValue[map[string]any] {
+	return &c.Tags
+}
+
+func (c *mqlAwsImagebuilderImageRecipe) GetComponentDetails() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ComponentDetails, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.imagebuilder.imageRecipe", c.__id, "componentDetails")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.componentDetails()
+	})
+}
+
+func (c *mqlAwsImagebuilderImageRecipe) GetSkippedCleanupSections() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SkippedCleanupSections, func() ([]any, error) {
+		return c.skippedCleanupSections()
+	})
+}
+
+func (c *mqlAwsImagebuilderImageRecipe) GetCleanupBypassed() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.CleanupBypassed, func() (bool, error) {
+		return c.cleanupBypassed()
+	})
+}
+
+// mqlAwsImagebuilderComponent for the aws.imagebuilder.component resource
+type mqlAwsImagebuilderComponent struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsImagebuilderComponentInternal
+	Arn                    plugin.TValue[string]
+	Name                   plugin.TValue[string]
+	Version                plugin.TValue[string]
+	Region                 plugin.TValue[string]
+	Description            plugin.TValue[string]
+	ChangeDescription      plugin.TValue[string]
+	Platform               plugin.TValue[string]
+	Type                   plugin.TValue[string]
+	Owner                  plugin.TValue[string]
+	SupportedOsVersions    plugin.TValue[[]any]
+	Encrypted              plugin.TValue[bool]
+	KmsKey                 plugin.TValue[*mqlAwsKmsKey]
+	Data                   plugin.TValue[string]
+	SkippedCleanupSections plugin.TValue[[]any]
+	CreatedAt              plugin.TValue[*time.Time]
+	Tags                   plugin.TValue[map[string]any]
+}
+
+// createAwsImagebuilderComponent creates a new instance of this resource
+func createAwsImagebuilderComponent(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsImagebuilderComponent{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.imagebuilder.component", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsImagebuilderComponent) MqlName() string {
+	return "aws.imagebuilder.component"
+}
+
+func (c *mqlAwsImagebuilderComponent) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsImagebuilderComponent) GetArn() *plugin.TValue[string] {
+	return &c.Arn
+}
+
+func (c *mqlAwsImagebuilderComponent) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAwsImagebuilderComponent) GetVersion() *plugin.TValue[string] {
+	return &c.Version
+}
+
+func (c *mqlAwsImagebuilderComponent) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlAwsImagebuilderComponent) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlAwsImagebuilderComponent) GetChangeDescription() *plugin.TValue[string] {
+	return &c.ChangeDescription
+}
+
+func (c *mqlAwsImagebuilderComponent) GetPlatform() *plugin.TValue[string] {
+	return &c.Platform
+}
+
+func (c *mqlAwsImagebuilderComponent) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlAwsImagebuilderComponent) GetOwner() *plugin.TValue[string] {
+	return &c.Owner
+}
+
+func (c *mqlAwsImagebuilderComponent) GetSupportedOsVersions() *plugin.TValue[[]any] {
+	return &c.SupportedOsVersions
+}
+
+func (c *mqlAwsImagebuilderComponent) GetEncrypted() *plugin.TValue[bool] {
+	return &c.Encrypted
+}
+
+func (c *mqlAwsImagebuilderComponent) GetKmsKey() *plugin.TValue[*mqlAwsKmsKey] {
+	return plugin.GetOrCompute[*mqlAwsKmsKey](&c.KmsKey, func() (*mqlAwsKmsKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.imagebuilder.component", c.__id, "kmsKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsKmsKey), nil
+			}
+		}
+
+		return c.kmsKey()
+	})
+}
+
+func (c *mqlAwsImagebuilderComponent) GetData() *plugin.TValue[string] {
+	return &c.Data
+}
+
+func (c *mqlAwsImagebuilderComponent) GetSkippedCleanupSections() *plugin.TValue[[]any] {
+	return &c.SkippedCleanupSections
+}
+
+func (c *mqlAwsImagebuilderComponent) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlAwsImagebuilderComponent) GetTags() *plugin.TValue[map[string]any] {
+	return &c.Tags
+}
+
+// mqlAwsImagebuilderDistributionConfiguration for the aws.imagebuilder.distributionConfiguration resource
+type mqlAwsImagebuilderDistributionConfiguration struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsImagebuilderDistributionConfigurationInternal
+	Arn           plugin.TValue[string]
+	Name          plugin.TValue[string]
+	Region        plugin.TValue[string]
+	Description   plugin.TValue[string]
+	CreatedAt     plugin.TValue[*time.Time]
+	UpdatedAt     plugin.TValue[*time.Time]
+	Tags          plugin.TValue[map[string]any]
+	Distributions plugin.TValue[[]any]
+	Public        plugin.TValue[bool]
+}
+
+// createAwsImagebuilderDistributionConfiguration creates a new instance of this resource
+func createAwsImagebuilderDistributionConfiguration(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsImagebuilderDistributionConfiguration{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.imagebuilder.distributionConfiguration", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsImagebuilderDistributionConfiguration) MqlName() string {
+	return "aws.imagebuilder.distributionConfiguration"
+}
+
+func (c *mqlAwsImagebuilderDistributionConfiguration) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsImagebuilderDistributionConfiguration) GetArn() *plugin.TValue[string] {
+	return &c.Arn
+}
+
+func (c *mqlAwsImagebuilderDistributionConfiguration) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAwsImagebuilderDistributionConfiguration) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlAwsImagebuilderDistributionConfiguration) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlAwsImagebuilderDistributionConfiguration) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlAwsImagebuilderDistributionConfiguration) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlAwsImagebuilderDistributionConfiguration) GetTags() *plugin.TValue[map[string]any] {
+	return &c.Tags
+}
+
+func (c *mqlAwsImagebuilderDistributionConfiguration) GetDistributions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Distributions, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.imagebuilder.distributionConfiguration", c.__id, "distributions")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.distributions()
+	})
+}
+
+func (c *mqlAwsImagebuilderDistributionConfiguration) GetPublic() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Public, func() (bool, error) {
+		return c.public()
+	})
+}
+
+// mqlAwsImagebuilderDistributionConfigurationDistribution for the aws.imagebuilder.distributionConfiguration.distribution resource
+type mqlAwsImagebuilderDistributionConfigurationDistribution struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsImagebuilderDistributionConfigurationDistributionInternal
+	Region                                 plugin.TValue[string]
+	AmiName                                plugin.TValue[string]
+	AmiDescription                         plugin.TValue[string]
+	AmiKmsKey                              plugin.TValue[*mqlAwsKmsKey]
+	AmiTags                                plugin.TValue[map[string]any]
+	TargetAccountIds                       plugin.TValue[[]any]
+	LaunchPermissionUserGroups             plugin.TValue[[]any]
+	LaunchPermissionUserIds                plugin.TValue[[]any]
+	LaunchPermissionOrganizationArns       plugin.TValue[[]any]
+	LaunchPermissionOrganizationalUnitArns plugin.TValue[[]any]
+	Public                                 plugin.TValue[bool]
+	LicenseConfigurationArns               plugin.TValue[[]any]
+}
+
+// createAwsImagebuilderDistributionConfigurationDistribution creates a new instance of this resource
+func createAwsImagebuilderDistributionConfigurationDistribution(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsImagebuilderDistributionConfigurationDistribution{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.imagebuilder.distributionConfiguration.distribution", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsImagebuilderDistributionConfigurationDistribution) MqlName() string {
+	return "aws.imagebuilder.distributionConfiguration.distribution"
+}
+
+func (c *mqlAwsImagebuilderDistributionConfigurationDistribution) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsImagebuilderDistributionConfigurationDistribution) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlAwsImagebuilderDistributionConfigurationDistribution) GetAmiName() *plugin.TValue[string] {
+	return &c.AmiName
+}
+
+func (c *mqlAwsImagebuilderDistributionConfigurationDistribution) GetAmiDescription() *plugin.TValue[string] {
+	return &c.AmiDescription
+}
+
+func (c *mqlAwsImagebuilderDistributionConfigurationDistribution) GetAmiKmsKey() *plugin.TValue[*mqlAwsKmsKey] {
+	return plugin.GetOrCompute[*mqlAwsKmsKey](&c.AmiKmsKey, func() (*mqlAwsKmsKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.imagebuilder.distributionConfiguration.distribution", c.__id, "amiKmsKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsKmsKey), nil
+			}
+		}
+
+		return c.amiKmsKey()
+	})
+}
+
+func (c *mqlAwsImagebuilderDistributionConfigurationDistribution) GetAmiTags() *plugin.TValue[map[string]any] {
+	return &c.AmiTags
+}
+
+func (c *mqlAwsImagebuilderDistributionConfigurationDistribution) GetTargetAccountIds() *plugin.TValue[[]any] {
+	return &c.TargetAccountIds
+}
+
+func (c *mqlAwsImagebuilderDistributionConfigurationDistribution) GetLaunchPermissionUserGroups() *plugin.TValue[[]any] {
+	return &c.LaunchPermissionUserGroups
+}
+
+func (c *mqlAwsImagebuilderDistributionConfigurationDistribution) GetLaunchPermissionUserIds() *plugin.TValue[[]any] {
+	return &c.LaunchPermissionUserIds
+}
+
+func (c *mqlAwsImagebuilderDistributionConfigurationDistribution) GetLaunchPermissionOrganizationArns() *plugin.TValue[[]any] {
+	return &c.LaunchPermissionOrganizationArns
+}
+
+func (c *mqlAwsImagebuilderDistributionConfigurationDistribution) GetLaunchPermissionOrganizationalUnitArns() *plugin.TValue[[]any] {
+	return &c.LaunchPermissionOrganizationalUnitArns
+}
+
+func (c *mqlAwsImagebuilderDistributionConfigurationDistribution) GetPublic() *plugin.TValue[bool] {
+	return &c.Public
+}
+
+func (c *mqlAwsImagebuilderDistributionConfigurationDistribution) GetLicenseConfigurationArns() *plugin.TValue[[]any] {
+	return &c.LicenseConfigurationArns
 }
 
 // mqlAwsRedshiftserverless for the aws.redshiftserverless resource
