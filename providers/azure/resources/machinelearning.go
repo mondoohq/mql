@@ -1206,7 +1206,10 @@ func (a *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) idleTimeBef
 		return "", nil
 	}
 	s, err := a.instanceSettings()
-	return s.idleTimeBeforeShutdown, err
+	if err != nil {
+		return "", err
+	}
+	return s.idleTimeBeforeShutdown, nil
 }
 
 func (a *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) idleShutdownEnabled() (bool, error) {
@@ -1215,7 +1218,10 @@ func (a *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) idleShutdow
 		return false, nil
 	}
 	s, err := a.instanceSettings()
-	return s.idleTimeBeforeShutdown != "", err
+	if err != nil {
+		return false, err
+	}
+	return s.idleTimeBeforeShutdown != "", nil
 }
 
 func (a *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) idleShutdownMinutes() (int64, error) {
