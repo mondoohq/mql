@@ -24,7 +24,9 @@ option root = "ibm"
 // clusters are listed once for every region.
 // Cloud Internet Services instances cover the edge: TLS, the web
 // application firewall, and which DNS records and global load balancers are
-// proxied.
+// proxied. Secrets Manager instances hold certificates and other secrets with
+// their rotation policies. Context-based restrictions rules and network zones
+// limit which networks may reach a service.
 ibm @root {
   // Account ID
   accountId string
@@ -70,6 +72,8 @@ ibm @root {
   vpcSshKeys() []ibm.vpc.sshKey
   // VPC flow log collectors in all regions
   vpcFlowLogCollectors() []ibm.vpc.flowLogCollector
+  // VPC file shares in all regions
+  vpcShares() []ibm.vpc.share
   // Power Virtual Server workspaces
   powerWorkspaces() []ibm.power.workspace
   // Cloud Object Storage buckets of every Cloud Object Storage instance
@@ -90,15 +94,22 @@ ibm @root {
   kubernetesClusters() []ibm.kubernetes.cluster
   // Cloud Internet Services instances
   cisInstances() []ibm.cis.instance
+  // Secrets Manager instances
+  secretsManagerInstances() []ibm.secretsManager.instance
+  // Context-based restrictions rules of the account
+  cbrRules() []ibm.cbr.rule
+  // Context-based restrictions network zones of the account
+  cbrZones() []ibm.cbr.zone
 }
 
 // IBM Cloud IAM account settings
 //
 // Account-wide identity settings: the multi-factor authentication requirement,
 // whether creating service IDs and platform API keys is restricted, the
-// allowed IP addresses for sign-in, session and token lifetimes, and whether
-// the Public Access group is enabled. A setting IBM Cloud reports as NOT_SET
-// reads as null.
+// allowed IP addresses for sign-in, session and token lifetimes, whether
+// the Public Access group is enabled, and how identities of other accounts
+// may interact with the account. A setting IBM Cloud reports as NOT_SET reads
+// as null.
 private ibm.iam.accountSettings @defaults("mfa") {
   // Account-wide MFA requirement: NONE, NONE_NO_ROPC, TOTP, TOTP4ALL, LEVEL1, LEVEL2, or LEVEL3
   mfa string
@@ -124,6 +135,32 @@ private ibm.iam.accountSettings @defaults("mfa") {
   userMfa map[string]string
   // Whether the Public Access group is enabled, which lets anyone reach resources it is granted
   publicAccessEnabled() bool
+  // How identities of other accounts may interact with this account (IAM settings, External identity interactions)
+  externalIdentityInteraction() ibm.iam.externalIdentityInteraction
+}
+
+// IBM Cloud IAM external identity interaction settings
+//
+// Whether users, service IDs, and services of other accounts may act on
+// resources of this account when a policy grants them access. Each identity
+// type is in one of three states: enabled (any account's identities may act
+// when a policy grants them access; IBM Cloud's default), monitor (as
+// enabled, but access decisions are recorded in Activity Tracker as if the
+// state were limited), or limited (only identities of this account and of
+// the allowed accounts may act).
+private ibm.iam.externalIdentityInteraction @defaults("user serviceId service") {
+  // State for users of other accounts: enabled, monitor, or limited
+  user string
+  // State for service IDs of other accounts: enabled, monitor, or limited
+  serviceId string
+  // State for services of other accounts: enabled, monitor, or limited
+  service string
+  // Accounts whose users may interact when the state is limited or monitor
+  userAllowedAccounts []string
+  // Accounts whose service IDs may interact when the state is limited or monitor
+  serviceIdAllowedAccounts []string
+  // Accounts whose services may interact when the state is limited or monitor
+  serviceAllowedAccounts []string
 }
 
 // IBM Cloud resource group
@@ -814,6 +851,79 @@ private ibm.vpc.volume @defaults("name zone capacity") {
   accessTags() []string
 }
 
+// IBM Cloud VPC file share
+//
+// A file share (NFS) in a zone or a region, with its profile, size,
+// encryption at rest (IBM-managed, or a customer-managed key from Key Protect
+// or Hyper Protect Crypto Services), access control mode, and mount targets
+// with their encryption in transit.
+private ibm.vpc.share @defaults("name zone encryption") {
+  // Share ID
+  id string
+  // Share CRN
+  crn string
+  // Share name
+  name string
+  // Region of the share
+  region string
+  // Zone of the share; empty for a regional share
+  zone string
+  // Profile name, for example dp2 or rfs
+  profile string
+  // Size in GB
+  size int
+  // Maximum I/O operations per second
+  iops int
+  // Encryption at rest: provider_managed or user_managed (customer-managed key)
+  encryption string
+  // Service holding the customer-managed key: kms or hs-crypto; empty when IBM manages the key
+  //
+  // kms is Key Protect (bring your own key); hs-crypto is Hyper Protect Crypto Services (keep your own key).
+  encryptionKeyService string
+  // Customer-managed root key encrypting the share; null when IBM manages the key
+  encryptionKey() ibm.kms.key
+  // How access to the share is controlled: security_group or vpc
+  accessControlMode string
+  // Encryption in transit modes mount targets may use: none, ipsec, or stunnel
+  allowedTransitEncryptionModes []string
+  // Lifecycle state, for example stable
+  lifecycleState string
+  // Replication role: none, replica, or source
+  replicationRole string
+  // Creation timestamp
+  createdAt time
+  // Resource group of the share
+  resourceGroup() ibm.resourceGroup
+  // Mount targets through which the share is reached
+  mountTargets() []ibm.vpc.share.mountTarget
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
+}
+
+// IBM Cloud VPC file share mount target
+private ibm.vpc.share.mountTarget @defaults("name transitEncryption") {
+  // Mount target ID
+  id string
+  // Mount target name
+  name string
+  // Access control mode of the mount target: security_group or vpc
+  accessControlMode string
+  // Access protocol, for example nfs4
+  accessProtocol string
+  // Encryption in transit: none, ipsec, or stunnel
+  transitEncryption string
+  // Lifecycle state, for example stable
+  lifecycleState string
+  // Mount path; empty while the mount target is pending
+  mountPath string
+  // Creation timestamp
+  createdAt time
+  // VPC the mount target is in
+  vpc() ibm.vpc
+}
+
 // IBM Cloud VPC SSH key
 //
 // A public SSH key registered in a region for provisioning instances, with
@@ -908,6 +1018,16 @@ private ibm.power.workspace @defaults("name zone state") {
   volumes() []ibm.power.volume
   // Boot images available in the workspace
   images() []ibm.power.image
+  // State of network security groups on the workspace: active, inactive, configuring, removing, or error; inactive when the workspace reports none
+  networkSecurityGroupsState() string
+  // Whether network security groups are enabled (active) on the workspace
+  networkSecurityGroupsEnabled() bool
+  // Network security groups of the workspace; empty when they are not enabled
+  networkSecurityGroups() []ibm.power.networkSecurityGroup
+  // The workspace's default network security group, which every network interface joins; null when network security groups are not enabled
+  defaultNetworkSecurityGroup() ibm.power.networkSecurityGroup
+  // Network address groups of the workspace, which network security group rules name as remotes; empty when network security groups are not enabled
+  networkAddressGroups() []ibm.power.networkAddressGroup
   // User tags, for example env:prod
   tags() []string
   // Access management tags, which IAM policies can grant access by
@@ -1017,6 +1137,103 @@ private ibm.power.volume @defaults("name size state") {
   tags() []string
   // Access management tags, which IAM policies can grant access by
   accessTags() []string
+}
+
+// IBM Power Virtual Server network security group
+//
+// A stateless firewall for the network interfaces of a Power Virtual Server
+// workspace. Its rules govern inbound traffic only; outbound traffic is
+// always allowed. Traffic no rule allows is denied. The default group, which
+// every network interface joins, starts with rules that allow all traffic
+// from its other members and from any address (the default network address
+// group, 0.0.0.0/0).
+private ibm.power.networkSecurityGroup @defaults("name default") {
+  // Network security group ID
+  id string
+  // Network security group CRN
+  crn string
+  // Network security group name
+  name string
+  // Whether this is the workspace's default network security group
+  default bool
+  // Inbound rules
+  rules() []ibm.power.networkSecurityGroup.rule
+  // Allow rules that admit traffic from any address (0.0.0.0/0 or ::/0)
+  openIngressRules() []ibm.power.networkSecurityGroup.rule
+  // Members (network interfaces and IP addresses) the group applies to
+  members() []ibm.power.networkSecurityGroup.member
+  // User tags, for example env:prod
+  tags []string
+}
+
+// IBM Power Virtual Server network security group rule
+//
+// An inbound rule. A rule without a port range covers every port, which reads
+// as 1 to 65535; ICMP rules have no ports.
+private ibm.power.networkSecurityGroup.rule @defaults("action protocol remoteType destinationPortMin destinationPortMax") {
+  // Rule ID
+  id string
+  // Action: allow or deny
+  action string
+  // Protocol: all, tcp, udp, or icmp
+  protocol string
+  // ICMP type, for example echo or all; empty for other protocols
+  icmpType string
+  // TCP flags the rule matches, for example syn or ack; empty when it matches any
+  tcpFlags []string
+  // First destination port; 1 when the rule covers every port, null for ICMP
+  destinationPortMin int
+  // Last destination port; 65535 when the rule covers every port, null for ICMP
+  destinationPortMax int
+  // First source port; 1 when the rule covers every port, null for ICMP
+  sourcePortMin int
+  // Last source port; 65535 when the rule covers every port, null for ICMP
+  sourcePortMax int
+  // Kind of remote: network-address-group, default-network-address-group, or network-security-group
+  //
+  // The default network address group is any address (0.0.0.0/0); a network security group remote is that group's members.
+  remoteType string
+  // ID of the remote network address group or network security group; empty for the default network address group
+  remoteId string
+  // CIDR blocks the rule admits traffic from; empty for a network security group remote
+  //
+  // 0.0.0.0/0 for the default network address group, and the CIDR blocks of a network address group.
+  remoteCidrs() []string
+  // Remote network security group whose members the rule admits; null for other remotes
+  remoteNetworkSecurityGroup() ibm.power.networkSecurityGroup
+  // Remote network address group the rule admits; null for other remotes
+  remoteNetworkAddressGroup() ibm.power.networkAddressGroup
+}
+
+// IBM Power Virtual Server network security group member
+private ibm.power.networkSecurityGroup.member @defaults("type target") {
+  // Member ID
+  id string
+  // Member type: ipv4-address or network-interface
+  type string
+  // IP address or network interface ID of the member
+  target string
+  // MAC address of a network interface member
+  macAddress string
+  // ID of the network of a network interface member
+  networkId string
+}
+
+// IBM Power Virtual Server network address group
+//
+// A named set of CIDR blocks that network security group rules admit traffic
+// from.
+private ibm.power.networkAddressGroup @defaults("name cidrs") {
+  // Network address group ID
+  id string
+  // Network address group CRN
+  crn string
+  // Network address group name
+  name string
+  // CIDR blocks of the group
+  cidrs []string
+  // User tags, for example env:prod
+  tags []string
 }
 
 // IBM Power Virtual Server boot image
@@ -1358,6 +1575,8 @@ private ibm.database @defaults("name type version region") {
   backupEncryptionKey() ibm.kms.key
   // Resource group of the deployment
   resourceGroup() ibm.resourceGroup
+  // Context-based restrictions rules that cover the whole deployment, in any enforcement mode
+  cbrRules() []ibm.cbr.rule
   // User tags, for example env:prod
   tags() []string
   // Access management tags, which IAM policies can grant access by
@@ -1575,4 +1794,187 @@ private ibm.cis.globalLoadBalancer @defaults("name enabled proxied") {
   createdAt time
   // Last modification timestamp
   modifiedAt time
+}
+
+// IBM Cloud Secrets Manager instance
+//
+// A Secrets Manager instance with its secrets and the Event Notifications
+// instance it sends secret lifecycle events to.
+private ibm.secretsManager.instance @defaults("name region") {
+  // Instance CRN
+  id string
+  // Instance GUID
+  guid string
+  // Instance name
+  name string
+  // Region of the instance
+  region string
+  // State, for example active
+  state string
+  // CRN of the Event Notifications instance that receives lifecycle events; empty when none is connected
+  eventNotificationsInstanceCrn() string
+  // Whether the instance is connected to Event Notifications for secret lifecycle events
+  notificationsEnabled() bool
+  // Secrets in the instance
+  secrets() []ibm.secretsManager.secret
+  // Resource group of the instance
+  resourceGroup() ibm.resourceGroup
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
+}
+
+// IBM Cloud Secrets Manager secret
+//
+// A secret with its type, state, expiration, and rotation policy. For a
+// public or private certificate, automatic rotation renews the certificate;
+// an imported certificate is never renewed by Secrets Manager.
+private ibm.secretsManager.secret @defaults("name type state") {
+  // Secret ID
+  id string
+  // Secret CRN
+  crn string
+  // Secret name
+  name string
+  // Description
+  description string
+  // Secret type: arbitrary, custom_credentials, iam_credentials, imported_cert, kv, private_cert, public_cert, service_credentials, or username_password
+  type string
+  // ID of the secret group the secret belongs to
+  secretGroupId string
+  // State: pre_activation, active, suspended, deactivated, or destroyed
+  state string
+  // Whether the secret is rotated automatically; false when it has no rotation policy
+  autoRotate bool
+  // Rotation interval in rotationUnit units; 0 when the policy sets none, as for public certificates, which rotate before they expire
+  rotationInterval int
+  // Unit of the rotation interval: day or month; empty when the policy sets no interval
+  rotationUnit string
+  // Whether rotation also generates a new private key (certificates)
+  rotateKeys bool
+  // When the secret is rotated next; null when it is not rotated automatically
+  nextRotationDate time
+  // Whether the last automatic rotation failed
+  lastRotationFailed bool
+  // Expiration timestamp; null when the secret does not expire
+  expirationDate time
+  // Who issued a certificate: imported, public, or private; empty for other secrets
+  //
+  // public certificates come from an ACME certificate authority, private ones from a Secrets Manager private certificate authority.
+  issuerType string
+  // Issuer of a certificate; empty for other secrets
+  issuer string
+  // Common name of a certificate; empty for other secrets
+  commonName string
+  // Number of versions of the secret
+  versionsTotal int
+  // Creation timestamp
+  createdAt time
+  // Last update timestamp
+  updatedAt time
+  // Instance the secret belongs to
+  instance() ibm.secretsManager.instance
+}
+
+// IBM Cloud context-based restrictions rule
+//
+// A rule that admits requests to the resources it covers only from its
+// contexts (network zones, endpoint types). In report mode requests are only
+// logged; in disabled mode the rule is not evaluated.
+private ibm.cbr.rule @defaults("description enforcementMode") {
+  // Rule ID
+  id string
+  // Rule CRN
+  crn string
+  // Description
+  description string
+  // Enforcement mode: enabled, report, or disabled
+  enforcementMode string
+  // API types the rule restricts, for example crn:v1:bluemix:public:context-based-restrictions::::api-type:data-plane; empty when it restricts every API
+  apiTypes []string
+  // Resources the rule covers
+  resources []ibm.cbr.rule.resource
+  // Contexts requests are admitted from; a request is admitted when it matches any context
+  contexts []ibm.cbr.rule.context
+  // Creation timestamp
+  createdAt time
+  // Last modification timestamp
+  lastModifiedAt time
+}
+
+// IBM Cloud context-based restrictions rule resource
+//
+// The resources a rule covers, by attributes (all must match) and access
+// management tags.
+private ibm.cbr.rule.resource @defaults("serviceName serviceInstance") {
+  // Service name, for example databases-for-postgresql
+  serviceName string
+  // GUID of the service instance; empty when the rule covers every instance
+  serviceInstance string
+  // Region; empty when the rule covers every region
+  region string
+  // Resource group ID; empty when the rule covers every resource group
+  resourceGroupId string
+  // Every attribute of the resource, by name, for example accountId, serviceName, or resourceType
+  attributes map[string]string
+  // Operator of each attribute that sets one, by name: stringEquals or stringMatch (wildcards)
+  operators map[string]string
+  // Access management tags a resource must have, by name
+  tags map[string]string
+}
+
+// IBM Cloud context-based restrictions rule context
+private ibm.cbr.rule.context @defaults("endpointTypes networkZoneIds") {
+  // Every attribute of the context, by name, for example networkZoneId or endpointType
+  attributes map[string]string
+  // Endpoint types requests may use: public, private, or direct; empty when any
+  endpointTypes []string
+  // IDs of the network zones requests may come from
+  networkZoneIds []string
+  // Network zones requests may come from
+  zones() []ibm.cbr.zone
+}
+
+// IBM Cloud context-based restrictions network zone
+//
+// A named set of IP addresses, ranges, subnets, VPCs, and IBM Cloud services
+// that rules admit requests from, minus its excluded addresses.
+private ibm.cbr.zone @defaults("name addressCount") {
+  // Zone ID
+  id string
+  // Zone CRN
+  crn string
+  // Zone name
+  name string
+  // Description
+  description string
+  // Number of addresses in the zone
+  addressCount int
+  // Number of excluded addresses
+  excludedCount int
+  // Creation timestamp
+  createdAt time
+  // Last modification timestamp
+  lastModifiedAt time
+  // Addresses of the zone
+  addresses() []ibm.cbr.zone.address
+  // Addresses excluded from the zone
+  excluded() []ibm.cbr.zone.address
+}
+
+// IBM Cloud context-based restrictions network zone address
+private ibm.cbr.zone.address @defaults("type value") {
+  // Type: ipAddress, ipRange, subnet, vpc, or serviceRef
+  type string
+  // IP address, range (first-last), subnet (CIDR), or VPC CRN; empty for a service reference
+  value string
+  // Service name of a service reference, for example cloud-object-storage
+  serviceName string
+  // Service type of a service reference, for example platform_service
+  serviceType string
+  // Service instance GUID of a service reference; empty for every instance
+  serviceInstance string
+  // Location of a service reference; empty for every location
+  location string
 }

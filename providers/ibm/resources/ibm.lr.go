@@ -16,52 +16,66 @@ import (
 
 // The MQL type names exposed as public consts for ease of reference.
 const (
-	ResourceIbm                      string = "ibm"
-	ResourceIbmIamAccountSettings    string = "ibm.iam.accountSettings"
-	ResourceIbmResourceGroup         string = "ibm.resourceGroup"
-	ResourceIbmResourceInstance      string = "ibm.resourceInstance"
-	ResourceIbmIamAccessGroup        string = "ibm.iam.accessGroup"
-	ResourceIbmIamAccessGroupMember  string = "ibm.iam.accessGroup.member"
-	ResourceIbmIamPolicy             string = "ibm.iam.policy"
-	ResourceIbmIamServiceId          string = "ibm.iam.serviceId"
-	ResourceIbmIamApiKey             string = "ibm.iam.apiKey"
-	ResourceIbmIamUser               string = "ibm.iam.user"
-	ResourceIbmIamTrustedProfile     string = "ibm.iam.trustedProfile"
-	ResourceIbmRegion                string = "ibm.region"
-	ResourceIbmVpc                   string = "ibm.vpc"
-	ResourceIbmVpcSubnet             string = "ibm.vpc.subnet"
-	ResourceIbmVpcInstance           string = "ibm.vpc.instance"
-	ResourceIbmNetworkExposure       string = "ibm.network.exposure"
-	ResourceIbmVpcSecurityGroup      string = "ibm.vpc.securityGroup"
-	ResourceIbmVpcSecurityGroupRule  string = "ibm.vpc.securityGroup.rule"
-	ResourceIbmVpcNetworkAcl         string = "ibm.vpc.networkAcl"
-	ResourceIbmVpcNetworkAclRule     string = "ibm.vpc.networkAcl.rule"
-	ResourceIbmVpcFloatingIp         string = "ibm.vpc.floatingIp"
-	ResourceIbmVpcPublicGateway      string = "ibm.vpc.publicGateway"
-	ResourceIbmVpcLoadBalancer       string = "ibm.vpc.loadBalancer"
-	ResourceIbmVpcVolume             string = "ibm.vpc.volume"
-	ResourceIbmVpcSshKey             string = "ibm.vpc.sshKey"
-	ResourceIbmVpcFlowLogCollector   string = "ibm.vpc.flowLogCollector"
-	ResourceIbmPowerWorkspace        string = "ibm.power.workspace"
-	ResourceIbmPowerInstance         string = "ibm.power.instance"
-	ResourceIbmPowerNetwork          string = "ibm.power.network"
-	ResourceIbmPowerVolume           string = "ibm.power.volume"
-	ResourceIbmPowerImage            string = "ibm.power.image"
-	ResourceIbmCosBucket             string = "ibm.cos.bucket"
-	ResourceIbmKmsInstance           string = "ibm.kms.instance"
-	ResourceIbmKmsKey                string = "ibm.kms.key"
-	ResourceIbmKmsKeyRegistration    string = "ibm.kms.key.registration"
-	ResourceIbmAtrackerTarget        string = "ibm.atracker.target"
-	ResourceIbmAtrackerRoute         string = "ibm.atracker.route"
-	ResourceIbmAtrackerRouteRule     string = "ibm.atracker.route.rule"
-	ResourceIbmAtrackerSettings      string = "ibm.atracker.settings"
-	ResourceIbmDatabase              string = "ibm.database"
-	ResourceIbmKubernetesCluster     string = "ibm.kubernetes.cluster"
-	ResourceIbmCisInstance           string = "ibm.cis.instance"
-	ResourceIbmKubernetesWorker      string = "ibm.kubernetes.worker"
-	ResourceIbmCisZone               string = "ibm.cis.zone"
-	ResourceIbmCisDnsRecord          string = "ibm.cis.dnsRecord"
-	ResourceIbmCisGlobalLoadBalancer string = "ibm.cis.globalLoadBalancer"
+	ResourceIbm                                string = "ibm"
+	ResourceIbmIamAccountSettings              string = "ibm.iam.accountSettings"
+	ResourceIbmIamExternalIdentityInteraction  string = "ibm.iam.externalIdentityInteraction"
+	ResourceIbmResourceGroup                   string = "ibm.resourceGroup"
+	ResourceIbmResourceInstance                string = "ibm.resourceInstance"
+	ResourceIbmIamAccessGroup                  string = "ibm.iam.accessGroup"
+	ResourceIbmIamAccessGroupMember            string = "ibm.iam.accessGroup.member"
+	ResourceIbmIamPolicy                       string = "ibm.iam.policy"
+	ResourceIbmIamServiceId                    string = "ibm.iam.serviceId"
+	ResourceIbmIamApiKey                       string = "ibm.iam.apiKey"
+	ResourceIbmIamUser                         string = "ibm.iam.user"
+	ResourceIbmIamTrustedProfile               string = "ibm.iam.trustedProfile"
+	ResourceIbmRegion                          string = "ibm.region"
+	ResourceIbmVpc                             string = "ibm.vpc"
+	ResourceIbmVpcSubnet                       string = "ibm.vpc.subnet"
+	ResourceIbmVpcInstance                     string = "ibm.vpc.instance"
+	ResourceIbmNetworkExposure                 string = "ibm.network.exposure"
+	ResourceIbmVpcSecurityGroup                string = "ibm.vpc.securityGroup"
+	ResourceIbmVpcSecurityGroupRule            string = "ibm.vpc.securityGroup.rule"
+	ResourceIbmVpcNetworkAcl                   string = "ibm.vpc.networkAcl"
+	ResourceIbmVpcNetworkAclRule               string = "ibm.vpc.networkAcl.rule"
+	ResourceIbmVpcFloatingIp                   string = "ibm.vpc.floatingIp"
+	ResourceIbmVpcPublicGateway                string = "ibm.vpc.publicGateway"
+	ResourceIbmVpcLoadBalancer                 string = "ibm.vpc.loadBalancer"
+	ResourceIbmVpcVolume                       string = "ibm.vpc.volume"
+	ResourceIbmVpcShare                        string = "ibm.vpc.share"
+	ResourceIbmVpcShareMountTarget             string = "ibm.vpc.share.mountTarget"
+	ResourceIbmVpcSshKey                       string = "ibm.vpc.sshKey"
+	ResourceIbmVpcFlowLogCollector             string = "ibm.vpc.flowLogCollector"
+	ResourceIbmPowerWorkspace                  string = "ibm.power.workspace"
+	ResourceIbmPowerInstance                   string = "ibm.power.instance"
+	ResourceIbmPowerNetwork                    string = "ibm.power.network"
+	ResourceIbmPowerVolume                     string = "ibm.power.volume"
+	ResourceIbmPowerNetworkSecurityGroup       string = "ibm.power.networkSecurityGroup"
+	ResourceIbmPowerNetworkSecurityGroupRule   string = "ibm.power.networkSecurityGroup.rule"
+	ResourceIbmPowerNetworkSecurityGroupMember string = "ibm.power.networkSecurityGroup.member"
+	ResourceIbmPowerNetworkAddressGroup        string = "ibm.power.networkAddressGroup"
+	ResourceIbmPowerImage                      string = "ibm.power.image"
+	ResourceIbmCosBucket                       string = "ibm.cos.bucket"
+	ResourceIbmKmsInstance                     string = "ibm.kms.instance"
+	ResourceIbmKmsKey                          string = "ibm.kms.key"
+	ResourceIbmKmsKeyRegistration              string = "ibm.kms.key.registration"
+	ResourceIbmAtrackerTarget                  string = "ibm.atracker.target"
+	ResourceIbmAtrackerRoute                   string = "ibm.atracker.route"
+	ResourceIbmAtrackerRouteRule               string = "ibm.atracker.route.rule"
+	ResourceIbmAtrackerSettings                string = "ibm.atracker.settings"
+	ResourceIbmDatabase                        string = "ibm.database"
+	ResourceIbmKubernetesCluster               string = "ibm.kubernetes.cluster"
+	ResourceIbmCisInstance                     string = "ibm.cis.instance"
+	ResourceIbmKubernetesWorker                string = "ibm.kubernetes.worker"
+	ResourceIbmCisZone                         string = "ibm.cis.zone"
+	ResourceIbmCisDnsRecord                    string = "ibm.cis.dnsRecord"
+	ResourceIbmCisGlobalLoadBalancer           string = "ibm.cis.globalLoadBalancer"
+	ResourceIbmSecretsManagerInstance          string = "ibm.secretsManager.instance"
+	ResourceIbmSecretsManagerSecret            string = "ibm.secretsManager.secret"
+	ResourceIbmCbrRule                         string = "ibm.cbr.rule"
+	ResourceIbmCbrRuleResource                 string = "ibm.cbr.rule.resource"
+	ResourceIbmCbrRuleContext                  string = "ibm.cbr.rule.context"
+	ResourceIbmCbrZone                         string = "ibm.cbr.zone"
+	ResourceIbmCbrZoneAddress                  string = "ibm.cbr.zone.address"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -75,6 +89,10 @@ func init() {
 		"ibm.iam.accountSettings": {
 			// to override args, implement: initIbmIamAccountSettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createIbmIamAccountSettings,
+		},
+		"ibm.iam.externalIdentityInteraction": {
+			// to override args, implement: initIbmIamExternalIdentityInteraction(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmIamExternalIdentityInteraction,
 		},
 		"ibm.resourceGroup": {
 			// to override args, implement: initIbmResourceGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -164,6 +182,14 @@ func init() {
 			// to override args, implement: initIbmVpcVolume(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createIbmVpcVolume,
 		},
+		"ibm.vpc.share": {
+			// to override args, implement: initIbmVpcShare(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmVpcShare,
+		},
+		"ibm.vpc.share.mountTarget": {
+			// to override args, implement: initIbmVpcShareMountTarget(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmVpcShareMountTarget,
+		},
 		"ibm.vpc.sshKey": {
 			// to override args, implement: initIbmVpcSshKey(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createIbmVpcSshKey,
@@ -187,6 +213,22 @@ func init() {
 		"ibm.power.volume": {
 			// to override args, implement: initIbmPowerVolume(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createIbmPowerVolume,
+		},
+		"ibm.power.networkSecurityGroup": {
+			// to override args, implement: initIbmPowerNetworkSecurityGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmPowerNetworkSecurityGroup,
+		},
+		"ibm.power.networkSecurityGroup.rule": {
+			// to override args, implement: initIbmPowerNetworkSecurityGroupRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmPowerNetworkSecurityGroupRule,
+		},
+		"ibm.power.networkSecurityGroup.member": {
+			// to override args, implement: initIbmPowerNetworkSecurityGroupMember(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmPowerNetworkSecurityGroupMember,
+		},
+		"ibm.power.networkAddressGroup": {
+			// to override args, implement: initIbmPowerNetworkAddressGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmPowerNetworkAddressGroup,
 		},
 		"ibm.power.image": {
 			// to override args, implement: initIbmPowerImage(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -251,6 +293,34 @@ func init() {
 		"ibm.cis.globalLoadBalancer": {
 			// to override args, implement: initIbmCisGlobalLoadBalancer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createIbmCisGlobalLoadBalancer,
+		},
+		"ibm.secretsManager.instance": {
+			// to override args, implement: initIbmSecretsManagerInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmSecretsManagerInstance,
+		},
+		"ibm.secretsManager.secret": {
+			// to override args, implement: initIbmSecretsManagerSecret(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmSecretsManagerSecret,
+		},
+		"ibm.cbr.rule": {
+			// to override args, implement: initIbmCbrRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmCbrRule,
+		},
+		"ibm.cbr.rule.resource": {
+			// to override args, implement: initIbmCbrRuleResource(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmCbrRuleResource,
+		},
+		"ibm.cbr.rule.context": {
+			// to override args, implement: initIbmCbrRuleContext(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmCbrRuleContext,
+		},
+		"ibm.cbr.zone": {
+			// to override args, implement: initIbmCbrZone(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmCbrZone,
+		},
+		"ibm.cbr.zone.address": {
+			// to override args, implement: initIbmCbrZoneAddress(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmCbrZoneAddress,
 		},
 	}
 }
@@ -389,6 +459,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"ibm.vpcFlowLogCollectors": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbm).GetVpcFlowLogCollectors()).ToDataRes(types.Array(types.Resource("ibm.vpc.flowLogCollector")))
 	},
+	"ibm.vpcShares": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbm).GetVpcShares()).ToDataRes(types.Array(types.Resource("ibm.vpc.share")))
+	},
 	"ibm.powerWorkspaces": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbm).GetPowerWorkspaces()).ToDataRes(types.Array(types.Resource("ibm.power.workspace")))
 	},
@@ -418,6 +491,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"ibm.cisInstances": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbm).GetCisInstances()).ToDataRes(types.Array(types.Resource("ibm.cis.instance")))
+	},
+	"ibm.secretsManagerInstances": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbm).GetSecretsManagerInstances()).ToDataRes(types.Array(types.Resource("ibm.secretsManager.instance")))
+	},
+	"ibm.cbrRules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbm).GetCbrRules()).ToDataRes(types.Array(types.Resource("ibm.cbr.rule")))
+	},
+	"ibm.cbrZones": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbm).GetCbrZones()).ToDataRes(types.Array(types.Resource("ibm.cbr.zone")))
 	},
 	"ibm.iam.accountSettings.mfa": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmIamAccountSettings).GetMfa()).ToDataRes(types.String)
@@ -454,6 +536,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"ibm.iam.accountSettings.publicAccessEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmIamAccountSettings).GetPublicAccessEnabled()).ToDataRes(types.Bool)
+	},
+	"ibm.iam.accountSettings.externalIdentityInteraction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmIamAccountSettings).GetExternalIdentityInteraction()).ToDataRes(types.Resource("ibm.iam.externalIdentityInteraction"))
+	},
+	"ibm.iam.externalIdentityInteraction.user": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmIamExternalIdentityInteraction).GetUser()).ToDataRes(types.String)
+	},
+	"ibm.iam.externalIdentityInteraction.serviceId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmIamExternalIdentityInteraction).GetServiceId()).ToDataRes(types.String)
+	},
+	"ibm.iam.externalIdentityInteraction.service": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmIamExternalIdentityInteraction).GetService()).ToDataRes(types.String)
+	},
+	"ibm.iam.externalIdentityInteraction.userAllowedAccounts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmIamExternalIdentityInteraction).GetUserAllowedAccounts()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.iam.externalIdentityInteraction.serviceIdAllowedAccounts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmIamExternalIdentityInteraction).GetServiceIdAllowedAccounts()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.iam.externalIdentityInteraction.serviceAllowedAccounts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmIamExternalIdentityInteraction).GetServiceAllowedAccounts()).ToDataRes(types.Array(types.String))
 	},
 	"ibm.resourceGroup.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmResourceGroup).GetId()).ToDataRes(types.String)
@@ -1250,6 +1353,93 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"ibm.vpc.volume.accessTags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmVpcVolume).GetAccessTags()).ToDataRes(types.Array(types.String))
 	},
+	"ibm.vpc.share.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShare).GetId()).ToDataRes(types.String)
+	},
+	"ibm.vpc.share.crn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShare).GetCrn()).ToDataRes(types.String)
+	},
+	"ibm.vpc.share.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShare).GetName()).ToDataRes(types.String)
+	},
+	"ibm.vpc.share.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShare).GetRegion()).ToDataRes(types.String)
+	},
+	"ibm.vpc.share.zone": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShare).GetZone()).ToDataRes(types.String)
+	},
+	"ibm.vpc.share.profile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShare).GetProfile()).ToDataRes(types.String)
+	},
+	"ibm.vpc.share.size": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShare).GetSize()).ToDataRes(types.Int)
+	},
+	"ibm.vpc.share.iops": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShare).GetIops()).ToDataRes(types.Int)
+	},
+	"ibm.vpc.share.encryption": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShare).GetEncryption()).ToDataRes(types.String)
+	},
+	"ibm.vpc.share.encryptionKeyService": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShare).GetEncryptionKeyService()).ToDataRes(types.String)
+	},
+	"ibm.vpc.share.encryptionKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShare).GetEncryptionKey()).ToDataRes(types.Resource("ibm.kms.key"))
+	},
+	"ibm.vpc.share.accessControlMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShare).GetAccessControlMode()).ToDataRes(types.String)
+	},
+	"ibm.vpc.share.allowedTransitEncryptionModes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShare).GetAllowedTransitEncryptionModes()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.vpc.share.lifecycleState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShare).GetLifecycleState()).ToDataRes(types.String)
+	},
+	"ibm.vpc.share.replicationRole": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShare).GetReplicationRole()).ToDataRes(types.String)
+	},
+	"ibm.vpc.share.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShare).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"ibm.vpc.share.resourceGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShare).GetResourceGroup()).ToDataRes(types.Resource("ibm.resourceGroup"))
+	},
+	"ibm.vpc.share.mountTargets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShare).GetMountTargets()).ToDataRes(types.Array(types.Resource("ibm.vpc.share.mountTarget")))
+	},
+	"ibm.vpc.share.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShare).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.vpc.share.accessTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShare).GetAccessTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.vpc.share.mountTarget.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShareMountTarget).GetId()).ToDataRes(types.String)
+	},
+	"ibm.vpc.share.mountTarget.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShareMountTarget).GetName()).ToDataRes(types.String)
+	},
+	"ibm.vpc.share.mountTarget.accessControlMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShareMountTarget).GetAccessControlMode()).ToDataRes(types.String)
+	},
+	"ibm.vpc.share.mountTarget.accessProtocol": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShareMountTarget).GetAccessProtocol()).ToDataRes(types.String)
+	},
+	"ibm.vpc.share.mountTarget.transitEncryption": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShareMountTarget).GetTransitEncryption()).ToDataRes(types.String)
+	},
+	"ibm.vpc.share.mountTarget.lifecycleState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShareMountTarget).GetLifecycleState()).ToDataRes(types.String)
+	},
+	"ibm.vpc.share.mountTarget.mountPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShareMountTarget).GetMountPath()).ToDataRes(types.String)
+	},
+	"ibm.vpc.share.mountTarget.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShareMountTarget).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"ibm.vpc.share.mountTarget.vpc": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcShareMountTarget).GetVpc()).ToDataRes(types.Resource("ibm.vpc"))
+	},
 	"ibm.vpc.sshKey.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmVpcSshKey).GetId()).ToDataRes(types.String)
 	},
@@ -1360,6 +1550,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"ibm.power.workspace.images": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmPowerWorkspace).GetImages()).ToDataRes(types.Array(types.Resource("ibm.power.image")))
+	},
+	"ibm.power.workspace.networkSecurityGroupsState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerWorkspace).GetNetworkSecurityGroupsState()).ToDataRes(types.String)
+	},
+	"ibm.power.workspace.networkSecurityGroupsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerWorkspace).GetNetworkSecurityGroupsEnabled()).ToDataRes(types.Bool)
+	},
+	"ibm.power.workspace.networkSecurityGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerWorkspace).GetNetworkSecurityGroups()).ToDataRes(types.Array(types.Resource("ibm.power.networkSecurityGroup")))
+	},
+	"ibm.power.workspace.defaultNetworkSecurityGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerWorkspace).GetDefaultNetworkSecurityGroup()).ToDataRes(types.Resource("ibm.power.networkSecurityGroup"))
+	},
+	"ibm.power.workspace.networkAddressGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerWorkspace).GetNetworkAddressGroups()).ToDataRes(types.Array(types.Resource("ibm.power.networkAddressGroup")))
 	},
 	"ibm.power.workspace.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmPowerWorkspace).GetTags()).ToDataRes(types.Array(types.String))
@@ -1489,6 +1694,102 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"ibm.power.volume.accessTags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmPowerVolume).GetAccessTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.power.networkSecurityGroup.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkSecurityGroup).GetId()).ToDataRes(types.String)
+	},
+	"ibm.power.networkSecurityGroup.crn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkSecurityGroup).GetCrn()).ToDataRes(types.String)
+	},
+	"ibm.power.networkSecurityGroup.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkSecurityGroup).GetName()).ToDataRes(types.String)
+	},
+	"ibm.power.networkSecurityGroup.default": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkSecurityGroup).GetDefault()).ToDataRes(types.Bool)
+	},
+	"ibm.power.networkSecurityGroup.rules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkSecurityGroup).GetRules()).ToDataRes(types.Array(types.Resource("ibm.power.networkSecurityGroup.rule")))
+	},
+	"ibm.power.networkSecurityGroup.openIngressRules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkSecurityGroup).GetOpenIngressRules()).ToDataRes(types.Array(types.Resource("ibm.power.networkSecurityGroup.rule")))
+	},
+	"ibm.power.networkSecurityGroup.members": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkSecurityGroup).GetMembers()).ToDataRes(types.Array(types.Resource("ibm.power.networkSecurityGroup.member")))
+	},
+	"ibm.power.networkSecurityGroup.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkSecurityGroup).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.power.networkSecurityGroup.rule.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkSecurityGroupRule).GetId()).ToDataRes(types.String)
+	},
+	"ibm.power.networkSecurityGroup.rule.action": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkSecurityGroupRule).GetAction()).ToDataRes(types.String)
+	},
+	"ibm.power.networkSecurityGroup.rule.protocol": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkSecurityGroupRule).GetProtocol()).ToDataRes(types.String)
+	},
+	"ibm.power.networkSecurityGroup.rule.icmpType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkSecurityGroupRule).GetIcmpType()).ToDataRes(types.String)
+	},
+	"ibm.power.networkSecurityGroup.rule.tcpFlags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkSecurityGroupRule).GetTcpFlags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.power.networkSecurityGroup.rule.destinationPortMin": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkSecurityGroupRule).GetDestinationPortMin()).ToDataRes(types.Int)
+	},
+	"ibm.power.networkSecurityGroup.rule.destinationPortMax": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkSecurityGroupRule).GetDestinationPortMax()).ToDataRes(types.Int)
+	},
+	"ibm.power.networkSecurityGroup.rule.sourcePortMin": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkSecurityGroupRule).GetSourcePortMin()).ToDataRes(types.Int)
+	},
+	"ibm.power.networkSecurityGroup.rule.sourcePortMax": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkSecurityGroupRule).GetSourcePortMax()).ToDataRes(types.Int)
+	},
+	"ibm.power.networkSecurityGroup.rule.remoteType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkSecurityGroupRule).GetRemoteType()).ToDataRes(types.String)
+	},
+	"ibm.power.networkSecurityGroup.rule.remoteId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkSecurityGroupRule).GetRemoteId()).ToDataRes(types.String)
+	},
+	"ibm.power.networkSecurityGroup.rule.remoteCidrs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkSecurityGroupRule).GetRemoteCidrs()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.power.networkSecurityGroup.rule.remoteNetworkSecurityGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkSecurityGroupRule).GetRemoteNetworkSecurityGroup()).ToDataRes(types.Resource("ibm.power.networkSecurityGroup"))
+	},
+	"ibm.power.networkSecurityGroup.rule.remoteNetworkAddressGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkSecurityGroupRule).GetRemoteNetworkAddressGroup()).ToDataRes(types.Resource("ibm.power.networkAddressGroup"))
+	},
+	"ibm.power.networkSecurityGroup.member.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkSecurityGroupMember).GetId()).ToDataRes(types.String)
+	},
+	"ibm.power.networkSecurityGroup.member.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkSecurityGroupMember).GetType()).ToDataRes(types.String)
+	},
+	"ibm.power.networkSecurityGroup.member.target": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkSecurityGroupMember).GetTarget()).ToDataRes(types.String)
+	},
+	"ibm.power.networkSecurityGroup.member.macAddress": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkSecurityGroupMember).GetMacAddress()).ToDataRes(types.String)
+	},
+	"ibm.power.networkSecurityGroup.member.networkId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkSecurityGroupMember).GetNetworkId()).ToDataRes(types.String)
+	},
+	"ibm.power.networkAddressGroup.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkAddressGroup).GetId()).ToDataRes(types.String)
+	},
+	"ibm.power.networkAddressGroup.crn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkAddressGroup).GetCrn()).ToDataRes(types.String)
+	},
+	"ibm.power.networkAddressGroup.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkAddressGroup).GetName()).ToDataRes(types.String)
+	},
+	"ibm.power.networkAddressGroup.cidrs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkAddressGroup).GetCidrs()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.power.networkAddressGroup.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetworkAddressGroup).GetTags()).ToDataRes(types.Array(types.String))
 	},
 	"ibm.power.image.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmPowerImage).GetId()).ToDataRes(types.String)
@@ -1889,6 +2190,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"ibm.database.resourceGroup": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmDatabase).GetResourceGroup()).ToDataRes(types.Resource("ibm.resourceGroup"))
 	},
+	"ibm.database.cbrRules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmDatabase).GetCbrRules()).ToDataRes(types.Array(types.Resource("ibm.cbr.rule")))
+	},
 	"ibm.database.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmDatabase).GetTags()).ToDataRes(types.Array(types.String))
 	},
@@ -2138,6 +2442,210 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"ibm.cis.globalLoadBalancer.modifiedAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmCisGlobalLoadBalancer).GetModifiedAt()).ToDataRes(types.Time)
 	},
+	"ibm.secretsManager.instance.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerInstance).GetId()).ToDataRes(types.String)
+	},
+	"ibm.secretsManager.instance.guid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerInstance).GetGuid()).ToDataRes(types.String)
+	},
+	"ibm.secretsManager.instance.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerInstance).GetName()).ToDataRes(types.String)
+	},
+	"ibm.secretsManager.instance.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerInstance).GetRegion()).ToDataRes(types.String)
+	},
+	"ibm.secretsManager.instance.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerInstance).GetState()).ToDataRes(types.String)
+	},
+	"ibm.secretsManager.instance.eventNotificationsInstanceCrn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerInstance).GetEventNotificationsInstanceCrn()).ToDataRes(types.String)
+	},
+	"ibm.secretsManager.instance.notificationsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerInstance).GetNotificationsEnabled()).ToDataRes(types.Bool)
+	},
+	"ibm.secretsManager.instance.secrets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerInstance).GetSecrets()).ToDataRes(types.Array(types.Resource("ibm.secretsManager.secret")))
+	},
+	"ibm.secretsManager.instance.resourceGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerInstance).GetResourceGroup()).ToDataRes(types.Resource("ibm.resourceGroup"))
+	},
+	"ibm.secretsManager.instance.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerInstance).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.secretsManager.instance.accessTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerInstance).GetAccessTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.secretsManager.secret.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerSecret).GetId()).ToDataRes(types.String)
+	},
+	"ibm.secretsManager.secret.crn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerSecret).GetCrn()).ToDataRes(types.String)
+	},
+	"ibm.secretsManager.secret.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerSecret).GetName()).ToDataRes(types.String)
+	},
+	"ibm.secretsManager.secret.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerSecret).GetDescription()).ToDataRes(types.String)
+	},
+	"ibm.secretsManager.secret.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerSecret).GetType()).ToDataRes(types.String)
+	},
+	"ibm.secretsManager.secret.secretGroupId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerSecret).GetSecretGroupId()).ToDataRes(types.String)
+	},
+	"ibm.secretsManager.secret.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerSecret).GetState()).ToDataRes(types.String)
+	},
+	"ibm.secretsManager.secret.autoRotate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerSecret).GetAutoRotate()).ToDataRes(types.Bool)
+	},
+	"ibm.secretsManager.secret.rotationInterval": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerSecret).GetRotationInterval()).ToDataRes(types.Int)
+	},
+	"ibm.secretsManager.secret.rotationUnit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerSecret).GetRotationUnit()).ToDataRes(types.String)
+	},
+	"ibm.secretsManager.secret.rotateKeys": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerSecret).GetRotateKeys()).ToDataRes(types.Bool)
+	},
+	"ibm.secretsManager.secret.nextRotationDate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerSecret).GetNextRotationDate()).ToDataRes(types.Time)
+	},
+	"ibm.secretsManager.secret.lastRotationFailed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerSecret).GetLastRotationFailed()).ToDataRes(types.Bool)
+	},
+	"ibm.secretsManager.secret.expirationDate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerSecret).GetExpirationDate()).ToDataRes(types.Time)
+	},
+	"ibm.secretsManager.secret.issuerType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerSecret).GetIssuerType()).ToDataRes(types.String)
+	},
+	"ibm.secretsManager.secret.issuer": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerSecret).GetIssuer()).ToDataRes(types.String)
+	},
+	"ibm.secretsManager.secret.commonName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerSecret).GetCommonName()).ToDataRes(types.String)
+	},
+	"ibm.secretsManager.secret.versionsTotal": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerSecret).GetVersionsTotal()).ToDataRes(types.Int)
+	},
+	"ibm.secretsManager.secret.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerSecret).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"ibm.secretsManager.secret.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerSecret).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"ibm.secretsManager.secret.instance": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmSecretsManagerSecret).GetInstance()).ToDataRes(types.Resource("ibm.secretsManager.instance"))
+	},
+	"ibm.cbr.rule.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrRule).GetId()).ToDataRes(types.String)
+	},
+	"ibm.cbr.rule.crn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrRule).GetCrn()).ToDataRes(types.String)
+	},
+	"ibm.cbr.rule.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrRule).GetDescription()).ToDataRes(types.String)
+	},
+	"ibm.cbr.rule.enforcementMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrRule).GetEnforcementMode()).ToDataRes(types.String)
+	},
+	"ibm.cbr.rule.apiTypes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrRule).GetApiTypes()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.cbr.rule.resources": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrRule).GetResources()).ToDataRes(types.Array(types.Resource("ibm.cbr.rule.resource")))
+	},
+	"ibm.cbr.rule.contexts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrRule).GetContexts()).ToDataRes(types.Array(types.Resource("ibm.cbr.rule.context")))
+	},
+	"ibm.cbr.rule.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrRule).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"ibm.cbr.rule.lastModifiedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrRule).GetLastModifiedAt()).ToDataRes(types.Time)
+	},
+	"ibm.cbr.rule.resource.serviceName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrRuleResource).GetServiceName()).ToDataRes(types.String)
+	},
+	"ibm.cbr.rule.resource.serviceInstance": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrRuleResource).GetServiceInstance()).ToDataRes(types.String)
+	},
+	"ibm.cbr.rule.resource.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrRuleResource).GetRegion()).ToDataRes(types.String)
+	},
+	"ibm.cbr.rule.resource.resourceGroupId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrRuleResource).GetResourceGroupId()).ToDataRes(types.String)
+	},
+	"ibm.cbr.rule.resource.attributes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrRuleResource).GetAttributes()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"ibm.cbr.rule.resource.operators": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrRuleResource).GetOperators()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"ibm.cbr.rule.resource.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrRuleResource).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"ibm.cbr.rule.context.attributes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrRuleContext).GetAttributes()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"ibm.cbr.rule.context.endpointTypes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrRuleContext).GetEndpointTypes()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.cbr.rule.context.networkZoneIds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrRuleContext).GetNetworkZoneIds()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.cbr.rule.context.zones": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrRuleContext).GetZones()).ToDataRes(types.Array(types.Resource("ibm.cbr.zone")))
+	},
+	"ibm.cbr.zone.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrZone).GetId()).ToDataRes(types.String)
+	},
+	"ibm.cbr.zone.crn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrZone).GetCrn()).ToDataRes(types.String)
+	},
+	"ibm.cbr.zone.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrZone).GetName()).ToDataRes(types.String)
+	},
+	"ibm.cbr.zone.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrZone).GetDescription()).ToDataRes(types.String)
+	},
+	"ibm.cbr.zone.addressCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrZone).GetAddressCount()).ToDataRes(types.Int)
+	},
+	"ibm.cbr.zone.excludedCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrZone).GetExcludedCount()).ToDataRes(types.Int)
+	},
+	"ibm.cbr.zone.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrZone).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"ibm.cbr.zone.lastModifiedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrZone).GetLastModifiedAt()).ToDataRes(types.Time)
+	},
+	"ibm.cbr.zone.addresses": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrZone).GetAddresses()).ToDataRes(types.Array(types.Resource("ibm.cbr.zone.address")))
+	},
+	"ibm.cbr.zone.excluded": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrZone).GetExcluded()).ToDataRes(types.Array(types.Resource("ibm.cbr.zone.address")))
+	},
+	"ibm.cbr.zone.address.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrZoneAddress).GetType()).ToDataRes(types.String)
+	},
+	"ibm.cbr.zone.address.value": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrZoneAddress).GetValue()).ToDataRes(types.String)
+	},
+	"ibm.cbr.zone.address.serviceName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrZoneAddress).GetServiceName()).ToDataRes(types.String)
+	},
+	"ibm.cbr.zone.address.serviceType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrZoneAddress).GetServiceType()).ToDataRes(types.String)
+	},
+	"ibm.cbr.zone.address.serviceInstance": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrZoneAddress).GetServiceInstance()).ToDataRes(types.String)
+	},
+	"ibm.cbr.zone.address.location": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCbrZoneAddress).GetLocation()).ToDataRes(types.String)
+	},
 }
 
 func GetData(resource plugin.Resource, field string, args map[string]*llx.RawData) *plugin.DataRes {
@@ -2242,6 +2750,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlIbm).VpcFlowLogCollectors, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"ibm.vpcShares": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbm).VpcShares, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"ibm.powerWorkspaces": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbm).PowerWorkspaces, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -2280,6 +2792,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"ibm.cisInstances": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbm).CisInstances, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManagerInstances": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbm).SecretsManagerInstances, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.cbrRules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbm).CbrRules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.cbrZones": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbm).CbrZones, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"ibm.iam.accountSettings.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -2332,6 +2856,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"ibm.iam.accountSettings.publicAccessEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmIamAccountSettings).PublicAccessEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.iam.accountSettings.externalIdentityInteraction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmIamAccountSettings).ExternalIdentityInteraction, ok = plugin.RawToTValue[*mqlIbmIamExternalIdentityInteraction](v.Value, v.Error)
+		return
+	},
+	"ibm.iam.externalIdentityInteraction.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmIamExternalIdentityInteraction).__id, ok = v.Value.(string)
+		return
+	},
+	"ibm.iam.externalIdentityInteraction.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmIamExternalIdentityInteraction).User, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.iam.externalIdentityInteraction.serviceId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmIamExternalIdentityInteraction).ServiceId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.iam.externalIdentityInteraction.service": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmIamExternalIdentityInteraction).Service, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.iam.externalIdentityInteraction.userAllowedAccounts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmIamExternalIdentityInteraction).UserAllowedAccounts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.iam.externalIdentityInteraction.serviceIdAllowedAccounts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmIamExternalIdentityInteraction).ServiceIdAllowedAccounts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.iam.externalIdentityInteraction.serviceAllowedAccounts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmIamExternalIdentityInteraction).ServiceAllowedAccounts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"ibm.resourceGroup.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -3482,6 +4038,130 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlIbmVpcVolume).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"ibm.vpc.share.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShare).__id, ok = v.Value.(string)
+		return
+	},
+	"ibm.vpc.share.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShare).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.crn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShare).Crn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShare).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShare).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.zone": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShare).Zone, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.profile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShare).Profile, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.size": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShare).Size, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.iops": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShare).Iops, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.encryption": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShare).Encryption, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.encryptionKeyService": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShare).EncryptionKeyService, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.encryptionKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShare).EncryptionKey, ok = plugin.RawToTValue[*mqlIbmKmsKey](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.accessControlMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShare).AccessControlMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.allowedTransitEncryptionModes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShare).AllowedTransitEncryptionModes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.lifecycleState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShare).LifecycleState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.replicationRole": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShare).ReplicationRole, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShare).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.resourceGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShare).ResourceGroup, ok = plugin.RawToTValue[*mqlIbmResourceGroup](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.mountTargets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShare).MountTargets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShare).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.accessTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShare).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.mountTarget.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShareMountTarget).__id, ok = v.Value.(string)
+		return
+	},
+	"ibm.vpc.share.mountTarget.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShareMountTarget).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.mountTarget.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShareMountTarget).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.mountTarget.accessControlMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShareMountTarget).AccessControlMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.mountTarget.accessProtocol": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShareMountTarget).AccessProtocol, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.mountTarget.transitEncryption": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShareMountTarget).TransitEncryption, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.mountTarget.lifecycleState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShareMountTarget).LifecycleState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.mountTarget.mountPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShareMountTarget).MountPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.mountTarget.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShareMountTarget).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.share.mountTarget.vpc": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcShareMountTarget).Vpc, ok = plugin.RawToTValue[*mqlIbmVpc](v.Value, v.Error)
+		return
+	},
 	"ibm.vpc.sshKey.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmVpcSshKey).__id, ok = v.Value.(string)
 		return
@@ -3640,6 +4320,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"ibm.power.workspace.images": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmPowerWorkspace).Images, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.power.workspace.networkSecurityGroupsState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerWorkspace).NetworkSecurityGroupsState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.power.workspace.networkSecurityGroupsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerWorkspace).NetworkSecurityGroupsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.power.workspace.networkSecurityGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerWorkspace).NetworkSecurityGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.power.workspace.defaultNetworkSecurityGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerWorkspace).DefaultNetworkSecurityGroup, ok = plugin.RawToTValue[*mqlIbmPowerNetworkSecurityGroup](v.Value, v.Error)
+		return
+	},
+	"ibm.power.workspace.networkAddressGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerWorkspace).NetworkAddressGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"ibm.power.workspace.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -3824,6 +4524,150 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"ibm.power.volume.accessTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmPowerVolume).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkSecurityGroup.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroup).__id, ok = v.Value.(string)
+		return
+	},
+	"ibm.power.networkSecurityGroup.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroup).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkSecurityGroup.crn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroup).Crn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkSecurityGroup.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroup).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkSecurityGroup.default": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroup).Default, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkSecurityGroup.rules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroup).Rules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkSecurityGroup.openIngressRules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroup).OpenIngressRules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkSecurityGroup.members": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroup).Members, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkSecurityGroup.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroup).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkSecurityGroup.rule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroupRule).__id, ok = v.Value.(string)
+		return
+	},
+	"ibm.power.networkSecurityGroup.rule.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroupRule).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkSecurityGroup.rule.action": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroupRule).Action, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkSecurityGroup.rule.protocol": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroupRule).Protocol, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkSecurityGroup.rule.icmpType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroupRule).IcmpType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkSecurityGroup.rule.tcpFlags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroupRule).TcpFlags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkSecurityGroup.rule.destinationPortMin": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroupRule).DestinationPortMin, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkSecurityGroup.rule.destinationPortMax": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroupRule).DestinationPortMax, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkSecurityGroup.rule.sourcePortMin": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroupRule).SourcePortMin, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkSecurityGroup.rule.sourcePortMax": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroupRule).SourcePortMax, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkSecurityGroup.rule.remoteType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroupRule).RemoteType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkSecurityGroup.rule.remoteId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroupRule).RemoteId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkSecurityGroup.rule.remoteCidrs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroupRule).RemoteCidrs, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkSecurityGroup.rule.remoteNetworkSecurityGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroupRule).RemoteNetworkSecurityGroup, ok = plugin.RawToTValue[*mqlIbmPowerNetworkSecurityGroup](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkSecurityGroup.rule.remoteNetworkAddressGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroupRule).RemoteNetworkAddressGroup, ok = plugin.RawToTValue[*mqlIbmPowerNetworkAddressGroup](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkSecurityGroup.member.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroupMember).__id, ok = v.Value.(string)
+		return
+	},
+	"ibm.power.networkSecurityGroup.member.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroupMember).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkSecurityGroup.member.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroupMember).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkSecurityGroup.member.target": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroupMember).Target, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkSecurityGroup.member.macAddress": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroupMember).MacAddress, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkSecurityGroup.member.networkId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkSecurityGroupMember).NetworkId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkAddressGroup.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkAddressGroup).__id, ok = v.Value.(string)
+		return
+	},
+	"ibm.power.networkAddressGroup.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkAddressGroup).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkAddressGroup.crn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkAddressGroup).Crn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkAddressGroup.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkAddressGroup).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkAddressGroup.cidrs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkAddressGroup).Cidrs, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.power.networkAddressGroup.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetworkAddressGroup).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"ibm.power.image.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -4398,6 +5242,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlIbmDatabase).ResourceGroup, ok = plugin.RawToTValue[*mqlIbmResourceGroup](v.Value, v.Error)
 		return
 	},
+	"ibm.database.cbrRules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmDatabase).CbrRules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"ibm.database.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmDatabase).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -4754,6 +5602,306 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlIbmCisGlobalLoadBalancer).ModifiedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
+	"ibm.secretsManager.instance.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerInstance).__id, ok = v.Value.(string)
+		return
+	},
+	"ibm.secretsManager.instance.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerInstance).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.instance.guid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerInstance).Guid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.instance.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerInstance).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.instance.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerInstance).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.instance.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerInstance).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.instance.eventNotificationsInstanceCrn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerInstance).EventNotificationsInstanceCrn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.instance.notificationsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerInstance).NotificationsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.instance.secrets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerInstance).Secrets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.instance.resourceGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerInstance).ResourceGroup, ok = plugin.RawToTValue[*mqlIbmResourceGroup](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.instance.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerInstance).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.instance.accessTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerInstance).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.secret.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerSecret).__id, ok = v.Value.(string)
+		return
+	},
+	"ibm.secretsManager.secret.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerSecret).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.secret.crn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerSecret).Crn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.secret.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerSecret).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.secret.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerSecret).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.secret.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerSecret).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.secret.secretGroupId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerSecret).SecretGroupId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.secret.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerSecret).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.secret.autoRotate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerSecret).AutoRotate, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.secret.rotationInterval": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerSecret).RotationInterval, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.secret.rotationUnit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerSecret).RotationUnit, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.secret.rotateKeys": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerSecret).RotateKeys, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.secret.nextRotationDate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerSecret).NextRotationDate, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.secret.lastRotationFailed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerSecret).LastRotationFailed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.secret.expirationDate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerSecret).ExpirationDate, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.secret.issuerType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerSecret).IssuerType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.secret.issuer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerSecret).Issuer, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.secret.commonName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerSecret).CommonName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.secret.versionsTotal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerSecret).VersionsTotal, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.secret.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerSecret).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.secret.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerSecret).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.secretsManager.secret.instance": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmSecretsManagerSecret).Instance, ok = plugin.RawToTValue[*mqlIbmSecretsManagerInstance](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.rule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrRule).__id, ok = v.Value.(string)
+		return
+	},
+	"ibm.cbr.rule.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrRule).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.rule.crn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrRule).Crn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.rule.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrRule).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.rule.enforcementMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrRule).EnforcementMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.rule.apiTypes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrRule).ApiTypes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.rule.resources": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrRule).Resources, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.rule.contexts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrRule).Contexts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.rule.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrRule).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.rule.lastModifiedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrRule).LastModifiedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.rule.resource.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrRuleResource).__id, ok = v.Value.(string)
+		return
+	},
+	"ibm.cbr.rule.resource.serviceName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrRuleResource).ServiceName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.rule.resource.serviceInstance": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrRuleResource).ServiceInstance, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.rule.resource.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrRuleResource).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.rule.resource.resourceGroupId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrRuleResource).ResourceGroupId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.rule.resource.attributes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrRuleResource).Attributes, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.rule.resource.operators": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrRuleResource).Operators, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.rule.resource.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrRuleResource).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.rule.context.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrRuleContext).__id, ok = v.Value.(string)
+		return
+	},
+	"ibm.cbr.rule.context.attributes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrRuleContext).Attributes, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.rule.context.endpointTypes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrRuleContext).EndpointTypes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.rule.context.networkZoneIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrRuleContext).NetworkZoneIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.rule.context.zones": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrRuleContext).Zones, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.zone.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrZone).__id, ok = v.Value.(string)
+		return
+	},
+	"ibm.cbr.zone.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrZone).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.zone.crn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrZone).Crn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.zone.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrZone).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.zone.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrZone).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.zone.addressCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrZone).AddressCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.zone.excludedCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrZone).ExcludedCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.zone.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrZone).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.zone.lastModifiedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrZone).LastModifiedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.zone.addresses": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrZone).Addresses, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.zone.excluded": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrZone).Excluded, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.zone.address.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrZoneAddress).__id, ok = v.Value.(string)
+		return
+	},
+	"ibm.cbr.zone.address.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrZoneAddress).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.zone.address.value": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrZoneAddress).Value, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.zone.address.serviceName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrZoneAddress).ServiceName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.zone.address.serviceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrZoneAddress).ServiceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.zone.address.serviceInstance": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrZoneAddress).ServiceInstance, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cbr.zone.address.location": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCbrZoneAddress).Location, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 }
 
 func SetData(resource plugin.Resource, field string, val *llx.RawData) error {
@@ -4783,38 +5931,42 @@ type mqlIbm struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlIbmInternal it will be used here
-	AccountId            plugin.TValue[string]
-	IamAccountSettings   plugin.TValue[*mqlIbmIamAccountSettings]
-	ResourceGroups       plugin.TValue[[]any]
-	ResourceInstances    plugin.TValue[[]any]
-	IamAccessGroups      plugin.TValue[[]any]
-	IamPolicies          plugin.TValue[[]any]
-	IamServiceIds        plugin.TValue[[]any]
-	IamApiKeys           plugin.TValue[[]any]
-	IamTrustedProfiles   plugin.TValue[[]any]
-	IamUsers             plugin.TValue[[]any]
-	VpcRegions           plugin.TValue[[]any]
-	Vpcs                 plugin.TValue[[]any]
-	VpcSubnets           plugin.TValue[[]any]
-	VpcInstances         plugin.TValue[[]any]
-	VpcSecurityGroups    plugin.TValue[[]any]
-	VpcNetworkAcls       plugin.TValue[[]any]
-	VpcFloatingIps       plugin.TValue[[]any]
-	VpcPublicGateways    plugin.TValue[[]any]
-	VpcLoadBalancers     plugin.TValue[[]any]
-	VpcVolumes           plugin.TValue[[]any]
-	VpcSshKeys           plugin.TValue[[]any]
-	VpcFlowLogCollectors plugin.TValue[[]any]
-	PowerWorkspaces      plugin.TValue[[]any]
-	CosBuckets           plugin.TValue[[]any]
-	KmsInstances         plugin.TValue[[]any]
-	KmsKeys              plugin.TValue[[]any]
-	AtrackerTargets      plugin.TValue[[]any]
-	AtrackerRoutes       plugin.TValue[[]any]
-	AtrackerSettings     plugin.TValue[*mqlIbmAtrackerSettings]
-	Databases            plugin.TValue[[]any]
-	KubernetesClusters   plugin.TValue[[]any]
-	CisInstances         plugin.TValue[[]any]
+	AccountId               plugin.TValue[string]
+	IamAccountSettings      plugin.TValue[*mqlIbmIamAccountSettings]
+	ResourceGroups          plugin.TValue[[]any]
+	ResourceInstances       plugin.TValue[[]any]
+	IamAccessGroups         plugin.TValue[[]any]
+	IamPolicies             plugin.TValue[[]any]
+	IamServiceIds           plugin.TValue[[]any]
+	IamApiKeys              plugin.TValue[[]any]
+	IamTrustedProfiles      plugin.TValue[[]any]
+	IamUsers                plugin.TValue[[]any]
+	VpcRegions              plugin.TValue[[]any]
+	Vpcs                    plugin.TValue[[]any]
+	VpcSubnets              plugin.TValue[[]any]
+	VpcInstances            plugin.TValue[[]any]
+	VpcSecurityGroups       plugin.TValue[[]any]
+	VpcNetworkAcls          plugin.TValue[[]any]
+	VpcFloatingIps          plugin.TValue[[]any]
+	VpcPublicGateways       plugin.TValue[[]any]
+	VpcLoadBalancers        plugin.TValue[[]any]
+	VpcVolumes              plugin.TValue[[]any]
+	VpcSshKeys              plugin.TValue[[]any]
+	VpcFlowLogCollectors    plugin.TValue[[]any]
+	VpcShares               plugin.TValue[[]any]
+	PowerWorkspaces         plugin.TValue[[]any]
+	CosBuckets              plugin.TValue[[]any]
+	KmsInstances            plugin.TValue[[]any]
+	KmsKeys                 plugin.TValue[[]any]
+	AtrackerTargets         plugin.TValue[[]any]
+	AtrackerRoutes          plugin.TValue[[]any]
+	AtrackerSettings        plugin.TValue[*mqlIbmAtrackerSettings]
+	Databases               plugin.TValue[[]any]
+	KubernetesClusters      plugin.TValue[[]any]
+	CisInstances            plugin.TValue[[]any]
+	SecretsManagerInstances plugin.TValue[[]any]
+	CbrRules                plugin.TValue[[]any]
+	CbrZones                plugin.TValue[[]any]
 }
 
 // createIbm creates a new instance of this resource
@@ -5194,6 +6346,22 @@ func (c *mqlIbm) GetVpcFlowLogCollectors() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlIbm) GetVpcShares() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.VpcShares, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm", c.__id, "vpcShares")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.vpcShares()
+	})
+}
+
 func (c *mqlIbm) GetPowerWorkspaces() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.PowerWorkspaces, func() ([]any, error) {
 		if c.MqlRuntime.HasRecording {
@@ -5354,6 +6522,54 @@ func (c *mqlIbm) GetCisInstances() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlIbm) GetSecretsManagerInstances() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SecretsManagerInstances, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm", c.__id, "secretsManagerInstances")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.secretsManagerInstances()
+	})
+}
+
+func (c *mqlIbm) GetCbrRules() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.CbrRules, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm", c.__id, "cbrRules")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.cbrRules()
+	})
+}
+
+func (c *mqlIbm) GetCbrZones() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.CbrZones, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm", c.__id, "cbrZones")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.cbrZones()
+	})
+}
+
 // mqlIbmIamAccountSettings for the ibm.iam.accountSettings resource
 type mqlIbmIamAccountSettings struct {
 	MqlRuntime *plugin.Runtime
@@ -5371,6 +6587,7 @@ type mqlIbmIamAccountSettings struct {
 	SystemRefreshTokenExpirationInSeconds plugin.TValue[int64]
 	UserMfa                               plugin.TValue[map[string]any]
 	PublicAccessEnabled                   plugin.TValue[bool]
+	ExternalIdentityInteraction           plugin.TValue[*mqlIbmIamExternalIdentityInteraction]
 }
 
 // createIbmIamAccountSettings creates a new instance of this resource
@@ -5453,6 +6670,91 @@ func (c *mqlIbmIamAccountSettings) GetPublicAccessEnabled() *plugin.TValue[bool]
 	return plugin.GetOrCompute[bool](&c.PublicAccessEnabled, func() (bool, error) {
 		return c.publicAccessEnabled()
 	})
+}
+
+func (c *mqlIbmIamAccountSettings) GetExternalIdentityInteraction() *plugin.TValue[*mqlIbmIamExternalIdentityInteraction] {
+	return plugin.GetOrCompute[*mqlIbmIamExternalIdentityInteraction](&c.ExternalIdentityInteraction, func() (*mqlIbmIamExternalIdentityInteraction, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.iam.accountSettings", c.__id, "externalIdentityInteraction")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlIbmIamExternalIdentityInteraction), nil
+			}
+		}
+
+		return c.externalIdentityInteraction()
+	})
+}
+
+// mqlIbmIamExternalIdentityInteraction for the ibm.iam.externalIdentityInteraction resource
+type mqlIbmIamExternalIdentityInteraction struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlIbmIamExternalIdentityInteractionInternal it will be used here
+	User                     plugin.TValue[string]
+	ServiceId                plugin.TValue[string]
+	Service                  plugin.TValue[string]
+	UserAllowedAccounts      plugin.TValue[[]any]
+	ServiceIdAllowedAccounts plugin.TValue[[]any]
+	ServiceAllowedAccounts   plugin.TValue[[]any]
+}
+
+// createIbmIamExternalIdentityInteraction creates a new instance of this resource
+func createIbmIamExternalIdentityInteraction(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmIamExternalIdentityInteraction{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.iam.externalIdentityInteraction", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmIamExternalIdentityInteraction) MqlName() string {
+	return "ibm.iam.externalIdentityInteraction"
+}
+
+func (c *mqlIbmIamExternalIdentityInteraction) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmIamExternalIdentityInteraction) GetUser() *plugin.TValue[string] {
+	return &c.User
+}
+
+func (c *mqlIbmIamExternalIdentityInteraction) GetServiceId() *plugin.TValue[string] {
+	return &c.ServiceId
+}
+
+func (c *mqlIbmIamExternalIdentityInteraction) GetService() *plugin.TValue[string] {
+	return &c.Service
+}
+
+func (c *mqlIbmIamExternalIdentityInteraction) GetUserAllowedAccounts() *plugin.TValue[[]any] {
+	return &c.UserAllowedAccounts
+}
+
+func (c *mqlIbmIamExternalIdentityInteraction) GetServiceIdAllowedAccounts() *plugin.TValue[[]any] {
+	return &c.ServiceIdAllowedAccounts
+}
+
+func (c *mqlIbmIamExternalIdentityInteraction) GetServiceAllowedAccounts() *plugin.TValue[[]any] {
+	return &c.ServiceAllowedAccounts
 }
 
 // mqlIbmResourceGroup for the ibm.resourceGroup resource
@@ -8188,6 +9490,281 @@ func (c *mqlIbmVpcVolume) GetAccessTags() *plugin.TValue[[]any] {
 	})
 }
 
+// mqlIbmVpcShare for the ibm.vpc.share resource
+type mqlIbmVpcShare struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlIbmVpcShareInternal
+	Id                            plugin.TValue[string]
+	Crn                           plugin.TValue[string]
+	Name                          plugin.TValue[string]
+	Region                        plugin.TValue[string]
+	Zone                          plugin.TValue[string]
+	Profile                       plugin.TValue[string]
+	Size                          plugin.TValue[int64]
+	Iops                          plugin.TValue[int64]
+	Encryption                    plugin.TValue[string]
+	EncryptionKeyService          plugin.TValue[string]
+	EncryptionKey                 plugin.TValue[*mqlIbmKmsKey]
+	AccessControlMode             plugin.TValue[string]
+	AllowedTransitEncryptionModes plugin.TValue[[]any]
+	LifecycleState                plugin.TValue[string]
+	ReplicationRole               plugin.TValue[string]
+	CreatedAt                     plugin.TValue[*time.Time]
+	ResourceGroup                 plugin.TValue[*mqlIbmResourceGroup]
+	MountTargets                  plugin.TValue[[]any]
+	Tags                          plugin.TValue[[]any]
+	AccessTags                    plugin.TValue[[]any]
+}
+
+// createIbmVpcShare creates a new instance of this resource
+func createIbmVpcShare(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmVpcShare{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.vpc.share", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmVpcShare) MqlName() string {
+	return "ibm.vpc.share"
+}
+
+func (c *mqlIbmVpcShare) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmVpcShare) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlIbmVpcShare) GetCrn() *plugin.TValue[string] {
+	return &c.Crn
+}
+
+func (c *mqlIbmVpcShare) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlIbmVpcShare) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlIbmVpcShare) GetZone() *plugin.TValue[string] {
+	return &c.Zone
+}
+
+func (c *mqlIbmVpcShare) GetProfile() *plugin.TValue[string] {
+	return &c.Profile
+}
+
+func (c *mqlIbmVpcShare) GetSize() *plugin.TValue[int64] {
+	return &c.Size
+}
+
+func (c *mqlIbmVpcShare) GetIops() *plugin.TValue[int64] {
+	return &c.Iops
+}
+
+func (c *mqlIbmVpcShare) GetEncryption() *plugin.TValue[string] {
+	return &c.Encryption
+}
+
+func (c *mqlIbmVpcShare) GetEncryptionKeyService() *plugin.TValue[string] {
+	return &c.EncryptionKeyService
+}
+
+func (c *mqlIbmVpcShare) GetEncryptionKey() *plugin.TValue[*mqlIbmKmsKey] {
+	return plugin.GetOrCompute[*mqlIbmKmsKey](&c.EncryptionKey, func() (*mqlIbmKmsKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.vpc.share", c.__id, "encryptionKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlIbmKmsKey), nil
+			}
+		}
+
+		return c.encryptionKey()
+	})
+}
+
+func (c *mqlIbmVpcShare) GetAccessControlMode() *plugin.TValue[string] {
+	return &c.AccessControlMode
+}
+
+func (c *mqlIbmVpcShare) GetAllowedTransitEncryptionModes() *plugin.TValue[[]any] {
+	return &c.AllowedTransitEncryptionModes
+}
+
+func (c *mqlIbmVpcShare) GetLifecycleState() *plugin.TValue[string] {
+	return &c.LifecycleState
+}
+
+func (c *mqlIbmVpcShare) GetReplicationRole() *plugin.TValue[string] {
+	return &c.ReplicationRole
+}
+
+func (c *mqlIbmVpcShare) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlIbmVpcShare) GetResourceGroup() *plugin.TValue[*mqlIbmResourceGroup] {
+	return plugin.GetOrCompute[*mqlIbmResourceGroup](&c.ResourceGroup, func() (*mqlIbmResourceGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.vpc.share", c.__id, "resourceGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlIbmResourceGroup), nil
+			}
+		}
+
+		return c.resourceGroup()
+	})
+}
+
+func (c *mqlIbmVpcShare) GetMountTargets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MountTargets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.vpc.share", c.__id, "mountTargets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.mountTargets()
+	})
+}
+
+func (c *mqlIbmVpcShare) GetTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tags, func() ([]any, error) {
+		return c.tags()
+	})
+}
+
+func (c *mqlIbmVpcShare) GetAccessTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessTags, func() ([]any, error) {
+		return c.accessTags()
+	})
+}
+
+// mqlIbmVpcShareMountTarget for the ibm.vpc.share.mountTarget resource
+type mqlIbmVpcShareMountTarget struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlIbmVpcShareMountTargetInternal
+	Id                plugin.TValue[string]
+	Name              plugin.TValue[string]
+	AccessControlMode plugin.TValue[string]
+	AccessProtocol    plugin.TValue[string]
+	TransitEncryption plugin.TValue[string]
+	LifecycleState    plugin.TValue[string]
+	MountPath         plugin.TValue[string]
+	CreatedAt         plugin.TValue[*time.Time]
+	Vpc               plugin.TValue[*mqlIbmVpc]
+}
+
+// createIbmVpcShareMountTarget creates a new instance of this resource
+func createIbmVpcShareMountTarget(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmVpcShareMountTarget{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.vpc.share.mountTarget", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmVpcShareMountTarget) MqlName() string {
+	return "ibm.vpc.share.mountTarget"
+}
+
+func (c *mqlIbmVpcShareMountTarget) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmVpcShareMountTarget) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlIbmVpcShareMountTarget) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlIbmVpcShareMountTarget) GetAccessControlMode() *plugin.TValue[string] {
+	return &c.AccessControlMode
+}
+
+func (c *mqlIbmVpcShareMountTarget) GetAccessProtocol() *plugin.TValue[string] {
+	return &c.AccessProtocol
+}
+
+func (c *mqlIbmVpcShareMountTarget) GetTransitEncryption() *plugin.TValue[string] {
+	return &c.TransitEncryption
+}
+
+func (c *mqlIbmVpcShareMountTarget) GetLifecycleState() *plugin.TValue[string] {
+	return &c.LifecycleState
+}
+
+func (c *mqlIbmVpcShareMountTarget) GetMountPath() *plugin.TValue[string] {
+	return &c.MountPath
+}
+
+func (c *mqlIbmVpcShareMountTarget) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlIbmVpcShareMountTarget) GetVpc() *plugin.TValue[*mqlIbmVpc] {
+	return plugin.GetOrCompute[*mqlIbmVpc](&c.Vpc, func() (*mqlIbmVpc, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.vpc.share.mountTarget", c.__id, "vpc")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlIbmVpc), nil
+			}
+		}
+
+		return c.vpc()
+	})
+}
+
 // mqlIbmVpcSshKey for the ibm.vpc.sshKey resource
 type mqlIbmVpcSshKey struct {
 	MqlRuntime *plugin.Runtime
@@ -8445,19 +10022,24 @@ type mqlIbmPowerWorkspace struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlIbmPowerWorkspaceInternal
-	Id            plugin.TValue[string]
-	Crn           plugin.TValue[string]
-	Name          plugin.TValue[string]
-	Zone          plugin.TValue[string]
-	State         plugin.TValue[string]
-	CreatedAt     plugin.TValue[*time.Time]
-	ResourceGroup plugin.TValue[*mqlIbmResourceGroup]
-	Instances     plugin.TValue[[]any]
-	Networks      plugin.TValue[[]any]
-	Volumes       plugin.TValue[[]any]
-	Images        plugin.TValue[[]any]
-	Tags          plugin.TValue[[]any]
-	AccessTags    plugin.TValue[[]any]
+	Id                           plugin.TValue[string]
+	Crn                          plugin.TValue[string]
+	Name                         plugin.TValue[string]
+	Zone                         plugin.TValue[string]
+	State                        plugin.TValue[string]
+	CreatedAt                    plugin.TValue[*time.Time]
+	ResourceGroup                plugin.TValue[*mqlIbmResourceGroup]
+	Instances                    plugin.TValue[[]any]
+	Networks                     plugin.TValue[[]any]
+	Volumes                      plugin.TValue[[]any]
+	Images                       plugin.TValue[[]any]
+	NetworkSecurityGroupsState   plugin.TValue[string]
+	NetworkSecurityGroupsEnabled plugin.TValue[bool]
+	NetworkSecurityGroups        plugin.TValue[[]any]
+	DefaultNetworkSecurityGroup  plugin.TValue[*mqlIbmPowerNetworkSecurityGroup]
+	NetworkAddressGroups         plugin.TValue[[]any]
+	Tags                         plugin.TValue[[]any]
+	AccessTags                   plugin.TValue[[]any]
 }
 
 // createIbmPowerWorkspace creates a new instance of this resource
@@ -8598,6 +10180,66 @@ func (c *mqlIbmPowerWorkspace) GetImages() *plugin.TValue[[]any] {
 		}
 
 		return c.images()
+	})
+}
+
+func (c *mqlIbmPowerWorkspace) GetNetworkSecurityGroupsState() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.NetworkSecurityGroupsState, func() (string, error) {
+		return c.networkSecurityGroupsState()
+	})
+}
+
+func (c *mqlIbmPowerWorkspace) GetNetworkSecurityGroupsEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.NetworkSecurityGroupsEnabled, func() (bool, error) {
+		return c.networkSecurityGroupsEnabled()
+	})
+}
+
+func (c *mqlIbmPowerWorkspace) GetNetworkSecurityGroups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.NetworkSecurityGroups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.power.workspace", c.__id, "networkSecurityGroups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.networkSecurityGroups()
+	})
+}
+
+func (c *mqlIbmPowerWorkspace) GetDefaultNetworkSecurityGroup() *plugin.TValue[*mqlIbmPowerNetworkSecurityGroup] {
+	return plugin.GetOrCompute[*mqlIbmPowerNetworkSecurityGroup](&c.DefaultNetworkSecurityGroup, func() (*mqlIbmPowerNetworkSecurityGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.power.workspace", c.__id, "defaultNetworkSecurityGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlIbmPowerNetworkSecurityGroup), nil
+			}
+		}
+
+		return c.defaultNetworkSecurityGroup()
+	})
+}
+
+func (c *mqlIbmPowerWorkspace) GetNetworkAddressGroups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.NetworkAddressGroups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.power.workspace", c.__id, "networkAddressGroups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.networkAddressGroups()
 	})
 }
 
@@ -8993,6 +10635,384 @@ func (c *mqlIbmPowerVolume) GetAccessTags() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.AccessTags, func() ([]any, error) {
 		return c.accessTags()
 	})
+}
+
+// mqlIbmPowerNetworkSecurityGroup for the ibm.power.networkSecurityGroup resource
+type mqlIbmPowerNetworkSecurityGroup struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlIbmPowerNetworkSecurityGroupInternal
+	Id               plugin.TValue[string]
+	Crn              plugin.TValue[string]
+	Name             plugin.TValue[string]
+	Default          plugin.TValue[bool]
+	Rules            plugin.TValue[[]any]
+	OpenIngressRules plugin.TValue[[]any]
+	Members          plugin.TValue[[]any]
+	Tags             plugin.TValue[[]any]
+}
+
+// createIbmPowerNetworkSecurityGroup creates a new instance of this resource
+func createIbmPowerNetworkSecurityGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmPowerNetworkSecurityGroup{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.power.networkSecurityGroup", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroup) MqlName() string {
+	return "ibm.power.networkSecurityGroup"
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroup) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroup) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroup) GetCrn() *plugin.TValue[string] {
+	return &c.Crn
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroup) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroup) GetDefault() *plugin.TValue[bool] {
+	return &c.Default
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroup) GetRules() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Rules, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.power.networkSecurityGroup", c.__id, "rules")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.rules()
+	})
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroup) GetOpenIngressRules() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.OpenIngressRules, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.power.networkSecurityGroup", c.__id, "openIngressRules")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.openIngressRules()
+	})
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroup) GetMembers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Members, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.power.networkSecurityGroup", c.__id, "members")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.members()
+	})
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroup) GetTags() *plugin.TValue[[]any] {
+	return &c.Tags
+}
+
+// mqlIbmPowerNetworkSecurityGroupRule for the ibm.power.networkSecurityGroup.rule resource
+type mqlIbmPowerNetworkSecurityGroupRule struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlIbmPowerNetworkSecurityGroupRuleInternal
+	Id                         plugin.TValue[string]
+	Action                     plugin.TValue[string]
+	Protocol                   plugin.TValue[string]
+	IcmpType                   plugin.TValue[string]
+	TcpFlags                   plugin.TValue[[]any]
+	DestinationPortMin         plugin.TValue[int64]
+	DestinationPortMax         plugin.TValue[int64]
+	SourcePortMin              plugin.TValue[int64]
+	SourcePortMax              plugin.TValue[int64]
+	RemoteType                 plugin.TValue[string]
+	RemoteId                   plugin.TValue[string]
+	RemoteCidrs                plugin.TValue[[]any]
+	RemoteNetworkSecurityGroup plugin.TValue[*mqlIbmPowerNetworkSecurityGroup]
+	RemoteNetworkAddressGroup  plugin.TValue[*mqlIbmPowerNetworkAddressGroup]
+}
+
+// createIbmPowerNetworkSecurityGroupRule creates a new instance of this resource
+func createIbmPowerNetworkSecurityGroupRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmPowerNetworkSecurityGroupRule{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.power.networkSecurityGroup.rule", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroupRule) MqlName() string {
+	return "ibm.power.networkSecurityGroup.rule"
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroupRule) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroupRule) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroupRule) GetAction() *plugin.TValue[string] {
+	return &c.Action
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroupRule) GetProtocol() *plugin.TValue[string] {
+	return &c.Protocol
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroupRule) GetIcmpType() *plugin.TValue[string] {
+	return &c.IcmpType
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroupRule) GetTcpFlags() *plugin.TValue[[]any] {
+	return &c.TcpFlags
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroupRule) GetDestinationPortMin() *plugin.TValue[int64] {
+	return &c.DestinationPortMin
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroupRule) GetDestinationPortMax() *plugin.TValue[int64] {
+	return &c.DestinationPortMax
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroupRule) GetSourcePortMin() *plugin.TValue[int64] {
+	return &c.SourcePortMin
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroupRule) GetSourcePortMax() *plugin.TValue[int64] {
+	return &c.SourcePortMax
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroupRule) GetRemoteType() *plugin.TValue[string] {
+	return &c.RemoteType
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroupRule) GetRemoteId() *plugin.TValue[string] {
+	return &c.RemoteId
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroupRule) GetRemoteCidrs() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.RemoteCidrs, func() ([]any, error) {
+		return c.remoteCidrs()
+	})
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroupRule) GetRemoteNetworkSecurityGroup() *plugin.TValue[*mqlIbmPowerNetworkSecurityGroup] {
+	return plugin.GetOrCompute[*mqlIbmPowerNetworkSecurityGroup](&c.RemoteNetworkSecurityGroup, func() (*mqlIbmPowerNetworkSecurityGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.power.networkSecurityGroup.rule", c.__id, "remoteNetworkSecurityGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlIbmPowerNetworkSecurityGroup), nil
+			}
+		}
+
+		return c.remoteNetworkSecurityGroup()
+	})
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroupRule) GetRemoteNetworkAddressGroup() *plugin.TValue[*mqlIbmPowerNetworkAddressGroup] {
+	return plugin.GetOrCompute[*mqlIbmPowerNetworkAddressGroup](&c.RemoteNetworkAddressGroup, func() (*mqlIbmPowerNetworkAddressGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.power.networkSecurityGroup.rule", c.__id, "remoteNetworkAddressGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlIbmPowerNetworkAddressGroup), nil
+			}
+		}
+
+		return c.remoteNetworkAddressGroup()
+	})
+}
+
+// mqlIbmPowerNetworkSecurityGroupMember for the ibm.power.networkSecurityGroup.member resource
+type mqlIbmPowerNetworkSecurityGroupMember struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlIbmPowerNetworkSecurityGroupMemberInternal it will be used here
+	Id         plugin.TValue[string]
+	Type       plugin.TValue[string]
+	Target     plugin.TValue[string]
+	MacAddress plugin.TValue[string]
+	NetworkId  plugin.TValue[string]
+}
+
+// createIbmPowerNetworkSecurityGroupMember creates a new instance of this resource
+func createIbmPowerNetworkSecurityGroupMember(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmPowerNetworkSecurityGroupMember{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.power.networkSecurityGroup.member", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroupMember) MqlName() string {
+	return "ibm.power.networkSecurityGroup.member"
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroupMember) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroupMember) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroupMember) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroupMember) GetTarget() *plugin.TValue[string] {
+	return &c.Target
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroupMember) GetMacAddress() *plugin.TValue[string] {
+	return &c.MacAddress
+}
+
+func (c *mqlIbmPowerNetworkSecurityGroupMember) GetNetworkId() *plugin.TValue[string] {
+	return &c.NetworkId
+}
+
+// mqlIbmPowerNetworkAddressGroup for the ibm.power.networkAddressGroup resource
+type mqlIbmPowerNetworkAddressGroup struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlIbmPowerNetworkAddressGroupInternal it will be used here
+	Id    plugin.TValue[string]
+	Crn   plugin.TValue[string]
+	Name  plugin.TValue[string]
+	Cidrs plugin.TValue[[]any]
+	Tags  plugin.TValue[[]any]
+}
+
+// createIbmPowerNetworkAddressGroup creates a new instance of this resource
+func createIbmPowerNetworkAddressGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmPowerNetworkAddressGroup{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.power.networkAddressGroup", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmPowerNetworkAddressGroup) MqlName() string {
+	return "ibm.power.networkAddressGroup"
+}
+
+func (c *mqlIbmPowerNetworkAddressGroup) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmPowerNetworkAddressGroup) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlIbmPowerNetworkAddressGroup) GetCrn() *plugin.TValue[string] {
+	return &c.Crn
+}
+
+func (c *mqlIbmPowerNetworkAddressGroup) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlIbmPowerNetworkAddressGroup) GetCidrs() *plugin.TValue[[]any] {
+	return &c.Cidrs
+}
+
+func (c *mqlIbmPowerNetworkAddressGroup) GetTags() *plugin.TValue[[]any] {
+	return &c.Tags
 }
 
 // mqlIbmPowerImage for the ibm.power.image resource
@@ -10172,6 +12192,7 @@ type mqlIbmDatabase struct {
 	DiskEncryptionKey      plugin.TValue[*mqlIbmKmsKey]
 	BackupEncryptionKey    plugin.TValue[*mqlIbmKmsKey]
 	ResourceGroup          plugin.TValue[*mqlIbmResourceGroup]
+	CbrRules               plugin.TValue[[]any]
 	Tags                   plugin.TValue[[]any]
 	AccessTags             plugin.TValue[[]any]
 }
@@ -10317,6 +12338,22 @@ func (c *mqlIbmDatabase) GetResourceGroup() *plugin.TValue[*mqlIbmResourceGroup]
 		}
 
 		return c.resourceGroup()
+	})
+}
+
+func (c *mqlIbmDatabase) GetCbrRules() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.CbrRules, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.database", c.__id, "cbrRules")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.cbrRules()
 	})
 }
 
@@ -11113,4 +13150,697 @@ func (c *mqlIbmCisGlobalLoadBalancer) GetCreatedAt() *plugin.TValue[*time.Time] 
 
 func (c *mqlIbmCisGlobalLoadBalancer) GetModifiedAt() *plugin.TValue[*time.Time] {
 	return &c.ModifiedAt
+}
+
+// mqlIbmSecretsManagerInstance for the ibm.secretsManager.instance resource
+type mqlIbmSecretsManagerInstance struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlIbmSecretsManagerInstanceInternal
+	Id                            plugin.TValue[string]
+	Guid                          plugin.TValue[string]
+	Name                          plugin.TValue[string]
+	Region                        plugin.TValue[string]
+	State                         plugin.TValue[string]
+	EventNotificationsInstanceCrn plugin.TValue[string]
+	NotificationsEnabled          plugin.TValue[bool]
+	Secrets                       plugin.TValue[[]any]
+	ResourceGroup                 plugin.TValue[*mqlIbmResourceGroup]
+	Tags                          plugin.TValue[[]any]
+	AccessTags                    plugin.TValue[[]any]
+}
+
+// createIbmSecretsManagerInstance creates a new instance of this resource
+func createIbmSecretsManagerInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmSecretsManagerInstance{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.secretsManager.instance", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmSecretsManagerInstance) MqlName() string {
+	return "ibm.secretsManager.instance"
+}
+
+func (c *mqlIbmSecretsManagerInstance) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmSecretsManagerInstance) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlIbmSecretsManagerInstance) GetGuid() *plugin.TValue[string] {
+	return &c.Guid
+}
+
+func (c *mqlIbmSecretsManagerInstance) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlIbmSecretsManagerInstance) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlIbmSecretsManagerInstance) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlIbmSecretsManagerInstance) GetEventNotificationsInstanceCrn() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.EventNotificationsInstanceCrn, func() (string, error) {
+		return c.eventNotificationsInstanceCrn()
+	})
+}
+
+func (c *mqlIbmSecretsManagerInstance) GetNotificationsEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.NotificationsEnabled, func() (bool, error) {
+		return c.notificationsEnabled()
+	})
+}
+
+func (c *mqlIbmSecretsManagerInstance) GetSecrets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Secrets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.secretsManager.instance", c.__id, "secrets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.secrets()
+	})
+}
+
+func (c *mqlIbmSecretsManagerInstance) GetResourceGroup() *plugin.TValue[*mqlIbmResourceGroup] {
+	return plugin.GetOrCompute[*mqlIbmResourceGroup](&c.ResourceGroup, func() (*mqlIbmResourceGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.secretsManager.instance", c.__id, "resourceGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlIbmResourceGroup), nil
+			}
+		}
+
+		return c.resourceGroup()
+	})
+}
+
+func (c *mqlIbmSecretsManagerInstance) GetTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tags, func() ([]any, error) {
+		return c.tags()
+	})
+}
+
+func (c *mqlIbmSecretsManagerInstance) GetAccessTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessTags, func() ([]any, error) {
+		return c.accessTags()
+	})
+}
+
+// mqlIbmSecretsManagerSecret for the ibm.secretsManager.secret resource
+type mqlIbmSecretsManagerSecret struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlIbmSecretsManagerSecretInternal
+	Id                 plugin.TValue[string]
+	Crn                plugin.TValue[string]
+	Name               plugin.TValue[string]
+	Description        plugin.TValue[string]
+	Type               plugin.TValue[string]
+	SecretGroupId      plugin.TValue[string]
+	State              plugin.TValue[string]
+	AutoRotate         plugin.TValue[bool]
+	RotationInterval   plugin.TValue[int64]
+	RotationUnit       plugin.TValue[string]
+	RotateKeys         plugin.TValue[bool]
+	NextRotationDate   plugin.TValue[*time.Time]
+	LastRotationFailed plugin.TValue[bool]
+	ExpirationDate     plugin.TValue[*time.Time]
+	IssuerType         plugin.TValue[string]
+	Issuer             plugin.TValue[string]
+	CommonName         plugin.TValue[string]
+	VersionsTotal      plugin.TValue[int64]
+	CreatedAt          plugin.TValue[*time.Time]
+	UpdatedAt          plugin.TValue[*time.Time]
+	Instance           plugin.TValue[*mqlIbmSecretsManagerInstance]
+}
+
+// createIbmSecretsManagerSecret creates a new instance of this resource
+func createIbmSecretsManagerSecret(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmSecretsManagerSecret{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.secretsManager.secret", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmSecretsManagerSecret) MqlName() string {
+	return "ibm.secretsManager.secret"
+}
+
+func (c *mqlIbmSecretsManagerSecret) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmSecretsManagerSecret) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlIbmSecretsManagerSecret) GetCrn() *plugin.TValue[string] {
+	return &c.Crn
+}
+
+func (c *mqlIbmSecretsManagerSecret) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlIbmSecretsManagerSecret) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlIbmSecretsManagerSecret) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlIbmSecretsManagerSecret) GetSecretGroupId() *plugin.TValue[string] {
+	return &c.SecretGroupId
+}
+
+func (c *mqlIbmSecretsManagerSecret) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlIbmSecretsManagerSecret) GetAutoRotate() *plugin.TValue[bool] {
+	return &c.AutoRotate
+}
+
+func (c *mqlIbmSecretsManagerSecret) GetRotationInterval() *plugin.TValue[int64] {
+	return &c.RotationInterval
+}
+
+func (c *mqlIbmSecretsManagerSecret) GetRotationUnit() *plugin.TValue[string] {
+	return &c.RotationUnit
+}
+
+func (c *mqlIbmSecretsManagerSecret) GetRotateKeys() *plugin.TValue[bool] {
+	return &c.RotateKeys
+}
+
+func (c *mqlIbmSecretsManagerSecret) GetNextRotationDate() *plugin.TValue[*time.Time] {
+	return &c.NextRotationDate
+}
+
+func (c *mqlIbmSecretsManagerSecret) GetLastRotationFailed() *plugin.TValue[bool] {
+	return &c.LastRotationFailed
+}
+
+func (c *mqlIbmSecretsManagerSecret) GetExpirationDate() *plugin.TValue[*time.Time] {
+	return &c.ExpirationDate
+}
+
+func (c *mqlIbmSecretsManagerSecret) GetIssuerType() *plugin.TValue[string] {
+	return &c.IssuerType
+}
+
+func (c *mqlIbmSecretsManagerSecret) GetIssuer() *plugin.TValue[string] {
+	return &c.Issuer
+}
+
+func (c *mqlIbmSecretsManagerSecret) GetCommonName() *plugin.TValue[string] {
+	return &c.CommonName
+}
+
+func (c *mqlIbmSecretsManagerSecret) GetVersionsTotal() *plugin.TValue[int64] {
+	return &c.VersionsTotal
+}
+
+func (c *mqlIbmSecretsManagerSecret) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlIbmSecretsManagerSecret) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlIbmSecretsManagerSecret) GetInstance() *plugin.TValue[*mqlIbmSecretsManagerInstance] {
+	return plugin.GetOrCompute[*mqlIbmSecretsManagerInstance](&c.Instance, func() (*mqlIbmSecretsManagerInstance, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.secretsManager.secret", c.__id, "instance")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlIbmSecretsManagerInstance), nil
+			}
+		}
+
+		return c.instance()
+	})
+}
+
+// mqlIbmCbrRule for the ibm.cbr.rule resource
+type mqlIbmCbrRule struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlIbmCbrRuleInternal it will be used here
+	Id              plugin.TValue[string]
+	Crn             plugin.TValue[string]
+	Description     plugin.TValue[string]
+	EnforcementMode plugin.TValue[string]
+	ApiTypes        plugin.TValue[[]any]
+	Resources       plugin.TValue[[]any]
+	Contexts        plugin.TValue[[]any]
+	CreatedAt       plugin.TValue[*time.Time]
+	LastModifiedAt  plugin.TValue[*time.Time]
+}
+
+// createIbmCbrRule creates a new instance of this resource
+func createIbmCbrRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmCbrRule{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.cbr.rule", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmCbrRule) MqlName() string {
+	return "ibm.cbr.rule"
+}
+
+func (c *mqlIbmCbrRule) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmCbrRule) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlIbmCbrRule) GetCrn() *plugin.TValue[string] {
+	return &c.Crn
+}
+
+func (c *mqlIbmCbrRule) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlIbmCbrRule) GetEnforcementMode() *plugin.TValue[string] {
+	return &c.EnforcementMode
+}
+
+func (c *mqlIbmCbrRule) GetApiTypes() *plugin.TValue[[]any] {
+	return &c.ApiTypes
+}
+
+func (c *mqlIbmCbrRule) GetResources() *plugin.TValue[[]any] {
+	return &c.Resources
+}
+
+func (c *mqlIbmCbrRule) GetContexts() *plugin.TValue[[]any] {
+	return &c.Contexts
+}
+
+func (c *mqlIbmCbrRule) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlIbmCbrRule) GetLastModifiedAt() *plugin.TValue[*time.Time] {
+	return &c.LastModifiedAt
+}
+
+// mqlIbmCbrRuleResource for the ibm.cbr.rule.resource resource
+type mqlIbmCbrRuleResource struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlIbmCbrRuleResourceInternal it will be used here
+	ServiceName     plugin.TValue[string]
+	ServiceInstance plugin.TValue[string]
+	Region          plugin.TValue[string]
+	ResourceGroupId plugin.TValue[string]
+	Attributes      plugin.TValue[map[string]any]
+	Operators       plugin.TValue[map[string]any]
+	Tags            plugin.TValue[map[string]any]
+}
+
+// createIbmCbrRuleResource creates a new instance of this resource
+func createIbmCbrRuleResource(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmCbrRuleResource{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.cbr.rule.resource", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmCbrRuleResource) MqlName() string {
+	return "ibm.cbr.rule.resource"
+}
+
+func (c *mqlIbmCbrRuleResource) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmCbrRuleResource) GetServiceName() *plugin.TValue[string] {
+	return &c.ServiceName
+}
+
+func (c *mqlIbmCbrRuleResource) GetServiceInstance() *plugin.TValue[string] {
+	return &c.ServiceInstance
+}
+
+func (c *mqlIbmCbrRuleResource) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlIbmCbrRuleResource) GetResourceGroupId() *plugin.TValue[string] {
+	return &c.ResourceGroupId
+}
+
+func (c *mqlIbmCbrRuleResource) GetAttributes() *plugin.TValue[map[string]any] {
+	return &c.Attributes
+}
+
+func (c *mqlIbmCbrRuleResource) GetOperators() *plugin.TValue[map[string]any] {
+	return &c.Operators
+}
+
+func (c *mqlIbmCbrRuleResource) GetTags() *plugin.TValue[map[string]any] {
+	return &c.Tags
+}
+
+// mqlIbmCbrRuleContext for the ibm.cbr.rule.context resource
+type mqlIbmCbrRuleContext struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlIbmCbrRuleContextInternal it will be used here
+	Attributes     plugin.TValue[map[string]any]
+	EndpointTypes  plugin.TValue[[]any]
+	NetworkZoneIds plugin.TValue[[]any]
+	Zones          plugin.TValue[[]any]
+}
+
+// createIbmCbrRuleContext creates a new instance of this resource
+func createIbmCbrRuleContext(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmCbrRuleContext{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.cbr.rule.context", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmCbrRuleContext) MqlName() string {
+	return "ibm.cbr.rule.context"
+}
+
+func (c *mqlIbmCbrRuleContext) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmCbrRuleContext) GetAttributes() *plugin.TValue[map[string]any] {
+	return &c.Attributes
+}
+
+func (c *mqlIbmCbrRuleContext) GetEndpointTypes() *plugin.TValue[[]any] {
+	return &c.EndpointTypes
+}
+
+func (c *mqlIbmCbrRuleContext) GetNetworkZoneIds() *plugin.TValue[[]any] {
+	return &c.NetworkZoneIds
+}
+
+func (c *mqlIbmCbrRuleContext) GetZones() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Zones, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.cbr.rule.context", c.__id, "zones")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.zones()
+	})
+}
+
+// mqlIbmCbrZone for the ibm.cbr.zone resource
+type mqlIbmCbrZone struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlIbmCbrZoneInternal it will be used here
+	Id             plugin.TValue[string]
+	Crn            plugin.TValue[string]
+	Name           plugin.TValue[string]
+	Description    plugin.TValue[string]
+	AddressCount   plugin.TValue[int64]
+	ExcludedCount  plugin.TValue[int64]
+	CreatedAt      plugin.TValue[*time.Time]
+	LastModifiedAt plugin.TValue[*time.Time]
+	Addresses      plugin.TValue[[]any]
+	Excluded       plugin.TValue[[]any]
+}
+
+// createIbmCbrZone creates a new instance of this resource
+func createIbmCbrZone(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmCbrZone{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.cbr.zone", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmCbrZone) MqlName() string {
+	return "ibm.cbr.zone"
+}
+
+func (c *mqlIbmCbrZone) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmCbrZone) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlIbmCbrZone) GetCrn() *plugin.TValue[string] {
+	return &c.Crn
+}
+
+func (c *mqlIbmCbrZone) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlIbmCbrZone) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlIbmCbrZone) GetAddressCount() *plugin.TValue[int64] {
+	return &c.AddressCount
+}
+
+func (c *mqlIbmCbrZone) GetExcludedCount() *plugin.TValue[int64] {
+	return &c.ExcludedCount
+}
+
+func (c *mqlIbmCbrZone) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlIbmCbrZone) GetLastModifiedAt() *plugin.TValue[*time.Time] {
+	return &c.LastModifiedAt
+}
+
+func (c *mqlIbmCbrZone) GetAddresses() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Addresses, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.cbr.zone", c.__id, "addresses")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.addresses()
+	})
+}
+
+func (c *mqlIbmCbrZone) GetExcluded() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Excluded, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.cbr.zone", c.__id, "excluded")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.excluded()
+	})
+}
+
+// mqlIbmCbrZoneAddress for the ibm.cbr.zone.address resource
+type mqlIbmCbrZoneAddress struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlIbmCbrZoneAddressInternal it will be used here
+	Type            plugin.TValue[string]
+	Value           plugin.TValue[string]
+	ServiceName     plugin.TValue[string]
+	ServiceType     plugin.TValue[string]
+	ServiceInstance plugin.TValue[string]
+	Location        plugin.TValue[string]
+}
+
+// createIbmCbrZoneAddress creates a new instance of this resource
+func createIbmCbrZoneAddress(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmCbrZoneAddress{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.cbr.zone.address", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmCbrZoneAddress) MqlName() string {
+	return "ibm.cbr.zone.address"
+}
+
+func (c *mqlIbmCbrZoneAddress) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmCbrZoneAddress) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlIbmCbrZoneAddress) GetValue() *plugin.TValue[string] {
+	return &c.Value
+}
+
+func (c *mqlIbmCbrZoneAddress) GetServiceName() *plugin.TValue[string] {
+	return &c.ServiceName
+}
+
+func (c *mqlIbmCbrZoneAddress) GetServiceType() *plugin.TValue[string] {
+	return &c.ServiceType
+}
+
+func (c *mqlIbmCbrZoneAddress) GetServiceInstance() *plugin.TValue[string] {
+	return &c.ServiceInstance
+}
+
+func (c *mqlIbmCbrZoneAddress) GetLocation() *plugin.TValue[string] {
+	return &c.Location
 }

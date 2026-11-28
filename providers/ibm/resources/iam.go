@@ -71,6 +71,62 @@ func (r *mqlIbmIamAccountSettings) publicAccessEnabled() (bool, error) {
 	return *s.PublicAccessEnabled, nil
 }
 
+// defaultExternalInteractionState is the state IBM Cloud applies to an
+// identity type the account has not restricted.
+const defaultExternalInteractionState = "enabled"
+
+// externalIdentityInteraction is an Access Management setting, so it is read
+// on demand.
+func (r *mqlIbmIamAccountSettings) externalIdentityInteraction() (*mqlIbmIamExternalIdentityInteraction, error) {
+	c := conn(r.MqlRuntime)
+	accountID := c.AccountID()
+	s, resp, err := c.IamPolicyManagement().GetSettings(&iampolicymanagementv1.GetSettingsOptions{AccountID: &accountID})
+	if err != nil {
+		return nil, classifyError(withStatus(err, resp), "iam-access-management.settings.read")
+	}
+	args := externalInteractionArgs(s)
+	args["__id"] = llx.StringData("ibm.iam.externalIdentityInteraction/" + accountID)
+	res, err := CreateResource(r.MqlRuntime, "ibm.iam.externalIdentityInteraction", args)
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlIbmIamExternalIdentityInteraction), nil
+}
+
+// externalInteractionArgs maps the settings per identity type; a type the
+// API leaves out has IBM Cloud's default, enabled, with no allowed accounts.
+func externalInteractionArgs(s *iampolicymanagementv1.AccountSettingsAccessManagement) map[string]*llx.RawData {
+	var idTypes *iampolicymanagementv1.IdentityTypes
+	if s != nil && s.ExternalAccountIdentityInteraction != nil {
+		idTypes = s.ExternalAccountIdentityInteraction.IdentityTypes
+	}
+	pick := func(get func(*iampolicymanagementv1.IdentityTypes) *iampolicymanagementv1.IdentityTypesBase) (*llx.RawData, *llx.RawData) {
+		if idTypes == nil {
+			return llx.StringData(defaultExternalInteractionState), stringsData(nil)
+		}
+		b := get(idTypes)
+		if b == nil || derefStr(b.State) == "" {
+			return llx.StringData(defaultExternalInteractionState), stringsData(nil)
+		}
+		return llx.StringData(*b.State), stringsData(b.ExternalAllowedAccounts)
+	}
+	user, userAccounts := pick(func(t *iampolicymanagementv1.IdentityTypes) *iampolicymanagementv1.IdentityTypesBase { return t.User })
+	serviceID, serviceIDAccounts := pick(func(t *iampolicymanagementv1.IdentityTypes) *iampolicymanagementv1.IdentityTypesBase {
+		return t.ServiceID
+	})
+	service, serviceAccounts := pick(func(t *iampolicymanagementv1.IdentityTypes) *iampolicymanagementv1.IdentityTypesBase {
+		return t.Service
+	})
+	return map[string]*llx.RawData{
+		"user":                     user,
+		"serviceId":                serviceID,
+		"service":                  service,
+		"userAllowedAccounts":      userAccounts,
+		"serviceIdAllowedAccounts": serviceIDAccounts,
+		"serviceAllowedAccounts":   serviceAccounts,
+	}
+}
+
 // ---- access groups ----
 
 func (r *mqlIbm) iamAccessGroups() ([]any, error) {
