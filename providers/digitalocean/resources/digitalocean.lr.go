@@ -1003,6 +1003,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"digitalocean.microDroplet.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitaloceanMicroDroplet).GetCreatedAt()).ToDataRes(types.Time)
 	},
+	"digitalocean.microDroplet.forkId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanMicroDroplet).GetForkId()).ToDataRes(types.String)
+	},
+	"digitalocean.microDroplet.forkedFrom": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanMicroDroplet).GetForkedFrom()).ToDataRes(types.Resource("digitalocean.microDroplet"))
+	},
 	"digitalocean.microDroplet.checkpoints": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitaloceanMicroDroplet).GetCheckpoints()).ToDataRes(types.Array(types.Resource("digitalocean.microDroplet.checkpoint")))
 	},
@@ -5066,6 +5072,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"digitalocean.microDroplet.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDigitaloceanMicroDroplet).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"digitalocean.microDroplet.forkId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanMicroDroplet).ForkId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"digitalocean.microDroplet.forkedFrom": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanMicroDroplet).ForkedFrom, ok = plugin.RawToTValue[*mqlDigitaloceanMicroDroplet](v.Value, v.Error)
 		return
 	},
 	"digitalocean.microDroplet.checkpoints": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -11612,7 +11626,7 @@ func (c *mqlDigitaloceanDroplet) GetSnapshots() *plugin.TValue[[]any] {
 type mqlDigitaloceanMicroDroplet struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlDigitaloceanMicroDropletInternal it will be used here
+	mqlDigitaloceanMicroDropletInternal
 	Id                   plugin.TValue[string]
 	Name                 plugin.TValue[string]
 	Region               plugin.TValue[string]
@@ -11636,6 +11650,8 @@ type mqlDigitaloceanMicroDroplet struct {
 	EgressDefaultAction  plugin.TValue[string]
 	EgressRules          plugin.TValue[[]any]
 	CreatedAt            plugin.TValue[*time.Time]
+	ForkId               plugin.TValue[string]
+	ForkedFrom           plugin.TValue[*mqlDigitaloceanMicroDroplet]
 	Checkpoints          plugin.TValue[[]any]
 	AccessTokens         plugin.TValue[[]any]
 }
@@ -11764,6 +11780,26 @@ func (c *mqlDigitaloceanMicroDroplet) GetEgressRules() *plugin.TValue[[]any] {
 
 func (c *mqlDigitaloceanMicroDroplet) GetCreatedAt() *plugin.TValue[*time.Time] {
 	return &c.CreatedAt
+}
+
+func (c *mqlDigitaloceanMicroDroplet) GetForkId() *plugin.TValue[string] {
+	return &c.ForkId
+}
+
+func (c *mqlDigitaloceanMicroDroplet) GetForkedFrom() *plugin.TValue[*mqlDigitaloceanMicroDroplet] {
+	return plugin.GetOrCompute[*mqlDigitaloceanMicroDroplet](&c.ForkedFrom, func() (*mqlDigitaloceanMicroDroplet, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("digitalocean.microDroplet", c.__id, "forkedFrom")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDigitaloceanMicroDroplet), nil
+			}
+		}
+
+		return c.forkedFrom()
+	})
 }
 
 func (c *mqlDigitaloceanMicroDroplet) GetCheckpoints() *plugin.TValue[[]any] {

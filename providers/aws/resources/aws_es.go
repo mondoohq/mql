@@ -53,6 +53,7 @@ type mqlAwsEsDomainInternal struct {
 	cacheVpcId                  *string
 	cacheSubnetIds              []string
 	cacheKmsKeyId               *string
+	cacheCatalogKmsKeyArn       string
 	cacheAuditLogGroupArn       *string
 	cacheIndexSlowLogGroupArn   *string
 	cacheSearchSlowLogGroupArn  *string
@@ -393,6 +394,9 @@ func newMqlAwsEsDomain(runtime *plugin.Runtime, region, accountID string, svc *e
 		"applicationLogEnabled":              llx.BoolData(applicationLogEnabled),
 	}
 
+	for k, v := range esDomainCatalog(status.CatalogOptions).args() {
+		args[k] = v
+	}
 	resource, err := CreateResource(runtime, ResourceAwsEsDomain, args)
 	if err != nil {
 		return nil, err
@@ -415,6 +419,7 @@ func newMqlAwsEsDomain(runtime *plugin.Runtime, region, accountID string, svc *e
 		mqlDomain.setSecurityGroupArns(sgArns)
 	}
 	mqlDomain.cacheKmsKeyId = encAtRestKmsKeyId
+	mqlDomain.cacheCatalogKmsKeyArn = esDomainCatalog(status.CatalogOptions).kmsKeyArn
 	mqlDomain.cacheAuditLogGroupArn = auditLogArn
 	mqlDomain.cacheIndexSlowLogGroupArn = indexSlowLogArn
 	mqlDomain.cacheSearchSlowLogGroupArn = searchSlowLogArn
@@ -497,6 +502,10 @@ func (a *mqlAwsEsDomain) kmsKey() (*mqlAwsKmsKey, error) {
 		return nil, err
 	}
 	return mqlKey.(*mqlAwsKmsKey), nil
+}
+
+func (a *mqlAwsEsDomain) catalogKmsKey() (*mqlAwsKmsKey, error) {
+	return catalogKmsKey(a.MqlRuntime, a.cacheCatalogKmsKeyArn, &a.CatalogKmsKey.State)
 }
 
 func (a *mqlAwsEsDomain) vpc() (*mqlAwsVpc, error) {

@@ -6,7 +6,7 @@ package resources
 import (
 	"time"
 
-	tlink "github.com/stackitcloud/stackit-sdk-go/services/telemetrylink/v1betaapi"
+	tlink "github.com/stackitcloud/stackit-sdk-go/services/telemetrylink/v1api"
 	trouter "github.com/stackitcloud/stackit-sdk-go/services/telemetryrouter/v1betaapi"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -236,6 +236,7 @@ func telemetryLinkArgs(l *tlink.TelemetryLinkResponse) map[string]*llx.RawData {
 		"status":      llx.StringData(string(l.GetStatus())),
 		"region":      llx.StringData(l.GetRegionId()),
 		"createdAt":   llx.TimeDataPtr(telemetryTime(l.GetCreateTimeOk())),
+		"labels":      stringMapData(l.GetResourceLabels()),
 	}
 }
 

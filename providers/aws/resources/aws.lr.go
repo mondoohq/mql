@@ -424,6 +424,7 @@ const (
 	ResourceAwsEventbridgeScheduleTargetUniversalTarget                         string = "aws.eventbridge.schedule.target.universalTarget"
 	ResourceAwsEventbridgeScheduleGroup                                         string = "aws.eventbridge.scheduleGroup"
 	ResourceAwsCloudwatch                                                       string = "aws.cloudwatch"
+	ResourceAwsCloudwatchOtelEnrichment                                         string = "aws.cloudwatch.otelEnrichment"
 	ResourceAwsCloudwatchMetricsalarm                                           string = "aws.cloudwatch.metricsalarm"
 	ResourceAwsCloudwatchMetric                                                 string = "aws.cloudwatch.metric"
 	ResourceAwsCloudwatchMetricdimension                                        string = "aws.cloudwatch.metricdimension"
@@ -2742,6 +2743,10 @@ func init() {
 		"aws.cloudwatch": {
 			// to override args, implement: initAwsCloudwatch(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAwsCloudwatch,
+		},
+		"aws.cloudwatch.otelEnrichment": {
+			// to override args, implement: initAwsCloudwatchOtelEnrichment(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsCloudwatchOtelEnrichment,
 		},
 		"aws.cloudwatch.metricsalarm": {
 			Init:   initAwsCloudwatchMetricsalarm,
@@ -12300,6 +12305,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.es.domain.applicationLogGroup": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEsDomain).GetApplicationLogGroup()).ToDataRes(types.Resource("aws.cloudwatch.loggroup"))
 	},
+	"aws.es.domain.catalogEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEsDomain).GetCatalogEnabled()).ToDataRes(types.Bool)
+	},
+	"aws.es.domain.catalogType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEsDomain).GetCatalogType()).ToDataRes(types.String)
+	},
+	"aws.es.domain.catalogEncryptionEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEsDomain).GetCatalogEncryptionEnabled()).ToDataRes(types.Bool)
+	},
+	"aws.es.domain.catalogKmsKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEsDomain).GetCatalogKmsKey()).ToDataRes(types.Resource("aws.kms.key"))
+	},
 	"aws.opensearch.domains": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsOpensearch).GetDomains()).ToDataRes(types.Array(types.Resource("aws.opensearch.domain")))
 	},
@@ -12545,6 +12562,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.opensearch.domain.subnets": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsOpensearchDomain).GetSubnets()).ToDataRes(types.Array(types.Resource("aws.vpc.subnet")))
+	},
+	"aws.opensearch.domain.catalogEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsOpensearchDomain).GetCatalogEnabled()).ToDataRes(types.Bool)
+	},
+	"aws.opensearch.domain.catalogType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsOpensearchDomain).GetCatalogType()).ToDataRes(types.String)
+	},
+	"aws.opensearch.domain.catalogEncryptionEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsOpensearchDomain).GetCatalogEncryptionEnabled()).ToDataRes(types.Bool)
+	},
+	"aws.opensearch.domain.catalogKmsKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsOpensearchDomain).GetCatalogKmsKey()).ToDataRes(types.Resource("aws.kms.key"))
 	},
 	"aws.acm.certificates": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsAcm).GetCertificates()).ToDataRes(types.Array(types.Resource("aws.acm.certificate")))
@@ -17642,6 +17671,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.cloudwatch.anomalyDetectors": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCloudwatch).GetAnomalyDetectors()).ToDataRes(types.Array(types.Resource("aws.cloudwatch.logAnomalyDetector")))
+	},
+	"aws.cloudwatch.otelEnrichments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatch).GetOtelEnrichments()).ToDataRes(types.Array(types.Resource("aws.cloudwatch.otelEnrichment")))
+	},
+	"aws.cloudwatch.otelEnrichment.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchOtelEnrichment).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.cloudwatch.otelEnrichment.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchOtelEnrichment).GetStatus()).ToDataRes(types.String)
+	},
+	"aws.cloudwatch.otelEnrichment.tagEnrichmentEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchOtelEnrichment).GetTagEnrichmentEnabled()).ToDataRes(types.Bool)
+	},
+	"aws.cloudwatch.otelEnrichment.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchOtelEnrichment).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"aws.cloudwatch.otelEnrichment.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchOtelEnrichment).GetUpdatedAt()).ToDataRes(types.Time)
 	},
 	"aws.cloudwatch.metricsalarm.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCloudwatchMetricsalarm).GetArn()).ToDataRes(types.String)
@@ -32561,6 +32608,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.neptuneAnalytics.graph.provisionedMemory": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsNeptuneAnalyticsGraph).GetProvisionedMemory()).ToDataRes(types.Int)
+	},
+	"aws.neptuneAnalytics.graph.computeType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsNeptuneAnalyticsGraph).GetComputeType()).ToDataRes(types.String)
+	},
+	"aws.neptuneAnalytics.graph.sessionMinMemory": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsNeptuneAnalyticsGraph).GetSessionMinMemory()).ToDataRes(types.Int)
 	},
 	"aws.neptuneAnalytics.graph.replicaCount": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsNeptuneAnalyticsGraph).GetReplicaCount()).ToDataRes(types.Int)
@@ -51417,6 +51470,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsEsDomain).ApplicationLogGroup, ok = plugin.RawToTValue[*mqlAwsCloudwatchLoggroup](v.Value, v.Error)
 		return
 	},
+	"aws.es.domain.catalogEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEsDomain).CatalogEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.es.domain.catalogType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEsDomain).CatalogType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.es.domain.catalogEncryptionEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEsDomain).CatalogEncryptionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.es.domain.catalogKmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEsDomain).CatalogKmsKey, ok = plugin.RawToTValue[*mqlAwsKmsKey](v.Value, v.Error)
+		return
+	},
 	"aws.opensearch.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsOpensearch).__id, ok = v.Value.(string)
 		return
@@ -51751,6 +51820,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.opensearch.domain.subnets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsOpensearchDomain).Subnets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.opensearch.domain.catalogEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOpensearchDomain).CatalogEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.opensearch.domain.catalogType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOpensearchDomain).CatalogType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.opensearch.domain.catalogEncryptionEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOpensearchDomain).CatalogEncryptionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.opensearch.domain.catalogKmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOpensearchDomain).CatalogKmsKey, ok = plugin.RawToTValue[*mqlAwsKmsKey](v.Value, v.Error)
 		return
 	},
 	"aws.acm.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -59275,6 +59360,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.cloudwatch.anomalyDetectors": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsCloudwatch).AnomalyDetectors, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.otelEnrichments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatch).OtelEnrichments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.otelEnrichment.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchOtelEnrichment).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.cloudwatch.otelEnrichment.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchOtelEnrichment).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.otelEnrichment.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchOtelEnrichment).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.otelEnrichment.tagEnrichmentEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchOtelEnrichment).TagEnrichmentEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.otelEnrichment.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchOtelEnrichment).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.cloudwatch.otelEnrichment.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchOtelEnrichment).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"aws.cloudwatch.metricsalarm.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -80863,6 +80976,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.neptuneAnalytics.graph.provisionedMemory": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsNeptuneAnalyticsGraph).ProvisionedMemory, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aws.neptuneAnalytics.graph.computeType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsNeptuneAnalyticsGraph).ComputeType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.neptuneAnalytics.graph.sessionMinMemory": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsNeptuneAnalyticsGraph).SessionMinMemory, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"aws.neptuneAnalytics.graph.replicaCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -120493,6 +120614,10 @@ type mqlAwsEsDomain struct {
 	SearchSlowLogGroup                 plugin.TValue[*mqlAwsCloudwatchLoggroup]
 	ApplicationLogEnabled              plugin.TValue[bool]
 	ApplicationLogGroup                plugin.TValue[*mqlAwsCloudwatchLoggroup]
+	CatalogEnabled                     plugin.TValue[bool]
+	CatalogType                        plugin.TValue[string]
+	CatalogEncryptionEnabled           plugin.TValue[bool]
+	CatalogKmsKey                      plugin.TValue[*mqlAwsKmsKey]
 }
 
 // createAwsEsDomain creates a new instance of this resource
@@ -121036,6 +121161,34 @@ func (c *mqlAwsEsDomain) GetApplicationLogGroup() *plugin.TValue[*mqlAwsCloudwat
 	})
 }
 
+func (c *mqlAwsEsDomain) GetCatalogEnabled() *plugin.TValue[bool] {
+	return &c.CatalogEnabled
+}
+
+func (c *mqlAwsEsDomain) GetCatalogType() *plugin.TValue[string] {
+	return &c.CatalogType
+}
+
+func (c *mqlAwsEsDomain) GetCatalogEncryptionEnabled() *plugin.TValue[bool] {
+	return &c.CatalogEncryptionEnabled
+}
+
+func (c *mqlAwsEsDomain) GetCatalogKmsKey() *plugin.TValue[*mqlAwsKmsKey] {
+	return plugin.GetOrCompute[*mqlAwsKmsKey](&c.CatalogKmsKey, func() (*mqlAwsKmsKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.es.domain", c.__id, "catalogKmsKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsKmsKey), nil
+			}
+		}
+
+		return c.catalogKmsKey()
+	})
+}
+
 // mqlAwsOpensearch for the aws.opensearch resource
 type mqlAwsOpensearch struct {
 	MqlRuntime *plugin.Runtime
@@ -121183,6 +121336,10 @@ type mqlAwsOpensearchDomain struct {
 	ManagedBy                          plugin.TValue[string]
 	SecurityGroups                     plugin.TValue[[]any]
 	Subnets                            plugin.TValue[[]any]
+	CatalogEnabled                     plugin.TValue[bool]
+	CatalogType                        plugin.TValue[string]
+	CatalogEncryptionEnabled           plugin.TValue[bool]
+	CatalogKmsKey                      plugin.TValue[*mqlAwsKmsKey]
 }
 
 // createAwsOpensearchDomain creates a new instance of this resource
@@ -121717,6 +121874,34 @@ func (c *mqlAwsOpensearchDomain) GetSubnets() *plugin.TValue[[]any] {
 		}
 
 		return c.subnets()
+	})
+}
+
+func (c *mqlAwsOpensearchDomain) GetCatalogEnabled() *plugin.TValue[bool] {
+	return &c.CatalogEnabled
+}
+
+func (c *mqlAwsOpensearchDomain) GetCatalogType() *plugin.TValue[string] {
+	return &c.CatalogType
+}
+
+func (c *mqlAwsOpensearchDomain) GetCatalogEncryptionEnabled() *plugin.TValue[bool] {
+	return &c.CatalogEncryptionEnabled
+}
+
+func (c *mqlAwsOpensearchDomain) GetCatalogKmsKey() *plugin.TValue[*mqlAwsKmsKey] {
+	return plugin.GetOrCompute[*mqlAwsKmsKey](&c.CatalogKmsKey, func() (*mqlAwsKmsKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.opensearch.domain", c.__id, "catalogKmsKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsKmsKey), nil
+			}
+		}
+
+		return c.catalogKmsKey()
 	})
 }
 
@@ -141867,6 +142052,7 @@ type mqlAwsCloudwatch struct {
 	LogInsightQueries plugin.TValue[[]any]
 	AccountPolicies   plugin.TValue[[]any]
 	AnomalyDetectors  plugin.TValue[[]any]
+	OtelEnrichments   plugin.TValue[[]any]
 }
 
 // createAwsCloudwatch creates a new instance of this resource
@@ -142032,6 +142218,86 @@ func (c *mqlAwsCloudwatch) GetAnomalyDetectors() *plugin.TValue[[]any] {
 
 		return c.anomalyDetectors()
 	})
+}
+
+func (c *mqlAwsCloudwatch) GetOtelEnrichments() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.OtelEnrichments, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.cloudwatch", c.__id, "otelEnrichments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.otelEnrichments()
+	})
+}
+
+// mqlAwsCloudwatchOtelEnrichment for the aws.cloudwatch.otelEnrichment resource
+type mqlAwsCloudwatchOtelEnrichment struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAwsCloudwatchOtelEnrichmentInternal it will be used here
+	Region               plugin.TValue[string]
+	Status               plugin.TValue[string]
+	TagEnrichmentEnabled plugin.TValue[bool]
+	CreatedAt            plugin.TValue[*time.Time]
+	UpdatedAt            plugin.TValue[*time.Time]
+}
+
+// createAwsCloudwatchOtelEnrichment creates a new instance of this resource
+func createAwsCloudwatchOtelEnrichment(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsCloudwatchOtelEnrichment{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.cloudwatch.otelEnrichment", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsCloudwatchOtelEnrichment) MqlName() string {
+	return "aws.cloudwatch.otelEnrichment"
+}
+
+func (c *mqlAwsCloudwatchOtelEnrichment) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsCloudwatchOtelEnrichment) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlAwsCloudwatchOtelEnrichment) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlAwsCloudwatchOtelEnrichment) GetTagEnrichmentEnabled() *plugin.TValue[bool] {
+	return &c.TagEnrichmentEnabled
+}
+
+func (c *mqlAwsCloudwatchOtelEnrichment) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlAwsCloudwatchOtelEnrichment) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
 }
 
 // mqlAwsCloudwatchMetricsalarm for the aws.cloudwatch.metricsalarm resource
@@ -196073,6 +196339,8 @@ type mqlAwsNeptuneAnalyticsGraph struct {
 	DeletionProtection    plugin.TValue[bool]
 	PublicConnectivity    plugin.TValue[bool]
 	ProvisionedMemory     plugin.TValue[int64]
+	ComputeType           plugin.TValue[string]
+	SessionMinMemory      plugin.TValue[int64]
 	ReplicaCount          plugin.TValue[int64]
 	KmsKey                plugin.TValue[*mqlAwsKmsKey]
 	CreatedAt             plugin.TValue[*time.Time]
@@ -196149,6 +196417,14 @@ func (c *mqlAwsNeptuneAnalyticsGraph) GetPublicConnectivity() *plugin.TValue[boo
 
 func (c *mqlAwsNeptuneAnalyticsGraph) GetProvisionedMemory() *plugin.TValue[int64] {
 	return &c.ProvisionedMemory
+}
+
+func (c *mqlAwsNeptuneAnalyticsGraph) GetComputeType() *plugin.TValue[string] {
+	return &c.ComputeType
+}
+
+func (c *mqlAwsNeptuneAnalyticsGraph) GetSessionMinMemory() *plugin.TValue[int64] {
+	return &c.SessionMinMemory
 }
 
 func (c *mqlAwsNeptuneAnalyticsGraph) GetReplicaCount() *plugin.TValue[int64] {

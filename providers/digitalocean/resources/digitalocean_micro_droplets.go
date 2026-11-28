@@ -27,17 +27,53 @@ func (r *mqlDigitalocean) microDroplets() ([]any, error) {
 
 	all := make([]any, 0, len(instances))
 	for i := range instances {
-		args, err := microDropletArgs(&instances[i])
-		if err != nil {
-			return nil, err
-		}
-		res, err := CreateResource(r.MqlRuntime, "digitalocean.microDroplet", args)
+		res, err := newMicroDroplet(r.MqlRuntime, &instances[i])
 		if err != nil {
 			return nil, err
 		}
 		all = append(all, res)
 	}
 	return all, nil
+}
+
+type mqlDigitaloceanMicroDropletInternal struct {
+	cacheForkedFrom string
+}
+
+// newMicroDroplet creates the resource and keeps the id of the instance it
+// was forked from, which forkedFrom resolves on demand.
+func newMicroDroplet(runtime *plugin.Runtime, md *godo.MicroVM) (*mqlDigitaloceanMicroDroplet, error) {
+	args, err := microDropletArgs(md)
+	if err != nil {
+		return nil, err
+	}
+	res, err := CreateResource(runtime, "digitalocean.microDroplet", args)
+	if err != nil {
+		return nil, err
+	}
+	mqlMd := res.(*mqlDigitaloceanMicroDroplet)
+	mqlMd.cacheForkedFrom = md.ForkedFrom
+	return mqlMd, nil
+}
+
+func (r *mqlDigitaloceanMicroDroplet) forkedFrom() (*mqlDigitaloceanMicroDroplet, error) {
+	if r.cacheForkedFrom == "" {
+		r.ForkedFrom.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(r.MqlRuntime, "digitalocean.microDroplet", map[string]*llx.RawData{
+		"id": llx.StringData(r.cacheForkedFrom),
+	})
+	if err != nil {
+		// The source can be destroyed after the fork; forkId still records
+		// that this instance was forked.
+		if isDoNotFound(err) {
+			r.ForkedFrom.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		return nil, err
+	}
+	return res.(*mqlDigitaloceanMicroDroplet), nil
 }
 
 // microDropletArgs maps a MicroVM to its MQL fields. DigitalOcean renamed the
@@ -91,7 +127,17 @@ func microDropletArgs(md *godo.MicroVM) (map[string]*llx.RawData, error) {
 		"egressDefaultAction":  llx.StringData(microVMEgressDefaultAction(md.EgressPolicy)),
 		"egressRules":          llx.ArrayData(microVMEgressRules(md.EgressPolicy), types.Dict),
 		"createdAt":            llx.TimeDataPtr(parseDoTime(md.Created)),
+		"forkId":               microVMForkID(md.ForkID),
 	}, nil
+}
+
+// microVMForkID is null for an instance no fork created, where the API omits
+// the field.
+func microVMForkID(id string) *llx.RawData {
+	if id == "" {
+		return llx.NilData
+	}
+	return llx.StringData(id)
 }
 
 // microVMEgressDefaultAction returns what happens to outbound traffic no
@@ -142,11 +188,11 @@ func initDigitaloceanMicroDroplet(runtime *plugin.Runtime, args map[string]*llx.
 	if md == nil {
 		return nil, nil, fmt.Errorf("digitalocean.microDroplet with id %q not found", id)
 	}
-	mdArgs, err := microDropletArgs(md)
+	res, err := newMicroDroplet(runtime, md)
 	if err != nil {
 		return nil, nil, err
 	}
-	return mdArgs, nil, nil
+	return nil, res, nil
 }
 
 // microDropletIsPublic reports whether an instance answers on an address

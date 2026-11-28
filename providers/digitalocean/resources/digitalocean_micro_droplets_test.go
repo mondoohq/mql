@@ -265,3 +265,14 @@ func TestMicroDropletAccessTokensNotFoundAndForbidden(t *testing.T) {
 	_, err = (&mqlDigitaloceanMicroDroplet{MqlRuntime: rt, Id: strVal("aaa-111")}).accessTokens()
 	require.Error(t, err)
 }
+
+// Synthetic: fork lineage as godo v1.247 decodes it; no forked instance was scanned.
+func TestMicroDropletArgs_ForkLineage(t *testing.T) {
+	forked, err := microDropletArgs(&godo.MicroVM{ID: "md-2", ForkID: "fork-aaa", ForkedFrom: "md-1"})
+	require.NoError(t, err)
+	assert.Equal(t, "fork-aaa", forked["forkId"].Value)
+
+	root, err := microDropletArgs(&godo.MicroVM{ID: "md-1"})
+	require.NoError(t, err)
+	assert.Nil(t, root["forkId"].Value)
+}

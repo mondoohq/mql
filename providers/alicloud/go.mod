@@ -12,7 +12,7 @@ require (
 	github.com/alibabacloud-go/cbn-20170912/v2 v2.5.2
 	github.com/alibabacloud-go/cloudapi-20160714/v5 v5.8.0
 	github.com/alibabacloud-go/cloudfw-20171207/v12 v12.0.0
-	github.com/alibabacloud-go/cloudsso-20210515 v1.7.1
+	github.com/alibabacloud-go/cloudsso-20210515 v1.8.0
 	github.com/alibabacloud-go/config-20200907/v4 v4.2.3
 	github.com/alibabacloud-go/cr-20181201/v3 v3.2.4
 	github.com/alibabacloud-go/cs-20151215/v8 v8.3.2

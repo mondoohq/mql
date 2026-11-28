@@ -1037,6 +1037,8 @@ digitalocean.microDroplet.egressDefaultAction 14.2.9
 digitalocean.microDroplet.egressRules 14.2.9
 digitalocean.microDroplet.endpoint 13.15.2
 digitalocean.microDroplet.failureReason 14.0.1
+digitalocean.microDroplet.forkId 14.7.1
+digitalocean.microDroplet.forkedFrom 14.7.1
 digitalocean.microDroplet.httpProtocol 14.0.1
 digitalocean.microDroplet.id 13.15.2
 digitalocean.microDroplet.image 13.15.2

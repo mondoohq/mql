@@ -206,6 +206,60 @@ func (r *mqlAlicloudCloudssoUser) id() (string, error) {
 // from a listing can make its own calls without re-resolving the directory.
 type mqlAlicloudCloudssoUserInternal struct {
 	serviceRegion string
+
+	securityInfoOnce sync.Once
+	securityInfoData *cloudssoclient.GetSecurityInfoResponseBodySecurityEmail
+	securityInfoErr  error
+}
+
+func (r *mqlAlicloudCloudssoUser) securityEmail() (string, error) {
+	email, err := r.securityInfo()
+	if err != nil {
+		return "", err
+	}
+	if email == nil || email.Email == nil {
+		r.SecurityEmail.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *email.Email, nil
+}
+
+func (r *mqlAlicloudCloudssoUser) securityEmailStatus() (string, error) {
+	email, err := r.securityInfo()
+	if err != nil {
+		return "", err
+	}
+	if email == nil || email.Status == nil {
+		r.SecurityEmailStatus.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *email.Status, nil
+}
+
+// securityInfo reads the user's security email once; both security email
+// fields come from this one GetSecurityInfo response. The API omits
+// SecurityEmail when the user has none, which is returned as nil.
+func (r *mqlAlicloudCloudssoUser) securityInfo() (*cloudssoclient.GetSecurityInfoResponseBodySecurityEmail, error) {
+	r.securityInfoOnce.Do(func() {
+		conn := r.MqlRuntime.Connection.(*connection.AlicloudConnection)
+		client, err := conn.CloudSsoClient(r.serviceRegion)
+		if err != nil {
+			r.securityInfoErr = err
+			return
+		}
+		resp, err := client.GetSecurityInfo(&cloudssoclient.GetSecurityInfoRequest{
+			DirectoryId: new(r.DirectoryId.Data),
+			UserId:      new(r.UserId.Data),
+		})
+		if err != nil {
+			r.securityInfoErr = err
+			return
+		}
+		if resp != nil && resp.Body != nil {
+			r.securityInfoData = resp.Body.SecurityEmail
+		}
+	})
+	return r.securityInfoData, r.securityInfoErr
 }
 
 func (r *mqlAlicloudCloudssoDirectory) users() ([]any, error) {
@@ -657,6 +711,29 @@ func (r *mqlAlicloudCloudssoDirectory) allowUserToGetCredentials() (bool, error)
 		return false, err
 	}
 	return tea.BoolValue(pref.AllowUserToGetCredentials), nil
+}
+
+func (r *mqlAlicloudCloudssoDirectory) allowUserManageSecurityEmail() (bool, error) {
+	client, directoryID, err := r.cloudssoClient()
+	if err != nil {
+		return false, err
+	}
+	resp, err := client.GetSecurityInfoPreference(&cloudssoclient.GetSecurityInfoPreferenceRequest{
+		DirectoryId: new(directoryID),
+	})
+	if err != nil {
+		return false, err
+	}
+	return securityEmailSelfService(resp), nil
+}
+
+// securityEmailSelfService reads AllowUserManageSecurityEmail, which the API
+// documents as false when unset.
+func securityEmailSelfService(resp *cloudssoclient.GetSecurityInfoPreferenceResponse) bool {
+	if resp == nil || resp.Body == nil || resp.Body.SecurityInfoPreference == nil {
+		return false
+	}
+	return tea.BoolValue(resp.Body.SecurityInfoPreference.AllowUserManageSecurityEmail)
 }
 
 func (r *mqlAlicloudCloudssoDirectory) loginNetworkMasks() (string, error) {

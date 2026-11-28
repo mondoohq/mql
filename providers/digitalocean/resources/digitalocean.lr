@@ -385,6 +385,17 @@ digitalocean.microDroplet @defaults("id name region state networking") {
   egressRules []dict
   // Time the resource was created
   createdAt time
+  // Identifier of the fork that created the instance
+  //
+  // Null unless the instance was created by forking another one.
+  forkId string
+  // MicroDroplet this instance was forked from
+  //
+  // A fork starts from the source instance's memory and disk, so it carries
+  // whatever secrets and state the source held at the time. Null when the
+  // instance was not forked, or when the source no longer exists; `forkId`
+  // tells the two apart.
+  forkedFrom() digitalocean.microDroplet
   // Checkpoints captured from this instance
   checkpoints() []digitalocean.microDroplet.checkpoint
   // Access tokens that authorize requests to the instance's public endpoint

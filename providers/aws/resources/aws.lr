@@ -6879,6 +6879,24 @@ private aws.es.domain @defaults("arn name") {
   applicationLogEnabled bool
   // CloudWatch log group receiving Elasticsearch application logs
   applicationLogGroup() aws.cloudwatch.loggroup
+  // Whether the domain publishes its data to a catalog
+  //
+  // Data published to a catalog is readable through the catalog's own
+  // permissions, independently of the domain's access policy.
+  catalogEnabled bool
+  // Kind of catalog the domain publishes to
+  //
+  // `ServiceManagedS3Tables` for an AWS-managed S3 Tables catalog. Null when
+  // the domain publishes to no catalog.
+  catalogType string
+  // Whether the catalog's tables are encrypted with a customer-managed KMS key
+  //
+  // Null when the domain publishes to no catalog.
+  catalogEncryptionEnabled bool
+  // KMS key encrypting the catalog's tables
+  //
+  // Null when the catalog uses no customer-managed key.
+  catalogKmsKey() aws.kms.key
 }
 
 // Amazon OpenSearch Service
@@ -7095,6 +7113,24 @@ private aws.opensearch.domain @defaults("name engineVersion") {
   securityGroups() []aws.ec2.securitygroup
   // Subnets for the VPC domain
   subnets() []aws.vpc.subnet
+  // Whether the domain publishes its data to a catalog
+  //
+  // Data published to a catalog is readable through the catalog's own
+  // permissions, independently of the domain's access policy.
+  catalogEnabled bool
+  // Kind of catalog the domain publishes to
+  //
+  // `ServiceManagedS3Tables` for an AWS-managed S3 Tables catalog. Null when
+  // the domain publishes to no catalog.
+  catalogType string
+  // Whether the catalog's tables are encrypted with a customer-managed KMS key
+  //
+  // Null when the domain publishes to no catalog.
+  catalogEncryptionEnabled bool
+  // KMS key encrypting the catalog's tables
+  //
+  // Null when the catalog uses no customer-managed key.
+  catalogKmsKey() aws.kms.key
 }
 
 // AWS Certificate Manager (ACM)
@@ -12540,6 +12576,29 @@ aws.cloudwatch {
   // detector ARN, status, evaluation frequency, KMS key (if customer
   // managed), filter pattern, and the list of log groups it watches.
   anomalyDetectors() []aws.cloudwatch.logAnomalyDetector
+  // OpenTelemetry enrichment of vended metrics, one entry per region
+  otelEnrichments() []aws.cloudwatch.otelEnrichment
+}
+
+// CloudWatch OpenTelemetry enrichment setting for a region
+//
+// Whether CloudWatch enriches the metrics AWS services vend in the region
+// with resource ARN labels, making them queryable with PromQL, and with
+// `tagEnrichmentEnabled` also the resources' tag labels. A region where
+// enrichment was never started reports `status` `Stopped`.
+private aws.cloudwatch.otelEnrichment @defaults("region status tagEnrichmentEnabled") {
+  // Region the setting applies to
+  region string
+  // Enrichment state, `Running` or `Stopped`
+  status string
+  // Whether enriched metrics carry the resources' tag labels
+  //
+  // Null when enrichment is stopped.
+  tagEnrichmentEnabled bool
+  // Time enrichment started; null when it is stopped
+  createdAt time
+  // Time the enrichment configuration was last stored
+  updatedAt time
 }
 
 // Amazon CloudWatch metrics alarm
@@ -27997,7 +28056,21 @@ private aws.neptuneAnalytics.graph @defaults("arn name status region") {
   // Whether the graph has a public endpoint
   publicConnectivity bool
   // Number of memory-optimized Neptune Capacity Units (m-NCUs) allocated to the graph
+  //
+  // For a graph session (`computeType` is `GraphSession`) AWS reports the
+  // session's minimum session capacity units here instead; read
+  // `sessionMinMemory` for those.
   provisionedMemory int
+  // How the graph's compute is provided
+  //
+  // `ProvisionedGraph` for capacity allocated permanently, `GraphSession` for
+  // on-demand capacity that runs only while a session is open. Null when AWS
+  // does not report it.
+  computeType string
+  // Minimum session Neptune Capacity Units (s-NCUs) of a graph session
+  //
+  // A session can burst to twice this value. Null for a provisioned graph.
+  sessionMinMemory int
   // Number of replicas for the graph
   replicaCount int
   // KMS key encrypting and decrypting graph data (only set when using a customer-managed key)
