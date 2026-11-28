@@ -2163,6 +2163,23 @@ snowflake.table @defaults("name schemaName rows") {
   createdAt time
   // Time the table was dropped, null while the table still exists
   droppedAt time
+  // Columns of the table
+  //
+  // Name, declared type, nullability and comment of each column, as listed for
+  // the table's schema. No column value is read.
+  columns() []snowflake.table.column
+}
+
+// Column of a Snowflake table
+private snowflake.table.column @defaults("name typeName") {
+  // Column name
+  name string
+  // Declared type of the column, for example VARCHAR(16777216) or NUMBER(38,0)
+  typeName string
+  // Whether the column accepts null values
+  nullable bool
+  // Comment on the column, empty when none is set
+  comment string
 }
 
 // Snowflake external table
