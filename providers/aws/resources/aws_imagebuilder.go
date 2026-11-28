@@ -253,7 +253,6 @@ func (a *mqlAwsImagebuilderDistributionConfiguration) distributions() ([]any, er
 			"region":                                 llx.StringData(region),
 			"amiName":                                llx.StringData(amiName),
 			"amiDescription":                         llx.StringData(amiDescription),
-			"amiKmsKeyId":                            llx.StringData(amiKmsKeyId),
 			"amiTags":                                llx.MapData(toInterfaceMap(amiTags), types.String),
 			"targetAccountIds":                       llx.ArrayData(toInterfaceArr(targetAccountIds), types.String),
 			"launchPermissionUserGroups":             llx.ArrayData(toInterfaceArr(userGroups), types.String),
@@ -266,6 +265,7 @@ func (a *mqlAwsImagebuilderDistributionConfiguration) distributions() ([]any, er
 		if err != nil {
 			return nil, err
 		}
+		mqlDistribution.(*mqlAwsImagebuilderDistributionConfigurationDistribution).amiKmsKeyRef = amiKmsKeyId
 		res = append(res, mqlDistribution)
 	}
 	return res, nil
@@ -351,7 +351,6 @@ func fetchImagebuilderComponent(ctx context.Context, runtime *plugin.Runtime, re
 		"owner":                  llx.StringDataPtr(c.Owner),
 		"supportedOsVersions":    llx.ArrayData(toInterfaceArr(c.SupportedOsVersions), types.String),
 		"encrypted":              llx.BoolData(convert.ToValue(c.Encrypted)),
-		"kmsKeyId":               llx.StringDataPtr(c.KmsKeyId),
 		"data":                   llx.StringData(data),
 		"skippedCleanupSections": llx.ArrayData(toInterfaceArr(imagebuilderSkippedCleanupSections(data)), types.String),
 		"createdAt":              llx.TimeDataPtr(parseAwsTimestampPtr(c.DateCreated)),
@@ -360,7 +359,18 @@ func fetchImagebuilderComponent(ctx context.Context, runtime *plugin.Runtime, re
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlAwsImagebuilderComponent), nil
+	component := res.(*mqlAwsImagebuilderComponent)
+	component.kmsKeyRef = convert.ToValue(c.KmsKeyId)
+	return component, nil
+}
+
+// mqlAwsImagebuilderComponentInternal keeps the key reference kmsKey() resolves.
+type mqlAwsImagebuilderComponentInternal struct {
+	kmsKeyRef string
+}
+
+func (a *mqlAwsImagebuilderComponent) kmsKey() (*mqlAwsKmsKey, error) {
+	return imagebuilderKmsKey(a.MqlRuntime, a.Region.Data, a.kmsKeyRef, &a.KmsKey.State)
 }
 
 func (a *mqlAwsImagebuilderComponent) id() (string, error) {
@@ -704,4 +714,30 @@ func (a *mqlAwsImagebuilderImagePipeline) cleanupBypassed() (bool, error) {
 	}
 	bypassed := recipe.Data.GetCleanupBypassed()
 	return bypassed.Data, bypassed.Error
+}
+
+// mqlAwsImagebuilderDistributionConfigurationDistributionInternal keeps the key
+// reference amiKmsKey() resolves.
+type mqlAwsImagebuilderDistributionConfigurationDistributionInternal struct {
+	amiKmsKeyRef string
+}
+
+func (a *mqlAwsImagebuilderDistributionConfigurationDistribution) amiKmsKey() (*mqlAwsKmsKey, error) {
+	return imagebuilderKmsKey(a.MqlRuntime, a.Region.Data, a.amiKmsKeyRef, &a.AmiKmsKey.State)
+}
+
+// imagebuilderKmsKey resolves a KMS key reference Image Builder reports, which
+// may be a key ARN, an alias ARN, a bare key ID, or a bare alias, to the key in
+// the given Region of the scanned account. An empty reference is null.
+func imagebuilderKmsKey(runtime *plugin.Runtime, region, keyRef string, state *plugin.State) (*mqlAwsKmsKey, error) {
+	if keyRef == "" {
+		*state = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	conn := runtime.Connection.(*connection.AwsConnection)
+	res, err := NewResource(runtime, ResourceAwsKmsKey, kmsKeyRefArgs(region, conn.AccountId(), keyRef))
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsKmsKey), nil
 }

@@ -31385,8 +31385,6 @@ private aws.cloudwatch.logDelivery @defaults("id deliverySourceName deliveryDest
   region string
   // Name of the delivery source the delivery reads from
   deliverySourceName string
-  // ARN of the delivery destination the delivery writes to
-  deliveryDestinationArn string
   // Type of the destination: CWL, S3, FH, or XRAY
   deliveryDestinationType string
   // Log record fields the delivery sends
@@ -37554,7 +37552,9 @@ private aws.imagebuilder.component @defaults("name version type platform region"
   // Whether the component is encrypted
   encrypted bool
   // KMS key that encrypts the component
-  kmsKeyId string
+  //
+  // Null when the component is encrypted with an AWS owned key.
+  kmsKey() aws.kms.key
   // Component document (YAML)
   //
   // Empty for components whose content AWS obfuscates.
@@ -37612,8 +37612,10 @@ private aws.imagebuilder.distributionConfiguration.distribution @defaults("regio
   amiName string
   // Description of the distributed AMI
   amiDescription string
-  // KMS key that encrypts the distributed AMI's snapshots
-  amiKmsKeyId string
+  // KMS key that encrypts the distributed AMI's snapshots in this Region
+  //
+  // Null when the distribution sets no key.
+  amiKmsKey() aws.kms.key
   // Tags applied to the distributed AMI
   amiTags map[string]string
   // Accounts the AMI is copied to

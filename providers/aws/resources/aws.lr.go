@@ -35996,9 +35996,6 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.cloudwatch.logDelivery.deliverySourceName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCloudwatchLogDelivery).GetDeliverySourceName()).ToDataRes(types.String)
 	},
-	"aws.cloudwatch.logDelivery.deliveryDestinationArn": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAwsCloudwatchLogDelivery).GetDeliveryDestinationArn()).ToDataRes(types.String)
-	},
 	"aws.cloudwatch.logDelivery.deliveryDestinationType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCloudwatchLogDelivery).GetDeliveryDestinationType()).ToDataRes(types.String)
 	},
@@ -41645,8 +41642,8 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.imagebuilder.component.encrypted": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsImagebuilderComponent).GetEncrypted()).ToDataRes(types.Bool)
 	},
-	"aws.imagebuilder.component.kmsKeyId": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAwsImagebuilderComponent).GetKmsKeyId()).ToDataRes(types.String)
+	"aws.imagebuilder.component.kmsKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderComponent).GetKmsKey()).ToDataRes(types.Resource("aws.kms.key"))
 	},
 	"aws.imagebuilder.component.data": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsImagebuilderComponent).GetData()).ToDataRes(types.String)
@@ -41696,8 +41693,8 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.imagebuilder.distributionConfiguration.distribution.amiDescription": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).GetAmiDescription()).ToDataRes(types.String)
 	},
-	"aws.imagebuilder.distributionConfiguration.distribution.amiKmsKeyId": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).GetAmiKmsKeyId()).ToDataRes(types.String)
+	"aws.imagebuilder.distributionConfiguration.distribution.amiKmsKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).GetAmiKmsKey()).ToDataRes(types.Resource("aws.kms.key"))
 	},
 	"aws.imagebuilder.distributionConfiguration.distribution.amiTags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).GetAmiTags()).ToDataRes(types.Map(types.String, types.String))
@@ -86235,10 +86232,6 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsCloudwatchLogDelivery).DeliverySourceName, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"aws.cloudwatch.logDelivery.deliveryDestinationArn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAwsCloudwatchLogDelivery).DeliveryDestinationArn, ok = plugin.RawToTValue[string](v.Value, v.Error)
-		return
-	},
 	"aws.cloudwatch.logDelivery.deliveryDestinationType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsCloudwatchLogDelivery).DeliveryDestinationType, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -94415,8 +94408,8 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsImagebuilderComponent).Encrypted, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
-	"aws.imagebuilder.component.kmsKeyId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAwsImagebuilderComponent).KmsKeyId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"aws.imagebuilder.component.kmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderComponent).KmsKey, ok = plugin.RawToTValue[*mqlAwsKmsKey](v.Value, v.Error)
 		return
 	},
 	"aws.imagebuilder.component.data": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -94491,8 +94484,8 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).AmiDescription, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"aws.imagebuilder.distributionConfiguration.distribution.amiKmsKeyId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).AmiKmsKeyId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"aws.imagebuilder.distributionConfiguration.distribution.amiKmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsImagebuilderDistributionConfigurationDistribution).AmiKmsKey, ok = plugin.RawToTValue[*mqlAwsKmsKey](v.Value, v.Error)
 		return
 	},
 	"aws.imagebuilder.distributionConfiguration.distribution.amiTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -209174,12 +209167,11 @@ func (c *mqlAwsCloudwatchLogDeliverySource) GetDeliveries() *plugin.TValue[[]any
 type mqlAwsCloudwatchLogDelivery struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlAwsCloudwatchLogDeliveryInternal it will be used here
+	mqlAwsCloudwatchLogDeliveryInternal
 	Id                         plugin.TValue[string]
 	Arn                        plugin.TValue[string]
 	Region                     plugin.TValue[string]
 	DeliverySourceName         plugin.TValue[string]
-	DeliveryDestinationArn     plugin.TValue[string]
 	DeliveryDestinationType    plugin.TValue[string]
 	RecordFields               plugin.TValue[[]any]
 	FieldDelimiter             plugin.TValue[string]
@@ -209241,10 +209233,6 @@ func (c *mqlAwsCloudwatchLogDelivery) GetRegion() *plugin.TValue[string] {
 
 func (c *mqlAwsCloudwatchLogDelivery) GetDeliverySourceName() *plugin.TValue[string] {
 	return &c.DeliverySourceName
-}
-
-func (c *mqlAwsCloudwatchLogDelivery) GetDeliveryDestinationArn() *plugin.TValue[string] {
-	return &c.DeliveryDestinationArn
 }
 
 func (c *mqlAwsCloudwatchLogDelivery) GetDeliveryDestinationType() *plugin.TValue[string] {
@@ -230580,7 +230568,7 @@ func (c *mqlAwsImagebuilderImageRecipe) GetCleanupBypassed() *plugin.TValue[bool
 type mqlAwsImagebuilderComponent struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlAwsImagebuilderComponentInternal it will be used here
+	mqlAwsImagebuilderComponentInternal
 	Arn                    plugin.TValue[string]
 	Name                   plugin.TValue[string]
 	Version                plugin.TValue[string]
@@ -230592,7 +230580,7 @@ type mqlAwsImagebuilderComponent struct {
 	Owner                  plugin.TValue[string]
 	SupportedOsVersions    plugin.TValue[[]any]
 	Encrypted              plugin.TValue[bool]
-	KmsKeyId               plugin.TValue[string]
+	KmsKey                 plugin.TValue[*mqlAwsKmsKey]
 	Data                   plugin.TValue[string]
 	SkippedCleanupSections plugin.TValue[[]any]
 	CreatedAt              plugin.TValue[*time.Time]
@@ -230680,8 +230668,20 @@ func (c *mqlAwsImagebuilderComponent) GetEncrypted() *plugin.TValue[bool] {
 	return &c.Encrypted
 }
 
-func (c *mqlAwsImagebuilderComponent) GetKmsKeyId() *plugin.TValue[string] {
-	return &c.KmsKeyId
+func (c *mqlAwsImagebuilderComponent) GetKmsKey() *plugin.TValue[*mqlAwsKmsKey] {
+	return plugin.GetOrCompute[*mqlAwsKmsKey](&c.KmsKey, func() (*mqlAwsKmsKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.imagebuilder.component", c.__id, "kmsKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsKmsKey), nil
+			}
+		}
+
+		return c.kmsKey()
+	})
 }
 
 func (c *mqlAwsImagebuilderComponent) GetData() *plugin.TValue[string] {
@@ -230807,11 +230807,11 @@ func (c *mqlAwsImagebuilderDistributionConfiguration) GetPublic() *plugin.TValue
 type mqlAwsImagebuilderDistributionConfigurationDistribution struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlAwsImagebuilderDistributionConfigurationDistributionInternal it will be used here
+	mqlAwsImagebuilderDistributionConfigurationDistributionInternal
 	Region                                 plugin.TValue[string]
 	AmiName                                plugin.TValue[string]
 	AmiDescription                         plugin.TValue[string]
-	AmiKmsKeyId                            plugin.TValue[string]
+	AmiKmsKey                              plugin.TValue[*mqlAwsKmsKey]
 	AmiTags                                plugin.TValue[map[string]any]
 	TargetAccountIds                       plugin.TValue[[]any]
 	LaunchPermissionUserGroups             plugin.TValue[[]any]
@@ -230871,8 +230871,20 @@ func (c *mqlAwsImagebuilderDistributionConfigurationDistribution) GetAmiDescript
 	return &c.AmiDescription
 }
 
-func (c *mqlAwsImagebuilderDistributionConfigurationDistribution) GetAmiKmsKeyId() *plugin.TValue[string] {
-	return &c.AmiKmsKeyId
+func (c *mqlAwsImagebuilderDistributionConfigurationDistribution) GetAmiKmsKey() *plugin.TValue[*mqlAwsKmsKey] {
+	return plugin.GetOrCompute[*mqlAwsKmsKey](&c.AmiKmsKey, func() (*mqlAwsKmsKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.imagebuilder.distributionConfiguration.distribution", c.__id, "amiKmsKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsKmsKey), nil
+			}
+		}
+
+		return c.amiKmsKey()
+	})
 }
 
 func (c *mqlAwsImagebuilderDistributionConfigurationDistribution) GetAmiTags() *plugin.TValue[map[string]any] {

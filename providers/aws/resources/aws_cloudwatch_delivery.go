@@ -82,7 +82,6 @@ func (a *mqlAwsCloudwatch) logDeliveries() ([]any, error) {
 					"arn":                        llx.StringDataPtr(d.Arn),
 					"region":                     llx.StringData(region),
 					"deliverySourceName":         llx.StringDataPtr(d.DeliverySourceName),
-					"deliveryDestinationArn":     llx.StringDataPtr(d.DeliveryDestinationArn),
 					"deliveryDestinationType":    llx.StringData(string(d.DeliveryDestinationType)),
 					"recordFields":               llx.ArrayData(toInterfaceArr(d.RecordFields), types.String),
 					"fieldDelimiter":             llx.StringDataPtr(d.FieldDelimiter),
@@ -93,6 +92,7 @@ func (a *mqlAwsCloudwatch) logDeliveries() ([]any, error) {
 				if err != nil {
 					return nil, err
 				}
+				mqlDelivery.(*mqlAwsCloudwatchLogDelivery).deliveryDestinationArn = convert.ToValue(d.DeliveryDestinationArn)
 				res = append(res, mqlDelivery)
 			}
 		}
@@ -258,7 +258,7 @@ func (a *mqlAwsCloudwatchLogDelivery) deliveryDestination() (*mqlAwsCloudwatchLo
 	}
 	for _, raw := range destinations.Data {
 		d, ok := raw.(*mqlAwsCloudwatchLogDeliveryDestination)
-		if ok && d.Arn.Data == a.DeliveryDestinationArn.Data {
+		if ok && a.deliveryDestinationArn != "" && d.Arn.Data == a.deliveryDestinationArn {
 			return d, nil
 		}
 	}
@@ -296,4 +296,10 @@ func (a *mqlAwsCloudwatchLogDeliveryDestination) role() (*mqlAwsIamRole, error) 
 		return nil, err
 	}
 	return res.(*mqlAwsIamRole), nil
+}
+
+// mqlAwsCloudwatchLogDeliveryInternal keeps the destination ARN that
+// deliveryDestination() resolves.
+type mqlAwsCloudwatchLogDeliveryInternal struct {
+	deliveryDestinationArn string
 }

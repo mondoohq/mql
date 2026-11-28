@@ -2554,7 +2554,6 @@ aws.cloudwatch.logDeliveries 14.15.1
 aws.cloudwatch.logDelivery 14.15.1
 aws.cloudwatch.logDelivery.arn 14.15.1
 aws.cloudwatch.logDelivery.deliveryDestination 14.15.1
-aws.cloudwatch.logDelivery.deliveryDestinationArn 14.15.1
 aws.cloudwatch.logDelivery.deliveryDestinationType 14.15.1
 aws.cloudwatch.logDelivery.deliverySource 14.15.1
 aws.cloudwatch.logDelivery.deliverySourceName 14.15.1
@@ -7245,7 +7244,7 @@ aws.imagebuilder.component.createdAt 14.15.1
 aws.imagebuilder.component.data 14.15.1
 aws.imagebuilder.component.description 14.15.1
 aws.imagebuilder.component.encrypted 14.15.1
-aws.imagebuilder.component.kmsKeyId 14.15.1
+aws.imagebuilder.component.kmsKey 14.15.1
 aws.imagebuilder.component.name 14.15.1
 aws.imagebuilder.component.owner 14.15.1
 aws.imagebuilder.component.platform 14.15.1
@@ -7262,7 +7261,7 @@ aws.imagebuilder.distributionConfiguration.createdAt 14.15.1
 aws.imagebuilder.distributionConfiguration.description 14.15.1
 aws.imagebuilder.distributionConfiguration.distribution 14.15.1
 aws.imagebuilder.distributionConfiguration.distribution.amiDescription 14.15.1
-aws.imagebuilder.distributionConfiguration.distribution.amiKmsKeyId 14.15.1
+aws.imagebuilder.distributionConfiguration.distribution.amiKmsKey 14.15.1
 aws.imagebuilder.distributionConfiguration.distribution.amiName 14.15.1
 aws.imagebuilder.distributionConfiguration.distribution.amiTags 14.15.1
 aws.imagebuilder.distributionConfiguration.distribution.launchPermissionOrganizationArns 14.15.1
