@@ -3,8 +3,8 @@
 The `ibm` provider connects to an [IBM Cloud](https://cloud.ibm.com/) account and inventories its
 IAM configuration and users, resource groups and instances, VPC infrastructure, Power Virtual Server
 workspaces, Cloud Object Storage buckets, Key Protect keys, Activity Tracker Event Routing, IBM
-Cloud Databases, IBM Cloud Kubernetes Service and Red Hat OpenShift on IBM Cloud clusters, and Cloud
-Internet Services through read-only API calls. Use it to audit account settings such as MFA and
+Cloud Databases, IBM Cloud Kubernetes Service and Red Hat OpenShift on IBM Cloud clusters, Cloud
+Internet Services, Secrets Manager, and context-based restrictions through read-only API calls. Use it to audit account settings such as MFA and
 session limits, who holds which roles, network exposure in VPCs, TLS and firewall settings at the
 edge, and Power Virtual Server workloads.
 
@@ -13,7 +13,10 @@ edge, and Power Virtual Server workloads.
 An IBM Cloud API key. A key whose identity has the Viewer role on IAM Identity, IAM Access Groups,
 and the services you query, plus Reader on VPC Infrastructure, Power Virtual Server, Key Protect,
 Activity Tracker Event Routing, IBM Cloud Databases, and Internet Services, and Viewer on
-Kubernetes Service, is enough. Reading a bucket's firewall and activity tracking settings needs the
+Kubernetes Service, is enough. Reading Secrets Manager secrets and its Event Notifications
+connection needs the Reader role on Secrets Manager; context-based restrictions rules and zones
+need Viewer on Context-based restrictions; the external identity interaction setting needs Viewer
+on IAM Access Management. Reading a bucket's firewall and activity tracking settings needs the
 Manager role on Cloud Object Storage. Listing every user of the account (`ibm.iamUsers`) needs the
 Viewer role on User Management; without it, IBM Cloud may return only the key's own user when the
 account lets users see each other. The provider only reads.
@@ -259,6 +262,54 @@ ibm.powerWorkspaces: [
   }
 ]
 ```
+
+**Power Virtual Server network security groups open to the internet**
+
+```shell
+mql> ibm.powerWorkspaces { name networkSecurityGroupsEnabled defaultNetworkSecurityGroup { rules { action remoteType } } }
+mql> ibm.powerWorkspaces { networkSecurityGroups { name openIngressRules.where(destinationPortMin <= 22 && destinationPortMax >= 22) { protocol remoteCidrs } } }
+```
+
+Network security group rules govern inbound traffic only. A rule without a port range covers ports
+1 to 65535. `remoteCidrs` resolves the rule's remote: the default network address group is
+`0.0.0.0/0`, and a network address group is its CIDR blocks. `openIngressRules` are the allow rules
+whose remote covers any address.
+
+**File shares without a customer-managed key**
+
+```shell
+mql> ibm.vpcShares.where(encryption != "user_managed") { name zone }
+mql> ibm.vpcShares { name encryptionKeyService mountTargets { name transitEncryption } }
+```
+
+`encryptionKeyService` is `kms` for a Key Protect key (bring your own key) and `hs-crypto` for a
+Hyper Protect Crypto Services key (keep your own key).
+
+**Secrets Manager: certificates that do not renew, and lifecycle notifications**
+
+```shell
+mql> ibm.secretsManagerInstances { name notificationsEnabled secrets.where(issuerType != "" && !autoRotate) { name type expirationDate } }
+```
+
+**Databases not covered by an enforced context-based restrictions rule**
+
+```shell
+mql> ibm.databases.where(cbrRules.where(enforcementMode == "enabled").length == 0) { name service }
+mql> ibm.cbrRules { description enforcementMode apiTypes resources { serviceName serviceInstance } contexts { zones { name addresses { type value } } } }
+```
+
+`cbrRules` of a database are the rules with a resource that covers the whole deployment: its service
+name, and its instance, region, and resource group when the rule names them. A rule narrowed to part
+of a deployment (`resourceType`) does not cover it.
+
+**External identity interactions**
+
+```shell
+mql> ibm.iamAccountSettings.externalIdentityInteraction { user serviceId service }
+```
+
+Each identity type of other accounts is `enabled` (IBM Cloud's default), `monitor` (report only), or
+`limited`.
 
 ## Verification
 

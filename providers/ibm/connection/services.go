@@ -16,7 +16,9 @@ import (
 	"github.com/IBM/keyprotect-go-client/ibmkeyprotectapiv2"
 	"github.com/IBM/platform-services-go-sdk/accountmanagementv4"
 	"github.com/IBM/platform-services-go-sdk/atrackerv2"
+	"github.com/IBM/platform-services-go-sdk/contextbasedrestrictionsv1"
 	"github.com/IBM/platform-services-go-sdk/usermanagementv1"
+	"github.com/IBM/secrets-manager-go-sdk/v2/secretsmanagerv2"
 )
 
 // iamTokenURL is where the Cloud Object Storage S3 client exchanges the API
@@ -186,4 +188,39 @@ func (c *IbmConnection) KubernetesService() (*core.BaseService, error) {
 		return nil, err
 	}
 	return v.(*core.BaseService), nil
+}
+
+// SecretsManager returns the Secrets Manager client for an instance's API
+// endpoint, such as https://<guid>.us-south.secrets-manager.appdomain.cloud.
+// Every instance has its own endpoint.
+func (c *IbmConnection) SecretsManager(url string) (*secretsmanagerv2.SecretsManagerV2, error) {
+	v, err := c.Memo("secretsManager/"+url, func() (any, error) {
+		svc, err := secretsmanagerv2.NewSecretsManagerV2(&secretsmanagerv2.SecretsManagerV2Options{Authenticator: c.auth, URL: url})
+		if err != nil {
+			return nil, err
+		}
+		configure(svc.Service)
+		return svc, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return v.(*secretsmanagerv2.SecretsManagerV2), nil
+}
+
+// ContextBasedRestrictions returns the context-based restrictions client,
+// which reads the account's rules and network zones from the global API.
+func (c *IbmConnection) ContextBasedRestrictions() (*contextbasedrestrictionsv1.ContextBasedRestrictionsV1, error) {
+	v, err := c.Memo("cbr", func() (any, error) {
+		svc, err := contextbasedrestrictionsv1.NewContextBasedRestrictionsV1(&contextbasedrestrictionsv1.ContextBasedRestrictionsV1Options{Authenticator: c.auth})
+		if err != nil {
+			return nil, err
+		}
+		configure(svc.Service)
+		return svc, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return v.(*contextbasedrestrictionsv1.ContextBasedRestrictionsV1), nil
 }

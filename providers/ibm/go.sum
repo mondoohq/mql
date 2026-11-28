@@ -20,8 +20,8 @@ github.com/IBM-Cloud/power-go-client v1.17.0 h1:zlVASoThC8hdugGEqSMQnsGjb8j2A6JS
 github.com/IBM-Cloud/power-go-client v1.17.0/go.mod h1:IoC+bOzXTLLlvw35CgHSUdVOpncKWrMCmIg8w7aBCVs=
 github.com/IBM/cloud-databases-go-sdk v0.8.3 h1:HFwPKmEoFkapALeUmBtFEE0Xvz41vqVEcaneX+YHMkQ=
 github.com/IBM/cloud-databases-go-sdk v0.8.3/go.mod h1:exrHZg9ubo5/yjYfozrWMyrlzT8fmEgyGOu49G87m2Y=
-github.com/IBM/go-sdk-core/v5 v5.25.3 h1:dL7r1nLoi3xPtX0MdMl0FA0WAM6E6oz40KIu4LwEloI=
-github.com/IBM/go-sdk-core/v5 v5.25.3/go.mod h1:83BKM+mYr4eUlkiCJWf36wjF7PSdOOAxeIjTfoSCnTg=
+github.com/IBM/go-sdk-core/v5 v5.25.4 h1:Xmlv8hvj6PdJQpPcACHoDOqPGWa3jf6UUWCFAMiE1F4=
+github.com/IBM/go-sdk-core/v5 v5.25.4/go.mod h1:83BKM+mYr4eUlkiCJWf36wjF7PSdOOAxeIjTfoSCnTg=
 github.com/IBM/ibm-cos-sdk-go v1.15.2 h1:5SXCSNgFKAiPINaRtZ+t/eRAD5RLjuDi/apTCl79Z40=
 github.com/IBM/ibm-cos-sdk-go v1.15.2/go.mod h1:+06KEpXznSyE8u3G4Ufgtor1Mnop0odPDvQaZpd9NjY=
 github.com/IBM/ibm-cos-sdk-go-config/v2 v2.3.1 h1:VUMbNxrI7wQtAH8au6FJqx1w63nswpTuhJeCmJTDB8Y=
@@ -32,6 +32,8 @@ github.com/IBM/networking-go-sdk v0.56.2 h1:H1CwS9Zgfdo9/BJdihTxR4jIJY2CE69sKT2d
 github.com/IBM/networking-go-sdk v0.56.2/go.mod h1:oEtqZl4f5U7DVC+1mREFK8X17z6NXKy4aG9UOb0g6/E=
 github.com/IBM/platform-services-go-sdk v0.103.6 h1:ogWdCTrPwzONcOys3xKdEpUE2g4eSrdNsQXk9lPAGJ4=
 github.com/IBM/platform-services-go-sdk v0.103.6/go.mod h1:wKEk+5xGTkibLfETaoOebEBVv9CazbpuqMzccL6XEDc=
+github.com/IBM/secrets-manager-go-sdk/v2 v2.0.25 h1:G1SowzQett5N58ROXU3pkQETUwvbg6qsdUuCcmG0fyE=
+github.com/IBM/secrets-manager-go-sdk/v2 v2.0.25/go.mod h1:F2uu3JOIzhnJWeLaS3EcpWIwJChe+dTHfyMSB+tpppE=
 github.com/IBM/vpc-go-sdk v0.93.0 h1:wfWfA3B4LLWR1Y97yWaZIM0W+WBj1vIYwA6sfZfeR0E=
 github.com/IBM/vpc-go-sdk v0.93.0/go.mod h1:ePHjyAYteLahhPcly7r8K5os6trcxrOcYNAo32TTsZ0=
 github.com/Masterminds/semver v1.5.0 h1:H65muMkzWKEuNDnfl9d70GUjFniHKHRbFPGBuZ3QEww=
@@ -406,8 +408,8 @@ github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 h1:C3w9PqII01/Oq
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822/go.mod h1:+n7T8mK8HuQTcFwEeznm/DIxMOiR9yIdICNftLE1DvQ=
 github.com/ncruces/go-strftime v1.1.0 h1:vtPmPWMkb539RGV9WpWT9EwJGvrOCKvMNI4obWL47Hk=
 github.com/ncruces/go-strftime v1.1.0/go.mod h1:yVaq7iwCN09vHRrKBrrflXT0M9tTMG2KmZ9Fj7xeG/g=
-github.com/nxadm/tail v1.4.8 h1:nPr65rt6Y5JFSKQO7qToXr7pePgD6Gwiw05lkbyAQTE=
-github.com/nxadm/tail v1.4.8/go.mod h1:+ncqLTQzXmGhMZNUePPaPqPvBxHAIsmXswZKocGu+AU=
+github.com/nxadm/tail v1.4.11 h1:8feyoE3OzPrcshW5/MJ4sGESc5cqmGkGCWlco4l0bqY=
+github.com/nxadm/tail v1.4.11/go.mod h1:OTaG3NK980DZzxbRq6lEuzgU+mug70nY11sMd4JXXHc=
 github.com/oklog/run v1.2.0 h1:O8x3yXwah4A73hJdlrwo/2X6J62gE5qTMusH0dvz60E=
 github.com/oklog/run v1.2.0/go.mod h1:mgDbKRSwPhJfesJ4PntqFUbKQRZ50NgmZTSPlFA0YFk=
 github.com/oklog/ulid/v2 v2.1.2 h1:IEclFb9JNvzYA6MW2SCxbLzcHTVsfqm3PrqGQJH5zec=

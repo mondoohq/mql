@@ -7,12 +7,13 @@ go 1.27.4
 require (
 	github.com/IBM-Cloud/power-go-client v1.17.0
 	github.com/IBM/cloud-databases-go-sdk v0.8.3
-	github.com/IBM/go-sdk-core/v5 v5.25.3
+	github.com/IBM/go-sdk-core/v5 v5.25.4
 	github.com/IBM/ibm-cos-sdk-go v1.15.2
 	github.com/IBM/ibm-cos-sdk-go-config/v2 v2.3.1
 	github.com/IBM/keyprotect-go-client v1.1.0
 	github.com/IBM/networking-go-sdk v0.56.2
 	github.com/IBM/platform-services-go-sdk v0.103.6
+	github.com/IBM/secrets-manager-go-sdk/v2 v2.0.25
 	github.com/IBM/vpc-go-sdk v0.93.0
 	github.com/go-openapi/runtime v0.33.4
 	github.com/go-openapi/strfmt v0.27.4
