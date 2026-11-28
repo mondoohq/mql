@@ -65,21 +65,10 @@ func (p ProcessEntry) ToOSProcess() *OSProcess {
 		executablePath = args[0]
 	}
 
-	// Take the last path segment without splitting the whole path first, which
-	// allocated a slice of every segment per process just to read one of them.
-	// Deliberately not path.Base: it maps "" to "." and "/usr/bin/" to "bin",
-	// where this reports "" for both.
-	executable := executablePath
-	if name, ok := kernelThreadName(executablePath); ok {
-		executable = name
-	} else if _, after, ok := strings.CutLast(executablePath, "/"); ok {
-		executable = after
-	}
-
 	return &OSProcess{
 		Pid:        p.Pid,
 		Command:    p.Command,
-		Executable: executable,
+		Executable: executableFromPath(executablePath),
 		State:      "",
 	}
 }
@@ -93,6 +82,26 @@ func kernelThreadName(arg string) (string, bool) {
 		return "", false
 	}
 	return arg[1 : len(arg)-1], true
+}
+
+// executableFromPath returns the executable name of an executable path: the
+// bracketed name of a kernel thread, otherwise the last path segment.
+//
+// It takes the segment without splitting the whole path first, which
+// allocated a slice of every segment per process just to read one of them.
+// The returned string shares the memory of the argument, so the function
+// allocates nothing at all.
+//
+// Deliberately not path.Base: that maps "" to "." and "/usr/bin/" to "bin",
+// where this reports "" for both.
+func executableFromPath(executablePath string) string {
+	if name, ok := kernelThreadName(executablePath); ok {
+		return name
+	}
+	if _, after, ok := strings.CutLast(executablePath, "/"); ok {
+		return after
+	}
+	return executablePath
 }
 
 func ParseLinuxPsResult(input io.Reader) ([]*ProcessEntry, error) {
