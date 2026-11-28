@@ -1,4 +1,4 @@
-# ADR 058: External-access details on IAM Access Analyzer findings, and external-access edges on data stores
+# ADR 066: External-access details on IAM Access Analyzer findings, and external-access edges on data stores
 
 ## Status
 
