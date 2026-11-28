@@ -71,10 +71,13 @@ func TestDefaultProvidersIncludesExternalProviders(t *testing.T) {
 	external := []string{
 		"ai",
 		"aoscx",
+		"apic",
 		"bigip",
 		"checkpoint",
 		"db2",
 		"fortios",
+		"ibmi",
+		"ibmz",
 		"junos",
 		"netscaler",
 		"networkdevices",
