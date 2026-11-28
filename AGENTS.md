@@ -274,9 +274,9 @@ A shorthand means one thing across all providers, because the CLI's pre-scan put
 ## 7. Commits
 
 Start every commit and PR title with one of:
-🛑 breaking · 🐛 bugfix · 🧹 cleanup/internals · ⚡ speed · 📄 docs · ✨⭐🌟🌠 features (smaller to larger) · 🌈 visual · 🐎 race fix · 🌙 MQL changes · 🟢 fix tests · 🎫 auth · 🐳 container
+🛑 breaking · 🐛 bugfix · 🧹 cleanup/internals · ⚡ speed · 📄 docs · ✨⭐🌠 features (smaller to larger) · 🌟 headline feature, one the monthly release announcement would list as a top-level item (use it sparingly) · 🌈 visual · 🐎 race fix · 🌙 MQL changes · 🟢 fix tests · 🎫 auth · 🐳 container
 
-In `git commit -m`, `gh pr create --title`, and commit-message HEREDOCs. Pick the dominant kind when a change spans several.
+In `git commit -m`, `gh pr create --title`, and commit-message HEREDOCs. Pick the dominant kind when a change spans several. 🎉 is the provider release prefix that the release tooling writes; don't use it for other changes.
 
 No Claude session IDs in git: no `Claude-Session:` trailer, no `claude.ai/code/session_…` URL in a commit message, no session URL in a PR body. This overrides any harness default. (`Co-Authored-By: Claude …` is fine.)
 
