@@ -18,6 +18,11 @@ azure.entraPrincipal.userType 14.11.1
 azure.managementGroup 13.33.8
 azure.managementGroup.children 13.33.8
 azure.managementGroup.displayName 13.33.8
+azure.managementGroup.hierarchySettings 14.14.1
+azure.managementGroup.hierarchySettings.defaultManagementGroup 14.14.1
+azure.managementGroup.hierarchySettings.id 14.14.1
+azure.managementGroup.hierarchySettings.requireAuthorizationForGroupCreation 14.14.1
+azure.managementGroup.hierarchySettings.tenantId 14.14.1
 azure.managementGroup.id 13.33.8
 azure.managementGroup.isRoot 13.33.8
 azure.managementGroup.name 13.33.8
@@ -1087,6 +1092,14 @@ azure.subscription.cloudDefenderService.defenderForStorageAccounts.replacedBy 11
 azure.subscription.cloudDefenderService.defenderForStorageAccounts.resourcesCoverageStatus 11.6.1
 azure.subscription.cloudDefenderService.defenderForStorageAccounts.subPlan 11.6.1
 azure.subscription.cloudDefenderService.defenderForStorageAccounts.subscriptionId 11.6.1
+azure.subscription.cloudDefenderService.easmWorkspace 14.14.1
+azure.subscription.cloudDefenderService.easmWorkspace.dataPlaneEndpoint 14.14.1
+azure.subscription.cloudDefenderService.easmWorkspace.id 14.14.1
+azure.subscription.cloudDefenderService.easmWorkspace.location 14.14.1
+azure.subscription.cloudDefenderService.easmWorkspace.name 14.14.1
+azure.subscription.cloudDefenderService.easmWorkspace.provisioningState 14.14.1
+azure.subscription.cloudDefenderService.easmWorkspace.tags 14.14.1
+azure.subscription.cloudDefenderService.easmWorkspaces 14.14.1
 azure.subscription.cloudDefenderService.forAIServices 14.5.4
 azure.subscription.cloudDefenderService.forAppServices 11.6.3
 azure.subscription.cloudDefenderService.forContainers 11.6.3
@@ -8226,3 +8239,9 @@ azure.subscription.webService.staticSite.tags 13.10.2
 azure.subscription.webService.staticSite.userProvidedFunctionAppCount 13.10.2
 azure.subscription.webService.staticSites 13.10.2
 azure.subscription.webService.subscriptionId 9.0.1
+azure.subscriptionTenantPolicy 14.14.1
+azure.subscriptionTenantPolicy.blockSubscriptionsIntoTenant 14.14.1
+azure.subscriptionTenantPolicy.blockSubscriptionsLeavingTenant 14.14.1
+azure.subscriptionTenantPolicy.exemptedPrincipals 14.14.1
+azure.subscriptionTenantPolicy.id 14.14.1
+azure.subscriptionTenantPolicy.tenantId 14.14.1

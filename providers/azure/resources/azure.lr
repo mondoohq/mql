@@ -25,6 +25,47 @@ azure {
   // access, which is common for service principals scoped to a single
   // subscription.
   managementGroups() []azure.managementGroup
+  // Tenant-wide policy on moving subscriptions into and out of the tenant
+  //
+  // The subscription policies an administrator sets in the portal under
+  // Subscriptions > Manage policies, which decide whether a subscription
+  // may be transferred to another Microsoft Entra tenant, or brought in
+  // from one, and which principals are exempt. Read from the tenant the
+  // credential signs in to, so it is the same for every subscription the
+  // scan reaches. A tenant that never set the policy reports the effective
+  // default, both directions permitted and no exemptions, never null.
+  subscriptionTenantPolicy() azure.subscriptionTenantPolicy
+}
+
+// Azure subscription tenant policy
+//
+// The tenant's rules for subscription transfers between Microsoft Entra
+// tenants. A subscription that leaves the tenant takes its resources and
+// their data out of the tenant's governance; one that enters brings
+// resources, billing, and possibly unvetted identities in. Setting both
+// blocks to true is what "Permit no one" means in the portal, with
+// exemptedPrincipals as the only accounts still allowed to move a
+// subscription either way.
+private azure.subscriptionTenantPolicy @defaults("blockSubscriptionsLeavingTenant blockSubscriptionsIntoTenant") {
+  // Resource ID of the policy (providers/Microsoft.Subscription/policies/default)
+  id string
+  // Tenant the policy applies to
+  tenantId string
+  // Whether subscriptions are blocked from leaving the tenant
+  //
+  // False when the tenant never set a policy, which lets any user with
+  // owner access to a subscription transfer it to another tenant.
+  blockSubscriptionsLeavingTenant bool
+  // Whether subscriptions are blocked from entering the tenant
+  //
+  // False when the tenant never set a policy, which lets a subscription
+  // from another tenant be moved into this one.
+  blockSubscriptionsIntoTenant bool
+  // Object IDs of the principals exempt from both blocks
+  //
+  // Users who may still move a subscription out of or into the tenant
+  // while the blocks are on. Empty when no one is exempt.
+  exemptedPrincipals []string
 }
 
 // Azure management group
@@ -83,6 +124,44 @@ azure.managementGroup @defaults("name displayName subscriptionCount") {
   // the subscription inherits are visible here; a sibling branch of the
   // hierarchy the subscription does not sit under will report none.
   policyAssignments() []azure.subscription.policy.assignment
+  // Hierarchy settings of the tenant this group belongs to
+  //
+  // Hierarchy settings exist only on the tenant root group and apply to
+  // the whole tree, so every group in a tenant reports the same settings,
+  // read from its root group. A tenant that never changed them reports
+  // the effective defaults: new subscriptions land in the root group and
+  // any user may create management groups. Reading them needs
+  // Microsoft.Management/managementGroups/settings/read on the root group.
+  hierarchySettings() azure.managementGroup.hierarchySettings
+}
+
+// Azure management group hierarchy settings
+//
+// Tenant-wide settings of the management group hierarchy, set on the
+// tenant root group: where newly created or newly transferred
+// subscriptions are placed, and whether creating a management group
+// requires permission on the root group. Without a default group, new
+// subscriptions land in the root group and only inherit what is assigned
+// there; without the authorization requirement, any user in the tenant
+// can create management groups under the root.
+private azure.managementGroup.hierarchySettings @defaults("defaultManagementGroup requireAuthorizationForGroupCreation") {
+  // Resource ID of the settings on the tenant root group
+  id string
+  // Tenant the hierarchy belongs to
+  tenantId string
+  // Resource ID of the management group new subscriptions are placed in
+  //
+  // The tenant root group's ID when no default group was set, which is
+  // where Azure places new subscriptions in that case, for example
+  // `/providers/Microsoft.Management/managementGroups/<tenant ID>`.
+  defaultManagementGroup string
+  // Whether creating a management group requires write access on the root group
+  //
+  // When true, a user needs
+  // Microsoft.Management/managementGroups/write on the tenant root group
+  // to create a new group directly under it. False when the setting was
+  // never changed, which lets any user create management groups.
+  requireAuthorizationForGroupCreation bool
 }
 
 // Microsoft Entra principal
@@ -12329,6 +12408,38 @@ private azure.subscription.cloudDefenderService @defaults("forServers.enabled fo
   // An empty list means no recommendation is routed to an owner with a due
   // date, so unhealthy assessments have no one accountable for fixing them.
   governanceRules() []azure.subscription.cloudDefenderService.governanceRule
+  // Microsoft Defender External Attack Surface Management (EASM) workspaces
+  //
+  // Defender EASM is enabled in a subscription by creating a workspace,
+  // which then discovers and inventories the organization's internet-facing
+  // assets. Empty when the subscription has no workspace, including when
+  // the Microsoft.Easm resource provider was never registered.
+  easmWorkspaces() []azure.subscription.cloudDefenderService.easmWorkspace
+}
+
+// Microsoft Defender External Attack Surface Management workspace
+//
+// A Defender EASM workspace (Microsoft.Easm/workspaces): the resource that
+// turns on external attack surface discovery for the organization and holds
+// the inventory of its internet-facing assets. A workspace whose
+// provisioningState is not "Succeeded" is not running discovery.
+private azure.subscription.cloudDefenderService.easmWorkspace @defaults("name location provisioningState") {
+  // Workspace resource ID
+  id string
+  // Workspace name
+  name string
+  // Azure region of the workspace
+  location string
+  // Workspace tags
+  tags map[string]string
+  // Provisioning state
+  //
+  // "Succeeded" once the workspace is provisioned; "Failed" or "Canceled"
+  // when provisioning did not complete, or a transitional state while it
+  // is still being created, updated, or deleted.
+  provisioningState string
+  // Data plane endpoint used to query the workspace's asset inventory
+  dataPlaneEndpoint string
 }
 
 // Microsoft Defender for Cloud governance rule

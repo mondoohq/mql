@@ -1850,6 +1850,10 @@ var azurePathOperationOverrides = map[string]string{
 	// The workspace Entra admin is read at administrators/activeDirectory;
 	// Synapse registers the operation without the activeDirectory segment.
 	"microsoft.synapse/workspaces/administrators/activedirectory/read": "Microsoft.Synapse/workspaces/administrators/read",
+	// The tenant's subscription policy is read at policies/default; the
+	// path convention drops the "default" singleton segment, the registered
+	// name keeps it.
+	"microsoft.subscription/policies/read": "Microsoft.Subscription/Policies/default/read",
 }
 
 // azureUnregisteredOperations lists, lower-cased, the operations the provider
@@ -2141,6 +2145,8 @@ func isAzureReadMethod(name string) bool {
 		"NewGetInSubscriptionPager",
 		// Non-paged list variants (some SDKs return the full list in one call)
 		"ListByServer", "ListBySubscription",
+		// The tenant's subscription policy, a singleton read.
+		"GetPolicyForTenant",
 	}
 	if slices.Contains(readMethods, name) {
 		return true
