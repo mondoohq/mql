@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	gosnowflake "github.com/snowflakedb/gosnowflake/v2"
+	"go.mondoo.com/mql/llx"
 )
 
 func TestIsAccessDenied(t *testing.T) {
@@ -86,5 +87,36 @@ func TestErrSchemaNotFoundIsMatchable(t *testing.T) {
 	if got := notFound.Error(); got == "" ||
 		!errors.Is(notFound, errSchemaNotFound) {
 		t.Errorf("unexpected message %q", got)
+	}
+}
+
+func TestClassifySnowflakeUsageError(t *testing.T) {
+	// Synthetic: driver errors shaped as the driver reports them; the number
+	// 606 is from Snowflake's error reference, not measured.
+	noWarehouse := &gosnowflake.SnowflakeError{
+		Number:   606,
+		SQLState: "57P03",
+		Message:  "No active warehouse selected in the current session.",
+	}
+	err := classifySnowflakeUsageError(noWarehouse)
+	if !errors.Is(err, llx.ErrNotApplicable) {
+		t.Errorf("no warehouse: got %v, want NotApplicable", err)
+	}
+
+	denied := classifySnowflakeUsageError(&gosnowflake.SnowflakeError{Number: 3001, SQLState: "42501"})
+	if !errors.Is(denied, llx.ErrForbidden) {
+		t.Errorf("denied: got %v, want Forbidden", denied)
+	}
+
+	transport := &net.OpError{Op: "dial", Err: errors.New("connection refused")}
+	got := classifySnowflakeUsageError(transport)
+	if got != error(transport) {
+		t.Errorf("transport error must stay unclassified, got %v", got)
+	}
+	if k := llx.KindOf(got); k != llx.ErrorKind_ERROR_KIND_UNSPECIFIED {
+		t.Errorf("transport error got kind %v", k)
+	}
+	if classifySnowflakeUsageError(nil) != nil {
+		t.Error("nil must stay nil")
 	}
 }

@@ -5,8 +5,10 @@ package resources
 
 import (
 	"errors"
+	"fmt"
 
 	gosnowflake "github.com/snowflakedb/gosnowflake/v2"
+	"go.mondoo.com/mql/llx"
 )
 
 // sqlStateInsufficientPrivilege is the SQL standard SQLSTATE for a statement
@@ -32,4 +34,39 @@ func isAccessDenied(err error) bool {
 		return false
 	}
 	return sfErr.SQLState == sqlStateInsufficientPrivilege
+}
+
+// snowflakeErrNoWarehouse is Snowflake error 000606, "No active warehouse
+// selected in the current session", taken from Snowflake's error reference and
+// not measured here. Account usage views run on a warehouse, so a connection
+// without one cannot read them at all.
+const snowflakeErrNoWarehouse = 606
+
+// accountUsagePrivilege is what a role needs to read SNOWFLAKE.ACCOUNT_USAGE.
+const accountUsagePrivilege = "IMPORTED PRIVILEGES on database SNOWFLAKE"
+
+// isNoWarehouse reports whether err is Snowflake refusing a statement because
+// the session has no current warehouse.
+func isNoWarehouse(err error) bool {
+	var sfErr *gosnowflake.SnowflakeError
+	if !errors.As(err, &sfErr) {
+		return false
+	}
+	return sfErr.Number == snowflakeErrNoWarehouse
+}
+
+// classifySnowflakeUsageError maps a failed SNOWFLAKE.ACCOUNT_USAGE read to its
+// error kind: a privilege refusal is Forbidden with the privilege named, a
+// session without a warehouse is NotApplicable, anything else (transport,
+// timeout) is returned unchanged.
+func classifySnowflakeUsageError(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case isAccessDenied(err):
+		return llx.Forbidden(err, llx.WithPermissions(accountUsagePrivilege))
+	case isNoWarehouse(err):
+		return llx.NotApplicable(fmt.Errorf("no warehouse for account usage reads: %w", err))
+	}
+	return err
 }
