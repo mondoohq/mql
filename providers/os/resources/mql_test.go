@@ -4689,3 +4689,48 @@ func TestUserSystem(t *testing.T) {
 		},
 	})
 }
+
+// A null that comes out of + - * / or of a search in a string has the type
+// of the operation, so that what follows it is found: a comparison of a null
+// string is false, it is not an error about a time.
+func TestNullResultsHaveTheTypeOfTheOperation(t *testing.T) {
+	doc := `parse.json(content: '{"n": 1, "s": "Text"}').params`
+	x := testutils.InitTester(testutils.LinuxMock())
+	for _, query := range []string{
+		// a string that is not there: the shell of root in this recording
+		`user(uid: 0).shell + "x" == "x"`,
+		`"x" + user(uid: 0).shell == "x"`,
+		`(user(uid: 0).shell + "x").length == 1`,
+		doc + `["missing"] + "x" == "x"`,
+		// numbers out of a dict that are not there
+		doc + `["missing"] + 1 == 1`,
+		doc + `["missing"] - 1 < 1`,
+		doc + `["missing"] * 2 == 2`,
+		doc + `["missing"] / 2 == 2`,
+		doc + `["missing"] + 1.5 == 1.5`,
+		`1 + ` + doc + `["missing"] == 1`,
+		`1 - ` + doc + `["missing"] > 1`,
+		`2 * ` + doc + `["missing"] == 2`,
+		`1.5 + ` + doc + `["missing"] == 1.5`,
+		`1.5 / ` + doc + `["missing"] == 1.5`,
+	} {
+		t.Run(query, func(t *testing.T) {
+			answered := false
+			for _, res := range x.TestQuery(t, query) {
+				require.NoError(t, res.Data.Error)
+				if res.Data.Type == types.Bool {
+					assert.Equal(t, false, res.Data.Value)
+					answered = true
+				}
+			}
+			assert.True(t, answered, "no answer")
+		})
+	}
+
+	// Looking for a text that is not there in a string out of a dict.
+	t.Run("search for a null text", func(t *testing.T) {
+		for _, res := range x.TestQuery(t, doc+`["s"].contains(sshd.config.params["Missing"])`) {
+			require.NoError(t, res.Data.Error)
+		}
+	})
+}
