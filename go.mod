@@ -36,6 +36,7 @@ require (
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
 	github.com/docker/cli v29.9.3+incompatible
 	github.com/facebookincubator/nvdtools v0.1.5
+	github.com/github/go-spdx/v2 v2.8.0
 	github.com/glebarez/go-sqlite v1.23.0
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/go-jose/go-jose/v4 v4.1.9
@@ -103,6 +104,7 @@ require (
 	github.com/tliron/glsp v0.2.2
 	github.com/toravir/csd v0.0.0-20200911003203-13ae77ad849c
 	github.com/ulikunitz/xz v0.5.17
+	github.com/xeipuuv/gojsonschema v1.2.0
 	github.com/zclconf/go-cty v1.20.0
 	go.mondoo.com/mondoo-go v0.0.0-20261112084338-6bd209e2cc03
 	go.mondoo.com/ranger-rpc v0.8.2
@@ -297,6 +299,8 @@ require (
 	github.com/tonistiigi/go-csvvalue v0.0.0-20240814133006-030d3b2625d0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
+	github.com/xeipuuv/gojsonpointer v0.0.0-20180127040702-4e3ac2762d5f // indirect
+	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
 	github.com/xo/terminfo v1.3.1 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/detectors/gcp v1.47.0 // indirect

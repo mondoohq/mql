@@ -12,6 +12,8 @@ extend-exclude = [
   "*.permissions.json",
   # Test fixtures and recordings often contain captured real-world data.
   "**/testdata/**",
+  # The SPDX license identifiers, copied from the CycloneDX schema.
+  "sbom/spdx_license_ids.txt",
   # Lockfiles and binary-ish assets.
   "go.sum",
   "*.svg",

@@ -5,6 +5,7 @@ package sbom
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -28,6 +29,9 @@ func licenseBom() *Sbom {
 				License: "GPL-2.0-only WITH Classpath-exception-2.0"},
 			{Name: "free-text", Version: "1.0.0", Purl: "pkg:npm/free-text@1.0.0", License: "BSD-like, see LICENSE"},
 			{Name: "custom-ref", Version: "1.0.0", Purl: "pkg:npm/custom-ref@1.0.0", License: "LicenseRef-Acme-Internal"},
+			{Name: "unlicensed", Version: "1.0.0", Purl: "pkg:npm/unlicensed@1.0.0", License: "UNLICENSED"},
+			{Name: "unknown", Version: "1.0.0", Purl: "pkg:npm/unknown@1.0.0",
+				Licenses: []*License{{SpdxId: "UNKNOWN"}}},
 			{Name: "undeclared", Version: "1.0.0", Purl: "pkg:npm/undeclared@1.0.0"},
 		},
 	}
@@ -108,10 +112,18 @@ func TestCycloneDXEmitsLicenses(t *testing.T) {
 	if ls := get("free-text"); len(ls) != 1 || ls[0].License == nil || ls[0].License.Name == "" {
 		t.Errorf("free-text licenses = %+v, want license.name", ls)
 	}
-	// A custom identifier is still an identifier.
-	if ls := get("custom-ref"); len(ls) != 1 || ls[0].License == nil ||
-		ls[0].License.ID != "LicenseRef-Acme-Internal" {
-		t.Errorf("custom-ref licenses = %+v, want license.id", ls)
+	// The schema restricts license.id to the SPDX license list. An identifier
+	// that is not on the list goes in license.name, from the scalar and from
+	// the list alike.
+	for name, want := range map[string]string{
+		"custom-ref": "LicenseRef-Acme-Internal",
+		"unlicensed": "UNLICENSED",
+		"unknown":    "UNKNOWN",
+	} {
+		ls := get(name)
+		if len(ls) != 1 || ls[0].License == nil || ls[0].License.ID != "" || ls[0].License.Name != want {
+			t.Errorf("%s licenses = %+v, want license.name %s and no license.id", name, ls, want)
+		}
 	}
 	// An undeclared license emits no licenses key at all, which is valid
 	// CycloneDX — unlike SPDX, it has no NOASSERTION to state.
@@ -162,15 +174,21 @@ func TestSPDXEmitsLicenseFields(t *testing.T) {
 		}
 	}
 
-	// A LicenseRef-* identifier must be declared before it is referenced.
-	if len(doc.HasExtractedLicensingInfos) != 1 {
-		t.Fatalf("hasExtractedLicensingInfos = %+v, want the one LicenseRef", doc.HasExtractedLicensingInfos)
+	// A LicenseRef-* identifier must be declared before it is referenced. That
+	// holds for the one the package stated and for each one the renderer made
+	// from a value that is not on the SPDX license list.
+	var declaredRefs []string
+	for _, e := range doc.HasExtractedLicensingInfos {
+		declaredRefs = append(declaredRefs, e.LicenseID)
+		if e.ExtractedText == "" {
+			t.Errorf("%s: extractedText is required and must not be empty", e.LicenseID)
+		}
 	}
-	if got := doc.HasExtractedLicensingInfos[0].LicenseID; got != "LicenseRef-Acme-Internal" {
-		t.Errorf("extracted license id = %q", got)
+	wantRefs := []string{
+		"LicenseRef-Acme-Internal", "LicenseRef-BSD-like-see-LICENSE", "LicenseRef-UNKNOWN", "LicenseRef-UNLICENSED",
 	}
-	if doc.HasExtractedLicensingInfos[0].ExtractedText == "" {
-		t.Error("extractedText is required and must not be empty")
+	if !slices.Equal(declaredRefs, wantRefs) {
+		t.Errorf("hasExtractedLicensingInfos = %v, want %v", declaredRefs, wantRefs)
 	}
 }
 
@@ -561,19 +579,58 @@ func TestSPDXParenthesizesOnlyWhatItJoins(t *testing.T) {
 	}
 }
 
-// TestSPDXLegacyScalarPassesThroughUnchanged pins what the fix deliberately does
-// not change. Producers set the scalar to whatever their package manager
-// reported, and a large share of OS packages report something that is not an
-// SPDX expression; re-encoding those here would rewrite what every existing
-// document says. That migration is a decision, not a side effect, so the scalar
-// path stays byte-for-byte as it was.
-func TestSPDXLegacyScalarPassesThroughUnchanged(t *testing.T) {
-	pkgs, _ := spdxPackages(t, &Package{
-		Name: "scalar-free-text", Version: "1.0.0", Purl: "pkg:npm/scalar-free-text@1.0.0",
-		License: "BSD-like, see LICENSE",
-	})
-	if got := pkgs["scalar-free-text"].Declared; got != "BSD-like, see LICENSE" {
-		t.Errorf("licenseDeclared = %q, want the scalar verbatim", got)
+// TestSPDXLegacyScalarFollowsTheListRules pins that the legacy scalar is not
+// written verbatim. Producers set it to whatever their package manager
+// reported, and much of that is not an SPDX expression. The scalar is read as a
+// list entry is, so the license field always holds a valid expression.
+func TestSPDXLegacyScalarFollowsTheListRules(t *testing.T) {
+	pkgs, refs := spdxPackages(t,
+		&Package{Name: "free-text", Version: "1", Purl: "pkg:npm/free-text@1", License: "BSD-like, see LICENSE"},
+		&Package{Name: "unknown", Version: "1", Purl: "pkg:npm/unknown@1", License: "UNKNOWN"},
+		&Package{Name: "listed", Version: "1", Purl: "pkg:npm/listed@1", License: "MIT"},
+	)
+	for name, want := range map[string]string{
+		"free-text": "LicenseRef-BSD-like-see-LICENSE",
+		"unknown":   "LicenseRef-UNKNOWN",
+		"listed":    "MIT",
+	} {
+		if got := pkgs[name].Declared; got != want {
+			t.Errorf("%s licenseDeclared = %q, want %q", name, got, want)
+		}
+	}
+	if refs["LicenseRef-BSD-like-see-LICENSE"] != "BSD-like, see LICENSE" || refs["LicenseRef-UNKNOWN"] != "UNKNOWN" {
+		t.Errorf("hasExtractedLicensingInfos = %v, want each reference with the text it stands for", refs)
+	}
+}
+
+// TestSPDXListedExpression covers the operands of a license expression. An
+// operand that is not on the SPDX license list becomes a declared LicenseRef-*;
+// every form that SPDX accepts stays as written.
+func TestSPDXListedExpression(t *testing.T) {
+	for in, want := range map[string]string{
+		"MIT":             "MIT",
+		"mit":             "mit",
+		"Apache-2.0+":     "Apache-2.0+",
+		"NONE":            "NONE",
+		"NOASSERTION":     "NOASSERTION",
+		"LicenseRef-Acme": "LicenseRef-Acme",
+		"GPL-2.0-only WITH Classpath-exception-2.0": "GPL-2.0-only WITH Classpath-exception-2.0",
+		"(MIT OR Apache-2.0) AND BSD-3-Clause":      "(MIT OR Apache-2.0) AND BSD-3-Clause",
+		"-":                                         "",
+		"MIT AND -":                                 "",
+		"UNLICENSED":                                "LicenseRef-UNLICENSED",
+		"MIT AND UNKNOWN":                           "MIT AND LicenseRef-UNKNOWN",
+		"(GPLv2+ OR MIT)":                           "(LicenseRef-GPLv2 OR MIT)",
+	} {
+		extracted := extractedLicenseSet{}
+		if got := spdxListedExpression(in, extracted); got != want {
+			t.Errorf("spdxListedExpression(%q) = %q, want %q", in, got, want)
+		}
+		for ref := range extracted {
+			if want == "" || !strings.Contains(want, ref) {
+				t.Errorf("spdxListedExpression(%q) registered %q, which the result does not use", in, ref)
+			}
+		}
 	}
 }
 
