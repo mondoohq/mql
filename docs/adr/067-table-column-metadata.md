@@ -1,4 +1,4 @@
-# ADR 059: Column metadata on Snowflake, PostgreSQL, MySQL and AWS Glue tables
+# ADR 067: Column metadata on Snowflake, PostgreSQL, MySQL and AWS Glue tables
 
 ## Status
 
