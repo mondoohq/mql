@@ -6,6 +6,7 @@ package providers
 import (
 	"reflect"
 	"sync"
+	"sync/atomic"
 
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/providers-sdk/v1/resources"
@@ -27,6 +28,16 @@ type extensibleSchema struct {
 	lastRefreshed  int64
 	coordinator    ProvidersCoordinator
 	sync           sync.Mutex
+	// version counts how often the aggregate was replaced. Two reads with the
+	// same version saw the same schema.
+	version atomic.Uint64
+}
+
+// SchemaVersion identifies the schema's current content: the object, and how
+// often its aggregate was replaced. A compile of the same query against the
+// same version gives the same code, which is what mqlc's compile cache uses.
+func (x *extensibleSchema) SchemaVersion() (uintptr, uint64) {
+	return reflect.ValueOf(x).Pointer(), x.version.Load()
 }
 
 func newExtensibleSchema() extensibleSchema {
@@ -130,6 +141,9 @@ func (x *extensibleSchema) AllProviderRoots() map[string]string {
 
 func (x *extensibleSchema) Close() {
 	x.sync.Lock()
+	// Under the lock: a compile that sees the new version has to wait for
+	// the lock to read the schema, so it reads what is left after Close.
+	x.version.Add(1)
 	x.loaded = map[string]resources.ResourcesSchema{}
 	x.roAggregate = resources.Schema{
 		Resources:        map[string]*resources.ResourceInfo{},
@@ -238,6 +252,7 @@ func (x *extensibleSchema) unsafeAdd(name string, schema resources.ResourcesSche
 }
 
 func (x *extensibleSchema) unsafeRefresh() {
+	x.version.Add(1)
 	res := resources.Schema{
 		Resources:        map[string]*resources.ResourceInfo{},
 		Dependencies:     map[string]*resources.ProviderInfo{},
