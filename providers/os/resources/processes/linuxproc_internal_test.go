@@ -87,6 +87,26 @@ func TestLinuxProcManager_ProcessExistingSucceeds(t *testing.T) {
 	require.Equal(t, "bash", proc.Command)
 }
 
+// Synthetic: Process(pid) resolves none of the process's fd links; only
+// ListSocketInodesByProcess does.
+func TestLinuxProcManager_ProcessDefersSocketEnumeration(t *testing.T) {
+	root := t.TempDir()
+	fs := &readlinkCountingFs{BasePathFs: afero.NewBasePathFs(afero.NewOsFs(), root).(*afero.BasePathFs)}
+	require.NoError(t, os.MkdirAll(root+"/proc/42/fd", 0o755))
+	writeProcEntry(t, fs, "42", "bash")
+	require.NoError(t, os.Symlink("socket:[4201]", root+"/proc/42/fd/3"))
+	lpm := &LinuxProcManager{conn: &fakeProcConn{fs: fs}}
+
+	proc, err := lpm.Process(42)
+	require.NoError(t, err)
+	assert.Equal(t, "bash", proc.Command)
+	assert.Zero(t, fs.readlinks, "reading a process resolves no fd link")
+
+	sockets, err := lpm.ListSocketInodesByProcess()
+	require.NoError(t, err)
+	assert.Equal(t, []int64{4201}, sockets[42].Data)
+}
+
 // The kernel cuts the Name in /proc/<pid>/status to 15 characters; the
 // executable is the full name from the command's first argument, as over SSH
 // (mondoohq/mql#11185).
