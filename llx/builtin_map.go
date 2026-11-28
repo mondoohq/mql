@@ -1534,7 +1534,9 @@ func dictFlat(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawDa
 		res = append(res, flatten(list[i])...)
 	}
 
-	return &RawData{Type: bind.Type.Child(), Value: res}, 0, nil
+	// A list of dicts, which is what the compiler announces for this call
+	// and compiles what follows for. A dict has no child type to take.
+	return &RawData{Type: types.Array(types.Dict), Value: res}, 0, nil
 }
 
 func dictDifferenceV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
