@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -129,4 +130,16 @@ func TestIsUserAssignedIdentityID(t *testing.T) {
 	assert.False(t, isUserAssignedIdentityID("SystemAssigned"))
 	assert.False(t, isUserAssignedIdentityID(""))
 	assert.False(t, isUserAssignedIdentityID("/subscriptions/s/resourceGroups/rg/providers/Microsoft.Storage/storageAccounts/sa"))
+}
+
+func TestUserAssignedIdentityRefNull(t *testing.T) {
+	// Synthetic: no identity, or a marker that names no user-assigned
+	// identity, resolves to a set null rather than an unset field.
+	for _, id := range []string{"", "SystemAssigned"} {
+		var field plugin.TValue[*mqlAzureSubscriptionManagedIdentity]
+		res, err := userAssignedIdentityRef(nil, id, &field)
+		require.NoError(t, err)
+		assert.Nil(t, res)
+		assert.Equal(t, plugin.StateIsSet|plugin.StateIsNull, field.State, id)
+	}
 }
