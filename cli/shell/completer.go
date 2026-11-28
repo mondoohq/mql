@@ -102,5 +102,8 @@ func byProviderSortFn(connectedProviders []string) func(a, b *llx.Documentation)
 func (c *Completer) compilerConfig() mqlc.CompilerConfig {
 	conf := mqlc.NewConfigFrom(c.runtime, c.features)
 	conf.Strict = c.strict
+	// Interactive recompiles run on every keystroke, so keep non-fatal
+	// advisories like the standalone where warning out of the terminal.
+	conf.EditorMode = true
 	return conf
 }
