@@ -35,7 +35,7 @@ type glueColumnRow struct {
 }
 
 // glueColumns orders the storage columns first and the partition keys after
-// them, numbered from 1 (ADR 059), as Athena and Hive present a partitioned
+// them, numbered from 1 (ADR 067), as Athena and Hive present a partitioned
 // table.
 func glueColumns(cols, parts []glue_types.Column) []glueColumnRow {
 	out := make([]glueColumnRow, 0, len(cols)+len(parts))
