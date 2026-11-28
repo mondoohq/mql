@@ -26,6 +26,59 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// ScanRefKind is the kind of source-control ref a scan ran on.
+type ScanRefKind int32
+
+const (
+	ScanRefKind_SCAN_REF_KIND_UNSPECIFIED ScanRefKind = 0
+	// A pull request (GitHub, Bitbucket, Azure DevOps) or merge request
+	// (GitLab).
+	ScanRefKind_SCAN_REF_KIND_PULL_REQUEST ScanRefKind = 1
+	// A branch other than the repository's default branch.
+	ScanRefKind_SCAN_REF_KIND_BRANCH ScanRefKind = 2
+)
+
+// Enum value maps for ScanRefKind.
+var (
+	ScanRefKind_name = map[int32]string{
+		0: "SCAN_REF_KIND_UNSPECIFIED",
+		1: "SCAN_REF_KIND_PULL_REQUEST",
+		2: "SCAN_REF_KIND_BRANCH",
+	}
+	ScanRefKind_value = map[string]int32{
+		"SCAN_REF_KIND_UNSPECIFIED":  0,
+		"SCAN_REF_KIND_PULL_REQUEST": 1,
+		"SCAN_REF_KIND_BRANCH":       2,
+	}
+)
+
+func (x ScanRefKind) Enum() *ScanRefKind {
+	p := new(ScanRefKind)
+	*p = x
+	return p
+}
+
+func (x ScanRefKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ScanRefKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_fex_proto_enumTypes[0].Descriptor()
+}
+
+func (ScanRefKind) Type() protoreflect.EnumType {
+	return &file_fex_proto_enumTypes[0]
+}
+
+func (x ScanRefKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ScanRefKind.Descriptor instead.
+func (ScanRefKind) EnumDescriptor() ([]byte, []int) {
+	return file_fex_proto_rawDescGZIP(), []int{0}
+}
+
 // FindingKind is a kind of document a FindingsUploadRequest carries.
 type FindingKind int32
 
@@ -62,11 +115,11 @@ func (x FindingKind) String() string {
 }
 
 func (FindingKind) Descriptor() protoreflect.EnumDescriptor {
-	return file_fex_proto_enumTypes[0].Descriptor()
+	return file_fex_proto_enumTypes[1].Descriptor()
 }
 
 func (FindingKind) Type() protoreflect.EnumType {
-	return &file_fex_proto_enumTypes[0]
+	return &file_fex_proto_enumTypes[1]
 }
 
 func (x FindingKind) Number() protoreflect.EnumNumber {
@@ -75,7 +128,7 @@ func (x FindingKind) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use FindingKind.Descriptor instead.
 func (FindingKind) EnumDescriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{0}
+	return file_fex_proto_rawDescGZIP(), []int{1}
 }
 
 // Status is used to identify the status of the vulnerability.
@@ -131,11 +184,11 @@ func (x Status) String() string {
 }
 
 func (Status) Descriptor() protoreflect.EnumDescriptor {
-	return file_fex_proto_enumTypes[1].Descriptor()
+	return file_fex_proto_enumTypes[2].Descriptor()
 }
 
 func (Status) Type() protoreflect.EnumType {
-	return &file_fex_proto_enumTypes[1]
+	return &file_fex_proto_enumTypes[2]
 }
 
 func (x Status) Number() protoreflect.EnumNumber {
@@ -144,7 +197,7 @@ func (x Status) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Status.Descriptor instead.
 func (Status) EnumDescriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{1}
+	return file_fex_proto_rawDescGZIP(), []int{2}
 }
 
 // ScoringMethod is used to identify the scoring method of the rating.
@@ -195,11 +248,11 @@ func (x ScoringMethod) String() string {
 }
 
 func (ScoringMethod) Descriptor() protoreflect.EnumDescriptor {
-	return file_fex_proto_enumTypes[2].Descriptor()
+	return file_fex_proto_enumTypes[3].Descriptor()
 }
 
 func (ScoringMethod) Type() protoreflect.EnumType {
-	return &file_fex_proto_enumTypes[2]
+	return &file_fex_proto_enumTypes[3]
 }
 
 func (x ScoringMethod) Number() protoreflect.EnumNumber {
@@ -208,7 +261,7 @@ func (x ScoringMethod) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ScoringMethod.Descriptor instead.
 func (ScoringMethod) EnumDescriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{2}
+	return file_fex_proto_rawDescGZIP(), []int{3}
 }
 
 // Confidence levels in finding
@@ -248,11 +301,11 @@ func (x Confidence) String() string {
 }
 
 func (Confidence) Descriptor() protoreflect.EnumDescriptor {
-	return file_fex_proto_enumTypes[3].Descriptor()
+	return file_fex_proto_enumTypes[4].Descriptor()
 }
 
 func (Confidence) Type() protoreflect.EnumType {
-	return &file_fex_proto_enumTypes[3]
+	return &file_fex_proto_enumTypes[4]
 }
 
 func (x Confidence) Number() protoreflect.EnumNumber {
@@ -261,7 +314,7 @@ func (x Confidence) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Confidence.Descriptor instead.
 func (Confidence) EnumDescriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{3}
+	return file_fex_proto_rawDescGZIP(), []int{4}
 }
 
 // SeverityRating is used to identify the severity of a finding.
@@ -312,11 +365,11 @@ func (x SeverityRating) String() string {
 }
 
 func (SeverityRating) Descriptor() protoreflect.EnumDescriptor {
-	return file_fex_proto_enumTypes[4].Descriptor()
+	return file_fex_proto_enumTypes[5].Descriptor()
 }
 
 func (SeverityRating) Type() protoreflect.EnumType {
-	return &file_fex_proto_enumTypes[4]
+	return &file_fex_proto_enumTypes[5]
 }
 
 func (x SeverityRating) Number() protoreflect.EnumNumber {
@@ -325,7 +378,7 @@ func (x SeverityRating) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use SeverityRating.Descriptor instead.
 func (SeverityRating) EnumDescriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{4}
+	return file_fex_proto_rawDescGZIP(), []int{5}
 }
 
 // The category type of the remediation
@@ -368,11 +421,11 @@ func (x Remediation_Category) String() string {
 }
 
 func (Remediation_Category) Descriptor() protoreflect.EnumDescriptor {
-	return file_fex_proto_enumTypes[5].Descriptor()
+	return file_fex_proto_enumTypes[6].Descriptor()
 }
 
 func (Remediation_Category) Type() protoreflect.EnumType {
-	return &file_fex_proto_enumTypes[5]
+	return &file_fex_proto_enumTypes[6]
 }
 
 func (x Remediation_Category) Number() protoreflect.EnumNumber {
@@ -381,7 +434,7 @@ func (x Remediation_Category) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Remediation_Category.Descriptor instead.
 func (Remediation_Category) EnumDescriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{12, 0}
+	return file_fex_proto_rawDescGZIP(), []int{16, 0}
 }
 
 type FindingDetail_Category int32
@@ -432,11 +485,11 @@ func (x FindingDetail_Category) String() string {
 }
 
 func (FindingDetail_Category) Descriptor() protoreflect.EnumDescriptor {
-	return file_fex_proto_enumTypes[6].Descriptor()
+	return file_fex_proto_enumTypes[7].Descriptor()
 }
 
 func (FindingDetail_Category) Type() protoreflect.EnumType {
-	return &file_fex_proto_enumTypes[6]
+	return &file_fex_proto_enumTypes[7]
 }
 
 func (x FindingDetail_Category) Number() protoreflect.EnumNumber {
@@ -445,7 +498,7 @@ func (x FindingDetail_Category) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use FindingDetail_Category.Descriptor instead.
 func (FindingDetail_Category) EnumDescriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{14, 0}
+	return file_fex_proto_rawDescGZIP(), []int{18, 0}
 }
 
 // Protocol defines the protocol used in the connection. Decimals are
@@ -491,11 +544,11 @@ func (x Connection_ConnectionProtocol) String() string {
 }
 
 func (Connection_ConnectionProtocol) Descriptor() protoreflect.EnumDescriptor {
-	return file_fex_proto_enumTypes[7].Descriptor()
+	return file_fex_proto_enumTypes[8].Descriptor()
 }
 
 func (Connection_ConnectionProtocol) Type() protoreflect.EnumType {
-	return &file_fex_proto_enumTypes[7]
+	return &file_fex_proto_enumTypes[8]
 }
 
 func (x Connection_ConnectionProtocol) Number() protoreflect.EnumNumber {
@@ -504,7 +557,7 @@ func (x Connection_ConnectionProtocol) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Connection_ConnectionProtocol.Descriptor instead.
 func (Connection_ConnectionProtocol) EnumDescriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{23, 0}
+	return file_fex_proto_rawDescGZIP(), []int{27, 0}
 }
 
 // FindingDocument is a wrapper message that can hold either a
@@ -622,8 +675,57 @@ type FindingsUploadRequest struct {
 	// findings, since findings already name their assets. Fields 10 to 12 are
 	// used by the platform's copy of this message.
 	ScannedComponents []*Component `protobuf:"bytes,13,rep,name=scanned_components,json=scannedComponents,proto3" json:"scanned_components,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Optional. Identifies the upload set this request is one part of. Every
+	// part of one scan carries the same id, and two scans never share one (a
+	// producer uses a random UUID per scan). With import_started_at set, the
+	// platform closes findings by absence only once every part of the set has
+	// arrived, over the union of the assets the parts cover; a set that never
+	// completes closes nothing. Every part of a set carries the same space,
+	// source, import_started_at and part_count. A retried part is resent with
+	// the same upload_set_id and part_index, so the platform stores it once.
+	// Empty means the request is a whole upload on its own, as before.
+	UploadSetId string `protobuf:"bytes,15,opt,name=upload_set_id,json=uploadSetId,proto3" json:"upload_set_id,omitempty"`
+	// Optional. 0-based position of this part in its upload set, less than
+	// part_count. Only meaningful with upload_set_id set.
+	PartIndex int32 `protobuf:"varint,16,opt,name=part_index,json=partIndex,proto3" json:"part_index,omitempty"`
+	// Optional. Number of parts in the upload set, at least 1. Only meaningful
+	// with upload_set_id set.
+	PartCount int32 `protobuf:"varint,17,opt,name=part_count,json=partCount,proto3" json:"part_count,omitempty"`
+	// Optional. Number of findings the scan reported that were eligible for
+	// upload, across the whole upload set, before any cap. A platform compares
+	// it with the findings it received to tell a complete upload from a
+	// truncated one. 0 with no findings in the request means the scan found
+	// nothing eligible.
+	EligibleFindingsCount int32 `protobuf:"varint,18,opt,name=eligible_findings_count,json=eligibleFindingsCount,proto3" json:"eligible_findings_count,omitempty"`
+	// Optional. Set when the producer sent fewer findings than
+	// eligible_findings_count, naming why as a short kebab-case reason, for
+	// example "platform-no-upload-sets" when the platform does not accept upload
+	// sets and the producer fell back to a single capped upload. Empty means
+	// nothing was capped.
+	CappedReason string `protobuf:"bytes,19,opt,name=capped_reason,json=cappedReason,proto3" json:"capped_reason,omitempty"`
+	// Optional. The source-control ref the scan ran on, for a scan of a pull
+	// request or a branch other than the default one. Absent means the scan
+	// describes the default branch, as before.
+	ScanRef *ScanRef `protobuf:"bytes,20,opt,name=scan_ref,json=scanRef,proto3" json:"scan_ref,omitempty"`
+	// Optional. The CODEOWNERS rules of the scanned repository, in file order,
+	// so the platform can show which rule assigned a finding's owners. A
+	// producer that splits an upload into a set sends them on the first part
+	// only.
+	CodeOwnerRules []*CodeOwnerRule `protobuf:"bytes,21,rep,name=code_owner_rules,json=codeOwnerRules,proto3" json:"code_owner_rules,omitempty"`
+	// Optional. Where the scan's rule set came from. Without it a scan that fell
+	// back to the producer's built-in rules reads the same as one that ran the
+	// rules the platform served.
+	RunRules *RunRules `protobuf:"bytes,22,opt,name=run_rules,json=runRules,proto3" json:"run_rules,omitempty"`
+	// Optional. Which platform-served policy documents the scan applied, one
+	// entry per document kind, and where each came from.
+	RunPolicies []*RunPolicy `protobuf:"bytes,23,rep,name=run_policies,json=runPolicies,proto3" json:"run_policies,omitempty"`
+	// Optional. True when the repository's CODEOWNERS file was over the
+	// producer's size or rule limit, so code_owner_rules is empty and no finding
+	// carries owners from it. False with no rules means the repository has no
+	// CODEOWNERS file, or one with no rules.
+	CodeOwnerRulesTruncated bool `protobuf:"varint,24,opt,name=code_owner_rules_truncated,json=codeOwnerRulesTruncated,proto3" json:"code_owner_rules_truncated,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *FindingsUploadRequest) Reset() {
@@ -712,6 +814,396 @@ func (x *FindingsUploadRequest) GetScannedComponents() []*Component {
 	return nil
 }
 
+func (x *FindingsUploadRequest) GetUploadSetId() string {
+	if x != nil {
+		return x.UploadSetId
+	}
+	return ""
+}
+
+func (x *FindingsUploadRequest) GetPartIndex() int32 {
+	if x != nil {
+		return x.PartIndex
+	}
+	return 0
+}
+
+func (x *FindingsUploadRequest) GetPartCount() int32 {
+	if x != nil {
+		return x.PartCount
+	}
+	return 0
+}
+
+func (x *FindingsUploadRequest) GetEligibleFindingsCount() int32 {
+	if x != nil {
+		return x.EligibleFindingsCount
+	}
+	return 0
+}
+
+func (x *FindingsUploadRequest) GetCappedReason() string {
+	if x != nil {
+		return x.CappedReason
+	}
+	return ""
+}
+
+func (x *FindingsUploadRequest) GetScanRef() *ScanRef {
+	if x != nil {
+		return x.ScanRef
+	}
+	return nil
+}
+
+func (x *FindingsUploadRequest) GetCodeOwnerRules() []*CodeOwnerRule {
+	if x != nil {
+		return x.CodeOwnerRules
+	}
+	return nil
+}
+
+func (x *FindingsUploadRequest) GetRunRules() *RunRules {
+	if x != nil {
+		return x.RunRules
+	}
+	return nil
+}
+
+func (x *FindingsUploadRequest) GetRunPolicies() []*RunPolicy {
+	if x != nil {
+		return x.RunPolicies
+	}
+	return nil
+}
+
+func (x *FindingsUploadRequest) GetCodeOwnerRulesTruncated() bool {
+	if x != nil {
+		return x.CodeOwnerRulesTruncated
+	}
+	return false
+}
+
+// ScanRef names the source-control ref a scan ran on.
+type ScanRef struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Required. Which kind of ref this is.
+	Kind ScanRefKind `protobuf:"varint,1,opt,name=kind,proto3,enum=mql.fex.v1.ScanRefKind" json:"kind,omitempty"`
+	// The pull or merge request number, for SCAN_REF_KIND_PULL_REQUEST. 0
+	// otherwise.
+	Number int64 `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"`
+	// Full commit SHA the scan ran on.
+	HeadSha string `protobuf:"bytes,3,opt,name=head_sha,json=headSha,proto3" json:"head_sha,omitempty"`
+	// Full commit SHA of the merge base the scan was compared against, when
+	// the producer computed one. Empty otherwise.
+	BaseSha string `protobuf:"bytes,4,opt,name=base_sha,json=baseSha,proto3" json:"base_sha,omitempty"`
+	// The branch name, for SCAN_REF_KIND_BRANCH, without a refs/heads/ prefix.
+	// Empty otherwise.
+	Name          string `protobuf:"bytes,5,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ScanRef) Reset() {
+	*x = ScanRef{}
+	mi := &file_fex_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ScanRef) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ScanRef) ProtoMessage() {}
+
+func (x *ScanRef) ProtoReflect() protoreflect.Message {
+	mi := &file_fex_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ScanRef.ProtoReflect.Descriptor instead.
+func (*ScanRef) Descriptor() ([]byte, []int) {
+	return file_fex_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ScanRef) GetKind() ScanRefKind {
+	if x != nil {
+		return x.Kind
+	}
+	return ScanRefKind_SCAN_REF_KIND_UNSPECIFIED
+}
+
+func (x *ScanRef) GetNumber() int64 {
+	if x != nil {
+		return x.Number
+	}
+	return 0
+}
+
+func (x *ScanRef) GetHeadSha() string {
+	if x != nil {
+		return x.HeadSha
+	}
+	return ""
+}
+
+func (x *ScanRef) GetBaseSha() string {
+	if x != nil {
+		return x.BaseSha
+	}
+	return ""
+}
+
+func (x *ScanRef) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+// CodeOwnerRule is one rule of a CODEOWNERS file.
+type CodeOwnerRule struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The path pattern, as written in the file.
+	Pattern string `protobuf:"bytes,1,opt,name=pattern,proto3" json:"pattern,omitempty"`
+	// The owners the rule assigns, as written in the file: @user, @org/team or
+	// an email address. Empty when the rule removes ownership.
+	Owners []string `protobuf:"bytes,2,rep,name=owners,proto3" json:"owners,omitempty"`
+	// The section the rule is in, for a dialect with sections (GitLab). Empty
+	// otherwise.
+	Section string `protobuf:"bytes,3,opt,name=section,proto3" json:"section,omitempty"`
+	// True when the rule's section is optional (GitLab's ^[Section]).
+	Optional      bool `protobuf:"varint,4,opt,name=optional,proto3" json:"optional,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CodeOwnerRule) Reset() {
+	*x = CodeOwnerRule{}
+	mi := &file_fex_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CodeOwnerRule) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CodeOwnerRule) ProtoMessage() {}
+
+func (x *CodeOwnerRule) ProtoReflect() protoreflect.Message {
+	mi := &file_fex_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CodeOwnerRule.ProtoReflect.Descriptor instead.
+func (*CodeOwnerRule) Descriptor() ([]byte, []int) {
+	return file_fex_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *CodeOwnerRule) GetPattern() string {
+	if x != nil {
+		return x.Pattern
+	}
+	return ""
+}
+
+func (x *CodeOwnerRule) GetOwners() []string {
+	if x != nil {
+		return x.Owners
+	}
+	return nil
+}
+
+func (x *CodeOwnerRule) GetSection() string {
+	if x != nil {
+		return x.Section
+	}
+	return ""
+}
+
+func (x *CodeOwnerRule) GetOptional() bool {
+	if x != nil {
+		return x.Optional
+	}
+	return false
+}
+
+// RunRules says where a scan's rule set came from.
+type RunRules struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Where the rules came from, e.g. "platform", "built-in" or "local".
+	Source string `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	// How many rules the source provided.
+	Count int32 `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
+	// Set when the scan asked the platform for its rules and ran another set
+	// instead, as a short kebab-case reason (e.g. "platform-unreachable").
+	// Empty when the platform's set ran or was never asked for.
+	FallbackReason string `protobuf:"bytes,3,opt,name=fallback_reason,json=fallbackReason,proto3" json:"fallback_reason,omitempty"`
+	// Ids of served rules the producer could not load. The rest of the set
+	// still ran.
+	Skipped []string `protobuf:"bytes,4,rep,name=skipped,proto3" json:"skipped,omitempty"`
+	// The etag of the served rule set, when the rules came from the platform.
+	Etag          string `protobuf:"bytes,5,opt,name=etag,proto3" json:"etag,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RunRules) Reset() {
+	*x = RunRules{}
+	mi := &file_fex_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RunRules) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RunRules) ProtoMessage() {}
+
+func (x *RunRules) ProtoReflect() protoreflect.Message {
+	mi := &file_fex_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RunRules.ProtoReflect.Descriptor instead.
+func (*RunRules) Descriptor() ([]byte, []int) {
+	return file_fex_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *RunRules) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *RunRules) GetCount() int32 {
+	if x != nil {
+		return x.Count
+	}
+	return 0
+}
+
+func (x *RunRules) GetFallbackReason() string {
+	if x != nil {
+		return x.FallbackReason
+	}
+	return ""
+}
+
+func (x *RunRules) GetSkipped() []string {
+	if x != nil {
+		return x.Skipped
+	}
+	return nil
+}
+
+func (x *RunRules) GetEtag() string {
+	if x != nil {
+		return x.Etag
+	}
+	return ""
+}
+
+// RunPolicy says where one platform-served policy document a scan applied
+// came from.
+type RunPolicy struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The document kind, e.g. "code-scan-gate".
+	Kind string `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
+	// Where the document came from, e.g. "platform", "cache" or "default".
+	Source string `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`
+	// The etag of the served document.
+	Etag string `protobuf:"bytes,3,opt,name=etag,proto3" json:"etag,omitempty"`
+	// Set when the scan could not use the served document, as a short
+	// kebab-case reason. Empty otherwise.
+	FallbackReason string `protobuf:"bytes,4,opt,name=fallback_reason,json=fallbackReason,proto3" json:"fallback_reason,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *RunPolicy) Reset() {
+	*x = RunPolicy{}
+	mi := &file_fex_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RunPolicy) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RunPolicy) ProtoMessage() {}
+
+func (x *RunPolicy) ProtoReflect() protoreflect.Message {
+	mi := &file_fex_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RunPolicy.ProtoReflect.Descriptor instead.
+func (*RunPolicy) Descriptor() ([]byte, []int) {
+	return file_fex_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *RunPolicy) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *RunPolicy) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *RunPolicy) GetEtag() string {
+	if x != nil {
+		return x.Etag
+	}
+	return ""
+}
+
+func (x *RunPolicy) GetFallbackReason() string {
+	if x != nil {
+		return x.FallbackReason
+	}
+	return ""
+}
+
 // VulnerabilityExchange are used for sharing information about vulnerabilities
 // across systems. Mondoo uses this format as a main mean to store detected
 // vulnerability information. The same document is generated independently from
@@ -765,7 +1257,7 @@ type VulnerabilityExchange struct {
 
 func (x *VulnerabilityExchange) Reset() {
 	*x = VulnerabilityExchange{}
-	mi := &file_fex_proto_msgTypes[2]
+	mi := &file_fex_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -777,7 +1269,7 @@ func (x *VulnerabilityExchange) String() string {
 func (*VulnerabilityExchange) ProtoMessage() {}
 
 func (x *VulnerabilityExchange) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[2]
+	mi := &file_fex_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -790,7 +1282,7 @@ func (x *VulnerabilityExchange) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VulnerabilityExchange.ProtoReflect.Descriptor instead.
 func (*VulnerabilityExchange) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{2}
+	return file_fex_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *VulnerabilityExchange) GetRef() string {
@@ -938,7 +1430,7 @@ type Reference struct {
 
 func (x *Reference) Reset() {
 	*x = Reference{}
-	mi := &file_fex_proto_msgTypes[3]
+	mi := &file_fex_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -950,7 +1442,7 @@ func (x *Reference) String() string {
 func (*Reference) ProtoMessage() {}
 
 func (x *Reference) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[3]
+	mi := &file_fex_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -963,7 +1455,7 @@ func (x *Reference) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Reference.ProtoReflect.Descriptor instead.
 func (*Reference) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{3}
+	return file_fex_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Reference) GetId() string {
@@ -1014,7 +1506,7 @@ type Source struct {
 
 func (x *Source) Reset() {
 	*x = Source{}
-	mi := &file_fex_proto_msgTypes[4]
+	mi := &file_fex_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1026,7 +1518,7 @@ func (x *Source) String() string {
 func (*Source) ProtoMessage() {}
 
 func (x *Source) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[4]
+	mi := &file_fex_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1039,7 +1531,7 @@ func (x *Source) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Source.ProtoReflect.Descriptor instead.
 func (*Source) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{4}
+	return file_fex_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *Source) GetName() string {
@@ -1078,7 +1570,7 @@ type VulnerabilityDetails struct {
 
 func (x *VulnerabilityDetails) Reset() {
 	*x = VulnerabilityDetails{}
-	mi := &file_fex_proto_msgTypes[5]
+	mi := &file_fex_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1090,7 +1582,7 @@ func (x *VulnerabilityDetails) String() string {
 func (*VulnerabilityDetails) ProtoMessage() {}
 
 func (x *VulnerabilityDetails) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[5]
+	mi := &file_fex_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1103,7 +1595,7 @@ func (x *VulnerabilityDetails) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VulnerabilityDetails.ProtoReflect.Descriptor instead.
 func (*VulnerabilityDetails) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{5}
+	return file_fex_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *VulnerabilityDetails) GetDetails() string {
@@ -1161,7 +1653,7 @@ type Affects struct {
 
 func (x *Affects) Reset() {
 	*x = Affects{}
-	mi := &file_fex_proto_msgTypes[6]
+	mi := &file_fex_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1173,7 +1665,7 @@ func (x *Affects) String() string {
 func (*Affects) ProtoMessage() {}
 
 func (x *Affects) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[6]
+	mi := &file_fex_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1186,7 +1678,7 @@ func (x *Affects) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Affects.ProtoReflect.Descriptor instead.
 func (*Affects) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{6}
+	return file_fex_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *Affects) GetComponent() *Component {
@@ -1225,7 +1717,7 @@ type Component struct {
 
 func (x *Component) Reset() {
 	*x = Component{}
-	mi := &file_fex_proto_msgTypes[7]
+	mi := &file_fex_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1237,7 +1729,7 @@ func (x *Component) String() string {
 func (*Component) ProtoMessage() {}
 
 func (x *Component) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[7]
+	mi := &file_fex_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1250,7 +1742,7 @@ func (x *Component) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Component.ProtoReflect.Descriptor instead.
 func (*Component) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{7}
+	return file_fex_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Component) GetId() string {
@@ -1341,7 +1833,7 @@ type CloudResource struct {
 
 func (x *CloudResource) Reset() {
 	*x = CloudResource{}
-	mi := &file_fex_proto_msgTypes[8]
+	mi := &file_fex_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1353,7 +1845,7 @@ func (x *CloudResource) String() string {
 func (*CloudResource) ProtoMessage() {}
 
 func (x *CloudResource) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[8]
+	mi := &file_fex_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1366,7 +1858,7 @@ func (x *CloudResource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloudResource.ProtoReflect.Descriptor instead.
 func (*CloudResource) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{8}
+	return file_fex_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *CloudResource) GetProvider() string {
@@ -1444,7 +1936,7 @@ type FileComponent struct {
 
 func (x *FileComponent) Reset() {
 	*x = FileComponent{}
-	mi := &file_fex_proto_msgTypes[9]
+	mi := &file_fex_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1456,7 +1948,7 @@ func (x *FileComponent) String() string {
 func (*FileComponent) ProtoMessage() {}
 
 func (x *FileComponent) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[9]
+	mi := &file_fex_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1469,7 +1961,7 @@ func (x *FileComponent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileComponent.ProtoReflect.Descriptor instead.
 func (*FileComponent) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{9}
+	return file_fex_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *FileComponent) GetPath() string {
@@ -1549,7 +2041,7 @@ type Rating struct {
 
 func (x *Rating) Reset() {
 	*x = Rating{}
-	mi := &file_fex_proto_msgTypes[10]
+	mi := &file_fex_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1561,7 +2053,7 @@ func (x *Rating) String() string {
 func (*Rating) ProtoMessage() {}
 
 func (x *Rating) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[10]
+	mi := &file_fex_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1574,7 +2066,7 @@ func (x *Rating) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Rating.ProtoReflect.Descriptor instead.
 func (*Rating) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{10}
+	return file_fex_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *Rating) GetSource() *Source {
@@ -1636,7 +2128,7 @@ type Severity struct {
 
 func (x *Severity) Reset() {
 	*x = Severity{}
-	mi := &file_fex_proto_msgTypes[11]
+	mi := &file_fex_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1648,7 +2140,7 @@ func (x *Severity) String() string {
 func (*Severity) ProtoMessage() {}
 
 func (x *Severity) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[11]
+	mi := &file_fex_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1661,7 +2153,7 @@ func (x *Severity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Severity.ProtoReflect.Descriptor instead.
 func (*Severity) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{11}
+	return file_fex_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *Severity) GetSource() *Source {
@@ -1727,7 +2219,7 @@ type Remediation struct {
 
 func (x *Remediation) Reset() {
 	*x = Remediation{}
-	mi := &file_fex_proto_msgTypes[12]
+	mi := &file_fex_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1739,7 +2231,7 @@ func (x *Remediation) String() string {
 func (*Remediation) ProtoMessage() {}
 
 func (x *Remediation) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[12]
+	mi := &file_fex_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1752,7 +2244,7 @@ func (x *Remediation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Remediation.ProtoReflect.Descriptor instead.
 func (*Remediation) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{12}
+	return file_fex_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *Remediation) GetCategory() Remediation_Category {
@@ -1843,7 +2335,7 @@ type FindingExchange struct {
 
 func (x *FindingExchange) Reset() {
 	*x = FindingExchange{}
-	mi := &file_fex_proto_msgTypes[13]
+	mi := &file_fex_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1855,7 +2347,7 @@ func (x *FindingExchange) String() string {
 func (*FindingExchange) ProtoMessage() {}
 
 func (x *FindingExchange) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[13]
+	mi := &file_fex_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1868,7 +2360,7 @@ func (x *FindingExchange) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FindingExchange.ProtoReflect.Descriptor instead.
 func (*FindingExchange) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{13}
+	return file_fex_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *FindingExchange) GetId() string {
@@ -1997,7 +2489,7 @@ type FindingDetail struct {
 
 func (x *FindingDetail) Reset() {
 	*x = FindingDetail{}
-	mi := &file_fex_proto_msgTypes[14]
+	mi := &file_fex_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2009,7 +2501,7 @@ func (x *FindingDetail) String() string {
 func (*FindingDetail) ProtoMessage() {}
 
 func (x *FindingDetail) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[14]
+	mi := &file_fex_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2022,7 +2514,7 @@ func (x *FindingDetail) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FindingDetail.ProtoReflect.Descriptor instead.
 func (*FindingDetail) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{14}
+	return file_fex_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *FindingDetail) GetCategory() FindingDetail_Category {
@@ -2110,7 +2602,7 @@ type Evidence struct {
 
 func (x *Evidence) Reset() {
 	*x = Evidence{}
-	mi := &file_fex_proto_msgTypes[15]
+	mi := &file_fex_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2122,7 +2614,7 @@ func (x *Evidence) String() string {
 func (*Evidence) ProtoMessage() {}
 
 func (x *Evidence) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[15]
+	mi := &file_fex_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2135,7 +2627,7 @@ func (x *Evidence) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Evidence.ProtoReflect.Descriptor instead.
 func (*Evidence) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{15}
+	return file_fex_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *Evidence) GetTactic() *AttackTactic {
@@ -2447,7 +2939,7 @@ type SourceVersion struct {
 
 func (x *SourceVersion) Reset() {
 	*x = SourceVersion{}
-	mi := &file_fex_proto_msgTypes[16]
+	mi := &file_fex_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2459,7 +2951,7 @@ func (x *SourceVersion) String() string {
 func (*SourceVersion) ProtoMessage() {}
 
 func (x *SourceVersion) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[16]
+	mi := &file_fex_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2472,7 +2964,7 @@ func (x *SourceVersion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceVersion.ProtoReflect.Descriptor instead.
 func (*SourceVersion) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{16}
+	return file_fex_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *SourceVersion) GetCommit() string {
@@ -2536,7 +3028,7 @@ type File struct {
 
 func (x *File) Reset() {
 	*x = File{}
-	mi := &file_fex_proto_msgTypes[17]
+	mi := &file_fex_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2548,7 +3040,7 @@ func (x *File) String() string {
 func (*File) ProtoMessage() {}
 
 func (x *File) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[17]
+	mi := &file_fex_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2561,7 +3053,7 @@ func (x *File) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use File.ProtoReflect.Descriptor instead.
 func (*File) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{17}
+	return file_fex_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *File) GetPath() string {
@@ -2628,7 +3120,7 @@ type User struct {
 
 func (x *User) Reset() {
 	*x = User{}
-	mi := &file_fex_proto_msgTypes[18]
+	mi := &file_fex_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2640,7 +3132,7 @@ func (x *User) String() string {
 func (*User) ProtoMessage() {}
 
 func (x *User) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[18]
+	mi := &file_fex_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2653,7 +3145,7 @@ func (x *User) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use User.ProtoReflect.Descriptor instead.
 func (*User) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{18}
+	return file_fex_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *User) GetId() string {
@@ -2698,7 +3190,7 @@ type Process struct {
 
 func (x *Process) Reset() {
 	*x = Process{}
-	mi := &file_fex_proto_msgTypes[19]
+	mi := &file_fex_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2710,7 +3202,7 @@ func (x *Process) String() string {
 func (*Process) ProtoMessage() {}
 
 func (x *Process) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[19]
+	mi := &file_fex_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2723,7 +3215,7 @@ func (x *Process) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Process.ProtoReflect.Descriptor instead.
 func (*Process) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{19}
+	return file_fex_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *Process) GetCmdline() string {
@@ -2784,7 +3276,7 @@ type Container struct {
 
 func (x *Container) Reset() {
 	*x = Container{}
-	mi := &file_fex_proto_msgTypes[20]
+	mi := &file_fex_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2796,7 +3288,7 @@ func (x *Container) String() string {
 func (*Container) ProtoMessage() {}
 
 func (x *Container) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[20]
+	mi := &file_fex_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2809,7 +3301,7 @@ func (x *Container) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Container.ProtoReflect.Descriptor instead.
 func (*Container) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{20}
+	return file_fex_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *Container) GetName() string {
@@ -2847,7 +3339,7 @@ type Kubernetes struct {
 
 func (x *Kubernetes) Reset() {
 	*x = Kubernetes{}
-	mi := &file_fex_proto_msgTypes[21]
+	mi := &file_fex_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2859,7 +3351,7 @@ func (x *Kubernetes) String() string {
 func (*Kubernetes) ProtoMessage() {}
 
 func (x *Kubernetes) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[21]
+	mi := &file_fex_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2872,7 +3364,7 @@ func (x *Kubernetes) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Kubernetes.ProtoReflect.Descriptor instead.
 func (*Kubernetes) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{21}
+	return file_fex_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *Kubernetes) GetPods() []*Kubernetes_Pod {
@@ -2904,7 +3396,7 @@ type RegistryKey struct {
 
 func (x *RegistryKey) Reset() {
 	*x = RegistryKey{}
-	mi := &file_fex_proto_msgTypes[22]
+	mi := &file_fex_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2916,7 +3408,7 @@ func (x *RegistryKey) String() string {
 func (*RegistryKey) ProtoMessage() {}
 
 func (x *RegistryKey) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[22]
+	mi := &file_fex_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2929,7 +3421,7 @@ func (x *RegistryKey) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegistryKey.ProtoReflect.Descriptor instead.
 func (*RegistryKey) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{22}
+	return file_fex_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *RegistryKey) GetPath() string {
@@ -2976,7 +3468,7 @@ type Connection struct {
 
 func (x *Connection) Reset() {
 	*x = Connection{}
-	mi := &file_fex_proto_msgTypes[23]
+	mi := &file_fex_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2988,7 +3480,7 @@ func (x *Connection) String() string {
 func (*Connection) ProtoMessage() {}
 
 func (x *Connection) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[23]
+	mi := &file_fex_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3001,7 +3493,7 @@ func (x *Connection) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Connection.ProtoReflect.Descriptor instead.
 func (*Connection) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{23}
+	return file_fex_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *Connection) GetDestinationAddress() string {
@@ -3071,7 +3563,7 @@ type HttpRequest struct {
 
 func (x *HttpRequest) Reset() {
 	*x = HttpRequest{}
-	mi := &file_fex_proto_msgTypes[24]
+	mi := &file_fex_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3083,7 +3575,7 @@ func (x *HttpRequest) String() string {
 func (*HttpRequest) ProtoMessage() {}
 
 func (x *HttpRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[24]
+	mi := &file_fex_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3096,7 +3588,7 @@ func (x *HttpRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpRequest.ProtoReflect.Descriptor instead.
 func (*HttpRequest) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{24}
+	return file_fex_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *HttpRequest) GetMethod() string {
@@ -3172,7 +3664,7 @@ type DnsRecord struct {
 
 func (x *DnsRecord) Reset() {
 	*x = DnsRecord{}
-	mi := &file_fex_proto_msgTypes[25]
+	mi := &file_fex_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3184,7 +3676,7 @@ func (x *DnsRecord) String() string {
 func (*DnsRecord) ProtoMessage() {}
 
 func (x *DnsRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[25]
+	mi := &file_fex_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3197,7 +3689,7 @@ func (x *DnsRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DnsRecord.ProtoReflect.Descriptor instead.
 func (*DnsRecord) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{25}
+	return file_fex_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *DnsRecord) GetName() string {
@@ -3257,7 +3749,7 @@ type Certificate struct {
 
 func (x *Certificate) Reset() {
 	*x = Certificate{}
-	mi := &file_fex_proto_msgTypes[26]
+	mi := &file_fex_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3269,7 +3761,7 @@ func (x *Certificate) String() string {
 func (*Certificate) ProtoMessage() {}
 
 func (x *Certificate) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[26]
+	mi := &file_fex_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3282,7 +3774,7 @@ func (x *Certificate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Certificate.ProtoReflect.Descriptor instead.
 func (*Certificate) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{26}
+	return file_fex_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *Certificate) GetSubject() string {
@@ -3373,7 +3865,7 @@ type DomainRegistration struct {
 
 func (x *DomainRegistration) Reset() {
 	*x = DomainRegistration{}
-	mi := &file_fex_proto_msgTypes[27]
+	mi := &file_fex_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3385,7 +3877,7 @@ func (x *DomainRegistration) String() string {
 func (*DomainRegistration) ProtoMessage() {}
 
 func (x *DomainRegistration) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[27]
+	mi := &file_fex_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3398,7 +3890,7 @@ func (x *DomainRegistration) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DomainRegistration.ProtoReflect.Descriptor instead.
 func (*DomainRegistration) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{27}
+	return file_fex_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *DomainRegistration) GetDomain() string {
@@ -3475,7 +3967,7 @@ type NetworkRange struct {
 
 func (x *NetworkRange) Reset() {
 	*x = NetworkRange{}
-	mi := &file_fex_proto_msgTypes[28]
+	mi := &file_fex_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3487,7 +3979,7 @@ func (x *NetworkRange) String() string {
 func (*NetworkRange) ProtoMessage() {}
 
 func (x *NetworkRange) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[28]
+	mi := &file_fex_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3500,7 +3992,7 @@ func (x *NetworkRange) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkRange.ProtoReflect.Descriptor instead.
 func (*NetworkRange) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{28}
+	return file_fex_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *NetworkRange) GetCidr() string {
@@ -3578,7 +4070,7 @@ type ThreatIntelIndicator struct {
 
 func (x *ThreatIntelIndicator) Reset() {
 	*x = ThreatIntelIndicator{}
-	mi := &file_fex_proto_msgTypes[29]
+	mi := &file_fex_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3590,7 +4082,7 @@ func (x *ThreatIntelIndicator) String() string {
 func (*ThreatIntelIndicator) ProtoMessage() {}
 
 func (x *ThreatIntelIndicator) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[29]
+	mi := &file_fex_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3603,7 +4095,7 @@ func (x *ThreatIntelIndicator) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ThreatIntelIndicator.ProtoReflect.Descriptor instead.
 func (*ThreatIntelIndicator) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{29}
+	return file_fex_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *ThreatIntelIndicator) GetType() string {
@@ -3667,7 +4159,7 @@ type Malware struct {
 
 func (x *Malware) Reset() {
 	*x = Malware{}
-	mi := &file_fex_proto_msgTypes[30]
+	mi := &file_fex_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3679,7 +4171,7 @@ func (x *Malware) String() string {
 func (*Malware) ProtoMessage() {}
 
 func (x *Malware) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[30]
+	mi := &file_fex_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3692,7 +4184,7 @@ func (x *Malware) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Malware.ProtoReflect.Descriptor instead.
 func (*Malware) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{30}
+	return file_fex_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *Malware) GetName() string {
@@ -3744,7 +4236,7 @@ type AiModel struct {
 
 func (x *AiModel) Reset() {
 	*x = AiModel{}
-	mi := &file_fex_proto_msgTypes[31]
+	mi := &file_fex_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3756,7 +4248,7 @@ func (x *AiModel) String() string {
 func (*AiModel) ProtoMessage() {}
 
 func (x *AiModel) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[31]
+	mi := &file_fex_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3769,7 +4261,7 @@ func (x *AiModel) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AiModel.ProtoReflect.Descriptor instead.
 func (*AiModel) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{31}
+	return file_fex_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *AiModel) GetName() string {
@@ -3826,7 +4318,7 @@ type AiAgent struct {
 
 func (x *AiAgent) Reset() {
 	*x = AiAgent{}
-	mi := &file_fex_proto_msgTypes[32]
+	mi := &file_fex_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3838,7 +4330,7 @@ func (x *AiAgent) String() string {
 func (*AiAgent) ProtoMessage() {}
 
 func (x *AiAgent) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[32]
+	mi := &file_fex_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3851,7 +4343,7 @@ func (x *AiAgent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AiAgent.ProtoReflect.Descriptor instead.
 func (*AiAgent) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{32}
+	return file_fex_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *AiAgent) GetId() string {
@@ -3898,7 +4390,7 @@ type AttackTactic struct {
 
 func (x *AttackTactic) Reset() {
 	*x = AttackTactic{}
-	mi := &file_fex_proto_msgTypes[33]
+	mi := &file_fex_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3910,7 +4402,7 @@ func (x *AttackTactic) String() string {
 func (*AttackTactic) ProtoMessage() {}
 
 func (x *AttackTactic) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[33]
+	mi := &file_fex_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3923,7 +4415,7 @@ func (x *AttackTactic) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttackTactic.ProtoReflect.Descriptor instead.
 func (*AttackTactic) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{33}
+	return file_fex_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *AttackTactic) GetId() string {
@@ -3963,7 +4455,7 @@ type AttackTechnique struct {
 
 func (x *AttackTechnique) Reset() {
 	*x = AttackTechnique{}
-	mi := &file_fex_proto_msgTypes[34]
+	mi := &file_fex_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3975,7 +4467,7 @@ func (x *AttackTechnique) String() string {
 func (*AttackTechnique) ProtoMessage() {}
 
 func (x *AttackTechnique) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[34]
+	mi := &file_fex_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3988,7 +4480,7 @@ func (x *AttackTechnique) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttackTechnique.ProtoReflect.Descriptor instead.
 func (*AttackTechnique) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{34}
+	return file_fex_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *AttackTechnique) GetId() string {
@@ -4027,7 +4519,7 @@ type Kubernetes_Pod struct {
 
 func (x *Kubernetes_Pod) Reset() {
 	*x = Kubernetes_Pod{}
-	mi := &file_fex_proto_msgTypes[42]
+	mi := &file_fex_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4039,7 +4531,7 @@ func (x *Kubernetes_Pod) String() string {
 func (*Kubernetes_Pod) ProtoMessage() {}
 
 func (x *Kubernetes_Pod) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[42]
+	mi := &file_fex_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4052,7 +4544,7 @@ func (x *Kubernetes_Pod) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Kubernetes_Pod.ProtoReflect.Descriptor instead.
 func (*Kubernetes_Pod) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{21, 0}
+	return file_fex_proto_rawDescGZIP(), []int{25, 0}
 }
 
 func (x *Kubernetes_Pod) GetName() string {
@@ -4089,7 +4581,7 @@ type Kubernetes_Node struct {
 
 func (x *Kubernetes_Node) Reset() {
 	*x = Kubernetes_Node{}
-	mi := &file_fex_proto_msgTypes[43]
+	mi := &file_fex_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4101,7 +4593,7 @@ func (x *Kubernetes_Node) String() string {
 func (*Kubernetes_Node) ProtoMessage() {}
 
 func (x *Kubernetes_Node) ProtoReflect() protoreflect.Message {
-	mi := &file_fex_proto_msgTypes[43]
+	mi := &file_fex_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4114,7 +4606,7 @@ func (x *Kubernetes_Node) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Kubernetes_Node.ProtoReflect.Descriptor instead.
 func (*Kubernetes_Node) Descriptor() ([]byte, []int) {
-	return file_fex_proto_rawDescGZIP(), []int{21, 1}
+	return file_fex_proto_rawDescGZIP(), []int{25, 1}
 }
 
 func (x *Kubernetes_Node) GetName() string {
@@ -4140,7 +4632,7 @@ const file_fex_proto_rawDesc = "" +
 	"\x0fFindingDocument\x125\n" +
 	"\x03vex\x18\x01 \x01(\v2!.mql.fex.v1.VulnerabilityExchangeH\x00R\x03vex\x12/\n" +
 	"\x03fex\x18\x02 \x01(\v2\x1b.mql.fex.v1.FindingExchangeH\x00R\x03fexB\t\n" +
-	"\afinding\"\xa5\x03\n" +
+	"\afinding\"\x83\a\n" +
 	"\x15FindingsUploadRequest\x127\n" +
 	"\bfindings\x18\x01 \x03(\v2\x1b.mql.fex.v1.FindingDocumentR\bfindings\x12\x16\n" +
 	"\x06source\x18\x02 \x01(\tR\x06source\x12+\n" +
@@ -4149,7 +4641,41 @@ const file_fex_proto_rawDesc = "" +
 	"\rcreate_assets\x18\x05 \x01(\bR\fcreateAssets\x12F\n" +
 	"\x11import_started_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\x0fimportStartedAt\x12>\n" +
 	"\x0ecomplete_kinds\x18\t \x03(\x0e2\x17.mql.fex.v1.FindingKindR\rcompleteKinds\x12D\n" +
-	"\x12scanned_components\x18\r \x03(\v2\x15.mql.fex.v1.ComponentR\x11scannedComponents\"\x91\x06\n" +
+	"\x12scanned_components\x18\r \x03(\v2\x15.mql.fex.v1.ComponentR\x11scannedComponents\x12\"\n" +
+	"\rupload_set_id\x18\x0f \x01(\tR\vuploadSetId\x12\x1d\n" +
+	"\n" +
+	"part_index\x18\x10 \x01(\x05R\tpartIndex\x12\x1d\n" +
+	"\n" +
+	"part_count\x18\x11 \x01(\x05R\tpartCount\x126\n" +
+	"\x17eligible_findings_count\x18\x12 \x01(\x05R\x15eligibleFindingsCount\x12#\n" +
+	"\rcapped_reason\x18\x13 \x01(\tR\fcappedReason\x12.\n" +
+	"\bscan_ref\x18\x14 \x01(\v2\x13.mql.fex.v1.ScanRefR\ascanRef\x12C\n" +
+	"\x10code_owner_rules\x18\x15 \x03(\v2\x19.mql.fex.v1.CodeOwnerRuleR\x0ecodeOwnerRules\x121\n" +
+	"\trun_rules\x18\x16 \x01(\v2\x14.mql.fex.v1.RunRulesR\brunRules\x128\n" +
+	"\frun_policies\x18\x17 \x03(\v2\x15.mql.fex.v1.RunPolicyR\vrunPolicies\x12;\n" +
+	"\x1acode_owner_rules_truncated\x18\x18 \x01(\bR\x17codeOwnerRulesTruncated\"\x98\x01\n" +
+	"\aScanRef\x12+\n" +
+	"\x04kind\x18\x01 \x01(\x0e2\x17.mql.fex.v1.ScanRefKindR\x04kind\x12\x16\n" +
+	"\x06number\x18\x02 \x01(\x03R\x06number\x12\x19\n" +
+	"\bhead_sha\x18\x03 \x01(\tR\aheadSha\x12\x19\n" +
+	"\bbase_sha\x18\x04 \x01(\tR\abaseSha\x12\x12\n" +
+	"\x04name\x18\x05 \x01(\tR\x04name\"w\n" +
+	"\rCodeOwnerRule\x12\x18\n" +
+	"\apattern\x18\x01 \x01(\tR\apattern\x12\x16\n" +
+	"\x06owners\x18\x02 \x03(\tR\x06owners\x12\x18\n" +
+	"\asection\x18\x03 \x01(\tR\asection\x12\x1a\n" +
+	"\boptional\x18\x04 \x01(\bR\boptional\"\x8f\x01\n" +
+	"\bRunRules\x12\x16\n" +
+	"\x06source\x18\x01 \x01(\tR\x06source\x12\x14\n" +
+	"\x05count\x18\x02 \x01(\x05R\x05count\x12'\n" +
+	"\x0ffallback_reason\x18\x03 \x01(\tR\x0efallbackReason\x12\x18\n" +
+	"\askipped\x18\x04 \x03(\tR\askipped\x12\x12\n" +
+	"\x04etag\x18\x05 \x01(\tR\x04etag\"t\n" +
+	"\tRunPolicy\x12\x12\n" +
+	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x16\n" +
+	"\x06source\x18\x02 \x01(\tR\x06source\x12\x12\n" +
+	"\x04etag\x18\x03 \x01(\tR\x04etag\x12'\n" +
+	"\x0ffallback_reason\x18\x04 \x01(\tR\x0efallbackReason\"\x91\x06\n" +
 	"\x15VulnerabilityExchange\x12\x10\n" +
 	"\x03ref\x18\x01 \x01(\tR\x03ref\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\x12\x10\n" +
@@ -4485,7 +5011,11 @@ const file_fex_proto_rawDesc = "" +
 	"\x0fAttackTechnique\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
-	"\vdescription\x18\x03 \x01(\tR\vdescription*e\n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription*f\n" +
+	"\vScanRefKind\x12\x1d\n" +
+	"\x19SCAN_REF_KIND_UNSPECIFIED\x10\x00\x12\x1e\n" +
+	"\x1aSCAN_REF_KIND_PULL_REQUEST\x10\x01\x12\x18\n" +
+	"\x14SCAN_REF_KIND_BRANCH\x10\x02*e\n" +
 	"\vFindingKind\x12\x1c\n" +
 	"\x18FINDING_KIND_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14FINDING_KIND_FINDING\x10\x01\x12\x1e\n" +
@@ -4532,156 +5062,166 @@ func file_fex_proto_rawDescGZIP() []byte {
 	return file_fex_proto_rawDescData
 }
 
-var file_fex_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
-var file_fex_proto_msgTypes = make([]protoimpl.MessageInfo, 44)
+var file_fex_proto_enumTypes = make([]protoimpl.EnumInfo, 9)
+var file_fex_proto_msgTypes = make([]protoimpl.MessageInfo, 48)
 var file_fex_proto_goTypes = []any{
-	(FindingKind)(0),                   // 0: mql.fex.v1.FindingKind
-	(Status)(0),                        // 1: mql.fex.v1.Status
-	(ScoringMethod)(0),                 // 2: mql.fex.v1.ScoringMethod
-	(Confidence)(0),                    // 3: mql.fex.v1.Confidence
-	(SeverityRating)(0),                // 4: mql.fex.v1.SeverityRating
-	(Remediation_Category)(0),          // 5: mql.fex.v1.Remediation.Category
-	(FindingDetail_Category)(0),        // 6: mql.fex.v1.FindingDetail.Category
-	(Connection_ConnectionProtocol)(0), // 7: mql.fex.v1.Connection.ConnectionProtocol
-	(*FindingDocument)(nil),            // 8: mql.fex.v1.FindingDocument
-	(*FindingsUploadRequest)(nil),      // 9: mql.fex.v1.FindingsUploadRequest
-	(*VulnerabilityExchange)(nil),      // 10: mql.fex.v1.VulnerabilityExchange
-	(*Reference)(nil),                  // 11: mql.fex.v1.Reference
-	(*Source)(nil),                     // 12: mql.fex.v1.Source
-	(*VulnerabilityDetails)(nil),       // 13: mql.fex.v1.VulnerabilityDetails
-	(*Affects)(nil),                    // 14: mql.fex.v1.Affects
-	(*Component)(nil),                  // 15: mql.fex.v1.Component
-	(*CloudResource)(nil),              // 16: mql.fex.v1.CloudResource
-	(*FileComponent)(nil),              // 17: mql.fex.v1.FileComponent
-	(*Rating)(nil),                     // 18: mql.fex.v1.Rating
-	(*Severity)(nil),                   // 19: mql.fex.v1.Severity
-	(*Remediation)(nil),                // 20: mql.fex.v1.Remediation
-	(*FindingExchange)(nil),            // 21: mql.fex.v1.FindingExchange
-	(*FindingDetail)(nil),              // 22: mql.fex.v1.FindingDetail
-	(*Evidence)(nil),                   // 23: mql.fex.v1.Evidence
-	(*SourceVersion)(nil),              // 24: mql.fex.v1.SourceVersion
-	(*File)(nil),                       // 25: mql.fex.v1.File
-	(*User)(nil),                       // 26: mql.fex.v1.User
-	(*Process)(nil),                    // 27: mql.fex.v1.Process
-	(*Container)(nil),                  // 28: mql.fex.v1.Container
-	(*Kubernetes)(nil),                 // 29: mql.fex.v1.Kubernetes
-	(*RegistryKey)(nil),                // 30: mql.fex.v1.RegistryKey
-	(*Connection)(nil),                 // 31: mql.fex.v1.Connection
-	(*HttpRequest)(nil),                // 32: mql.fex.v1.HttpRequest
-	(*DnsRecord)(nil),                  // 33: mql.fex.v1.DnsRecord
-	(*Certificate)(nil),                // 34: mql.fex.v1.Certificate
-	(*DomainRegistration)(nil),         // 35: mql.fex.v1.DomainRegistration
-	(*NetworkRange)(nil),               // 36: mql.fex.v1.NetworkRange
-	(*ThreatIntelIndicator)(nil),       // 37: mql.fex.v1.ThreatIntelIndicator
-	(*Malware)(nil),                    // 38: mql.fex.v1.Malware
-	(*AiModel)(nil),                    // 39: mql.fex.v1.AiModel
-	(*AiAgent)(nil),                    // 40: mql.fex.v1.AiAgent
-	(*AttackTactic)(nil),               // 41: mql.fex.v1.AttackTactic
-	(*AttackTechnique)(nil),            // 42: mql.fex.v1.AttackTechnique
-	nil,                                // 43: mql.fex.v1.Reference.MetadataEntry
-	nil,                                // 44: mql.fex.v1.Component.IdentifiersEntry
-	nil,                                // 45: mql.fex.v1.Component.PropertiesEntry
-	nil,                                // 46: mql.fex.v1.CloudResource.TagsEntry
-	nil,                                // 47: mql.fex.v1.FindingDetail.PropertiesEntry
-	nil,                                // 48: mql.fex.v1.Evidence.PropertiesEntry
-	nil,                                // 49: mql.fex.v1.User.PropertiesEntry
-	(*Kubernetes_Pod)(nil),             // 50: mql.fex.v1.Kubernetes.Pod
-	(*Kubernetes_Node)(nil),            // 51: mql.fex.v1.Kubernetes.Node
-	(*timestamppb.Timestamp)(nil),      // 52: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),            // 53: google.protobuf.Struct
+	(ScanRefKind)(0),                   // 0: mql.fex.v1.ScanRefKind
+	(FindingKind)(0),                   // 1: mql.fex.v1.FindingKind
+	(Status)(0),                        // 2: mql.fex.v1.Status
+	(ScoringMethod)(0),                 // 3: mql.fex.v1.ScoringMethod
+	(Confidence)(0),                    // 4: mql.fex.v1.Confidence
+	(SeverityRating)(0),                // 5: mql.fex.v1.SeverityRating
+	(Remediation_Category)(0),          // 6: mql.fex.v1.Remediation.Category
+	(FindingDetail_Category)(0),        // 7: mql.fex.v1.FindingDetail.Category
+	(Connection_ConnectionProtocol)(0), // 8: mql.fex.v1.Connection.ConnectionProtocol
+	(*FindingDocument)(nil),            // 9: mql.fex.v1.FindingDocument
+	(*FindingsUploadRequest)(nil),      // 10: mql.fex.v1.FindingsUploadRequest
+	(*ScanRef)(nil),                    // 11: mql.fex.v1.ScanRef
+	(*CodeOwnerRule)(nil),              // 12: mql.fex.v1.CodeOwnerRule
+	(*RunRules)(nil),                   // 13: mql.fex.v1.RunRules
+	(*RunPolicy)(nil),                  // 14: mql.fex.v1.RunPolicy
+	(*VulnerabilityExchange)(nil),      // 15: mql.fex.v1.VulnerabilityExchange
+	(*Reference)(nil),                  // 16: mql.fex.v1.Reference
+	(*Source)(nil),                     // 17: mql.fex.v1.Source
+	(*VulnerabilityDetails)(nil),       // 18: mql.fex.v1.VulnerabilityDetails
+	(*Affects)(nil),                    // 19: mql.fex.v1.Affects
+	(*Component)(nil),                  // 20: mql.fex.v1.Component
+	(*CloudResource)(nil),              // 21: mql.fex.v1.CloudResource
+	(*FileComponent)(nil),              // 22: mql.fex.v1.FileComponent
+	(*Rating)(nil),                     // 23: mql.fex.v1.Rating
+	(*Severity)(nil),                   // 24: mql.fex.v1.Severity
+	(*Remediation)(nil),                // 25: mql.fex.v1.Remediation
+	(*FindingExchange)(nil),            // 26: mql.fex.v1.FindingExchange
+	(*FindingDetail)(nil),              // 27: mql.fex.v1.FindingDetail
+	(*Evidence)(nil),                   // 28: mql.fex.v1.Evidence
+	(*SourceVersion)(nil),              // 29: mql.fex.v1.SourceVersion
+	(*File)(nil),                       // 30: mql.fex.v1.File
+	(*User)(nil),                       // 31: mql.fex.v1.User
+	(*Process)(nil),                    // 32: mql.fex.v1.Process
+	(*Container)(nil),                  // 33: mql.fex.v1.Container
+	(*Kubernetes)(nil),                 // 34: mql.fex.v1.Kubernetes
+	(*RegistryKey)(nil),                // 35: mql.fex.v1.RegistryKey
+	(*Connection)(nil),                 // 36: mql.fex.v1.Connection
+	(*HttpRequest)(nil),                // 37: mql.fex.v1.HttpRequest
+	(*DnsRecord)(nil),                  // 38: mql.fex.v1.DnsRecord
+	(*Certificate)(nil),                // 39: mql.fex.v1.Certificate
+	(*DomainRegistration)(nil),         // 40: mql.fex.v1.DomainRegistration
+	(*NetworkRange)(nil),               // 41: mql.fex.v1.NetworkRange
+	(*ThreatIntelIndicator)(nil),       // 42: mql.fex.v1.ThreatIntelIndicator
+	(*Malware)(nil),                    // 43: mql.fex.v1.Malware
+	(*AiModel)(nil),                    // 44: mql.fex.v1.AiModel
+	(*AiAgent)(nil),                    // 45: mql.fex.v1.AiAgent
+	(*AttackTactic)(nil),               // 46: mql.fex.v1.AttackTactic
+	(*AttackTechnique)(nil),            // 47: mql.fex.v1.AttackTechnique
+	nil,                                // 48: mql.fex.v1.Reference.MetadataEntry
+	nil,                                // 49: mql.fex.v1.Component.IdentifiersEntry
+	nil,                                // 50: mql.fex.v1.Component.PropertiesEntry
+	nil,                                // 51: mql.fex.v1.CloudResource.TagsEntry
+	nil,                                // 52: mql.fex.v1.FindingDetail.PropertiesEntry
+	nil,                                // 53: mql.fex.v1.Evidence.PropertiesEntry
+	nil,                                // 54: mql.fex.v1.User.PropertiesEntry
+	(*Kubernetes_Pod)(nil),             // 55: mql.fex.v1.Kubernetes.Pod
+	(*Kubernetes_Node)(nil),            // 56: mql.fex.v1.Kubernetes.Node
+	(*timestamppb.Timestamp)(nil),      // 57: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),            // 58: google.protobuf.Struct
 }
 var file_fex_proto_depIdxs = []int32{
-	10, // 0: mql.fex.v1.FindingDocument.vex:type_name -> mql.fex.v1.VulnerabilityExchange
-	21, // 1: mql.fex.v1.FindingDocument.fex:type_name -> mql.fex.v1.FindingExchange
-	8,  // 2: mql.fex.v1.FindingsUploadRequest.findings:type_name -> mql.fex.v1.FindingDocument
-	52, // 3: mql.fex.v1.FindingsUploadRequest.import_started_at:type_name -> google.protobuf.Timestamp
-	0,  // 4: mql.fex.v1.FindingsUploadRequest.complete_kinds:type_name -> mql.fex.v1.FindingKind
-	15, // 5: mql.fex.v1.FindingsUploadRequest.scanned_components:type_name -> mql.fex.v1.Component
-	13, // 6: mql.fex.v1.VulnerabilityExchange.details:type_name -> mql.fex.v1.VulnerabilityDetails
-	12, // 7: mql.fex.v1.VulnerabilityExchange.source:type_name -> mql.fex.v1.Source
-	18, // 8: mql.fex.v1.VulnerabilityExchange.ratings:type_name -> mql.fex.v1.Rating
-	52, // 9: mql.fex.v1.VulnerabilityExchange.first_seen:type_name -> google.protobuf.Timestamp
-	52, // 10: mql.fex.v1.VulnerabilityExchange.remediated:type_name -> google.protobuf.Timestamp
-	14, // 11: mql.fex.v1.VulnerabilityExchange.affects:type_name -> mql.fex.v1.Affects
-	1,  // 12: mql.fex.v1.VulnerabilityExchange.status:type_name -> mql.fex.v1.Status
-	11, // 13: mql.fex.v1.VulnerabilityExchange.references:type_name -> mql.fex.v1.Reference
-	20, // 14: mql.fex.v1.VulnerabilityExchange.remediations:type_name -> mql.fex.v1.Remediation
-	53, // 15: mql.fex.v1.VulnerabilityExchange.database_specific:type_name -> google.protobuf.Struct
-	23, // 16: mql.fex.v1.VulnerabilityExchange.evidences:type_name -> mql.fex.v1.Evidence
-	43, // 17: mql.fex.v1.Reference.metadata:type_name -> mql.fex.v1.Reference.MetadataEntry
-	52, // 18: mql.fex.v1.VulnerabilityDetails.created:type_name -> google.protobuf.Timestamp
-	52, // 19: mql.fex.v1.VulnerabilityDetails.published:type_name -> google.protobuf.Timestamp
-	52, // 20: mql.fex.v1.VulnerabilityDetails.updated:type_name -> google.protobuf.Timestamp
-	15, // 21: mql.fex.v1.Affects.component:type_name -> mql.fex.v1.Component
-	15, // 22: mql.fex.v1.Affects.sub_components:type_name -> mql.fex.v1.Component
-	44, // 23: mql.fex.v1.Component.identifiers:type_name -> mql.fex.v1.Component.IdentifiersEntry
-	45, // 24: mql.fex.v1.Component.properties:type_name -> mql.fex.v1.Component.PropertiesEntry
-	17, // 25: mql.fex.v1.Component.file:type_name -> mql.fex.v1.FileComponent
-	16, // 26: mql.fex.v1.Component.cloud_resource:type_name -> mql.fex.v1.CloudResource
-	46, // 27: mql.fex.v1.CloudResource.tags:type_name -> mql.fex.v1.CloudResource.TagsEntry
-	12, // 28: mql.fex.v1.Rating.source:type_name -> mql.fex.v1.Source
-	2,  // 29: mql.fex.v1.Rating.method:type_name -> mql.fex.v1.ScoringMethod
-	12, // 30: mql.fex.v1.Severity.source:type_name -> mql.fex.v1.Source
-	2,  // 31: mql.fex.v1.Severity.method:type_name -> mql.fex.v1.ScoringMethod
-	4,  // 32: mql.fex.v1.Severity.rating:type_name -> mql.fex.v1.SeverityRating
-	5,  // 33: mql.fex.v1.Remediation.category:type_name -> mql.fex.v1.Remediation.Category
-	22, // 34: mql.fex.v1.FindingExchange.details:type_name -> mql.fex.v1.FindingDetail
-	52, // 35: mql.fex.v1.FindingExchange.first_seen_at:type_name -> google.protobuf.Timestamp
-	52, // 36: mql.fex.v1.FindingExchange.last_seen_at:type_name -> google.protobuf.Timestamp
-	52, // 37: mql.fex.v1.FindingExchange.remediated_at:type_name -> google.protobuf.Timestamp
-	1,  // 38: mql.fex.v1.FindingExchange.status:type_name -> mql.fex.v1.Status
-	12, // 39: mql.fex.v1.FindingExchange.source:type_name -> mql.fex.v1.Source
-	14, // 40: mql.fex.v1.FindingExchange.affects:type_name -> mql.fex.v1.Affects
-	23, // 41: mql.fex.v1.FindingExchange.evidences:type_name -> mql.fex.v1.Evidence
-	20, // 42: mql.fex.v1.FindingExchange.remediations:type_name -> mql.fex.v1.Remediation
-	21, // 43: mql.fex.v1.FindingExchange.sub_findings:type_name -> mql.fex.v1.FindingExchange
-	6,  // 44: mql.fex.v1.FindingDetail.category:type_name -> mql.fex.v1.FindingDetail.Category
-	19, // 45: mql.fex.v1.FindingDetail.severity:type_name -> mql.fex.v1.Severity
-	3,  // 46: mql.fex.v1.FindingDetail.confidence:type_name -> mql.fex.v1.Confidence
-	11, // 47: mql.fex.v1.FindingDetail.references:type_name -> mql.fex.v1.Reference
-	47, // 48: mql.fex.v1.FindingDetail.properties:type_name -> mql.fex.v1.FindingDetail.PropertiesEntry
-	41, // 49: mql.fex.v1.Evidence.tactic:type_name -> mql.fex.v1.AttackTactic
-	42, // 50: mql.fex.v1.Evidence.technique:type_name -> mql.fex.v1.AttackTechnique
-	3,  // 51: mql.fex.v1.Evidence.confidence:type_name -> mql.fex.v1.Confidence
-	26, // 52: mql.fex.v1.Evidence.user:type_name -> mql.fex.v1.User
-	25, // 53: mql.fex.v1.Evidence.file:type_name -> mql.fex.v1.File
-	27, // 54: mql.fex.v1.Evidence.process:type_name -> mql.fex.v1.Process
-	28, // 55: mql.fex.v1.Evidence.container:type_name -> mql.fex.v1.Container
-	29, // 56: mql.fex.v1.Evidence.kubernetes:type_name -> mql.fex.v1.Kubernetes
-	30, // 57: mql.fex.v1.Evidence.registry_key:type_name -> mql.fex.v1.RegistryKey
-	31, // 58: mql.fex.v1.Evidence.connection:type_name -> mql.fex.v1.Connection
-	32, // 59: mql.fex.v1.Evidence.http_request:type_name -> mql.fex.v1.HttpRequest
-	33, // 60: mql.fex.v1.Evidence.dns_record:type_name -> mql.fex.v1.DnsRecord
-	34, // 61: mql.fex.v1.Evidence.certificate:type_name -> mql.fex.v1.Certificate
-	35, // 62: mql.fex.v1.Evidence.domain_registration:type_name -> mql.fex.v1.DomainRegistration
-	36, // 63: mql.fex.v1.Evidence.network_range:type_name -> mql.fex.v1.NetworkRange
-	37, // 64: mql.fex.v1.Evidence.threat_intel_indicator:type_name -> mql.fex.v1.ThreatIntelIndicator
-	38, // 65: mql.fex.v1.Evidence.malware:type_name -> mql.fex.v1.Malware
-	39, // 66: mql.fex.v1.Evidence.ai_model:type_name -> mql.fex.v1.AiModel
-	40, // 67: mql.fex.v1.Evidence.ai_agent:type_name -> mql.fex.v1.AiAgent
-	48, // 68: mql.fex.v1.Evidence.properties:type_name -> mql.fex.v1.Evidence.PropertiesEntry
-	24, // 69: mql.fex.v1.Evidence.source_version:type_name -> mql.fex.v1.SourceVersion
-	52, // 70: mql.fex.v1.SourceVersion.date:type_name -> google.protobuf.Timestamp
-	49, // 71: mql.fex.v1.User.properties:type_name -> mql.fex.v1.User.PropertiesEntry
-	25, // 72: mql.fex.v1.Process.binary:type_name -> mql.fex.v1.File
-	25, // 73: mql.fex.v1.Process.script:type_name -> mql.fex.v1.File
-	26, // 74: mql.fex.v1.Process.user:type_name -> mql.fex.v1.User
-	27, // 75: mql.fex.v1.Process.parent:type_name -> mql.fex.v1.Process
-	50, // 76: mql.fex.v1.Kubernetes.pods:type_name -> mql.fex.v1.Kubernetes.Pod
-	51, // 77: mql.fex.v1.Kubernetes.nodes:type_name -> mql.fex.v1.Kubernetes.Node
-	7,  // 78: mql.fex.v1.Connection.protocol:type_name -> mql.fex.v1.Connection.ConnectionProtocol
-	52, // 79: mql.fex.v1.Certificate.not_before:type_name -> google.protobuf.Timestamp
-	52, // 80: mql.fex.v1.Certificate.not_after:type_name -> google.protobuf.Timestamp
-	52, // 81: mql.fex.v1.DomainRegistration.created_at:type_name -> google.protobuf.Timestamp
-	52, // 82: mql.fex.v1.DomainRegistration.updated_at:type_name -> google.protobuf.Timestamp
-	52, // 83: mql.fex.v1.DomainRegistration.expires_at:type_name -> google.protobuf.Timestamp
-	52, // 84: mql.fex.v1.ThreatIntelIndicator.last_observed_at:type_name -> google.protobuf.Timestamp
-	28, // 85: mql.fex.v1.Kubernetes.Pod.containers:type_name -> mql.fex.v1.Container
-	86, // [86:86] is the sub-list for method output_type
-	86, // [86:86] is the sub-list for method input_type
-	86, // [86:86] is the sub-list for extension type_name
-	86, // [86:86] is the sub-list for extension extendee
-	0,  // [0:86] is the sub-list for field type_name
+	15, // 0: mql.fex.v1.FindingDocument.vex:type_name -> mql.fex.v1.VulnerabilityExchange
+	26, // 1: mql.fex.v1.FindingDocument.fex:type_name -> mql.fex.v1.FindingExchange
+	9,  // 2: mql.fex.v1.FindingsUploadRequest.findings:type_name -> mql.fex.v1.FindingDocument
+	57, // 3: mql.fex.v1.FindingsUploadRequest.import_started_at:type_name -> google.protobuf.Timestamp
+	1,  // 4: mql.fex.v1.FindingsUploadRequest.complete_kinds:type_name -> mql.fex.v1.FindingKind
+	20, // 5: mql.fex.v1.FindingsUploadRequest.scanned_components:type_name -> mql.fex.v1.Component
+	11, // 6: mql.fex.v1.FindingsUploadRequest.scan_ref:type_name -> mql.fex.v1.ScanRef
+	12, // 7: mql.fex.v1.FindingsUploadRequest.code_owner_rules:type_name -> mql.fex.v1.CodeOwnerRule
+	13, // 8: mql.fex.v1.FindingsUploadRequest.run_rules:type_name -> mql.fex.v1.RunRules
+	14, // 9: mql.fex.v1.FindingsUploadRequest.run_policies:type_name -> mql.fex.v1.RunPolicy
+	0,  // 10: mql.fex.v1.ScanRef.kind:type_name -> mql.fex.v1.ScanRefKind
+	18, // 11: mql.fex.v1.VulnerabilityExchange.details:type_name -> mql.fex.v1.VulnerabilityDetails
+	17, // 12: mql.fex.v1.VulnerabilityExchange.source:type_name -> mql.fex.v1.Source
+	23, // 13: mql.fex.v1.VulnerabilityExchange.ratings:type_name -> mql.fex.v1.Rating
+	57, // 14: mql.fex.v1.VulnerabilityExchange.first_seen:type_name -> google.protobuf.Timestamp
+	57, // 15: mql.fex.v1.VulnerabilityExchange.remediated:type_name -> google.protobuf.Timestamp
+	19, // 16: mql.fex.v1.VulnerabilityExchange.affects:type_name -> mql.fex.v1.Affects
+	2,  // 17: mql.fex.v1.VulnerabilityExchange.status:type_name -> mql.fex.v1.Status
+	16, // 18: mql.fex.v1.VulnerabilityExchange.references:type_name -> mql.fex.v1.Reference
+	25, // 19: mql.fex.v1.VulnerabilityExchange.remediations:type_name -> mql.fex.v1.Remediation
+	58, // 20: mql.fex.v1.VulnerabilityExchange.database_specific:type_name -> google.protobuf.Struct
+	28, // 21: mql.fex.v1.VulnerabilityExchange.evidences:type_name -> mql.fex.v1.Evidence
+	48, // 22: mql.fex.v1.Reference.metadata:type_name -> mql.fex.v1.Reference.MetadataEntry
+	57, // 23: mql.fex.v1.VulnerabilityDetails.created:type_name -> google.protobuf.Timestamp
+	57, // 24: mql.fex.v1.VulnerabilityDetails.published:type_name -> google.protobuf.Timestamp
+	57, // 25: mql.fex.v1.VulnerabilityDetails.updated:type_name -> google.protobuf.Timestamp
+	20, // 26: mql.fex.v1.Affects.component:type_name -> mql.fex.v1.Component
+	20, // 27: mql.fex.v1.Affects.sub_components:type_name -> mql.fex.v1.Component
+	49, // 28: mql.fex.v1.Component.identifiers:type_name -> mql.fex.v1.Component.IdentifiersEntry
+	50, // 29: mql.fex.v1.Component.properties:type_name -> mql.fex.v1.Component.PropertiesEntry
+	22, // 30: mql.fex.v1.Component.file:type_name -> mql.fex.v1.FileComponent
+	21, // 31: mql.fex.v1.Component.cloud_resource:type_name -> mql.fex.v1.CloudResource
+	51, // 32: mql.fex.v1.CloudResource.tags:type_name -> mql.fex.v1.CloudResource.TagsEntry
+	17, // 33: mql.fex.v1.Rating.source:type_name -> mql.fex.v1.Source
+	3,  // 34: mql.fex.v1.Rating.method:type_name -> mql.fex.v1.ScoringMethod
+	17, // 35: mql.fex.v1.Severity.source:type_name -> mql.fex.v1.Source
+	3,  // 36: mql.fex.v1.Severity.method:type_name -> mql.fex.v1.ScoringMethod
+	5,  // 37: mql.fex.v1.Severity.rating:type_name -> mql.fex.v1.SeverityRating
+	6,  // 38: mql.fex.v1.Remediation.category:type_name -> mql.fex.v1.Remediation.Category
+	27, // 39: mql.fex.v1.FindingExchange.details:type_name -> mql.fex.v1.FindingDetail
+	57, // 40: mql.fex.v1.FindingExchange.first_seen_at:type_name -> google.protobuf.Timestamp
+	57, // 41: mql.fex.v1.FindingExchange.last_seen_at:type_name -> google.protobuf.Timestamp
+	57, // 42: mql.fex.v1.FindingExchange.remediated_at:type_name -> google.protobuf.Timestamp
+	2,  // 43: mql.fex.v1.FindingExchange.status:type_name -> mql.fex.v1.Status
+	17, // 44: mql.fex.v1.FindingExchange.source:type_name -> mql.fex.v1.Source
+	19, // 45: mql.fex.v1.FindingExchange.affects:type_name -> mql.fex.v1.Affects
+	28, // 46: mql.fex.v1.FindingExchange.evidences:type_name -> mql.fex.v1.Evidence
+	25, // 47: mql.fex.v1.FindingExchange.remediations:type_name -> mql.fex.v1.Remediation
+	26, // 48: mql.fex.v1.FindingExchange.sub_findings:type_name -> mql.fex.v1.FindingExchange
+	7,  // 49: mql.fex.v1.FindingDetail.category:type_name -> mql.fex.v1.FindingDetail.Category
+	24, // 50: mql.fex.v1.FindingDetail.severity:type_name -> mql.fex.v1.Severity
+	4,  // 51: mql.fex.v1.FindingDetail.confidence:type_name -> mql.fex.v1.Confidence
+	16, // 52: mql.fex.v1.FindingDetail.references:type_name -> mql.fex.v1.Reference
+	52, // 53: mql.fex.v1.FindingDetail.properties:type_name -> mql.fex.v1.FindingDetail.PropertiesEntry
+	46, // 54: mql.fex.v1.Evidence.tactic:type_name -> mql.fex.v1.AttackTactic
+	47, // 55: mql.fex.v1.Evidence.technique:type_name -> mql.fex.v1.AttackTechnique
+	4,  // 56: mql.fex.v1.Evidence.confidence:type_name -> mql.fex.v1.Confidence
+	31, // 57: mql.fex.v1.Evidence.user:type_name -> mql.fex.v1.User
+	30, // 58: mql.fex.v1.Evidence.file:type_name -> mql.fex.v1.File
+	32, // 59: mql.fex.v1.Evidence.process:type_name -> mql.fex.v1.Process
+	33, // 60: mql.fex.v1.Evidence.container:type_name -> mql.fex.v1.Container
+	34, // 61: mql.fex.v1.Evidence.kubernetes:type_name -> mql.fex.v1.Kubernetes
+	35, // 62: mql.fex.v1.Evidence.registry_key:type_name -> mql.fex.v1.RegistryKey
+	36, // 63: mql.fex.v1.Evidence.connection:type_name -> mql.fex.v1.Connection
+	37, // 64: mql.fex.v1.Evidence.http_request:type_name -> mql.fex.v1.HttpRequest
+	38, // 65: mql.fex.v1.Evidence.dns_record:type_name -> mql.fex.v1.DnsRecord
+	39, // 66: mql.fex.v1.Evidence.certificate:type_name -> mql.fex.v1.Certificate
+	40, // 67: mql.fex.v1.Evidence.domain_registration:type_name -> mql.fex.v1.DomainRegistration
+	41, // 68: mql.fex.v1.Evidence.network_range:type_name -> mql.fex.v1.NetworkRange
+	42, // 69: mql.fex.v1.Evidence.threat_intel_indicator:type_name -> mql.fex.v1.ThreatIntelIndicator
+	43, // 70: mql.fex.v1.Evidence.malware:type_name -> mql.fex.v1.Malware
+	44, // 71: mql.fex.v1.Evidence.ai_model:type_name -> mql.fex.v1.AiModel
+	45, // 72: mql.fex.v1.Evidence.ai_agent:type_name -> mql.fex.v1.AiAgent
+	53, // 73: mql.fex.v1.Evidence.properties:type_name -> mql.fex.v1.Evidence.PropertiesEntry
+	29, // 74: mql.fex.v1.Evidence.source_version:type_name -> mql.fex.v1.SourceVersion
+	57, // 75: mql.fex.v1.SourceVersion.date:type_name -> google.protobuf.Timestamp
+	54, // 76: mql.fex.v1.User.properties:type_name -> mql.fex.v1.User.PropertiesEntry
+	30, // 77: mql.fex.v1.Process.binary:type_name -> mql.fex.v1.File
+	30, // 78: mql.fex.v1.Process.script:type_name -> mql.fex.v1.File
+	31, // 79: mql.fex.v1.Process.user:type_name -> mql.fex.v1.User
+	32, // 80: mql.fex.v1.Process.parent:type_name -> mql.fex.v1.Process
+	55, // 81: mql.fex.v1.Kubernetes.pods:type_name -> mql.fex.v1.Kubernetes.Pod
+	56, // 82: mql.fex.v1.Kubernetes.nodes:type_name -> mql.fex.v1.Kubernetes.Node
+	8,  // 83: mql.fex.v1.Connection.protocol:type_name -> mql.fex.v1.Connection.ConnectionProtocol
+	57, // 84: mql.fex.v1.Certificate.not_before:type_name -> google.protobuf.Timestamp
+	57, // 85: mql.fex.v1.Certificate.not_after:type_name -> google.protobuf.Timestamp
+	57, // 86: mql.fex.v1.DomainRegistration.created_at:type_name -> google.protobuf.Timestamp
+	57, // 87: mql.fex.v1.DomainRegistration.updated_at:type_name -> google.protobuf.Timestamp
+	57, // 88: mql.fex.v1.DomainRegistration.expires_at:type_name -> google.protobuf.Timestamp
+	57, // 89: mql.fex.v1.ThreatIntelIndicator.last_observed_at:type_name -> google.protobuf.Timestamp
+	33, // 90: mql.fex.v1.Kubernetes.Pod.containers:type_name -> mql.fex.v1.Container
+	91, // [91:91] is the sub-list for method output_type
+	91, // [91:91] is the sub-list for method input_type
+	91, // [91:91] is the sub-list for extension type_name
+	91, // [91:91] is the sub-list for extension extendee
+	0,  // [0:91] is the sub-list for field type_name
 }
 
 func init() { file_fex_proto_init() }
@@ -4693,11 +5233,11 @@ func file_fex_proto_init() {
 		(*FindingDocument_Vex)(nil),
 		(*FindingDocument_Fex)(nil),
 	}
-	file_fex_proto_msgTypes[7].OneofWrappers = []any{
+	file_fex_proto_msgTypes[11].OneofWrappers = []any{
 		(*Component_File)(nil),
 		(*Component_CloudResource)(nil),
 	}
-	file_fex_proto_msgTypes[15].OneofWrappers = []any{
+	file_fex_proto_msgTypes[19].OneofWrappers = []any{
 		(*Evidence_User)(nil),
 		(*Evidence_File)(nil),
 		(*Evidence_Process)(nil),
@@ -4720,8 +5260,8 @@ func file_fex_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_fex_proto_rawDesc), len(file_fex_proto_rawDesc)),
-			NumEnums:      8,
-			NumMessages:   44,
+			NumEnums:      9,
+			NumMessages:   48,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

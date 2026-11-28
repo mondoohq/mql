@@ -64,6 +64,132 @@ message FindingsUploadRequest {
   // findings, since findings already name their assets. Fields 10 to 12 are
   // used by the platform's copy of this message.
   repeated Component scanned_components = 13;
+
+  // Fields 15 to 24 let a producer send one scan as several uploads (an
+  // upload set) and say how complete it is. Field 14 is left free here; it is
+  // allocated to a separate change.
+
+  // Optional. Identifies the upload set this request is one part of. Every
+  // part of one scan carries the same id, and two scans never share one (a
+  // producer uses a random UUID per scan). With import_started_at set, the
+  // platform closes findings by absence only once every part of the set has
+  // arrived, over the union of the assets the parts cover; a set that never
+  // completes closes nothing. Every part of a set carries the same space,
+  // source, import_started_at and part_count. A retried part is resent with
+  // the same upload_set_id and part_index, so the platform stores it once.
+  // Empty means the request is a whole upload on its own, as before.
+  string upload_set_id = 15;
+  // Optional. 0-based position of this part in its upload set, less than
+  // part_count. Only meaningful with upload_set_id set.
+  int32 part_index = 16;
+  // Optional. Number of parts in the upload set, at least 1. Only meaningful
+  // with upload_set_id set.
+  int32 part_count = 17;
+  // Optional. Number of findings the scan reported that were eligible for
+  // upload, across the whole upload set, before any cap. A platform compares
+  // it with the findings it received to tell a complete upload from a
+  // truncated one. 0 with no findings in the request means the scan found
+  // nothing eligible.
+  int32 eligible_findings_count = 18;
+  // Optional. Set when the producer sent fewer findings than
+  // eligible_findings_count, naming why as a short kebab-case reason, for
+  // example "platform-no-upload-sets" when the platform does not accept upload
+  // sets and the producer fell back to a single capped upload. Empty means
+  // nothing was capped.
+  string capped_reason = 19;
+  // Optional. The source-control ref the scan ran on, for a scan of a pull
+  // request or a branch other than the default one. Absent means the scan
+  // describes the default branch, as before.
+  ScanRef scan_ref = 20;
+  // Optional. The CODEOWNERS rules of the scanned repository, in file order,
+  // so the platform can show which rule assigned a finding's owners. A
+  // producer that splits an upload into a set sends them on the first part
+  // only.
+  repeated CodeOwnerRule code_owner_rules = 21;
+  // Optional. Where the scan's rule set came from. Without it a scan that fell
+  // back to the producer's built-in rules reads the same as one that ran the
+  // rules the platform served.
+  RunRules run_rules = 22;
+  // Optional. Which platform-served policy documents the scan applied, one
+  // entry per document kind, and where each came from.
+  repeated RunPolicy run_policies = 23;
+  // Optional. True when the repository's CODEOWNERS file was over the
+  // producer's size or rule limit, so code_owner_rules is empty and no finding
+  // carries owners from it. False with no rules means the repository has no
+  // CODEOWNERS file, or one with no rules.
+  bool code_owner_rules_truncated = 24;
+}
+
+// ScanRefKind is the kind of source-control ref a scan ran on.
+enum ScanRefKind {
+  SCAN_REF_KIND_UNSPECIFIED = 0;
+  // A pull request (GitHub, Bitbucket, Azure DevOps) or merge request
+  // (GitLab).
+  SCAN_REF_KIND_PULL_REQUEST = 1;
+  // A branch other than the repository's default branch.
+  SCAN_REF_KIND_BRANCH = 2;
+}
+
+// ScanRef names the source-control ref a scan ran on.
+message ScanRef {
+  // Required. Which kind of ref this is.
+  ScanRefKind kind = 1;
+  // The pull or merge request number, for SCAN_REF_KIND_PULL_REQUEST. 0
+  // otherwise.
+  int64 number = 2;
+  // Full commit SHA the scan ran on.
+  string head_sha = 3;
+  // Full commit SHA of the merge base the scan was compared against, when
+  // the producer computed one. Empty otherwise.
+  string base_sha = 4;
+  // The branch name, for SCAN_REF_KIND_BRANCH, without a refs/heads/ prefix.
+  // Empty otherwise.
+  string name = 5;
+}
+
+// CodeOwnerRule is one rule of a CODEOWNERS file.
+message CodeOwnerRule {
+  // The path pattern, as written in the file.
+  string pattern = 1;
+  // The owners the rule assigns, as written in the file: @user, @org/team or
+  // an email address. Empty when the rule removes ownership.
+  repeated string owners = 2;
+  // The section the rule is in, for a dialect with sections (GitLab). Empty
+  // otherwise.
+  string section = 3;
+  // True when the rule's section is optional (GitLab's ^[Section]).
+  bool optional = 4;
+}
+
+// RunRules says where a scan's rule set came from.
+message RunRules {
+  // Where the rules came from, e.g. "platform", "built-in" or "local".
+  string source = 1;
+  // How many rules the source provided.
+  int32 count = 2;
+  // Set when the scan asked the platform for its rules and ran another set
+  // instead, as a short kebab-case reason (e.g. "platform-unreachable").
+  // Empty when the platform's set ran or was never asked for.
+  string fallback_reason = 3;
+  // Ids of served rules the producer could not load. The rest of the set
+  // still ran.
+  repeated string skipped = 4;
+  // The etag of the served rule set, when the rules came from the platform.
+  string etag = 5;
+}
+
+// RunPolicy says where one platform-served policy document a scan applied
+// came from.
+message RunPolicy {
+  // The document kind, e.g. "code-scan-gate".
+  string kind = 1;
+  // Where the document came from, e.g. "platform", "cache" or "default".
+  string source = 2;
+  // The etag of the served document.
+  string etag = 3;
+  // Set when the scan could not use the served document, as a short
+  // kebab-case reason. Empty otherwise.
+  string fallback_reason = 4;
 }
 
 // FindingKind is a kind of document a FindingsUploadRequest carries.
