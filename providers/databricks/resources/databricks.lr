@@ -763,8 +763,63 @@ databricks.schema @defaults("fullName owner") {
   volumes() []databricks.volume
   // Unity Catalog functions in the schema
   functions() []databricks.function
+  // Tables and views in the schema
+  tables() []databricks.table
   // Container images registered as software artifacts in the schema
   softwareArtifacts() []databricks.softwareArtifact
+}
+
+// Unity Catalog table
+//
+// A table or view in a Unity Catalog schema, keyed by its fully qualified name
+// (catalog.schema.table). Covers the owner, the table type and storage format,
+// the storage location of an external table, and the columns with their types
+// and column masks. Select a table by full name, for example
+// `databricks.catalogs.where(name == "main").schemas.where(name == "sales").tables.where(fullName == "main.sales.orders")`.
+databricks.table @defaults("fullName tableType owner") {
+  // Table name relative to the parent schema
+  name string
+  // Fully qualified name (catalog.schema.table)
+  fullName string
+  // Name of the parent catalog
+  catalogName string
+  // Name of the parent schema
+  schemaName string
+  // Parent catalog
+  catalog() databricks.catalog
+  // Parent schema
+  schema() databricks.schema
+  // Principal that owns the table
+  owner string
+  // Table type, for example MANAGED, EXTERNAL, VIEW, MATERIALIZED_VIEW, STREAMING_TABLE or FOREIGN
+  tableType string
+  // Storage format, for example DELTA, PARQUET or CSV; empty for views
+  dataSourceFormat string
+  // Storage location of an external table; empty for a managed table or a view
+  storageLocation string
+  // Table comment
+  comment string
+  // Columns of the table
+  columns() []databricks.table.column
+}
+
+// Column of a Unity Catalog table
+private databricks.table.column @defaults("name typeName") {
+  // Column name
+  name string
+  // Declared type text of the column, for example string or decimal(10,2)
+  typeName string
+  // Ordinal position of the column in the table
+  position int
+  // Whether the column accepts null values
+  nullable bool
+  // Comment on the column, empty when none is set
+  comment string
+  // Column mask function
+  //
+  // The function that masks the column's values for readers it does not exempt.
+  // Null when the column has no mask.
+  mask() databricks.function
 }
 
 // Unity Catalog software artifact
