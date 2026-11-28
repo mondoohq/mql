@@ -218,15 +218,26 @@ func (c *coordinator) unsafeGetAssetRuntime(asset *inventory.Asset) *Runtime {
 
 // Returns true if we were able to set the runtime index for this asset,
 // i.e. if either the MRN and/or its platform IDs were identified.
+// unsafeSetAssetRuntime registers a runtime under its asset's MRN and
+// platform ids. An id another open runtime is registered under stays that
+// runtime's: a second runtime for the same asset does not take the first
+// one's place. It reports whether the runtime is registered under any id; one
+// that is not stays among the unprocessed runtimes, where the providers it
+// uses still count as used.
 func (c *coordinator) unsafeSetAssetRuntime(asset *inventory.Asset, runtime *Runtime) bool {
 	found := false
-	if asset.Mrn != "" {
-		c.runtimes[asset.Mrn] = runtime
+	set := func(key string) {
+		if other := c.runtimes[key]; other != nil && other != runtime && !other.isClosed {
+			return
+		}
+		c.runtimes[key] = runtime
 		found = true
 	}
+	if asset.Mrn != "" {
+		set(asset.Mrn)
+	}
 	for _, id := range asset.PlatformIds {
-		c.runtimes[id] = runtime
-		found = true
+		set(id)
 	}
 	return found
 }
@@ -238,10 +249,13 @@ func (c *coordinator) RemoveRuntime(runtime *Runtime) {
 	defer c.mutex.Unlock()
 	c.unsafeRefreshRuntimes()
 
-	if runtime.asset() != nil {
-		delete(c.runtimes, runtime.asset().Mrn)
-		for _, id := range runtime.asset().PlatformIds {
-			delete(c.runtimes, id)
+	// Only what is registered as this runtime is removed: another runtime
+	// for the same asset keeps its place.
+	if asset := runtime.asset(); asset != nil {
+		for _, key := range append([]string{asset.Mrn}, asset.PlatformIds...) {
+			if c.runtimes[key] == runtime {
+				delete(c.runtimes, key)
+			}
 		}
 	}
 
