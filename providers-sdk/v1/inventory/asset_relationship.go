@@ -98,8 +98,12 @@ var RelationshipKinds = map[string]RelationshipKind{
 // ErrInvalidRelationship is returned, wrapped, by AssetRelationship.Validate.
 var ErrInvalidRelationship = errors.New("invalid asset relationship")
 
-// Traversable reports whether cross-asset traversal (ADR 031) follows r.
+// Traversable reports whether cross-asset traversal (ADR 031) follows r. A
+// nil relationship is not followed.
 func (r *AssetRelationship) Traversable() bool {
+	if r == nil {
+		return false
+	}
 	k, ok := RelationshipKinds[r.GetKind()]
 	return ok && k.Traversable
 }

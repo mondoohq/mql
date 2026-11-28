@@ -124,6 +124,9 @@ func TestAssetRelationshipTraversable(t *testing.T) {
 	assert.False(t, (&AssetRelationship{Kind: RelationshipKindDeclares}).Traversable())
 	assert.False(t, (&AssetRelationship{Kind: RelationshipKindConnectsTo}).Traversable())
 	assert.False(t, (&AssetRelationship{Kind: "unregistered"}).Traversable())
+	// Synthetic: GetKind on nil reads "", the traversable kind; nil must
+	// still not be followed.
+	assert.False(t, (*AssetRelationship)(nil).Traversable(), "nil is not traversable")
 }
 
 func TestAssetRelationshipFieldNumbers(t *testing.T) {
