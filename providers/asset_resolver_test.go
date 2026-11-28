@@ -89,6 +89,19 @@ func TestRecordedTargetForAnchor(t *testing.T) {
 		assert.Nil(t, target)
 	})
 
+	// Synthetic: an edge of another kind can carry the same anchor; it says
+	// something else about the asset and must not place it under the
+	// resource.
+	t.Run("an edge that is not anchored is not followed", func(t *testing.T) {
+		declared := anchoredOn(host, anchor.ResourceType, anchor.ResourceId)
+		declared.Kind = inventory.RelationshipKindDeclares
+		r := runtimeWith(host, recordedAsset("mcp-github", declared))
+
+		target, err := r.recordedTargetForAnchor(anchor)
+		require.NoError(t, err)
+		assert.Nil(t, target)
+	})
+
 	t.Run("no multi-asset recording is a miss", func(t *testing.T) {
 		r := &Runtime{recording: recording.Null{}}
 		target, err := r.recordedTargetForAnchor(anchor)

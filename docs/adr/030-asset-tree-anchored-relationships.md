@@ -2,7 +2,8 @@
 
 ## Status
 
-Proposed
+Proposed. [ADR 060](060-asset-relationship-kinds.md) extends the edge with
+kinds, an anchor on the carrying asset, evidence and attributes.
 
 ## Context
 

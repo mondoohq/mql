@@ -4,6 +4,7 @@
 syntax = "proto3";
 package cnquery.providers.v1;
 
+import "google/protobuf/struct.proto";
 import "providers-sdk/v1/upstream/upstream.proto";
 import "providers-sdk/v1/vault/vault.proto";
 
@@ -151,18 +152,47 @@ message AssetClaim {
   string signature = 3;
 }
 
-// AssetRelationship is a directed, resource-anchored edge to another asset. An
-// edge has two ends, and the anchor resource is meaningless without the asset
-// that owns it, so the message names both: the counterparty `asset` (a full
-// Asset, like `related_assets`, so identity is unrestricted) and the resource
-// on that asset that anchors the relationship. See ADR 030.
+// RelationshipEvidence is how the producer knows that a relationship holds.
+enum RelationshipEvidence {
+  RELATIONSHIP_EVIDENCE_UNSPECIFIED = 0;
+  // A signed statement of the relationship, verified by the producer.
+  RELATIONSHIP_EVIDENCE_ATTESTED = 1;
+  // Both ends were matched by the exact digest of the same content.
+  RELATIONSHIP_EVIDENCE_DIGEST_EXACT = 2;
+  // A system of record lists the relationship (an API, a log, a state file).
+  RELATIONSHIP_EVIDENCE_RECORDED = 3;
+  // A configuration or a source file states it, and nothing confirmed it.
+  RELATIONSHIP_EVIDENCE_DECLARED = 4;
+}
+
+// AssetRelationship is a directed edge from the asset that carries it to
+// another asset. An edge has two ends, and an anchor resource is meaningless
+// without the asset that owns it, so the message names the other end's asset
+// and, optionally, a resource on each end that anchors the edge. See ADR 030
+// and ADR 060.
+//
+// The other end is an asset stub, named by the strongest identity the
+// producer has: its MRN, its platform ids, or kind-tagged claims when it has
+// no canonical id. AssetRelationship.Validate checks the rules.
 message AssetRelationship {
   // the asset at the other end of the edge (e.g. the parent/host that owns the
-  // anchor resource), referenced as an Asset (stub or full)
+  // anchor resource), referenced as an Asset stub
   Asset asset = 1;
   // the anchor resource on `asset`
   string resource_type = 2;
   string resource_id = 3;
+  // what the edge means, from a registered kind (RelationshipKinds). Empty is
+  // the ADR 030 edge: the carrying asset hangs off the anchor on `asset`, and
+  // only such edges are followed by cross-asset traversal (ADR 031).
+  string kind = 4;
+  // the anchor resource on the carrying asset, e.g. the file that declares
+  // the edge
+  string from_resource_type = 5;
+  string from_resource_id = 6;
+  RelationshipEvidence evidence = 7;
+  // per-kind attributes, with the keys and types the kind registers; at most
+  // 4 KiB serialized
+  google.protobuf.Struct attributes = 8;
 }
 
 // AssetUrlBranch defines the hierarchy into which an asset can be placed. It
