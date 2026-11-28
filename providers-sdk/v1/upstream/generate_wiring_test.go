@@ -4,6 +4,7 @@
 package upstream_test
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,29 +41,38 @@ func TestEveryProtoPackageIsWiredIntoTheMakefile(t *testing.T) {
 
 	upstreamDir := filepath.Join(root, "providers-sdk", "v1", "upstream")
 
-	entries, err := os.ReadDir(upstreamDir)
-	require.NoError(t, err)
-
+	// Walk the whole tree, not only the direct children: proto packages are
+	// nested too (mvd/cvss, and every dataset schema under datasets/).
 	checked := 0
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
+	err = filepath.WalkDir(upstreamDir, func(pkgDir string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
 		}
-
-		pkgDir := filepath.Join(upstreamDir, entry.Name())
+		if !entry.IsDir() || pkgDir == upstreamDir {
+			return nil
+		}
+		if entry.Name() == "testdata" {
+			return filepath.SkipDir
+		}
 		if !generatesProto(t, pkgDir) {
-			continue
+			return nil
 		}
 		checked++
 
+		rel, err := filepath.Rel(upstreamDir, pkgDir)
+		require.NoError(t, err)
+		rel = filepath.ToSlash(rel)
+
 		// The path as `go generate` is invoked with it in the Makefile.
-		target := "./providers-sdk/v1/upstream/" + entry.Name()
-		require.Contains(t, rules, "go generate "+target,
+		target := "./providers-sdk/v1/upstream/" + rel
+		require.Contains(t, rules, "go generate "+target+"\n",
 			"providers-sdk/v1/upstream/%s has a //go:generate protoc directive that no make "+
 				"target calls. `make clean/proto` deletes its generated files and nothing "+
 				"restores them, so the package stops compiling. Add `go generate %s` to "+
-				"shared/generate.", entry.Name(), target)
-	}
+				"shared/generate.", rel, target)
+		return nil
+	})
+	require.NoError(t, err)
 
 	// Guard the guard: if the directory layout moves, this test must fail
 	// rather than silently pass over an empty set.
