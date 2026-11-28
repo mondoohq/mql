@@ -506,7 +506,8 @@ func (s *mqlSshdConfig) effectiveParams() (map[string]string, error) {
 		return nil, err
 	}
 
-	params, err := runEffectiveSshdConfig(conn, command)
+	runner := &sshdRunner{conn: conn, linux: isLinuxAsset(conn)}
+	params, err := runner.effectiveConfig(command)
 	if err != nil {
 		s.effectiveParamsErr = err
 		return nil, err
@@ -516,7 +517,7 @@ func (s *mqlSshdConfig) effectiveParams() (map[string]string, error) {
 	// RHEL 8 passes the system crypto policy that way, so ask sshd -T again
 	// with the same options to report what the daemon accepts.
 	if opts := s.daemonOptions(conn, params); len(opts) > 0 {
-		params, err = runEffectiveSshdConfig(conn, sshdCommandWithOptions(command, opts))
+		params, err = runner.effectiveConfig(sshdCommandWithOptions(command, opts))
 		if err != nil {
 			s.effectiveParamsErr = err
 			return nil, err
@@ -555,14 +556,108 @@ func needsSshdConnectionSpec(stderr string) bool {
 	return strings.Contains(stderr, "not in connection test specification")
 }
 
-func runEffectiveSshdConfig(conn shared.Connection, command string) (map[string]string, error) {
-	stdout, stderr, exit, err := runSshdCommand(conn, command)
+// sshdMissingPrivsepDirRegex matches the fatal error sshd -T prints when
+// its privilege separation directory does not exist. On Debian and Ubuntu
+// that is /run/sshd, which the service unit creates when ssh.service starts.
+// With socket activation (Ubuntu 22.10 and later) the service only starts on
+// the first SSH connection, so after a boot the directory is missing:
+//
+//	Missing privilege separation directory: /run/sshd
+var sshdMissingPrivsepDirRegex = regexp.MustCompile(`Missing privilege separation directory: (\S+)`)
+
+// sshdPrivsepDirRegex limits the retry to a plain directory right under
+// /run, where a temporary tmpfs hides nothing sshd -T reads.
+var sshdPrivsepDirRegex = regexp.MustCompile(`^/(var/)?run/[A-Za-z0-9._-]+$`)
+
+// missingSshdPrivsepDir returns the privilege separation directory sshd -T
+// reported missing, if the directory can be provided in a private mount
+// namespace.
+func missingSshdPrivsepDir(stderr string) (string, bool) {
+	m := sshdMissingPrivsepDirRegex.FindStringSubmatch(stderr)
+	if m == nil {
+		return "", false
+	}
+	dir := m[1]
+	if !sshdPrivsepDirRegex.MatchString(dir) || pathpkg.Clean(dir) != dir {
+		return "", false
+	}
+	return dir, true
+}
+
+// sshdInPrivateRun wraps command so it runs in a private mount namespace
+// with an empty tmpfs at the parent of dir and dir created in it. The mount
+// and the directory disappear with the namespace when sshd exits, and
+// nothing is written to the host's /run.
+func sshdInPrivateRun(command string, dir string) string {
+	script := "mount -t tmpfs -o mode=0755 tmpfs " + pathpkg.Dir(dir) +
+		" && mkdir -m 0755 " + dir +
+		" && exec " + command
+	return "unshare --mount --propagation private sh -c " + shared.ShellEscape(script)
+}
+
+// sshdFatalExitStatus is the status sshd exits with on a fatal error. The
+// wrapper's own failures exit with other statuses: 1 for unshare or mkdir,
+// 32 for mount, 127 when unshare is not installed.
+const sshdFatalExitStatus = 255
+
+// sshdRunner runs sshd -T for one sshd.config resource. It remembers when
+// sshd needed a private /run, so later runs go there directly.
+type sshdRunner struct {
+	conn       shared.Connection
+	linux      bool
+	privsepDir string
+}
+
+func isLinuxAsset(conn shared.Connection) bool {
+	asset := conn.Asset()
+	return asset != nil && asset.Platform != nil && asset.Platform.IsFamily(inventory.FAMILY_LINUX)
+}
+
+func (r *sshdRunner) run(command string) (string, string, int, error) {
+	if r.privsepDir != "" {
+		return runSshdCommand(r.conn, sshdInPrivateRun(command, r.privsepDir))
+	}
+
+	stdout, stderr, exit, err := runSshdCommand(r.conn, command)
+	if err != nil || exit == 0 || !r.linux {
+		return stdout, stderr, exit, err
+	}
+	dir, ok := missingSshdPrivsepDir(stderr)
+	if !ok {
+		return stdout, stderr, exit, err
+	}
+
+	log.Debug().Str("dir", dir).Msg("sshd> privilege separation directory is missing, running sshd -T in a private mount namespace")
+	pStdout, pStderr, pExit, pErr := runSshdCommand(r.conn, sshdInPrivateRun(command, dir))
+	if pErr == nil && (pExit == 0 || pExit == sshdFatalExitStatus) {
+		if _, stillMissing := missingSshdPrivsepDir(pStderr); !stillMissing {
+			r.privsepDir = dir
+			return pStdout, pStderr, pExit, nil
+		}
+	}
+
+	reason := strings.TrimSpace(pStderr)
+	if pErr != nil {
+		reason = pErr.Error()
+	}
+	if reason == "" {
+		reason = fmt.Sprintf("exit %d", pExit)
+	}
+	stderr = strings.TrimSpace(stderr) + " (sshd creates this directory when the ssh service starts; " +
+		"running sshd -T in a private mount namespace with a temporary " + pathpkg.Dir(dir) +
+		" failed too: " + reason + ")"
+	return stdout, stderr, exit, nil
+}
+
+// effectiveConfig runs command and parses the configuration it prints.
+func (r *sshdRunner) effectiveConfig(command string) (map[string]string, error) {
+	stdout, stderr, exit, err := r.run(command)
 	if err != nil {
 		return nil, err
 	}
 	if exit != 0 && needsSshdConnectionSpec(stderr) {
 		command += " -C " + sshdTestConnectionSpec
-		stdout, stderr, exit, err = runSshdCommand(conn, command)
+		stdout, stderr, exit, err = r.run(command)
 		if err != nil {
 			return nil, err
 		}
