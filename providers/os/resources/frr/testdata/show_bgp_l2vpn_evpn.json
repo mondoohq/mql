@@ -1,0 +1,69 @@
+{
+  "bgpTableVersion": 42,
+  "bgpLocalRouterId": "192.0.2.30",
+  "defaultLocPrf": 100,
+  "localAS": 65100,
+  "192.0.2.30:2": {
+    "rd": "192.0.2.30:2",
+    "[2]:[0]:[48]:[aa:bb:cc:00:10:01]": {
+      "prefix": "[2]:[0]:[48]:[aa:bb:cc:00:10:01]",
+      "prefixLen": 352,
+      "paths": [
+        {
+          "valid": true,
+          "bestpath": true,
+          "pathFrom": "internal",
+          "path": "",
+          "origin": "IGP",
+          "weight": 32768,
+          "locPrf": 100,
+          "nexthops": [{"ip": "192.0.2.30", "afi": "ipv4", "used": true}],
+          "extendedCommunity": {"string": "RT:65100:4001 ET:8"}
+        }
+      ]
+    },
+    "[2]:[0]:[48]:[aa:bb:cc:00:10:02]:[32]:[10.10.0.5]": {
+      "prefix": "[2]:[0]:[48]:[aa:bb:cc:00:10:02]:[32]:[10.10.0.5]",
+      "prefixLen": 352,
+      "paths": [
+        {
+          "valid": true,
+          "bestpath": true,
+          "path": "65000 65101",
+          "origin": "IGP",
+          "metric": 0,
+          "locPrf": 100,
+          "peer": {"peerId": "192.0.2.31", "routerId": "192.0.2.31", "type": "external"},
+          "nexthops": [{"ip": "192.0.2.31", "afi": "ipv4", "used": true}],
+          "community": {"string": "65100:200", "list": ["65100:200"]},
+          "largeCommunity": {"string": "65100:1:2"},
+          "extendedCommunity": {"string": "RT:65100:4001 RT:65100:5000 ET:8 MM:0"}
+        }
+      ]
+    },
+    "numPrefix": 2,
+    "numPaths": 2
+  },
+  "192.0.2.30:5": {
+    "rd": "192.0.2.30:5",
+    "[5]:[0]:[24]:[10.20.0.0]": {
+      "prefix": "[5]:[0]:[24]:[10.20.0.0]",
+      "prefixLen": 352,
+      "paths": [
+        {
+          "valid": true,
+          "bestpath": true,
+          "path": "",
+          "origin": "IGP",
+          "locPrf": 100,
+          "nexthops": [{"ip": "192.0.2.30", "afi": "ipv4", "used": true}],
+          "extendedCommunity": {"string": "RT:65100:5010 ET:8 Rmac:aa:bb:cc:00:00:31"}
+        }
+      ]
+    },
+    "numPrefix": 1,
+    "numPaths": 1
+  },
+  "numPrefix": 3,
+  "numPaths": 3
+}
