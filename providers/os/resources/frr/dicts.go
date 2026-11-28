@@ -43,6 +43,18 @@ func PrefixListEntriesAsDicts(entries []PrefixListEntry) []any {
 	return out
 }
 
+// PolicyEntriesAsDicts renders policy-list entries as schema dictionaries.
+func PolicyEntriesAsDicts(entries []PolicyEntry) []any {
+	out := make([]any, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, map[string]any{
+			"seq": e.Seq, "action": e.Action, "value": e.Value,
+			"line": int64(e.Line), "raw": e.Raw,
+		})
+	}
+	return out
+}
+
 // VNIsAsDicts renders the VNI blocks of an EVPN address family as plain maps.
 func VNIsAsDicts(vnis []VNI) []any {
 	out := make([]any, 0, len(vnis))
