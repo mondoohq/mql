@@ -1,0 +1,38 @@
+{
+  "neighbors": {
+    "192.0.2.31": [
+      {
+        "priority": 1,
+        "state": "Full/DR",
+        "nbrPriority": 1,
+        "nbrState": "Full/DR",
+        "converged": "Full",
+        "role": "DR",
+        "upTimeInMsec": 4365000,
+        "deadTimeMsecs": 35000,
+        "upTime": "01:12:45",
+        "deadTime": "35.000s",
+        "address": "10.0.0.2",
+        "ifaceAddress": "10.0.0.1",
+        "ifaceName": "swp1",
+        "retransmitCounter": 0,
+        "requestCounter": 0,
+        "dbSummaryCounter": 0
+      }
+    ],
+    "192.0.2.32": [
+      {
+        "priority": 1,
+        "state": "ExStart/DROther",
+        "nbrPriority": 1,
+        "nbrState": "ExStart/DROther",
+        "upTimeInMsec": 1200,
+        "deadTimeMsecs": 12000,
+        "address": "10.0.1.2",
+        "ifaceAddress": "10.0.1.1",
+        "ifaceName": "swp2",
+        "retransmitCounter": 4
+      }
+    ]
+  }
+}
