@@ -64,6 +64,17 @@ message FindingsUploadRequest {
   // findings, since findings already name their assets. Fields 10 to 12 are
   // used by the platform's copy of this message.
   repeated Component scanned_components = 13;
+  // The producer mode this upload speaks for, as "<producer>:<mode>", for
+  // example "<tool>:code" or "<tool>:dspm". Lower-case ASCII letters, digits
+  // and "-", one ":" separating two non-empty parts, at most 64 bytes
+  // (ValidReporter checks the format). It is not free text: the platform
+  // accepts, per source, only the values it knows, and refuses an upload with
+  // any other value. With import_started_at set (a full pull), the platform
+  // closes by absence only the findings last reported under this same
+  // reporter; complete_kinds still narrows by kind, so both apply. Empty keeps
+  // the behaviour of a request without the field. A producer sends one
+  // reporter per upload; a producer with two modes sends two uploads.
+  string reporter = 14;
 }
 
 // FindingKind is a kind of document a FindingsUploadRequest carries.

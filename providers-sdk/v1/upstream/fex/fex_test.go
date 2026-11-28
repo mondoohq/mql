@@ -4,11 +4,13 @@
 package fex
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -123,4 +125,66 @@ func TestSourceVersionEvidenceRoundTrip(t *testing.T) {
 	assert.Equal(t, "alice@example.com", sv.GetEmail())
 	assert.True(t, when.Equal(sv.GetDate().AsTime()))
 	assert.Equal(t, "https://github.com/acme/repo/commit/096bccac", sv.GetUrl())
+}
+
+func TestValidReporter(t *testing.T) {
+	// Synthetic: the reporter format; no producer sends these yet.
+	valid := []string{
+		"tool:code",
+		"tool:dspm",
+		"a-b:c1",
+		"0:0",
+		"a:" + strings.Repeat("b", MaxReporterLength-2), // exactly 64 bytes
+	}
+	for _, s := range valid {
+		assert.True(t, ValidReporter(s), "%q should be a valid reporter", s)
+	}
+
+	invalid := []string{
+		"",            // empty is valid on the wire, but not a reporter value
+		"tool",        // no mode
+		"tool:",       // empty mode
+		":code",       // empty producer
+		"Tool:code",   // upper case
+		"tool:code:x", // two separators
+		"tool:co de",  // space
+		"tool_x:code", // underscore
+		"tool:code\n", // trailing newline must not slip past the anchors
+		"tööl:code",   // non-ASCII
+		"a:" + strings.Repeat("b", MaxReporterLength-1), // 65 bytes
+	}
+	for _, s := range invalid {
+		assert.False(t, ValidReporter(s), "%q should not be a valid reporter", s)
+	}
+}
+
+func TestReporterRoundTrip(t *testing.T) {
+	// Synthetic: wire and proto-JSON encoding of field 14.
+	req := &FindingsUploadRequest{Source: "src", Reporter: "tool:dspm"}
+
+	b, err := req.MarshalVT()
+	require.NoError(t, err)
+	// Field 14, wire type 2: tag byte 0x72, then the length and the bytes.
+	assert.Contains(t, string(b), "\x72\x09tool:dspm")
+
+	var got FindingsUploadRequest
+	require.NoError(t, got.UnmarshalVT(b))
+	assert.Equal(t, "tool:dspm", got.GetReporter())
+
+	j, err := protojson.Marshal(req)
+	require.NoError(t, err)
+	assert.Contains(t, string(j), `"reporter":"tool:dspm"`)
+
+	var fromJSON FindingsUploadRequest
+	require.NoError(t, protojson.Unmarshal([]byte(`{"source":"src","reporter":"tool:code"}`), &fromJSON))
+	assert.Equal(t, "tool:code", fromJSON.GetReporter())
+
+	// A request without a reporter carries no field 14, so it encodes exactly
+	// as a request built before the field existed.
+	without, err := (&FindingsUploadRequest{Source: "src"}).MarshalVT()
+	require.NoError(t, err)
+	assert.Equal(t, []byte("\x12\x03src"), without)
+	jw, err := protojson.Marshal(&FindingsUploadRequest{Source: "src"})
+	require.NoError(t, err)
+	assert.NotContains(t, string(jw), "reporter")
 }

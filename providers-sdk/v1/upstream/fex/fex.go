@@ -3,6 +3,8 @@
 
 package fex
 
+import "regexp"
+
 //go:generate protoc --plugin=protoc-gen-go=../../../../scripts/protoc/protoc-gen-go --plugin=protoc-gen-go-vtproto=../../../../scripts/protoc/protoc-gen-go-vtproto --go_out=. --go_opt=paths=source_relative --go-vtproto_out=. --go-vtproto_opt=paths=source_relative --go-vtproto_opt=features=marshal+unmarshal+size fex.proto
 
 // FexToDocument wraps a FindingExchange in a FindingDocument.
@@ -46,4 +48,20 @@ func NewRemediation(summary, details, url string) *Remediation {
 		Details:  details,
 		Url:      url,
 	}
+}
+
+// MaxReporterLength is the longest FindingsUploadRequest.reporter value, in
+// bytes.
+const MaxReporterLength = 64
+
+var reporterPattern = regexp.MustCompile(`^[a-z0-9-]+:[a-z0-9-]+$`)
+
+// ValidReporter reports whether s has the format of a
+// FindingsUploadRequest.reporter value: "<producer>:<mode>", lower-case ASCII
+// letters, digits and "-", one ":" separating two non-empty parts, at most
+// MaxReporterLength bytes. It checks the format only; which values a source
+// may send is decided by the platform. The empty string is not a reporter
+// value: a request without a reporter leaves the field unset.
+func ValidReporter(s string) bool {
+	return len(s) <= MaxReporterLength && reporterPattern.MatchString(s)
 }

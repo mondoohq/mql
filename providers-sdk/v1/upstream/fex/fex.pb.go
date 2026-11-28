@@ -622,8 +622,19 @@ type FindingsUploadRequest struct {
 	// findings, since findings already name their assets. Fields 10 to 12 are
 	// used by the platform's copy of this message.
 	ScannedComponents []*Component `protobuf:"bytes,13,rep,name=scanned_components,json=scannedComponents,proto3" json:"scanned_components,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// The producer mode this upload speaks for, as "<producer>:<mode>", for
+	// example "<tool>:code" or "<tool>:dspm". Lower-case ASCII letters, digits
+	// and "-", one ":" separating two non-empty parts, at most 64 bytes
+	// (ValidReporter checks the format). It is not free text: the platform
+	// accepts, per source, only the values it knows, and refuses an upload with
+	// any other value. With import_started_at set (a full pull), the platform
+	// closes by absence only the findings last reported under this same
+	// reporter; complete_kinds still narrows by kind, so both apply. Empty keeps
+	// the behaviour of a request without the field. A producer sends one
+	// reporter per upload; a producer with two modes sends two uploads.
+	Reporter      string `protobuf:"bytes,14,opt,name=reporter,proto3" json:"reporter,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *FindingsUploadRequest) Reset() {
@@ -710,6 +721,13 @@ func (x *FindingsUploadRequest) GetScannedComponents() []*Component {
 		return x.ScannedComponents
 	}
 	return nil
+}
+
+func (x *FindingsUploadRequest) GetReporter() string {
+	if x != nil {
+		return x.Reporter
+	}
+	return ""
 }
 
 // VulnerabilityExchange are used for sharing information about vulnerabilities
@@ -4140,7 +4158,7 @@ const file_fex_proto_rawDesc = "" +
 	"\x0fFindingDocument\x125\n" +
 	"\x03vex\x18\x01 \x01(\v2!.mql.fex.v1.VulnerabilityExchangeH\x00R\x03vex\x12/\n" +
 	"\x03fex\x18\x02 \x01(\v2\x1b.mql.fex.v1.FindingExchangeH\x00R\x03fexB\t\n" +
-	"\afinding\"\xa5\x03\n" +
+	"\afinding\"\xc1\x03\n" +
 	"\x15FindingsUploadRequest\x127\n" +
 	"\bfindings\x18\x01 \x03(\v2\x1b.mql.fex.v1.FindingDocumentR\bfindings\x12\x16\n" +
 	"\x06source\x18\x02 \x01(\tR\x06source\x12+\n" +
@@ -4149,7 +4167,8 @@ const file_fex_proto_rawDesc = "" +
 	"\rcreate_assets\x18\x05 \x01(\bR\fcreateAssets\x12F\n" +
 	"\x11import_started_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\x0fimportStartedAt\x12>\n" +
 	"\x0ecomplete_kinds\x18\t \x03(\x0e2\x17.mql.fex.v1.FindingKindR\rcompleteKinds\x12D\n" +
-	"\x12scanned_components\x18\r \x03(\v2\x15.mql.fex.v1.ComponentR\x11scannedComponents\"\x91\x06\n" +
+	"\x12scanned_components\x18\r \x03(\v2\x15.mql.fex.v1.ComponentR\x11scannedComponents\x12\x1a\n" +
+	"\breporter\x18\x0e \x01(\tR\breporter\"\x91\x06\n" +
 	"\x15VulnerabilityExchange\x12\x10\n" +
 	"\x03ref\x18\x01 \x01(\tR\x03ref\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\x12\x10\n" +
